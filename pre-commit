@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Format all Rust files in the project
+cargo fmt
+
+# Add the formatted files to the staging area
+git add .
+
+# Continue with the commit
+exit 0
