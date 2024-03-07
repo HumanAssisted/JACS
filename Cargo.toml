@@ -2,8 +2,6 @@
 name = "jacs"
 version = "0.1.0"
 edition = "2021"
-
-[package]
 include = ["src/**/*", "schemas/*.json", "Cargo.toml", "README.md", "LICENSE"]
 
 [dependencies]
