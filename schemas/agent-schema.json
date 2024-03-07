@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent",
+  "description": "Schema for an agent data",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "The unique identifier for the agent",
+      "type": "string"
+    },
+    "name": {
+      "description": "Name of the agent",
+      "type": "string"
+    },
+    "role": {
+      "description": "Role of the agent",
+      "type": "string"
+    }
+  },
+  "required": ["id", "name", "role"]
+}
