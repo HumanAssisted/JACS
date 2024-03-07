@@ -1,6 +1,5 @@
-use std::io::Error;
 use crate::schema::validate::Schema;
-
+use std::io::Error;
 
 pub struct AgentSchema {
     schema: Schema,

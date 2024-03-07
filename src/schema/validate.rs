@@ -1,10 +1,10 @@
 use jsonschema::{Draft, JSONSchema};
+use log::{debug, error, warn};
 use serde_json::Value;
+use std::env;
 use std::fs;
 use std::io::Error;
-use std::env;
 use std::path::PathBuf;
-use log::{debug, error, warn};
 
 pub struct Schema {
     schema: Value,
@@ -19,7 +19,7 @@ impl Schema {
             Ok(data) => {
                 debug!("Schema is {:?}", data);
                 data
-            },
+            }
             Err(e) => {
                 let error_message = format!("Failed to read schema file: {}", e);
                 error!("{}", error_message);
@@ -36,7 +36,7 @@ impl Schema {
             Ok(value) => {
                 debug!("validate json {:?}", value);
                 value
-            },
+            }
             Err(e) => {
                 let error_message = format!("Invalid JSON: {}", e);
                 warn!("validate error {:?}", error_message);
@@ -54,7 +54,8 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(()),
             Err(errors) => {
-                let error_messages: Vec<String> = errors.into_iter().map(|e| e.to_string()).collect();
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
                 if let Some(error_message) = error_messages.first() {
                     Err(error_message.clone())
                 } else {

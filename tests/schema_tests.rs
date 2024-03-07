@@ -8,14 +8,17 @@ fn test_validate_agent_json() {
         Ok(data) => {
             println!("testing data {}", data);
             let result = jacs::validate_agent_json(&data);
-            assert!(result.is_ok(), "Failed to validate myagent.json: {}", result.unwrap_err());
-        },
+            assert!(
+                result.is_ok(),
+                "Failed to validate myagent.json: {}",
+                result.unwrap_err()
+            );
+        }
         Err(e) => {
             panic!("Failed to read 'examples/myagent.json': {}", e);
         }
     }
 }
-
 
 #[test]
 fn test_validate_agent_json_raw() {
@@ -26,8 +29,10 @@ fn test_validate_agent_json_raw() {
 }"#;
 
     println!("testing data {}", json_data);
-            let result = jacs::validate_agent_json(&json_data);
-            assert!(result.is_ok(), "Failed to validate myagent.json: {}", result.unwrap_err());
-
-
+    let result = jacs::validate_agent_json(&json_data);
+    assert!(
+        result.is_ok(),
+        "Failed to validate myagent.json: {}",
+        result.unwrap_err()
+    );
 }
