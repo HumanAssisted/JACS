@@ -2,20 +2,18 @@ use std::io::Error;
 use crate::schema::validate::Schema;
 
 
-pub struct AgentSchema {
+pub struct TaskSchema {
     schema: Schema,
 }
 
-impl AgentSchema {
+impl TaskSchema {
     pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("agent-schema.json")?;
+        let schema = Schema::new("task-schema.json")?;
         Ok(Self { schema })
     }
 
     pub fn validate(&self, json: &str) -> Result<(), String> {
         self.schema.validate(json)?;
-        // Perform additional custom validation for AgentSchema
-        // ...
         Ok(())
     }
 }
