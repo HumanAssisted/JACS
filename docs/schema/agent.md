@@ -166,7 +166,7 @@ date registred
 
 ## agenttype
 
-
+Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence.
 
 `agenttype`
 

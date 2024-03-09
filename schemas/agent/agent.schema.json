@@ -37,7 +37,8 @@
     },
     "agenttype": {
       "type": "string",
-      "enum": ["human", "hybrid", "ai"]
+      "enum": ["human", "hybrid", "ai"],
+      "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
     },
     "name": {
       "description": "Name of the agent, unique per registrar",
