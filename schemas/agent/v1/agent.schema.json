@@ -9,20 +9,20 @@
     },
     {
     "type": "object",
-  "properties": {
-    "agenttype": {
-      "type": "string",
-      "enum": ["human", "hybrid", "ai"],
-      "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
-    },
+      "properties": {
+        "agenttype": {
+          "type": "string",
+          "enum": ["human", "hybrid", "ai"],
+          "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
+        },
 
-    "actions": {
-      "type": "array",
-      "items": {
-        "$ref": "../../action/v1/action.schema.json"
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "../../action/v1/action.schema.json"
+          }
+        }
       }
-    }
-  }
     }
   ],
 
