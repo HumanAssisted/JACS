@@ -5,11 +5,11 @@ JACS is both a JSON Schema and Reference implementation of [OSAP](https://github
 
 The main objects are
 
- - [Resources](./docs/schema/resource/resource.md) - things in the world that will be transformed
- - [Agents](./docs/schema/resource/agent.md) - things that can take actions
- - [Actions](./docs/schema/resource/action.md) - as set of things that can happen to a resource
- - [Tasks](./docs/schema/resource/task.md) - set of desired actions
- - [Decisions](./docs/schema/resource/decision.md) - changes to tasks/actions
+ - [Resources](./docs/schema/resource.md) - things in the world that will be transformed
+ - [Agents](./docs/schema/agent.md) - things that can take actions
+ - [Actions](./docs/schema/action.md) - as set of things that can happen to a resource
+ - [Tasks](./docs/schema/task.md) - set of desired actions
+ - [Decisions](./docs/schema/decision.md) - changes to tasks/actions
 
 
 For the schema files see [schemas](./schemas).
