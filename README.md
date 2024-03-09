@@ -21,23 +21,29 @@ JACS runs by
 
 ## Usage
 
+### from rust
+
+
+### from python
+
+
+
 ### extending the schema
 
 You can both extend just the schema file or the library in your own project.
-
-###
 
 
 # Roadmap
 
 ## todo
 
+ - signature verification
+ - signature types
  - auto doc rust
  - auto doc json schema
  - push to github pages
 
 ## broader goals
-
 
  - secure post quantum
  - extensible sub schemas

@@ -7,7 +7,7 @@ fn test_validate_agent_json() {
     match json_data {
         Ok(data) => {
             println!("testing data {}", data);
-            let result = jacs::validate_agent_json(&data);
+            let result = jacs::validate_agent(&data);
             assert!(
                 result.is_ok(),
                 "Failed to validate myagent.json: {}",
@@ -29,7 +29,7 @@ fn test_validate_agent_json_raw() {
     }"#;
 
     println!("testing data {}", json_data);
-    let result = jacs::validate_agent_json(&json_data);
+    let result = jacs::validate_agent(&json_data);
     assert!(
         !result.is_ok(),
         "Correctly failed to validate myagent.json: {}",
