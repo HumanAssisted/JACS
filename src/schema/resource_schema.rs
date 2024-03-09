@@ -6,8 +6,8 @@ pub struct ResourceSchema {
 }
 
 impl ResourceSchema {
-    pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("resource")?;
+    pub fn new(version: &str) -> Result<Self, Error> {
+        let schema = Schema::new("resource", version)?;
         Ok(Self { schema })
     }
 

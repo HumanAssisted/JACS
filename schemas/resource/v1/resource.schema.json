@@ -1,25 +1,30 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "$id": "https://hai.ai/schemas/resource/v1/resource-schema.json",
   "title": "Agent",
-  "description": "General schema for human, hybrid, and AI agents",
+  "description": "General schema for stateful resources.",
   "type": "object",
   "properties": {
     "id": {
-      "description": "Agent GUID",
+      "description": "Resource GUID",
       "type": "string"
     },
+    "resourcetype": {
+      "type": "string",
+      "description": "general type of resource",
+      "enum": ["agent", "time", "physical", "montetary", "information"]
+    },
+    "linked_data_uri": {
+      "type": "string",
+      "description": "URI of Semantic Web or JSON-LD type"
+    },
     "version": {
-      "description": "Semantic Version number of the Agent",
+      "description": "Semantic Version number of the resource",
       "type": "string"
     },
     "version_date": {
       "description": "Date ",
       "format": "date-time",
-      "type": "string"
-    },
-    "public_key": {
-      "description": "Public key for verifying signatures.",
       "type": "string"
     },
     "registered_with": {
@@ -35,11 +40,6 @@
       "format": "date-time",
       "type": "string"
     },
-    "agenttype": {
-      "type": "string",
-      "enum": ["human", "hybrid", "ai"],
-      "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
-    },
     "name": {
       "description": "Name of the agent, unique per registrar",
       "type": "string"
@@ -47,13 +47,7 @@
     "description": {
       "description": "General description",
       "type": "string"
-    },
-    "actions": {
-      "type": "array",
-      "items": {
-        "$ref": "../action/action.schema.json"
-      }
     }
   },
-  "required": ["id", "name", "agenttype", "description", "actions"]
+  "required": ["id", "name", "resourcetype", "description" ]
 }

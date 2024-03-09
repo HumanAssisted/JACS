@@ -4,7 +4,7 @@
 
 *   [Action](./action.md "General type of actions an agent can take, and a set of things that can happen to a resource") – `https://hai.ai/schemas/agent/v1/action-schema.json`
 
-*   [Agent](./resource.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/resource/v1/resource-schema.json`
+*   [Agent](./resource.md "General schema for stateful resources") – `https://hai.ai/schemas/resource/v1/resource-schema.json`
 
 *   [Agent](./decision.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/resource/v1/resource-schema.json`
 
@@ -16,13 +16,13 @@
 
 ### Objects
 
-
+*   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1`
 
 ### Arrays
 
 *   [Untitled array in Action](./action-properties-actions.md) – `https://hai.ai/schemas/agent/v1/action-schema.json#/properties/actions`
 
-*   [Untitled array in Agent](./agent-properties-actions.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/properties/actions`
+*   [Untitled array in Agent](./agent-allof-1-properties-actions.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/actions`
 
 ## Version Note
 

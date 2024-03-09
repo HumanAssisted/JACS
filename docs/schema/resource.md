@@ -4,11 +4,11 @@
 https://hai.ai/schemas/resource/v1/resource-schema.json
 ```
 
-General schema for human, hybrid, and AI agents
+General schema for stateful resources.
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                 |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [resource.schema.json](../../schemas/resource/resource.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                    |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [resource.schema.json](../../schemas/resource/v1/resource.schema.json "open original schema") |
 
 ## Agent Type
 

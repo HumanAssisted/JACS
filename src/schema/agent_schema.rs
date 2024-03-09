@@ -6,8 +6,8 @@ pub struct AgentSchema {
 }
 
 impl AgentSchema {
-    pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("agent")?;
+    pub fn new(version: &str) -> Result<Self, Error> {
+        let schema = Schema::new("agent", version)?;
         Ok(Self { schema })
     }
 

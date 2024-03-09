@@ -8,8 +8,8 @@
   "registered_date": "2023-04-15T10:00:00Z",
   "agenttype": "hybrid",
   "name": "Agent Doe",
+  "resourcetype": "agent",
   "description": "A hybrid agent combining human and AI capabilities.",
   "actions": [
-
   ]
 }

@@ -6,8 +6,8 @@ pub struct DecisionSchema {
 }
 
 impl DecisionSchema {
-    pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("decision")?;
+    pub fn new(version: &str) -> Result<Self, Error> {
+        let schema = Schema::new("decision", version)?;
         Ok(Self { schema })
     }
 

@@ -6,8 +6,8 @@ pub struct ActionSchema {
 }
 
 impl ActionSchema {
-    pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("action")?;
+    pub fn new(version: &str) -> Result<Self, Error> {
+        let schema = Schema::new("action", version)?;
         Ok(Self { schema })
     }
 

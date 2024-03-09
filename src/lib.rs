@@ -2,9 +2,9 @@ pub mod schema;
 use log::error;
 
 /// A function to validate an agent JSON string using the agent schema
-pub fn validate_agent(json: &str) -> Result<(), String> {
+pub fn validate_agent(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let agent_schema = match schema::agent_schema::AgentSchema::new() {
+    let agent_schema = match schema::agent_schema::AgentSchema::new(version) {
         Ok(schema) => schema,
         Err(e) => {
             let error_message = format!("Failed to create AgentSchema: {}", e);
@@ -17,9 +17,9 @@ pub fn validate_agent(json: &str) -> Result<(), String> {
 }
 
 /// A function to validate an action JSON string using the action schema
-pub fn validate_action(json: &str) -> Result<(), String> {
+pub fn validate_action(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let agent_schema = match schema::action_schema::ActionSchema::new() {
+    let agent_schema = match schema::action_schema::ActionSchema::new(version) {
         Ok(schema) => schema,
         Err(e) => {
             let error_message = format!("Failed to create ActionSchema: {}", e);
@@ -32,9 +32,9 @@ pub fn validate_action(json: &str) -> Result<(), String> {
 }
 
 /// A function to validate an task JSON string using the task schema
-pub fn validate_task(json: &str) -> Result<(), String> {
+pub fn validate_task(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let task_schema = match schema::task_schema::TaskSchema::new() {
+    let task_schema = match schema::task_schema::TaskSchema::new(version) {
         Ok(schema) => schema,
         Err(e) => {
             let error_message = format!("Failed to create TaskSchema: {}", e);
@@ -47,9 +47,9 @@ pub fn validate_task(json: &str) -> Result<(), String> {
 }
 
 /// A function to validate an decision JSON string using the decision schema
-pub fn validate_decision(json: &str) -> Result<(), String> {
+pub fn validate_decision(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let decision_schema = match schema::decision_schema::DecisionSchema::new() {
+    let decision_schema = match schema::decision_schema::DecisionSchema::new(version) {
         Ok(schema) => schema,
         Err(e) => {
             let error_message = format!("Failed to create DecisionSchema: {}", e);
@@ -61,9 +61,9 @@ pub fn validate_decision(json: &str) -> Result<(), String> {
     decision_schema.validate(json).map_err(|e| e.to_string())
 }
 
-pub fn validate_resource(json: &str) -> Result<(), String> {
+pub fn validate_resource(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let resource_schema = match schema::resource_schema::ResourceSchema::new() {
+    let resource_schema = match schema::resource_schema::ResourceSchema::new(version) {
         Ok(schema) => schema,
         Err(e) => {
             let error_message = format!("Failed to create DecisionSchema: {}", e);

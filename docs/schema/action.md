@@ -6,9 +6,9 @@ https://hai.ai/schemas/agent/v1/action-schema.json
 
 General type of actions an agent can take, and a set of things that can happen to a resource.
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                           |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [action.schema.json](../../schemas/action/action.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                              |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [action.schema.json](../../schemas/action/v1/action.schema.json "open original schema") |
 
 ## Action Type
 
@@ -210,7 +210,7 @@ Role of the agent
 
 *   is optional
 
-*   Type: `object[]` ([Action](action.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -218,4 +218,4 @@ Role of the agent
 
 ### actions Type
 
-`object[]` ([Action](action.md))
+unknown\[]

@@ -6,8 +6,8 @@ pub struct TaskSchema {
 }
 
 impl TaskSchema {
-    pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("task")?;
+    pub fn new(version: &str) -> Result<Self, Error> {
+        let schema = Schema::new("task", version)?;
         Ok(Self { schema })
     }
 
