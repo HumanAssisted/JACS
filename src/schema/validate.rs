@@ -11,9 +11,12 @@ pub struct Schema {
 }
 
 impl Schema {
-    pub fn new(schema_filename: &str) -> Result<Self, Error> {
+    pub fn new(schema_type: &str) -> Result<Self, Error> {
         let current_dir = env::current_dir()?;
-        let schema_path: PathBuf = current_dir.join("schemas").join(schema_filename);
+        let schema_path: PathBuf = current_dir
+            .join("schemas")
+            .join(schema_type)
+            .join(format!("{}.schema.json", schema_type));
 
         let data = match fs::read_to_string(schema_path.clone()) {
             Ok(data) => {

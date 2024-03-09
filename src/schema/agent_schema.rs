@@ -7,7 +7,7 @@ pub struct AgentSchema {
 
 impl AgentSchema {
     pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("agent-schema.json")?;
+        let schema = Schema::new("agent")?;
         Ok(Self { schema })
     }
 

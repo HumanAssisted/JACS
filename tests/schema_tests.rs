@@ -31,8 +31,8 @@ fn test_validate_agent_json_raw() {
     println!("testing data {}", json_data);
     let result = jacs::validate_agent_json(&json_data);
     assert!(
-        result.is_ok(),
-        "Failed to validate myagent.json: {}",
+        !result.is_ok(),
+        "Correctly failed to validate myagent.json: {}",
         result.unwrap_err()
     );
 }

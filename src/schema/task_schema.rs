@@ -8,7 +8,7 @@ pub struct TaskSchema {
 
 impl TaskSchema {
     pub fn new() -> Result<Self, Error> {
-        let schema = Schema::new("task-schema.json")?;
+        let schema = Schema::new("task")?;
         Ok(Self { schema })
     }
 
