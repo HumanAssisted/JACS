@@ -3,6 +3,20 @@
 JACS is both a JSON Schema and Reference implementation of [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used by HAI.AI to allow more secure communications between hetrogeneous AI agents and UIs.
 
 
+The main objects are
+
+ - [Resources](./docs/schema/resource/resource.md) - things in the world that will be transformed
+ - [Agents](./docs/schema/resource/agent.md) - things that can take actions
+ - [Actions](./docs/schema/resource/action.md) - as set of things that can happen to a resource
+ - [Tasks](./docs/schema/resource/task.md) - set of desired actions
+ - [Decisions](./docs/schema/resource/decision.md) - changes to tasks/actions
+
+
+For the schema files see [schemas](./schemas).
+For examples see [schemas](./examples).
+
+
+
 Features include
 
  - an extensible JSON Schema for sharing information between agents and human UIs

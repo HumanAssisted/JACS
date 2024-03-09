@@ -3,6 +3,9 @@
 # Format all Rust files in the project
 cargo fmt
 
+# create json schema docs
+jsonschema2md -d schemas  -o docs/schema -x -
+
 # Add the formatted files to the staging area
 git add .
 

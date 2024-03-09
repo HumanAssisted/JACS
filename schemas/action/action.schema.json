@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/agent/v1/action-schema.json",
   "title": "Action",
-  "description": "General type of actions an agent can take ",
+  "description": "General type of actions an agent can take, and a set of things that can happen to a resource.",
   "type": "object",
   "properties": {
     "id": {
