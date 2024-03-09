@@ -23,10 +23,10 @@ fn test_validate_agent_json() {
 #[test]
 fn test_validate_agent_json_raw() {
     let json_data = r#"{
-  "id": "agent123",
-  "name": "Agent Smith",
-  "role": "Field Agent"
-}"#;
+      "id": "agent123",
+      "name": "Agent Smith",
+      "role": "Field Agent"
+    }"#;
 
     println!("testing data {}", json_data);
     let result = jacs::validate_agent_json(&json_data);
