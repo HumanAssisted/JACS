@@ -1,6 +1,7 @@
 # JACS - JSON Ai Communication Standard
 
-JACS is both a JSON Schema and Reference implementation used by HAI.AI to allow more secure communications between hetrogeneous AI agents and UIs.
+JACS is both a JSON Schema and Reference implementation of [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used by HAI.AI to allow more secure communications between hetrogeneous AI agents and UIs.
+
 
 Features include
 

@@ -1,20 +1,51 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "title": "Agent",
-  "description": "Schema for an agent data",
+  "description": "General schema for human, artificial, and AI agents",
   "type": "object",
   "properties": {
     "id": {
-      "description": "The unique identifier for the agent",
+      "description": "Agent GUID",
       "type": "string"
     },
+    "version": {
+      "description": "Semantic Version number of the Agent",
+      "type": "string"
+    },
+    "public_key": {
+      "description": "Public key for verifying signatures.",
+      "type": "string"
+    },
+    "registered_with": {
+      "description": "Organization",
+      "type": "string"
+    },
+    "registeration_signature": {
+      "description": "Signature for verifying registration",
+      "type": "string"
+    },
+    "registered_date": {
+      "description": "Public key for verifying signatures.",
+      "type": "string"
+    },
+    "agenttype": {
+      "type": "string",
+      "enum": ["human", "hybrid", "ai", "unknown"]
+    },
     "name": {
-      "description": "Name of the agent",
+      "description": "Name of the agent, unique",
       "type": "string"
     },
     "role": {
       "description": "Role of the agent",
       "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "http://example.com/actions.schema.json"
+      }
     }
   },
   "required": ["id", "name", "role"]
