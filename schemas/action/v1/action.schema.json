@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/agent/v1/action-schema.json",
+  "$id": "https://hai.ai/schemas/action/v1/action-schema.json",
   "title": "Action",
-  "description": "General type of actions an agent can take, and a set of things that can happen to a resource.",
+  "description": "General type of actions a resource or agent can take, and a set of things that can happen to a resource or agent.",
   "type": "object",
   "properties": {
     "id": {
@@ -13,40 +13,20 @@
       "description": "Semantic Version number of the Agent",
       "type": "string"
     },
-    "public_key": {
-      "description": "Public key for verifying signatures.",
-      "type": "string"
-    },
-    "registered_with": {
-      "description": "Organization",
-      "type": "string"
-    },
-    "registeration_signature": {
-      "description": "Signature for verifying registration",
-      "type": "string"
-    },
-    "registered_date": {
-      "description": "Public key for verifying signatures.",
-      "type": "string"
-    },
-    "agenttype": {
-      "type": "string",
-      "enum": ["human", "hybrid", "ai", "unknown"]
-    },
     "name": {
-      "description": "Name of the agent, unique",
       "type": "string"
     },
-    "role": {
-      "description": "Role of the agent",
-      "type": "string"
+    "operation": {
+      "type": "string",
+      "description": "type of change that can happen"
     },
-    "actions": {
+    "units": {
       "type": "array",
+      "description": "units that can be modified",
       "items": {
-        "$ref": "../action/action.schema.json"
+        "$ref": "../../unit/v1/unit.schema.json"
       }
     }
   },
-  "required": ["id", "name", "role"]
+  "required": ["id", "name",  "operation"]
 }

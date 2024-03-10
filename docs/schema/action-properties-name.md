@@ -1,10 +1,10 @@
 # Untitled string in Action Schema
 
 ```txt
-https://hai.ai/schemas/agent/v1/action-schema.json#/properties/name
+https://hai.ai/schemas/action/v1/action-schema.json#/properties/name
 ```
 
-Name of the agent, unique
+
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------- |

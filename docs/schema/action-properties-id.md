@@ -1,7 +1,7 @@
 # Untitled string in Action Schema
 
 ```txt
-https://hai.ai/schemas/agent/v1/action-schema.json#/properties/id
+https://hai.ai/schemas/action/v1/action-schema.json#/properties/id
 ```
 
 Action GUID

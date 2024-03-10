@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/unit/v1/unit.json",
-  "title": "Agent",
+  "$id": "https://hai.ai/schemas/unit/v1/unit.schema.json",
+  "title": "Unit",
   "description": "Labels for quantitative values.",
   "type": "object",
   "properties": {

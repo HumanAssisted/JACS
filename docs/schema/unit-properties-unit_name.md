@@ -1,7 +1,7 @@
-# Untitled string in Agent Schema
+# Untitled string in Unit Schema
 
 ```txt
-https://hai.ai/schemas/unit/v1/unit.json#/properties/unit_name
+https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/unit_name
 ```
 
 pounds, square ft, dollars, hours, etc

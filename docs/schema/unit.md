@@ -1,7 +1,7 @@
-# Agent Schema
+# Unit Schema
 
 ```txt
-https://hai.ai/schemas/unit/v1/unit.json
+https://hai.ai/schemas/unit/v1/unit.schema.json
 ```
 
 Labels for quantitative values.
@@ -10,18 +10,18 @@ Labels for quantitative values.
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [unit.schema.json](../../schemas/unit/v1/unit.schema.json "open original schema") |
 
-## Agent Type
+## Unit Type
 
-`object` ([Agent](unit.md))
+`object` ([Unit](unit.md))
 
-# Agent Properties
+# Unit Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                 |
-| :-------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------- |
-| [id](#id)                   | `string` | Required | cannot be null | [Agent](unit-properties-id.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/id")                   |
-| [generaltype](#generaltype) | `string` | Optional | cannot be null | [Agent](unit-properties-generaltype.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/generaltype") |
-| [unit\_name](#unit_name)    | `string` | Required | cannot be null | [Agent](unit-properties-unit_name.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/unit_name")     |
-| [label](#label)             | `string` | Required | cannot be null | [Agent](unit-properties-label.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/label")             |
+| Property                    | Type     | Required | Nullable       | Defined by                                                                                                       |
+| :-------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                   | `string` | Required | cannot be null | [Unit](unit-properties-id.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/id")                   |
+| [generaltype](#generaltype) | `string` | Optional | cannot be null | [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/generaltype") |
+| [unit\_name](#unit_name)    | `string` | Required | cannot be null | [Unit](unit-properties-unit_name.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/unit_name")     |
+| [label](#label)             | `string` | Required | cannot be null | [Unit](unit-properties-label.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/label")             |
 
 ## id
 
@@ -35,7 +35,7 @@ Quantification GUID
 
 *   cannot be null
 
-*   defined in: [Agent](unit-properties-id.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/id")
+*   defined in: [Unit](unit-properties-id.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/id")
 
 ### id Type
 
@@ -53,7 +53,7 @@ general type of resource
 
 *   cannot be null
 
-*   defined in: [Agent](unit-properties-generaltype.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/generaltype")
+*   defined in: [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/generaltype")
 
 ### generaltype Type
 
@@ -83,7 +83,7 @@ pounds, square ft, dollars, hours, etc
 
 *   cannot be null
 
-*   defined in: [Agent](unit-properties-unit_name.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/unit_name")
+*   defined in: [Unit](unit-properties-unit_name.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/unit_name")
 
 ### unit\_name Type
 
@@ -101,7 +101,7 @@ age, weight, net worth etc
 
 *   cannot be null
 
-*   defined in: [Agent](unit-properties-label.md "https://hai.ai/schemas/unit/v1/unit.json#/properties/label")
+*   defined in: [Unit](unit-properties-label.md "https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/label")
 
 ### label Type
 

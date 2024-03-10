@@ -2,9 +2,7 @@
 
 ## Top-level Schemas
 
-*   [Action](./action.md "General type of actions an agent can take, and a set of things that can happen to a resource") – `https://hai.ai/schemas/agent/v1/action-schema.json`
-
-*   [Agent](./unit.md "Labels for quantitative values") – `https://hai.ai/schemas/unit/v1/unit.json`
+*   [Action](./action.md "General type of actions a resource or agent can take, and a set of things that can happen to a resource or agent") – `https://hai.ai/schemas/action/v1/action-schema.json`
 
 *   [Agent](./resource.md "General schema for stateful resources") – `https://hai.ai/schemas/resource/v1/resource-schema.json`
 
@@ -14,6 +12,8 @@
 
 *   [Task](./task.md "Schema for generalized Task") – `-`
 
+*   [Unit](./unit.md "Labels for quantitative values") – `https://hai.ai/schemas/unit/v1/unit.schema.json`
+
 ## Other Schemas
 
 ### Objects
@@ -22,7 +22,7 @@
 
 ### Arrays
 
-*   [Untitled array in Action](./action-properties-actions.md) – `https://hai.ai/schemas/agent/v1/action-schema.json#/properties/actions`
+*   [Untitled array in Action](./action-properties-units.md "units that can be modified") – `https://hai.ai/schemas/action/v1/action-schema.json#/properties/units`
 
 *   [Untitled array in Agent](./resource-properties-capabilities.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities`
 

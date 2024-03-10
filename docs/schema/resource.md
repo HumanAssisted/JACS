@@ -280,7 +280,7 @@ array of quantitative units defining the resource
 
     1.  [Untitled number in Agent](resource-properties-quantifications-items-items-0.md "check type definition")
 
-    2.  [Agent](unit.md "check type definition")
+    2.  [Unit](unit.md "check type definition")
 
 *   cannot be null
 
@@ -292,4 +292,4 @@ an array where each item follows the corresponding schema in the following list:
 
 1.  [Untitled number in Agent](resource-properties-quantifications-items-items-0.md "check type definition")
 
-2.  [Agent](unit.md "check type definition")
+2.  [Unit](unit.md "check type definition")

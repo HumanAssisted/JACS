@@ -1,7 +1,7 @@
-# Untitled string in Agent Schema
+# Untitled string in Unit Schema
 
 ```txt
-https://hai.ai/schemas/unit/v1/unit.json#/properties/id
+https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/id
 ```
 
 Quantification GUID
