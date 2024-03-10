@@ -74,3 +74,21 @@ pub fn validate_resource(json: &str, version: &str) -> Result<(), String> {
 
     resource_schema.validate(json).map_err(|e| e.to_string())
 }
+
+pub fn create_agent() {}
+
+pub fn update_agent() {
+    // load original
+    // update fields (new)
+    // diff fields
+    // update version
+    // validate new
+    // overwrite old
+}
+
+// create resource (omnipotent)
+// create task
+// create action
+// create decision (omnipotent)
+// update task from decision
+// update task (version)

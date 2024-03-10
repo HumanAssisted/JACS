@@ -28,6 +28,7 @@ General schema for stateful resources.
 | [registered\_date](#registered_date)               | `string` | Optional | cannot be null | [Agent](resource-properties-registered_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_date")               |
 | [name](#name)                                      | `string` | Required | cannot be null | [Agent](resource-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")                                     |
 | [description](#description)                        | `string` | Required | cannot be null | [Agent](resource-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")                       |
+| [quantifications](#quantifications)                | `array`  | Optional | cannot be null | [Agent](resource-properties-quantifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications")               |
 
 ## id
 
@@ -74,7 +75,7 @@ general type of resource
 | `"agent"`       |             |
 | `"time"`        |             |
 | `"physical"`    |             |
-| `"montetary"`   |             |
+| `"monetary"`    |             |
 | `"information"` |             |
 
 ## linked\_data\_uri
@@ -228,3 +229,29 @@ General description
 ### description Type
 
 `string`
+
+## quantifications
+
+array of quantitative units defining the resource
+
+`quantifications`
+
+*   is optional
+
+*   Type: an array where each item follows the corresponding schema in the following list:
+
+    1.  [Untitled number in Agent](resource-properties-quantifications-items-items-0.md "check type definition")
+
+    2.  [Agent](unit.md "check type definition")
+
+*   cannot be null
+
+*   defined in: [Agent](resource-properties-quantifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications")
+
+### quantifications Type
+
+an array where each item follows the corresponding schema in the following list:
+
+1.  [Untitled number in Agent](resource-properties-quantifications-items-items-0.md "check type definition")
+
+2.  [Agent](unit.md "check type definition")

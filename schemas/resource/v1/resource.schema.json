@@ -12,7 +12,7 @@
     "resourcetype": {
       "type": "string",
       "description": "general type of resource",
-      "enum": ["agent", "time", "physical", "montetary", "information"]
+      "enum": ["agent", "time", "physical", "monetary", "information"]
     },
     "linked_data_uri": {
       "type": "string",
@@ -47,7 +47,27 @@
     "description": {
       "description": "General description",
       "type": "string"
-    }
-  },
+    },
+    "quantifications":
+{
+  "type": "array",
+  "description": "array of quantitative units defining the resource",
+  "items": {
+    "type": "array",
+    "minItems": 2,
+    "maxItems": 2,
+    "items": [
+      {
+        "type": "number",
+        "description": "value of the unit"
+      },
+      {
+        "$ref": "../../unit/v1/unit.schema.json",
+        "description": "the unit"
+      }
+    ]
+  }
+}
+},
   "required": ["id", "name", "resourcetype", "description" ]
 }

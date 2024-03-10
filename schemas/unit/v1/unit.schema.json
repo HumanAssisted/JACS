@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/unit/v1/unit.json",
+  "title": "Agent",
+  "description": "General schema for stateful resources.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "Quantification GUID",
+      "type": "string"
+    },
+    "generaltype": {
+      "type": "string",
+      "description": "general type of resource",
+      "enum": ["agent", "time", "physical", "monetary", "information"]
+    },
+    "unit_name": {
+      "type": "string",
+      "description": "pounds, square ft, dollars, hours, etc"
+    },
+    "label": {
+      "type": "string",
+      "description": "age, weight, net worth etc"
+    }
+},
+  "required": ["id", "unit_name", "label"],
+  "additionalProperties": false
+}

@@ -36,3 +36,39 @@ fn test_validate_agent_json_raw() {
         result.unwrap_err()
     );
 }
+
+#[test]
+fn test_money_and_porshe_json() {
+    let mut json_data = fs::read_to_string("examples/mymoney.json");
+
+    match json_data {
+        Ok(data) => {
+            println!("testing data {}", data);
+            let result = jacs::validate_resource(&data, "v1");
+            assert!(
+                result.is_ok(),
+                "Failed to validate mymoney.json: {}",
+                result.unwrap_err()
+            );
+        }
+        Err(e) => {
+            panic!("Failed to read 'examples/myagent.json': {}", e);
+        }
+    }
+
+    json_data = fs::read_to_string("examples/mycar.json");
+    match json_data {
+        Ok(data) => {
+            println!("testing data {}", data);
+            let result = jacs::validate_resource(&data, "v1");
+            assert!(
+                result.is_ok(),
+                "Failed to validate mycar.json: {}",
+                result.unwrap_err()
+            );
+        }
+        Err(e) => {
+            panic!("Failed to read 'examples/mycar.json': {}", e);
+        }
+    }
+}
