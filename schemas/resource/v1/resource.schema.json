@@ -48,6 +48,20 @@
       "description": "General description",
       "type": "string"
     },
+    "capabilities": {
+          "type": "array",
+          "desciption": "list of actions which the resource can do capabilities",
+          "items": {
+            "$ref": "../../action/v1/action.schema.json"
+          }
+        },
+    "modifications": {
+          "type": "array",
+          "desciption": "list of actions that can be done to the resource",
+          "items": {
+            "$ref": "../../action/v1/action.schema.json"
+          }
+      },
     "quantifications":
 {
   "type": "array",
@@ -69,5 +83,5 @@
   }
 }
 },
-  "required": ["id", "name", "resourcetype", "description" ]
+  "required": ["id", "name", "resourcetype", "description", "capabilities", "modifications"]
 }

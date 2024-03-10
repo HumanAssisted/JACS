@@ -11,7 +11,9 @@
   "name": "My BOA account",
   "resourcetype": "monetary",
   "description": "",
-  "actions": [
+  "capabilities": [
+  ],
+  "modifications": [
   ],
   "quantifications": [
       [120000, {

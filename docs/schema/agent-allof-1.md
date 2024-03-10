@@ -19,7 +19,6 @@ https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1
 | Property                | Type     | Required | Nullable       | Defined by                                                                                                                       |
 | :---------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
 | [agenttype](#agenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-agenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/agenttype") |
-| [actions](#actions)     | `array`  | Optional | cannot be null | [Agent](agent-allof-1-properties-actions.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/actions")     |
 
 ## agenttype
 
@@ -48,21 +47,3 @@ Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a c
 | `"human"`  |             |
 | `"hybrid"` |             |
 | `"ai"`     |             |
-
-## actions
-
-
-
-`actions`
-
-*   is optional
-
-*   Type: `object[]` ([Action](action.md))
-
-*   cannot be null
-
-*   defined in: [Agent](agent-allof-1-properties-actions.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/actions")
-
-### actions Type
-
-`object[]` ([Action](action.md))

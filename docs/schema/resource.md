@@ -28,6 +28,8 @@ General schema for stateful resources.
 | [registered\_date](#registered_date)               | `string` | Optional | cannot be null | [Agent](resource-properties-registered_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_date")               |
 | [name](#name)                                      | `string` | Required | cannot be null | [Agent](resource-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")                                     |
 | [description](#description)                        | `string` | Required | cannot be null | [Agent](resource-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")                       |
+| [capabilities](#capabilities)                      | `array`  | Required | cannot be null | [Agent](resource-properties-capabilities.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities")                     |
+| [modifications](#modifications)                    | `array`  | Required | cannot be null | [Agent](resource-properties-modifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications")                   |
 | [quantifications](#quantifications)                | `array`  | Optional | cannot be null | [Agent](resource-properties-quantifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications")               |
 
 ## id
@@ -229,6 +231,42 @@ General description
 ### description Type
 
 `string`
+
+## capabilities
+
+
+
+`capabilities`
+
+*   is required
+
+*   Type: `object[]` ([Action](action.md))
+
+*   cannot be null
+
+*   defined in: [Agent](resource-properties-capabilities.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities")
+
+### capabilities Type
+
+`object[]` ([Action](action.md))
+
+## modifications
+
+
+
+`modifications`
+
+*   is required
+
+*   Type: `object[]` ([Action](action.md))
+
+*   cannot be null
+
+*   defined in: [Agent](resource-properties-modifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications")
+
+### modifications Type
+
+`object[]` ([Action](action.md))
 
 ## quantifications
 

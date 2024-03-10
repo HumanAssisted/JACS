@@ -11,7 +11,9 @@
   "name": "Agent Smith",
   "resourcetype": "agent",
   "description": "A hybrid agent combining human and AI capabilities.",
-  "actions": [
+  "capabilities": [
+  ],
+  "modifications": [
   ],
   "quantifications": [
       [120000, {

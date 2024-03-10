@@ -24,11 +24,13 @@
 
 *   [Untitled array in Action](./action-properties-actions.md) – `https://hai.ai/schemas/agent/v1/action-schema.json#/properties/actions`
 
+*   [Untitled array in Agent](./resource-properties-capabilities.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities`
+
+*   [Untitled array in Agent](./resource-properties-modifications.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications`
+
 *   [Untitled array in Agent](./resource-properties-quantifications.md "array of quantitative units defining the resource") – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications`
 
 *   [Untitled array in Agent](./resource-properties-quantifications-items.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications/items`
-
-*   [Untitled array in Agent](./agent-allof-1-properties-actions.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/actions`
 
 ## Version Note
 
