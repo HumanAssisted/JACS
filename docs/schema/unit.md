@@ -4,7 +4,7 @@
 https://hai.ai/schemas/unit/v1/unit.json
 ```
 
-General schema for stateful resources.
+Labels for quantitative values.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                        |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------- |

@@ -9,12 +9,13 @@ Stateful things. Nouns.
 
  - [Resources](./docs/schema/resource.md) - things in the world that will be transformed
  - [Agents](./docs/schema/agent.md) - things that can take actions, a type of resource
+ - [Units](./docs/schema/unit.md) - labels for quantitative numbers
 
 Meta things.
 
- - [Actions](./docs/schema/action.md) - as set of things that can happen to a resource
- - [Tasks](./docs/schema/task.md) - set of desired actions
- - [Decisions](./docs/schema/decision.md) - changes to tasks with a wrapper around an action
+ - [Actions](./docs/schema/action.md) - as set of things that can happen to a resource, and a set of things that an Agent is capable of
+ - [Tasks](./docs/schema/task.md) - set of desired actions, agents, resources
+ - [Decisions](./docs/schema/decision.md) - changes to tasks
 
 
 For the schema files see [schemas](./schemas).
@@ -57,16 +58,14 @@ You can both extend just the schema file or the library in your own project.
 ## todo
 
  - signature verification
- - signature types
+ - add signature types enum so implementations can check
  - auto doc rust
  - auto doc json schema
  - push to github pages
 
+
 ## broader goals
 
- - secure post quantum
- - extensible sub schemas
- - json-ld integration
-
-# References
+ - use post quantum signing tools
+ - [json-ld](https://json-ld.org/) and  [https://crates.io/crates/sophia](https://crates.io/crates/sophia) integration
 

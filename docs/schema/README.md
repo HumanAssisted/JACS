@@ -4,7 +4,7 @@
 
 *   [Action](./action.md "General type of actions an agent can take, and a set of things that can happen to a resource") – `https://hai.ai/schemas/agent/v1/action-schema.json`
 
-*   [Agent](./unit.md "General schema for stateful resources") – `https://hai.ai/schemas/unit/v1/unit.json`
+*   [Agent](./unit.md "Labels for quantitative values") – `https://hai.ai/schemas/unit/v1/unit.json`
 
 *   [Agent](./resource.md "General schema for stateful resources") – `https://hai.ai/schemas/resource/v1/resource-schema.json`
 

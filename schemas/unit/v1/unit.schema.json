@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/unit/v1/unit.json",
   "title": "Agent",
-  "description": "General schema for stateful resources.",
+  "description": "Labels for quantitative values.",
   "type": "object",
   "properties": {
     "id": {
