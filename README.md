@@ -10,6 +10,8 @@ Stateful things. Nouns.
  - [Resources](./docs/schema/resource.md) - things in the world that will be transformed
  - [Agents](./docs/schema/agent.md) - things that can take actions, a type of resource
  - [Units](./docs/schema/unit.md) - labels for quantitative numbers
+ - [Signatures](./docs/schema/signature.md) - public key verifiable signatures
+ - [Files](./docs/schema/files.md) - files
 
 Meta things.
 

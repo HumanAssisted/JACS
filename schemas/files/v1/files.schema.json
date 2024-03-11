@@ -25,6 +25,10 @@
         "compressed": {
           "type": "boolean",
           "description": "are the base64 contents compressed?"
+        },
+        "checksum": {
+          "type": "string",
+          "description": "md5 or sha checksum to verify contents or download"
         }
       }
     }

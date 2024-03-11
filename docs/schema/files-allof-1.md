@@ -22,6 +22,7 @@ https://hai.ai/file/agent/v1/file-schema.json#/allOf/1
 | [url](#url)               | `string`  | Optional | cannot be null | [File](files-allof-1-properties-url.md "https://hai.ai/file/agent/v1/file-schema.json#/allOf/1/properties/url")               |
 | [contents](#contents)     | `string`  | Optional | cannot be null | [File](files-allof-1-properties-contents.md "https://hai.ai/file/agent/v1/file-schema.json#/allOf/1/properties/contents")     |
 | [compressed](#compressed) | `boolean` | Optional | cannot be null | [File](files-allof-1-properties-compressed.md "https://hai.ai/file/agent/v1/file-schema.json#/allOf/1/properties/compressed") |
+| [checksum](#checksum)     | `string`  | Optional | cannot be null | [File](files-allof-1-properties-checksum.md "https://hai.ai/file/agent/v1/file-schema.json#/allOf/1/properties/checksum")     |
 
 ## mimetype
 
@@ -94,3 +95,21 @@ are the base64 contents compressed?
 ### compressed Type
 
 `boolean`
+
+## checksum
+
+md5 or sha checksum to verify contents or download
+
+`checksum`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [File](files-allof-1-properties-checksum.md "https://hai.ai/file/agent/v1/file-schema.json#/allOf/1/properties/checksum")
+
+### checksum Type
+
+`string`

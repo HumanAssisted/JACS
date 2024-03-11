@@ -22,5 +22,7 @@ git add docs/.
 git add schemas/.
 git add examples/.
 
+# todo cargo fmt items don't seem to be added
+
 # Continue with the commit
 exit 0
