@@ -7,7 +7,8 @@
   "properties": {
     "agentid": {
       "description": "The id of agent that produced signature",
-      "type": "string"
+      "type": "string",
+      "format": "uuid"
     },
     "agentname": {
       "description": "Human readable name of agent.",

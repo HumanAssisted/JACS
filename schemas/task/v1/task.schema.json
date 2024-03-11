@@ -7,7 +7,8 @@
   "properties": {
     "id": {
       "description": "Resource GUID",
-      "type": "string"
+      "type": "string",
+      "format": "uuid"
     },
     "name": {
       "description": "Name of the agent, unique per registrar",
@@ -34,41 +35,87 @@
       "description": "Where the resource is registered",
       "$ref": "../../signature/v1/signature.schema.json"
     },
+    "lockedState": {
+      "description": "Is the document locked from edits",
+      "type": "string",
+      "enum": [
+        "open",
+        "editlock",
+        "closed",
+      ]
+    },
     "lockedBy": {
-      "description": "What agent holds an edit lock",
-      "$ref": "../../agent/v1/agent.schema.json"
+      "description": "Agent ID holding lock",
+      "type": "string",
+      "format": "uuid"
     },
     "lockedUntil": {
       "description": "When the lock expires",
        "format": "date-time",
        "type": "string"
     },
-
-    "adminPermissions": {},
-    "editPermissions": {},
-    "readPermissions": {}, // a permisisons is a agent, list of fields, and an admin id and sig, and edit, admin or read
-
-    "files": {},
-    "resources": {},
-
-    "descisions": {}, // descision is a log of actions or edits, changes to permissions?
-    "comments": {}, // comments are an agent, message - they may be a decision, edit
-
-
-    "subTaskOf": {},
-    "parentOf": {},
-    "copyOf": {},
-    "mergedTasks": {},
-
-    "actionsDesired": { // merge this with completed
+    "permissions": {
       "type": "array",
-      "desciption": "list of actions that can be done to the resource",
+      "desciption": "list of permissions other agents have",
+      "items": {
+        "$ref": "../../permission/v1/permission.schema.json"
+      }
+    },
+    "files": {
+      "type": "array",
+      "desciption": "list of files  ",
+      "items": {
+        "$ref": "../../files/v1/files.schema.json"
+      }
+    },
+    "resources": {
+      "type": "array",
+      "desciption": "list of resources needed",
+      "items": {
+        "type": "string",
+        "description": "resource ids",
+        "format": "uuid"
+      }
+    },
+    "actionsDesired": {
+      "type": "array",
+      "desciption": "list of actions desired, must be a subset of actions in the resources and agents",
       "items": {
         "$ref": "../../action/v1/action.schema.json"
       }
     },
 
+    "descisions": {}, // descision is a log of actions or edits, verified with a signature
+    "comments": {}, // comments are an agent, message, date, and files
 
+
+    "subTaskOf": {
+      "type": "array",
+      "desciption": "list of task ids this may be a subtask of.",
+      "items": {
+        "type": "string",
+        "description": "taskid",
+        "format": "uuid"
+      }
+    },
+    "copyOf": {
+      "type": "array",
+      "desciption": "list of task ids this may be a copy of. Can be a partial copy, can be considered a branch.",
+      "items": {
+        "type": "string",
+        "description": "taskid",
+        "format": "uuid"
+      }
+    },
+    "mergedTasks": {
+      "type": "array",
+      "desciption": "list of task ids that have been folded into this task.",
+      "items": {
+        "type": "string",
+        "description": "taskid",
+        "format": "uuid"
+      }
+    },
 
 
   },
@@ -77,6 +124,6 @@
     "name",
     "description",
     "success",
-    "adminPermissions",
+    "permissions",
   ]
 }
