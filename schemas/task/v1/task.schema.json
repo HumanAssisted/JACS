@@ -79,15 +79,18 @@
     },
     "actionsDesired": {
       "type": "array",
-      "desciption": "list of actions desired, must be a subset of actions in the resources and agents",
+      "desciption": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
       "items": {
         "$ref": "../../action/v1/action.schema.json"
       }
     },
-
-    "descisions": {}, // descision is a log of actions or edits, verified with a signature
-    "comments": {}, // comments are an agent, message, date, and files
-
+    "descisions":  {
+      "type": "array",
+      "desciption": "descision is a log message of version changes, actions or edits, verified with a signature",
+      "items": {
+        "$ref": "../../decision/v1/decision.schema.json"
+      }
+    },
 
     "subTaskOf": {
       "type": "array",

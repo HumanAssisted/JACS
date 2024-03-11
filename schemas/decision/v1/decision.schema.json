@@ -1,64 +1,42 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/resource/v1/resource-schema.json",
-  "title": "Agent",
-  "description": "General schema for human, hybrid, and AI agents",
+  "$id": "https://hai.ai/schemas/decision/v1/decision-schema.json",
+  "title": "Decision",
+  "description": "descision is a log message of version changes, actions or edits, verified with a signature",
   "type": "object",
   "properties": {
     "id": {
-      "description": "Resource GUID",
-      "type": "string"
-    },
-    "resourcetype": {
       "type": "string",
-      "description": "general type of resource",
-      "enum": [
-        "agent",
-        "time",
-        "physical",
-        "montetary",
-        "information"
-      ]
+      "format": "uuid"
     },
-    "linked_data_uri": {
-      "type": "string",
-      "description": "URI of Semantic Web or JSON-LD type"
+    "approvedBy": {
+      "description": "Where the resource is registered",
+      "$ref": "../../signature/v1/signature.schema.json"
     },
-    "version": {
-      "description": "Semantic Version number of the resource",
+    "oldversion": {
+      "description": "Semantic of the version of the task",
       "type": "string"
     },
-    "version_date": {
-      "description": "Date ",
-      "format": "date-time",
+    "newversion": {
+      "description": "Semantic of the version of the task",
       "type": "string"
     },
-    "registered_with": {
-      "description": "Organization",
+    "summary": {
+      "description": "Summary of change",
       "type": "string"
     },
-    "registration_signature": {
-      "description": "Signature from registrar for verifying",
-      "type": "string"
-    },
-    "registered_date": {
-      "description": "date registred",
-      "format": "date-time",
-      "type": "string"
-    },
-    "name": {
-      "description": "Name of the agent, unique per registrar",
-      "type": "string"
-    },
-    "description": {
-      "description": "General description",
-      "type": "string"
+    "messages": {
+      "type": "array",
+      "desciption": "messages from agents ",
+      "items": {
+        "$ref": "../../messages/v1/messages.schema.json"
+      }
     }
   },
   "required": [
     "id",
-    "name",
-    "resourcetype",
-    "description"
+    "approvedBy",
+    "newversion",
+    "summary"
   ]
 }
