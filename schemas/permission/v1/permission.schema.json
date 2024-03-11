@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/permission/v1/permission-schema.json",
+  "title": "Permission",
+  "description": "Provides agents access to fields for reading, writing, signing, and amdin.",
+  "type": "object",
+  "properties": {
+      "fields": {
+        "type": "array",
+        "description": "array of fields for specific permissions",
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            {
+              "type": "string",
+              "description": "name of the field"
+            },
+            {
+              "type": "string",
+              "description": "the permission on the field",
+              "enum": [
+                "write",
+                "read",
+              ]
+            }
+          ]
+      }
+    },
+    "default": {
+      "type": "string",
+      "description": "default permission admin is  add other admins",
+      "enum": [
+        "admin",
+        "write",
+        "read",
+        "sign",
+      ]
+    },
+    "agentid": {
+      "description": "The id of agent with permissions.",
+      "type": "string"
+    },
+    "grantingsignature": {
+      "description": "the signature of admin granting the permision",
+      "$ref":   "../../signature/v1/signature.schema.json"
+    }
+  },
+  "required": [
+    "agentid",
+    "agentversion",
+    "signature",
+    "date"
+  ]
+}
+
+

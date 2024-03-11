@@ -24,7 +24,7 @@
         },
         "compressed": {
           "type": "boolean",
-          "description": "are the base64 contents compressed"
+          "description": "are the base64 contents compressed?"
         }
       }
     }

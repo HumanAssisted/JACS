@@ -26,11 +26,6 @@
       "description": "What signature algorithm was used",
       "type": "string"
     },
-    "date": {
-      "description": "date signed",
-      "format": "date-time",
-      "type": "string"
-    },
     "fields": {
       "type": "array",
       "description": "what fields from document were used to generate signature",

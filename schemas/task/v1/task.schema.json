@@ -1,8 +1,82 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/task/v1/task-schema.json",
   "title": "Task",
-  "description": "Schema for generalized Task",
+  "description": "General schema for a task",
   "type": "object",
-  "properties": {},
-  "required": []
+  "properties": {
+    "id": {
+      "description": "Resource GUID",
+      "type": "string"
+    },
+    "name": {
+      "description": "Name of the agent, unique per registrar",
+      "type": "string"
+    },
+    "description": {
+      "description": "General description",
+      "type": "string"
+    },
+    "success": {
+      "description": "Description of success",
+      "type": "string"
+    },
+    "version": {
+      "description": "Semantic of the version of the task",
+      "type": "string"
+    },
+    "version_date": {
+      "description": "Date ",
+      "format": "date-time",
+      "type": "string"
+    },
+    "registration": {
+      "description": "Where the resource is registered",
+      "$ref": "../../signature/v1/signature.schema.json"
+    },
+    "lockedBy": {
+      "description": "What agent holds an edit lock",
+      "$ref": "../../agent/v1/agent.schema.json"
+    },
+    "lockedUntil": {
+      "description": "When the lock expires",
+       "format": "date-time",
+       "type": "string"
+    },
+
+    "adminPermissions": {},
+    "editPermissions": {},
+    "readPermissions": {}, // a permisisons is a agent, list of fields, and an admin id and sig, and edit, admin or read
+
+    "files": {},
+    "resources": {},
+
+    "descisions": {}, // descision is a log of actions or edits, changes to permissions?
+    "comments": {}, // comments are an agent, message - they may be a decision, edit
+
+
+    "subTaskOf": {},
+    "parentOf": {},
+    "copyOf": {},
+    "mergedTasks": {},
+
+    "actionsDesired": { // merge this with completed
+      "type": "array",
+      "desciption": "list of actions that can be done to the resource",
+      "items": {
+        "$ref": "../../action/v1/action.schema.json"
+      }
+    },
+
+
+
+
+  },
+  "required": [
+    "id",
+    "name",
+    "description",
+    "success",
+    "adminPermissions",
+  ]
 }
