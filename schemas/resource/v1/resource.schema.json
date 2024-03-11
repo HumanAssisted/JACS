@@ -38,6 +38,10 @@
       "description": "Where the resource is registered",
       "$ref": "../../signature/v1/signature.schema.json"
     },
+    "creator": {
+      "description": "creator signature",
+      "$ref": "../../signature/v1/signature.schema.json"
+    },
     "name": {
       "description": "Name of the agent, unique per registrar",
       "type": "string"

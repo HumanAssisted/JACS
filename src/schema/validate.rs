@@ -74,7 +74,7 @@ impl Schema {
         Ok(Self { schema })
     }
 
-    pub fn validate(&self, json: &str) -> Result<(), String> {
+    pub fn validate(&self, json: &str) -> Result<Value, String> {
         let base_path = PathBuf::from(".");
 
         let instance: serde_json::Value = match serde_json::from_str(json) {
@@ -99,15 +99,10 @@ impl Schema {
         let validation_result = compiled.validate(&instance);
 
         match validation_result {
-            Ok(_) => Ok(()),
+            Ok(_) => Ok(instance.clone()),
             Err(errors) => {
-                let error_messages: Vec<String> =
-                    errors.into_iter().map(|e| e.to_string()).collect();
-                if let Some(error_message) = error_messages.first() {
-                    Err(error_message.clone())
-                } else {
-                    Err("Unexpected error during validation: no error messages found".to_string())
-                }
+                let error_messages: Vec<String> = errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages.first().cloned().unwrap_or_else(|| "Unexpected error during validation: no error messages found".to_string()))
             }
         }
     }

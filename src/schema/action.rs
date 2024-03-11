@@ -1,11 +1,11 @@
 use crate::schema::validate::Schema;
 use std::io::Error;
 
-pub struct ActionSchema {
+pub struct Action{
     schema: Schema,
 }
 
-impl ActionSchema {
+impl Action {
     pub fn new(version: &str) -> Result<Self, Error> {
         let schema = Schema::new("action", version)?;
         Ok(Self { schema })

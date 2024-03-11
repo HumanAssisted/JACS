@@ -4,75 +4,75 @@ use log::error;
 /// A function to validate an agent JSON string using the agent schema
 pub fn validate_agent(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let agent_schema = match schema::agent_schema::AgentSchema::new(version) {
+    let mut agent = match schema::agent::Agent::new(version) {
         Ok(schema) => schema,
         Err(e) => {
-            let error_message = format!("Failed to create AgentSchema: {}", e);
+            let error_message = format!("Failed to create Agent: {}", e);
             error!("{}", error_message);
             return Err(error_message);
         }
     };
 
-    agent_schema.validate(json).map_err(|e| e.to_string())
+    agent.validate(json).map_err(|e| e.to_string())
 }
 
 /// A function to validate an action JSON string using the action schema
 pub fn validate_action(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let agent_schema = match schema::action_schema::ActionSchema::new(version) {
+    let action = match schema::action::Action::new(version) {
         Ok(schema) => schema,
         Err(e) => {
-            let error_message = format!("Failed to create ActionSchema: {}", e);
+            let error_message = format!("Failed to create Action: {}", e);
             error!("{}", error_message);
             return Err(error_message);
         }
     };
 
-    agent_schema.validate(json).map_err(|e| e.to_string())
+    action.validate(json).map_err(|e| e.to_string())
 }
 
 /// A function to validate an task JSON string using the task schema
 pub fn validate_task(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let task_schema = match schema::task_schema::TaskSchema::new(version) {
+    let task = match schema::task::Task::new(version) {
         Ok(schema) => schema,
         Err(e) => {
-            let error_message = format!("Failed to create TaskSchema: {}", e);
+            let error_message = format!("Failed to create Task: {}", e);
             error!("{}", error_message);
             return Err(error_message);
         }
     };
 
-    task_schema.validate(json).map_err(|e| e.to_string())
+    task.validate(json).map_err(|e| e.to_string())
 }
 
 /// A function to validate an decision JSON string using the decision schema
 pub fn validate_decision(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let decision_schema = match schema::decision_schema::DecisionSchema::new(version) {
+    let decision = match schema::decision::Decision::new(version) {
         Ok(schema) => schema,
         Err(e) => {
-            let error_message = format!("Failed to create DecisionSchema: {}", e);
+            let error_message = format!("Failed to create Decision: {}", e);
             error!("{}", error_message);
             return Err(error_message);
         }
     };
 
-    decision_schema.validate(json).map_err(|e| e.to_string())
+    decision.validate(json).map_err(|e| e.to_string())
 }
 
 pub fn validate_resource(json: &str, version: &str) -> Result<(), String> {
     // TODO , check_signature: bool
-    let resource_schema = match schema::resource_schema::ResourceSchema::new(version) {
+    let resource = match schema::resource::Resource::new(version) {
         Ok(schema) => schema,
         Err(e) => {
-            let error_message = format!("Failed to create DecisionSchema: {}", e);
+            let error_message = format!("Failed to create Resource: {}", e);
             error!("{}", error_message);
             return Err(error_message);
         }
     };
 
-    resource_schema.validate(json).map_err(|e| e.to_string())
+    resource.validate(json).map_err(|e| e.to_string())
 }
 
 pub fn create_agent() {}

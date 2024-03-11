@@ -35,6 +35,10 @@
       "description": "Where the resource is registered",
       "$ref": "../../signature/v1/signature.schema.json"
     },
+    "creator": {
+      "description": "creator signature",
+      "$ref": "../../signature/v1/signature.schema.json"
+    },
     "lockedState": {
       "description": "Is the document locked from edits",
       "type": "string",

@@ -25,6 +25,7 @@ General schema for a task
 | [version](#version)               | `string` | Optional | cannot be null | [Task](task-properties-version.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/version")               |
 | [version\_date](#version_date)    | `string` | Optional | cannot be null | [Task](task-properties-version_date.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/version_date")     |
 | [registration](#registration)     | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")              |
+| [creator](#creator)               | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/creator")                   |
 | [lockedState](#lockedstate)       | `string` | Optional | cannot be null | [Task](task-properties-lockedstate.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/lockedState")       |
 | [lockedBy](#lockedby)             | `string` | Optional | cannot be null | [Task](task-properties-lockedby.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/lockedBy")             |
 | [lockedUntil](#lockeduntil)       | `string` | Optional | cannot be null | [Task](task-properties-lockeduntil.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/lockedUntil")       |
@@ -168,6 +169,24 @@ Proof of signature, meant to be embedded in other documents. Signature may be va
 *   defined in: [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")
 
 ### registration Type
+
+`object` ([Signature](signature.md))
+
+## creator
+
+Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+
+`creator`
+
+*   is optional
+
+*   Type: `object` ([Signature](signature.md))
+
+*   cannot be null
+
+*   defined in: [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/creator")
+
+### creator Type
 
 `object` ([Signature](signature.md))
 

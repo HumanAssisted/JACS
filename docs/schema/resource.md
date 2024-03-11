@@ -24,6 +24,7 @@ General schema for stateful resources.
 | [version](#version)                   | `string` | Optional | cannot be null | [Agent](resource-properties-version.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version")                 |
 | [version\_date](#version_date)        | `string` | Optional | cannot be null | [Agent](resource-properties-version_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version_date")       |
 | [registration](#registration)         | `object` | Optional | cannot be null | [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")                            |
+| [creator](#creator)                   | `object` | Optional | cannot be null | [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/creator")                                 |
 | [name](#name)                         | `string` | Required | cannot be null | [Agent](resource-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")                       |
 | [description](#description)           | `string` | Required | cannot be null | [Agent](resource-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")         |
 | [capabilities](#capabilities)         | `array`  | Required | cannot be null | [Agent](resource-properties-capabilities.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities")       |
@@ -155,6 +156,24 @@ Proof of signature, meant to be embedded in other documents. Signature may be va
 *   defined in: [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")
 
 ### registration Type
+
+`object` ([Signature](signature.md))
+
+## creator
+
+Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+
+`creator`
+
+*   is optional
+
+*   Type: `object` ([Signature](signature.md))
+
+*   cannot be null
+
+*   defined in: [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/creator")
+
+### creator Type
 
 `object` ([Signature](signature.md))
 

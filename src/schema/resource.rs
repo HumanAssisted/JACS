@@ -1,13 +1,13 @@
 use crate::schema::validate::Schema;
 use std::io::Error;
 
-pub struct DecisionSchema {
+pub struct Resource {
     schema: Schema,
 }
 
-impl DecisionSchema {
+impl Resource {
     pub fn new(version: &str) -> Result<Self, Error> {
-        let schema = Schema::new("decision", version)?;
+        let schema = Schema::new("resource", version)?;
         Ok(Self { schema })
     }
 
