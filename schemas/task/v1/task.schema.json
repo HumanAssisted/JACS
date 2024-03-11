@@ -51,8 +51,8 @@
     },
     "lockedUntil": {
       "description": "When the lock expires",
-       "format": "date-time",
-       "type": "string"
+      "format": "date-time",
+      "type": "string"
     },
     "permissions": {
       "type": "array",
@@ -84,14 +84,13 @@
         "$ref": "../../action/v1/action.schema.json"
       }
     },
-    "descisions":  {
+    "descisions": {
       "type": "array",
       "desciption": "descision is a log message of version changes, actions or edits, verified with a signature",
       "items": {
         "$ref": "../../decision/v1/decision.schema.json"
       }
     },
-
     "subTaskOf": {
       "type": "array",
       "desciption": "list of task ids this may be a subtask of.",
@@ -119,14 +118,12 @@
         "format": "uuid"
       }
     }
-
-
   },
   "required": [
     "id",
     "name",
     "description",
     "success",
-    "permissions",
+    "permissions"
   ]
 }
