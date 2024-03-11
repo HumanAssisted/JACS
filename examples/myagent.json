@@ -1,5 +1,5 @@
 {
-    "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "id": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
   "version": "1.0.0",
   "version_date": "2023-04-20T15:30:00Z",
@@ -13,27 +13,29 @@
   "description": "A hybrid agent combining human and AI capabilities.",
   "capabilities": [
     {
-        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
-        "operation":"deduct",
-        "name": "withdraw",
-        "units": [{
-            "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
-            "generaltype":"monetary",
-            "unit_name": "dollars",
-            "label": "net worth"
-
-        }]
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "operation": "deduct",
+      "name": "withdraw",
+      "units": [
+        {
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "generaltype": "monetary",
+          "unit_name": "dollars",
+          "label": "net worth"
+        }
+      ]
     }
   ],
-  "modifications": [
-  ],
+  "modifications": [],
   "quantifications": [
-      [120000, {
+    [
+      120000,
+      {
         "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
-        "generaltype":"monetary",
+        "generaltype": "monetary",
         "unit_name": "dollars",
         "label": "net worth"
-
-    }]
+      }
+    ]
   ]
 }

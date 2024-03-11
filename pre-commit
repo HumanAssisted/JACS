@@ -3,6 +3,17 @@
 # Format all Rust files in the project
 cargo fmt
 
+# format all json
+for file in ./schemas/*/*.json; do
+  echo "formatting $file"
+  jq  '.' "$file" > temp.json && mv temp.json "$file"
+done
+
+for file in ./examples/*.json; do
+  echo "formatting $file"
+  jq   '.' "$file" > temp.json && mv temp.json "$file"
+done
+
 # create json schema docs
 jsonschema2md -d schemas  -o docs/schema -x -
 

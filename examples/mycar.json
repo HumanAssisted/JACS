@@ -10,16 +10,17 @@
   "name": "Porche 911 Turbo",
   "resourcetype": "physical",
   "description": " 2011 porsche",
-  "capabilities": [
-  ],
-  "modifications": [
-  ],
+  "capabilities": [],
+  "modifications": [],
   "quantifications": [
-      [12, {
+    [
+      12,
+      {
         "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
-        "generaltype":"physical",
+        "generaltype": "physical",
         "unit_name": "gallons",
         "label": "gas tank capacity"
-    }]
+      }
+    ]
   ]
 }
