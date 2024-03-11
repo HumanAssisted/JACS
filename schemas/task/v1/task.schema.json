@@ -41,7 +41,7 @@
       "enum": [
         "open",
         "editlock",
-        "closed",
+        "closed"
       ]
     },
     "lockedBy": {
