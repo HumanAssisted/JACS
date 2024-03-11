@@ -1,22 +1,23 @@
 use crate::schema::validate::Schema;
-use std::io::Error;
 use serde_json::Value;
+use std::io::Error;
 
 pub struct Agent {
     schema: Schema,
     value: Option<Value>,
 }
 
-
-
 impl Agent {
     pub fn new(version: &str) -> Result<Self, Error> {
         let schema = Schema::new("agent", version)?;
-        Ok(Self { schema , value: None})
+        Ok(Self {
+            schema,
+            value: None,
+        })
     }
 
     pub fn validate(&mut self, json: &str) -> Result<(), String> {
-         let value = self.schema.validate(json)?;
+        let value = self.schema.validate(json)?;
         self.value = Some(value);
         // additional validation
         Ok(())

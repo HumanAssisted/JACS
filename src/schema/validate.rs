@@ -101,8 +101,11 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(errors) => {
-                let error_messages: Vec<String> = errors.into_iter().map(|e| e.to_string()).collect();
-                Err(error_messages.first().cloned().unwrap_or_else(|| "Unexpected error during validation: no error messages found".to_string()))
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages.first().cloned().unwrap_or_else(|| {
+                    "Unexpected error during validation: no error messages found".to_string()
+                }))
             }
         }
     }

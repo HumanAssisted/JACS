@@ -1,7 +1,7 @@
 use crate::schema::validate::Schema;
 use std::io::Error;
 
-pub struct Action{
+pub struct Action {
     schema: Schema,
 }
 
