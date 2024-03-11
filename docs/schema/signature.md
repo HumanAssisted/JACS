@@ -23,7 +23,6 @@ Proof of signature, meant to be embedded in other documents. Signature may be va
 | [agentversion](#agentversion)            | `string` | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/agentversion")           |
 | [signature](#signature)                  | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/signature")                 |
 | [signing\_algorithm](#signing_algorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signing_algorithm.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/signing_algorithm") |
-| [date](#date)                            | `string` | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/date")                           |
 | [fields](#fields)                        | `array`  | Optional | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/fields")                       |
 
 ## agentid
@@ -43,6 +42,10 @@ The id of agent that produced signature
 ### agentid Type
 
 `string`
+
+### agentid Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
 ## agentname
 
@@ -119,28 +122,6 @@ What signature algorithm was used
 ### signing\_algorithm Type
 
 `string`
-
-## date
-
-date signed
-
-`date`
-
-*   is required
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Signature](signature-properties-date.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/date")
-
-### date Type
-
-`string`
-
-### date Constraints
-
-**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
 ## fields
 

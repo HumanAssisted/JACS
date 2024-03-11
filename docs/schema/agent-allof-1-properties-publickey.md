@@ -1,15 +1,15 @@
-# Untitled boolean in File Schema
+# Untitled string in Agent Schema
 
 ```txt
-https://hai.ai/file/agent/v1/file-schema.json#/allOf/1/properties/compressed
+https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/publickey
 ```
 
-are the base64 contents compressed?
+public key to verify signatures
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                             |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [files.schema.json\*](../../schemas/files/v1/files.schema.json "open original schema") |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [agent.schema.json\*](../../schemas/agent/v1/agent.schema.json "open original schema") |
 
-## compressed Type
+## publickey Type
 
-`boolean`
+`string`

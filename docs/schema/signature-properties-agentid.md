@@ -13,3 +13,7 @@ The id of agent that produced signature
 ## agentid Type
 
 `string`
+
+## agentid Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")

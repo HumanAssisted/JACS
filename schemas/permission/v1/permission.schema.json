@@ -5,27 +5,27 @@
   "description": "Provides agents access to fields for reading, writing, signing, and amdin.",
   "type": "object",
   "properties": {
-      "fields": {
+    "fields": {
+      "type": "array",
+      "description": "array of fields for specific permissions",
+      "items": {
         "type": "array",
-        "description": "array of fields for specific permissions",
-        "items": {
-          "type": "array",
-          "minItems": 2,
-          "maxItems": 2,
-          "items": [
-            {
-              "type": "string",
-              "description": "name of the field"
-            },
-            {
-              "type": "string",
-              "description": "the permission on the field",
-              "enum": [
-                "write",
-                "read",
-              ]
-            }
-          ]
+        "minItems": 2,
+        "maxItems": 2,
+        "items": [
+          {
+            "type": "string",
+            "description": "name of the field"
+          },
+          {
+            "type": "string",
+            "description": "the permission on the field",
+            "enum": [
+              "write",
+              "read"
+            ]
+          }
+        ]
       }
     },
     "default": {
@@ -35,7 +35,7 @@
         "admin",
         "write",
         "read",
-        "sign",
+        "sign"
       ]
     },
     "agentid": {
@@ -44,7 +44,7 @@
     },
     "grantingsignature": {
       "description": "the signature of admin granting the permision",
-      "$ref":   "../../signature/v1/signature.schema.json"
+      "$ref": "../../signature/v1/signature.schema.json"
     }
   },
   "required": [
@@ -54,5 +54,3 @@
     "date"
   ]
 }
-
-

@@ -1,15 +1,15 @@
-# Untitled boolean in File Schema
+# Untitled string in Agent Schema
 
 ```txt
-https://hai.ai/file/agent/v1/file-schema.json#/allOf/1/properties/compressed
+https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/signing_algorithm
 ```
 
-are the base64 contents compressed?
+What signature algorithm should be used
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                             |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [files.schema.json\*](../../schemas/files/v1/files.schema.json "open original schema") |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [agent.schema.json\*](../../schemas/agent/v1/agent.schema.json "open original schema") |
 
-## compressed Type
+## signing\_algorithm Type
 
-`boolean`
+`string`

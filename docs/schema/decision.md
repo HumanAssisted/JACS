@@ -1,37 +1,33 @@
-# Agent Schema
+# Decision Schema
 
 ```txt
-https://hai.ai/schemas/resource/v1/resource-schema.json
+https://hai.ai/schemas/decision/v1/decision-schema.json
 ```
 
-General schema for human, hybrid, and AI agents
+descision is a log message of version changes, actions or edits, verified with a signature
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                    |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [decision.schema.json](../../schemas/decision/v1/decision.schema.json "open original schema") |
 
-## Agent Type
+## Decision Type
 
-`object` ([Agent](decision.md))
+`object` ([Decision](decision.md))
 
-# Agent Properties
+# Decision Properties
 
-| Property                                           | Type     | Required | Nullable       | Defined by                                                                                                                                          |
-| :------------------------------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                                          | `string` | Required | cannot be null | [Agent](decision-properties-id.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/id")                                         |
-| [resourcetype](#resourcetype)                      | `string` | Required | cannot be null | [Agent](decision-properties-resourcetype.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/resourcetype")                     |
-| [linked\_data\_uri](#linked_data_uri)              | `string` | Optional | cannot be null | [Agent](decision-properties-linked_data_uri.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/linked_data_uri")               |
-| [version](#version)                                | `string` | Optional | cannot be null | [Agent](decision-properties-version.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version")                               |
-| [version\_date](#version_date)                     | `string` | Optional | cannot be null | [Agent](decision-properties-version_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version_date")                     |
-| [registered\_with](#registered_with)               | `string` | Optional | cannot be null | [Agent](decision-properties-registered_with.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_with")               |
-| [registration\_signature](#registration_signature) | `string` | Optional | cannot be null | [Agent](decision-properties-registration_signature.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registration_signature") |
-| [registered\_date](#registered_date)               | `string` | Optional | cannot be null | [Agent](decision-properties-registered_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_date")               |
-| [name](#name)                                      | `string` | Required | cannot be null | [Agent](decision-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")                                     |
-| [description](#description)                        | `string` | Required | cannot be null | [Agent](decision-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")                       |
+| Property                  | Type     | Required | Nullable       | Defined by                                                                                                                     |
+| :------------------------ | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                 | `string` | Required | cannot be null | [Decision](decision-properties-id.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/id")                 |
+| [approvedBy](#approvedby) | `object` | Required | cannot be null | [Decision](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/approvedBy")                    |
+| [oldversion](#oldversion) | `string` | Optional | cannot be null | [Decision](decision-properties-oldversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/oldversion") |
+| [newversion](#newversion) | `string` | Required | cannot be null | [Decision](decision-properties-newversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/newversion") |
+| [summary](#summary)       | `string` | Required | cannot be null | [Decision](decision-properties-summary.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/summary")       |
+| [messages](#messages)     | `array`  | Optional | cannot be null | [Decision](decision-properties-messages.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/messages")     |
 
 ## id
 
-Resource GUID
+
 
 `id`
 
@@ -41,17 +37,57 @@ Resource GUID
 
 *   cannot be null
 
-*   defined in: [Agent](decision-properties-id.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/id")
+*   defined in: [Decision](decision-properties-id.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/id")
 
 ### id Type
 
 `string`
 
-## resourcetype
+### id Constraints
 
-general type of resource
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-`resourcetype`
+## approvedBy
+
+Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+
+`approvedBy`
+
+*   is required
+
+*   Type: `object` ([Signature](signature.md))
+
+*   cannot be null
+
+*   defined in: [Decision](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/approvedBy")
+
+### approvedBy Type
+
+`object` ([Signature](signature.md))
+
+## oldversion
+
+Semantic of the version of the task
+
+`oldversion`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Decision](decision-properties-oldversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/oldversion")
+
+### oldversion Type
+
+`string`
+
+## newversion
+
+Semantic of the version of the task
+
+`newversion`
 
 *   is required
 
@@ -59,145 +95,17 @@ general type of resource
 
 *   cannot be null
 
-*   defined in: [Agent](decision-properties-resourcetype.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/resourcetype")
+*   defined in: [Decision](decision-properties-newversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/newversion")
 
-### resourcetype Type
-
-`string`
-
-### resourcetype Constraints
-
-**enum**: the value of this property must be equal to one of the following values:
-
-| Value           | Explanation |
-| :-------------- | :---------- |
-| `"agent"`       |             |
-| `"time"`        |             |
-| `"physical"`    |             |
-| `"montetary"`   |             |
-| `"information"` |             |
-
-## linked\_data\_uri
-
-URI of Semantic Web or JSON-LD type
-
-`linked_data_uri`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](decision-properties-linked_data_uri.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/linked_data_uri")
-
-### linked\_data\_uri Type
+### newversion Type
 
 `string`
 
-## version
+## summary
 
-Semantic Version number of the resource
+Summary of change
 
-`version`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](decision-properties-version.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version")
-
-### version Type
-
-`string`
-
-## version\_date
-
-Date
-
-`version_date`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](decision-properties-version_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version_date")
-
-### version\_date Type
-
-`string`
-
-### version\_date Constraints
-
-**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
-
-## registered\_with
-
-Organization
-
-`registered_with`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](decision-properties-registered_with.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_with")
-
-### registered\_with Type
-
-`string`
-
-## registration\_signature
-
-Signature from registrar for verifying
-
-`registration_signature`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](decision-properties-registration_signature.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registration_signature")
-
-### registration\_signature Type
-
-`string`
-
-## registered\_date
-
-date registred
-
-`registered_date`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](decision-properties-registered_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_date")
-
-### registered\_date Type
-
-`string`
-
-### registered\_date Constraints
-
-**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
-
-## name
-
-Name of the agent, unique per registrar
-
-`name`
+`summary`
 
 *   is required
 
@@ -205,26 +113,26 @@ Name of the agent, unique per registrar
 
 *   cannot be null
 
-*   defined in: [Agent](decision-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")
+*   defined in: [Decision](decision-properties-summary.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/summary")
 
-### name Type
+### summary Type
 
 `string`
 
-## description
+## messages
 
-General description
 
-`description`
 
-*   is required
+`messages`
 
-*   Type: `string`
+*   is optional
+
+*   Type: unknown\[]
 
 *   cannot be null
 
-*   defined in: [Agent](decision-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")
+*   defined in: [Decision](decision-properties-messages.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/messages")
 
-### description Type
+### messages Type
 
-`string`
+unknown\[]

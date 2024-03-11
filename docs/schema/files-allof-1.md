@@ -79,7 +79,7 @@ base64 encoded contents, possibly compressed
 
 ## compressed
 
-are the base64 contents compressed
+are the base64 contents compressed?
 
 `compressed`
 
