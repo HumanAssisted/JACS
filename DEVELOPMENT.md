@@ -6,7 +6,7 @@
 - regenerate documentation
 
     npm install -g @adobe/jsonschema2md
-
+    npm install -g   json-to-plantuml
 
 # rust
 

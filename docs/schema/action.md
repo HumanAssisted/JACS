@@ -44,7 +44,7 @@ Action GUID
 
 ## version
 
-Semantic Version number of the Agent
+Semantic Version number of the action
 
 `version`
 

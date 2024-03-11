@@ -4,7 +4,7 @@
 https://hai.ai/schemas/action/v1/action-schema.json#/properties/version
 ```
 
-Semantic Version number of the Agent
+Semantic Version number of the action
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------- |

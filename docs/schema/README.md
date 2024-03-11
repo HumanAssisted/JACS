@@ -10,6 +10,8 @@
 
 *   [Agent](./agent.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/agent/v1/agent-schema.json`
 
+*   [Signature](./signature.md "Proof of signature, meant to be embedded in other documents") – `https://hai.ai/schemas/signature/v1/signature-schema.json`
+
 *   [Task](./task.md "Schema for generalized Task") – `-`
 
 *   [Unit](./unit.md "Labels for quantitative values") – `https://hai.ai/schemas/unit/v1/unit.schema.json`
@@ -31,6 +33,8 @@
 *   [Untitled array in Agent](./resource-properties-quantifications.md "array of quantitative units defining the resource") – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications`
 
 *   [Untitled array in Agent](./resource-properties-quantifications-items.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications/items`
+
+*   [Untitled array in Signature](./signature-properties-fields.md "what fields from document were used to generate signature") – `https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/fields`
 
 ## Version Note
 

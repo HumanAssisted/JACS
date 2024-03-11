@@ -10,7 +10,7 @@
       "type": "string"
     },
     "version": {
-      "description": "Semantic Version number of the Agent",
+      "description": "Semantic Version number of the action",
       "type": "string"
     },
     "name": {

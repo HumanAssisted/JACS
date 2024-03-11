@@ -16,21 +16,19 @@ General schema for stateful resources.
 
 # Agent Properties
 
-| Property                                           | Type     | Required | Nullable       | Defined by                                                                                                                                          |
-| :------------------------------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                                          | `string` | Required | cannot be null | [Agent](resource-properties-id.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/id")                                         |
-| [resourcetype](#resourcetype)                      | `string` | Required | cannot be null | [Agent](resource-properties-resourcetype.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/resourcetype")                     |
-| [linked\_data\_uri](#linked_data_uri)              | `string` | Optional | cannot be null | [Agent](resource-properties-linked_data_uri.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/linked_data_uri")               |
-| [version](#version)                                | `string` | Optional | cannot be null | [Agent](resource-properties-version.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version")                               |
-| [version\_date](#version_date)                     | `string` | Optional | cannot be null | [Agent](resource-properties-version_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version_date")                     |
-| [registered\_with](#registered_with)               | `string` | Optional | cannot be null | [Agent](resource-properties-registered_with.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_with")               |
-| [registration\_signature](#registration_signature) | `string` | Optional | cannot be null | [Agent](resource-properties-registration_signature.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registration_signature") |
-| [registered\_date](#registered_date)               | `string` | Optional | cannot be null | [Agent](resource-properties-registered_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_date")               |
-| [name](#name)                                      | `string` | Required | cannot be null | [Agent](resource-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")                                     |
-| [description](#description)                        | `string` | Required | cannot be null | [Agent](resource-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")                       |
-| [capabilities](#capabilities)                      | `array`  | Required | cannot be null | [Agent](resource-properties-capabilities.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities")                     |
-| [modifications](#modifications)                    | `array`  | Required | cannot be null | [Agent](resource-properties-modifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications")                   |
-| [quantifications](#quantifications)                | `array`  | Optional | cannot be null | [Agent](resource-properties-quantifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications")               |
+| Property                              | Type     | Required | Nullable       | Defined by                                                                                                                            |
+| :------------------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
+| [id](#id)                             | `string` | Required | cannot be null | [Agent](resource-properties-id.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/id")                           |
+| [resourcetype](#resourcetype)         | `string` | Required | cannot be null | [Agent](resource-properties-resourcetype.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/resourcetype")       |
+| [linked\_data\_uri](#linked_data_uri) | `string` | Optional | cannot be null | [Agent](resource-properties-linked_data_uri.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/linked_data_uri") |
+| [version](#version)                   | `string` | Optional | cannot be null | [Agent](resource-properties-version.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version")                 |
+| [version\_date](#version_date)        | `string` | Optional | cannot be null | [Agent](resource-properties-version_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version_date")       |
+| [registration](#registration)         | `object` | Optional | cannot be null | [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")                            |
+| [name](#name)                         | `string` | Required | cannot be null | [Agent](resource-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")                       |
+| [description](#description)           | `string` | Required | cannot be null | [Agent](resource-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")         |
+| [capabilities](#capabilities)         | `array`  | Required | cannot be null | [Agent](resource-properties-capabilities.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities")       |
+| [modifications](#modifications)       | `array`  | Required | cannot be null | [Agent](resource-properties-modifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications")     |
+| [quantifications](#quantifications)   | `array`  | Optional | cannot be null | [Agent](resource-properties-quantifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications") |
 
 ## id
 
@@ -138,63 +136,23 @@ Date
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
-## registered\_with
+## registration
 
-Organization
+Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
 
-`registered_with`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](resource-properties-registered_with.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_with")
-
-### registered\_with Type
-
-`string`
-
-## registration\_signature
-
-Signature from registrar for verifying
-
-`registration_signature`
+`registration`
 
 *   is optional
 
-*   Type: `string`
+*   Type: `object` ([Signature](signature.md))
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-registration_signature.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registration_signature")
+*   defined in: [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")
 
-### registration\_signature Type
+### registration Type
 
-`string`
-
-## registered\_date
-
-date registred
-
-`registered_date`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](resource-properties-registered_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/registered_date")
-
-### registered\_date Type
-
-`string`
-
-### registered\_date Constraints
-
-**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+`object` ([Signature](signature.md))
 
 ## name
 

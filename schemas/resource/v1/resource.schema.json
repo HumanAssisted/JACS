@@ -27,18 +27,9 @@
       "format": "date-time",
       "type": "string"
     },
-    "registered_with": {
-      "description": "Organization",
-      "type": "string"
-    },
-    "registration_signature": {
-      "description": "Signature from registrar for verifying",
-      "type": "string"
-    },
-    "registered_date": {
-      "description": "date registred",
-      "format": "date-time",
-      "type": "string"
+    "registration": {
+      "description": "Where the resource is registered",
+      "$ref": "../../signature/v1/signature.schema.json"
     },
     "name": {
       "description": "Name of the agent, unique per registrar",

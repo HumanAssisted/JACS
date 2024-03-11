@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/signature/v1/signature-schema.json",
+  "title": "Signature",
+  "description": "Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.",
+  "type": "object",
+  "properties": {
+    "agentid": {
+      "description": "The id of agent that produced signature",
+      "type": "string"
+    },
+    "agentname": {
+      "description": "Human readable name of agent.",
+      "type": "string"
+    },
+    "agentversion": {
+      "description": "Date ",
+      "format": "date-time",
+      "type": "string"
+    },
+    "signature": {
+      "description": "The actual signature",
+      "type": "string"
+    },
+    "signing_algorithm": {
+      "description": "What signature algorithm was used",
+      "type": "string"
+    },
+    "date": {
+      "description": "date signed",
+      "format": "date-time",
+      "type": "string"
+    },
+    "fields": {
+      "type": "array",
+      "description": "what fields from document were used to generate signature",
+      "items": {
+        "type": "string"
+      }
+    }
+},
+  "required": ["agentid", "agentversion", "signature", "date"]
+}
