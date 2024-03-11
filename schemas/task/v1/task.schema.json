@@ -3,8 +3,6 @@
   "title": "Task",
   "description": "Schema for generalized Task",
   "type": "object",
-  "properties": {
-
-  },
-  "required": [ ]
+  "properties": {},
+  "required": []
 }

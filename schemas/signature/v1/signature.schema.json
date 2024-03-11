@@ -38,6 +38,11 @@
         "type": "string"
       }
     }
-},
-  "required": ["agentid", "agentversion", "signature", "date"]
+  },
+  "required": [
+    "agentid",
+    "agentversion",
+    "signature",
+    "date"
+  ]
 }

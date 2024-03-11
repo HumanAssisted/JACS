@@ -12,7 +12,13 @@
     "generaltype": {
       "type": "string",
       "description": "general type of resource",
-      "enum": ["agent", "time", "physical", "monetary", "information"]
+      "enum": [
+        "agent",
+        "time",
+        "physical",
+        "monetary",
+        "information"
+      ]
     },
     "unit_name": {
       "type": "string",
@@ -22,7 +28,11 @@
       "type": "string",
       "description": "age, weight, net worth etc"
     }
-},
-  "required": ["id", "unit_name", "label"],
+  },
+  "required": [
+    "id",
+    "unit_name",
+    "label"
+  ],
   "additionalProperties": false
 }

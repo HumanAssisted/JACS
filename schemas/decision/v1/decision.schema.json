@@ -12,7 +12,13 @@
     "resourcetype": {
       "type": "string",
       "description": "general type of resource",
-      "enum": ["agent", "time", "physical", "montetary", "information"]
+      "enum": [
+        "agent",
+        "time",
+        "physical",
+        "montetary",
+        "information"
+      ]
     },
     "linked_data_uri": {
       "type": "string",
@@ -49,5 +55,10 @@
       "type": "string"
     }
   },
-  "required": ["id", "name", "resourcetype", "description" ]
+  "required": [
+    "id",
+    "name",
+    "resourcetype",
+    "description"
+  ]
 }

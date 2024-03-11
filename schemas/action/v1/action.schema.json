@@ -28,5 +28,9 @@
       }
     }
   },
-  "required": ["id", "name",  "operation"]
+  "required": [
+    "id",
+    "name",
+    "operation"
+  ]
 }

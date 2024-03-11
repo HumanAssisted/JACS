@@ -3,23 +3,26 @@
   "$id": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "title": "Agent",
   "description": "General schema for human, hybrid, and AI agents",
-   "allOf": [
+  "allOf": [
     {
       "$ref": "../../resource/v1/resource.schema.json"
     },
     {
-    "type": "object",
+      "type": "object",
       "properties": {
         "agenttype": {
           "type": "string",
-          "enum": ["human", "hybrid", "ai"],
+          "enum": [
+            "human",
+            "hybrid",
+            "ai"
+          ],
           "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
         }
-
-
       }
     }
   ],
-
-  "required": ["agenttype" ]
+  "required": [
+    "agenttype"
+  ]
 }
