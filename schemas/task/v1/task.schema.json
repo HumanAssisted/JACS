@@ -118,7 +118,7 @@
         "description": "taskid",
         "format": "uuid"
       }
-    },
+    }
 
 
   },
