@@ -64,7 +64,7 @@ You can both extend just the schema file or the library in your own project.
  - push to github pages
 
 
-## broader goals
+## interest
 
  - use post quantum signing tools
  - [json-ld](https://json-ld.org/) and  [https://crates.io/crates/sophia](https://crates.io/crates/sophia) integration

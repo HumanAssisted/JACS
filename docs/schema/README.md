@@ -10,6 +10,8 @@
 
 *   [Agent](./agent.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/agent/v1/agent-schema.json`
 
+*   [File](./files.md "General resource for a file, document not in JACS") – `https://hai.ai/file/agent/v1/file-schema.json`
+
 *   [Signature](./signature.md "Proof of signature, meant to be embedded in other documents") – `https://hai.ai/schemas/signature/v1/signature-schema.json`
 
 *   [Task](./task.md "Schema for generalized Task") – `-`
@@ -21,6 +23,8 @@
 ### Objects
 
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1`
+
+*   [Untitled object in File](./files-allof-1.md) – `https://hai.ai/file/agent/v1/file-schema.json#/allOf/1`
 
 ### Arrays
 

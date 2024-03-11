@@ -30,13 +30,13 @@ impl SchemaResolver for LocalSchemaResolver {
         let path = self.base_path.join(relative_path);
 
         let schema_json = fs::read_to_string(&path).map_err(|io_err| {
-            // Map I/O errors appropriately
+            // Map I/O errors
             // SchemaResolverError::new(format!("{:?} {}", io_err, url.clone()))
             io_err
         })?;
 
         let schema_value: Value = serde_json::from_str(&schema_json).map_err(|serde_err| {
-            // Map JSON parsing errors appropriately
+            // Map JSON parsing errors
             //SchemaResolverError::new(format!("{:?} {}", serde_err, url.clone()))
             serde_err
         })?;
