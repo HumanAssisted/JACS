@@ -2,7 +2,8 @@
 
 # Format all Rust files in the project
 cargo fmt
-git add schema/
+
+git add schema/.
 
 # format all json
 for file in ./schemas/*/*/*.json; do
