@@ -1,11 +1,10 @@
 pub mod pq;
-pub mod rsawrapper;
 pub mod ringwrapper;
+pub mod rsawrapper;
 
+use chrono::{DateTime, Utc};
 use std::fs;
 use std::path::{Path, PathBuf};
-use chrono::{DateTime, Utc};
-
 
 #[derive(Debug)]
 enum CryptoSigningAlgorithm {
@@ -21,10 +20,6 @@ enum CryptoSigningAlgorithm {
     }
 */
 
-
-
-
-
 fn save_file(file_path: &str, filename: &str, content: &[u8]) -> std::io::Result<String> {
     let full_path = Path::new(file_path).join(filename);
 
@@ -39,8 +34,10 @@ fn save_file(file_path: &str, filename: &str, content: &[u8]) -> std::io::Result
         Ok(path_string) => Ok(path_string),
         Err(os_string) => {
             // Convert the OsString into an io::Error
-            Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
-                format!("Path contains invalid unicode: {:?}", os_string)))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Path contains invalid unicode: {:?}", os_string),
+            ))
         }
     }
 }
@@ -53,13 +50,14 @@ fn load_file(file_path: &str, filename: &str) -> std::io::Result<Vec<u8>> {
 // Helper function to create a backup file name based on the current timestamp
 fn create_backup_path(file_path: &Path) -> std::io::Result<PathBuf> {
     let timestamp = Utc::now().format("backup-%Y-%m-%d-%H-%M").to_string();
-    let file_stem = file_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .ok_or(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to read file stem",
-        ))?;
+    let file_stem =
+        file_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to read file stem",
+            ))?;
     let extension = file_path
         .extension()
         .and_then(|ext| ext.to_str())

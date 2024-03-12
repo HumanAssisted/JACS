@@ -1,5 +1,5 @@
-pub mod schema;
 pub mod crypt;
+pub mod schema;
 
 use log::error;
 
