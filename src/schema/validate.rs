@@ -46,7 +46,7 @@ impl SchemaResolver for LocalSchemaResolver {
 }
 
 pub struct Schema {
-    compiled: JSONSchema
+    compiled: JSONSchema,
 }
 
 impl Schema {
@@ -80,12 +80,10 @@ impl Schema {
             .compile(&schema)
             .expect("A valid schema");
 
-        Ok(Self {  compiled})
+        Ok(Self { compiled })
     }
 
     pub fn validate(&self, json: &str) -> Result<Value, String> {
-
-
         let instance: serde_json::Value = match serde_json::from_str(json) {
             Ok(value) => {
                 debug!("validate json {:?}", value);
