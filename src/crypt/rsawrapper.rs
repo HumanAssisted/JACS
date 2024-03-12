@@ -18,26 +18,20 @@ static BITSOFBITS: usize = 2048;
 static RSA_PSS_PRIVATE_KEY_FILENAME: &str = "rsa_pss_private.pem";
 static RSA_PSS_PUBLIC_KEY_FILENAME: &str = "rsa_pss_public.pem";
 
-fn load_private_key_from_file(
-    filepath: &str,
-) -> Result<RsaPrivateKey, Box<dyn std::error::Error>> {
+fn load_private_key_from_file(filepath: &str) -> Result<RsaPrivateKey, Box<dyn std::error::Error>> {
     let pem = super::load_file(filepath, RSA_PSS_PRIVATE_KEY_FILENAME)?;
     let private_key = RsaPrivateKey::from_pkcs8_pem(&pem)?;
     Ok(private_key)
 }
 
-fn load_public_key_from_file(
-    filepath: &str,
-) -> Result<RsaPublicKey, Box<dyn std::error::Error>> {
+fn load_public_key_from_file(filepath: &str) -> Result<RsaPublicKey, Box<dyn std::error::Error>> {
     let pem = super::load_file(filepath, RSA_PSS_PUBLIC_KEY_FILENAME)?;
     let public_key = RsaPublicKey::from_public_key_pem(&pem)?;
     Ok(public_key)
 }
 
 /// returns public, public_filepath, private, private_filepath
-pub fn generate_keys(
-    filepath: &str,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
+pub fn generate_keys(filepath: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS).expect("failed to generate a key");
     let public_key = RsaPublicKey::from(&private_key);
@@ -59,10 +53,7 @@ pub fn generate_keys(
     Ok((private_key_path, public_key_path))
 }
 
-pub fn sign_string(
-    filepath: &str,
-    data: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+pub fn sign_string(filepath: &str, data: &str) -> Result<String, Box<dyn std::error::Error>> {
     let private_key = load_private_key_from_file(filepath)?;
     let mut rng = thread_rng();
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
