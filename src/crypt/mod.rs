@@ -2,7 +2,7 @@ pub mod pq;
 pub mod ringwrapper;
 pub mod rsawrapper;
 
-use chrono::{Utc};
+use chrono::Utc;
 use std::fs;
 use std::path::{Path, PathBuf};
 

@@ -1,13 +1,13 @@
+use base64::{engine::general_purpose, Engine as _};
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::pss::{BlindedSigningKey,Signature, VerifyingKey};
-use base64::{engine::general_purpose, Engine as _};
+use rsa::pss::{BlindedSigningKey, Signature, VerifyingKey};
 use rsa::sha2::Sha256;
 
+use rand::{rngs::ThreadRng, thread_rng};
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use signature::{RandomizedSigner, Verifier};
-use rand::{rngs::ThreadRng, thread_rng};
 
 /// best for pure Rust, least secure
 
@@ -17,7 +17,7 @@ static RSA_PSS_PRIVATE_KEY_FILENAME: &str = "rsa_pss_private.pem";
 static RSA_PSS_PUBLIC_KEY_FILENAME: &str = "rsa_pss_public.pem";
 
 fn load_private_key_from_file(
-    filepath: &'static str
+    filepath: &'static str,
 ) -> Result<RsaPrivateKey, Box<dyn std::error::Error>> {
     let pem = super::load_file(filepath, RSA_PSS_PRIVATE_KEY_FILENAME)?;
     let private_key = RsaPrivateKey::from_pkcs8_pem(&pem)?;
@@ -25,7 +25,7 @@ fn load_private_key_from_file(
 }
 
 fn load_public_key_from_file(
-    filepath: &'static str
+    filepath: &'static str,
 ) -> Result<RsaPublicKey, Box<dyn std::error::Error>> {
     let pem = super::load_file(filepath, RSA_PSS_PUBLIC_KEY_FILENAME)?;
     let public_key = RsaPublicKey::from_public_key_pem(&pem)?;
@@ -48,15 +48,19 @@ pub fn generate_keys(
         RSA_PSS_PRIVATE_KEY_FILENAME,
         private_key_pem.as_bytes(),
     )?;
-    let public_key_path =
-        super::save_file(filepath, RSA_PSS_PUBLIC_KEY_FILENAME, public_key_pem.as_bytes())?;
+    let public_key_path = super::save_file(
+        filepath,
+        RSA_PSS_PUBLIC_KEY_FILENAME,
+        public_key_pem.as_bytes(),
+    )?;
 
     Ok((private_key_path, public_key_path))
 }
 
-
-
-pub fn sign_string(filepath: &'static str, data: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn sign_string(
+    filepath: &'static str,
+    data: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let private_key = load_private_key_from_file(filepath)?;
     // let mut rng = OsRng;
     let mut rng = thread_rng();
@@ -69,10 +73,6 @@ pub fn sign_string(filepath: &'static str, data: &str) -> Result<String, Box<dyn
     // assert_ne!(signature.to_bytes().as_ref(), data);
     Ok(signature_base64)
 }
-
-
-
-
 
 // pub fn verify_string(filepath: &'static str, data: &str, signature_base64: &str) -> Result<(), Box<dyn std::error::Error>> {
 //     let public_key = load_public_key_from_file(filepath)?;
@@ -93,7 +93,11 @@ pub fn sign_string(filepath: &'static str, data: &str) -> Result<String, Box<dyn
 //     }
 // }
 
-pub fn verify_string(public_key_path: &'static str, data: &str, signature_base64: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn verify_string(
+    public_key_path: &'static str,
+    data: &str,
+    signature_base64: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let public_key = load_public_key_from_file(public_key_path)?;
     println!("Loaded public key: {:?}", public_key);
 
@@ -115,7 +119,10 @@ pub fn verify_string(public_key_path: &'static str, data: &str, signature_base64
         Err(e) => {
             let error_message = format!("Signature verification failed: {}", e);
             eprintln!("{}", error_message);
-            Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_message)))
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                error_message,
+            )))
         }
     }
 }
