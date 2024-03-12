@@ -1,4 +1,6 @@
 pub mod schema;
+pub mod crypt;
+
 use log::error;
 
 /// A function to validate an agent JSON string using the agent schema

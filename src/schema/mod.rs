@@ -56,9 +56,7 @@ pub struct Schema {
     compiled: JSONSchema,
 }
 
-
 impl Schema {
-
     pub fn new(schema_type: &str, version: &str) -> Result<Self, Error> {
         let current_dir = env::current_dir()?;
         let schema_path: PathBuf = current_dir
@@ -119,7 +117,12 @@ impl Schema {
         }
     }
 
-    pub fn create(&self, json: &str, create_keys:bool, create_keys_algorithm:&String) -> Result<Value, String> {
+    pub fn create(
+        &self,
+        json: &str,
+        create_keys: bool,
+        create_keys_algorithm: &String,
+    ) -> Result<Value, String> {
         let result = self.validate(json);
         // check version and create if not present
 
@@ -134,13 +137,6 @@ impl Schema {
         // write file to disk at [jacs]/agents/
         // run as agent
 
-
-
-
-
-
         result
-
-
     }
 }

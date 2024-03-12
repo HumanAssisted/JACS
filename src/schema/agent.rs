@@ -16,16 +16,20 @@ impl Agent {
         })
     }
 
-    pub fn newkeys(&mut self, algorithm: &String, filepath: &String) -> Result<(String, String), String> {
-        if algorithm == "" {
-
-
-        } else if algorithm == "" {
-
+    pub fn newkeys(
+        &mut self,
+        algorithm: &String,
+        filepath: &String,
+    ) -> Result<(String, String), String> {
+        if algorithm == "rsa-pss" {
+        } else if algorithm == "ring-Ed25519" {
+        } else if algorithm == "pq-dilithium" {
         }
 
-        return  Err(format!("{} is not a known or implemented algorithm.", algorithm))
-
+        return Err(format!(
+            "{} is not a known or implemented algorithm.",
+            algorithm
+        ));
     }
 
     pub fn validate(&mut self, json: &str) -> Result<(), String> {
