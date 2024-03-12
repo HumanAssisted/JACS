@@ -29,7 +29,7 @@
       "type": "array",
       "desciption": "messages from agents ",
       "items": {
-        "$ref": "../../messages/v1/messages.schema.json"
+        "$ref": "../../message/v1/message.schema.json"
       }
     }
   },

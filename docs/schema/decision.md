@@ -127,7 +127,7 @@ Summary of change
 
 *   is optional
 
-*   Type: unknown\[]
+*   Type: `object[]` ([Message](message.md))
 
 *   cannot be null
 
@@ -135,4 +135,4 @@ Summary of change
 
 ### messages Type
 
-unknown\[]
+`object[]` ([Message](message.md))

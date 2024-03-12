@@ -12,4 +12,4 @@ https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/messages
 
 ## messages Type
 
-unknown\[]
+`object[]` ([Message](message.md))
