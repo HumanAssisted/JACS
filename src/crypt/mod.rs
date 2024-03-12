@@ -2,7 +2,7 @@ pub mod pq;
 pub mod ringwrapper;
 pub mod rsawrapper;
 
-use chrono::{DateTime, Utc};
+use chrono::{Utc};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -42,9 +42,9 @@ fn save_file(file_path: &str, filename: &str, content: &[u8]) -> std::io::Result
     }
 }
 
-fn load_file(file_path: &str, filename: &str) -> std::io::Result<Vec<u8>> {
+fn load_file(file_path: &str, filename: &str) -> std::io::Result<String> {
     let full_path = Path::new(file_path).join(filename);
-    fs::read(full_path)
+    return std::fs::read_to_string(full_path);
 }
 
 // Helper function to create a backup file name based on the current timestamp
