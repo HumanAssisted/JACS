@@ -1,10 +1,10 @@
-use signature::SignatureEncoding;
-use rand::rngs::OsRng;
 use base64::{engine::general_purpose, Engine as _};
+use rand::rngs::OsRng;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::pss::{BlindedSigningKey, Signature, VerifyingKey, SigningKey};
+use rsa::pss::{BlindedSigningKey, Signature, SigningKey, VerifyingKey};
 use rsa::sha2::Sha256;
+use signature::SignatureEncoding;
 
 use rand::{rngs::ThreadRng, thread_rng};
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
@@ -74,9 +74,6 @@ pub fn sign_string(
     Ok(signature_base64)
 }
 
-
-
-
 pub fn verify_string(
     public_key_path: &'static str,
     data: &str,
@@ -110,5 +107,3 @@ pub fn verify_string(
         }
     }
 }
-
-
