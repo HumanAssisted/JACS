@@ -2,6 +2,7 @@
 
 # Format all Rust files in the project
 cargo fmt
+git add schema/
 
 # format all json
 for file in ./schemas/*/*/*.json; do
@@ -21,6 +22,7 @@ jsonschema2md -d schemas  -o docs/schema -x -
 git add docs/.
 git add schemas/.
 git add examples/.
+
 
 # todo cargo fmt items don't seem to be added
 
