@@ -19,7 +19,7 @@ static RSA_PSS_PRIVATE_KEY_FILENAME: &str = "rsa_pss_private.pem";
 static RSA_PSS_PUBLIC_KEY_FILENAME: &str = "rsa_pss_public.pem";
 
 fn load_private_key_from_file(
-    filepath: &'static str,
+    filepath: &str,
 ) -> Result<RsaPrivateKey, Box<dyn std::error::Error>> {
     let pem = super::load_file(filepath, RSA_PSS_PRIVATE_KEY_FILENAME)?;
     let private_key = RsaPrivateKey::from_pkcs8_pem(&pem)?;
@@ -27,7 +27,7 @@ fn load_private_key_from_file(
 }
 
 fn load_public_key_from_file(
-    filepath: &'static str,
+    filepath: &str,
 ) -> Result<RsaPublicKey, Box<dyn std::error::Error>> {
     let pem = super::load_file(filepath, RSA_PSS_PUBLIC_KEY_FILENAME)?;
     let public_key = RsaPublicKey::from_public_key_pem(&pem)?;
@@ -36,7 +36,7 @@ fn load_public_key_from_file(
 
 /// returns public, public_filepath, private, private_filepath
 pub fn generate_keys(
-    filepath: &'static str,
+    filepath: &str,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS).expect("failed to generate a key");
@@ -60,7 +60,7 @@ pub fn generate_keys(
 }
 
 pub fn sign_string(
-    filepath: &'static str,
+    filepath: &str,
     data: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let private_key = load_private_key_from_file(filepath)?;
@@ -75,7 +75,7 @@ pub fn sign_string(
 }
 
 pub fn verify_string(
-    public_key_path: &'static str,
+    public_key_path: &str,
     data: &str,
     signature_base64: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
