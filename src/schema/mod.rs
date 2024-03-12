@@ -117,7 +117,5 @@ impl Schema {
         }
     }
 
-    pub fn create(&self, json: &str)  {
-
-    }
+    pub fn create(&self, json: &str) {}
 }
