@@ -52,6 +52,15 @@ impl SchemaResolver for LocalSchemaResolver {
     }
 }
 
+pub trait ValueExt {
+    fn get_str(&self, field: &str) -> Option<String>;
+}
+
+impl ValueExt for Value {
+    fn get_str(&self, field: &str) -> Option<String> {
+        self.get(field)?.as_str().map(String::from)
+    }
+}
 pub struct Schema {
     compiled: JSONSchema,
 }

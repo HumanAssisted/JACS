@@ -71,15 +71,15 @@ pub fn verify_string(
     signature_base64: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let public_key = load_public_key_from_file(public_key_path)?;
-    println!("Loaded public key: {:?}", public_key);
+    // println!("Loaded public key: {:?}", public_key);
 
     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
 
     let signature_bytes = general_purpose::STANDARD.decode(signature_base64)?;
-    println!("Decoded signature bytes: {:?}", signature_bytes);
+    // println!("Decoded signature bytes: {:?}", signature_bytes);
 
     let signature = Signature::try_from(signature_bytes.as_slice())?;
-    println!("Created Signature object: {:?}", signature);
+    // println!("Created Signature object: {:?}", signature);
 
     let result = verifying_key.verify(data.as_bytes(), &signature);
 

@@ -1,4 +1,4 @@
-pub mod crypt;
+pub mod jacscrypt;
 pub mod schema;
 
 use log::error;
@@ -9,7 +9,7 @@ pub fn validate_agent(json: &str, version: &str) -> Result<(), String> {
     let mut agent = match schema::agent::Agent::new(version) {
         Ok(schema) => schema,
         Err(e) => {
-            let error_message = format!("Failed to create Agent: {}", e);
+            let error_message = format!("Failed to validate Agent: {}", e);
             error!("{}", error_message);
             return Err(error_message);
         }

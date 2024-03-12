@@ -1,10 +1,16 @@
+use crate::schema::ValueExt;
 use super::Schema;
 use serde_json::Value;
 use std::io::Error;
+use crate::jacscrypt::rsawrapper;
 
 pub struct Agent {
     schema: Schema,
     value: Option<Value>,
+    id: Option<String>,
+    version: Option<String>,
+    public_key: Option<String>,
+    private_key: Option<String>,
 }
 
 impl Agent {
@@ -13,28 +19,52 @@ impl Agent {
         Ok(Self {
             schema,
             value: None,
+            id: None,
+            version: None,
+            public_key: None,
+            private_key: None,
         })
     }
 
+    /// returns path and filename of keys
     pub fn newkeys(
         &mut self,
         algorithm: &String,
-        filepath: &String,
+        filepath_prefix: &String,
     ) -> Result<(String, String), String> {
-        if algorithm == "rsa-pss" {
-        } else if algorithm == "ring-Ed25519" {
-        } else if algorithm == "pq-dilithium" {
-        }
 
-        return Err(format!(
-            "{} is not a known or implemented algorithm.",
-            algorithm
-        ));
+        // make sure the actor has an id and is loaded
+        let agent_id = &self.id;
+        let agent_version = &self.version;
+
+
+
+        if algorithm == "rsa-pss" {
+            let (private_key_path, public_key_path) = rsawrapper::generate_keys(filepath_prefix)
+            .map_err(|e| e.to_string())?;
+             Ok((private_key_path, public_key_path))
+        } else if algorithm == "ring-Ed25519" {
+            Err("ring-Ed25519 key generation is not implemented.".to_string())
+        } else if algorithm == "pq-dilithium" {
+            Err("pq-dilithium key generation is not implemented.".to_string())
+        } else {
+            // Handle other algorithms or return an error
+            Err(format!(
+                "{} is not a known or implemented algorithm.",
+                algorithm
+            ))
+        }
     }
 
     pub fn validate(&mut self, json: &str) -> Result<(), String> {
         let value = self.schema.validate(json)?;
         self.value = Some(value);
+        if let Some(ref value) = self.value {
+            self.id = value.get_str("id");
+            self.version = value.get_str("version");
+        }
+        // self.id = self.value.id;
+        // self.version =  self.valueversion;
         // additional validation
         Ok(())
     }

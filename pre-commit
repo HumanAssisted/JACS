@@ -3,8 +3,6 @@
 # Format all Rust files in the project
 cargo fmt
 
-git add schema/.
-
 # format all json
 for file in ./schemas/*/*/*.json; do
   echo "formatting $file"
@@ -23,6 +21,7 @@ jsonschema2md -d schemas  -o docs/schema -x -
 git add docs/.
 git add schemas/.
 git add examples/.
+git add schema/.
 
 # Continue with the commit
 exit 0
