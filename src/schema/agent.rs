@@ -1,4 +1,4 @@
-use crate::schema::validate::Schema;
+use super::Schema;
 use serde_json::Value;
 use std::io::Error;
 

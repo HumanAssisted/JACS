@@ -1,4 +1,4 @@
-use crate::schema::validate::Schema;
+use super::Schema;
 use std::io::Error;
 
 pub struct Resource {
