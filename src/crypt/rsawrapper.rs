@@ -1,7 +1,9 @@
+use signature::SignatureEncoding;
+use rand::rngs::OsRng;
 use base64::{engine::general_purpose, Engine as _};
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::pss::{BlindedSigningKey, Signature, VerifyingKey};
+use rsa::pss::{BlindedSigningKey, Signature, VerifyingKey, SigningKey};
 use rsa::sha2::Sha256;
 
 use rand::{rngs::ThreadRng, thread_rng};
@@ -62,36 +64,18 @@ pub fn sign_string(
     data: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let private_key = load_private_key_from_file(filepath)?;
-    // let mut rng = OsRng;
     let mut rng = thread_rng();
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut rng, data.as_bytes());
-    // let signature = private_key.sign(&mut rng, padding, data.as_bytes())?;
-    let signature_bytes = signature.to_string();
+    let signature_bytes = signature.to_bytes();
     let signature_base64 = general_purpose::STANDARD.encode(signature_bytes);
     // TODO
     // assert_ne!(signature.to_bytes().as_ref(), data);
     Ok(signature_base64)
 }
 
-// pub fn verify_string(filepath: &'static str, data: &str, signature_base64: &str) -> Result<(), Box<dyn std::error::Error>> {
-//     let public_key = load_public_key_from_file(filepath)?;
 
-//     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
 
-//     let signature_bytes = general_purpose::STANDARD.decode(signature_base64)?;
-//     let signature = Signature::try_from(signature_bytes.as_slice())?;
-
-//     let result = verifying_key.verify(data.as_bytes(), &signature);
-
-//     match result {
-//         Ok(()) => Ok(()),
-//         Err(e) => {
-//             let error_message = format!("Signature verification failed: {}", e);
-//             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_message)))
-//         }
-//     }
-// }
 
 pub fn verify_string(
     public_key_path: &'static str,
@@ -127,37 +111,4 @@ pub fn verify_string(
     }
 }
 
-// pub fn verify_string(public_key_path: &'static str, data: &str, signature_base64: &str) -> Result<(), Box<dyn std::error::Error>> {
-//     let public_key = load_public_key_from_file(public_key_path)?;
-//     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
 
-//     let signature_bytes = general_purpose::STANDARD.decode(signature_base64)?;
-//     let signature = rsa::pss::Signature::from_bytes(&signature_bytes)?;
-
-//     let result = verifying_key.verify(data.as_bytes(), &signature);
-
-//     match result {
-//         Ok(()) => Ok(()),
-//         Err(e) => Err(Box::new(e)),
-//     }
-// }
-
-// // Sign
-// let data = b"hello world";
-// let signature = signing_key.sign_with_rng(&mut rng, data);
-// assert_ne!(signature.to_bytes().as_ref(), data);
-
-//     match is_signature_different(signature, data) {
-//         Ok(()) => {
-//             // Continue processing as normal
-//         },
-//         Err(err_msg) => {
-//             // Handle the error
-//             // e.g. return Err from the current function if it also returns a Result
-//             return Err(err_msg);
-//         },
-//     }
-
-// // Verify
-// let verifying_key = signing_key.verifying_key();
-// verifying_key.verify(data, &signature).expect("failed to verify");
