@@ -16,6 +16,18 @@ impl Agent {
         })
     }
 
+    pub fn newkeys(&mut self, algorithm: &String, filepath: &String) -> Result<(String, String), String> {
+        if algorithm == "" {
+
+
+        } else if algorithm == "" {
+
+        }
+
+        return  Err(format!("{} is not a known or implemented algorithm.", algorithm))
+
+    }
+
     pub fn validate(&mut self, json: &str) -> Result<(), String> {
         let value = self.schema.validate(json)?;
         self.value = Some(value);
@@ -45,9 +57,19 @@ impl Agent {
 /*
 
 todo
- - validate returns error not string
- - make errors to string function for use in logging
- - return serde Value or string?
- - edit as decision - create a decision object while creating the change
+
+ - load actor and sign and act on other things
+ - which requires a private key
+ - also a verifier
+ - remote public key or embeeded?
+
+
+EVERY resource(actor) and task has
+
+1. hash/checksum based on
+  - previous hash, id, version
+2. signature based on hash
+
+
 
 */
