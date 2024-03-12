@@ -46,7 +46,7 @@ impl SchemaResolver for LocalSchemaResolver {
 }
 
 pub struct Schema {
-    schema: Value,
+    compiled: JSONSchema
 }
 
 impl Schema {
@@ -70,12 +70,21 @@ impl Schema {
             }
         };
 
+        let base_path = PathBuf::from(".");
         let schema: Value = serde_json::from_str(&data)?;
-        Ok(Self { schema })
+        let localresolver = LocalSchemaResolver::new(base_path);
+
+        let compiled = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(localresolver)
+            .compile(&schema)
+            .expect("A valid schema");
+
+        Ok(Self {  compiled})
     }
 
     pub fn validate(&self, json: &str) -> Result<Value, String> {
-        let base_path = PathBuf::from(".");
+
 
         let instance: serde_json::Value = match serde_json::from_str(json) {
             Ok(value) => {
@@ -88,15 +97,8 @@ impl Schema {
                 return Err(error_message);
             }
         };
-        let localresolver = LocalSchemaResolver::new(base_path);
 
-        let compiled = JSONSchema::options()
-            .with_draft(Draft::Draft7)
-            .with_resolver(localresolver)
-            .compile(&self.schema)
-            .expect("A valid schema");
-
-        let validation_result = compiled.validate(&instance);
+        let validation_result = self.compiled.validate(&instance);
 
         match validation_result {
             Ok(_) => Ok(instance.clone()),

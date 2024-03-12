@@ -7,7 +7,7 @@ pub struct Signature {
 
 impl Signature {
     pub fn new(version: &str) -> Result<Self, Error> {
-        let schema = Schema::new("resource", version)?;
+        let schema = Schema::new("signature", version)?;
         Ok(Self { schema })
     }
 
