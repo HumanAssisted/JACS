@@ -1,8 +1,8 @@
-use crate::schema::ValueExt;
 use super::Schema;
+use crate::jacscrypt::rsawrapper;
+use crate::schema::ValueExt;
 use serde_json::Value;
 use std::io::Error;
-use crate::jacscrypt::rsawrapper;
 
 pub struct Agent {
     schema: Schema,
@@ -32,17 +32,14 @@ impl Agent {
         algorithm: &String,
         filepath_prefix: &String,
     ) -> Result<(String, String), String> {
-
         // make sure the actor has an id and is loaded
         let agent_id = &self.id;
         let agent_version = &self.version;
 
-
-
         if algorithm == "rsa-pss" {
-            let (private_key_path, public_key_path) = rsawrapper::generate_keys(filepath_prefix)
-            .map_err(|e| e.to_string())?;
-             Ok((private_key_path, public_key_path))
+            let (private_key_path, public_key_path) =
+                rsawrapper::generate_keys(filepath_prefix).map_err(|e| e.to_string())?;
+            Ok((private_key_path, public_key_path))
         } else if algorithm == "ring-Ed25519" {
             Err("ring-Ed25519 key generation is not implemented.".to_string())
         } else if algorithm == "pq-dilithium" {

@@ -1,7 +1,11 @@
 #[test]
 fn test_rsa_create() {
-    let (private_key_path, public_key_path) = jacs::jacscrypt::rsawrapper::generate_keys("./tests/scratch/").unwrap();
-    println!("created keys; private {}, public {}", private_key_path, public_key_path);
+    let (private_key_path, public_key_path) =
+        jacs::jacscrypt::rsawrapper::generate_keys("./tests/scratch/").unwrap();
+    println!(
+        "created keys; private {}, public {}",
+        private_key_path, public_key_path
+    );
 }
 
 #[test]
