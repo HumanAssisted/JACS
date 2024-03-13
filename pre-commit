@@ -21,7 +21,7 @@ jsonschema2md -d schemas  -o docs/schema -x -
 git add docs/.
 git add schemas/.
 git add examples/.
-git add schema/.
+git add src/.
 
 # Continue with the commit
 exit 0
