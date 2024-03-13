@@ -1,5 +1,5 @@
 use super::Schema;
-use crate::jacscrypt::rsawrapper;
+use crate::crypt::rsawrapper;
 use crate::schema::ValueExt;
 use serde_json::Value;
 use std::io::Error;
@@ -11,6 +11,7 @@ pub struct Agent {
     version: Option<String>,
     public_key: Option<String>,
     private_key: Option<String>,
+    key_algorithm: Option<String>,
 }
 
 impl Agent {
@@ -21,10 +22,30 @@ impl Agent {
             value: None,
             id: None,
             version: None,
+            key_algorithm: None,
             public_key: None,
             private_key: None,
         })
     }
+
+    // pub fn load(&mut self, json_data: &String, privatekeypath: &String){
+    //     let result = self.validate(json_data);
+    //     match result {
+    //         Ok(data) => {
+
+    //         }
+    //         Err(e) => {
+    //             return Err(format!("Failed to read 'examples/myagent.json': {}", e));
+    //         }
+    //     };
+
+    //     // now load keys
+    //     self.value = Some(value);
+    //     self.value = Some(value);
+    //     // if they don't exist tell them they must create first
+
+
+    // }
 
     /// returns path and filename of keys
     pub fn newkeys(
@@ -53,6 +74,7 @@ impl Agent {
         }
     }
 
+    /// validate also loads the
     pub fn validate(&mut self, json: &str) -> Result<(), String> {
         let value = self.schema.validate(json)?;
         self.value = Some(value);
@@ -60,17 +82,22 @@ impl Agent {
             self.id = value.get_str("id");
             self.version = value.get_str("version");
         }
-        // self.id = self.value.id;
-        // self.version =  self.valueversion;
         // additional validation
         Ok(())
     }
 
+
+
     pub fn create(&mut self, _json: &str) -> Result<(), String> {
         // create json string
         // validate json string
-        // diff
-        // sign as owner
+        // make sure id and version are empty
+        // create keys
+        // self-sign as owner
+        // validate signature
+         // save
+         // updatekey is the except we increment version and preserve id
+         // update actions produces signatures
         // self.validate();
 
         Ok(())

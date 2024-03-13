@@ -1,4 +1,4 @@
-pub mod jacscrypt;
+pub mod crypt;
 pub mod schema;
 
 use log::error;

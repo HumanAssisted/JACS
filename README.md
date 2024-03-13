@@ -1,18 +1,57 @@
 # JACS - JSON Ai Communication Standard
 
-JACS allows for trusted sharing between AI agents and Human UIs, enabling infrastructure for where the internet is headed.
-Just make JSON documents, sign them with your agent, and share the docs with other agents and services.
-When those other services have modified the document, you can verifiy the agent, and sign the changes.
+JACS allows for trusted sharing between AI agents and Human UIs.
 
-JACS is both a JSON Schema and Reference implementation of [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by HAI.AI to allow more secure communications between hetrogeneous AI agents and UIs. When changed, agents, tasks and other resources represented are versioned and the version is cryptographically signed. Changes can be verified and approved by other agents, allowing for  creation and exchange of trusted data.
+To use, make JSON documents, sign them with your agent, and share the docs with other agents and services. When those other services have modified the document, you can verifiy the agent, and sign the changes.
 
-Importantly, the verification can be done be third parties, much like the signing authorities for certificates.
 
-# usage
+JACS is both a JSON Schema and Reference implementation of [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
+
+# schema usage
+
+Conversations, tasks, documents, and agents are some of the things represented in JSON. To use, just create a json document that follows the schema for an agent, and use it in the library to start building other things.
+
+Here's an sample agent
+
+```
+```
+
+Notice
+
+## trust
+
+When data is changed documents are versioned and the version is cryptographically signed. Changes can be verified and approved by other agents, allowing for creation and exchange of trusted data.
+
+Importantly, the verification can be done be third parties with root certificates, much like the signing authorities SSL.
+
+## extensible
+
+Any JSON document can be used as a JACS doc as long as it has the JACS header.
+
+For example, you have a complex project with a schema that's difficult,
+
+
+## open source
+
+
+# Usage
+
+You don't need to know cryptography to use the library, but knowing the basics helps.
+
+
+This repo helps you build tools for
 
 If you were to import this package in Rust for example.
 
     cargo add jacs
+
+for python (planned)
+
+    pip install jacs
+
+for node/typescript (planned)
+
+    yarn add jacs
 
 Now you can create agents
 
@@ -26,10 +65,14 @@ Now you can create agents
     let myagent = Agent::new("v1");
 
     // load your agent without an id, if there is no id one will be assigned
-    myagent.load(json_data, privatekeypath:None);
+    let (ready, OK) = myagent.load(json_data, privatekeypath:None);
 
-    // create keys for the agent and save the to the path
-    let pubkey, privatekey = myagent.newkeys("algorithm", "file/path");
+    // if not ready, create id, version, and signature
+    if ready {
+        // create keys for the agent and save the to the path
+        let _ = myagent.newkeys("algorithm", "file/path");
+    }
+
     // load the keys
     let _ = myagent.loadkeys("file/path");
     // generate signature for your agent
@@ -50,6 +93,10 @@ Now you can create agents
 
     // check that your agent is ready
     let ready = myagent.ready();
+
+    hash the id, version, name/title
+    sign the hash
+
 
 
 
