@@ -44,7 +44,6 @@ impl Agent {
     //     self.value = Some(value);
     //     // if they don't exist tell them they must create first
 
-
     // }
 
     /// returns path and filename of keys
@@ -86,8 +85,6 @@ impl Agent {
         Ok(())
     }
 
-
-
     pub fn create(&mut self, _json: &str) -> Result<(), String> {
         // create json string
         // validate json string
@@ -95,9 +92,9 @@ impl Agent {
         // create keys
         // self-sign as owner
         // validate signature
-         // save
-         // updatekey is the except we increment version and preserve id
-         // update actions produces signatures
+        // save
+        // updatekey is the except we increment version and preserve id
+        // update actions produces signatures
         // self.validate();
 
         Ok(())
