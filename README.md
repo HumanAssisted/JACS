@@ -246,18 +246,11 @@ You can both extend just the schema file or the library in your own project.
 
 # Roadmap
 
-## todo
-
- - version not updated until everything signed
- - signature verification
- - add signature types enum so implementations can check
- - auto doc rust
- - push docs github pages
 
 
 ### advanced/future
 
- - full audit
+ - full external audit
  - use post quantum signing tools. [pg crypto dilithium](https://docs.rs/pqcrypto-dilithium/0.5.0/pqcrypto_dilithium/) via https://github.com/pqclean/pqclean/
  - [json-ld](https://json-ld.org/) and  [https://crates.io/crates/sophia](https://crates.io/crates/sophia) integration
 

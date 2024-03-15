@@ -13,6 +13,7 @@ use signature::{RandomizedSigner, Verifier};
 
 /// best for pure Rust, least secure
 
+// todo option for more secure
 //static BITSOFBITS: usize = 4096;
 static BITSOFBITS: usize = 2048;
 static RSA_PSS_PRIVATE_KEY_FILENAME: &str = "rsa_pss_private.pem";
