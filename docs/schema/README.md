@@ -4,8 +4,6 @@
 
 *   [Agent](./agent.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/agent/v1/agent-schema.json`
 
-*   [Decision](./decision.md "descision is a log message of version changes, actions or edits, verified with a signature") – `https://hai.ai/schemas/components/decision/v1/decision-schema.json`
-
 *   [Header](./header.md "The basis for a JACS document") – `https://hai.ai/schemas/header/v1/header-schema.json`
 
 *   [Permission](./permission.md "Provides agents access to fields for reading, writing, signing, and amdin") – `https://hai.ai/schemas/components/permission/v1/permission-schema.json`
@@ -19,8 +17,6 @@
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1`
 
 ### Arrays
-
-*   [Untitled array in Decision](./decision-properties-messages.md) – `https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/messages`
 
 *   [Untitled array in Header](./header-properties-creator.md "array creators") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator`
 
