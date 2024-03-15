@@ -47,18 +47,18 @@ You only need to use the agents and header to record and verify any type of docu
 
  - [Resources](./docs/schema/resource.md) -  references to things
  - [Agents](./docs/schema/agent.md) - a type of resource that can take action
- - [Units](./docs/schema/unit.md) - measurements that can change based on actions
- - [Signatures](./docs/schema/signature.md) - cryptographically signed signature of the version of the document
- - [Files](./docs/schema/files.md) - attachements with mime types or external references, checksummed
+ - [Units](./docs/schema/components/unit.md) - measurements that can change based on actions
+ - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
+ - [Files](./docs/schema/components/files.md) - attachements with mime types or external references, checksummed
 
 Meta things.
  - [Header](./docs/schema/header.md) -  the signature along with permissions
- - [Permission](./docs/schema/permission.md) -  the signature along with  access rules for the document fields
+ - [Permission](./docs/schema/components/permission.md) -  the signature along with  access rules for the document fields
  - [Actions](./docs/schema/action.md) - a description of things that can be done to and by resources
  - [Tasks](./docs/schema/task.md) -a set of actions and a desired outcome as well as state management, can reference other tasks
  - [Plan](./docs/schema/plan.md) - a set of tasks wth a desired outcome. can reference other plans
  - [Contract](./docs/schema/contract.md) - set of plans. a proposal until signed
- - [Messages](./docs/schema/message.md) - signed messages between users
+ - [Messages](./docs/schema/components/message.md) - signed messages between users
 
 
 TODO

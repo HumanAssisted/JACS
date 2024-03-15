@@ -5,7 +5,7 @@
   "description": "General schema for human, hybrid, and AI agents",
   "allOf": [
     {
-      "$ref": "../../resource/v1/resource.schema.json"
+      "$ref": "../../header/v1/header.schema.json"
     },
     {
       "type": "object",
@@ -14,6 +14,7 @@
           "type": "string",
           "enum": [
             "human",
+            "human-org",
             "hybrid",
             "ai"
           ],

@@ -16,10 +16,6 @@ merged type ([Agent](agent.md))
 
 all of
 
-*   all of
-
-    *   [Header](header.md "check type definition")
-
-    *   [Untitled object in Agent](resource-allof-1.md "check type definition")
+*   [Header](header.md "check type definition")
 
 *   [Untitled object in Agent](agent-allof-1.md "check type definition")

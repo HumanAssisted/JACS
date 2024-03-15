@@ -44,11 +44,12 @@ Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a c
 
 **enum**: the value of this property must be equal to one of the following values:
 
-| Value      | Explanation |
-| :--------- | :---------- |
-| `"human"`  |             |
-| `"hybrid"` |             |
-| `"ai"`     |             |
+| Value         | Explanation |
+| :------------ | :---------- |
+| `"human"`     |             |
+| `"human-org"` |             |
+| `"hybrid"`    |             |
+| `"ai"`        |             |
 
 ## publickey
 
