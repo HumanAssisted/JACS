@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/signature/v1/signature-schema.json",
   "title": "Signature",
-  "description": "Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.",
+  "description": "Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.",
   "type": "object",
   "properties": {
     "agentid": {
@@ -10,17 +10,17 @@
       "type": "string",
       "format": "uuid"
     },
-    "agentname": {
-      "description": "Human readable name of agent.",
+    "agentversion": {
+      "description": "Semantic Version",
       "type": "string"
     },
-    "agentversion": {
+    "date": {
       "description": "Date ",
       "format": "date-time",
       "type": "string"
     },
     "signature": {
-      "description": "The actual signature",
+      "description": "The actual signature, made from the docid, ",
       "type": "string"
     },
     "signing_algorithm": {

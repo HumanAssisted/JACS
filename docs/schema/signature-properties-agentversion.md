@@ -4,7 +4,7 @@
 https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/agentversion
 ```
 
-Date
+Semantic Version
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
@@ -13,7 +13,3 @@ Date
 ## agentversion Type
 
 `string`
-
-## agentversion Constraints
-
-**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")

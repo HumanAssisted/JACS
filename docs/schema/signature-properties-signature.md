@@ -4,7 +4,7 @@
 https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/signature
 ```
 
-The actual signature
+The actual signature, made from the docid,
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |

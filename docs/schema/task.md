@@ -156,7 +156,7 @@ Date
 
 ## registration
 
-Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
 `registration`
 
@@ -174,7 +174,7 @@ Proof of signature, meant to be embedded in other documents. Signature may be va
 
 ## creator
 
-Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
 `creator`
 

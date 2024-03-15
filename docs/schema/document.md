@@ -1,35 +1,35 @@
 # Agent Schema
 
 ```txt
-https://hai.ai/schemas/resource/v1/resource-schema.json
+https://hai.ai/schemas/document/v1/document-schema.json
 ```
 
-General schema for stateful resources.
+Base schema for all JACS documents.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                    |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [resource.schema.json](../../schemas/resource/v1/resource.schema.json "open original schema") |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [document.schema.json](../../schemas/document/v1/document.schema.json "open original schema") |
 
 ## Agent Type
 
-`object` ([Agent](resource.md))
+`object` ([Agent](document.md))
 
 # Agent Properties
 
 | Property                              | Type     | Required | Nullable       | Defined by                                                                                                                            |
 | :------------------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
-| [id](#id)                             | `string` | Required | cannot be null | [Agent](resource-properties-id.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/id")                           |
-| [resourcetype](#resourcetype)         | `string` | Required | cannot be null | [Agent](resource-properties-resourcetype.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/resourcetype")       |
-| [linked\_data\_uri](#linked_data_uri) | `string` | Optional | cannot be null | [Agent](resource-properties-linked_data_uri.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/linked_data_uri") |
-| [version](#version)                   | `string` | Optional | cannot be null | [Agent](resource-properties-version.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version")                 |
-| [version\_date](#version_date)        | `string` | Optional | cannot be null | [Agent](resource-properties-version_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version_date")       |
+| [id](#id)                             | `string` | Required | cannot be null | [Agent](document-properties-id.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/id")                           |
+| [resourcetype](#resourcetype)         | `string` | Required | cannot be null | [Agent](document-properties-resourcetype.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/resourcetype")       |
+| [linked\_data\_uri](#linked_data_uri) | `string` | Optional | cannot be null | [Agent](document-properties-linked_data_uri.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/linked_data_uri") |
+| [version](#version)                   | `string` | Optional | cannot be null | [Agent](document-properties-version.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/version")                 |
+| [version\_date](#version_date)        | `string` | Optional | cannot be null | [Agent](document-properties-version_date.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/version_date")       |
 | [registration](#registration)         | `object` | Optional | cannot be null | [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")                            |
 | [creator](#creator)                   | `object` | Optional | cannot be null | [Agent](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/creator")                                 |
-| [name](#name)                         | `string` | Required | cannot be null | [Agent](resource-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")                       |
-| [description](#description)           | `string` | Required | cannot be null | [Agent](resource-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")         |
-| [capabilities](#capabilities)         | `array`  | Required | cannot be null | [Agent](resource-properties-capabilities.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities")       |
-| [modifications](#modifications)       | `array`  | Required | cannot be null | [Agent](resource-properties-modifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications")     |
-| [quantifications](#quantifications)   | `array`  | Optional | cannot be null | [Agent](resource-properties-quantifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications") |
+| [name](#name)                         | `string` | Required | cannot be null | [Agent](document-properties-name.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/name")                       |
+| [description](#description)           | `string` | Required | cannot be null | [Agent](document-properties-description.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/description")         |
+| [capabilities](#capabilities)         | `array`  | Required | cannot be null | [Agent](document-properties-capabilities.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/capabilities")       |
+| [modifications](#modifications)       | `array`  | Required | cannot be null | [Agent](document-properties-modifications.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/modifications")     |
+| [quantifications](#quantifications)   | `array`  | Optional | cannot be null | [Agent](document-properties-quantifications.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/quantifications") |
 
 ## id
 
@@ -43,7 +43,7 @@ Resource GUID
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-id.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/id")
+*   defined in: [Agent](document-properties-id.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/id")
 
 ### id Type
 
@@ -65,7 +65,7 @@ general type of resource
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-resourcetype.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/resourcetype")
+*   defined in: [Agent](document-properties-resourcetype.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/resourcetype")
 
 ### resourcetype Type
 
@@ -95,7 +95,7 @@ URI of Semantic Web or JSON-LD type
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-linked_data_uri.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/linked_data_uri")
+*   defined in: [Agent](document-properties-linked_data_uri.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/linked_data_uri")
 
 ### linked\_data\_uri Type
 
@@ -113,7 +113,7 @@ Semantic Version number of the resource
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-version.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version")
+*   defined in: [Agent](document-properties-version.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/version")
 
 ### version Type
 
@@ -131,7 +131,7 @@ Date
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-version_date.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/version_date")
+*   defined in: [Agent](document-properties-version_date.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/version_date")
 
 ### version\_date Type
 
@@ -189,7 +189,7 @@ Name of the agent, unique per registrar
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-name.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/name")
+*   defined in: [Agent](document-properties-name.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/name")
 
 ### name Type
 
@@ -207,7 +207,7 @@ General description
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-description.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/description")
+*   defined in: [Agent](document-properties-description.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/description")
 
 ### description Type
 
@@ -225,7 +225,7 @@ General description
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-capabilities.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities")
+*   defined in: [Agent](document-properties-capabilities.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/capabilities")
 
 ### capabilities Type
 
@@ -243,7 +243,7 @@ General description
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-modifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications")
+*   defined in: [Agent](document-properties-modifications.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/modifications")
 
 ### modifications Type
 
@@ -259,18 +259,18 @@ array of quantitative units defining the resource
 
 *   Type: an array where each item follows the corresponding schema in the following list:
 
-    1.  [Untitled number in Agent](resource-properties-quantifications-items-items-0.md "check type definition")
+    1.  [Untitled number in Agent](document-properties-quantifications-items-items-0.md "check type definition")
 
     2.  [Unit](unit.md "check type definition")
 
 *   cannot be null
 
-*   defined in: [Agent](resource-properties-quantifications.md "https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications")
+*   defined in: [Agent](document-properties-quantifications.md "https://hai.ai/schemas/document/v1/document-schema.json#/properties/quantifications")
 
 ### quantifications Type
 
 an array where each item follows the corresponding schema in the following list:
 
-1.  [Untitled number in Agent](resource-properties-quantifications-items-items-0.md "check type definition")
+1.  [Untitled number in Agent](document-properties-quantifications-items-items-0.md "check type definition")
 
 2.  [Unit](unit.md "check type definition")

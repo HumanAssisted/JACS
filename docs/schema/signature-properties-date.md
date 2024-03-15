@@ -4,7 +4,7 @@
 https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/date
 ```
 
-date signed
+Date
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |

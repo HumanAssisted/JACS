@@ -48,7 +48,7 @@ A signed, immutable message from a user
 
 ## signature
 
-Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
 `signature`
 

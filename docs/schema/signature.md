@@ -4,7 +4,7 @@
 https://hai.ai/schemas/signature/v1/signature-schema.json
 ```
 
-Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                       |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------------- |
@@ -19,8 +19,8 @@ Proof of signature, meant to be embedded in other documents. Signature may be va
 | Property                                 | Type     | Required | Nullable       | Defined by                                                                                                                                       |
 | :--------------------------------------- | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
 | [agentid](#agentid)                      | `string` | Required | cannot be null | [Signature](signature-properties-agentid.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/agentid")                     |
-| [agentname](#agentname)                  | `string` | Optional | cannot be null | [Signature](signature-properties-agentname.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/agentname")                 |
 | [agentversion](#agentversion)            | `string` | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/agentversion")           |
+| [date](#date)                            | `string` | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/date")                           |
 | [signature](#signature)                  | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/signature")                 |
 | [signing\_algorithm](#signing_algorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signing_algorithm.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/signing_algorithm") |
 | [fields](#fields)                        | `array`  | Optional | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/fields")                       |
@@ -47,27 +47,9 @@ The id of agent that produced signature
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-## agentname
-
-Human readable name of agent.
-
-`agentname`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Signature](signature-properties-agentname.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/agentname")
-
-### agentname Type
-
-`string`
-
 ## agentversion
 
-Date
+Semantic Version
 
 `agentversion`
 
@@ -83,13 +65,31 @@ Date
 
 `string`
 
-### agentversion Constraints
+## date
+
+Date
+
+`date`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Signature](signature-properties-date.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/date")
+
+### date Type
+
+`string`
+
+### date Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
 ## signature
 
-The actual signature
+The actual signature, made from the docid,
 
 `signature`
 

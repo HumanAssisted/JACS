@@ -49,7 +49,7 @@ descision is a log message of version changes, actions or edits, verified with a
 
 ## approvedBy
 
-Proof of signature, meant to be embedded in other documents. Signature may be validated with registrar.
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
 `approvedBy`
 

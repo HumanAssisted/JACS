@@ -6,6 +6,8 @@
 
 *   [Agent](./resource.md "General schema for stateful resources") – `https://hai.ai/schemas/resource/v1/resource-schema.json`
 
+*   [Agent](./document.md "Base schema for all JACS documents") – `https://hai.ai/schemas/document/v1/document-schema.json`
+
 *   [Agent](./agent.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/agent/v1/agent-schema.json`
 
 *   [Decision](./decision.md "descision is a log message of version changes, actions or edits, verified with a signature") – `https://hai.ai/schemas/decision/v1/decision-schema.json`
@@ -16,7 +18,7 @@
 
 *   [Permission](./permission.md "Provides agents access to fields for reading, writing, signing, and amdin") – `https://hai.ai/schemas/permission/v1/permission-schema.json`
 
-*   [Signature](./signature.md "Proof of signature, meant to be embedded in other documents") – `https://hai.ai/schemas/signature/v1/signature-schema.json`
+*   [Signature](./signature.md "Cryptographic signature to be embedded in other documents") – `https://hai.ai/schemas/signature/v1/signature-schema.json`
 
 *   [Task](./task.md "General schema for a task") – `https://hai.ai/schemas/task/v1/task-schema.json`
 
@@ -41,6 +43,14 @@
 *   [Untitled array in Agent](./resource-properties-quantifications.md "array of quantitative units defining the resource") – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications`
 
 *   [Untitled array in Agent](./resource-properties-quantifications-items.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications/items`
+
+*   [Untitled array in Agent](./document-properties-capabilities.md) – `https://hai.ai/schemas/document/v1/document-schema.json#/properties/capabilities`
+
+*   [Untitled array in Agent](./document-properties-modifications.md) – `https://hai.ai/schemas/document/v1/document-schema.json#/properties/modifications`
+
+*   [Untitled array in Agent](./document-properties-quantifications.md "array of quantitative units defining the resource") – `https://hai.ai/schemas/document/v1/document-schema.json#/properties/quantifications`
+
+*   [Untitled array in Agent](./document-properties-quantifications-items.md) – `https://hai.ai/schemas/document/v1/document-schema.json#/properties/quantifications/items`
 
 *   [Untitled array in Decision](./decision-properties-messages.md) – `https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/messages`
 
