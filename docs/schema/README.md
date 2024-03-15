@@ -6,23 +6,17 @@
 
 *   [Decision](./decision.md "descision is a log message of version changes, actions or edits, verified with a signature") – `https://hai.ai/schemas/components/decision/v1/decision-schema.json`
 
-*   [File](./files.md "General resource for a file, document not in JACS") – `https://hai.ai/schemas/components/agent/v1/file-schema.json`
-
 *   [Header](./header.md "The basis for a JACS document") – `https://hai.ai/schemas/header/v1/header-schema.json`
 
 *   [Permission](./permission.md "Provides agents access to fields for reading, writing, signing, and amdin") – `https://hai.ai/schemas/components/permission/v1/permission-schema.json`
 
 *   [Signature](./signature.md "Cryptographic signature to be embedded in other documents") – `https://hai.ai/schemas/components/signature/v1/signature-schema.json`
 
-*   [Unit](./unit.md "Labels for quantitative values") – `https://hai.ai/schemas/components/unit/v1/unit.schema.json`
-
 ## Other Schemas
 
 ### Objects
 
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1`
-
-*   [Untitled object in File](./files-allof-1.md) – `https://hai.ai/schemas/components/agent/v1/file-schema.json#/allOf/1`
 
 ### Arrays
 
