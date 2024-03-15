@@ -49,7 +49,7 @@ The id of agent that produced signature
 
 ## agentversion
 
-Semantic Version
+Version of the agent
 
 `agentversion`
 
@@ -64,6 +64,10 @@ Semantic Version
 ### agentversion Type
 
 `string`
+
+### agentversion Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
 ## date
 
@@ -125,7 +129,7 @@ What signature algorithm was used
 
 ## fields
 
-what fields from document were used to generate signature
+what fields from document were used to generate signature. Defaults to id and version of doc.
 
 `fields`
 

@@ -52,7 +52,7 @@ Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a c
 
 ## publickey
 
-public key to verify signatures
+public key to verify signatures. needs mechanism to verify
 
 `publickey`
 

@@ -11,8 +11,9 @@
       "format": "uuid"
     },
     "agentversion": {
-      "description": "Semantic Version",
-      "type": "string"
+      "description": " Version of the agent",
+      "type": "string",
+      "format": "uuid"
     },
     "date": {
       "description": "Date ",
@@ -29,7 +30,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "what fields from document were used to generate signature",
+      "description": "what fields from document were used to generate signature. Defaults to id and version of doc. ",
       "items": {
         "type": "string"
       }

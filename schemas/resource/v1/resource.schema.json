@@ -3,87 +3,72 @@
   "$id": "https://hai.ai/schemas/resource/v1/resource-schema.json",
   "title": "Agent",
   "description": "General schema for stateful resources.",
-  "type": "object",
-  "properties": {
-    "id": {
-      "description": "Resource GUID",
-      "type": "string",
-      "format": "uuid"
+  "allOf": [
+    {
+      "$ref": "../../header/v1/header.schema.json"
     },
-    "resourcetype": {
-      "type": "string",
-      "description": "general type of resource",
-      "enum": [
-        "agent",
-        "time",
-        "physical",
-        "monetary",
-        "information"
-      ]
-    },
-    "linked_data_uri": {
-      "type": "string",
-      "description": "URI of Semantic Web or JSON-LD type"
-    },
-    "version": {
-      "description": "Semantic Version number of the resource",
-      "type": "string"
-    },
-    "version_date": {
-      "description": "Date ",
-      "format": "date-time",
-      "type": "string"
-    },
-    "registration": {
-      "description": "Where the resource is registered",
-      "$ref": "../../signature/v1/signature.schema.json"
-    },
-    "creator": {
-      "description": "creator signature",
-      "$ref": "../../signature/v1/signature.schema.json"
-    },
-    "name": {
-      "description": "Name of the agent, unique per registrar",
-      "type": "string"
-    },
-    "description": {
-      "description": "General description",
-      "type": "string"
-    },
-    "capabilities": {
-      "type": "array",
-      "desciption": "list of actions which the resource can do capabilities",
-      "items": {
-        "$ref": "../../action/v1/action.schema.json"
-      }
-    },
-    "modifications": {
-      "type": "array",
-      "desciption": "list of actions that can be done to the resource",
-      "items": {
-        "$ref": "../../action/v1/action.schema.json"
-      }
-    },
-    "quantifications": {
-      "type": "array",
-      "description": "array of quantitative units defining the resource",
-      "items": {
-        "type": "array",
-        "minItems": 2,
-        "maxItems": 2,
-        "items": [
-          {
-            "type": "number",
-            "description": "value of the unit"
-          },
-          {
-            "$ref": "../../unit/v1/unit.schema.json",
-            "description": "the unit"
+    {
+      "type": "object",
+      "properties": {
+        "resourcetype": {
+          "type": "string",
+          "description": "general type of resource",
+          "enum": [
+            "agent",
+            "time",
+            "physical",
+            "monetary",
+            "information"
+          ]
+        },
+        "linked_data_uri": {
+          "type": "string",
+          "description": "URI of Semantic Web or JSON-LD type"
+        },
+        "name": {
+          "description": "Name of the agent, unique per registrar",
+          "type": "string"
+        },
+        "description": {
+          "description": "General description",
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "desciption": "list of actions which the resource can do capabilities",
+          "items": {
+            "$ref": "../../action/v1/action.schema.json"
           }
-        ]
+        },
+        "modifications": {
+          "type": "array",
+          "desciption": "list of actions that can be done to the resource",
+          "items": {
+            "$ref": "../../action/v1/action.schema.json"
+          }
+        },
+        "quantifications": {
+          "type": "array",
+          "description": "array of quantitative units defining the resource",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": [
+              {
+                "type": "number",
+                "description": "value of the unit"
+              },
+              {
+                "$ref": "../../unit/v1/unit.schema.json",
+                "description": "the unit"
+              }
+            ]
+          }
+        }
       }
     }
-  },
+  ],
   "required": [
     "id",
     "name",

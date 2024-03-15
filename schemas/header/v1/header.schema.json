@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/header/v1/header-schema.json",
+  "title": "Header",
+  "description": "The basis for a JACS document",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "GUID",
+      "type": "string",
+      "format": "uuid"
+    },
+    "creator": {
+      "type": "array",
+      "description": "array creators",
+      "items": {
+        "description": "creator signature",
+        "$ref": "../../signature/v1/signature.schema.json"
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "description": "array of permissions",
+      "items": {
+        "description": "document permissions",
+        "$ref": "../../permission/v1/permission.schema.json"
+      }
+    },
+    "registration": {
+      "description": "Where the resource is registered",
+      "$ref": "../../signature/v1/signature.schema.json"
+    },
+    "version": {
+      "description": "Version id of ",
+      "type": "string",
+      "format": "uuid"
+    },
+    "versionDate": {
+      "description": "Date ",
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "creator",
+    "version",
+    "versionDate"
+  ]
+}

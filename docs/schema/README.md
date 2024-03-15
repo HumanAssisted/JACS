@@ -14,6 +14,8 @@
 
 *   [File](./files.md "General resource for a file, document not in JACS") – `https://hai.ai/file/agent/v1/file-schema.json`
 
+*   [Header](./header.md "The basis for a JACS document") – `https://hai.ai/schemas/header/v1/header-schema.json`
+
 *   [Message](./message.md "A signed, immutable message from a user") – `https://hai.ai/schemas/message/v1/message-schema.json`
 
 *   [Permission](./permission.md "Provides agents access to fields for reading, writing, signing, and amdin") – `https://hai.ai/schemas/permission/v1/permission-schema.json`
@@ -28,6 +30,8 @@
 
 ### Objects
 
+*   [Untitled object in Agent](./resource-allof-1.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/allOf/1`
+
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1`
 
 *   [Untitled object in File](./files-allof-1.md) – `https://hai.ai/file/agent/v1/file-schema.json#/allOf/1`
@@ -36,13 +40,13 @@
 
 *   [Untitled array in Action](./action-properties-units.md "units that can be modified") – `https://hai.ai/schemas/action/v1/action-schema.json#/properties/units`
 
-*   [Untitled array in Agent](./resource-properties-capabilities.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/capabilities`
+*   [Untitled array in Agent](./resource-allof-1-properties-capabilities.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/allOf/1/properties/capabilities`
 
-*   [Untitled array in Agent](./resource-properties-modifications.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/modifications`
+*   [Untitled array in Agent](./resource-allof-1-properties-modifications.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/allOf/1/properties/modifications`
 
-*   [Untitled array in Agent](./resource-properties-quantifications.md "array of quantitative units defining the resource") – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications`
+*   [Untitled array in Agent](./resource-allof-1-properties-quantifications.md "array of quantitative units defining the resource") – `https://hai.ai/schemas/resource/v1/resource-schema.json#/allOf/1/properties/quantifications`
 
-*   [Untitled array in Agent](./resource-properties-quantifications-items.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/properties/quantifications/items`
+*   [Untitled array in Agent](./resource-allof-1-properties-quantifications-items.md) – `https://hai.ai/schemas/resource/v1/resource-schema.json#/allOf/1/properties/quantifications/items`
 
 *   [Untitled array in Agent](./document-properties-capabilities.md) – `https://hai.ai/schemas/document/v1/document-schema.json#/properties/capabilities`
 
@@ -53,6 +57,10 @@
 *   [Untitled array in Agent](./document-properties-quantifications-items.md) – `https://hai.ai/schemas/document/v1/document-schema.json#/properties/quantifications/items`
 
 *   [Untitled array in Decision](./decision-properties-messages.md) – `https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/messages`
+
+*   [Untitled array in Header](./header-properties-creator.md "array creators") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator`
+
+*   [Untitled array in Header](./header-properties-permissions.md "array of permissions") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions`
 
 *   [Untitled array in Message](./message-properties-originalcontent.md) – `https://hai.ai/schemas/message/v1/message-schema.json#/properties/originalContent`
 

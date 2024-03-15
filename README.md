@@ -28,6 +28,8 @@ For example, you have a complex project with a schema that's difficult
 
 # Usage
 
+Like JWT, these documents may become bublic
+
 To use JACS you only really need to use the Headers in a JSON doc and your agent. The reset are optional.
 
 Conversations, tasks, documents, and agents are some of the things represented in JSON. To use, just create a json document that follows the schema for an agent, and use it in the library to start building other things.
@@ -58,6 +60,10 @@ Meta things.
  - [Contract](./docs/schema/contract.md) - set of plans. a proposal until signed
  - [Messages](./docs/schema/message.md) - signed messages between users
 
+
+TODO
+ - encrypted fields
+
  - [Decisions](./docs/schema/decision.md) - changes to tasks
 
 
@@ -84,60 +90,82 @@ for golang (planned)
 
 You don't need to know cryptography to use the library, but knowing the basics helps.
 
+## using agents
+
 Now you can create agents
 
 ```
     use jacs::{Agent, Resource, Task, Message}
 
-    // create your local agent
+    // load your local agent
     let json_data = fs::read_to_string("examples/myagent.json");
+
+    // you can also implement a trait to load agents
 
     // create your jacs agent object with schema version
     let myagent = Agent::new("v1");
 
     // load your agent without an id, if there is no id one will be assigned
-    let (ready, OK) = myagent.load(json_data, privatekeypath:None);
+    let (ready, OK) = myagent.create(json_data);
 
     // if not ready, create id, version, and signature
     if ready {
         // create keys for the agent and save the to the path
-        let _ = myagent.newkeys("algorithm", "file/path");
+        let public_key_pem, private_key_pem = myagent.newkeys("algorithm");
+        // save your keys
+
+        // now self sign the agent
+        myagent.selfsign();
+        // now register the public key and agent somewhere (a trait must be implemented to use this)
+
+        // now save the agent whether from the trait or saving the string manually
+        let _ = myagent.to_json_string();
+        // save to "path/to/save/myagent.json"
+        let _ = myagent.save();
     }
 
-    // load the keys
-    let _ = myagent.loadkeys("file/path");
-    // generate signature for your agent
-    let _ = myagent.selfsign();
-    let _ = myagent.save("path/to/save/myagent.json");
+```
 
-    // here is where you might want to register this version of your agent
-    // registration is left for services to implement
+Now that the agent is created, we can use it.
+
+
+```
+
+    // my private key (assumes you've already decrypted)
+    let private_key = fs::read_to_string("examples/private_key.pem");
+    // my public key
+    let public_key = fs::read_to_string("examples/publick_key.pem");
+
+    // load your local agent
+    let json_data = fs::read_to_string("examples/myagent.json");
+
+    // create your jacs agent object with schema version
+    let myagent = Agent::new("v1");
+
+    // load verifies the agent by signature
+    let (ready, OK) = myagent.load(json_data, public_key, private_key);
+
+    // if the trait is implemented you can load by id
+    let (ready, OK) = myagent.load_by_id(agent_id: String);
+
+    // check that your agent is ready again
+    let ready = myagent.ready();
 
     // printyour id
     println!("id {:?} version {}", myagent.id(), myagent.version());
 
-    // add some actions to your agent
-    // create action
-    // add actions to agent
-    // save updated agent
-    let _ = myagent.save("path/to/save/myagent.json");
 
-    // check that your agent is ready
-    let ready = myagent.ready();
-
-    hash the id, version, name/title
-    sign the hash
 
 
 
 
 ```
 
-Now that you'e created an agent you can create a task and add attributes to it
+Now that your agent is ready we can start creating documents
 
 ```
 
-    // create a task
+    // create a custom document
 
     // sign task as owner
 
@@ -149,8 +177,7 @@ Now that you'e created an agent you can create a task and add attributes to it
 
 ```
 
-Now that you'e created an agent, you can create another agent and have that agent
-add messages and edits to the task
+You can also interact with other agents with messages, tasks, and plans
 
 ```
 create second agent
