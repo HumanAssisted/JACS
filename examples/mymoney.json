@@ -2,7 +2,7 @@
   "$schema": "https://hai.ai/schemas/resource/v1/resource-schema.json",
   "id": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
   "version": "1.0.0",
-  "version_date": "2023-04-20T15:30:00Z",
+  "versionDate": "2023-04-20T15:30:00Z",
   "public_key": "MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAK3b38Eg2kj...",
   "registered_with": "Example Organization",
   "registration_signature": "b2a7bfc4-a6e0-513z-9f5d-48a42a8e9d14...",

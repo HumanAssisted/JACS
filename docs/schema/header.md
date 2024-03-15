@@ -19,7 +19,7 @@ The basis for a JACS document
 | Property                      | Type     | Required | Nullable       | Defined by                                                                                                               |
 | :---------------------------- | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------- |
 | [id](#id)                     | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                   |
-| [creator](#creator)           | `array`  | Required | cannot be null | [Header](header-properties-creator.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator")         |
+| [creator](#creator)           | `array`  | Optional | cannot be null | [Header](header-properties-creator.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator")         |
 | [permissions](#permissions)   | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions") |
 | [registration](#registration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")              |
 | [version](#version)           | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")         |
@@ -53,7 +53,7 @@ array creators
 
 `creator`
 
-*   is required
+*   is optional
 
 *   Type: `object[]` ([Signature](signature.md))
 
