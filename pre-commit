@@ -8,6 +8,14 @@ for file in ./schemas/*/*/*.json; do
   jq  '.' "$file" > temp.json && mv temp.json "$file"
 done
 
+
+# format all json
+for file in ./schemas/components/*/*/*.json; do
+  echo "formatting $file"
+  jq  '.' "$file" > temp.json && mv temp.json "$file"
+done
+
+
 for file in ./examples/*.json; do
   echo "formatting $file"
   jq   '.' "$file" > temp.json && mv temp.json "$file"
