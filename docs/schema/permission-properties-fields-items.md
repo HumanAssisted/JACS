@@ -1,14 +1,14 @@
 # Untitled array in Permission Schema
 
 ```txt
-https://hai.ai/schemas/permission/v1/permission-schema.json#/properties/fields/items
+https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/fields/items
 ```
 
 
 
-| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                            |
-| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [permission.schema.json\*](../../schemas/permission/v1/permission.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                       |
+| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [permission.schema.json\*](../../schemas/components/permission/v1/permission.schema.json "open original schema") |
 
 ## items Type
 

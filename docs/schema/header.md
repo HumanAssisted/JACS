@@ -21,7 +21,7 @@ The basis for a JACS document
 | [id](#id)                     | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                   |
 | [creator](#creator)           | `array`  | Optional | cannot be null | [Header](header-properties-creator.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator")         |
 | [permissions](#permissions)   | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions") |
-| [registration](#registration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")              |
+| [registration](#registration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/registration")   |
 | [version](#version)           | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")         |
 | [versionDate](#versiondate)   | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate") |
 
@@ -95,7 +95,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Header](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")
+*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/registration")
 
 ### registration Type
 

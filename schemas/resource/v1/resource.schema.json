@@ -37,14 +37,14 @@
           "type": "array",
           "desciption": "list of actions which the resource can do capabilities",
           "items": {
-            "$ref": "../../action/v1/action.schema.json"
+            "$ref": "../../components/action/v1/action.schema.json"
           }
         },
         "modifications": {
           "type": "array",
           "desciption": "list of actions that can be done to the resource",
           "items": {
-            "$ref": "../../action/v1/action.schema.json"
+            "$ref": "../../components/action/v1/action.schema.json"
           }
         },
         "quantifications": {
@@ -60,7 +60,7 @@
                 "description": "value of the unit"
               },
               {
-                "$ref": "../../unit/v1/unit.schema.json",
+                "$ref": "../../components/unit/v1/unit.schema.json",
                 "description": "the unit"
               }
             ]

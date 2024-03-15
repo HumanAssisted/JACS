@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/permission/v1/permission-schema.json",
+  "$id": "https://hai.ai/schemas/components/permission/v1/permission-schema.json",
   "title": "Permission",
   "description": "Provides agents access to fields for reading, writing, signing, and amdin.",
   "type": "object",
@@ -44,7 +44,7 @@
     },
     "grantingsignature": {
       "description": "the signature of admin granting the permision",
-      "$ref": "../../signature/v1/signature.schema.json"
+      "$ref": "../../../components/signature/v1/signature.schema.json"
     }
   },
   "required": [

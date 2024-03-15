@@ -1,14 +1,14 @@
 # Permission Schema
 
 ```txt
-https://hai.ai/schemas/permission/v1/permission-schema.json
+https://hai.ai/schemas/components/permission/v1/permission-schema.json
 ```
 
 Provides agents access to fields for reading, writing, signing, and amdin.
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                          |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [permission.schema.json](../../schemas/permission/v1/permission.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                     |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [permission.schema.json](../../schemas/components/permission/v1/permission.schema.json "open original schema") |
 
 ## Permission Type
 
@@ -16,12 +16,12 @@ Provides agents access to fields for reading, writing, signing, and amdin.
 
 # Permission Properties
 
-| Property                                | Type     | Required | Nullable       | Defined by                                                                                                                       |
-| :-------------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| [fields](#fields)                       | `array`  | Optional | cannot be null | [Permission](permission-properties-fields.md "https://hai.ai/schemas/permission/v1/permission-schema.json#/properties/fields")   |
-| [default](#default)                     | `string` | Optional | cannot be null | [Permission](permission-properties-default.md "https://hai.ai/schemas/permission/v1/permission-schema.json#/properties/default") |
-| [agentid](#agentid)                     | `string` | Required | cannot be null | [Permission](permission-properties-agentid.md "https://hai.ai/schemas/permission/v1/permission-schema.json#/properties/agentid") |
-| [grantingsignature](#grantingsignature) | `object` | Optional | cannot be null | [Permission](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/grantingsignature")             |
+| Property                                | Type     | Required | Nullable       | Defined by                                                                                                                                  |
+| :-------------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| [fields](#fields)                       | `array`  | Optional | cannot be null | [Permission](permission-properties-fields.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/fields")   |
+| [default](#default)                     | `string` | Optional | cannot be null | [Permission](permission-properties-default.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/default") |
+| [agentid](#agentid)                     | `string` | Required | cannot be null | [Permission](permission-properties-agentid.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentid") |
+| [grantingsignature](#grantingsignature) | `object` | Optional | cannot be null | [Permission](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/grantingsignature")             |
 
 ## fields
 
@@ -39,7 +39,7 @@ array of fields for specific permissions
 
 *   cannot be null
 
-*   defined in: [Permission](permission-properties-fields.md "https://hai.ai/schemas/permission/v1/permission-schema.json#/properties/fields")
+*   defined in: [Permission](permission-properties-fields.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/fields")
 
 ### fields Type
 
@@ -61,7 +61,7 @@ default permission admin is  add other admins
 
 *   cannot be null
 
-*   defined in: [Permission](permission-properties-default.md "https://hai.ai/schemas/permission/v1/permission-schema.json#/properties/default")
+*   defined in: [Permission](permission-properties-default.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/default")
 
 ### default Type
 
@@ -90,7 +90,7 @@ The id of agent with permissions.
 
 *   cannot be null
 
-*   defined in: [Permission](permission-properties-agentid.md "https://hai.ai/schemas/permission/v1/permission-schema.json#/properties/agentid")
+*   defined in: [Permission](permission-properties-agentid.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentid")
 
 ### agentid Type
 
@@ -108,7 +108,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Permission](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/grantingsignature")
+*   defined in: [Permission](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/grantingsignature")
 
 ### grantingsignature Type
 

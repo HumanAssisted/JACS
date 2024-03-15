@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/message/v1/message-schema.json",
+  "$id": "https://hai.ai/schemas/components/message/v1/message-schema.json",
   "title": "Message",
   "description": "A signed, immutable message from a user",
   "type": "object",
@@ -11,7 +11,7 @@
     },
     "signature": {
       "description": "signing of message",
-      "$ref": "../../signature/v1/signature.schema.json"
+      "$ref": "../../../components/signature/v1/signature.schema.json"
     },
     "datetime": {
       "description": "Date ",
@@ -26,7 +26,7 @@
       "type": "array",
       "desciption": "list of files  ",
       "items": {
-        "$ref": "../../files/v1/files.schema.json"
+        "$ref": "../../../components/files/v1/files.schema.json"
       }
     }
   },

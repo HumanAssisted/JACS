@@ -33,11 +33,11 @@
     },
     "registration": {
       "description": "Where the resource is registered",
-      "$ref": "../../signature/v1/signature.schema.json"
+      "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "creator": {
       "description": "creator signature",
-      "$ref": "../../signature/v1/signature.schema.json"
+      "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "lockedState": {
       "description": "Is the document locked from edits",
@@ -62,14 +62,14 @@
       "type": "array",
       "desciption": "list of permissions other agents have",
       "items": {
-        "$ref": "../../permission/v1/permission.schema.json"
+        "$ref": "../../components/permission/v1/permission.schema.json"
       }
     },
     "files": {
       "type": "array",
       "desciption": "list of files  ",
       "items": {
-        "$ref": "../../files/v1/files.schema.json"
+        "$ref": "../../components/files/v1/files.schema.json"
       }
     },
     "resources": {
@@ -85,14 +85,14 @@
       "type": "array",
       "desciption": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
       "items": {
-        "$ref": "../../action/v1/action.schema.json"
+        "$ref": "../../components/action/v1/action.schema.json"
       }
     },
     "descisions": {
       "type": "array",
       "desciption": "descision is a log message of version changes, actions or edits, verified with a signature",
       "items": {
-        "$ref": "../../decision/v1/decision.schema.json"
+        "$ref": "../../components/decision/v1/decision.schema.json"
       }
     },
     "subTaskOf": {

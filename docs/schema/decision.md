@@ -1,14 +1,14 @@
 # Decision Schema
 
 ```txt
-https://hai.ai/schemas/decision/v1/decision-schema.json
+https://hai.ai/schemas/components/decision/v1/decision-schema.json
 ```
 
 descision is a log message of version changes, actions or edits, verified with a signature
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                    |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [decision.schema.json](../../schemas/decision/v1/decision.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                               |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [decision.schema.json](../../schemas/components/decision/v1/decision.schema.json "open original schema") |
 
 ## Decision Type
 
@@ -16,14 +16,14 @@ descision is a log message of version changes, actions or edits, verified with a
 
 # Decision Properties
 
-| Property                  | Type     | Required | Nullable       | Defined by                                                                                                                     |
-| :------------------------ | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                 | `string` | Required | cannot be null | [Decision](decision-properties-id.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/id")                 |
-| [approvedBy](#approvedby) | `object` | Required | cannot be null | [Decision](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/approvedBy")                    |
-| [oldversion](#oldversion) | `string` | Optional | cannot be null | [Decision](decision-properties-oldversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/oldversion") |
-| [newversion](#newversion) | `string` | Required | cannot be null | [Decision](decision-properties-newversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/newversion") |
-| [summary](#summary)       | `string` | Required | cannot be null | [Decision](decision-properties-summary.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/summary")       |
-| [messages](#messages)     | `array`  | Optional | cannot be null | [Decision](decision-properties-messages.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/messages")     |
+| Property                  | Type     | Required | Nullable       | Defined by                                                                                                                                |
+| :------------------------ | :------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                 | `string` | Required | cannot be null | [Decision](decision-properties-id.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/id")                 |
+| [approvedBy](#approvedby) | `object` | Required | cannot be null | [Decision](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/approvedBy")                    |
+| [oldversion](#oldversion) | `string` | Optional | cannot be null | [Decision](decision-properties-oldversion.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/oldversion") |
+| [newversion](#newversion) | `string` | Required | cannot be null | [Decision](decision-properties-newversion.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/newversion") |
+| [summary](#summary)       | `string` | Required | cannot be null | [Decision](decision-properties-summary.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/summary")       |
+| [messages](#messages)     | `array`  | Optional | cannot be null | [Decision](decision-properties-messages.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/messages")     |
 
 ## id
 
@@ -37,7 +37,7 @@ descision is a log message of version changes, actions or edits, verified with a
 
 *   cannot be null
 
-*   defined in: [Decision](decision-properties-id.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/id")
+*   defined in: [Decision](decision-properties-id.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/id")
 
 ### id Type
 
@@ -59,7 +59,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Decision](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/approvedBy")
+*   defined in: [Decision](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/approvedBy")
 
 ### approvedBy Type
 
@@ -77,7 +77,7 @@ Semantic of the version of the task
 
 *   cannot be null
 
-*   defined in: [Decision](decision-properties-oldversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/oldversion")
+*   defined in: [Decision](decision-properties-oldversion.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/oldversion")
 
 ### oldversion Type
 
@@ -95,7 +95,7 @@ Semantic of the version of the task
 
 *   cannot be null
 
-*   defined in: [Decision](decision-properties-newversion.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/newversion")
+*   defined in: [Decision](decision-properties-newversion.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/newversion")
 
 ### newversion Type
 
@@ -113,7 +113,7 @@ Summary of change
 
 *   cannot be null
 
-*   defined in: [Decision](decision-properties-summary.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/summary")
+*   defined in: [Decision](decision-properties-summary.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/summary")
 
 ### summary Type
 
@@ -131,7 +131,7 @@ Summary of change
 
 *   cannot be null
 
-*   defined in: [Decision](decision-properties-messages.md "https://hai.ai/schemas/decision/v1/decision-schema.json#/properties/messages")
+*   defined in: [Decision](decision-properties-messages.md "https://hai.ai/schemas/components/decision/v1/decision-schema.json#/properties/messages")
 
 ### messages Type
 

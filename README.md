@@ -53,7 +53,7 @@ You only need to use the agents and header to record and verify any type of docu
 
 Meta things.
  - [Header](./docs/schema/header.md) -  the signature along with permissions
- - [Permission](./docs/schema/header.md) -  the signature along with  access rules for the document fields
+ - [Permission](./docs/schema/permission.md) -  the signature along with  access rules for the document fields
  - [Actions](./docs/schema/action.md) - a description of things that can be done to and by resources
  - [Tasks](./docs/schema/task.md) -a set of actions and a desired outcome as well as state management, can reference other tasks
  - [Plan](./docs/schema/plan.md) - a set of tasks wth a desired outcome. can reference other plans

@@ -15,7 +15,7 @@
       "description": "array creators",
       "items": {
         "description": "creator signature",
-        "$ref": "../../signature/v1/signature.schema.json"
+        "$ref": "../../components/signature/v1/signature.schema.json"
       }
     },
     "permissions": {
@@ -23,12 +23,12 @@
       "description": "array of permissions",
       "items": {
         "description": "document permissions",
-        "$ref": "../../permission/v1/permission.schema.json"
+        "$ref": "../../components/permission/v1/permission.schema.json"
       }
     },
     "registration": {
       "description": "Where the resource is registered",
-      "$ref": "../../signature/v1/signature.schema.json"
+      "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "version": {
       "description": "Version id of ",

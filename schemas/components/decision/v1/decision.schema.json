@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/decision/v1/decision-schema.json",
+  "$id": "https://hai.ai/schemas/components/decision/v1/decision-schema.json",
   "title": "Decision",
   "description": "descision is a log message of version changes, actions or edits, verified with a signature",
   "type": "object",
@@ -11,7 +11,7 @@
     },
     "approvedBy": {
       "description": "Where the resource is registered",
-      "$ref": "../../signature/v1/signature.schema.json"
+      "$ref": "../../../components/signature/v1/signature.schema.json"
     },
     "oldversion": {
       "description": "Semantic of the version of the task",
@@ -29,7 +29,7 @@
       "type": "array",
       "desciption": "messages from agents ",
       "items": {
-        "$ref": "../../message/v1/message.schema.json"
+        "$ref": "../../../components/message/v1/message.schema.json"
       }
     }
   },
