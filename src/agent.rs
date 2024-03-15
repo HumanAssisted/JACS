@@ -1,5 +1,5 @@
-use super::Schema;
 use crate::crypt::rsawrapper;
+use crate::schema::Schema;
 use crate::schema::ValueExt;
 use serde_json::Value;
 use std::io::Error;
