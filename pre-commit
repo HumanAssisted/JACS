@@ -1,6 +1,5 @@
 #!/bin/sh
 
-# Format all Rust files in the project
 cargo fmt
 
 # format all json
