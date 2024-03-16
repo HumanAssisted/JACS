@@ -40,13 +40,13 @@ fn test_load_agent_json() {
     let loader2 = TestFileLoader;
     let mut agent2 =
         jacs::agent::Agent::new(loader2, version).expect("Agent should have instantiated");
-    let _ = agent
+    let _ = agent2
         .load("agent-two".to_string(), None)
         .expect("agent should ahve loaded");
     println!(
         "AGENT Two LOADED {} {} ",
-        agent.id().unwrap(),
-        agent.version().unwrap()
+        agent2.id().unwrap(),
+        agent2.version().unwrap()
     );
 }
 
