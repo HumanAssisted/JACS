@@ -16,13 +16,15 @@ The basis for a JACS document
 
 # Header Properties
 
-| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                   |
-| :------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                       | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                       |
-| [registrations](#registrations) | `array`  | Optional | cannot be null | [Header](header-properties-registrations.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations") |
-| [permissions](#permissions)     | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")     |
-| [version](#version)             | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")             |
-| [versionDate](#versiondate)     | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")     |
+| Property                            | Type     | Required | Nullable       | Defined by                                                                                                                       |
+| :---------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                           | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                           |
+| [registrations](#registrations)     | `array`  | Optional | cannot be null | [Header](header-properties-registrations.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations")     |
+| [permissions](#permissions)         | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")         |
+| [version](#version)                 | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")                 |
+| [versionDate](#versiondate)         | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")         |
+| [previousVersion](#previousversion) | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion") |
+| [originalVersion](#originalversion) | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion") |
 
 ## id
 
@@ -84,7 +86,7 @@ array of permissions
 
 ## version
 
-Version id of
+Version id of the object
 
 `version`
 
@@ -125,3 +127,47 @@ Date
 ### versionDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+
+## previousVersion
+
+Previous Version id of the object. If blank, it's claiming to be the first
+
+`previousVersion`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion")
+
+### previousVersion Type
+
+`string`
+
+### previousVersion Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
+
+## originalVersion
+
+Original Version id of the object. When documents are copied without merging, this becomes the way to track them.
+
+`originalVersion`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion")
+
+### originalVersion Type
+
+`string`
+
+### originalVersion Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")

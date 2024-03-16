@@ -2,7 +2,6 @@ pub mod agent;
 pub mod crypt;
 pub mod loaders;
 pub mod schema;
-pub mod testtools;
 
 pub fn create_agent() {}
 

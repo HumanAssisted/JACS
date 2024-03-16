@@ -27,7 +27,7 @@
       }
     },
     "version": {
-      "description": "Version id of ",
+      "description": "Version id of the object ",
       "type": "string",
       "format": "uuid"
     },
@@ -35,11 +35,22 @@
       "description": "Date ",
       "format": "date-time",
       "type": "string"
+    },
+    "previousVersion": {
+      "description": "Previous Version id of the object. If blank, it's claiming to be the first ",
+      "type": "string",
+      "format": "uuid"
+    },
+    "originalVersion": {
+      "description": "Original Version id of the object. When documents are copied without merging, this becomes the way to track them.",
+      "type": "string",
+      "format": "uuid"
     }
   },
   "required": [
     "id",
     "version",
-    "versionDate"
+    "versionDate",
+    "originalVersion"
   ]
 }

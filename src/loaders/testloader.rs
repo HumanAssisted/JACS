@@ -7,10 +7,15 @@ use std::{fs, path::PathBuf};
 
 /// this is an example of how other libraries can use JACS agents
 /// and implement their own loading and saving functions
-use crate::loaders::FileLoader;
+use super::FileLoader;
 
+/// All the file loading, path decisions.
+/// In apps, text strings may be loaded from either a filesystem, database or memory.
+/// For tests we provide tooling for this.
+// #[cfg(test)]
 pub struct TestFileLoader;
 
+// #[cfg(test)]
 impl FileLoader for TestFileLoader {
     fn load_remote_public_key(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
         Ok("".to_string())

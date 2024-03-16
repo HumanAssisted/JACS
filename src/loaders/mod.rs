@@ -1,4 +1,5 @@
 use std::error::Error;
+pub mod testloader;
 
 /// abstract traits that must be implemented by importing libraries
 pub trait FileLoader {

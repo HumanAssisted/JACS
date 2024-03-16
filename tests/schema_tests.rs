@@ -1,4 +1,4 @@
-use jacs::testtools::TestFileLoader;
+use jacs::loaders::testloader::TestFileLoader;
 use std::fs;
 
 // #[test]
@@ -28,14 +28,21 @@ fn test_load_agent_json() {
     let version = "v1";
     let mut agent =
         jacs::agent::Agent::new(loader, version).expect("Agent should have instantiated");
-    let _ = agent
-        .load("agent-one".to_string(), None)
-        .expect("agent should ahve loaded");
-    println!(
-        "AGENT LOADED {} {} ",
-        agent.id().unwrap(),
-        agent.version().unwrap()
-    );
+    let result = agent.load("agent-one".to_string(), None);
+
+    match result {
+        Ok(_) => {
+            println!(
+                "AGENT LOADED {} {} ",
+                agent.id().unwrap(),
+                agent.version().unwrap()
+            );
+        }
+        Err(e) => {
+            eprintln!("Error loading agent: {}", e);
+            panic!("Agent loading failed");
+        }
+    }
 
     let loader2 = TestFileLoader;
     let mut agent2 =

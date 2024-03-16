@@ -2,6 +2,7 @@ use crate::crypt::rsawrapper;
 use crate::loaders::FileLoader;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
+use log::{debug, error, warn};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
@@ -9,10 +10,15 @@ use std::fmt;
 use uuid::Uuid;
 
 pub struct Agent<T: FileLoader> {
+    /// the JSONSchema used
     schema: Schema,
+    /// the trait for loading and saving data
     loader: T,
+    /// the agent JSON Struct
     value: Option<Value>,
+    /// loaded documents
     documents: HashMap<String, Value>,
+    /// docment
     document_schemas: HashMap<String, Value>,
     id: Option<String>,
     version: Option<String>,
@@ -104,10 +110,12 @@ impl<T: FileLoader> Agent<T> {
                     self.id = value.get_str("id");
                     self.version = value.get_str("version");
                 }
-                Ok(())
             }
-            Err(e) => Err(e),
-        };
+            Err(e) => {
+                error!("ERROR document ERROR {}", e);
+                return Err(e.to_string().into());
+            }
+        }
 
         self.public_key = Some(self.loader.load_local_public_key(&id)?);
         self.private_key = Some(self.loader.load_local_unencrypted_private_key(&id)?);
