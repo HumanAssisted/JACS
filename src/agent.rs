@@ -1,8 +1,9 @@
 use crate::crypt::rsawrapper;
 use crate::loaders::FileLoader;
+use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
-use crate::schema::ValueExt;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
@@ -11,6 +12,7 @@ pub struct Agent<T: FileLoader> {
     schema: Schema,
     loader: T,
     value: Option<Value>,
+    map: HashMap<String, Value>,
     id: Option<String>,
     version: Option<String>,
     public_key: Option<String>,
@@ -33,10 +35,12 @@ impl<T: FileLoader> fmt::Display for Agent<T> {
 impl<T: FileLoader> Agent<T> {
     pub fn new(loader: T, version: &str) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new("agent", version)?;
+        let mut map: HashMap<String, Value> = HashMap::new();
         Ok(Self {
             schema,
             loader,
             value: None,
+            map: map,
             id: None,
             version: None,
             key_algorithm: None,
