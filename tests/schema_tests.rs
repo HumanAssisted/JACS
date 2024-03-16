@@ -1,5 +1,5 @@
-use std::fs;
 use jacs::testtools::TestFileLoader;
+use std::fs;
 
 // #[test]
 // fn test_validate_agent_json() {
@@ -21,13 +21,13 @@ use jacs::testtools::TestFileLoader;
 //     }
 // }
 
-
 #[test]
 fn test_load_agent_json() {
     // cargo test   --test schema_tests -- --nocapture
     let loader = TestFileLoader;
     let version = "v1";
-    let mut agent = jacs::agent::Agent::new(loader, version).expect("Agent should have instantiated");
+    let mut agent =
+        jacs::agent::Agent::new(loader, version).expect("Agent should have instantiated");
     let _ = agent
         .load("b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14".to_string(), None)
         .expect("agent should ahve loaded");
@@ -37,9 +37,6 @@ fn test_load_agent_json() {
         agent.version().unwrap()
     );
 }
-
-
-
 
 // #[test]
 // fn test_validate_agent_json_raw() {
