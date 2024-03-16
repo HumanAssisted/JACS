@@ -30,7 +30,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "what fields from document were used to generate signature. Defaults to id and version of doc. ",
+      "description": "fields fields from document were used to generate signature. Defaults to id and version of doc. ",
       "items": {
         "type": "string"
       }
@@ -40,6 +40,7 @@
     "agentid",
     "agentversion",
     "signature",
-    "date"
+    "date",
+    "fields"
   ]
 }

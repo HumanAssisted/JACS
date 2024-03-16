@@ -18,7 +18,7 @@
 
 ### Arrays
 
-*   [Untitled array in Header](./header-properties-creator.md "array creators") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator`
+*   [Untitled array in Header](./header-properties-registrations.md "Signing authorities agent is registered with") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations`
 
 *   [Untitled array in Header](./header-properties-permissions.md "array of permissions") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions`
 
@@ -26,7 +26,7 @@
 
 *   [Untitled array in Permission](./permission-properties-fields-items.md) – `https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/fields/items`
 
-*   [Untitled array in Signature](./signature-properties-fields.md "what fields from document were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields`
+*   [Untitled array in Signature](./signature-properties-fields.md "fields fields from document were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields`
 
 ## Version Note
 

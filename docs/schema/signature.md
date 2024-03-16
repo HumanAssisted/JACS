@@ -23,7 +23,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 | [date](#date)                            | `string` | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/date")                           |
 | [signature](#signature)                  | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signature")                 |
 | [signing\_algorithm](#signing_algorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signing_algorithm.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signing_algorithm") |
-| [fields](#fields)                        | `array`  | Optional | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields")                       |
+| [fields](#fields)                        | `array`  | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields")                       |
 
 ## agentid
 
@@ -129,11 +129,11 @@ What signature algorithm was used
 
 ## fields
 
-what fields from document were used to generate signature. Defaults to id and version of doc.
+fields fields from document were used to generate signature. Defaults to id and version of doc.
 
 `fields`
 
-*   is optional
+*   is required
 
 *   Type: `string[]`
 

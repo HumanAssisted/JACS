@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/default
 ```
 
-default permission admin is  add other admins
+default permission on fields.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                       |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------------------------- |

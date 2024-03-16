@@ -51,7 +51,7 @@ an array where each item follows the corresponding schema in the following list:
 
 ## default
 
-default permission admin is  add other admins
+default permission on fields.
 
 `default`
 

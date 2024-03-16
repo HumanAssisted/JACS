@@ -10,9 +10,9 @@
       "type": "string",
       "format": "uuid"
     },
-    "creator": {
+    "registrations": {
       "type": "array",
-      "description": "array creators",
+      "description": "Signing authorities agent is registered with",
       "items": {
         "description": "creator signature",
         "$ref": "../../components/signature/v1/signature.schema.json"
@@ -25,10 +25,6 @@
         "description": "document permissions",
         "$ref": "../../components/permission/v1/permission.schema.json"
       }
-    },
-    "registration": {
-      "description": "Agent this agent is registered with",
-      "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "version": {
       "description": "Version id of ",

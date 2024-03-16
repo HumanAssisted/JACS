@@ -16,14 +16,13 @@ The basis for a JACS document
 
 # Header Properties
 
-| Property                      | Type     | Required | Nullable       | Defined by                                                                                                               |
-| :---------------------------- | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                     | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                   |
-| [creator](#creator)           | `array`  | Optional | cannot be null | [Header](header-properties-creator.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator")         |
-| [permissions](#permissions)   | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions") |
-| [registration](#registration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/registration")   |
-| [version](#version)           | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")         |
-| [versionDate](#versiondate)   | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate") |
+| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                   |
+| :------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                       | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                       |
+| [registrations](#registrations) | `array`  | Optional | cannot be null | [Header](header-properties-registrations.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations") |
+| [permissions](#permissions)     | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")     |
+| [version](#version)             | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")             |
+| [versionDate](#versiondate)     | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")     |
 
 ## id
 
@@ -47,11 +46,11 @@ GUID
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-## creator
+## registrations
 
-array creators
+Signing authorities agent is registered with
 
-`creator`
+`registrations`
 
 *   is optional
 
@@ -59,9 +58,9 @@ array creators
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-creator.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/creator")
+*   defined in: [Header](header-properties-registrations.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations")
 
-### creator Type
+### registrations Type
 
 `object[]` ([Signature](signature.md))
 
@@ -82,24 +81,6 @@ array of permissions
 ### permissions Type
 
 `object[]` ([Permission](permission.md))
-
-## registration
-
-Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
-
-`registration`
-
-*   is optional
-
-*   Type: `object` ([Signature](signature.md))
-
-*   cannot be null
-
-*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/registration")
-
-### registration Type
-
-`object` ([Signature](signature.md))
 
 ## version
 

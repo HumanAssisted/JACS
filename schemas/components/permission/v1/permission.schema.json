@@ -30,7 +30,7 @@
     },
     "default": {
       "type": "string",
-      "description": "default permission admin is  add other admins",
+      "description": "default permission on fields.",
       "enum": [
         "admin",
         "write",
