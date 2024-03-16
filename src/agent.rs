@@ -6,8 +6,9 @@ use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 
-pub struct Agent {
+pub struct Agent<T: FileLoader> {
     schema: Schema,
+    loader: T,
     value: Option<Value>,
     id: Option<String>,
     version: Option<String>,
@@ -16,7 +17,7 @@ pub struct Agent {
     key_algorithm: Option<String>,
 }
 
-impl fmt::Display for Agent {
+impl<T: FileLoader> fmt::Display for Agent<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.value {
             Some(value) => {
@@ -28,11 +29,12 @@ impl fmt::Display for Agent {
     }
 }
 
-impl Agent {
-    pub fn new(version: &str) -> Result<Self, Box<dyn Error>> {
+impl<T: FileLoader> Agent<T> {
+    pub fn new(loader: T, version: &str) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new("agent", version)?;
         Ok(Self {
             schema,
+            loader,
             value: None,
             id: None,
             version: None,
@@ -67,12 +69,12 @@ impl Agent {
 
     pub fn save(&self) -> Result<String, Box<dyn Error>> {
         let agent_string = self.as_string()?;
-        return self.save_agent_string(&agent_string);
+        return self.loader.save_agent_string(&agent_string);
     }
 
     // loads and validates agent
     pub fn load(&mut self, id: String, _version: Option<String>) -> Result<(), Box<dyn Error>> {
-        let agent_string = self.load_local_agent_by_id(&id)?;
+        let agent_string = self.loader.load_local_agent_by_id(&id)?;
         match &self.validate(&agent_string) {
             Ok(value) => {
                 self.value = Some(value.clone());

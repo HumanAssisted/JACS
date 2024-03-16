@@ -1,14 +1,17 @@
 use std::error::Error;
 
 use crate::agent::Agent;
-pub use crate::loaders::FileLoader;
+
 use std::env;
 use std::{fs, path::PathBuf};
 
 /// this is an example of how other libraries can use JACS agents
 /// and implement their own loading and saving functions
+use crate::loaders::FileLoader;
 
-impl FileLoader for Agent {
+pub struct TestFileLoader;
+
+impl FileLoader for TestFileLoader {
     fn save_agent_string(&self, agent_string: &String) -> Result<String, Box<dyn Error>> {
         // Implementation of save method for Agent
         Ok("".to_string())

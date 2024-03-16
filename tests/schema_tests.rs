@@ -1,5 +1,5 @@
 use std::fs;
-
+use jacs::testtools::TestFileLoader;
 
 // #[test]
 // fn test_validate_agent_json() {
@@ -21,40 +21,23 @@ use std::fs;
 //     }
 // }
 
-#[cfg(test)]
-mod tests {
 
-    use super::*;
-    use jacs::testtools::FileLoader;
-
-    #[test]
-    fn test_load_agent_json() {
-        // cargo test   --test schema_tests -- --nocapture
-
-        let version = "v1";
-        let mut agent = jacs::agent::Agent::new(version).expect("Agent should have instantiated");
-        let _ = agent.load("b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14".to_string(),  None).expect("agent should ahve loaded");
-        println!("AGENT LOADED {} {} ", agent.id().unwrap(), agent.version().unwrap());
-
-    }
+#[test]
+fn test_load_agent_json() {
+    // cargo test   --test schema_tests -- --nocapture
+    let loader = TestFileLoader;
+    let version = "v1";
+    let mut agent = jacs::agent::Agent::new(loader, version).expect("Agent should have instantiated");
+    let _ = agent
+        .load("b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14".to_string(), None)
+        .expect("agent should ahve loaded");
+    println!(
+        "AGENT LOADED {} {} ",
+        agent.id().unwrap(),
+        agent.version().unwrap()
+    );
 }
 
-
-#[cfg(test)]
-mod testtwo {
-
-
-    #[test]
-    fn test_load_agent_json_no_file_loader() {
-        // cargo test   --test schema_tests -- --nocapture
-
-        let version = "v1";
-        let mut agent = jacs::agent::Agent::new(version).expect("Agent should have instantiated");
-        let _ = agent.load("b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14".to_string(),  None).expect("agent should ahve loaded");
-        println!("AGENT LOADED {} {} ", agent.id().unwrap(), agent.version().unwrap());
-
-    }
-}
 
 
 
