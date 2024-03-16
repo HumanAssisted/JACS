@@ -1,0 +1,40 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "id": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
+  "version": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
+  "versionDate": "2023-04-20T15:30:00Z",
+  "registered_with": "Example Organization",
+  "registration_signature": "b2a7bfc4-a6e0-513z-9f5d-48a42a8e9d14...",
+  "registered_date": "2023-04-15T10:00:00Z",
+  "agenttype": "hybrid",
+  "name": "Agent Smith",
+  "resourcetype": "agent",
+  "description": "A hybrid agent combining human and AI capabilities.",
+  "capabilities": [
+    {
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "operation": "deduct",
+      "name": "withdraw",
+      "units": [
+        {
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "generaltype": "monetary",
+          "unit_name": "dollars",
+          "label": "net worth"
+        }
+      ]
+    }
+  ],
+  "modifications": [],
+  "quantifications": [
+    [
+      120000,
+      {
+        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+        "generaltype": "monetary",
+        "unit_name": "dollars",
+        "label": "net worth"
+      }
+    ]
+  ]
+}
