@@ -12,7 +12,8 @@ pub struct Agent<T: FileLoader> {
     schema: Schema,
     loader: T,
     value: Option<Value>,
-    map: HashMap<String, Value>,
+    documents: HashMap<String, Value>,
+    document_schemas: HashMap<String, Value>,
     id: Option<String>,
     version: Option<String>,
     public_key: Option<String>,
@@ -35,12 +36,14 @@ impl<T: FileLoader> fmt::Display for Agent<T> {
 impl<T: FileLoader> Agent<T> {
     pub fn new(loader: T, version: &str) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new("agent", version)?;
-        let mut map: HashMap<String, Value> = HashMap::new();
+        let mut documents_map: HashMap<String, Value> = HashMap::new();
+        let mut document_schemas_map: HashMap<String, Value> = HashMap::new();
         Ok(Self {
             schema,
-            loader,
+            loader: loader,
             value: None,
-            map: map,
+            documents: documents_map,
+            document_schemas: document_schemas_map,
             id: None,
             version: None,
             key_algorithm: None,
