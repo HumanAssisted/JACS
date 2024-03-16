@@ -1,11 +1,14 @@
 pub mod agent;
 pub mod crypt;
+pub mod loaders;
 pub mod schema;
+pub mod testtools;
 
 use log::error;
+use serde_json;
 
 /// A function to validate an agent JSON string using the agent schema
-pub fn validate_agent(json: &str, version: &str) -> Result<(), String> {
+pub fn validate_agent(json: &str, version: &str) -> Result<serde_json::Value, String> {
     // TODO , check_signature: bool
     let mut agent = match agent::Agent::new(version) {
         Ok(schema) => schema,

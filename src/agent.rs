@@ -1,8 +1,10 @@
 use crate::crypt::rsawrapper;
+use crate::loaders::FileLoader;
 use crate::schema::Schema;
 use crate::schema::ValueExt;
 use serde_json::Value;
-use std::io::Error;
+use std::error::Error;
+use std::fmt;
 
 pub struct Agent {
     schema: Schema,
@@ -14,8 +16,20 @@ pub struct Agent {
     key_algorithm: Option<String>,
 }
 
+impl fmt::Display for Agent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.value {
+            Some(value) => {
+                let json_string = serde_json::to_string_pretty(value).map_err(|_| fmt::Error)?;
+                write!(f, "{}", json_string)
+            }
+            None => write!(f, "No Agent Loaded"),
+        }
+    }
+}
+
 impl Agent {
-    pub fn new(version: &str) -> Result<Self, Error> {
+    pub fn new(version: &str) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new("agent", version)?;
         Ok(Self {
             schema,
@@ -26,6 +40,51 @@ impl Agent {
             public_key: None,
             private_key: None,
         })
+    }
+
+    pub fn id(&self) -> Result<String, Box<dyn Error>> {
+        match &self.id {
+            Some(id) => Ok(id.to_string()),
+            None => Err("id is None".into()),
+        }
+    }
+
+    pub fn version(&self) -> Result<String, Box<dyn Error>> {
+        match &self.version {
+            Some(version) => Ok(version.to_string()),
+            None => Err("id is None".into()),
+        }
+    }
+
+    // for internal uses
+    // Display trait is implemented for external uses
+    fn as_string(&self) -> Result<String, Box<dyn Error>> {
+        match &self.value {
+            Some(value) => serde_json::to_string_pretty(value).map_err(|e| e.into()),
+            None => Err("Value is None".into()),
+        }
+    }
+
+    pub fn save(&self) -> Result<String, Box<dyn Error>> {
+        let agent_string = self.as_string()?;
+        return self.save_agent_string(&agent_string);
+    }
+
+    // loads and validates agent
+    pub fn load(&mut self, id: String, _version: Option<String>) -> Result<(), Box<dyn Error>> {
+        let agent_string = self.load_local_agent_by_id(&id)?;
+        match &self.validate(&agent_string) {
+            Ok(value) => {
+                self.value = Some(value.clone());
+                if let Some(ref value) = self.value {
+                    self.id = value.get_str("id");
+                    self.version = value.get_str("version");
+                }
+                Ok(())
+            }
+            Err(e) => Err(e),
+        };
+        return Ok(());
     }
 
     // pub fn load(&mut self, json_data: &String, privatekeypath: &String){
@@ -73,21 +132,16 @@ impl Agent {
         }
     }
 
-    /// validate also loads the
-    pub fn validate(&mut self, json: &str) -> Result<(), String> {
+    pub fn validate(&mut self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
         let value = self.schema.validate(json)?;
-        self.value = Some(value);
-        if let Some(ref value) = self.value {
-            self.id = value.get_str("id");
-            self.version = value.get_str("version");
-        }
+
         // additional validation
-        Ok(())
+        return Ok(value);
     }
 
-    pub fn create(&mut self, _json: &str) -> Result<(), String> {
+    pub fn create(&mut self, json: &str) -> Result<(), String> {
         // create json string
-        // validate json string
+        // validate schema json string
         // make sure id and version are empty
         // create keys
         // self-sign as owner

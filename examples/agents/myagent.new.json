@@ -1,0 +1,7 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "agenttype": "hybrid",
+  "name": "Agent Smith",
+  "agenttype": "ai",
+  "description": "An agent without keys, id or version"
+}

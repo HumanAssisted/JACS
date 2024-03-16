@@ -23,10 +23,6 @@
         "publickey": {
           "description": "public key to verify signatures. needs mechanism to verify",
           "type": "string"
-        },
-        "signing_algorithm": {
-          "description": "What signature algorithm should be used",
-          "type": "string"
         }
       }
     }

@@ -27,7 +27,7 @@
       }
     },
     "registration": {
-      "description": "Where the resource is registered",
+      "description": "Agent this agent is registered with",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "version": {
