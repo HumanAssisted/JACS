@@ -12,6 +12,19 @@ use crate::loaders::FileLoader;
 pub struct TestFileLoader;
 
 impl FileLoader for TestFileLoader {
+    fn load_remote_public_key(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
+        Ok("".to_string())
+    }
+    fn load_local_public_key(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
+        Ok("".to_string())
+    }
+    fn load_local_unencrypted_private_key(
+        &self,
+        agentid: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok("".to_string())
+    }
+
     fn save_agent_string(&self, agent_string: &String) -> Result<String, Box<dyn Error>> {
         // Implementation of save method for Agent
         Ok("".to_string())

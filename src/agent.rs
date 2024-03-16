@@ -51,6 +51,20 @@ impl<T: FileLoader> Agent<T> {
         }
     }
 
+    pub fn private_key(&self) -> Result<String, Box<dyn Error>> {
+        match &self.private_key {
+            Some(private_key) => Ok(private_key.to_string()),
+            None => Err("private_key is None".into()),
+        }
+    }
+
+    pub fn public_key(&self) -> Result<String, Box<dyn Error>> {
+        match &self.public_key {
+            Some(public_key) => Ok(public_key.to_string()),
+            None => Err("public_key is None".into()),
+        }
+    }
+
     pub fn version(&self) -> Result<String, Box<dyn Error>> {
         match &self.version {
             Some(version) => Ok(version.to_string()),
@@ -86,6 +100,10 @@ impl<T: FileLoader> Agent<T> {
             }
             Err(e) => Err(e),
         };
+
+        self.public_key = Some(self.loader.load_local_public_key(&id)?);
+        self.private_key = Some(self.loader.load_local_unencrypted_private_key(&id)?);
+
         return Ok(());
     }
 

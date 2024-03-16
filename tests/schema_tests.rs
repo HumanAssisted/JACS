@@ -48,6 +48,12 @@ fn test_load_agent_json() {
         agent2.id().unwrap(),
         agent2.version().unwrap()
     );
+
+    println!(
+        "AGENT Two keys {} {} ",
+        agent2.private_key().unwrap(),
+        agent2.public_key().unwrap()
+    );
 }
 
 // #[test]
