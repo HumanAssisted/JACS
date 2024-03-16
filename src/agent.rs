@@ -5,6 +5,7 @@ use crate::schema::ValueExt;
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
+use uuid::Uuid;
 
 pub struct Agent<T: FileLoader> {
     schema: Schema,
@@ -163,6 +164,7 @@ impl<T: FileLoader> Agent<T> {
         // create json string
         // validate schema json string
         // make sure id and version are empty
+        let uuid = Uuid::new_v4();
         // create keys
         // self-sign as owner
         // validate signature

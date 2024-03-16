@@ -1,59 +1,17 @@
-use jsonschema::SchemaResolverError;
-use jsonschema::{Draft, JSONSchema, SchemaResolver};
+use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::Value;
 use std::env;
 use std::io::Error;
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf};
 use url::Url;
 
-// Custom Resolver that resolves schemas from the local filesystem
-struct LocalSchemaResolver {
-    base_path: PathBuf,
-}
+pub mod signature;
+pub mod utils;
 
-impl LocalSchemaResolver {
-    // Constructor to create a new resolver with a specified base path
-    pub fn new(base_path: PathBuf) -> Self {
-        Self { base_path }
-    }
-}
+use signature::SignatureVerifiers;
+use utils::LocalSchemaResolver;
 
-impl SchemaResolver for LocalSchemaResolver {
-    fn resolve(
-        &self,
-        _root_schema: &Value,
-        url: &Url,
-        _original_reference: &str,
-    ) -> Result<Arc<Value>, SchemaResolverError> {
-        let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
-        let path = self.base_path.join(relative_path);
-
-        let schema_json = fs::read_to_string(&path).map_err(|io_err| {
-            // Map I/O errors
-            // SchemaResolverError::new(format!("{:?} {}", io_err, url.clone()))
-            io_err
-        })?;
-
-        let schema_value: Value = serde_json::from_str(&schema_json).map_err(|serde_err| {
-            // Map JSON parsing errors
-            //SchemaResolverError::new(format!("{:?} {}", serde_err, url.clone()))
-            serde_err
-        })?;
-
-        Ok(Arc::new(schema_value))
-    }
-}
-
-pub trait ValueExt {
-    fn get_str(&self, field: &str) -> Option<String>;
-}
-
-impl ValueExt for Value {
-    fn get_str(&self, field: &str) -> Option<String> {
-        self.get(field)?.as_str().map(String::from)
-    }
-}
 pub struct Schema {
     compiled: JSONSchema,
 }
@@ -118,6 +76,26 @@ impl Schema {
             }
         }
     }
+
+    /// utilty function to retrieve the list of fields
+    /// this is especially useful for signatures
+    pub fn get_array_of_values(&self, signature: serde_json::Value, fieldname: &String) -> String {
+        if let Some(array_field) = signature.get(fieldname).and_then(Value::as_array) {
+            let mut result_strings = Vec::new();
+            for value in array_field {
+                if let Some(string_value) = value.as_str() {
+                    result_strings.push(string_value.to_string());
+                }
+            }
+            return format!("Result Strings: {:?}", result_strings);
+        }
+        "".to_string()
+    }
+
+    pub fn create_signature(&self) {}
+
+    /// give a signature field
+    pub fn check_signature(&self, fieldname: &String) {}
 
     pub fn create(
         &self,
