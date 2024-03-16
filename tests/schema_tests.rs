@@ -29,10 +29,22 @@ fn test_load_agent_json() {
     let mut agent =
         jacs::agent::Agent::new(loader, version).expect("Agent should have instantiated");
     let _ = agent
-        .load("b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14".to_string(), None)
+        .load("agent-one".to_string(), None)
         .expect("agent should ahve loaded");
     println!(
         "AGENT LOADED {} {} ",
+        agent.id().unwrap(),
+        agent.version().unwrap()
+    );
+
+    let loader2 = TestFileLoader;
+    let mut agent2 =
+        jacs::agent::Agent::new(loader2, version).expect("Agent should have instantiated");
+    let _ = agent
+        .load("agent-two".to_string(), None)
+        .expect("agent should ahve loaded");
+    println!(
+        "AGENT Two LOADED {} {} ",
         agent.id().unwrap(),
         agent.version().unwrap()
     );
