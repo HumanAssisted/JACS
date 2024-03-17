@@ -1,12 +1,9 @@
-use jacs::loaders::testloader::TestFileLoader;
-
 #[test]
 fn test_load_agent_json() {
     // cargo test   --test schema_tests -- --nocapture
-    let loader = TestFileLoader;
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(loader, &agent_version, &header_version)
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
         .expect("Agent schema should have instantiated");
     let result = agent.load_by_id("agent-one".to_string(), None);
 
@@ -24,8 +21,7 @@ fn test_load_agent_json() {
         }
     }
 
-    let loader2 = TestFileLoader;
-    let mut agent2 = jacs::agent::Agent::new(loader2, &agent_version, &header_version)
+    let mut agent2 = jacs::agent::Agent::new(&agent_version, &header_version)
         .expect("Agent should have instantiated");
     let _ = agent2
         .load_by_id("agent-two".to_string(), None)
@@ -52,10 +48,9 @@ fn test_validate_agent_json_raw() {
     }"#
     .to_string();
 
-    let loader = TestFileLoader;
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(loader, &agent_version, &header_version)
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
         .expect("Agent schema should have instantiated");
     let result = agent.load(&json_data);
     assert!(

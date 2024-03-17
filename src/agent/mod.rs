@@ -1,8 +1,11 @@
+// pub mod document;
+pub mod loaders;
+
 use crate::crypt::rsawrapper;
-use crate::loaders::FileLoader;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 use jsonschema::{Draft, JSONSchema};
+use loaders::FileLoader;
 use log::{debug, error, warn};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -10,17 +13,16 @@ use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
 
-pub struct Agent<T: FileLoader> {
+pub struct Agent {
     /// the JSONSchema used
     schema: Schema,
-    /// the trait for loading and saving data
-    loader: T,
     /// the agent JSON Struct
     value: Option<Value>,
-    /// loaded documents
-    documents: HashMap<String, Value>,
-    /// docment
+    /// custom schemas that can be loaded to check documents
+    /// the resolver might ahve trouble TEST
     document_schemas: HashMap<String, JSONSchema>,
+
+    /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
     public_key: Option<String>,
@@ -28,7 +30,7 @@ pub struct Agent<T: FileLoader> {
     key_algorithm: Option<String>,
 }
 
-impl<T: FileLoader> fmt::Display for Agent<T> {
+impl fmt::Display for Agent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.value {
             Some(value) => {
@@ -40,20 +42,13 @@ impl<T: FileLoader> fmt::Display for Agent<T> {
     }
 }
 
-impl<T: FileLoader> Agent<T> {
-    pub fn new(
-        loader: T,
-        agentversion: &String,
-        headerversion: &String,
-    ) -> Result<Self, Box<dyn Error>> {
+impl Agent {
+    pub fn new(agentversion: &String, headerversion: &String) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new(agentversion, headerversion)?;
-        let mut documents_map: HashMap<String, Value> = HashMap::new();
         let mut document_schemas_map: HashMap<String, JSONSchema> = HashMap::new();
         Ok(Self {
             schema,
-            loader: loader,
             value: None,
-            documents: documents_map,
             document_schemas: document_schemas_map,
             id: None,
             version: None,
@@ -100,19 +95,18 @@ impl<T: FileLoader> Agent<T> {
         }
     }
 
-    pub fn save(&self) -> Result<String, Box<dyn Error>> {
-        let agent_string = self.as_string()?;
-        return self.loader.save_agent_string(&agent_string);
-    }
-
     // loads and validates agent
     pub fn load_by_id(
         &mut self,
         id: String,
         _version: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let agent_string = self.loader.load_local_agent_by_id(&id)?;
+        let agent_string = self.load_local_agent_by_id(&id)?;
         return self.load(&agent_string);
+    }
+
+    pub fn ready(&mut self) -> bool {
+        true
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
@@ -132,8 +126,8 @@ impl<T: FileLoader> Agent<T> {
 
         if self.id.is_some() {
             let id_string = self.id.clone().expect("string expected").to_string();
-            self.public_key = Some(self.loader.load_local_public_key(&id_string)?);
-            self.private_key = Some(self.loader.load_local_unencrypted_private_key(&id_string)?);
+            //self.public_key = Some(self.loader.load_local_public_key(&id_string)?);
+            //self.private_key = Some(self.loader.load_local_unencrypted_private_key(&id_string)?);
         }
 
         return Ok(());
