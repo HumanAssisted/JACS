@@ -106,8 +106,16 @@ impl<T: FileLoader> Agent<T> {
     }
 
     // loads and validates agent
-    pub fn load(&mut self, id: String, _version: Option<String>) -> Result<(), Box<dyn Error>> {
+    pub fn load_by_id(
+        &mut self,
+        id: String,
+        _version: Option<String>,
+    ) -> Result<(), Box<dyn Error>> {
         let agent_string = self.loader.load_local_agent_by_id(&id)?;
+        return self.load(&agent_string);
+    }
+
+    pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
         match &self.validate_agent(&agent_string) {
             Ok(value) => {
                 self.value = Some(value.clone());
@@ -122,8 +130,11 @@ impl<T: FileLoader> Agent<T> {
             }
         }
 
-        self.public_key = Some(self.loader.load_local_public_key(&id)?);
-        self.private_key = Some(self.loader.load_local_unencrypted_private_key(&id)?);
+        if self.id.is_some() {
+            let id_string = self.id.clone().expect("string expected").to_string();
+            self.public_key = Some(self.loader.load_local_public_key(&id_string)?);
+            self.private_key = Some(self.loader.load_local_unencrypted_private_key(&id_string)?);
+        }
 
         return Ok(());
     }
