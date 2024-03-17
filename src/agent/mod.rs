@@ -58,43 +58,6 @@ impl Agent {
         })
     }
 
-    pub fn id(&self) -> Result<String, Box<dyn Error>> {
-        match &self.id {
-            Some(id) => Ok(id.to_string()),
-            None => Err("id is None".into()),
-        }
-    }
-
-    pub fn private_key(&self) -> Result<String, Box<dyn Error>> {
-        match &self.private_key {
-            Some(private_key) => Ok(private_key.to_string()),
-            None => Err("private_key is None".into()),
-        }
-    }
-
-    pub fn public_key(&self) -> Result<String, Box<dyn Error>> {
-        match &self.public_key {
-            Some(public_key) => Ok(public_key.to_string()),
-            None => Err("public_key is None".into()),
-        }
-    }
-
-    pub fn version(&self) -> Result<String, Box<dyn Error>> {
-        match &self.version {
-            Some(version) => Ok(version.to_string()),
-            None => Err("id is None".into()),
-        }
-    }
-
-    // for internal uses
-    // Display trait is implemented for external uses
-    fn as_string(&self) -> Result<String, Box<dyn Error>> {
-        match &self.value {
-            Some(value) => serde_json::to_string_pretty(value).map_err(|e| e.into()),
-            None => Err("Value is None".into()),
-        }
-    }
-
     // loads and validates agent
     pub fn load_by_id(
         &mut self,
@@ -107,6 +70,13 @@ impl Agent {
 
     pub fn ready(&mut self) -> bool {
         true
+    }
+
+    fn get_private_key(&self) -> Result<String, Box<dyn Error>> {
+        match &self.private_key {
+            Some(private_key) => Ok(private_key.to_string()),
+            None => Err("private_key is None".into()),
+        }
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
