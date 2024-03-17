@@ -1,5 +1,5 @@
 use crate::schema::Url;
-use std::collections::HashMap;
+use phf::phf_map;
 
 use jsonschema::SchemaResolver;
 use jsonschema::SchemaResolverError;
@@ -8,6 +8,14 @@ use std::{fs, path::PathBuf, sync::Arc};
 
 use std::error::Error;
 use std::fmt;
+
+pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
+    "../../agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
+    "../../header/v1/header.schema.json"=> include_str!("../../schemas/agent/v1/agent.schema.json"),
+    "../../components/permission/v1/permission.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
+    "../../components/signature/v1/signature.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
+    // todo get all files in schema directory, dynamically
+};
 
 #[derive(Debug)]
 struct SchemaResolverErrorWrapper(String);
@@ -68,32 +76,12 @@ impl SchemaResolver for LocalSchemaResolver {
 }
 
 /// Custom Resolver that resolves schemas from memory
-pub struct EmbeddedSchemaResolver {
-    schemas: HashMap<String, &'static str>,
-}
+pub struct EmbeddedSchemaResolver {}
 
 impl EmbeddedSchemaResolver {
     // Constructor to create a new resolver with a specified base path
-    pub fn new(base_path: PathBuf) -> Self {
-        let mut schemas = HashMap::new();
-        // todo get all files in schema directory
-        schemas.insert(
-            "agent/v1/agent.schema.json".to_string(),
-            include_str!("../../schemas/agent/v1/agent.schema.json"),
-        );
-        schemas.insert(
-            "header/v1/header.schema.json".to_string(),
-            include_str!("../../schemas/header/v1/header.schema.json"),
-        );
-        schemas.insert(
-            "components/permission/v1/permission.schema.json".to_string(),
-            include_str!("../../schemas/components/permission/v1/permission.schema.json"),
-        );
-        schemas.insert(
-            "components/signature/v1/signature.schema.json".to_string(),
-            include_str!("../../schemas/components/signature/v1/signature.schema.json"),
-        );
-        EmbeddedSchemaResolver { schemas }
+    pub fn new() -> Self {
+        EmbeddedSchemaResolver {}
     }
 }
 
@@ -106,12 +94,14 @@ impl SchemaResolver for EmbeddedSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
 
-        let schema_json = self.schemas.get(relative_path).ok_or_else(|| {
-            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "Schema not found: {}",
-                url.clone()
-            )))
-        })?;
+        let schema_json = super::DEFAULT_SCHEMA_STRINGS
+            .get(relative_path)
+            .ok_or_else(|| {
+                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                    "Schema not found: {}",
+                    url.clone()
+                )))
+            })?;
 
         let schema_value: Value = serde_json::from_str(schema_json).map_err(|serde_err| {
             // Map JSON parsing errors

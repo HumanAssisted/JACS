@@ -1,6 +1,7 @@
 use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::env;
 use std::io::Error;
 use std::{fs, path::PathBuf};
@@ -11,19 +12,20 @@ pub mod signature;
 pub mod utils;
 
 use signature::SignatureVerifiers;
-use utils::LocalSchemaResolver;
+use utils::{LocalSchemaResolver, DEFAULT_SCHEMA_STRINGS};
 
 pub struct Schema {
     /// used to validate any JACS document
     headerschema: JSONSchema,
     /// used to validate any JACS agent
     agentschema: JSONSchema,
+    // schemas: HashMap<String, JSONSchema>
 }
 
 impl Schema {
     pub fn new(agentversion: &String, headerversion: &String) -> Result<Self, Error> {
         let current_dir = env::current_dir()?;
-
+        let mut schemas: HashMap<String, JSONSchema> = HashMap::new();
         // TODO load these to hashmap that is compiled into binary
         let agent_schema_path: PathBuf = current_dir
             .join("schemas")
@@ -66,13 +68,13 @@ impl Schema {
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
-            .with_resolver(LocalSchemaResolver::new(PathBuf::from(".")))
+            .with_resolver(LocalSchemaResolver::new(current_dir.clone()))
             .compile(&agentschemaResult)
             .expect("A valid schema");
 
         let headerschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
-            .with_resolver(LocalSchemaResolver::new(PathBuf::from(".")))
+            .with_resolver(LocalSchemaResolver::new(current_dir.clone()))
             .compile(&headerchemaResult)
             .expect("A valid schema");
 
