@@ -2,14 +2,12 @@ use crate::agent::Agent;
 use log::{debug, error, warn};
 use std::error::Error;
 
-
 pub trait BoilerPlate {
-    fn get_id(&self) -> Result<String, Box<dyn Error>> ;
-    fn get_key(&self) -> Result<String, Box<dyn Error>> ;
-    fn get_version(&self) -> Result<String, Box<dyn Error>> ;
-    fn as_string(&self) -> Result<String, Box<dyn Error>> ;
+    fn get_id(&self) -> Result<String, Box<dyn Error>>;
+    fn get_key(&self) -> Result<String, Box<dyn Error>>;
+    fn get_version(&self) -> Result<String, Box<dyn Error>>;
+    fn as_string(&self) -> Result<String, Box<dyn Error>>;
 }
-
 
 impl BoilerPlate for Agent {
     fn get_id(&self) -> Result<String, Box<dyn Error>> {

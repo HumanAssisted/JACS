@@ -28,7 +28,7 @@ rusqlite = "0.26.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies.pyo3]
-version = "0.15.1"
+version =  "0.16.5"
 features = ["extension-module"]
 
 [dependencies.uuid]

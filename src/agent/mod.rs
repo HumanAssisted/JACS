@@ -1,18 +1,20 @@
 // pub mod document;
+pub mod boilerplate;
 pub mod loaders;
 
 use crate::crypt::rsawrapper;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
+use boilerplate::BoilerPlate;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
+
 use log::{debug, error, warn};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
-
 pub struct Agent {
     /// the JSONSchema used
     schema: Schema,

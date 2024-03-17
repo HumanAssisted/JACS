@@ -1,3 +1,5 @@
+use jacs::agent::boilerplate::BoilerPlate;
+
 #[test]
 fn test_load_agent_json() {
     // cargo test   --test schema_tests -- --nocapture
@@ -11,8 +13,8 @@ fn test_load_agent_json() {
         Ok(_) => {
             println!(
                 "AGENT LOADED {} {} ",
-                agent.id().unwrap(),
-                agent.version().unwrap()
+                agent.get_id().unwrap(),
+                agent.get_version().unwrap()
             );
         }
         Err(e) => {
@@ -28,8 +30,8 @@ fn test_load_agent_json() {
         .expect("agent  two should ahve loaded");
     println!(
         "AGENT Two LOADED {} {} ",
-        agent2.id().unwrap(),
-        agent2.version().unwrap()
+        agent2.get_id().unwrap(),
+        agent2.get_version().unwrap()
     );
 
     // println!(

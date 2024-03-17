@@ -1,0 +1,15 @@
+[package]
+name = "jacs-agent"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "jacs-agent"
+crate-type = ["cdylib"]
+
+[dependencies]
+jacs = { path = ".." }
+
+[dependencies.pyo3]
+version =  "0.16.5"
+features = ["extension-module"]
