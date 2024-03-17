@@ -16,15 +16,17 @@ The basis for a JACS document
 
 # Header Properties
 
-| Property                            | Type     | Required | Nullable       | Defined by                                                                                                                       |
-| :---------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                           | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                           |
-| [registrations](#registrations)     | `array`  | Optional | cannot be null | [Header](header-properties-registrations.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations")     |
-| [permissions](#permissions)         | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")         |
-| [version](#version)                 | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")                 |
-| [versionDate](#versiondate)         | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")         |
-| [previousVersion](#previousversion) | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion") |
-| [originalVersion](#originalversion) | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion") |
+| Property                                    | Type     | Required | Nullable       | Defined by                                                                                                                       |
+| :------------------------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                                   | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                           |
+| [registrars](#registrars)                   | `array`  | Optional | cannot be null | [Header](header-properties-registrars.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrars")           |
+| [permissions](#permissions)                 | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")         |
+| [version](#version)                         | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")                 |
+| [versionDate](#versiondate)                 | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")         |
+| [versionSignature](#versionsignature)       | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionSignature")       |
+| [versionRegistration](#versionregistration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionRegistration")    |
+| [previousVersion](#previousversion)         | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion") |
+| [originalVersion](#originalversion)         | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion") |
 
 ## id
 
@@ -48,11 +50,11 @@ GUID
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-## registrations
+## registrars
 
-Signing authorities agent is registered with
+Signing authorities agent is registered with.
 
-`registrations`
+`registrars`
 
 *   is optional
 
@@ -60,9 +62,9 @@ Signing authorities agent is registered with
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-registrations.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations")
+*   defined in: [Header](header-properties-registrars.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrars")
 
-### registrations Type
+### registrars Type
 
 `object[]` ([Signature](signature.md))
 
@@ -127,6 +129,42 @@ Date
 ### versionDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+
+## versionSignature
+
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+
+`versionSignature`
+
+*   is optional
+
+*   Type: `object` ([Signature](signature.md))
+
+*   cannot be null
+
+*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionSignature")
+
+### versionSignature Type
+
+`object` ([Signature](signature.md))
+
+## versionRegistration
+
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+
+`versionRegistration`
+
+*   is optional
+
+*   Type: `object` ([Signature](signature.md))
+
+*   cannot be null
+
+*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionRegistration")
+
+### versionRegistration Type
+
+`object` ([Signature](signature.md))
 
 ## previousVersion
 

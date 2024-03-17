@@ -10,9 +10,9 @@
       "type": "string",
       "format": "uuid"
     },
-    "registrations": {
+    "registrars": {
       "type": "array",
-      "description": "Signing authorities agent is registered with",
+      "description": "Signing authorities agent is registered with.",
       "items": {
         "description": "creator signature",
         "$ref": "../../components/signature/v1/signature.schema.json"
@@ -35,6 +35,14 @@
       "description": "Date ",
       "format": "date-time",
       "type": "string"
+    },
+    "versionSignature": {
+      "description": "Signature of this version by the author verifying",
+      "$ref": "../../components/signature/v1/signature.schema.json"
+    },
+    "versionRegistration": {
+      "description": "Signature of this version by the registrar",
+      "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "previousVersion": {
       "description": "Previous Version id of the object. If blank, it's claiming to be the first ",

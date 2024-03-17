@@ -18,7 +18,7 @@
 
 ### Arrays
 
-*   [Untitled array in Header](./header-properties-registrations.md "Signing authorities agent is registered with") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrations`
+*   [Untitled array in Header](./header-properties-registrars.md "Signing authorities agent is registered with") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrars`
 
 *   [Untitled array in Header](./header-properties-permissions.md "array of permissions") – `https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions`
 
