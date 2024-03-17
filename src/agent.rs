@@ -2,6 +2,7 @@ use crate::crypt::rsawrapper;
 use crate::loaders::FileLoader;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
+use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -19,7 +20,7 @@ pub struct Agent<T: FileLoader> {
     /// loaded documents
     documents: HashMap<String, Value>,
     /// docment
-    document_schemas: HashMap<String, Value>,
+    document_schemas: HashMap<String, JSONSchema>,
     id: Option<String>,
     version: Option<String>,
     public_key: Option<String>,
@@ -40,10 +41,14 @@ impl<T: FileLoader> fmt::Display for Agent<T> {
 }
 
 impl<T: FileLoader> Agent<T> {
-    pub fn new(loader: T, version: &str) -> Result<Self, Box<dyn Error>> {
-        let schema = Schema::new("agent", version)?;
+    pub fn new(
+        loader: T,
+        agentversion: &String,
+        headerversion: &String,
+    ) -> Result<Self, Box<dyn Error>> {
+        let schema = Schema::new(agentversion, headerversion)?;
         let mut documents_map: HashMap<String, Value> = HashMap::new();
-        let mut document_schemas_map: HashMap<String, Value> = HashMap::new();
+        let mut document_schemas_map: HashMap<String, JSONSchema> = HashMap::new();
         Ok(Self {
             schema,
             loader: loader,
@@ -103,7 +108,7 @@ impl<T: FileLoader> Agent<T> {
     // loads and validates agent
     pub fn load(&mut self, id: String, _version: Option<String>) -> Result<(), Box<dyn Error>> {
         let agent_string = self.loader.load_local_agent_by_id(&id)?;
-        match &self.validate(&agent_string) {
+        match &self.validate_agent(&agent_string) {
             Ok(value) => {
                 self.value = Some(value.clone());
                 if let Some(ref value) = self.value {
@@ -168,18 +173,48 @@ impl<T: FileLoader> Agent<T> {
         }
     }
 
-    pub fn validate(&mut self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let value = self.schema.validate(json)?;
+    pub fn validate_header(
+        &mut self,
+        json: &str,
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        let value = self.schema.validate_header(json)?;
 
         // additional validation
         return Ok(value);
     }
 
-    pub fn create(&mut self, json: &str) -> Result<(), String> {
+    pub fn validate_agent(
+        &mut self,
+        json: &str,
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        let value = self.schema.validate_agent(json)?;
+
+        // additional validation
+        return Ok(value);
+    }
+
+    pub fn create(
+        &mut self,
+        json: &str,
+        create_keys: bool,
+        create_keys_algorithm: &String,
+    ) -> Result<(), String> {
         // create json string
+
+        // make sure there is no id or version field
+
+        // assign id and version
         // validate schema json string
         // make sure id and version are empty
-        let uuid = Uuid::new_v4();
+
+        // generate keys
+        if create_keys {
+            // chose algorithm
+            // create pub and private key
+            // place in dir [jacs]/keys/[agent-id]/key|pubkey
+            // self sign if agent
+        }
+
         // create keys
         // self-sign as owner
         // validate signature

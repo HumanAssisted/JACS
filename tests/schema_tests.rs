@@ -25,9 +25,10 @@ use std::fs;
 fn test_load_agent_json() {
     // cargo test   --test schema_tests -- --nocapture
     let loader = TestFileLoader;
-    let version = "v1";
-    let mut agent =
-        jacs::agent::Agent::new(loader, version).expect("Agent should have instantiated");
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let mut agent = jacs::agent::Agent::new(loader, &agent_version, &header_version)
+        .expect("Agent should have instantiated");
     let result = agent.load("agent-one".to_string(), None);
 
     match result {
@@ -45,8 +46,8 @@ fn test_load_agent_json() {
     }
 
     let loader2 = TestFileLoader;
-    let mut agent2 =
-        jacs::agent::Agent::new(loader2, version).expect("Agent should have instantiated");
+    let mut agent2 = jacs::agent::Agent::new(loader2, &agent_version, &header_version)
+        .expect("Agent should have instantiated");
     let _ = agent2
         .load("agent-two".to_string(), None)
         .expect("agent should ahve loaded");
