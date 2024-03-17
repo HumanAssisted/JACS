@@ -139,6 +139,25 @@ impl<T: FileLoader> Agent<T> {
         return Ok(());
     }
 
+    pub fn load_document(&mut self, document_string: &String) -> Result<(), Box<dyn Error>> {
+        match &self.validate_header(&document_string) {
+            Ok(value) => {
+                // self.value = Some(value.clone());
+                // if let Some(ref value) = self.value {
+                //     self.id = value.get_str("id");
+                //     self.version = value.get_str("version");
+                // }
+                // save document
+            }
+            Err(e) => {
+                error!("ERROR document ERROR {}", e);
+                return Err(e.to_string().into());
+            }
+        }
+
+        return Ok(());
+    }
+
     // pub fn load(&mut self, json_data: &String, privatekeypath: &String){
     //     let result = self.validate(json_data);
     //     match result {
