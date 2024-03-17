@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 pub mod signature;
 pub mod utils;
-
+use jsonschema::SchemaResolverError;
 use signature::SignatureVerifiers;
 use utils::{EmbeddedSchemaResolver, DEFAULT_SCHEMA_STRINGS};
 
@@ -24,58 +24,25 @@ pub struct Schema {
 
 impl Schema {
     pub fn new(agentversion: &String, headerversion: &String) -> Result<Self, Error> {
-        let current_dir = env::current_dir()?;
-        let mut schemas: HashMap<String, JSONSchema> = HashMap::new();
-        // TODO load these to hashmap that is compiled into binary
-        let agent_schema_path: PathBuf = current_dir
-            .join("schemas")
-            .join("agent")
-            .join(agentversion)
-            .join(format!("agent.schema.json"));
-
-        let header_schema_path: PathBuf = current_dir
-            .join("schemas")
-            .join("header")
-            .join(agentversion)
-            .join(format!("header.schema.json"));
-
-        let agentdata = match fs::read_to_string(agent_schema_path.clone()) {
-            Ok(data) => {
-                debug!("Schema is {:?}", data);
-                data
-            }
-            Err(e) => {
-                let error_message = format!("Failed to read schema file: {}", e);
-                error!("{}", error_message);
-                return Err(e);
-            }
-        };
-
-        let headerdata = match fs::read_to_string(agent_schema_path.clone()) {
-            Ok(data) => {
-                debug!("Schema is {:?}", data);
-                data
-            }
-            Err(e) => {
-                let error_message = format!("Failed to read schema file: {}", e);
-                error!("{}", error_message);
-                return Err(e);
-            }
-        };
-
-        let agentschemaResult: Value = serde_json::from_str(&agentdata)?;
-        let headerchemaResult: Value = serde_json::from_str(&headerdata)?;
+        // let current_dir = env::current_dir()?;
+        //let mut schemas: HashMap<String, JSONSchema> = HashMap::new();
+        let headerkey = format!("schemas/header/{}/header.schema.json", headerversion);
+        let headerdata = DEFAULT_SCHEMA_STRINGS.get(&headerkey).unwrap();
+        let agentversion = format!("schemas/agent/{}/agent.schema.json", agentversion);
+        let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion).unwrap();
+        let agentschema_result: Value = serde_json::from_str(&agentdata)?;
+        let headerchema_result: Value = serde_json::from_str(&headerdata)?;
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new()) // current_dir.clone()
-            .compile(&agentschemaResult)
+            .compile(&agentschema_result)
             .expect("A valid schema");
 
         let headerschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
-            .compile(&headerchemaResult)
+            .compile(&headerchema_result)
             .expect("A valid schema");
 
         Ok(Self {
