@@ -25,18 +25,18 @@ fn test_load_agent_json() {
         .expect("Agent should have instantiated");
     let _ = agent2
         .load_by_id("agent-two".to_string(), None)
-        .expect("agent should ahve loaded");
+        .expect("agent  two should ahve loaded");
     println!(
         "AGENT Two LOADED {} {} ",
         agent2.id().unwrap(),
         agent2.version().unwrap()
     );
 
-    println!(
-        "AGENT Two keys {} {} ",
-        agent2.private_key().unwrap(),
-        agent2.public_key().unwrap()
-    );
+    // println!(
+    //     "AGENT Two keys {} {} ",
+    //     agent2.private_key().unwrap(),
+    //     agent2.public_key().unwrap()
+    // );
 }
 
 #[test]
