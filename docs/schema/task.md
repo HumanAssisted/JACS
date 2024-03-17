@@ -24,8 +24,8 @@ General schema for a task
 | [success](#success)               | `string` | Required | cannot be null | [Task](task-properties-success.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/success")               |
 | [version](#version)               | `string` | Optional | cannot be null | [Task](task-properties-version.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/version")               |
 | [version\_date](#version_date)    | `string` | Optional | cannot be null | [Task](task-properties-version_date.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/version_date")     |
-| [registration](#registration)     | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")              |
-| [creator](#creator)               | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/creator")                   |
+| [registration](#registration)     | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/registration")   |
+| [creator](#creator)               | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/creator")        |
 | [lockedState](#lockedstate)       | `string` | Optional | cannot be null | [Task](task-properties-lockedstate.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/lockedState")       |
 | [lockedBy](#lockedby)             | `string` | Optional | cannot be null | [Task](task-properties-lockedby.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/lockedBy")             |
 | [lockedUntil](#lockeduntil)       | `string` | Optional | cannot be null | [Task](task-properties-lockeduntil.md "https://hai.ai/schemas/task/v1/task-schema.json#/properties/lockedUntil")       |
@@ -166,7 +166,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/registration")
+*   defined in: [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/registration")
 
 ### registration Type
 
@@ -184,7 +184,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Task](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/creator")
+*   defined in: [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/creator")
 
 ### creator Type
 

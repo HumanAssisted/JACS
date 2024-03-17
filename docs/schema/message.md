@@ -1,14 +1,14 @@
 # Message Schema
 
 ```txt
-https://hai.ai/schemas/message/v1/message-schema.json
+https://hai.ai/schemas/components/message/v1/message-schema.json
 ```
 
 A signed, immutable message from a user
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                 |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [message.schema.json](../../schemas/message/v1/message.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                            |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [message.schema.json](../../schemas/components/message/v1/message.schema.json "open original schema") |
 
 ## Message Type
 
@@ -16,13 +16,13 @@ A signed, immutable message from a user
 
 # Message Properties
 
-| Property                            | Type     | Required | Nullable       | Defined by                                                                                                                           |
-| :---------------------------------- | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                           | `string` | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/id")                           |
-| [signature](#signature)             | `object` | Optional | cannot be null | [Message](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/signature")                            |
-| [datetime](#datetime)               | `string` | Optional | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/datetime")               |
-| [content](#content)                 | `string` | Optional | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/content")                 |
-| [originalContent](#originalcontent) | `array`  | Optional | cannot be null | [Message](message-properties-originalcontent.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/originalContent") |
+| Property                            | Type     | Required | Nullable       | Defined by                                                                                                                                      |
+| :---------------------------------- | :------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                           | `string` | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                           |
+| [signature](#signature)             | `object` | Optional | cannot be null | [Message](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signature")                            |
+| [datetime](#datetime)               | `string` | Optional | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")               |
+| [content](#content)                 | `string` | Optional | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")                 |
+| [originalContent](#originalcontent) | `array`  | Optional | cannot be null | [Message](message-properties-originalcontent.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/originalContent") |
 
 ## id
 
@@ -36,7 +36,7 @@ A signed, immutable message from a user
 
 *   cannot be null
 
-*   defined in: [Message](message-properties-id.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/id")
+*   defined in: [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")
 
 ### id Type
 
@@ -58,7 +58,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Message](signature.md "https://hai.ai/schemas/signature/v1/signature-schema.json#/properties/signature")
+*   defined in: [Message](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signature")
 
 ### signature Type
 
@@ -76,7 +76,7 @@ Date
 
 *   cannot be null
 
-*   defined in: [Message](message-properties-datetime.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/datetime")
+*   defined in: [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")
 
 ### datetime Type
 
@@ -98,7 +98,7 @@ Summary of change
 
 *   cannot be null
 
-*   defined in: [Message](message-properties-content.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/content")
+*   defined in: [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")
 
 ### content Type
 
@@ -116,7 +116,7 @@ Summary of change
 
 *   cannot be null
 
-*   defined in: [Message](message-properties-originalcontent.md "https://hai.ai/schemas/message/v1/message-schema.json#/properties/originalContent")
+*   defined in: [Message](message-properties-originalcontent.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/originalContent")
 
 ### originalContent Type
 

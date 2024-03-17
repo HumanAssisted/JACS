@@ -18,6 +18,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0 "
 signature = "2.2.0"
 url = "2.5.0"
+sha2 = "0.10.6"
+phf = { version = "0.11.1", features = ["macros"] }
 
 [dev-dependencies]
 rusqlite = "0.26.0"
@@ -28,3 +30,13 @@ crate-type = ["cdylib", "rlib"]
 [dependencies.pyo3]
 version = "0.15.1"
 features = ["extension-module"]
+
+[dependencies.uuid]
+version = "1.7.0"
+# for wasm
+# default-features = false
+features = [
+    "v4",
+    "v7",
+    "js",
+]

@@ -1,0 +1,1 @@
+Components are useful elements to use in top level JACS docs.

@@ -5,7 +5,7 @@
   "description": "General schema for human, hybrid, and AI agents",
   "allOf": [
     {
-      "$ref": "../../resource/v1/resource.schema.json"
+      "$ref": "../../header/v1/header.schema.json"
     },
     {
       "type": "object",
@@ -14,17 +14,14 @@
           "type": "string",
           "enum": [
             "human",
+            "human-org",
             "hybrid",
             "ai"
           ],
           "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
         },
         "publickey": {
-          "description": "public key to verify signatures",
-          "type": "string"
-        },
-        "signing_algorithm": {
-          "description": "What signature algorithm should be used",
+          "description": "public key to verify signatures. needs mechanism to verify",
           "type": "string"
         }
       }

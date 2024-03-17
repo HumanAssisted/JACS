@@ -16,11 +16,10 @@ https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1
 
 # 1 Properties
 
-| Property                                 | Type     | Required | Nullable       | Defined by                                                                                                                                       |
-| :--------------------------------------- | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
-| [agenttype](#agenttype)                  | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-agenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/agenttype")                 |
-| [publickey](#publickey)                  | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-publickey.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/publickey")                 |
-| [signing\_algorithm](#signing_algorithm) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-signing_algorithm.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/signing_algorithm") |
+| Property                | Type     | Required | Nullable       | Defined by                                                                                                                       |
+| :---------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| [agenttype](#agenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-agenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/agenttype") |
+| [publickey](#publickey) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-publickey.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/publickey") |
 
 ## agenttype
 
@@ -44,15 +43,16 @@ Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a c
 
 **enum**: the value of this property must be equal to one of the following values:
 
-| Value      | Explanation |
-| :--------- | :---------- |
-| `"human"`  |             |
-| `"hybrid"` |             |
-| `"ai"`     |             |
+| Value         | Explanation |
+| :------------ | :---------- |
+| `"human"`     |             |
+| `"human-org"` |             |
+| `"hybrid"`    |             |
+| `"ai"`        |             |
 
 ## publickey
 
-public key to verify signatures
+public key to verify signatures. needs mechanism to verify
 
 `publickey`
 
@@ -65,23 +65,5 @@ public key to verify signatures
 *   defined in: [Agent](agent-allof-1-properties-publickey.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/publickey")
 
 ### publickey Type
-
-`string`
-
-## signing\_algorithm
-
-What signature algorithm should be used
-
-`signing_algorithm`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Agent](agent-allof-1-properties-signing_algorithm.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/signing_algorithm")
-
-### signing\_algorithm Type
 
 `string`

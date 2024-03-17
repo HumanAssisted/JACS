@@ -1,14 +1,14 @@
 # Untitled string in Unit Schema
 
 ```txt
-https://hai.ai/schemas/unit/v1/unit.schema.json#/properties/id
+https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id
 ```
 
 Quantification GUID
 
-| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                          |
-| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [unit.schema.json\*](../../schemas/unit/v1/unit.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                     |
+| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [unit.schema.json\*](../../schemas/components/unit/v1/unit.schema.json "open original schema") |
 
 ## id Type
 

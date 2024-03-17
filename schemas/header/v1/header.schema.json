@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/header/v1/header-schema.json",
+  "title": "Header",
+  "description": "The basis for a JACS document",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "GUID",
+      "type": "string",
+      "format": "uuid"
+    },
+    "registrars": {
+      "type": "array",
+      "description": "Signing authorities agent is registered with.",
+      "items": {
+        "description": "creator signature",
+        "$ref": "../../components/signature/v1/signature.schema.json"
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "description": "array of permissions",
+      "items": {
+        "description": "document permissions",
+        "$ref": "../../components/permission/v1/permission.schema.json"
+      }
+    },
+    "version": {
+      "description": "Version id of the object ",
+      "type": "string",
+      "format": "uuid"
+    },
+    "versionDate": {
+      "description": "Date ",
+      "format": "date-time",
+      "type": "string"
+    },
+    "versionSignature": {
+      "description": "Signature of this version by the author verifying",
+      "$ref": "../../components/signature/v1/signature.schema.json"
+    },
+    "versionRegistration": {
+      "description": "Signature of this version by the registrar",
+      "$ref": "../../components/signature/v1/signature.schema.json"
+    },
+    "previousVersion": {
+      "description": "Previous Version id of the object. If blank, it's claiming to be the first ",
+      "type": "string",
+      "format": "uuid"
+    },
+    "originalVersion": {
+      "description": "Original Version id of the object. When documents are copied without merging, this becomes the way to track them.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "versionDate",
+    "originalVersion"
+  ]
+}
