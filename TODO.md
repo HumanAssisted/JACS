@@ -4,10 +4,13 @@
 
 DOCUMENT
 
- - load document
+
  - change document and/or copy
  - diff document
  - sign document  **
+
+
+  - load document
  - save document
 
 

@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
+
 pub struct Agent {
     /// the JSONSchema used
     schema: Schema,

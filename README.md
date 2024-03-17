@@ -78,7 +78,7 @@ You don't need to know cryptography to use the library, but knowing the basics h
 Now you can create agents
 
 ```
-    use jacs::{Agent, Resource, Task, Message}
+    use jacs::{Agent}
 
     // load your local agent
     let json_data = fs::read_to_string("examples/myagent.json");
@@ -109,7 +109,7 @@ Now you can create agents
 
 ```
 
-Now that the agent is created, we can use it.
+Now that the agent is created, we load it in various ways.
 
 
 ```
@@ -135,7 +135,7 @@ Now that the agent is created, we can use it.
     let ready = myagent.ready();
 
     // printyour id
-    println!("id {:?} version {}", myagent.id(), myagent.version());
+    println!("id {:?} version {}", myagent.get_id(), myagent.get_version());
 
 
 
@@ -148,13 +148,26 @@ Now that your agent is ready we can start creating documents
 
 ```
 
-    // create a custom document
+    // create a custom document, assigning an id and a version, validating a JACs header afters
+    myagent.create_document(json_string, "schema_name"); //returns id, version
+    // agents can store documents in memory
+    myagent.load_document(json_string, "schema_name");
+    myagent.load_document_schema("schema_name", json_string);
+    myagent.update_document("id", json_string); // will error on permission, returns new version, also signs it
+    myagent.get_document("id", remove=False); // serde Value
+    myagent.get_document_string("id", remove=False); // serde Value
+    myagent.copy_document("id"); //returns  new id, version
+    myagent.list_ids_and_versions("id"); //returns  new id, version
 
-    // sign task as owner
+```
 
-    // save task
+Mostimportantly you can verify document
 
-    // update task
+```
+    myagent.verify_document_version("id"); //checks you are last signer, checks sig based on your own public key
+    // myagent.verify_document_version_with_registrar("id"); // ???
+    myagent.verify_document_signature("id", "field", public_key );
+    myagent.get_document_permissions("id", "fields"=None ); //if none return all permisions
 
 
 
@@ -166,7 +179,7 @@ You can also interact with other agents with messages, tasks, and plans
 create second agent
 first agent grants permissions to second agent
 
-second agent makes some edits and adds a  message
+second agent makes some edits
 
 
 now you can verify everychange in the task
