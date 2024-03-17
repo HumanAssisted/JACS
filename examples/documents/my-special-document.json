@@ -1,9 +1,10 @@
 {
-  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
-  "id": "b6a7fvg4-a6e0-413b-9f5d-48a42a8e9d14",
-  "version": "b6a7fvg4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
+  "$schema": "https://hai.ai/schemas/test/v1/test-schema.json",
+  "id": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
+  "version": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
   "versionDate": "2023-04-20T15:30:00Z",
   "originalVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
+  "lastVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
   "registered_with": "Example Organization",
   "registration_signature": "b2a7bfc4-a6e0-513z-9f5d-48a42a8e9d14...",
   "registered_date": "2023-04-15T10:00:00Z",
