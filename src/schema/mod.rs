@@ -12,7 +12,7 @@ pub mod signature;
 pub mod utils;
 
 use signature::SignatureVerifiers;
-use utils::{LocalSchemaResolver, DEFAULT_SCHEMA_STRINGS};
+use utils::{EmbeddedSchemaResolver, DEFAULT_SCHEMA_STRINGS};
 
 pub struct Schema {
     /// used to validate any JACS document
@@ -68,13 +68,13 @@ impl Schema {
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
-            .with_resolver(LocalSchemaResolver::new(current_dir.clone()))
+            .with_resolver(EmbeddedSchemaResolver::new()) // current_dir.clone()
             .compile(&agentschemaResult)
             .expect("A valid schema");
 
         let headerschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
-            .with_resolver(LocalSchemaResolver::new(current_dir.clone()))
+            .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&headerchemaResult)
             .expect("A valid schema");
 
