@@ -1,6 +1,6 @@
 # JACS - JSON Ai Communication Standard
 
-JACS allows for trusted sharing between AI agents and Human UIs.
+JACS allows for tooling to enable trusted sharing between AI agents and Human UIs.
 The library provides data validation, cryptography tooling, and authorization for admin, edit, and viewing of documents that might be useful for both humans and AI.
 
 To use, you create JSON documents and then sign them with your agent. Then share the docs with other agents and services. When those other services have modified the document, you can verifiy the agent, and sign the changes.
@@ -8,12 +8,13 @@ To use, you create JSON documents and then sign them with your agent. Then share
 JACS is both a JSON Schema and Reference implementation of [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
 
 
-
 ## trust
 
 When data is changed documents are versioned and the version is cryptographically signed. Changes can be verified and approved by other agents, allowing for creation and exchange of trusted data.
+Any person or software can modify a doc, but only agents can sign the changes.
 
-Importantly, the verification can be done be third parties with root certificates, much like the signing authorities SSL.
+Importantly, the verification can be done by third parties with root certificates, much like the signing authorities SSL.
+They also can serve as repositories for public keys, like PGP.
 
 
 ## extensible
@@ -28,9 +29,11 @@ For example, you have a complex project with a schema that's difficult
 
 # Usage
 
-Like JWT, these documents may become bublic
+Note that this library is meant to be used by other libraries that manage document storage and retrieval, key storage, and tools to register.
 
-To use JACS you only really need to use the Headers in a JSON doc and your agent. The reset are optional.
+HAI.AI will be releasing one of these libraries.
+
+To use JACS you create an `Agent` and then use it to create docoments that conform to the JACS `Header` format.
 
 Conversations, tasks, documents, and agents are some of the things represented in JSON. To use, just create a json document that follows the schema for an agent, and use it in the library to start building other things.
 
@@ -161,10 +164,11 @@ Now that your agent is ready we can start creating documents
 
 ```
 
-Mostimportantly you can verify document
+Most importantly you can verify document
 
 ```
     myagent.verify_document_version("id"); //checks you are last signer, checks sig based on your own public key
+    myagent.verify_document_checksum("id");
     // myagent.verify_document_version_with_registrar("id"); // ???
     myagent.verify_document_signature("id", "field", public_key );
     myagent.get_document_permissions("id", "fields"=None ); //if none return all permisions
