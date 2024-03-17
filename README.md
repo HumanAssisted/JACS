@@ -42,34 +42,17 @@ Here's an sample agent
 
 ## Schemas: basic types
 
+every JACS doc has a header.
 
-You only need to use the agents and header to record and verify any type of document, but some basic types are provided.
+You only need to use the agents and header to record and verify permissions on any type of document
 
- - [Resources](./docs/schema/resource.md) -  references to things
- - [Agents](./docs/schema/agent.md) - a type of resource that can take action
- - [Units](./docs/schema/components/unit.md) - measurements that can change based on actions
- - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
- - [Files](./docs/schema/components/files.md) - attachements with mime types or external references, checksummed
-
-Meta things.
  - [Header](./docs/schema/header.md) -  the signature along with permissions
+ - [Agents](./docs/schema/agent.md) - a type of resource that can take action
+ - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
  - [Permission](./docs/schema/components/permission.md) -  the signature along with  access rules for the document fields
- - [Actions](./docs/schema/action.md) - a description of things that can be done to and by resources
- - [Tasks](./docs/schema/task.md) -a set of actions and a desired outcome as well as state management, can reference other tasks
- - [Plan](./docs/schema/plan.md) - a set of tasks wth a desired outcome. can reference other plans
- - [Contract](./docs/schema/contract.md) - set of plans. a proposal until signed
- - [Messages](./docs/schema/components/message.md) - signed messages between users
-
-
-TODO
- - encrypted fields
-
- - [Decisions](./docs/schema/decision.md) - changes to tasks
-
 
 For the schema files see [schemas](./schemas).
 For examples see [schemas](./examples).
-
 
 
 ## building
