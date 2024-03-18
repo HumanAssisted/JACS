@@ -1,6 +1,6 @@
 # JACS - JSON Ai Communication Standard
 
-JACS allows for tooling to enable trusted sharing between AI agents and Human UIs.
+JACS allows for tooling to enable trusted data sharing between AI agents and Human UIs.
 The library provides data validation, cryptography tooling, and authorization for admin, edit, and viewing of documents that might be useful for both humans and AI.
 
 To use, you create JSON documents and then sign them with your agent. Then share the docs with other agents and services. When those other services have modified the document, you can verifiy the agent, and sign the changes.
@@ -16,6 +16,7 @@ Any person or software can modify a doc, but only agents can sign the changes.
 Importantly, the verification can be done by third parties with root certificates, much like the signing authorities SSL.
 They also can serve as repositories for public keys, like PGP.
 
+JACs goal is to embed critical trust information within documents, enabling new architectures for data sharing.
 
 ## extensible
 
@@ -157,8 +158,8 @@ Now that your agent is ready we can start creating documents
     myagent.load_document(json_string, "schema_name");
     myagent.load_document_schema("schema_name", json_string);
     myagent.update_document("id", json_string); // will error on permission, returns new version, also signs it
-    myagent.get_document("id", remove=False); // serde Value
-    myagent.get_document_string("id", remove=False); // serde Value
+    myagent.get_document("id", remove=False); // serde Value (JSON object)
+    myagent.get_document_string("id", remove=False); //  (JSON string)
     myagent.copy_document("id"); //returns  new id, version
     myagent.list_ids_and_versions("id"); //returns  new id, version
 

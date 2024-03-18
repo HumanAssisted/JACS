@@ -29,11 +29,20 @@ impl Error for SchemaResolverErrorWrapper {}
 
 pub trait ValueExt {
     fn get_str(&self, field: &str) -> Option<String>;
+    fn get_i64(&self, key: &str) -> Option<i64>;
+    fn get_bool(&self, key: &str) -> Option<bool>;
 }
 
 impl ValueExt for Value {
     fn get_str(&self, field: &str) -> Option<String> {
         self.get(field)?.as_str().map(String::from)
+    }
+    fn get_i64(&self, key: &str) -> Option<i64> {
+        self.get(key).and_then(|v| v.as_i64())
+    }
+
+    fn get_bool(&self, key: &str) -> Option<bool> {
+        self.get(key).and_then(|v| v.as_bool())
     }
 }
 

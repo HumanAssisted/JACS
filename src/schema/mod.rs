@@ -1,10 +1,9 @@
+use crate::schema::utils::ValueExt;
+use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::Value;
-use std::collections::HashMap;
-use std::env;
-use std::io::Error;
-use std::{fs, path::PathBuf};
+use std::io::{Error, ErrorKind};
 use url::Url;
 use uuid::Uuid;
 
@@ -125,17 +124,72 @@ impl Schema {
     /// give a signature field
     pub fn check_signature(&self, fieldname: &String) {}
 
-    ///
-    pub fn create(&self, json: &str) -> Result<Value, String> {
-        // load document
-        let result = self.validate_header(json);
-        // check id and version is not present
+    /// load a document that has data but no id or version
+    /// an id and version is assigned
+    /// header is validated
+    /// document is reeturned
+    pub fn create(&self, json: &str) -> Result<Value, Error> {
+        // create json string
+        let instance: serde_json::Value = match serde_json::from_str(json) {
+            Ok(value) => {
+                debug!("validate json {:?}", value);
+                value
+            }
+            Err(e) => {
+                let error_message = format!("Invalid JSON: {}", e);
+                error!("validate error {:?}", error_message);
+                return Err(e.into());
+            }
+        };
+
+        // make sure there is no id or version field
+        if instance.get_str("id").is_some() || instance.get_str("version").is_some() {
+            let error_message = "New JACs documents should have no id or version";
+            error!("{}", error_message);
+            return Err(Error::new(ErrorKind::NotFound, error_message));
+        }
+
+        // assign id and version
         let id = Uuid::new_v4();
         let version = Uuid::new_v4();
+        let now: DateTime<Utc> = Utc::now();
+        let versioncreated = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-        // write file to disk at [jacs]/agents/
-        // run as agent
+        let validation_result = self.headerschema.validate(&instance);
 
-        result
+        match validation_result {
+            Ok(_) => Ok(instance.clone()),
+            Err(errors) => {
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages.first().cloned().unwrap_or_else(|| {
+                    "Unexpected error during validation: no error messages found".to_string()
+                }))
+            }
+        };
+
+        // validate schema json string
+        // make sure id and version are empty
+
+        // generate keys
+
+        // create keys
+        // self-sign as owner
+        // validate signature
+        // save
+        // updatekey is the except we increment version and preserve id
+        // update actions produces signatures
+        // self.validate();
+
+        Ok(instance.clone())
     }
+
+    // pub fn create_document(&self, json: &str) -> Result<Value, String> {
+    //     /// use the schema's create function
+
+    //     // write file to disk at [jacs]/agents/
+    //     // run as agent
+
+    //     Ok()
+    // }
 }

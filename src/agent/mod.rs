@@ -192,19 +192,11 @@ impl Agent {
 
     pub fn create(
         &mut self,
-        json: &str,
+        json: &String,
         create_keys: bool,
         create_keys_algorithm: &String,
     ) -> Result<(), String> {
-        // create json string
-
-        // make sure there is no id or version field
-
-        // assign id and version
-        // validate schema json string
-        // make sure id and version are empty
-
-        // generate keys
+        /// use the schema's create function
         if create_keys {
             // chose algorithm
             // create pub and private key
@@ -212,14 +204,8 @@ impl Agent {
             // self sign if agent
         }
 
-        // create keys
-        // self-sign as owner
-        // validate signature
-        // save
-        // updatekey is the except we increment version and preserve id
-        // update actions produces signatures
-        // self.validate();
-
+        // write  file to disk at [jacs]/agents/
+        // run as agent
         Ok(())
     }
 
