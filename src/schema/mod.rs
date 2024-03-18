@@ -34,7 +34,6 @@ pub struct Schema {
     headerschema: JSONSchema,
     /// used to validate any JACS agent
     agentschema: JSONSchema,
-    // schemas: HashMap<String, JSONSchema>
 }
 
 impl Schema {
@@ -210,19 +209,6 @@ impl Schema {
                     as Box<dyn std::error::Error + 'static>);
             }
         };
-
-        // validate schema json string
-        // make sure id and version are empty
-
-        // generate keys
-
-        // create keys
-        // self-sign as owner
-        // validate signature
-        // save
-        // updatekey is the except we increment version and preserve id
-        // update actions produces signatures
-        // self.validate();
 
         Ok(instance.clone())
     }

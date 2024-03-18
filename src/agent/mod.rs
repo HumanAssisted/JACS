@@ -8,6 +8,7 @@ use crate::schema::Schema;
 use boilerplate::BoilerPlate;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
+use reqwest;
 
 use log::{debug, error, warn};
 use serde_json::Value;
@@ -15,6 +16,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
+
+use std::sync::{Arc, Mutex};
 
 pub struct JACSDocument {
     id: Option<String>,
@@ -35,7 +38,7 @@ pub struct Agent {
     value: Option<Value>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
-    document_schemas: HashMap<String, JSONSchema>,
+    document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
     documents: HashMap<String, Value>,
     public_keys: HashMap<String, String>,
 
@@ -74,7 +77,7 @@ impl fmt::Display for JACSDocument {
 impl Agent {
     pub fn new(agentversion: &String, headerversion: &String) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new(agentversion, headerversion)?;
-        let mut document_schemas_map: HashMap<String, JSONSchema> = HashMap::new();
+        let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let mut document_map: HashMap<String, Value> = HashMap::new();
         let mut public_keys: HashMap<String, String> = HashMap::new();
         Ok(Self {
@@ -220,6 +223,57 @@ impl Agent {
         return Ok(value);
     }
 
+    //// accepts local file system path or Urls
+    pub fn load_custom_schemas(&mut self, schema_paths: &[String]) {
+        let mut schemas = self.document_schemas.lock().unwrap();
+        for path in schema_paths {
+            let schema = if path.starts_with("http://") || path.starts_with("https://") {
+                // Load schema from URL
+                let schema_json = reqwest::blocking::get(path).unwrap().json().unwrap();
+                JSONSchema::options()
+                    .with_draft(Draft::Draft7)
+                    .compile(&schema_json)
+                    .unwrap()
+            } else {
+                // Load schema from local file
+                let schema_json = std::fs::read_to_string(path).unwrap();
+                let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
+                JSONSchema::options()
+                    .with_draft(Draft::Draft7)
+                    .compile(&schema_value)
+                    .unwrap()
+            };
+            schemas.insert(path.clone(), schema);
+        }
+    }
+
+    // todo change this to use stored documents only
+    pub fn validate_document_with_custom_schema(
+        &self,
+        schema_path: &str,
+        json: &Value,
+    ) -> Result<(), String> {
+        // validate header first
+        let schemas = self.document_schemas.lock().unwrap();
+        let validator = schemas
+            .get(schema_path)
+            .map(|schema| Arc::new(schema))
+            .expect("REASON");
+
+        if Some(validator.clone()).is_some() {
+            match validator.validate(json) {
+                Ok(()) => Ok(()),
+                Err(errors) => {
+                    let error_messages: Vec<String> =
+                        errors.into_iter().map(|e| e.to_string()).collect();
+                    Err(error_messages.join(", "))
+                }
+            }
+        } else {
+            Err(format!("Validator not found for path: {}", schema_path))
+        }
+    }
+
     /// create an agent, and provde id and version as a result
     pub fn create_document_and_load(
         &mut self,
@@ -275,6 +329,18 @@ impl Agent {
             // place in dir [jacs]/keys/[agent-id]/key|pubkey
             // self sign if agent
         }
+        // validate schema json string
+        // make sure id and version are empty
+
+        // generate keys
+
+        // create keys
+        // self-sign as owner
+        // validate signature
+        // save
+        // updatekey is the except we increment version and preserve id
+        // update actions produces signatures
+        // self.validate();
 
         // write  file to disk at [jacs]/agents/
         // run as agent
