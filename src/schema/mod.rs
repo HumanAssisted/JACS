@@ -152,6 +152,7 @@ impl Schema {
         // assign id and version
         let id = Uuid::new_v4();
         let version = Uuid::new_v4();
+        let original_version = version.clone();
         let now: DateTime<Utc> = Utc::now();
         let versioncreated = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 

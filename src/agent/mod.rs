@@ -190,11 +190,12 @@ impl Agent {
         return Ok(value);
     }
 
-    pub fn create(
+    /// create an agent, and provde id and version as a result
+    pub fn create_agent_and_use(
         &mut self,
         json: &String,
         create_keys: bool,
-        create_keys_algorithm: &String,
+        _create_keys_algorithm: Option<&String>,
     ) -> Result<(), Box<dyn std::error::Error + 'static>> {
         /// use the schema's create function
         let value = self.schema.create(json)?;
