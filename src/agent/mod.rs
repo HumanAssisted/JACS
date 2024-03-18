@@ -197,8 +197,17 @@ impl Agent {
         create_keys: bool,
         _create_keys_algorithm: Option<&String>,
     ) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        /// use the schema's create function
-        let value = self.schema.create(json)?;
+        let instance = self.schema.create(json)?;
+        self.value = Some(instance.clone());
+
+        //let instance = self.schema.create(json)?;
+
+        // self.value = Some(instance.clone());
+        // if let Some(ref value) = self.value {
+        //     self.id = value.get_str("id");
+        //     self.version = value.get_str("version");
+        // }
+
         if create_keys {
             // chose algorithm
             // create pub and private key
