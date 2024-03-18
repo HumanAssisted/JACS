@@ -30,7 +30,7 @@ fn test_invalidate_existing_agent() {
     let _ = match result {
         Ok(_) => Ok(result),
         Err(error) => Err({
-            println!("New Agent Not {} ", agent);
+            println!("New Agent Not created {} ", agent);
             println!("{}", error);
             assert!(true);
         }),
