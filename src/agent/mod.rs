@@ -195,8 +195,9 @@ impl Agent {
         json: &String,
         create_keys: bool,
         create_keys_algorithm: &String,
-    ) -> Result<(), String> {
+    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
         /// use the schema's create function
+        let value = self.schema.create(json)?;
         if create_keys {
             // chose algorithm
             // create pub and private key
