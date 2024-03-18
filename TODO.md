@@ -1,17 +1,37 @@
 ## todo
 
-### critical
+### document CRUD
 
-DOCUMENT
+Should the document be stored in hashbmap for validation?
+
+ - load custom schemas
+ - document create and store with custom type
+ - document return id and version on create
+ - list stored documents
+ - document copy and store
+ - document edit - copy, add fields, diff, store
 
 
- - change document and/or copy
- - diff document
+ ### document signing
+
+ - set base directory
+ - agent key default storage
+ - agent key loading
+ - hash document based on field
  - sign document  **
+ - check signature public keys hashmap
+
+ ### doment permissions
+
+ - default permissions
+ - access permissions
+ - sign access permissions
+ - modify access permissions
+ - verify access permissions on edit, read
+ - get fields and data that user has access too
 
 
-  - load document
- - save document
+
 
 
 
@@ -37,12 +57,6 @@ DOCUMENT
      - [ ] select fields
      - [ ] select fields
 
- - create agent
- - update agent
-
- - create permission
-  - [ ] decide params
-  - [ ]
 
 
 ### MVP

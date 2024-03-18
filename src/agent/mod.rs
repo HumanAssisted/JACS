@@ -16,6 +16,18 @@ use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
 
+pub struct JACSDocument {
+    id: Option<String>,
+    version: Option<String>,
+    value: Option<Value>,
+}
+
+impl JACSDocument {
+    fn getkey() {
+        // return the id and version
+    }
+}
+
 pub struct Agent {
     /// the JSONSchema used
     schema: Schema,
@@ -24,6 +36,8 @@ pub struct Agent {
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
     document_schemas: HashMap<String, JSONSchema>,
+    documents: HashMap<String, Value>,
+    public_keys: HashMap<String, String>,
 
     /// everything needed for the agent to sign things
     id: Option<String>,
@@ -45,14 +59,30 @@ impl fmt::Display for Agent {
     }
 }
 
+impl fmt::Display for JACSDocument {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.value {
+            Some(value) => {
+                let json_string = serde_json::to_string_pretty(value).map_err(|_| fmt::Error)?;
+                write!(f, "{}", json_string)
+            }
+            None => write!(f, "No Agent Loaded"),
+        }
+    }
+}
+
 impl Agent {
     pub fn new(agentversion: &String, headerversion: &String) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new(agentversion, headerversion)?;
         let mut document_schemas_map: HashMap<String, JSONSchema> = HashMap::new();
+        let mut document_map: HashMap<String, Value> = HashMap::new();
+        let mut public_keys: HashMap<String, String> = HashMap::new();
         Ok(Self {
             schema,
             value: None,
             document_schemas: document_schemas_map,
+            documents: document_map,
+            public_keys: public_keys,
             id: None,
             version: None,
             key_algorithm: None,
@@ -191,7 +221,7 @@ impl Agent {
     }
 
     /// create an agent, and provde id and version as a result
-    pub fn create_agent_and_use(
+    pub fn create_document_and_load(
         &mut self,
         json: &String,
         create_keys: bool,
@@ -217,6 +247,38 @@ impl Agent {
 
         // write  file to disk at [jacs]/agents/
         // run as agent
+        // validate the agent schema now
+        Ok(())
+    }
+
+    /// create an agent, and provde id and version as a result
+    pub fn create_agent_and_laod(
+        &mut self,
+        json: &String,
+        create_keys: bool,
+        _create_keys_algorithm: Option<&String>,
+    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        let instance = self.schema.create(json)?;
+        self.value = Some(instance.clone());
+
+        //let instance = self.schema.create(json)?;
+
+        // self.value = Some(instance.clone());
+        // if let Some(ref value) = self.value {
+        //     self.id = value.get_str("id");
+        //     self.version = value.get_str("version");
+        // }
+
+        if create_keys {
+            // chose algorithm
+            // create pub and private key
+            // place in dir [jacs]/keys/[agent-id]/key|pubkey
+            // self sign if agent
+        }
+
+        // write  file to disk at [jacs]/agents/
+        // run as agent
+        // validate the agent schema now
         Ok(())
     }
 
