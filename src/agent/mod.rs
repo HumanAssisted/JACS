@@ -253,25 +253,21 @@ impl Agent {
         schema_path: &str,
         json: &Value,
     ) -> Result<(), String> {
-        // validate header first
         let schemas = self.document_schemas.lock().unwrap();
         let validator = schemas
             .get(schema_path)
             .map(|schema| Arc::new(schema))
             .expect("REASON");
 
-        if Some(validator.clone()).is_some() {
-            match validator.validate(json) {
-                Ok(()) => Ok(()),
-                Err(errors) => {
-                    let error_messages: Vec<String> =
-                        errors.into_iter().map(|e| e.to_string()).collect();
-                    Err(error_messages.join(", "))
-                }
+        let x = match validator.validate(json) {
+            Ok(()) => Ok(()),
+            Err(errors) => {
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages.join(", "))
             }
-        } else {
-            Err(format!("Validator not found for path: {}", schema_path))
-        }
+        };
+        x
     }
 
     /// create an agent, and provde id and version as a result
