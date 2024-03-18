@@ -3,6 +3,7 @@ pub mod boilerplate;
 pub mod loaders;
 
 use crate::crypt::rsawrapper;
+use crate::crypt::CryptManager;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 use boilerplate::BoilerPlate;
@@ -256,8 +257,9 @@ impl Agent {
         let schemas = self.document_schemas.lock().unwrap();
         let validator = schemas
             .get(schema_path)
-            .map(|schema| Arc::new(schema))
-            .expect("REASON");
+            .ok_or_else(|| format!("Validator not found for path: {}", schema_path))?;
+        //.map(|schema| Arc::new(schema))
+        //.expect("REASON");
 
         let x = match validator.validate(json) {
             Ok(()) => Ok(()),

@@ -4,11 +4,15 @@
 
 Should the document be stored in hashbmap for validation?
 
- - load custom schemas
- - document create and store with custom type
- - document return id and version on create
+ - load document
+
+ - load doucment with custom schema - validate and store
+ - new document with custom schema - validate and store
+ -  document return id and version on create
+ - reutrn id and version on actor, logging
+ - refactor to re-use DRY
  - list stored documents
- - document copy and store
+ - document copy , validate, and store
  - document edit - copy, add fields, diff, store
 
 

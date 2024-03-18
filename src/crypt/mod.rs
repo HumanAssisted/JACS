@@ -1,8 +1,12 @@
 pub mod pq;
 pub mod ringwrapper;
 pub mod rsawrapper;
+use log::{debug, error, warn};
 
+use crate::agent::Agent;
 use chrono::Utc;
+use std::env;
+use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,11 +18,72 @@ enum CryptoSigningAlgorithm {
 }
 /* usage
     match algo {
-        CryptoSigningAlgorithm::RsaPss => println!("Using RSA-PSS"),
-        CryptoSigningAlgorithm::RingEd25519 => println!("Using ring-Ed25519"),
-        CryptoSigningAlgorithm::PqDilithium => println!("Using pq-dilithium"),
+        CryptoSigningAlgorithm::RsaPss => debug!("Using RSA-PSS"),
+        CryptoSigningAlgorithm::RingEd25519 => debug!("Using ring-Ed25519"),
+        CryptoSigningAlgorithm::PqDilithium => debug!("Using pq-dilithium"),
     }
 */
+
+pub trait CryptManager {
+    fn load_remote_public_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+    ) -> Result<String, Box<dyn Error>>;
+    fn load_local_public_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+    ) -> Result<String, Box<dyn Error>>;
+    fn load_local_unencrypted_private_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+    ) -> Result<String, Box<dyn Error>>;
+    fn load_local_encrypted_private_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+        password: &String,
+    ) -> Result<String, Box<dyn Error>>;
+}
+
+impl CryptManager for Agent {
+    fn load_remote_public_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok("".to_string())
+    }
+    fn load_local_public_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok("".to_string())
+    }
+    fn load_local_unencrypted_private_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok("".to_string())
+    }
+    fn load_local_encrypted_private_key(
+        &self,
+        agentid: &String,
+        agentversion: &String,
+        password: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok("".to_string())
+    }
+
+    // setup the signing
+    // fn set_signer(){
+
+    // }
+}
 
 fn save_file(file_path: &str, filename: &str, content: &[u8]) -> std::io::Result<String> {
     let full_path = Path::new(file_path).join(filename);
