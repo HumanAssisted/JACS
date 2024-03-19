@@ -185,6 +185,11 @@ impl Agent {
         return documents.keys().map(|k| k.to_string()).collect();
     }
 
+    pub fn get_schema_keys(&mut self) -> Vec<String> {
+        let document_schemas = self.document_schemas.lock().unwrap();
+        return document_schemas.keys().map(|k| k.to_string()).collect();
+    }
+
     pub fn update_document(&mut self, document_key: &String) -> Result<String, Box<dyn Error>> {
         // check that old document is found
         // check that new document has same id, value, hash as old
