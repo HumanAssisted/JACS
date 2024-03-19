@@ -213,7 +213,7 @@ Original Version id of the object. When documents are copied without merging, th
 
 ## sha256
 
-Hash of every field except this one. During edits hash is the last thing to occur
+Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature.
 
 `sha256`
 

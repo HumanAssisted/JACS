@@ -161,11 +161,18 @@ impl Agent {
 
     // hashing
     fn hash_self(&mut self) -> Result<String, Box<dyn Error>> {
-        return Ok(hash_doc(&self.value));
+        match self.value.as_ref() {
+            Some(embedded_value) => self.hash_doc(embedded_value),
+            None => {
+                let error_message = "Value is None";
+                error!("{}", error_message);
+                Err(error_message.into())
+            }
+        }
     }
 
     pub fn verify_hash(&mut self, doc: &Value) -> Result<bool, Box<dyn Error>> {
-        let original_hash_string = doc[SHA256_FIELDNAME];
+        let original_hash_string = doc[SHA256_FIELDNAME].to_string();
         let new_hash_string = self.hash_doc(doc)?;
         if original_hash_string != new_hash_string {
             let error_message = format!(
@@ -179,18 +186,27 @@ impl Agent {
     }
 
     pub fn verify_self_hash(&mut self) -> Result<bool, Box<dyn Error>> {
-        let embedded_value = self.value;
-        self.verify_hash(&embedded_value.unwrap_or_default())
+        match self.value.as_ref() {
+            Some(embedded_value) => self.verify_hash(embedded_value),
+            None => {
+                let error_message = "Value is None";
+                error!("{}", error_message);
+                Err(error_message.into())
+            }
+        }
+        // let embedded_value = self.value.as_ref().unwrap_or_default();
+        // self.verify_hash(&embedded_value)
     }
 
     pub fn hash_doc(&mut self, doc: &Value) -> Result<String, Box<dyn Error>> {
         //let mut doc_copy = doc.clone();
-        if let Some(obj) = doc.as_object_mut() {
-            obj.remove(SHA256_FIELDNAME);
-            let doc_string = doc.to_string();
+        if let Some(obj) = doc.as_object() {
+            let mut doc_copy = obj.clone();
+            doc_copy.remove(SHA256_FIELDNAME);
+            let doc_string = serde_json::to_string(&doc_copy)?;
             return Ok(hash_string(&doc_string));
         } else {
-            let error_message = "";
+            let error_message = "Document is not an object";
             error!("{}", error_message);
             return Err(error_message.to_string().into());
         }
@@ -243,6 +259,8 @@ impl Agent {
 
         // sign new version
 
+        // hash new version
+
         return Ok("".to_string());
     }
 
@@ -258,6 +276,7 @@ impl Agent {
         value["versionDate"] = json!(format!("{}", versioncreated));
         // sign new version
 
+        // hash new version
         self.storeJACSDocument(&value)
     }
 
@@ -313,6 +332,8 @@ impl Agent {
         let value = self.schema.validate_header(json)?;
 
         // additional validation
+
+        // check hash
         return Ok(value);
     }
 
@@ -323,6 +344,7 @@ impl Agent {
         let value = self.schema.validate_agent(json)?;
 
         // additional validation
+        // check hash
         return Ok(value);
     }
 
@@ -380,6 +402,9 @@ impl Agent {
         json: &String,
     ) -> Result<String, Box<dyn std::error::Error + 'static>> {
         let instance = self.schema.create(json)?;
+        // sign document
+
+        // hash document
         return self.storeJACSDocument(&instance);
     }
 
@@ -430,6 +455,7 @@ impl Agent {
         // save
         // updatekey is the except we increment version and preserve id
         // update actions produces signatures
+        // hash agent
         // self.validate();
 
         // write  file to disk at [jacs]/agents/
