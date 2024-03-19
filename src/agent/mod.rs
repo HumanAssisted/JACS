@@ -29,7 +29,10 @@ pub struct JACSDocument {
 impl JACSDocument {
     fn getkey(&self) -> String {
         // return the id and version
-        return format!("{:?}:{:?}", self.id, self.version);
+        let binding = String::new();
+        let id = self.id.as_ref().unwrap_or(&binding);
+        let version = self.version.as_ref().unwrap_or(&binding);
+        return format!("{}:{}", id, version);
     }
 }
 
@@ -141,19 +144,19 @@ impl Agent {
         return Ok(());
     }
 
-    pub fn load_document(&mut self, document_string: &String) -> Result<(), Box<dyn Error>> {
+    pub fn load_document(&mut self, document_string: &String) -> Result<String, Box<dyn Error>> {
         match &self.validate_header(&document_string) {
-            Ok(value) => self.storeJACSDocument(&value)?,
+            Ok(value) => {
+                return self.storeJACSDocument(&value);
+            }
             Err(e) => {
                 error!("ERROR document ERROR {}", e);
                 return Err(e.to_string().into());
             }
         }
-
-        return Ok(());
     }
 
-    fn storeJACSDocument(&mut self, value: &Value) -> Result<(), Box<dyn Error>> {
+    fn storeJACSDocument(&mut self, value: &Value) -> Result<String, Box<dyn Error>> {
         let mut documents = self.documents.lock().unwrap();
         let doc = JACSDocument {
             id: value.get_str("id"),
@@ -162,7 +165,7 @@ impl Agent {
         };
         let key = doc.getkey();
         documents.insert(key.clone(), doc);
-        return Ok(());
+        return Ok(key.clone());
     }
 
     // pub fn load(&mut self, json_data: &String, privatekeypath: &String){
@@ -282,9 +285,9 @@ impl Agent {
     pub fn create_document_and_load(
         &mut self,
         json: &String,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    ) -> Result<String, Box<dyn std::error::Error + 'static>> {
         let instance = self.schema.create(json)?;
-        self.storeJACSDocument(&instance)?;
+        return self.storeJACSDocument(&instance);
 
         //let instance = self.schema.create(json)?;
 
@@ -297,7 +300,7 @@ impl Agent {
         // write  file to disk at [jacs]/agents/
         // run as agent
         // validate the agent schema now
-        Ok(())
+        // Ok(())
     }
 
     /// create an agent, and provde id and version as a result
