@@ -159,25 +159,29 @@ impl Agent {
         }
     }
 
-    // hashing
-    fn hash_self(&self) -> Result<String, Box<dyn Error>> {
-        match &self.value {
-            Some(embedded_value) => self.hash_doc(embedded_value),
-            None => {
-                let error_message = "Value is None";
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
-    }
+    // // hashing
+    // fn hash_self(&self) -> Result<String, Box<dyn Error>> {
+    //     match &self.value {
+    //         Some(embedded_value) => self.hash_doc(embedded_value),
+    //         None => {
+    //             let error_message = "Value is None";
+    //             error!("{}", error_message);
+    //             Err(error_message.into())
+    //         }
+    //     }
+    // }
 
     pub fn verify_hash(&self, doc: &Value) -> Result<bool, Box<dyn Error>> {
         let original_hash_string = doc[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
         let new_hash_string = self.hash_doc(doc)?;
+
         if original_hash_string != new_hash_string {
             let error_message = format!(
-                "Hashes don't match! {:?} != {:?}",
-                original_hash_string, new_hash_string
+                "Hashes don't match for doc {:?} {:?}! {:?} != {:?}",
+                doc.get_str("id").expect("REASON"),
+                doc.get_str("version").expect("REASON"),
+                original_hash_string,
+                new_hash_string
             );
             error!("{}", error_message);
             return Err(error_message.into());
@@ -185,16 +189,16 @@ impl Agent {
         Ok(true)
     }
 
-    pub fn verify_self_hash(&self) -> Result<bool, Box<dyn Error>> {
-        match &self.value {
-            Some(embedded_value) => self.verify_hash(embedded_value),
-            None => {
-                let error_message = "Value is None";
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
-    }
+    // pub fn verify_self_hash(&self) -> Result<bool, Box<dyn Error>> {
+    //     match &self.value {
+    //         Some(embedded_value) => self.verify_hash(embedded_value),
+    //         None => {
+    //             let error_message = "Value is None";
+    //             error!("{}", error_message);
+    //             Err(error_message.into())
+    //         }
+    //     }
+    // }
 
     pub fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {
         let mut doc_copy = doc.clone();
@@ -268,6 +272,8 @@ impl Agent {
         // sign new version
 
         // hash new version
+        let document_hash = self.hash_doc(&value)?;
+        value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         self.storeJACSDocument(&value)
     }
 
@@ -325,6 +331,7 @@ impl Agent {
         // additional validation
 
         // check hash
+        let _ = self.verify_hash(&value)?;
         return Ok(value);
     }
 
@@ -336,6 +343,7 @@ impl Agent {
 
         // additional validation
         // check hash
+        let _ = self.verify_hash(&value)?;
         return Ok(value);
     }
 
@@ -392,10 +400,12 @@ impl Agent {
         &mut self,
         json: &String,
     ) -> Result<String, Box<dyn std::error::Error + 'static>> {
-        let instance = self.schema.create(json)?;
+        let mut instance = self.schema.create(json)?;
         // sign document
 
         // hash document
+        let document_hash = self.hash_doc(&instance)?;
+        instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         return self.storeJACSDocument(&instance);
     }
 
@@ -415,8 +425,8 @@ impl Agent {
         create_keys: bool,
         _create_keys_algorithm: Option<&String>,
     ) -> Result<String, Box<dyn std::error::Error + 'static>> {
-        let instance = self.schema.create(json)?;
-        self.value = Some(instance.clone());
+        let mut instance = self.schema.create(json)?;
+
         if let Some(ref value) = self.value {
             self.id = value.get_str("id");
             self.version = value.get_str("version");
@@ -452,6 +462,9 @@ impl Agent {
         // write  file to disk at [jacs]/agents/
         // run as agent
         // validate the agent schema now
+        let document_hash = self.hash_doc(&instance)?;
+        instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        self.value = Some(instance.clone());
         return Ok(self.getagentkey());
     }
 
