@@ -33,7 +33,17 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     let document_key = agent.load_document(&document_string).unwrap();
     println!("loaded valid  {}", document_key);
     let document = agent.get_document(&document_key).unwrap();
-    let result = agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
-        .unwrap();
+
+    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
+        Ok(()) => {
+            // Validation succeeded
+            println!("Document validation succeeded and should not have");
+            assert!(false);
+        }
+        Err(error) => {
+            // Validation failed
+            eprintln!("Document validation failed: {}", error);
+            assert!(true);
+        }
+    }
 }
