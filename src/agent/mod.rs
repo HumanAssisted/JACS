@@ -21,18 +21,21 @@ use uuid::Uuid;
 use std::sync::{Arc, Mutex};
 
 pub struct JACSDocument {
-    id: Option<String>,
-    version: Option<String>,
-    value: Option<Value>,
+    id: String,
+    version: String,
+    value: Value,
 }
 
 impl JACSDocument {
-    fn getkey(&self) -> String {
+    pub fn getkey(&self) -> String {
         // return the id and version
-        let binding = String::new();
-        let id = self.id.as_ref().unwrap_or(&binding);
-        let version = self.version.as_ref().unwrap_or(&binding);
+        let id = self.id.clone();
+        let version = self.version.clone();
         return format!("{}:{}", id, version);
+    }
+
+    pub fn getvalue(&self) -> Value {
+        self.value.clone()
     }
 }
 
@@ -69,13 +72,8 @@ impl fmt::Display for Agent {
 
 impl fmt::Display for JACSDocument {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.value {
-            Some(value) => {
-                let json_string = serde_json::to_string_pretty(value).map_err(|_| fmt::Error)?;
-                write!(f, "{}", json_string)
-            }
-            None => write!(f, "No Agent Loaded"),
-        }
+        let json_string = serde_json::to_string_pretty(&self.value).map_err(|_| fmt::Error)?;
+        write!(f, "{}", json_string)
     }
 }
 
@@ -159,13 +157,25 @@ impl Agent {
     fn storeJACSDocument(&mut self, value: &Value) -> Result<String, Box<dyn Error>> {
         let mut documents = self.documents.lock().unwrap();
         let doc = JACSDocument {
-            id: value.get_str("id"),
-            version: value.get_str("version"),
-            value: Some(value.clone()),
+            id: value.get_str("id").expect("REASON"),
+            version: value.get_str("version").expect("REASON"),
+            value: Some(value.clone()).into(),
         };
         let key = doc.getkey();
         documents.insert(key.clone(), doc);
         return Ok(key.clone());
+    }
+
+    pub fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
+        let documents = self.documents.lock().unwrap();
+        match documents.get(document_key) {
+            Some(document) => Ok(JACSDocument {
+                id: document.id.clone(),
+                version: document.version.clone(),
+                value: document.value.clone(),
+            }),
+            None => Err(format!("Document not found for key: {}", document_key).into()),
+        }
     }
 
     // pub fn load(&mut self, json_data: &String, privatekeypath: &String){
@@ -303,16 +313,28 @@ impl Agent {
         // Ok(())
     }
 
+    /// returns ID and version separated by a colon
+    fn getagentkey(&self) -> String {
+        // return the id and version
+        let binding = String::new();
+        let id = self.id.as_ref().unwrap_or(&binding);
+        let version = self.version.as_ref().unwrap_or(&binding);
+        return format!("{}:{}", id, version);
+    }
+
     /// create an agent, and provde id and version as a result
-    pub fn create_agent_and_laod(
+    pub fn create_agent_and_load(
         &mut self,
         json: &String,
         create_keys: bool,
         _create_keys_algorithm: Option<&String>,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    ) -> Result<String, Box<dyn std::error::Error + 'static>> {
         let instance = self.schema.create(json)?;
         self.value = Some(instance.clone());
-
+        if let Some(ref value) = self.value {
+            self.id = value.get_str("id");
+            self.version = value.get_str("version");
+        }
         //let instance = self.schema.create(json)?;
 
         // self.value = Some(instance.clone());
@@ -343,7 +365,7 @@ impl Agent {
         // write  file to disk at [jacs]/agents/
         // run as agent
         // validate the agent schema now
-        Ok(())
+        return Ok(self.getagentkey());
     }
 
     pub fn edit(&mut self, _json: &str) -> Result<(), String> {

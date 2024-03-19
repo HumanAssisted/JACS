@@ -14,8 +14,11 @@ fn test_load_custom_schema_and_custom_document() {
         .load_local_document(&"examples/documents/my-special-document.json".to_string())
         .unwrap();
     let document_key = agent.load_document(&document_string).unwrap();
-    println!("loaded valid {}", document_key)
-    //validate_document_with_custom_schema
+    println!("loaded valid {}", document_key);
+    let document = agent.get_document(&document_key).unwrap();
+    agent
+        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .unwrap();
 }
 
 #[test]
@@ -28,6 +31,9 @@ fn test_load_custom_schema_and_custom_invalid_document() {
         .load_local_document(&"examples/documents/my-special-document-broken.json".to_string())
         .unwrap();
     let document_key = agent.load_document(&document_string).unwrap();
-    println!("loaded valid  {}", document_key)
-    //validate_document_with_custom_schema
+    println!("loaded valid  {}", document_key);
+    let document = agent.get_document(&document_key).unwrap();
+    let result = agent
+        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .unwrap();
 }

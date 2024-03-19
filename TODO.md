@@ -5,15 +5,17 @@
 Should the document be stored in hashbmap for validation?
 
  - load document
-
  - load doucment with custom schema - validate and store
  - new document with custom schema - validate and store
- -  document return id and version on create
- - reutrn id and version on actor, logging
- - refactor to re-use DRY
  - list stored documents
  - document copy , validate, and store
  - document edit - copy, add fields, diff, store
+ - remove document
+
+
+ - logging
+ - refactor to re-use DRY
+
 
 
  ### document signing
@@ -143,3 +145,8 @@ fn main() {
  - add signature types enum so implementations can check
  - auto doc rust
  - push docs github pages
+
+
+ DONE
+  - return id and version on actor,
+ -  document return id and version on create
