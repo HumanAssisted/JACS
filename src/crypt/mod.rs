@@ -1,6 +1,8 @@
+pub mod hash;
 pub mod pq;
 pub mod ringwrapper;
 pub mod rsawrapper;
+
 use log::{debug, error, warn};
 
 use crate::agent::Agent;

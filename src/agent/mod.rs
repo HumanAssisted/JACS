@@ -2,6 +2,7 @@
 pub mod boilerplate;
 pub mod loaders;
 
+use crate::crypt::hash::hash_string;
 use crate::crypt::rsawrapper;
 use crate::crypt::CryptManager;
 use crate::schema::utils::ValueExt;
@@ -21,6 +22,8 @@ use std::fmt;
 use uuid::Uuid;
 
 use std::sync::{Arc, Mutex};
+
+static SHA256_FIELDNAME: &str = "sha256";
 
 pub struct JACSDocument {
     id: String,
@@ -154,6 +157,45 @@ impl Agent {
                 return Err(e.to_string().into());
             }
         }
+    }
+
+    // hashing
+    fn hash_self(&mut self) -> Result<String, Box<dyn Error>> {
+        return Ok(hash_doc(&self.value));
+    }
+
+    pub fn verify_hash(&mut self, doc: &Value) -> Result<bool, Box<dyn Error>> {
+        let original_hash_string = doc[SHA256_FIELDNAME];
+        let new_hash_string = self.hash_doc(doc)?;
+        if original_hash_string != new_hash_string {
+            let error_message = format!(
+                " hashes don't match! {:?} != {:?}",
+                original_hash_string, new_hash_string
+            );
+            error!("{}", error_message);
+            return Err(error_message.to_string().into());
+        }
+        return Ok(true);
+    }
+
+    pub fn verify_self_hash(&mut self) -> Result<bool, Box<dyn Error>> {
+        let embedded_value = self.value;
+        self.verify_hash(&embedded_value.unwrap_or_default())
+    }
+
+    pub fn hash_doc(&mut self, doc: &Value) -> Result<String, Box<dyn Error>> {
+        //let mut doc_copy = doc.clone();
+        if let Some(obj) = doc.as_object_mut() {
+            obj.remove(SHA256_FIELDNAME);
+            let doc_string = doc.to_string();
+            return Ok(hash_string(&doc_string));
+        } else {
+            let error_message = "";
+            error!("{}", error_message);
+            return Err(error_message.to_string().into());
+        }
+        //doc_copy.remove(SHA256_FIELDNAME);
+        //let doc_string = doc_copy.to_string();
     }
 
     fn storeJACSDocument(&mut self, value: &Value) -> Result<String, Box<dyn Error>> {

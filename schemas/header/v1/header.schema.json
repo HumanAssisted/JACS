@@ -53,6 +53,10 @@
       "description": "Original Version id of the object. When documents are copied without merging, this becomes the way to track them.",
       "type": "string",
       "format": "uuid"
+    },
+    "sha256": {
+      "description": "Hash of every field except this one. During edits hash is the last thing to occur",
+      "type": "string"
     }
   },
   "required": [

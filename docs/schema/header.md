@@ -27,6 +27,7 @@ The basis for a JACS document
 | [versionRegistration](#versionregistration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionRegistration")    |
 | [previousVersion](#previousversion)         | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion") |
 | [originalVersion](#originalversion)         | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion") |
+| [sha256](#sha256)                           | `string` | Optional | cannot be null | [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/sha256")                   |
 
 ## id
 
@@ -209,3 +210,21 @@ Original Version id of the object. When documents are copied without merging, th
 ### originalVersion Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
+
+## sha256
+
+Hash of every field except this one. During edits hash is the last thing to occur
+
+`sha256`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/sha256")
+
+### sha256 Type
+
+`string`
