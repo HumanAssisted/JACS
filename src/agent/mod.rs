@@ -160,8 +160,8 @@ impl Agent {
     }
 
     // hashing
-    fn hash_self(&mut self) -> Result<String, Box<dyn Error>> {
-        match self.value.as_ref() {
+    fn hash_self(&self) -> Result<String, Box<dyn Error>> {
+        match &self.value {
             Some(embedded_value) => self.hash_doc(embedded_value),
             None => {
                 let error_message = "Value is None";
@@ -171,22 +171,22 @@ impl Agent {
         }
     }
 
-    pub fn verify_hash(&mut self, doc: &Value) -> Result<bool, Box<dyn Error>> {
-        let original_hash_string = doc[SHA256_FIELDNAME].to_string();
+    pub fn verify_hash(&self, doc: &Value) -> Result<bool, Box<dyn Error>> {
+        let original_hash_string = doc[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
         let new_hash_string = self.hash_doc(doc)?;
         if original_hash_string != new_hash_string {
             let error_message = format!(
-                " hashes don't match! {:?} != {:?}",
+                "Hashes don't match! {:?} != {:?}",
                 original_hash_string, new_hash_string
             );
             error!("{}", error_message);
-            return Err(error_message.to_string().into());
+            return Err(error_message.into());
         }
-        return Ok(true);
+        Ok(true)
     }
 
-    pub fn verify_self_hash(&mut self) -> Result<bool, Box<dyn Error>> {
-        match self.value.as_ref() {
+    pub fn verify_self_hash(&self) -> Result<bool, Box<dyn Error>> {
+        match &self.value {
             Some(embedded_value) => self.verify_hash(embedded_value),
             None => {
                 let error_message = "Value is None";
@@ -194,24 +194,15 @@ impl Agent {
                 Err(error_message.into())
             }
         }
-        // let embedded_value = self.value.as_ref().unwrap_or_default();
-        // self.verify_hash(&embedded_value)
     }
 
-    pub fn hash_doc(&mut self, doc: &Value) -> Result<String, Box<dyn Error>> {
-        //let mut doc_copy = doc.clone();
-        if let Some(obj) = doc.as_object() {
-            let mut doc_copy = obj.clone();
-            doc_copy.remove(SHA256_FIELDNAME);
-            let doc_string = serde_json::to_string(&doc_copy)?;
-            return Ok(hash_string(&doc_string));
-        } else {
-            let error_message = "Document is not an object";
-            error!("{}", error_message);
-            return Err(error_message.to_string().into());
-        }
-        //doc_copy.remove(SHA256_FIELDNAME);
-        //let doc_string = doc_copy.to_string();
+    pub fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {
+        let mut doc_copy = doc.clone();
+        doc_copy
+            .as_object_mut()
+            .map(|obj| obj.remove(SHA256_FIELDNAME));
+        let doc_string = serde_json::to_string(&doc_copy)?;
+        Ok(hash_string(&doc_string))
     }
 
     fn storeJACSDocument(&mut self, value: &Value) -> Result<String, Box<dyn Error>> {
