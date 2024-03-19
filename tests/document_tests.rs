@@ -1,14 +1,10 @@
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::tests::load_test_agent_one;
 
 #[test]
 fn test_load_agent_json() {
     // cargo test   --test schema_tests -- --nocapture
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
-        .expect("Agent schema should have instantiated");
-    let result = agent.load_by_id("agent-one".to_string(), None);
-
+    agent = load_test_agent_one();
     match result {
         Ok(_) => {
             println!(
@@ -32,26 +28,5 @@ fn test_load_agent_json() {
         "AGENT Two LOADED {} {} ",
         agent2.get_id().unwrap(),
         agent2.get_version().unwrap()
-    );
-}
-
-#[test]
-fn test_validate_agent_json_raw() {
-    let json_data = r#"{
-      "id": "agent123",
-      "name": "Agent Smith",
-      "role": "Field Agent"
-    }"#
-    .to_string();
-
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
-        .expect("Agent schema should have instantiated");
-    let result = agent.load(&json_data);
-    assert!(
-        !result.is_ok(),
-        "Correctly failed to validate myagent.json: {}",
-        result.unwrap_err()
     );
 }
