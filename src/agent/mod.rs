@@ -180,6 +180,11 @@ impl Agent {
         }
     }
 
+    pub fn get_document_keys(&mut self) -> Vec<String> {
+        let documents = self.documents.lock().unwrap();
+        return documents.keys().map(|k| k.to_string()).collect();
+    }
+
     pub fn update_document(&mut self, document_key: &String) -> Result<String, Box<dyn Error>> {
         // check that old document is found
         // check that new document has same id, value, hash as old

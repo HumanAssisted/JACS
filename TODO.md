@@ -4,15 +4,12 @@
 
 Should the document be stored in hashbmap for validation?
 
-
- - list stored documents
  - document copy , hash, validate, and store
  - document edit - copy, add fields, diff, hash, validate, store
  - remove document
 
-
  - agent update version and validate (version self)
-  - agent update version and validate
+ - agent update version and validate
 
 
  - logging
@@ -151,7 +148,7 @@ fn main() {
 
  # DONE
 - new document with custom schema - validate and store
-
+ - list stored documents
   - load document and store
  - load doucment with custom schema - validate and store
   - return id and version on actor,
