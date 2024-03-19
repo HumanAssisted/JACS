@@ -25,7 +25,7 @@ Should the document be stored in hashbmap for validation?
  - sign document  **
  - check signature public keys hashmap
 
- ### doment permissions
+ ### document permissions
 
  - default permissions
  - access permissions

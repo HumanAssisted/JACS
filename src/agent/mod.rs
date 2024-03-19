@@ -27,8 +27,9 @@ pub struct JACSDocument {
 }
 
 impl JACSDocument {
-    fn getkey() {
+    fn getkey(&self) -> String {
         // return the id and version
+        return format!("{:?}:{:?}", self.id, self.version);
     }
 }
 
@@ -40,7 +41,7 @@ pub struct Agent {
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
-    documents: HashMap<String, Value>,
+    documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     public_keys: HashMap<String, String>,
 
     /// everything needed for the agent to sign things
@@ -79,7 +80,7 @@ impl Agent {
     pub fn new(agentversion: &String, headerversion: &String) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new(agentversion, headerversion)?;
         let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
-        let mut document_map: HashMap<String, Value> = HashMap::new();
+        let mut document_map = Arc::new(Mutex::new(HashMap::new()));
         let mut public_keys: HashMap<String, String> = HashMap::new();
         Ok(Self {
             schema,
@@ -142,20 +143,25 @@ impl Agent {
 
     pub fn load_document(&mut self, document_string: &String) -> Result<(), Box<dyn Error>> {
         match &self.validate_header(&document_string) {
-            Ok(value) => {
-                // self.value = Some(value.clone());
-                // if let Some(ref value) = self.value {
-                //     self.id = value.get_str("id");
-                //     self.version = value.get_str("version");
-                // }
-                // save document
-            }
+            Ok(value) => self.storeJACSDocument(&value)?,
             Err(e) => {
                 error!("ERROR document ERROR {}", e);
                 return Err(e.to_string().into());
             }
         }
 
+        return Ok(());
+    }
+
+    fn storeJACSDocument(&mut self, value: &Value) -> Result<(), Box<dyn Error>> {
+        let mut documents = self.documents.lock().unwrap();
+        let doc = JACSDocument {
+            id: value.get_str("id"),
+            version: value.get_str("version"),
+            value: Some(value.clone()),
+        };
+        let key = doc.getkey();
+        documents.insert(key.clone(), doc);
         return Ok(());
     }
 
@@ -276,11 +282,9 @@ impl Agent {
     pub fn create_document_and_load(
         &mut self,
         json: &String,
-        create_keys: bool,
-        _create_keys_algorithm: Option<&String>,
     ) -> Result<(), Box<dyn std::error::Error + 'static>> {
         let instance = self.schema.create(json)?;
-        self.value = Some(instance.clone());
+        self.storeJACSDocument(&instance)?;
 
         //let instance = self.schema.create(json)?;
 
@@ -289,13 +293,6 @@ impl Agent {
         //     self.id = value.get_str("id");
         //     self.version = value.get_str("version");
         // }
-
-        if create_keys {
-            // chose algorithm
-            // create pub and private key
-            // place in dir [jacs]/keys/[agent-id]/key|pubkey
-            // self sign if agent
-        }
 
         // write  file to disk at [jacs]/agents/
         // run as agent
