@@ -4,11 +4,10 @@
 
 Should the document be stored in hashbmap for validation?
 
- - new document with custom schema - validate and store
 
  - list stored documents
- - document copy , validate, and store
- - document edit - copy, add fields, diff, store
+ - document copy , hash, validate, and store
+ - document edit - copy, add fields, diff, hash, validate, store
  - remove document
 
 
@@ -151,6 +150,7 @@ fn main() {
 
 
  # DONE
+- new document with custom schema - validate and store
 
   - load document and store
  - load doucment with custom schema - validate and store

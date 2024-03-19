@@ -11,7 +11,9 @@ use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
 use reqwest;
 
+use chrono::prelude::*;
 use log::{debug, error, warn};
+use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
@@ -176,6 +178,35 @@ impl Agent {
             }),
             None => Err(format!("Document not found for key: {}", document_key).into()),
         }
+    }
+
+    pub fn update_document(&mut self, document_key: &String) -> Result<String, Box<dyn Error>> {
+        // check that old document is found
+        // check that new document has same id, value, hash as old
+        // check which fields are different
+        // copy document
+        // modify other fields
+
+        // validate schema
+
+        // sign new version
+
+        return Ok("".to_string());
+    }
+
+    pub fn copy_document(&mut self, document_key: &String) -> Result<String, Box<dyn Error>> {
+        let original_document = self.get_document(document_key).unwrap();
+        let mut value = original_document.value;
+        let new_version = Uuid::new_v4().to_string();
+        let last_version = &value["version"];
+        let versioncreated = Utc::now().to_rfc3339();
+
+        value["lastVersion"] = last_version.clone();
+        value["version"] = json!(format!("{}", new_version));
+        value["versionDate"] = json!(format!("{}", versioncreated));
+        // sign new version
+
+        self.storeJACSDocument(&value)
     }
 
     // pub fn load(&mut self, json_data: &String, privatekeypath: &String){
