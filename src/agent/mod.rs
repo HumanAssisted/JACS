@@ -291,26 +291,13 @@ impl Agent {
         x
     }
 
-    /// create an agent, and provde id and version as a result
+    /// create an document, and provde id and version as a result
     pub fn create_document_and_load(
         &mut self,
         json: &String,
     ) -> Result<String, Box<dyn std::error::Error + 'static>> {
         let instance = self.schema.create(json)?;
         return self.storeJACSDocument(&instance);
-
-        //let instance = self.schema.create(json)?;
-
-        // self.value = Some(instance.clone());
-        // if let Some(ref value) = self.value {
-        //     self.id = value.get_str("id");
-        //     self.version = value.get_str("version");
-        // }
-
-        // write  file to disk at [jacs]/agents/
-        // run as agent
-        // validate the agent schema now
-        // Ok(())
     }
 
     /// returns ID and version separated by a colon

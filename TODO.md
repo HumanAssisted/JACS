@@ -4,13 +4,16 @@
 
 Should the document be stored in hashbmap for validation?
 
- - load document
- - load doucment with custom schema - validate and store
  - new document with custom schema - validate and store
+
  - list stored documents
  - document copy , validate, and store
  - document edit - copy, add fields, diff, store
  - remove document
+
+
+ - agent update version and validate (version self)
+  - agent update version and validate
 
 
  - logging
@@ -147,6 +150,9 @@ fn main() {
  - push docs github pages
 
 
- DONE
+ # DONE
+
+  - load document and store
+ - load doucment with custom schema - validate and store
   - return id and version on actor,
  -  document return id and version on create
