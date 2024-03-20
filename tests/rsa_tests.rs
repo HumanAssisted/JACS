@@ -1,5 +1,6 @@
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::crypt::KeyManager;
 use utils::{load_test_agent_one, set_test_env_vars};
 
 #[test]
@@ -13,6 +14,7 @@ fn test_rsa_create() {
 fn test_rsa_create_and_verify_signature() {
     set_test_env_vars();
     let mut agent = load_test_agent_one();
+    agent.load_keys();
 
     // // cargo test --test rsa_tests -- test_rsa_create_and_verify_signature
     // let input_str = "JACS is JACKED";
