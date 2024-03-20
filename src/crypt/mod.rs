@@ -11,30 +11,29 @@ use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
-#[derive(Debug)]
+use strum_macros::{AsRefStr, Display, EnumString};
+
+#[derive(Debug, AsRefStr, Display, EnumString)]
 enum CryptoSigningAlgorithm {
+    #[strum(serialize = "RSA-PSS")]
     RsaPss,
+    #[strum(serialize = "ring-Ed25519")]
     RingEd25519,
+    #[strum(serialize = "pq-dilithium")]
     PqDilithium,
 }
-/* usage
-    match algo {
-        CryptoSigningAlgorithm::RsaPss => debug!("Using RSA-PSS"),
-        CryptoSigningAlgorithm::RingEd25519 => debug!("Using ring-Ed25519"),
-        CryptoSigningAlgorithm::PqDilithium => debug!("Using pq-dilithium"),
-    }
-*/
 
-const KEY_DIRECTORY: &str = "JACS_KEY_DIRECTORY";
-const PRIVATE_KEY_PASSWORD_ENV_VAR: &str = "JACS_AGENT_PRIVATE_KEY_PASSWORD";
-const PRIVATE_KEY_FILENAME_ENV_VAR: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
-const PUBLIC_KEY_FILENAME_ENV_VAR: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
-const KEY_ALGORITHM_ENV_VAR: &str = "JACS_AGENT_KEY_ALGORITHM";
+const JACS_KEY_DIRECTORY: &str = "JACS_KEY_DIRECTORY";
+const JACS_AGENT_PRIVATE_KEY_PASSWORD: &str = "JACS_AGENT_PRIVATE_KEY_PASSWORD";
+const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
+const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
+const JACS_AGENT_KEY_ALGORITHM: &str = "JACS_AGENT_KEY_ALGORITHM";
 
-trait KeyManager {
+pub trait KeyManager {
     fn load_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    fn generate_keys(&self) -> Result<(), Box<dyn std::error::Error>>;
+    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
 
     /// for validating signatures
     fn get_remote_foreign_agent_public_key(
@@ -52,38 +51,44 @@ trait KeyManager {
 impl KeyManager for Agent {
     fn load_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
-        let default_dir = env::var(KEY_DIRECTORY)?;
+        let default_dir = env::var(JACS_KEY_DIRECTORY)?;
 
-        let private_key_filename = env::var(PRIVATE_KEY_FILENAME_ENV_VAR)?;
+        let private_key_filename = env::var(JACS_AGENT_PRIVATE_KEY_FILENAME)?;
         let private_key = load_key_file(&default_dir, &private_key_filename)?;
-        let public_key_filename = env::var(PUBLIC_KEY_FILENAME_ENV_VAR)?;
+        let public_key_filename = env::var(JACS_AGENT_PUBLIC_KEY_FILENAME)?;
         let public_key = load_key_file(&default_dir, &public_key_filename)?;
 
-        let key_algorithm = env::var(KEY_ALGORITHM_ENV_VAR)?;
+        let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
         self.set_keys(private_key, public_key, &key_algorithm)
     }
 
     /// this necessatates updateding the version of the agent
-    fn generate_keys(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // todo encrypt private key
-        let default_dir = env::var(KEY_DIRECTORY)?;
-        let key_algorithm = env::var(KEY_ALGORITHM_ENV_VAR)?;
+        let default_dir = env::var(JACS_KEY_DIRECTORY)?;
+        let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
         let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
-        if key_algorithm == "rsa-pss" {
-            (private_key, public_key) = rsawrapper::generate_keys().map_err(|e| e.to_string())?;
-            let private_key_filename = env::var(PRIVATE_KEY_FILENAME_ENV_VAR)?;
-            save_file(&default_dir, &private_key_filename, &private_key);
-            let public_key_filename = env::var(PUBLIC_KEY_FILENAME_ENV_VAR)?;
-            save_file(&default_dir, &public_key_filename, &public_key);
-        } else if key_algorithm == "ring-Ed25519" {
-            return Err("ring-Ed25519 key generation is not implemented.".into());
-        } else if key_algorithm == "pq-dilithium" {
-            return Err("pq-dilithium key generation is not implemented.".into());
-        } else {
-            // Handle other algorithms or return an error
-            return Err(
-                format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-            );
+        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        match algo {
+            CryptoSigningAlgorithm::RsaPss => {
+                (private_key, public_key) =
+                    rsawrapper::generate_keys().map_err(|e| e.to_string())?;
+                let private_key_filename = env::var(JACS_AGENT_PRIVATE_KEY_FILENAME)?;
+                save_file(&default_dir, &private_key_filename, &private_key);
+                let public_key_filename = env::var(JACS_AGENT_PUBLIC_KEY_FILENAME)?;
+                save_file(&default_dir, &public_key_filename, &public_key);
+            }
+            CryptoSigningAlgorithm::RingEd25519 => {
+                return Err("ring-Ed25519 key generation is not implemented.".into());
+            }
+            CryptoSigningAlgorithm::PqDilithium => {
+                return Err("pq-dilithium key generation is not implemented.".into());
+            }
+            _ => {
+                return Err(
+                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
+                );
+            }
         }
 
         self.set_keys(private_key, public_key, &key_algorithm)

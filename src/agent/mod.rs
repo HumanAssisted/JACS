@@ -4,7 +4,7 @@ pub mod loaders;
 
 use crate::crypt::hash::hash_string;
 use crate::crypt::rsawrapper;
-use crate::crypt::CryptManager;
+use crate::crypt::KeyManager;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 use boilerplate::BoilerPlate;
@@ -136,14 +136,14 @@ impl Agent {
     }
 
     fn get_private_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        match self.private_key {
+        match &self.private_key {
             Some(private_key) => Ok(private_key.clone()),
             None => Err("private_key is None".into()),
         }
     }
 
-    pub fn get_default_dir(&self) -> &PathBuf {
-        &self.default_directory.clone()
+    pub fn get_default_dir(&self) -> PathBuf {
+        self.default_directory.clone()
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
@@ -548,14 +548,6 @@ impl Agent {
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         self.value = Some(instance.clone());
         return Ok(self.getagentkey());
-    }
-
-    pub fn edit(&mut self, _json: &str) -> Result<(), String> {
-        // validate new json string
-        // diff strings
-        // validate editor can make changes
-
-        Ok(())
     }
 }
 

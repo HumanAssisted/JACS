@@ -1,22 +1,28 @@
 ## todo
 
-### document CRUD
+### document signing
 
-
-
-
- - logging
- - refactor to re-use DRY
-
- - more thread safety agent values
-
- ### document signing
-
- - add public key signature to agent so users can verify
+NEEDS TESTS
  - set base directory
+ - agent key creation
  - agent key default storage
  - agent key loading
- - hash document based on field
+ - test create signature from string
+ - test verify signature from string
+
+ Integration of signatures
+
+ - verify signature header
+ - get fields needed for signature from signature types
+ - create or verify signature
+
+ - hard code keys which are signatures
+ - self sign agent
+ - sign documents
+ - sign change
+
+
+ - add public key signature to agent so users can verify public key
  - sign document  **
  - check signature public keys hashmap
 
@@ -30,7 +36,7 @@
  - get fields and data that user has access too
 
 
-AGENT REGISTRATION
+### AGENT REGISTRATION
 
  - schema
   - name of registrar
@@ -39,7 +45,12 @@ AGENT REGISTRATION
   - registars public key signature
   - registars signature schema
 
+### debt
 
+- logging
+ - refactor to re-use DRY
+
+ - more thread safety agent values
 
 
 

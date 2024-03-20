@@ -1,5 +1,6 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::Agent;
+use std::env;
 
 pub fn load_test_agent_one() -> Agent {
     let agent_version = "v1".to_string();
@@ -21,4 +22,12 @@ pub fn load_test_agent_one() -> Agent {
         }
     }
     agent
+}
+
+#[cfg(test)]
+pub fn set_test_env_vars() {
+    env::set_var("JACS_KEY_DIRECTORY", "./tests/scratch/");
+    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
+    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
+    env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
 }
