@@ -16,8 +16,12 @@ fn test_rsa_create_and_verify_signature() {
     let mut agent = load_test_agent_one();
     agent.load_keys();
     let private = agent.get_private_key().unwrap();
-    let public = agent.get_public_key().unwrap()
-    println!("loaded keys {} {} ", std::str::from_utf8(&private).expect("Failed to convert bytes to string"), std::str::from_utf8(&public).expect("Failed to convert bytes to string"));
+    let public = agent.get_public_key().unwrap();
+    println!(
+        "loaded keys {} {} ",
+        std::str::from_utf8(&private).expect("Failed to convert bytes to string"),
+        std::str::from_utf8(&public).expect("Failed to convert bytes to string")
+    );
 
     // // cargo test --test rsa_tests -- test_rsa_create_and_verify_signature
     // let input_str = "JACS is JACKED";
