@@ -213,7 +213,7 @@ impl Agent {
         &mut self,
         document_key: &String,
         key_into: &String,
-        fields: Vec<String>,
+        fields: &Vec<String>,
     ) -> Result<String, Box<dyn Error>> {
         // check that private key exists
         let document = self.get_document(document_key).expect("Reason");
@@ -239,7 +239,7 @@ impl Agent {
         &mut self,
         document_key: &String,
         signature_key_from: &String,
-        fields: Vec<String>,
+        fields: &Vec<String>,
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
         let document = self.get_document(document_key).expect("Reason");
@@ -271,7 +271,7 @@ impl Agent {
     fn signing_procedure(
         &mut self,
         json_value: &Value,
-        fields: Vec<String>,
+        fields: &Vec<String>,
     ) -> Result<Value, Box<dyn Error>> {
         let document_values_string = Agent::get_values_as_string(&json_value, fields.clone());
         let signature = self.sign_string(&document_values_string)?;
@@ -283,6 +283,9 @@ impl Agent {
             Ok(value) => value,
             Err(err) => return Err(Box::new(err)),
         };
+
+        //TODO fields must never include sha256 at top level
+        // error
         let signature_document = json!({
             // based on v1
             "agentid": agent_id,
