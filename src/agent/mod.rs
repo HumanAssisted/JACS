@@ -233,6 +233,21 @@ impl Agent {
         }
     }
 
+    pub fn remove_document(
+        &mut self,
+        document_key: &String,
+    ) -> Result<JACSDocument, Box<dyn Error>> {
+        let mut documents = self.documents.lock().unwrap();
+        match documents.remove(document_key) {
+            Some(document) => Ok(JACSDocument {
+                id: document.id.clone(),
+                version: document.version.clone(),
+                value: document.value.clone(),
+            }),
+            None => Err(format!("Document not found for key: {}", document_key).into()),
+        }
+    }
+
     pub fn get_document_keys(&mut self) -> Vec<String> {
         let documents = self.documents.lock().unwrap();
         return documents.keys().map(|k| k.to_string()).collect();
@@ -243,22 +258,50 @@ impl Agent {
         return document_schemas.keys().map(|k| k.to_string()).collect();
     }
 
-    pub fn update_document(&mut self, document_key: &String) -> Result<String, Box<dyn Error>> {
+    /// pass in modified doc
+    pub fn update_document(
+        &mut self,
+        document_key: &String,
+        new_document_string: &String,
+    ) -> Result<String, Box<dyn Error>> {
         // check that old document is found
+        let new_document: Value = self.schema.validate_header(new_document_string)?;
+        let original_document = self.get_document(document_key).unwrap();
+        let mut value = original_document.value;
         // check that new document has same id, value, hash as old
+        let orginal_id = &value.get_str("id");
+        let orginal_version = &value.get_str("version");
         // check which fields are different
-        // copy document
-        // modify other fields
+        let new_doc_orginal_id = &new_document.get_str("id");
+        let new_doc_orginal_version = &new_document.get_str("version");
+        if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
+            return Err(format!(
+                "The id/versions do not match found for key: {}. {:?}{:?}",
+                document_key, new_doc_orginal_id, new_doc_orginal_version
+            )
+            .into());
+        }
+
+        //TODO  show diff
 
         // validate schema
+        let new_version = Uuid::new_v4().to_string();
+        let last_version = &value["version"];
+        let versioncreated = Utc::now().to_rfc3339();
+
+        value["lastVersion"] = last_version.clone();
+        value["version"] = json!(format!("{}", new_version));
+        value["versionDate"] = json!(format!("{}", versioncreated));
 
         // sign new version
 
         // hash new version
-
-        return Ok("".to_string());
+        let document_hash = self.hash_doc(&value)?;
+        value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        self.storeJACSDocument(&value)
     }
 
+    /// copys document without modifications
     pub fn copy_document(&mut self, document_key: &String) -> Result<String, Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
         let mut value = original_document.value;

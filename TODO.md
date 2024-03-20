@@ -2,11 +2,9 @@
 
 ### document CRUD
 
-Should the document be stored in hashbmap for validation?
-
  - document copy , hash, validate, and store
  - document edit - copy, add fields, diff, hash, validate, store
- - remove document
+
 
  - agent update version and validate (version self)
  - agent update version and validate
@@ -15,7 +13,7 @@ Should the document be stored in hashbmap for validation?
  - logging
  - refactor to re-use DRY
 
-
+ - more thread safety agent values
 
  ### document signing
 
@@ -147,6 +145,7 @@ fn main() {
 
 
  # DONE
+  - remove document
 - new document with custom schema - validate and store
  - list stored documents
   - load document and store

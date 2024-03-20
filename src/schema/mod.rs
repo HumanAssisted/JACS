@@ -68,6 +68,8 @@ impl Schema {
         })
     }
 
+    /// basic check this conforms to a schema
+    /// validate header does not check hashes or signature
     pub fn validate_header(
         &self,
         json: &str,

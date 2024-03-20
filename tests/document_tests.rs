@@ -64,3 +64,31 @@ fn test_load_custom_schema_and_new_custom_document() {
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
 }
+
+#[test]
+fn test_load_custom_schema_and_custom_document_and_update() {
+    // cargo test   --test document_tests -- --nocapture
+    let mut agent = load_test_agent_one();
+    let schemas = [SCHEMA.to_string()];
+    agent.load_custom_schemas(&schemas);
+    let document_string = agent
+        .load_local_document(&"examples/documents/my-special-document.json".to_string())
+        .unwrap();
+    let document_key = agent.load_document(&document_string).unwrap();
+
+    let modified_document_string = agent
+        .load_local_document(&"examples/documents/my-special-document-modified.json".to_string())
+        .unwrap();
+
+    let new_document_key = agent
+        .update_document(&document_key, &modified_document_string)
+        .unwrap();
+    println!(
+        "new_document_key {} {}",
+        new_document_key, modified_document_string
+    );
+    let document = agent.get_document(&new_document_key).unwrap();
+    agent
+        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .unwrap();
+}
