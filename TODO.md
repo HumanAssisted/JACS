@@ -8,7 +8,7 @@ NEEDS TESTS
  - test create signature from string
  - test verify signature from string
 
- Integration of signatures
+ ## Integration of signatures
 
  - verify signature header
  - get fields needed for signature from signature types
