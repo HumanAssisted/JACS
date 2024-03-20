@@ -3,10 +3,8 @@
 ### document signing
 
 NEEDS TESTS
- - set base directory
+
  - agent key creation
- - agent key default storage
- - agent key loading
  - test create signature from string
  - test verify signature from string
 
@@ -160,6 +158,13 @@ fn main() {
 
 
  # DONE
+
+NEEDS TESTS
+ - set base directory
+  - agent key default storage
+ - agent key loading
+
+ ### crud
   - agent update version and validate (version self)
  - agent update version and validate
   - document copy , hash, validate, and store
