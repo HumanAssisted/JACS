@@ -120,6 +120,30 @@ impl Schema {
         }
     }
 
+    /// basic check this conforms to a schema
+    /// validate header does not check hashes or signature
+    pub fn validate_signature(
+        &self,
+        signature: &Value,
+    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        let validation_result = self.signatureschema.validate(&signature);
+
+        match validation_result {
+            Ok(_) => Ok(()),
+            Err(errors) => {
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        "Unexpected error during validation: no error messages found".to_string()
+                    })
+                    .into())
+            }
+        }
+    }
+
     pub fn validate_agent(
         &self,
         json: &str,

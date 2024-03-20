@@ -13,8 +13,7 @@ use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
 use log::{debug, error, warn};
 use reqwest;
-use serde_json::json;
-use serde_json::Value;
+use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -210,20 +209,25 @@ impl Agent {
     /// key_into
     /// fields in doc to generate key from currently ignores errors
     /// Returns a new documentid since signing modifies it.
-    // pub fn sign_document(&mut self, document_key: &String, key_into:&String,  fields: Vec<String>) -> Result<String, Box<dyn Error>> {
-    //     // check that private key exists
-    //     let document = self.get_document(document_key).expect("Reason");
-    //     let mut document_value = document.value;
-    //     // create signture sub document
-    //     let signature_document = self.signing_procedure(&document_value, fields);
-    //     // add to key_into
-    //     document_value[key_into] = signature_document?.clone();
-    //     // convert to string,
-    //     let document_string = document_value.to_string();
-    //     // use update document function which versions doc with signature
-    //     // return the new document_key
-    //     return self.update_document(&document_key, &document_string)
-    // }
+    pub fn sign_document(
+        &mut self,
+        document_key: &String,
+        key_into: &String,
+        fields: Vec<String>,
+    ) -> Result<String, Box<dyn Error>> {
+        // check that private key exists
+        let document = self.get_document(document_key).expect("Reason");
+        let mut document_value = document.value;
+        // create signture sub document
+        let signature_document = self.signing_procedure(&document_value, fields);
+        // add to key_into
+        document_value[key_into] = signature_document?.clone();
+        // convert to string,
+        let document_string = document_value.to_string();
+        // use update document function which versions doc with signature
+        // return the new document_key
+        return self.update_document(&document_key, &document_string);
+    }
 
     // pub fn sign_self(&mut self, key_into:&String, fields: Vec<String>) -> Result<&Value, Box<dyn Error>> {
 
@@ -244,50 +248,34 @@ impl Agent {
     // }
 
     /// re-used function to generate a signature json fragment
-    // fn signing_procedure(&self,json_value: &Value, fields: Vec<String>) ->  Result<&Value, Box<dyn Error>> {
-    //     let document_values_string = Agent::get_values_as_string(&json_value, fields);
-    //     let signature = self.sign_string(&document_values_string);
-    //     let agent_id = "";
-    //     let agent_version = "";
-    //     let date = "";
-    //     let signing_algorithm = "";
+    fn signing_procedure(
+        &mut self,
+        json_value: &Value,
+        fields: Vec<String>,
+    ) -> Result<Value, Box<dyn Error>> {
+        let document_values_string = Agent::get_values_as_string(&json_value, fields.clone());
+        let signature = self.sign_string(&document_values_string)?;
+        let agent_id = "";
+        let agent_version = "";
+        let date = "";
+        let signing_algorithm = "";
+        let serialized_fields = match to_value(fields) {
+            Ok(value) => value,
+            Err(err) => return Err(Box::new(err)),
+        };
+        let signature_document = json!({
 
-    //         let signature_document =
-
-    //         "agentid": {
-    //               "description": "The id of agent that produced signature",
-    //               "type": "string",
-    //               "format": "uuid"
-    //             },
-    //             "agentversion": {
-    //               "description": " Version of the agent",
-    //               "type": "string",
-    //               "format": "uuid"
-    //             },
-    //             "date": {
-    //               "description": "Date ",
-    //               "format": "date-time",
-    //               "type": "string"
-    //             },
-    //             "signature": {
-    //               "description": "The actual signature, made from the docid, ",
-    //               "type": "string"
-    //             },
-    //             "signing_algorithm": {
-    //               "description": "What signature algorithm was used",
-    //               "type": "string"
-    //             },
-    //             "fields": {
-    //               "type": "array",
-    //               "description": "fields fields from document were used to generate signature. Defaults to id and version of doc. ",
-    //               "items": {
-    //                 "type": "string"
-    //               }
-    //             }
-
-    //         // validate signature schema
-
-    // }
+            "agentid": agent_id,
+            "agentversion": agent_version,
+            "date": date,
+            "signature":signature,
+            "signing_algorithm":signing_algorithm,
+            "fields": serialized_fields
+        });
+        // validate signature schema
+        let _ = self.schema.validate_signature(&signature_document)?;
+        return Ok(signature_document);
+    }
 
     /// given a set of fields, return a single string
     /// this function critical to all signatures
@@ -325,16 +313,16 @@ impl Agent {
         Ok(true)
     }
 
-    // pub fn verify_self_hash(&self) -> Result<bool, Box<dyn Error>> {
-    //     match &self.value {
-    //         Some(embedded_value) => self.verify_hash(embedded_value),
-    //         None => {
-    //             let error_message = "Value is None";
-    //             error!("{}", error_message);
-    //             Err(error_message.into())
-    //         }
-    //     }
-    // }
+    pub fn verify_self_hash(&self) -> Result<bool, Box<dyn Error>> {
+        match &self.value {
+            Some(embedded_value) => self.verify_hash(embedded_value),
+            None => {
+                let error_message = "Value is None";
+                error!("{}", error_message);
+                Err(error_message.into())
+            }
+        }
+    }
 
     pub fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {
         let mut doc_copy = doc.clone();
