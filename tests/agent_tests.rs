@@ -6,7 +6,8 @@ fn test_load_agent_json() {
     // cargo test   --test schema_tests -- --nocapture
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
+    let signature_version = "v1".to_string();
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let result = agent.load_by_id("agent-one".to_string(), None);
 
@@ -24,7 +25,7 @@ fn test_load_agent_json() {
         }
     }
 
-    let mut agent2 = jacs::agent::Agent::new(&agent_version, &header_version)
+    let mut agent2 = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent should have instantiated");
     let _ = agent2
         .load_by_id("agent-two".to_string(), None)
@@ -47,7 +48,8 @@ fn test_update_agent() {
     // cargo test   --test schema_tests -- --nocapture
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
+    let signature_version = "v1".to_string();
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let result = agent.load_by_id("agent-one".to_string(), None);
 
@@ -84,7 +86,8 @@ fn test_validate_agent_json_raw() {
 
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
+    let signature_version = "v1".to_string();
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let result = agent.load(&json_data);
     assert!(

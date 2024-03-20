@@ -5,7 +5,9 @@ use std::env;
 pub fn load_test_agent_one() -> Agent {
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
+    let signature_version = "v1".to_string();
+
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let result = agent.load_by_id("agent-one".to_string(), None);
     match result {

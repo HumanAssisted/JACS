@@ -34,21 +34,30 @@ pub struct Schema {
     headerschema: JSONSchema,
     /// used to validate any JACS agent
     agentschema: JSONSchema,
+    signatureschema: JSONSchema,
 }
 
 impl Schema {
     pub fn new(
         agentversion: &String,
         headerversion: &String,
+        signatureversion: &String,
     ) -> Result<Self, Box<dyn std::error::Error + 'static>> {
         // let current_dir = env::current_dir()?;
-        //let mut schemas: HashMap<String, JSONSchema> = HashMap::new();
+        // TODO let the agent, header, and signature versions for verifying being flexible
         let headerkey = format!("schemas/header/{}/header.schema.json", headerversion);
         let headerdata = DEFAULT_SCHEMA_STRINGS.get(&headerkey).unwrap();
         let agentversion = format!("schemas/agent/{}/agent.schema.json", agentversion);
         let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion).unwrap();
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;
+
+        let signatureversion = format!(
+            "schemas/components/signature/{}/signature.schema.json",
+            signatureversion
+        );
+        let sginaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion).unwrap();
+        let signatureschema_result: Value = serde_json::from_str(&sginaturedata)?;
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
@@ -62,9 +71,16 @@ impl Schema {
             .compile(&headerchema_result)
             .expect("A valid schema");
 
+        let signatureschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&signatureschema_result)
+            .expect("A valid schema");
+
         Ok(Self {
             headerschema,
             agentschema,
+            signatureschema,
         })
     }
 

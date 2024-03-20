@@ -118,7 +118,6 @@ impl KeyManager for Agent {
                 );
             }
         }
-        Ok("".to_string())
     }
     fn verify_string(
         &mut self,

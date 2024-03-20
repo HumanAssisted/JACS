@@ -85,8 +85,12 @@ impl fmt::Display for JACSDocument {
 }
 
 impl Agent {
-    pub fn new(agentversion: &String, headerversion: &String) -> Result<Self, Box<dyn Error>> {
-        let schema = Schema::new(agentversion, headerversion)?;
+    pub fn new(
+        agentversion: &String,
+        headerversion: &String,
+        signature_version: &String,
+    ) -> Result<Self, Box<dyn Error>> {
+        let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let mut document_map = Arc::new(Mutex::new(HashMap::new()));
         let mut public_keys: HashMap<String, String> = HashMap::new();
@@ -194,6 +198,114 @@ impl Agent {
     //         }
     //     }
     // }
+
+    // get docs by prrefix
+    // let user_values: HashMap<&String, &Value> = map
+    //     .iter()
+    //     .filter(|(key, _)| key.starts_with(prefix))
+    //     .collect();
+
+    /// generates a valid signature based on document fields
+    /// document_id - document to sign, previously loaded
+    /// key_into
+    /// fields in doc to generate key from currently ignores errors
+    /// Returns a new documentid since signing modifies it.
+    // pub fn sign_document(&mut self, document_key: &String, key_into:&String,  fields: Vec<String>) -> Result<String, Box<dyn Error>> {
+    //     // check that private key exists
+    //     let document = self.get_document(document_key).expect("Reason");
+    //     let mut document_value = document.value;
+    //     // create signture sub document
+    //     let signature_document = self.signing_procedure(&document_value, fields);
+    //     // add to key_into
+    //     document_value[key_into] = signature_document?.clone();
+    //     // convert to string,
+    //     let document_string = document_value.to_string();
+    //     // use update document function which versions doc with signature
+    //     // return the new document_key
+    //     return self.update_document(&document_key, &document_string)
+    // }
+
+    // pub fn sign_self(&mut self, key_into:&String, fields: Vec<String>) -> Result<&Value, Box<dyn Error>> {
+
+    //     // validate header
+    //     // add
+    // }
+
+    // pub fn verify_signature(&self, document_key: &String, signature_key_from:&String,  fields: Vec<String>) -> Result<&Value, Box<dyn Error>> {
+    //     // check that public key exists
+    //     // validate header
+    //     // add to key_into
+    // }
+
+    // pub fn verify_self_signature(&self, signature_key_from:&String, fields: Vec<String>) -> Result<&Value, Box<dyn Error>> {
+
+    //     // validate header
+    //     // add
+    // }
+
+    /// re-used function to generate a signature json fragment
+    // fn signing_procedure(&self,json_value: &Value, fields: Vec<String>) ->  Result<&Value, Box<dyn Error>> {
+    //     let document_values_string = Agent::get_values_as_string(&json_value, fields);
+    //     let signature = self.sign_string(&document_values_string);
+    //     let agent_id = "";
+    //     let agent_version = "";
+    //     let date = "";
+    //     let signing_algorithm = "";
+
+    //         let signature_document =
+
+    //         "agentid": {
+    //               "description": "The id of agent that produced signature",
+    //               "type": "string",
+    //               "format": "uuid"
+    //             },
+    //             "agentversion": {
+    //               "description": " Version of the agent",
+    //               "type": "string",
+    //               "format": "uuid"
+    //             },
+    //             "date": {
+    //               "description": "Date ",
+    //               "format": "date-time",
+    //               "type": "string"
+    //             },
+    //             "signature": {
+    //               "description": "The actual signature, made from the docid, ",
+    //               "type": "string"
+    //             },
+    //             "signing_algorithm": {
+    //               "description": "What signature algorithm was used",
+    //               "type": "string"
+    //             },
+    //             "fields": {
+    //               "type": "array",
+    //               "description": "fields fields from document were used to generate signature. Defaults to id and version of doc. ",
+    //               "items": {
+    //                 "type": "string"
+    //               }
+    //             }
+
+    //         // validate signature schema
+
+    // }
+
+    /// given a set of fields, return a single string
+    /// this function critical to all signatures
+    /// TODO warn on missing keys
+    fn get_values_as_string(json_value: &Value, keys: Vec<String>) -> String {
+        let mut result = String::new();
+
+        for key in keys {
+            if let Some(value) = json_value.get(&key) {
+                if let Some(str_value) = value.as_str() {
+                    result.push_str(str_value);
+                }
+            }
+            result.push_str(" ");
+        }
+
+        result.trim().to_string()
+    }
 
     pub fn verify_hash(&self, doc: &Value) -> Result<bool, Box<dyn Error>> {
         let original_hash_string = doc[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
