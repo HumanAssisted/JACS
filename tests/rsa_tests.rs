@@ -1,4 +1,5 @@
 mod utils;
+use jacs::agent::boilerplate::BoilerPlate;
 use utils::{load_test_agent_one, set_test_env_vars};
 
 #[test]

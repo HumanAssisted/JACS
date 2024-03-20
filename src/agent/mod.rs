@@ -135,7 +135,8 @@ impl Agent {
         Ok(())
     }
 
-    fn get_private_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    // todo keep this as private
+    pub fn get_private_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         match &self.private_key {
             Some(private_key) => Ok(private_key.clone()),
             None => Err("private_key is None".into()),

@@ -13,6 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use crate::agent::boilerplate::BoilerPlate;
 use strum_macros::{AsRefStr, Display, EnumString};
 
 #[derive(Debug, AsRefStr, Display, EnumString)]
@@ -44,8 +45,12 @@ pub trait KeyManager {
         &mut self,
         agentid: &String,
     ) -> Result<String, Box<dyn std::error::Error>>;
-    // fn sign_string(filepath: &str, data: &str) -> Result<String, Box<dyn std::error::Error>>;
-    // fn verify_string( public_key_path: &str,  data: &str, signature_base64: &str ) -> Result<(), Box<dyn std::error::Error>>;
+    fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>>;
+    fn verify_string(
+        &mut self,
+        data: &String,
+        signature_base64: &String,
+    ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 impl KeyManager for Agent {
@@ -92,6 +97,53 @@ impl KeyManager for Agent {
         }
 
         self.set_keys(private_key, public_key, &key_algorithm)
+    }
+
+    fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>> {
+        let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
+        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        match algo {
+            CryptoSigningAlgorithm::RsaPss => {
+                return rsawrapper::sign_string(self.get_private_key()?, data)
+            }
+            CryptoSigningAlgorithm::RingEd25519 => {
+                return Err("ring-Ed25519 key generation is not implemented.".into());
+            }
+            CryptoSigningAlgorithm::PqDilithium => {
+                return Err("pq-dilithium key generation is not implemented.".into());
+            }
+            _ => {
+                return Err(
+                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
+                );
+            }
+        }
+        Ok("".to_string())
+    }
+    fn verify_string(
+        &mut self,
+        data: &String,
+        signature_base64: &String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
+        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        match algo {
+            CryptoSigningAlgorithm::RsaPss => {
+                return rsawrapper::verify_string(self.get_public_key()?, data, signature_base64)
+            }
+            CryptoSigningAlgorithm::RingEd25519 => {
+                return Err("ring-Ed25519 key generation is not implemented.".into());
+            }
+            CryptoSigningAlgorithm::PqDilithium => {
+                return Err("pq-dilithium key generation is not implemented.".into());
+            }
+            _ => {
+                return Err(
+                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
+                );
+            }
+        }
+        Ok(())
     }
 
     /// for validating signatures

@@ -4,7 +4,7 @@ use std::error::Error;
 
 pub trait BoilerPlate {
     fn get_id(&self) -> Result<String, Box<dyn Error>>;
-    fn get_key(&self) -> Result<String, Box<dyn Error>>;
+    fn get_public_key(&self) -> Result<Vec<u8>, Box<dyn Error>>;
     fn get_version(&self) -> Result<String, Box<dyn Error>>;
     fn as_string(&self) -> Result<String, Box<dyn Error>>;
 }
@@ -17,9 +17,10 @@ impl BoilerPlate for Agent {
         }
     }
 
-    fn get_key(&self) -> Result<String, Box<dyn Error>> {
+    fn get_public_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         match &self.public_key {
-            Some(public_key) => Ok(String::from_utf8(public_key.to_vec())?),
+            // Some(public_key) => Ok(String::from_utf8(public_key.to_vec())?),
+            Some(public_key) => Ok(public_key.to_vec()),
             None => Err("public_key is None".into()),
         }
     }
