@@ -161,6 +161,7 @@ impl KeyManager for Agent {
     }
 }
 
+// TODO conditionally compile for WASM
 fn save_file(file_path: &String, filename: &String, content: &[u8]) -> std::io::Result<String> {
     let full_path = Path::new(file_path).join(filename);
 

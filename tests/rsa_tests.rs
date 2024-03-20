@@ -8,6 +8,7 @@ use utils::{load_test_agent_one, set_test_env_vars};
 fn test_rsa_create() {
     set_test_env_vars();
     let mut agent = load_test_agent_one();
+    agent.generate_keys().expect("Reason");
 }
 
 #[test]

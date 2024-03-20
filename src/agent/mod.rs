@@ -282,10 +282,11 @@ impl Agent {
         return document_schemas.keys().map(|k| k.to_string()).collect();
     }
 
-    /// pass in modified agent JSON
-    /// the function will replace it's intern value after
+    /// pass in modified agent's JSON
+    /// the function will replace it's internal value after:
     /// versioning
     /// resigning
+    /// rehashing
     pub fn update_self(&mut self, new_agent_string: &String) -> Result<String, Box<dyn Error>> {
         let mut new_self: Value = self.schema.validate_agent(new_agent_string)?;
         let original_self = self.value.as_ref().expect("REASON");

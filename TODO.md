@@ -8,7 +8,7 @@ NEEDS TESTS
  - test create signature from string
  - test verify signature from string
 
- ## Integration of signatures
+ ## Integration of signatures ---------------------
 
  - verify signature header
  - get fields needed for signature from signature types
@@ -24,7 +24,7 @@ NEEDS TESTS
  - sign document  **
  - check signature public keys hashmap
 
- ### document permissions
+ ### document permissions ---------------------
 
  - default permissions
  - access permissions
@@ -34,7 +34,7 @@ NEEDS TESTS
  - get fields and data that user has access too
 
 
-### AGENT REGISTRATION
+### AGENT REGISTRATION ---------------------
 
  - schema
   - name of registrar
@@ -43,9 +43,12 @@ NEEDS TESTS
   - registars public key signature
   - registars signature schema
 
+  --------------------------------------------------------
+
 ### debt
 
-- logging
+ - logging
+ - error wrapping
  - refactor to re-use DRY
 
  - more thread safety agent values
@@ -96,30 +99,6 @@ NEEDS TESTS
    - verify signature
 
 
-use serde_json::Value;
-use std::collections::HashMap;
-
-fn main() {
-    let mut map: HashMap<String, Value> = HashMap::new();
-
-    // Insert values into the map
-    map.insert("user:1".to_string(), Value::String("Alice".to_string()));
-    map.insert("user:2".to_string(), Value::String("Bob".to_string()));
-    map.insert("product:1".to_string(), Value::Number(10.into()));
-    map.insert("product:2".to_string(), Value::Number(20.into()));
-
-    // Retrieve values based on a key prefix
-    let prefix = "user:";
-    let user_values: HashMap<&String, &Value> = map
-        .iter()
-        .filter(|(key, _)| key.starts_with(prefix))
-        .collect();
-
-    // Print the retrieved values
-    for (key, value) in &user_values {
-        println!("Key: {}, Value: {}", key, value);
-    }
-}
 
 
  - local schema resolver from buffer/hashmap
@@ -158,7 +137,7 @@ fn main() {
 
 
  # DONE
-
+  --------------------------------------------------------
 NEEDS TESTS
  - set base directory
   - agent key default storage
