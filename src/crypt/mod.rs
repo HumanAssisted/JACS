@@ -26,68 +26,85 @@ enum CryptoSigningAlgorithm {
     }
 */
 
-pub trait CryptManager {
-    fn load_remote_public_key(
-        &self,
+const KEY_DIRECTORY: &str = "JACS_KEY_DIRECTORY";
+const PRIVATE_KEY_PASSWORD_ENV_VAR: &str = "JACS_AGENT_PRIVATE_KEY_PASSWORD";
+const PRIVATE_KEY_FILENAME_ENV_VAR: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
+const PUBLIC_KEY_FILENAME_ENV_VAR: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
+const KEY_ALGORITHM_ENV_VAR: &str = "JACS_AGENT_KEY_ALGORITHM";
+
+trait KeyManager {
+    fn load_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
+    fn generate_keys(&self) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// for validating signatures
+    fn get_remote_foreign_agent_public_key(
+        &mut self,
         agentid: &String,
-        agentversion: &String,
-    ) -> Result<String, Box<dyn Error>>;
-    fn load_local_public_key(
-        &self,
+    ) -> Result<String, Box<dyn std::error::Error>>;
+    fn get_local_foreign_agent_public_key(
+        &mut self,
         agentid: &String,
-        agentversion: &String,
-    ) -> Result<String, Box<dyn Error>>;
-    fn load_local_unencrypted_private_key(
-        &self,
-        agentid: &String,
-        agentversion: &String,
-    ) -> Result<String, Box<dyn Error>>;
-    fn load_local_encrypted_private_key(
-        &self,
-        agentid: &String,
-        agentversion: &String,
-        password: &String,
-    ) -> Result<String, Box<dyn Error>>;
+    ) -> Result<String, Box<dyn std::error::Error>>;
+    // fn sign_string(filepath: &str, data: &str) -> Result<String, Box<dyn std::error::Error>>;
+    // fn verify_string( public_key_path: &str,  data: &str, signature_base64: &str ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
-impl CryptManager for Agent {
-    fn load_remote_public_key(
-        &self,
-        agentid: &String,
-        agentversion: &String,
-    ) -> Result<String, Box<dyn Error>> {
-        Ok("".to_string())
-    }
-    fn load_local_public_key(
-        &self,
-        agentid: &String,
-        agentversion: &String,
-    ) -> Result<String, Box<dyn Error>> {
-        Ok("".to_string())
-    }
-    fn load_local_unencrypted_private_key(
-        &self,
-        agentid: &String,
-        agentversion: &String,
-    ) -> Result<String, Box<dyn Error>> {
-        Ok("".to_string())
-    }
-    fn load_local_encrypted_private_key(
-        &self,
-        agentid: &String,
-        agentversion: &String,
-        password: &String,
-    ) -> Result<String, Box<dyn Error>> {
-        Ok("".to_string())
+impl KeyManager for Agent {
+    fn load_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
+        let default_dir = env::var(KEY_DIRECTORY)?;
+
+        let private_key_filename = env::var(PRIVATE_KEY_FILENAME_ENV_VAR)?;
+        let private_key = load_key_file(&default_dir, &private_key_filename)?;
+        let public_key_filename = env::var(PUBLIC_KEY_FILENAME_ENV_VAR)?;
+        let public_key = load_key_file(&default_dir, &public_key_filename)?;
+
+        let key_algorithm = env::var(KEY_ALGORITHM_ENV_VAR)?;
+        self.set_keys(private_key, public_key, &key_algorithm)
     }
 
-    // setup the signing
-    // fn set_signer(){
+    /// this necessatates updateding the version of the agent
+    fn generate_keys(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // todo encrypt private key
+        let default_dir = env::var(KEY_DIRECTORY)?;
+        let key_algorithm = env::var(KEY_ALGORITHM_ENV_VAR)?;
+        let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
+        if key_algorithm == "rsa-pss" {
+            (private_key, public_key) = rsawrapper::generate_keys().map_err(|e| e.to_string())?;
+            let private_key_filename = env::var(PRIVATE_KEY_FILENAME_ENV_VAR)?;
+            save_file(&default_dir, &private_key_filename, &private_key);
+            let public_key_filename = env::var(PUBLIC_KEY_FILENAME_ENV_VAR)?;
+            save_file(&default_dir, &public_key_filename, &public_key);
+        } else if key_algorithm == "ring-Ed25519" {
+            return Err("ring-Ed25519 key generation is not implemented.".into());
+        } else if key_algorithm == "pq-dilithium" {
+            return Err("pq-dilithium key generation is not implemented.".into());
+        } else {
+            // Handle other algorithms or return an error
+            return Err(
+                format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
+            );
+        }
 
-    // }
+        self.set_keys(private_key, public_key, &key_algorithm)
+    }
+
+    /// for validating signatures
+    fn get_remote_foreign_agent_public_key(
+        &mut self,
+        agentid: &String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        Ok("".to_string())
+    }
+    fn get_local_foreign_agent_public_key(
+        &mut self,
+        agentid: &String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        Ok("".to_string())
+    }
 }
 
-fn save_file(file_path: &str, filename: &str, content: &[u8]) -> std::io::Result<String> {
+fn save_file(file_path: &String, filename: &String, content: &[u8]) -> std::io::Result<String> {
     let full_path = Path::new(file_path).join(filename);
 
     if full_path.exists() {
@@ -109,9 +126,9 @@ fn save_file(file_path: &str, filename: &str, content: &[u8]) -> std::io::Result
     }
 }
 
-fn load_file(file_path: &str, filename: &str) -> std::io::Result<String> {
+fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
     let full_path = Path::new(file_path).join(filename);
-    return std::fs::read_to_string(full_path);
+    return std::fs::read(full_path);
 }
 
 // Helper function to create a backup file name based on the current timestamp

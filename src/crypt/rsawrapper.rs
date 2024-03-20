@@ -16,23 +16,9 @@ use signature::{RandomizedSigner, Verifier};
 // todo option for more secure
 //static BITSOFBITS: usize = 4096;
 static BITSOFBITS: usize = 2048;
-static RSA_PSS_PRIVATE_KEY_FILENAME: &str = "rsa_pss_private.pem";
-static RSA_PSS_PUBLIC_KEY_FILENAME: &str = "rsa_pss_public.pem";
-
-fn load_private_key_from_file(filepath: &str) -> Result<RsaPrivateKey, Box<dyn std::error::Error>> {
-    let pem = super::load_file(filepath, RSA_PSS_PRIVATE_KEY_FILENAME)?;
-    let private_key = RsaPrivateKey::from_pkcs8_pem(&pem)?;
-    Ok(private_key)
-}
-
-fn load_public_key_from_file(filepath: &str) -> Result<RsaPublicKey, Box<dyn std::error::Error>> {
-    let pem = super::load_file(filepath, RSA_PSS_PUBLIC_KEY_FILENAME)?;
-    let public_key = RsaPublicKey::from_public_key_pem(&pem)?;
-    Ok(public_key)
-}
 
 /// returns public, public_filepath, private, private_filepath
-pub fn generate_keys(filepath: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
+pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS).expect("failed to generate a key");
     let public_key = RsaPublicKey::from(&private_key);
@@ -40,22 +26,19 @@ pub fn generate_keys(filepath: &str) -> Result<(String, String), Box<dyn std::er
     let private_key_pem = private_key.to_pkcs8_pem(LineEnding::CRLF)?;
     let public_key_pem = public_key.to_public_key_pem(LineEnding::CRLF)?;
 
-    let private_key_path = super::save_file(
-        filepath,
-        RSA_PSS_PRIVATE_KEY_FILENAME,
-        private_key_pem.as_bytes(),
-    )?;
-    let public_key_path = super::save_file(
-        filepath,
-        RSA_PSS_PUBLIC_KEY_FILENAME,
-        public_key_pem.as_bytes(),
-    )?;
-
-    Ok((private_key_path, public_key_path))
+    Ok((
+        private_key_pem.as_bytes().to_vec(),
+        public_key_pem.as_bytes().to_vec(),
+    ))
 }
 
-pub fn sign_string(filepath: &str, data: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let private_key = load_private_key_from_file(filepath)?;
+pub fn sign_string(
+    private_key_content: Vec<u8>,
+    data: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let private_key_content_converted =
+        std::str::from_utf8(&private_key_content).expect("Failed to convert bytes to string");
+    let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_content_converted)?;
     let mut rng = thread_rng();
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut rng, data.as_bytes());
@@ -67,12 +50,13 @@ pub fn sign_string(filepath: &str, data: &str) -> Result<String, Box<dyn std::er
 }
 
 pub fn verify_string(
-    public_key_path: &str,
-    data: &str,
+    public_key_content: Vec<u8>,
+    data: &String,
     signature_base64: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let public_key = load_public_key_from_file(public_key_path)?;
-    // println!("Loaded public key: {:?}", public_key);
+    let public_key_content_converted =
+        std::str::from_utf8(&public_key_content).expect("Failed to convert bytes to string");
+    let public_key = RsaPublicKey::from_public_key_pem(&public_key_content_converted)?;
 
     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
 

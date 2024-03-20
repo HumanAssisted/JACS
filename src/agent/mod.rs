@@ -8,22 +8,23 @@ use crate::crypt::CryptManager;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 use boilerplate::BoilerPlate;
+use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
-use reqwest;
-
-use chrono::prelude::*;
 use log::{debug, error, warn};
+use reqwest;
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::fmt;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-use std::sync::{Arc, Mutex};
-
-static SHA256_FIELDNAME: &str = "sha256";
+const SHA256_FIELDNAME: &str = "sha256";
+const DEFAULT_DIRECTORY_ENV_VAR: &str = "JACS_AGENT_DEFAULT_DIRECTORY";
 
 pub struct JACSDocument {
     id: String,
@@ -55,12 +56,12 @@ pub struct Agent {
     document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     public_keys: HashMap<String, String>,
-
+    default_directory: PathBuf,
     /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
-    public_key: Option<String>,
-    private_key: Option<String>,
+    public_key: Option<Vec<u8>>,
+    private_key: Option<Vec<u8>>,
     key_algorithm: Option<String>,
 }
 
@@ -89,12 +90,16 @@ impl Agent {
         let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let mut document_map = Arc::new(Mutex::new(HashMap::new()));
         let mut public_keys: HashMap<String, String> = HashMap::new();
+        let default_directory = env::var(DEFAULT_DIRECTORY_ENV_VAR)
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| env::current_dir().unwrap());
         Ok(Self {
             schema,
             value: None,
             document_schemas: document_schemas_map,
             documents: document_map,
             public_keys: public_keys,
+            default_directory: default_directory,
             id: None,
             version: None,
             key_algorithm: None,
@@ -117,11 +122,28 @@ impl Agent {
         true
     }
 
-    fn get_private_key(&self) -> Result<String, Box<dyn Error>> {
-        match &self.private_key {
-            Some(private_key) => Ok(private_key.to_string()),
+    pub fn set_keys(
+        &mut self,
+        private_key: Vec<u8>,
+        public_key: Vec<u8>,
+        key_algorithm: &String,
+    ) -> Result<(), Box<dyn Error>> {
+        self.private_key = Some(private_key);
+        self.public_key = Some(public_key);
+        //TODO check algo
+        self.key_algorithm = Some(key_algorithm.to_string());
+        Ok(())
+    }
+
+    fn get_private_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        match self.private_key {
+            Some(private_key) => Ok(private_key.clone()),
             None => Err("private_key is None".into()),
         }
+    }
+
+    pub fn get_default_dir(&self) -> &PathBuf {
+        &self.default_directory.clone()
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
@@ -381,31 +403,6 @@ impl Agent {
     // }
 
     /// returns path and filename of keys
-    pub fn newkeys(
-        &mut self,
-        algorithm: &String,
-        filepath_prefix: &String,
-    ) -> Result<(String, String), String> {
-        // make sure the actor has an id and is loaded
-        let agent_id = &self.id;
-        let agent_version = &self.version;
-
-        if algorithm == "rsa-pss" {
-            let (private_key_path, public_key_path) =
-                rsawrapper::generate_keys(filepath_prefix).map_err(|e| e.to_string())?;
-            Ok((private_key_path, public_key_path))
-        } else if algorithm == "ring-Ed25519" {
-            Err("ring-Ed25519 key generation is not implemented.".to_string())
-        } else if algorithm == "pq-dilithium" {
-            Err("pq-dilithium key generation is not implemented.".to_string())
-        } else {
-            // Handle other algorithms or return an error
-            Err(format!(
-                "{} is not a known or implemented algorithm.",
-                algorithm
-            ))
-        }
-    }
 
     pub fn validate_header(
         &mut self,

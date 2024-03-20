@@ -2,8 +2,7 @@
 
 ### document CRUD
 
- - agent update version and validate (version self)
- - agent update version and validate
+
 
 
  - logging
@@ -13,6 +12,7 @@
 
  ### document signing
 
+ - add public key signature to agent so users can verify
  - set base directory
  - agent key default storage
  - agent key loading
@@ -30,6 +30,14 @@
  - get fields and data that user has access too
 
 
+AGENT REGISTRATION
+
+ - schema
+  - name of registrar
+  - public key location/url
+  - public key hash
+  - registars public key signature
+  - registars signature schema
 
 
 
@@ -141,6 +149,8 @@ fn main() {
 
 
  # DONE
+  - agent update version and validate (version self)
+ - agent update version and validate
   - document copy , hash, validate, and store
  - document edit - copy, add fields, diff, hash, validate, store
   - remove document
