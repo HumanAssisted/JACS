@@ -48,6 +48,7 @@ pub struct Agent {
     /// the JSONSchema used
     schema: Schema,
     /// the agent JSON Struct
+    /// TODO make this threadsafe
     value: Option<Value>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
@@ -256,6 +257,47 @@ impl Agent {
     pub fn get_schema_keys(&mut self) -> Vec<String> {
         let document_schemas = self.document_schemas.lock().unwrap();
         return document_schemas.keys().map(|k| k.to_string()).collect();
+    }
+
+    /// pass in modified agent JSON
+    /// the function will replace it's intern value after
+    /// versioning
+    /// resigning
+    pub fn update_self(&mut self, new_agent_string: &String) -> Result<String, Box<dyn Error>> {
+        let mut new_self: Value = self.schema.validate_agent(new_agent_string)?;
+        let original_self = self.value.as_ref().expect("REASON");
+        let orginal_id = &original_self.get_str("id");
+        let orginal_version = &original_self.get_str("version");
+        // check which fields are different
+        let new_doc_orginal_id = &new_self.get_str("id");
+        let new_doc_orginal_version = &new_self.get_str("version");
+        if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
+            return Err(format!(
+                "The id/versions do not match for old and new agent:  . {:?}{:?}",
+                new_doc_orginal_id, new_doc_orginal_version
+            )
+            .into());
+        }
+
+        // validate schema
+        let new_version = Uuid::new_v4().to_string();
+        let last_version = &original_self["version"];
+        let versioncreated = Utc::now().to_rfc3339();
+
+        new_self["lastVersion"] = last_version.clone();
+        new_self["version"] = json!(format!("{}", new_version));
+        new_self["versionDate"] = json!(format!("{}", versioncreated));
+
+        // generate new keys?
+        // sign new version
+
+        // hash new version
+        let document_hash = self.hash_doc(&new_self)?;
+        new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        //replace ones self
+        self.version = Some(new_self["version"].to_string());
+        self.value = Some(new_self.clone());
+        Ok(new_self["version"].to_string())
     }
 
     /// pass in modified doc

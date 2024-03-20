@@ -1,4 +1,5 @@
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::agent::loaders::FileLoader;
 
 #[test]
 fn test_load_agent_json() {
@@ -39,6 +40,37 @@ fn test_load_agent_json() {
     //     agent2.private_key().unwrap(),
     //     agent2.public_key().unwrap()
     // );
+}
+
+#[test]
+fn test_update_agent() {
+    // cargo test   --test schema_tests -- --nocapture
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version)
+        .expect("Agent schema should have instantiated");
+    let result = agent.load_by_id("agent-one".to_string(), None);
+
+    match result {
+        Ok(_) => {
+            println!(
+                "AGENT LOADED {} {} ",
+                agent.get_id().unwrap(),
+                agent.get_version().unwrap()
+            );
+        }
+        Err(e) => {
+            eprintln!("Error loading agent: {}", e);
+            panic!("Agent loading failed");
+        }
+    }
+
+    let modified_agent_string = agent
+        .load_local_document(&"examples/agents/agent-one-modified.json".to_string())
+        .unwrap();
+
+    let new_agent_version = agent.update_self(&modified_agent_string).unwrap();
+    println!("NEW AGENT VERSION {}", new_agent_version);
 }
 
 #[test]

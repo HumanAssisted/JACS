@@ -2,10 +2,6 @@
 
 ### document CRUD
 
- - document copy , hash, validate, and store
- - document edit - copy, add fields, diff, hash, validate, store
-
-
  - agent update version and validate (version self)
  - agent update version and validate
 
@@ -145,6 +141,8 @@ fn main() {
 
 
  # DONE
+  - document copy , hash, validate, and store
+ - document edit - copy, add fields, diff, hash, validate, store
   - remove document
 - new document with custom schema - validate and store
  - list stored documents
