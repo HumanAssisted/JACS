@@ -219,9 +219,9 @@ impl Agent {
         let document = self.get_document(document_key).expect("Reason");
         let mut document_value = document.value;
         // create signture sub document
-        let signature_document = self.signing_procedure(&document_value, fields);
+        let signature_document = self.signing_procedure(&document_value, fields)?;
         // add to key_into
-        document_value[key_into] = signature_document?.clone();
+        document_value[key_into] = signature_document.clone();
         // convert to string,
         let document_string = document_value.to_string();
         // use update document function which versions doc with signature
@@ -235,13 +235,33 @@ impl Agent {
     //     // add
     // }
 
-    // pub fn verify_signature(&self, document_key: &String, signature_key_from:&String,  fields: Vec<String>) -> Result<&Value, Box<dyn Error>> {
-    //     // check that public key exists
-    //     // validate header
-    //     // add to key_into
-    // }
+    pub fn verify_document_signature(
+        &mut self,
+        document_key: &String,
+        signature_key_from: &String,
+        fields: Vec<String>,
+    ) -> Result<(), Box<dyn Error>> {
+        // check that public key exists
+        let document = self.get_document(document_key).expect("Reason");
+        let document_value = document.value;
+        // this is innefficient since I generate a whole document
+        let verifying_signature_document = self.signing_procedure(&document_value, fields)?;
+        let original_signature_document = &document_value[signature_key_from];
+        if original_signature_document["signature"] != verifying_signature_document["signature"] {
+            let error_message = format!(
+                "Signatures don't match for doc {}! {:?} != {:?}",
+                document_key,
+                original_signature_document["signature"],
+                verifying_signature_document["signature"]
+            );
+            error!("{}", error_message);
+            return Err(error_message.into());
+        }
+        // add to key_into
+        Ok(())
+    }
 
-    // pub fn verify_self_signature(&self, signature_key_from:&String, fields: Vec<String>) -> Result<&Value, Box<dyn Error>> {
+    // pub fn verify_self_signature(&self, signature_key_from:&String, fields: Vec<String>) -> Result<(), Box<dyn Error>> {
 
     //     // validate header
     //     // add
@@ -264,7 +284,7 @@ impl Agent {
             Err(err) => return Err(Box::new(err)),
         };
         let signature_document = json!({
-
+            // based on v1
             "agentid": agent_id,
             "agentversion": agent_version,
             "date": date,
