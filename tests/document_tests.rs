@@ -107,12 +107,11 @@ fn test_load_custom_schema_and_custom_document_and_update() {
     let new_document_key = agent
         .update_document(&document_key, &modified_document_string)
         .unwrap();
-    println!(
-        "new_document_key {} {}",
-        new_document_key, modified_document_string
-    );
+
     let document = agent.get_document(&new_document_key).unwrap();
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
+
+    println!("updated {} {}", new_document_key, document);
 }
