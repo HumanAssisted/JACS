@@ -172,6 +172,7 @@ impl Agent {
         if self.id.is_some() {
             let id_string = self.id.clone().expect("string expected").to_string();
             self.load_keys();
+            debug!("loaded keys for agent")
         }
 
         return Ok(());
@@ -689,20 +690,11 @@ impl Agent {
             self.id = value.get_str("id");
             self.version = value.get_str("version");
         }
-        //let instance = self.schema.create(json)?;
-
-        // self.value = Some(instance.clone());
-        // if let Some(ref value) = self.value {
-        //     self.id = value.get_str("id");
-        //     self.version = value.get_str("version");
-        // }
-
         if create_keys {
-            // chose algorithm
-            // create pub and private key
-            // place in dir [jacs]/keys/[agent-id]/key|pubkey
-            // self sign if agent
+            self.generate_keys()?;
         }
+        let _ = self.load_keys();
+
         // validate schema json string
         // make sure id and version are empty
 

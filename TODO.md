@@ -2,15 +2,9 @@
 
 ### document signing
 
-- hard code keys which are signatures for self signing
-- make sure signature field doesn't use forbidden fields like sha256 and itself
-- sha of public key in every signature as part of schema, require it in schema
-- sign every creation or update
-
 NEEDS TESTS
 
- - agent key creation
- - test create signature from string
+
  - test verify signature from string
 
  ## Integration of signatures ---------------------
@@ -153,11 +147,18 @@ NEEDS TESTS
  # DONE
   --------------------------------------------------------
 NEEDS TESTS
+- hard code keys which are signatures for self signing
+- make sure signature field doesn't use forbidden fields like sha256 and itself
  - set base directory
   - agent key default storage
  - agent key loading
+ - sha of public key in every signature as part of schema, require it in schema
+- sign every creation or update
+
 
  ### crud
+  - agent key creation
+  - test create signature from string
   - agent update version and validate (version self)
  - agent update version and validate
   - document copy , hash, validate, and store
