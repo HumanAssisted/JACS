@@ -2,6 +2,11 @@
 
 ### document signing
 
+- hard code keys which are signatures for self signing
+- make sure signature field doesn't use forbidden fields like sha256 and itself
+- sha of public key in every signature as part of schema, require it in schema
+- sign every creation or update
+
 NEEDS TESTS
 
  - agent key creation
@@ -13,11 +18,20 @@ NEEDS TESTS
  - verify signature header
  - get fields needed for signature from signature types
  - create or verify signature
-
- - hard code keys which are signatures
- - self sign agent
  - sign documents
- - sign change
+
+ DONE ABOVE, but TESTING
+
+
+
+ - sign every version on default fields, to default field
+
+
+ - self sign agent
+ - update agent on version change requires some thinking, save self?
+ - on key creation save self?
+
+
 
 
  - add public key signature to agent so users can verify public key

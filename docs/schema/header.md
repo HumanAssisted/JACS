@@ -23,7 +23,7 @@ The basis for a JACS document
 | [permissions](#permissions)                 | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")         |
 | [version](#version)                         | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")                 |
 | [versionDate](#versiondate)                 | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")         |
-| [versionSignature](#versionsignature)       | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionSignature")       |
+| [self-signature](#self-signature)           | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/self-signature")         |
 | [versionRegistration](#versionregistration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionRegistration")    |
 | [previousVersion](#previousversion)         | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion") |
 | [originalVersion](#originalversion)         | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion") |
@@ -131,11 +131,11 @@ Date
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
-## versionSignature
+## self-signature
 
 Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
-`versionSignature`
+`self-signature`
 
 *   is optional
 
@@ -143,9 +143,9 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionSignature")
+*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/self-signature")
 
-### versionSignature Type
+### self-signature Type
 
 `object` ([Signature](signature.md))
 
@@ -213,7 +213,7 @@ Original Version id of the object. When documents are copied without merging, th
 
 ## sha256
 
-Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature.
+Hash of every field except this one . During  updates and creation hash is the last thing to occur, as it includes the signature.
 
 `sha256`
 

@@ -36,8 +36,8 @@ fn test_load_document_sign_and_verify() {
     let mut fields: Vec<String> = Vec::new();
     fields.push("favorite-snack".to_string());
     let new_document_key = agent
-        .sign_document(&document_key, &signature_field_name, &fields)
-        .unwrap();
+        .sign_document(&document_key, &signature_field_name, Some(&fields))
+        .expect("REASON");
     println!("new_document_key signed {}", new_document_key);
 }
 

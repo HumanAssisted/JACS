@@ -36,8 +36,8 @@
       "format": "date-time",
       "type": "string"
     },
-    "versionSignature": {
-      "description": "Signature of this version by the author verifying",
+    "self-signature": {
+      "description": "Signature of of every field except this one and the hashing field",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "versionRegistration": {
@@ -55,7 +55,7 @@
       "format": "uuid"
     },
     "sha256": {
-      "description": "Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature.",
+      "description": "Hash of every field except this one . During  updates and creation hash is the last thing to occur, as it includes the signature.",
       "type": "string"
     }
   },

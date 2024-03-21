@@ -4,7 +4,7 @@
 https://hai.ai/schemas/header/v1/header-schema.json#/properties/sha256
 ```
 
-Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature.
+Hash of every field except this one . During  updates and creation hash is the last thing to occur, as it includes the signature.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------- |
