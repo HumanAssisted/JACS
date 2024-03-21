@@ -171,8 +171,7 @@ impl Agent {
 
         if self.id.is_some() {
             let id_string = self.id.clone().expect("string expected").to_string();
-            //self.public_key = Some(self.loader.load_local_public_key(&id_string)?);
-            //self.private_key = Some(self.loader.load_local_unencrypted_private_key(&id_string)?);
+            self.load_keys();
         }
 
         return Ok(());
@@ -229,6 +228,7 @@ impl Agent {
         document_value[key_into] = signature_document.clone();
         // convert to string,
         let document_string = document_value.to_string();
+        println!("createdd ocument_string :\n{}", document_string);
         // use update document function which versions doc with signature
         // return the new document_key
         return self.update_document(&document_key, &document_string);

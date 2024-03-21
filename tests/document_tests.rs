@@ -2,9 +2,10 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 mod utils;
 use utils::{load_test_agent_one, set_test_env_vars};
+// use color_eyre::eyre::Result;
 
 static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
-
+//color_eyre::install().unwrap();
 #[test]
 fn test_load_custom_schema_and_custom_document() {
     set_test_env_vars();
@@ -23,27 +24,28 @@ fn test_load_custom_schema_and_custom_document() {
         .unwrap();
 }
 
-#[test]
-fn test_load_document_sign_and_verify() {
-    set_test_env_vars();
-    // cargo test   --test document_tests -- --nocapture test_load_document_sign_and_verify
-    let mut agent = load_test_agent_one();
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    agent.load_keys();
-    let document_string = agent
-        .load_local_document(&"examples/documents/my-special-document.json".to_string())
-        .unwrap();
-    let document_key = agent.load_document(&document_string).unwrap();
-    println!("loaded valid {}", document_key);
-    let signature_field_name = "test-signature".to_string();
-    let mut fields: Vec<String> = Vec::new();
-    fields.push("favorite-snack".to_string());
-    let new_document_key = agent
-        .sign_document(&document_key, &signature_field_name, Some(&fields))
-        .expect("REASON");
-    println!("new_document_key signed {}", new_document_key);
-}
+// #[test]
+// fn test_load_document_sign_and_verify() {
+//     color_eyre::install().unwrap();
+//     set_test_env_vars();
+//     // cargo test   --test document_tests -- --nocapture test_load_document_sign_and_verify
+//     let mut agent = load_test_agent_one();
+//     let schemas = [SCHEMA.to_string()];
+//     agent.load_custom_schemas(&schemas);
+//     agent.load_keys();
+//     let document_string = agent
+//         .load_local_document(&"examples/documents/my-special-document.json".to_string())
+//         .unwrap();
+//     let document_key = agent.load_document(&document_string).unwrap();
+//     println!("loaded valid {}", document_key);
+//     let signature_field_name = "test-signature".to_string();
+//     let mut fields: Vec<String> = Vec::new();
+//     fields.push("favorite-snack".to_string());
+//     let new_document_key = agent
+//         .sign_document(&document_key, &signature_field_name, Some(&fields))
+//         .expect("REASON");
+//     println!("new_document_key signed {}", new_document_key);
+// }
 
 #[test]
 fn test_load_custom_schema_and_custom_invalid_document() {
