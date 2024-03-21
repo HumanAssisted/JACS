@@ -1,11 +1,13 @@
 use jacs::agent::loaders::FileLoader;
+use jacs::crypt::KeyManager;
 mod utils;
-use utils::load_test_agent_one;
+use utils::{load_test_agent_one, set_test_env_vars};
 
 static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
 
 #[test]
 fn test_load_custom_schema_and_custom_document() {
+    set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
@@ -23,10 +25,12 @@ fn test_load_custom_schema_and_custom_document() {
 
 #[test]
 fn test_load_document_sign_and_verify() {
+    set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture test_load_document_sign_and_verify
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
+    agent.load_keys();
     let document_string = agent
         .load_local_document(&"examples/documents/my-special-document.json".to_string())
         .unwrap();
@@ -43,6 +47,7 @@ fn test_load_document_sign_and_verify() {
 
 #[test]
 fn test_load_custom_schema_and_custom_invalid_document() {
+    set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
@@ -70,6 +75,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
 
 #[test]
 fn test_load_custom_schema_and_new_custom_document() {
+    set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
@@ -88,6 +94,7 @@ fn test_load_custom_schema_and_new_custom_document() {
 #[test]
 fn test_load_custom_schema_and_custom_document_and_update() {
     // cargo test   --test document_tests -- --nocapture
+    set_test_env_vars();
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);

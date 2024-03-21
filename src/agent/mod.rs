@@ -224,6 +224,7 @@ impl Agent {
         let mut document_value = document.value;
         // create signture sub document
         let signature_document = self.signing_procedure(&document_value, fields, key_into)?;
+        debug!("created sig document :\n{}", signature_document);
         // add to key_into
         document_value[key_into] = signature_document.clone();
         // convert to string,
@@ -274,14 +275,20 @@ impl Agent {
         fields: Option<&Vec<String>>,
         placement_key: &String,
     ) -> Result<Value, Box<dyn Error>> {
+        println!("placement_key:\n{}", placement_key);
         let document_values_string =
             Agent::get_values_as_string(&json_value, fields.cloned(), placement_key)?;
+        println!(
+            "signing_procedure document_values_string:\n{}",
+            document_values_string
+        );
         let signature = self.sign_string(&document_values_string)?;
-
+        println!("signing_procedure created signature :\n{}", signature);
         let binding = String::new();
         let agent_id = self.id.as_ref().unwrap_or(&binding);
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = Utc::now().to_rfc3339();
+
         let signing_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
         let serialized_fields = match to_value(fields) {
             Ok(value) => value,
@@ -314,10 +321,11 @@ impl Agent {
     /// TODO warn on missing keys
     fn get_values_as_string(
         json_value: &Value,
-        mut keys: Option<Vec<String>>,
+        keys: Option<Vec<String>>,
         placement_key: &String,
     ) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
+        debug!("get_values_as_string keys:\n{:?}", keys);
         let key_iterator = match keys {
             Some(keys) => keys,
             None => {
@@ -362,6 +370,10 @@ impl Agent {
                 }
             }
         }
+        debug!(
+            "get_values_as_string result: {:?}",
+            result.trim().to_string()
+        );
         Ok(result.trim().to_string())
     }
 
