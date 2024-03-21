@@ -4,33 +4,13 @@
 
 NEEDS TESTS
 
-
- - test verify signature from string
-
  ## Integration of signatures ---------------------
-
- - verify signature header
- - get fields needed for signature from signature types
- - create or verify signature
- - sign documents
-
- DONE ABOVE, but TESTING
-
-
-
- - sign every version on default fields, to default field
-
-
+ - verify public key used with hash
+ - load public signature
+ - test verify signature of agent
+ - test verify signature of doc
  - self sign agent
- - update agent on version change requires some thinking, save self?
- - on key creation save self?
 
-
-
-
- - add public key signature to agent so users can verify public key
- - sign document  **
- - check signature public keys hashmap
 
  ### document permissions ---------------------
 
@@ -147,6 +127,10 @@ NEEDS TESTS
  # DONE
   --------------------------------------------------------
 NEEDS TESTS
+ - verify signature header
+ - get fields needed for signature from signature types
+ - create or verify signature
+ - sign documents
 - hard code keys which are signatures for self signing
 - make sure signature field doesn't use forbidden fields like sha256 and itself
  - set base directory
@@ -157,6 +141,9 @@ NEEDS TESTS
 
 
  ### crud
+
+ - sign every version on default fields, to default field
+
   - agent key creation
   - test create signature from string
   - agent update version and validate (version self)
