@@ -34,7 +34,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "fields fields from document were used to generate signature. Defaults to id and version of doc. ",
+      "description": "fields fields from document which were used to generate signature.",
       "items": {
         "type": "string"
       }

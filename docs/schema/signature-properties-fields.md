@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields
 ```
 
-fields fields from document were used to generate signature. Defaults to id and version of doc.
+fields fields from document which were used to generate signature.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                    |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------------ |

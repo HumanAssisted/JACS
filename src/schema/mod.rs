@@ -107,6 +107,7 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(errors) => {
+                error!("error validating header schema");
                 let error_messages: Vec<String> =
                     errors.into_iter().map(|e| e.to_string()).collect();
                 Err(error_messages
@@ -131,6 +132,7 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(()),
             Err(errors) => {
+                error!("error validating signature schema");
                 let error_messages: Vec<String> =
                     errors.into_iter().map(|e| e.to_string()).collect();
                 Err(error_messages
@@ -165,6 +167,7 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(errors) => {
+                error!("error validating agent schema");
                 let error_messages: Vec<String> =
                     errors.into_iter().map(|e| e.to_string()).collect();
                 Err(error_messages

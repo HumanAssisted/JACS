@@ -26,7 +26,7 @@
 
 *   [Untitled array in Permission](./permission-properties-fields-items.md) – `https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/fields/items`
 
-*   [Untitled array in Signature](./signature-properties-fields.md "fields fields from document were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields`
+*   [Untitled array in Signature](./signature-properties-fields.md "fields fields from document which were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields`
 
 ## Version Note
 

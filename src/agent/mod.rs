@@ -207,33 +207,6 @@ impl Agent {
     //     .filter(|(key, _)| key.starts_with(prefix))
     //     .collect();
 
-    /// generates a valid signature based on document fields
-    /// document_id - document to sign, previously loaded
-    /// key_into
-    /// fields in doc to generate key from currently ignores errors
-    /// Returns a new documentid since signing modifies it.
-    pub fn sign_document(
-        &mut self,
-        document_key: &String,
-        key_into: &String,
-        fields: Option<&Vec<String>>,
-    ) -> Result<String, Box<dyn Error>> {
-        // check that private key exists
-        let document = self.get_document(document_key).expect("Reason");
-        let mut document_value = document.value;
-        // create signture sub document
-        let signature_document = self.signing_procedure(&document_value, fields, key_into)?;
-        debug!("created sig document :\n{}", signature_document);
-        // add to key_into
-        document_value[key_into] = signature_document.clone();
-        // convert to string,
-        let document_string = document_value.to_string();
-        println!("createdd ocument_string :\n{}", document_string);
-        // use update document function which versions doc with signature
-        // return the new document_key
-        return self.update_document(&document_key, &document_string);
-    }
-
     pub fn verify_document_signature(
         &mut self,
         document_key: &String,
@@ -260,6 +233,7 @@ impl Agent {
         Ok(())
     }
 
+    // TODO
     // pub fn verify_self_signature(&self, signature_key_from:&String, fields: Vec<String>) -> Result<(), Box<dyn Error>> {
 
     //     // validate header
@@ -275,22 +249,23 @@ impl Agent {
         fields: Option<&Vec<String>>,
         placement_key: &String,
     ) -> Result<Value, Box<dyn Error>> {
-        println!("placement_key:\n{}", placement_key);
-        let document_values_string =
+        debug!("placement_key:\n{}", placement_key);
+        let (document_values_string, accepted_fields) =
             Agent::get_values_as_string(&json_value, fields.cloned(), placement_key)?;
-        println!(
+        debug!(
             "signing_procedure document_values_string:\n{}",
             document_values_string
         );
         let signature = self.sign_string(&document_values_string)?;
-        println!("signing_procedure created signature :\n{}", signature);
+        debug!("signing_procedure created signature :\n{}", signature);
         let binding = String::new();
         let agent_id = self.id.as_ref().unwrap_or(&binding);
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = Utc::now().to_rfc3339();
 
         let signing_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
-        let serialized_fields = match to_value(fields) {
+
+        let serialized_fields = match to_value(accepted_fields) {
             Ok(value) => value,
             Err(err) => return Err(Box::new(err)),
         };
@@ -309,9 +284,9 @@ impl Agent {
             "fields": serialized_fields
         });
         // TODO add sha256 of public key
-
         // validate signature schema
         let _ = self.schema.validate_signature(&signature_document)?;
+
         return Ok(signature_document);
     }
 
@@ -323,10 +298,10 @@ impl Agent {
         json_value: &Value,
         keys: Option<Vec<String>>,
         placement_key: &String,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<(String, Vec<String>), Box<dyn Error>> {
         let mut result = String::new();
         debug!("get_values_as_string keys:\n{:?}", keys);
-        let key_iterator = match keys {
+        let accepted_fields = match keys {
             Some(keys) => keys,
             None => {
                 // Choose default field names
@@ -346,7 +321,7 @@ impl Agent {
             }
         };
 
-        for key in key_iterator {
+        for key in &accepted_fields {
             if let Some(value) = json_value.get(&key) {
                 if let Some(str_value) = value.as_str() {
                     if str_value == placement_key
@@ -371,10 +346,11 @@ impl Agent {
             }
         }
         debug!(
-            "get_values_as_string result: {:?}",
-            result.trim().to_string()
+            "get_values_as_string result: {:?} fields {:?}",
+            result.trim().to_string(),
+            accepted_fields
         );
-        Ok(result.trim().to_string())
+        Ok((result.trim().to_string(), accepted_fields))
     }
 
     /// verify the hash of a complete document that has SHA256_FIELDNAME
@@ -548,7 +524,6 @@ impl Agent {
             None,
             &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
         )?;
-        // sign new version
 
         // hash new version
         let document_hash = self.hash_doc(&value)?;

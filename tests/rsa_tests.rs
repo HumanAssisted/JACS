@@ -15,7 +15,6 @@ fn test_rsa_create() {
 fn test_rsa_create_and_verify_signature() {
     set_test_env_vars();
     let mut agent = load_test_agent_one();
-    agent.load_keys();
     let private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
     println!(

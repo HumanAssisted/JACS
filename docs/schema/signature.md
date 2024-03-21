@@ -148,7 +148,7 @@ What signature algorithm was used
 
 ## fields
 
-fields fields from document were used to generate signature. Defaults to id and version of doc.
+fields fields from document which were used to generate signature.
 
 `fields`
 
