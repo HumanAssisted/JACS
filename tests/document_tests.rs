@@ -134,7 +134,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let new_document_string = new_document_ref.to_string();
     let copy_newdocument = agent2.load_document(&new_document_string).unwrap();
     let copy_newdocument_key = copy_newdocument.getkey();
-
+    println!("new document with sig: /n {}", new_document_string);
     agent2
         .verify_document_signature(
             &copy_newdocument_key,

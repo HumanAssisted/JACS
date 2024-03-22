@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
+use log::{debug, error, warn};
 use rand::rngs::OsRng;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
@@ -57,31 +58,31 @@ pub fn verify_string(
     let public_key_content_converted =
         std::str::from_utf8(&public_key_content).expect("Failed to convert bytes to string");
 
-    println!(
+    debug!(
         "public_key_content_converted {}",
         public_key_content_converted
     );
 
     let public_key = RsaPublicKey::from_public_key_pem(&public_key_content_converted)?;
 
-    println!("public_key_content_converted pem {:?}", public_key);
+    debug!("public_key_content_converted pem {:?}", public_key);
 
     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-    println!("verifying_key pem {:?}", verifying_key);
+    debug!("verifying_key pem {:?}", verifying_key);
 
-    println!("signature_base64  {}", signature_base64);
+    debug!("signature_base64  {}", signature_base64);
 
     let signature_bytes = general_purpose::STANDARD.decode(signature_base64)?;
-    println!("Decoded signature bytes: {:?}", signature_bytes);
+    debug!("Decoded signature bytes: {:?}", signature_bytes);
 
     let signature = Signature::try_from(signature_bytes.as_slice())?;
-    println!("Created Signature object: {:?}", signature);
+    debug!("Created Signature object: {:?}", signature);
 
     let result = verifying_key.verify(data.as_bytes(), &signature);
 
     match result {
         Ok(()) => {
-            println!("Signature verification succeeded");
+            debug!("Signature verification succeeded");
             Ok(())
         }
         Err(e) => {

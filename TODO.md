@@ -6,8 +6,7 @@ NEEDS TESTS
 
  ## Integration of signatures ---------------------
 
- - load different agent's public_key for public signature for doc
- - test verify signature of agent
+ - test self verify signature
 
 
 
@@ -15,7 +14,7 @@ NEEDS TESTS
 ### AGENT REGISTRATION ---------------------
 
  - schema
-  - update registration to be signature and reserved word.
+  - update registration to be signature and reserved word. ***
   - name of registrar
   - public key location/url
   - public key hash
@@ -41,6 +40,8 @@ NEEDS TESTS
 
 ### debt
 
+ - test verify signature of other agent on registration
+ - check public-key-hash of signature for every verification
  - threadsafe logging
  - better error wrapping
  - refactor to re-use DRY
@@ -96,6 +97,7 @@ NEEDS TESTS
   --------------------------------------------------------
 NEEDS TESTS
  - self sign agent
+
  - verify signature header
  - get fields needed for signature from signature types
  - create or verify signature
@@ -125,6 +127,7 @@ NEEDS TESTS
 
  - sign every version on default fields, to default field
 
+ - load different agent's public_key for public signature for doc
   - agent key creation
   - test create signature from string
   - agent update version and validate (version self)
