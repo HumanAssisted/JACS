@@ -1,5 +1,7 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
+mod utils;
+use utils::{load_test_agent_one, load_test_agent_two, set_test_env_vars};
 
 #[test]
 fn test_load_agent_json() {
@@ -44,7 +46,8 @@ fn test_load_agent_json() {
 }
 
 #[test]
-fn test_update_agent() {
+fn test_update_agent_and_verify_signature() {
+    set_test_env_vars();
     // cargo test   --test schema_tests -- --nocapture
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -73,6 +76,7 @@ fn test_update_agent() {
 
     let new_agent_version = agent.update_self(&modified_agent_string).unwrap();
     println!("NEW AGENT VERSION {}", new_agent_version);
+    agent.verify_self_signature().unwrap();
 }
 
 #[test]

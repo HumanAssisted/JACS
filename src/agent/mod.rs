@@ -147,7 +147,7 @@ impl Agent {
 
         if self.id.is_some() {
             let id_string = self.id.clone().expect("string expected").to_string();
-            self.load_keys();
+            self.load_keys()?;
             debug!("loaded keys for agent")
         }
 
@@ -217,28 +217,31 @@ impl Agent {
                 return Err(error_message.into());
             }
         }
-        // let verifying_signature_document =
-        //     self.signing_procedure(&document_value, fields, signature_key_from)?;
-        // let original_signature_document = &document_value[signature_key_from];
-        // if original_signature_document["signature"] != verifying_signature_document["signature"] {
-        //     let error_message = format!(
-        //         "Signatures don't match for doc {}! \n\t{:?}\n\t {:?}",
-        //         document_key,
-        //         original_signature_document["signature"],
-        //         verifying_signature_document["signature"]
-        //     );
-        //     error!("{}", error_message);
-        //     return Err(error_message.into());
-        // }
-        // Ok(())
     }
 
-    // TODO
-    // pub fn verify_self_signature(&self, signature_key_from:&String, fields: Vec<String>) -> Result<(), Box<dyn Error>> {
+    pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
+        let public_key = self.get_public_key()?;
+        // validate header
+        let signature_key_from = &AGENT_SIGNATURE_FIELDNAME.to_string();
+        match &self.value {
+            Some(embedded_value) => {
+                let (document_values_string, _) =
+                    Agent::get_values_as_string(&embedded_value, None, signature_key_from)?;
+                let signature_base64 = embedded_value[signature_key_from]["signature"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim_matches('"')
+                    .to_string();
+                self.verify_string(&document_values_string, &signature_base64, public_key)
+            }
+            None => {
+                let error_message = "Value is None";
+                error!("{}", error_message);
+                Err(error_message.into())
+            }
+        }
+    }
 
-    //     // validate header
-    //     // add
-    // }
     fn signature_verification_procedure(
         &mut self,
         json_value: &Value,
@@ -486,7 +489,8 @@ impl Agent {
 
         // generate new keys?
         // sign new version
-
+        new_self[AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&new_self, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;
         // hash new version
         let document_hash = self.hash_doc(&new_self)?;
         new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
