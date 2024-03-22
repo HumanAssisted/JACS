@@ -36,8 +36,8 @@
       "format": "date-time",
       "type": "string"
     },
-    "versionSignature": {
-      "description": "Signature of this version by the author verifying",
+    "self-signature": {
+      "description": "Signature of of every field except this one and the hashing field",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "versionRegistration": {
@@ -53,6 +53,10 @@
       "description": "Original Version id of the object. When documents are copied without merging, this becomes the way to track them.",
       "type": "string",
       "format": "uuid"
+    },
+    "sha256": {
+      "description": "Hash of every field except this one . During  updates and creation hash is the last thing to occur, as it includes the signature.",
+      "type": "string"
     }
   },
   "required": [

@@ -19,10 +19,6 @@
             "ai"
           ],
           "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
-        },
-        "publickey": {
-          "description": "public key to verify signatures. needs mechanism to verify",
-          "type": "string"
         }
       }
     }

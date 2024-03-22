@@ -11,6 +11,7 @@
   "name": "Agent Smith",
   "resourcetype": "agent",
   "description": "A hybrid agent combining human and AI capabilities.",
+  "sha256": "baefc72186318fef793be6b83e373a8ed9f05ecc0d8c729b077334350fd0ea4c",
   "capabilities": [
     {
       "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",

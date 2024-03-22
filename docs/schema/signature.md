@@ -22,6 +22,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 | [agentversion](#agentversion)            | `string` | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/agentversion")           |
 | [date](#date)                            | `string` | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/date")                           |
 | [signature](#signature)                  | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signature")                 |
+| [public-key-hash](#public-key-hash)      | `string` | Required | cannot be null | [Signature](signature-properties-public-key-hash.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/public-key-hash")     |
 | [signing\_algorithm](#signing_algorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signing_algorithm.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signing_algorithm") |
 | [fields](#fields)                        | `array`  | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields")                       |
 
@@ -109,6 +110,24 @@ The actual signature, made from the docid,
 
 `string`
 
+## public-key-hash
+
+Hash of the public key to verify signature with.
+
+`public-key-hash`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Signature](signature-properties-public-key-hash.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/public-key-hash")
+
+### public-key-hash Type
+
+`string`
+
 ## signing\_algorithm
 
 What signature algorithm was used
@@ -129,7 +148,7 @@ What signature algorithm was used
 
 ## fields
 
-fields fields from document were used to generate signature. Defaults to id and version of doc.
+fields fields from document which were used to generate signature.
 
 `fields`
 

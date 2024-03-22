@@ -1,6 +1,6 @@
 # JACS - JSON Ai Communication Standard
 
-JACS allows for trusted sharing between AI agents and Human UIs.
+JACS allows for tooling to enable trusted data sharing between AI agents and Human UIs.
 The library provides data validation, cryptography tooling, and authorization for admin, edit, and viewing of documents that might be useful for both humans and AI.
 
 To use, you create JSON documents and then sign them with your agent. Then share the docs with other agents and services. When those other services have modified the document, you can verifiy the agent, and sign the changes.
@@ -8,13 +8,15 @@ To use, you create JSON documents and then sign them with your agent. Then share
 JACS is both a JSON Schema and Reference implementation of [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
 
 
-
 ## trust
 
 When data is changed documents are versioned and the version is cryptographically signed. Changes can be verified and approved by other agents, allowing for creation and exchange of trusted data.
+Any person or software can modify a doc, but only agents can sign the changes.
 
-Importantly, the verification can be done be third parties with root certificates, much like the signing authorities SSL.
+Importantly, the verification can be done by third parties with root certificates, much like the signing authorities SSL.
+They also can serve as repositories for public keys, like PGP.
 
+JACs goal is to embed critical trust information within documents, enabling new architectures for data sharing.
 
 ## extensible
 
@@ -28,9 +30,11 @@ For example, you have a complex project with a schema that's difficult
 
 # Usage
 
-Like JWT, these documents may become bublic
+Note that this library is meant to be used by other libraries that manage document storage and retrieval, key storage, and tools to register.
 
-To use JACS you only really need to use the Headers in a JSON doc and your agent. The reset are optional.
+HAI.AI will be releasing one of these libraries.
+
+To use JACS you create an `Agent` and then use it to create docoments that conform to the JACS `Header` format.
 
 Conversations, tasks, documents, and agents are some of the things represented in JSON. To use, just create a json document that follows the schema for an agent, and use it in the library to start building other things.
 
@@ -42,34 +46,17 @@ Here's an sample agent
 
 ## Schemas: basic types
 
+every JACS doc has a header.
 
-You only need to use the agents and header to record and verify any type of document, but some basic types are provided.
+You only need to use the agents and header to record and verify permissions on any type of document
 
- - [Resources](./docs/schema/resource.md) -  references to things
- - [Agents](./docs/schema/agent.md) - a type of resource that can take action
- - [Units](./docs/schema/components/unit.md) - measurements that can change based on actions
- - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
- - [Files](./docs/schema/components/files.md) - attachements with mime types or external references, checksummed
-
-Meta things.
  - [Header](./docs/schema/header.md) -  the signature along with permissions
+ - [Agents](./docs/schema/agent.md) - a type of resource that can take action
+ - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
  - [Permission](./docs/schema/components/permission.md) -  the signature along with  access rules for the document fields
- - [Actions](./docs/schema/action.md) - a description of things that can be done to and by resources
- - [Tasks](./docs/schema/task.md) -a set of actions and a desired outcome as well as state management, can reference other tasks
- - [Plan](./docs/schema/plan.md) - a set of tasks wth a desired outcome. can reference other plans
- - [Contract](./docs/schema/contract.md) - set of plans. a proposal until signed
- - [Messages](./docs/schema/components/message.md) - signed messages between users
-
-
-TODO
- - encrypted fields
-
- - [Decisions](./docs/schema/decision.md) - changes to tasks
-
 
 For the schema files see [schemas](./schemas).
 For examples see [schemas](./examples).
-
 
 
 ## building
@@ -95,7 +82,7 @@ You don't need to know cryptography to use the library, but knowing the basics h
 Now you can create agents
 
 ```
-    use jacs::{Agent, Resource, Task, Message}
+    use jacs::{Agent}
 
     // load your local agent
     let json_data = fs::read_to_string("examples/myagent.json");
@@ -126,7 +113,7 @@ Now you can create agents
 
 ```
 
-Now that the agent is created, we can use it.
+Now that the agent is created, we load it in various ways.
 
 
 ```
@@ -152,7 +139,7 @@ Now that the agent is created, we can use it.
     let ready = myagent.ready();
 
     // printyour id
-    println!("id {:?} version {}", myagent.id(), myagent.version());
+    println!("id {:?} version {}", myagent.get_id(), myagent.get_version());
 
 
 
@@ -165,13 +152,27 @@ Now that your agent is ready we can start creating documents
 
 ```
 
-    // create a custom document
+    // create a custom document, assigning an id and a version, validating a JACs header afters
+    myagent.create_document(json_string, "schema_name"); //returns id, version
+    // agents can store documents in memory
+    myagent.load_document(json_string, "schema_name");
+    myagent.load_document_schema("schema_name", json_string);
+    myagent.update_document("id", json_string); // will error on permission, returns new version, also signs it
+    myagent.get_document("id", remove=False); // serde Value (JSON object)
+    myagent.get_document_string("id", remove=False); //  (JSON string)
+    myagent.copy_document("id"); //returns  new id, version
+    myagent.list_ids_and_versions("id"); //returns  new id, version
 
-    // sign task as owner
+```
 
-    // save task
+Most importantly you can verify document
 
-    // update task
+```
+    myagent.verify_document_version("id"); //checks you are last signer, checks sig based on your own public key
+    myagent.verify_document_checksum("id");
+    // myagent.verify_document_version_with_registrar("id"); // ???
+    myagent.verify_document_signature("id", "field", public_key );
+    myagent.get_document_permissions("id", "fields"=None ); //if none return all permisions
 
 
 
@@ -183,7 +184,7 @@ You can also interact with other agents with messages, tasks, and plans
 create second agent
 first agent grants permissions to second agent
 
-second agent makes some edits and adds a  message
+second agent makes some edits
 
 
 now you can verify everychange in the task

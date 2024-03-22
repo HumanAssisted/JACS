@@ -24,13 +24,17 @@
       "description": "The actual signature, made from the docid, ",
       "type": "string"
     },
+    "public-key-hash": {
+      "description": "Hash of the public key to verify signature with.",
+      "type": "string"
+    },
     "signing_algorithm": {
       "description": "What signature algorithm was used",
       "type": "string"
     },
     "fields": {
       "type": "array",
-      "description": "fields fields from document were used to generate signature. Defaults to id and version of doc. ",
+      "description": "fields fields from document which were used to generate signature.",
       "items": {
         "type": "string"
       }
@@ -41,6 +45,7 @@
     "agentversion",
     "signature",
     "date",
+    "public-key-hash",
     "fields"
   ]
 }

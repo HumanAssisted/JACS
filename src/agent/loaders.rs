@@ -1,36 +1,31 @@
-use std::error::Error;
-
 use crate::agent::Agent;
 use log::{debug, error, warn};
-
 use std::env;
+use std::error::Error;
 use std::{fs, path::PathBuf};
 
-/// this is an example of how other libraries can use JACS agents
-/// and implement their own loading and saving functions
-use super::FileLoader;
+/// abstract traits that must be implemented by importing libraries
+pub trait FileLoader {
+    // fn load_json_by_path(&self, filepath: &String) -> String;
+    /// needed for foriegn agents and to verify signatures
 
-/// All the file loading, path decisions.
-/// In apps, text strings may be loaded from either a filesystem, database or memory.
-/// For tests we provide tooling for this.
+    fn save_agent_string(&self, agent_string: &String) -> Result<String, Box<dyn Error>>;
+    fn load_local_agent_by_id(&self, agentid: &String) -> Result<String, Box<dyn Error>>;
+    fn load_remote_agent_by_id(&self, path: &String) -> String;
+    fn create_local_agent_by_path(&self, path: &String) -> String;
+
+    // these are expected to be valid JSON, but not necessarily
+    //
+    fn load_local_document(&self, filepath: &String) -> Result<String, Box<dyn Error>>;
+    fn load_local_document_by_id(&self, document_id: &String) -> Result<String, Box<dyn Error>>;
+
+    fn load_remote_document(&self, filepath: &String) -> Result<String, Box<dyn Error>>;
+
+    fn load_remote_document_by_id(&self, document_id: &String) -> Result<String, Box<dyn Error>>;
+}
+
 // #[cfg(test)]
-pub struct TestFileLoader;
-
-// #[cfg(test)]
-impl FileLoader for TestFileLoader {
-    fn load_remote_public_key(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
-        Ok("".to_string())
-    }
-    fn load_local_public_key(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
-        Ok("".to_string())
-    }
-    fn load_local_unencrypted_private_key(
-        &self,
-        agentid: &String,
-    ) -> Result<String, Box<dyn Error>> {
-        Ok("".to_string())
-    }
-
+impl FileLoader for Agent {
     fn save_agent_string(&self, agent_string: &String) -> Result<String, Box<dyn Error>> {
         // Implementation of save method for Agent
         Ok("".to_string())

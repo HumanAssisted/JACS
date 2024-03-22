@@ -1,4 +1,4 @@
 pub mod agent;
 pub mod crypt;
-pub mod loaders;
+pub mod document;
 pub mod schema;

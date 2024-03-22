@@ -1,98 +1,63 @@
 ## todo
 
-### critical
+### document signing
 
-DOCUMENT
-
- - load document
- - change document and/or copy
- - diff document
- - sign document  **
- - save document
+NEEDS TESTS
 
 
 
 
- - ** create signature function for versionSignature
+
+
+### AGENT REGISTRATION ---------------------
+
+ - schema
+  - update registration to be signature and reserved word. ***
+  - name of registrar
+  - public key location/url
+  - public key hash
+
+
+ ### document permissions ---------------------
+
+ punt for server
+
+ - default permissions
+ - access permissions
+ - sign access permissions
+ - modify access permissions
+ - verify access permissions on edit, read
+ - get fields and data that user has access to
+
+
+#### encrypted area
+
+ - key and encrypted value, w/ optional description
+
+  --------------------------------------------------------
+
+### debt
+
+ - test verify signature of other agent on registration
+ - check public-key-hash of signature for every verification
+ - threadsafe logging
+ - better error wrapping
+ - refactor to re-use DRY
+ - more thread safety agent values
+ - signature stuff
   - [ ] load with password
   - [ ] save with password
   - [ ] decide params (
             fields, check they are present
+  - [ ] verify and teset standard CONCAT function for field values/types
 
-            )
-  - [ ] select fields
-  - [ ] standard CONCAT function
-  - [ ] generate sig with private key
-  - [ ] change versions
-  - [ ] create schema snippet with sig
-  - [ ] add signature to doc signature (overwrite)
-
-
- - check signature(s) of version
-  - every admin or all admin
-     - retrieve proper signature
-     - [ ] select fields
-     - [ ] select fields
-
- - create agent
- - update agent
-
- - create permission
-  - [ ] decide params
-  - [ ]
-
+ - move encryption to trait that can be loaded
 
 ### MVP
 
  - how does the regsitrar work?
   - one registrar
   - registrar schema (list of endpoints, public key signature)
-
-
-
-### cleanup
- - move encryption to trait that can be loaded
-
-
-
- - how are documents loaded and verfied
-   - load doc and store within agent. Vector<Value> KEY - id:version
-   - verify every doc has passes the header, otherwise its not JACS doc
-   - load schema for the document types
-   - verify doc schema
-   - verify signature
-
-
-use serde_json::Value;
-use std::collections::HashMap;
-
-fn main() {
-    let mut map: HashMap<String, Value> = HashMap::new();
-
-    // Insert values into the map
-    map.insert("user:1".to_string(), Value::String("Alice".to_string()));
-    map.insert("user:2".to_string(), Value::String("Bob".to_string()));
-    map.insert("product:1".to_string(), Value::Number(10.into()));
-    map.insert("product:2".to_string(), Value::Number(20.into()));
-
-    // Retrieve values based on a key prefix
-    let prefix = "user:";
-    let user_values: HashMap<&String, &Value> = map
-        .iter()
-        .filter(|(key, _)| key.starts_with(prefix))
-        .collect();
-
-    // Print the retrieved values
-    for (key, value) in &user_values {
-        println!("Key: {}, Value: {}", key, value);
-    }
-}
-
-
- - local schema resolver from buffer/hashmap
- - traits
-
-
 
  - outline functions
  - outline traits
@@ -122,3 +87,57 @@ fn main() {
  - add signature types enum so implementations can check
  - auto doc rust
  - push docs github pages
+
+
+
+  --------------------------------------------------------
+ # DONE
+  --------------------------------------------------------
+ ## Integration of signatures ---------------------
+
+ - test self verify signature
+ - self sign agent
+
+ - verify signature header
+ - get fields needed for signature from signature types
+ - create or verify signature
+ - sign documents
+- hard code keys which are signatures for self signing
+- make sure signature field doesn't use forbidden fields like sha256 and itself
+ - set base directory
+  - agent key default storage
+ - agent key loading
+ - sha of public key in every signature as part of schema, require it in schema
+- sign every creation or update
+  - [ ] create schema snippet with sig
+  - [ ] add signature to doc signature (overwrite)
+
+
+ - check signature(s) of version
+  - every admin or all admin
+     - retrieve proper signature
+     - [ ] select fields
+     - [ ] select fields
+
+
+ - more configurable key loading tests
+ - verify public key used with hash
+
+ ### crud
+
+ - sign every version on default fields, to default field
+
+ - load different agent's public_key for public signature for doc
+  - agent key creation
+  - test create signature from string
+  - agent update version and validate (version self)
+ - agent update version and validate
+  - document copy , hash, validate, and store
+ - document edit - copy, add fields, diff, hash, validate, store
+  - remove document
+- new document with custom schema - validate and store
+ - list stored documents
+  - load document and store
+ - load doucment with custom schema - validate and store
+  - return id and version on actor,
+ -  document return id and version on create
