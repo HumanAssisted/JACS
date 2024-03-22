@@ -4,9 +4,7 @@
 
 NEEDS TESTS
 
- ## Integration of signatures ---------------------
 
- - test self verify signature
 
 
 
@@ -95,7 +93,9 @@ NEEDS TESTS
   --------------------------------------------------------
  # DONE
   --------------------------------------------------------
-NEEDS TESTS
+ ## Integration of signatures ---------------------
+
+ - test self verify signature
  - self sign agent
 
  - verify signature header
