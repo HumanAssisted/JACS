@@ -3,7 +3,7 @@ use jacs::crypt::KeyManager;
 mod utils;
 use utils::{load_test_agent_one, set_test_env_vars};
 // use color_eyre::eyre::Result;
-
+use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
 //color_eyre::install().unwrap();
 #[test]
@@ -26,7 +26,7 @@ fn test_load_custom_schema_and_custom_document() {
 }
 
 #[test]
-fn test_load_document_sign_and_verify() {
+fn test_load_unsigned_document() {
     color_eyre::install().unwrap();
     set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture test_load_document_sign_and_verify
@@ -92,7 +92,7 @@ fn test_load_custom_schema_and_new_custom_document() {
 }
 
 #[test]
-fn test_load_custom_schema_and_custom_document_and_update() {
+fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     // cargo test   --test document_tests -- --nocapture
     set_test_env_vars();
     let mut agent = load_test_agent_one();
@@ -119,4 +119,12 @@ fn test_load_custom_schema_and_custom_document_and_update() {
         .unwrap();
 
     println!("updated {} {}", new_document_key, new_document_ref);
+    agent
+        .verify_document_signature(
+            &new_document_key,
+            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            None,
+            None,
+        )
+        .unwrap();
 }

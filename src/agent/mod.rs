@@ -26,9 +26,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-const SHA256_FIELDNAME: &str = "sha256";
-const AGENT_SIGNATURE_FIELDNAME: &str = "self-signature";
-const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agent-signature";
+pub const SHA256_FIELDNAME: &str = "sha256";
+pub const AGENT_SIGNATURE_FIELDNAME: &str = "self-signature";
+pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agent-signature";
 const DEFAULT_DIRECTORY_ENV_VAR: &str = "JACS_AGENT_DEFAULT_DIRECTORY";
 
 pub struct Agent {
@@ -192,25 +192,45 @@ impl Agent {
         document_key: &String,
         signature_key_from: &String,
         fields: Option<&Vec<String>>,
+        public_key: Option<Vec<u8>>,
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
         let document = self.get_document(document_key).expect("Reason");
         let document_value = document.getvalue();
         // this is innefficient since I generate a whole document
-        let verifying_signature_document =
-            self.signing_procedure(&document_value, fields, signature_key_from)?;
-        let original_signature_document = &document_value[signature_key_from];
-        if original_signature_document["signature"] != verifying_signature_document["signature"] {
-            let error_message = format!(
-                "Signatures don't match for doc {}! {:?} != {:?}",
-                document_key,
-                original_signature_document["signature"],
-                verifying_signature_document["signature"]
-            );
-            error!("{}", error_message);
-            return Err(error_message.into());
+        let used_public_key = match public_key {
+            Some(public_key) => public_key,
+            None => self.get_public_key()?,
+        };
+        let result = self.signature_verification_procedure(
+            &document_value,
+            fields,
+            signature_key_from,
+            used_public_key,
+        );
+        match result {
+            Ok(result) => Ok(()),
+            Err(err) => {
+                let error_message =
+                    format!("Signatures not verifiable {} {:?}! ", document_key, err);
+                error!("{}", error_message);
+                return Err(error_message.into());
+            }
         }
-        Ok(())
+        // let verifying_signature_document =
+        //     self.signing_procedure(&document_value, fields, signature_key_from)?;
+        // let original_signature_document = &document_value[signature_key_from];
+        // if original_signature_document["signature"] != verifying_signature_document["signature"] {
+        //     let error_message = format!(
+        //         "Signatures don't match for doc {}! \n\t{:?}\n\t {:?}",
+        //         document_key,
+        //         original_signature_document["signature"],
+        //         verifying_signature_document["signature"]
+        //     );
+        //     error!("{}", error_message);
+        //     return Err(error_message.into());
+        // }
+        // Ok(())
     }
 
     // TODO
@@ -219,6 +239,26 @@ impl Agent {
     //     // validate header
     //     // add
     // }
+    fn signature_verification_procedure(
+        &mut self,
+        json_value: &Value,
+        fields: Option<&Vec<String>>,
+        signature_key_from: &String,
+        public_key: Vec<u8>,
+    ) -> Result<(), Box<dyn Error>> {
+        let (document_values_string, _) =
+            Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
+        debug!(
+            "signing_procedure document_values_string:\n{}",
+            document_values_string
+        );
+        let signature_base64 = json_value[signature_key_from]["signature"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+        self.verify_string(&document_values_string, &signature_base64, public_key)
+    }
 
     /// re-used function to generate a signature json fragment
     /// if no fields are provided get_values_as_string() will choose system defaults

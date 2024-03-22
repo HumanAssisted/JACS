@@ -50,6 +50,7 @@ pub trait KeyManager {
         &mut self,
         data: &String,
         signature_base64: &String,
+        public_key: Vec<u8>,
     ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
@@ -123,12 +124,13 @@ impl KeyManager for Agent {
         &mut self,
         data: &String,
         signature_base64: &String,
+        public_key: Vec<u8>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                return rsawrapper::verify_string(self.get_public_key()?, data, signature_base64)
+                return rsawrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::RingEd25519 => {
                 return Err("ring-Ed25519 key generation is not implemented.".into());
