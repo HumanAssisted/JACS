@@ -1,7 +1,10 @@
 use std::fs;
+mod utils;
+use utils::{load_test_agent_one, load_test_agent_two, set_test_env_vars};
 
 #[test]
 fn test_validate_agent_creation() {
+    set_test_env_vars();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();

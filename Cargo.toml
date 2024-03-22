@@ -10,9 +10,7 @@ chrono = "0.4.35"
 jsonschema = "0.17.1"
 log = "0.4.21"
 pem = "3.0.3"
-pqcrypto-dilithium = "0.5.0"
 rand = "0.8.5"
-ring = "0.17.8"
 rsa = { version= "0.9.6", features= ["sha2", "pem"]}
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0 "
@@ -20,7 +18,7 @@ signature = "2.2.0"
 url = "2.5.0"
 sha2 = "0.10.6"
 phf = { version = "0.11.1", features = ["macros"] }
-reqwest = "0.11.26"
+
 strum = "0.24.1"
 strum_macros = "0.24.3"
 
@@ -31,9 +29,7 @@ color-eyre = "0.6"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[dependencies.pyo3]
-version =  "0.16.5"
-features = ["extension-module"]
+
 
 [dependencies.uuid]
 version = "1.7.0"
@@ -44,3 +40,12 @@ features = [
     "v7",
     "js",
 ]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pqcrypto-dilithium = "0.5.0"
+ring = "0.17.8"
+reqwest = "0.11.26"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.pyo3]
+version =  "0.16.5"
+features = ["extension-module"]

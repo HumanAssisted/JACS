@@ -181,26 +181,6 @@ impl Schema {
         }
     }
 
-    /// utilty function to retrieve the list of fields
-    /// this is especially useful for signatures
-    pub fn get_array_of_values(&self, signature: serde_json::Value, fieldname: &String) -> String {
-        if let Some(array_field) = signature.get(fieldname).and_then(Value::as_array) {
-            let mut result_strings = Vec::new();
-            for value in array_field {
-                if let Some(string_value) = value.as_str() {
-                    result_strings.push(string_value.to_string());
-                }
-            }
-            return format!("Result Strings: {:?}", result_strings);
-        }
-        "".to_string()
-    }
-
-    pub fn create_signature(&self) {}
-
-    /// give a signature field
-    pub fn check_signature(&self, fieldname: &String) {}
-
     /// load a document that has data but no id or version
     /// an id and version is assigned
     /// header is validated
