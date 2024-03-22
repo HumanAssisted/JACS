@@ -5,94 +5,58 @@
 NEEDS TESTS
 
  ## Integration of signatures ---------------------
+
+ - more configurable key loading tests
  - verify public key used with hash
- - load public signature
+ - load forieing public signature for doc
  - test verify signature of agent
  - test verify signature of doc
- - self sign agent
+
+
+
+### AGENT REGISTRATION ---------------------
+
+ - schema
+  - update registration to be signature and reserved word.
+  - name of registrar
+  - public key location/url
+  - public key hash
 
 
  ### document permissions ---------------------
+
+ punt for server
 
  - default permissions
  - access permissions
  - sign access permissions
  - modify access permissions
  - verify access permissions on edit, read
- - get fields and data that user has access too
+ - get fields and data that user has access to
 
-
-### AGENT REGISTRATION ---------------------
-
- - schema
-  - name of registrar
-  - public key location/url
-  - public key hash
-  - registars public key signature
-  - registars signature schema
 
   --------------------------------------------------------
 
 ### debt
 
- - logging
- - error wrapping
+ - threadsafe logging
+ - better error wrapping
  - refactor to re-use DRY
-
  - more thread safety agent values
-
-
-
- - ** create signature function for versionSignature
+ - signature stuff
   - [ ] load with password
   - [ ] save with password
   - [ ] decide params (
             fields, check they are present
+  - [ ] verify and teset standard CONCAT function for field values/types
 
-            )
-  - [ ] select fields
-  - [ ] standard CONCAT function
-  - [ ] generate sig with private key
-  - [ ] change versions
-  - [ ] create schema snippet with sig
-  - [ ] add signature to doc signature (overwrite)
-
-
- - check signature(s) of version
-  - every admin or all admin
-     - retrieve proper signature
-     - [ ] select fields
-     - [ ] select fields
-
-
+ - move encryption to trait that can be loaded
 
 ### MVP
 
  - how does the regsitrar work?
   - one registrar
   - registrar schema (list of endpoints, public key signature)
-
-
-
-### cleanup
- - move encryption to trait that can be loaded
-
-
-
- - how are documents loaded and verfied
-   - load doc and store within agent. Vector<Value> KEY - id:version
-   - verify every doc has passes the header, otherwise its not JACS doc
-   - load schema for the document types
-   - verify doc schema
-   - verify signature
-
-
-
-
- - local schema resolver from buffer/hashmap
- - traits
-
-
 
  - outline functions
  - outline traits
@@ -124,9 +88,12 @@ NEEDS TESTS
  - push docs github pages
 
 
+
+  --------------------------------------------------------
  # DONE
   --------------------------------------------------------
 NEEDS TESTS
+ - self sign agent
  - verify signature header
  - get fields needed for signature from signature types
  - create or verify signature
@@ -138,6 +105,15 @@ NEEDS TESTS
  - agent key loading
  - sha of public key in every signature as part of schema, require it in schema
 - sign every creation or update
+  - [ ] create schema snippet with sig
+  - [ ] add signature to doc signature (overwrite)
+
+
+ - check signature(s) of version
+  - every admin or all admin
+     - retrieve proper signature
+     - [ ] select fields
+     - [ ] select fields
 
 
  ### crud

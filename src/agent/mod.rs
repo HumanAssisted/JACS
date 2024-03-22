@@ -29,6 +29,7 @@ const AGENT_SIGNATURE_FIELDNAME: &str = "self-signature";
 const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agent-signature";
 const DEFAULT_DIRECTORY_ENV_VAR: &str = "JACS_AGENT_DEFAULT_DIRECTORY";
 
+#[derive(Clone)]
 pub struct JACSDocument {
     id: String,
     version: String,
@@ -178,7 +179,10 @@ impl Agent {
         return Ok(());
     }
 
-    pub fn load_document(&mut self, document_string: &String) -> Result<String, Box<dyn Error>> {
+    pub fn load_document(
+        &mut self,
+        document_string: &String,
+    ) -> Result<JACSDocument, Box<dyn Error>> {
         match &self.validate_header(&document_string) {
             Ok(value) => {
                 return self.storeJACSDocument(&value);
@@ -216,7 +220,7 @@ impl Agent {
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
         let document = self.get_document(document_key).expect("Reason");
-        let document_value = document.value;
+        let document_value = document.getvalue();
         // this is innefficient since I generate a whole document
         let verifying_signature_document =
             self.signing_procedure(&document_value, fields, signature_key_from)?;
@@ -394,26 +398,22 @@ impl Agent {
         Ok(hash_string(&doc_string))
     }
 
-    fn storeJACSDocument(&mut self, value: &Value) -> Result<String, Box<dyn Error>> {
+    fn storeJACSDocument(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
         let mut documents = self.documents.lock().unwrap();
         let doc = JACSDocument {
-            id: value.get_str("id").expect("REASON"),
-            version: value.get_str("version").expect("REASON"),
+            id: value.get_str("id").expect("REASON").to_string(),
+            version: value.get_str("version").expect("REASON").to_string(),
             value: Some(value.clone()).into(),
         };
         let key = doc.getkey();
-        documents.insert(key.clone(), doc);
-        return Ok(key.clone());
+        documents.insert(key.clone(), doc.clone());
+        Ok(doc)
     }
 
     pub fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
         let documents = self.documents.lock().unwrap();
         match documents.get(document_key) {
-            Some(document) => Ok(JACSDocument {
-                id: document.id.clone(),
-                version: document.version.clone(),
-                value: document.value.clone(),
-            }),
+            Some(document) => Ok(document.clone()),
             None => Err(format!("Document not found for key: {}", document_key).into()),
         }
     }
@@ -424,11 +424,7 @@ impl Agent {
     ) -> Result<JACSDocument, Box<dyn Error>> {
         let mut documents = self.documents.lock().unwrap();
         match documents.remove(document_key) {
-            Some(document) => Ok(JACSDocument {
-                id: document.id.clone(),
-                version: document.version.clone(),
-                value: document.value.clone(),
-            }),
+            Some(document) => Ok(document),
             None => Err(format!("Document not found for key: {}", document_key).into()),
         }
     }
@@ -482,7 +478,7 @@ impl Agent {
         //replace ones self
         self.version = Some(new_self["version"].to_string());
         self.value = Some(new_self.clone());
-        Ok(new_self["version"].to_string())
+        Ok(new_self.to_string())
     }
 
     /// pass in modified doc
@@ -490,7 +486,7 @@ impl Agent {
         &mut self,
         document_key: &String,
         new_document_string: &String,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
         let new_document: Value = self.schema.validate_header(new_document_string)?;
         let original_document = self.get_document(document_key).unwrap();
@@ -529,11 +525,11 @@ impl Agent {
         // hash new version
         let document_hash = self.hash_doc(&value)?;
         value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        self.storeJACSDocument(&value)
+        Ok(self.storeJACSDocument(&value)?)
     }
 
     /// copys document without modifications
-    pub fn copy_document(&mut self, document_key: &String) -> Result<String, Box<dyn Error>> {
+    pub fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
         let mut value = original_document.value;
         let new_version = Uuid::new_v4().to_string();
@@ -552,28 +548,8 @@ impl Agent {
         // hash new version
         let document_hash = self.hash_doc(&value)?;
         value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        self.storeJACSDocument(&value)
+        Ok(self.storeJACSDocument(&value)?)
     }
-
-    // pub fn load(&mut self, json_data: &String, privatekeypath: &String){
-    //     let result = self.validate(json_data);
-    //     match result {
-    //         Ok(data) => {
-
-    //         }
-    //         Err(e) => {
-    //             return Err(format!("Failed to read 'examples/myagent.json': {}", e));
-    //         }
-    //     };
-
-    //     // now load keys
-    //     self.value = Some(value);
-    //     self.value = Some(value);
-    //     // if they don't exist tell them they must create first
-
-    // }
-
-    /// returns path and filename of keys
 
     pub fn validate_header(
         &mut self,
@@ -654,7 +630,7 @@ impl Agent {
     pub fn create_document_and_load(
         &mut self,
         json: &String,
-    ) -> Result<String, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>> {
         let mut instance = self.schema.create(json)?;
         // sign document
         instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
@@ -665,7 +641,7 @@ impl Agent {
         // hash document
         let document_hash = self.hash_doc(&instance)?;
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        return self.storeJACSDocument(&instance);
+        Ok(self.storeJACSDocument(&instance)?)
     }
 
     /// returns ID and version separated by a colon
@@ -683,7 +659,9 @@ impl Agent {
         json: &String,
         create_keys: bool,
         _create_keys_algorithm: Option<&String>,
-    ) -> Result<String, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        // validate schema json string
+        // make sure id and version are empty
         let mut instance = self.schema.create(json)?;
 
         if let Some(ref value) = self.value {
@@ -694,9 +672,6 @@ impl Agent {
             self.generate_keys()?;
         }
         let _ = self.load_keys();
-
-        // validate schema json string
-        // make sure id and version are empty
 
         // generate keys
 
@@ -717,7 +692,7 @@ impl Agent {
         let document_hash = self.hash_doc(&instance)?;
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         self.value = Some(instance.clone());
-        return Ok(self.getagentkey());
+        return Ok(instance);
     }
 }
 

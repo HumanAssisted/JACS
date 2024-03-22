@@ -16,11 +16,12 @@ fn test_load_custom_schema_and_custom_document() {
     let document_string = agent
         .load_local_document(&"examples/documents/my-special-document.json".to_string())
         .unwrap();
-    let document_key = agent.load_document(&document_string).unwrap();
+    let document = agent.load_document(&document_string).unwrap();
+    let document_key = document.getkey();
     println!("loaded valid {}", document_key);
-    let document = agent.get_document(&document_key).unwrap();
+    let document_copy = agent.get_document(&document_key).unwrap();
     agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .validate_document_with_custom_schema(&SCHEMA, &document_copy.getvalue())
         .unwrap();
 }
 
@@ -52,7 +53,8 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     let document_string = agent
         .load_local_document(&"examples/documents/my-special-document-broken.json".to_string())
         .unwrap();
-    let document_key = agent.load_document(&document_string).unwrap();
+    let document = agent.load_document(&document_string).unwrap();
+    let document_key = document.getkey();
     println!("loaded valid  {}", document_key);
     let document = agent.get_document(&document_key).unwrap();
 
@@ -80,9 +82,10 @@ fn test_load_custom_schema_and_new_custom_document() {
     let document_string = agent
         .load_local_document(&"examples/documents/my-special-new-document.json".to_string())
         .unwrap();
-    let document_key = agent.create_document_and_load(&document_string).unwrap();
-    println!("loaded valid {}", document_key);
-    let document = agent.get_document(&document_key).unwrap();
+    let document = agent.create_document_and_load(&document_string).unwrap();
+    println!("loaded valid doc {}", document.to_string());
+    let document_key = document.getkey();
+    let document_ref = agent.get_document(&document_key).unwrap();
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
@@ -98,20 +101,22 @@ fn test_load_custom_schema_and_custom_document_and_update() {
     let document_string = agent
         .load_local_document(&"examples/documents/my-special-document.json".to_string())
         .unwrap();
-    let document_key = agent.load_document(&document_string).unwrap();
-
+    let document = agent.load_document(&document_string).unwrap();
+    let document_key = document.getkey();
     let modified_document_string = agent
         .load_local_document(&"examples/documents/my-special-document-modified.json".to_string())
         .unwrap();
 
-    let new_document_key = agent
+    let new_document = agent
         .update_document(&document_key, &modified_document_string)
         .unwrap();
 
-    let document = agent.get_document(&new_document_key).unwrap();
+    let new_document_key = new_document.getkey();
+
+    let new_document_ref = agent.get_document(&new_document_key).unwrap();
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
 
-    println!("updated {} {}", new_document_key, document);
+    println!("updated {} {}", new_document_key, new_document_ref);
 }
