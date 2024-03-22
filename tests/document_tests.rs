@@ -1,7 +1,8 @@
+use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 mod utils;
-use utils::{load_test_agent_one, set_test_env_vars};
+use utils::{load_test_agent_one, load_test_agent_two, set_test_env_vars};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
@@ -125,6 +126,21 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
             &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
             None,
             None,
+        )
+        .unwrap();
+
+    let agent_one_public_key = agent.get_public_key().unwrap();
+    let mut agent2 = load_test_agent_two();
+    let new_document_string = new_document_ref.to_string();
+    let copy_newdocument = agent2.load_document(&new_document_string).unwrap();
+    let copy_newdocument_key = copy_newdocument.getkey();
+
+    agent2
+        .verify_document_signature(
+            &copy_newdocument_key,
+            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            None,
+            Some(agent_one_public_key),
         )
         .unwrap();
 }

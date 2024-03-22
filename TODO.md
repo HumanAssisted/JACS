@@ -6,11 +6,9 @@ NEEDS TESTS
 
  ## Integration of signatures ---------------------
 
- - more configurable key loading tests
- - verify public key used with hash
- - load forieing public signature for doc
+ - load different agent's public_key for public signature for doc
  - test verify signature of agent
- - test verify signature of doc
+
 
 
 
@@ -34,6 +32,10 @@ NEEDS TESTS
  - verify access permissions on edit, read
  - get fields and data that user has access to
 
+
+#### encrypted area
+
+ - key and encrypted value, w/ optional description
 
   --------------------------------------------------------
 
@@ -115,6 +117,9 @@ NEEDS TESTS
      - [ ] select fields
      - [ ] select fields
 
+
+ - more configurable key loading tests
+ - verify public key used with hash
 
  ### crud
 
