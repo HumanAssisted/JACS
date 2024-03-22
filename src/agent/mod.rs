@@ -2,11 +2,13 @@
 
 pub mod boilerplate;
 pub mod loaders;
+
 use crate::agent::boilerplate::BoilerPlate;
 
 use crate::crypt::hash::hash_string;
 use crate::crypt::KeyManager;
 use crate::crypt::{rsawrapper, JACS_AGENT_KEY_ALGORITHM};
+use crate::document::JACSDocument;
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 
@@ -28,26 +30,6 @@ const SHA256_FIELDNAME: &str = "sha256";
 const AGENT_SIGNATURE_FIELDNAME: &str = "self-signature";
 const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agent-signature";
 const DEFAULT_DIRECTORY_ENV_VAR: &str = "JACS_AGENT_DEFAULT_DIRECTORY";
-
-#[derive(Clone)]
-pub struct JACSDocument {
-    id: String,
-    version: String,
-    value: Value,
-}
-
-impl JACSDocument {
-    pub fn getkey(&self) -> String {
-        // return the id and version
-        let id = self.id.clone();
-        let version = self.version.clone();
-        return format!("{}:{}", id, version);
-    }
-
-    pub fn getvalue(&self) -> Value {
-        self.value.clone()
-    }
-}
 
 pub struct Agent {
     /// the JSONSchema used
@@ -78,13 +60,6 @@ impl fmt::Display for Agent {
             }
             None => write!(f, "No Agent Loaded"),
         }
-    }
-}
-
-impl fmt::Display for JACSDocument {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let json_string = serde_json::to_string_pretty(&self.value).map_err(|_| fmt::Error)?;
-        write!(f, "{}", json_string)
     }
 }
 
