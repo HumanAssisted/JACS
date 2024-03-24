@@ -1,11 +1,10 @@
 ## todo
 
-### document signing
+## for release
 
-NEEDS TESTS
-
-
-
+- save agent
+- save doc
+- refactor filesystem management for WASM compatability.
 
 
 
@@ -87,6 +86,17 @@ NEEDS TESTS
  - add signature types enum so implementations can check
  - auto doc rust
  - push docs github pages
+
+
+# Ideas
+
+There's a lot planned, but some major goals
+
+ - authorization for admin, edit, and viewing of documents
+ - encrypted fields
+ - full external audit
+ - use post quantum signing tools. [pg crypto dilithium](https://docs.rs/pqcrypto-dilithium/0.5.0/pqcrypto_dilithium/) via https://github.com/pqclean/pqclean/
+ - [json-ld](https://json-ld.org/) and  [https://crates.io/crates/sophia](https://crates.io/crates/sophia) integration
 
 
 

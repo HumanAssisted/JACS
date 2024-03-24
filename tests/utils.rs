@@ -1,5 +1,7 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::Agent;
+use log::{debug, error, warn};
+
 use std::env;
 
 pub fn load_test_agent_one() -> Agent {
@@ -12,7 +14,7 @@ pub fn load_test_agent_one() -> Agent {
     let result = agent.load_by_id("agent-one".to_string(), None);
     match result {
         Ok(_) => {
-            println!(
+            debug!(
                 "AGENT ONE LOADED {} {} ",
                 agent.get_id().unwrap(),
                 agent.get_version().unwrap()
@@ -36,7 +38,7 @@ pub fn load_test_agent_two() -> Agent {
     let result = agent.load_by_id("agent-two".to_string(), None);
     match result {
         Ok(_) => {
-            println!(
+            debug!(
                 "AGENT TWO LOADED {} {} ",
                 agent.get_id().unwrap(),
                 agent.get_version().unwrap()

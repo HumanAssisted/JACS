@@ -29,7 +29,6 @@ use uuid::Uuid;
 pub const SHA256_FIELDNAME: &str = "sha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "self-signature";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agent-signature";
-const DEFAULT_DIRECTORY_ENV_VAR: &str = "JACS_AGENT_DEFAULT_DIRECTORY";
 
 pub struct Agent {
     /// the JSONSchema used
@@ -73,7 +72,7 @@ impl Agent {
         let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let mut document_map = Arc::new(Mutex::new(HashMap::new()));
         let mut public_keys: HashMap<String, String> = HashMap::new();
-        let default_directory = env::var(DEFAULT_DIRECTORY_ENV_VAR)
+        let default_directory = env::var("JACS_AGENT_DEFAULT_DIRECTORY")
             .map(PathBuf::from)
             .unwrap_or_else(|_| env::current_dir().unwrap());
         Ok(Self {

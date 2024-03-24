@@ -28,10 +28,11 @@ The basis for a JACS document
 | [previousVersion](#previousversion)         | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion") |
 | [originalVersion](#originalversion)         | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion") |
 | [sha256](#sha256)                           | `string` | Optional | cannot be null | [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/sha256")                   |
+| [eval](#eval)                               | `string` | Optional | cannot be null | [Header](header-properties-eval.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/eval")                       |
 
 ## id
 
-GUID
+uuid v4 string
 
 `id`
 
@@ -89,7 +90,7 @@ array of permissions
 
 ## version
 
-Version id of the object
+Version id of the object. uuid v4 string
 
 `version`
 
@@ -213,7 +214,7 @@ Original Version id of the object. When documents are copied without merging, th
 
 ## sha256
 
-Hash of every field except this one . During  updates and creation hash is the last thing to occur, as it includes the signature.
+Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature. Not immediatly required, but eventually required.
 
 `sha256`
 
@@ -226,5 +227,23 @@ Hash of every field except this one . During  updates and creation hash is the l
 *   defined in: [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/sha256")
 
 ### sha256 Type
+
+`string`
+
+## eval
+
+A description of how the document should be evaluated.
+
+`eval`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-eval.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/eval")
+
+### eval Type
 
 `string`

@@ -4,7 +4,7 @@
 https://hai.ai/schemas/header/v1/header-schema.json#/properties/id
 ```
 
-GUID
+uuid v4 string
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------- |

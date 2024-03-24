@@ -1,52 +1,187 @@
 # JACS - JSON Ai Communication Standard
 
-JACS allows for tooling to enable trusted data sharing between AI agents and Human UIs.
-The library provides data validation, cryptography tooling, and authorization for admin, edit, and viewing of documents that might be useful for both humans and AI.
+Welcome to JACS.
+
+The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable.
+
+ - verifiable as to their source
+ - verifiable as to their schema
+ - verifiable in a state and version
+
+
+The core Rust library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
 
 To use, you create JSON documents and then sign them with your agent. Then share the docs with other agents and services. When those other services have modified the document, you can verifiy the agent, and sign the changes.
 
-JACS is both a JSON Schema and Reference implementation of [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
+JACS started as [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
 
 
 ## trust
 
-When data is changed documents are versioned and the version is cryptographically signed. Changes can be verified and approved by other agents, allowing for creation and exchange of trusted data.
+Documents are meant to be omnipotent.
+
+When data is changed documents are versioned and the version is cryptographically signed by your agent.
+Changes can be verified and approved by other agents using your public key, allowing for creation and exchange of trusted data.
+
 Any person or software can modify a doc, but only agents can sign the changes.
-
-Importantly, the verification can be done by third parties with root certificates, much like the signing authorities SSL.
-They also can serve as repositories for public keys, like PGP.
-
-JACs goal is to embed critical trust information within documents, enabling new architectures for data sharing.
+If you are familiar with [JWTs](https://jwt.io/), PGP, sha256 hashes on files, then you have a good idea of how JACS works.
 
 ## extensible
 
-Any JSON document can be used as a JACS doc as long as it has the JACS header.
-
-For example, you have a complex project with a schema that's difficult
-
+Any JSON document can be used as a JACS doc as long as it has the JACS header, which just means some required fields about the creator and version.
+Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a basic formalization.
 
 ## open source
 
+Use JACS as is, embed in other projects or libraries, commercial or otherwise.
+Decentralized but trusted data sharing is key to building the apps of the future.
 
 # Usage
 
-Note that this library is meant to be used by other libraries that manage document storage and retrieval, key storage, and tools to register.
-
-HAI.AI will be releasing one of these libraries.
-
 To use JACS you create an `Agent` and then use it to create docoments that conform to the JACS `Header` format.
 
-Conversations, tasks, documents, and agents are some of the things represented in JSON. To use, just create a json document that follows the schema for an agent, and use it in the library to start building other things.
+To use, just create a json document that follows the schema for an agent, and use it in the library to start building other things.
 
-Here's an sample agent
+Here's all it takes to create your agent.
 
 ```
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "name": "Agent Smith",
+  "agenttype": "ai",
+  "description": "An agent without keys, id or version",
+  "favorite-snack": "mango"
+}
+
 ```
+
+An id, version etc, will be created for you when you use it.
+Here's a rust example.
+
+```
+use std::fs;
+use std::env;
+
+
+env::set_var("JACS_KEY_DIRECTORY", ".");
+env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
+env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
+env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+
+
+#[test]
+fn test_validate_agent_creation() {
+    set_test_env_vars();
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let signature_version = "v1".to_string();
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
+    let json_data = fs::read_to_string("examples/agents/myagent.new.json").expect("REASON");
+    let _ = agent.create_agent_and_load(&json_data, false, None);
+
+
+```
+
+Your agent will now look this this
+
+```
+agent-signature": {
+    "agentid": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
+    "agentversion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
+    "date": "2024-03-24T09:14:03.028576+00:00",
+    "fields": [
+      "favorite-snack",
+      "id",
+      "lastVersion",
+      "originalVersion",
+      "version",
+      "versionDate",
+      "name",
+      "agentype",
+      "description"
+    ],
+    "public-key-hash": "975f6dbe685a186deabab958b30c7c5aa97c144e3cb4357e34440783669e9815",
+    "signature": "C/NQGYlR8zoYu/0rngi12lpG32lkPGPqP1y10u5lAgr5LsvBsfvk6v3xYXvWf4e+hX1sf4YxRbolawXE0wfqRXiLazhBA2zpz0Yn4i4bfaqBd7S8+ARoWyiolXa3tcAaxdXTRiu9VWwdfBhh4Nuku+LY/Q1XkRvwCuGf0MVZmbhX9JhfPTJMK+V2zCnzWOFX15IJBUnKcSY5847Sn/aDESuu7GpRN9XJej2gIQock1iVCITr0OCp9DZryMPARWoSWGdsFZBoUiGEkKtcExcZDaKZbDSfwTXauV2yd2VrhwRhl2eu8MICWui3j7KCIHSBJ+eLTELuUFkurNuffol+aw==",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "favorite-snack": "mango",
+  "id": "b6a7fcb4-a630-413b-9f5d-48a42a8e9d14",
+  "lastVersion": "b6a7f3b4-a6e0-413b-9f5d-48a42a8e9d14",
+  "originalVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
+  "sha256": "19585c7a77b8416711a298e5c02056d5ed864a11218c563b3b4ef83563831fea",
+  "version": "003f2cf6-6fc1-4f09-9877-ff42d5c0170e",
+  "versionDate": "2024-03-24T09:14:02.966765+00:00",
+  "name": "Agent Smith",
+  "agenttype": "ai",
+  "description": "An agent without keys, id or version"
+}
+
+```
+
+The agent is self-signed and all the fields are hashed.
+There is also a public and private key created in the directory set with `JACS_KEY_DIRECTORY`.
+
+Now you can create, update, and sign documents with your agent. If you share your public key, other agents can verify the document is from your agent.
+
+```
+    let schemas = [SCHEMA.to_string()];
+    agent.load_custom_schemas(&schemas);
+    let document_string = agent
+        .load_local_document(&"examples/documents/my-special-document.json".to_string())
+        .unwrap();
+    let document = agent.load_document(&document_string).unwrap();
+    let document_key = document.getkey();
+    let modified_document_string = agent
+        .load_local_document(&"examples/documents/my-special-document-modified.json".to_string())
+        .unwrap();
+
+    let new_document = agent
+        .update_document(&document_key, &modified_document_string)
+        .unwrap();
+
+    let new_document_key = new_document.getkey();
+
+    let new_document_ref = agent.get_document(&new_document_key).unwrap();
+    agent
+        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .unwrap();
+
+    println!("updated {} {}", new_document_key, new_document_ref);
+    agent
+        .verify_document_signature(
+            &new_document_key,
+            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            None,
+            None,
+        )
+        .unwrap();
+
+    let agent_one_public_key = agent.get_public_key().unwrap();
+    let mut agent2 = load_test_agent_two();
+    let new_document_string = new_document_ref.to_string();
+    let copy_newdocument = agent2.load_document(&new_document_string).unwrap();
+    let copy_newdocument_key = copy_newdocument.getkey();
+    println!("new document with sig: /n {}", new_document_string);
+    agent2
+        .verify_document_signature(
+            &copy_newdocument_key,
+            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            None,
+            Some(agent_one_public_key),
+        )
+        .unwrap();
+```
+
+## IDs and Versions vs Signatures
+
+IDs of agents and documents should be unique to your agent as they are a combination of ID and Version. However, if you share your documents, and we expect that you will, documents can be copied by other agents at any time and they can forge IDs and sign their docs.
+
+The solution to this is the value of the signature and where the signature is registered.
 
 
 ## Schemas: basic types
 
-every JACS doc has a header.
+Every JACS doc has a header. These are created automatically.
 
 You only need to use the agents and header to record and verify permissions on any type of document
 
@@ -56,202 +191,9 @@ You only need to use the agents and header to record and verify permissions on a
  - [Permission](./docs/schema/components/permission.md) -  the signature along with  access rules for the document fields
 
 For the schema files see [schemas](./schemas).
-For examples see [schemas](./examples).
+For examples see [examples](./examples).
 
 
-## building
 
-If you were to import this package in Rust for example.
 
-    cargo add jacs
-
-for python (planned)
-
-    pip install jacs
-
-for node/typescript (planned)
-
-    yarn add jacs
-
-for golang (planned)
-
-You don't need to know cryptography to use the library, but knowing the basics helps.
-
-## using agents
-
-Now you can create agents
-
-```
-    use jacs::{Agent}
-
-    // load your local agent
-    let json_data = fs::read_to_string("examples/myagent.json");
-
-    // you can also implement a trait to load agents
-
-    // create your jacs agent object with schema version
-    let myagent = Agent::new("v1");
-
-    // load your agent without an id, if there is no id one will be assigned
-    let (ready, OK) = myagent.create(json_data);
-
-    // if not ready, create id, version, and signature
-    if ready {
-        // create keys for the agent and save the to the path
-        let public_key_pem, private_key_pem = myagent.newkeys("algorithm");
-        // save your keys
-
-        // now self sign the agent
-        myagent.selfsign();
-        // now register the public key and agent somewhere (a trait must be implemented to use this)
-
-        // now save the agent whether from the trait or saving the string manually
-        let _ = myagent.to_json_string();
-        // save to "path/to/save/myagent.json"
-        let _ = myagent.save();
-    }
-
-```
-
-Now that the agent is created, we load it in various ways.
-
-
-```
-
-    // my private key (assumes you've already decrypted)
-    let private_key = fs::read_to_string("examples/private_key.pem");
-    // my public key
-    let public_key = fs::read_to_string("examples/publick_key.pem");
-
-    // load your local agent
-    let json_data = fs::read_to_string("examples/myagent.json");
-
-    // create your jacs agent object with schema version
-    let myagent = Agent::new("v1");
-
-    // load verifies the agent by signature
-    let (ready, OK) = myagent.load(json_data, public_key, private_key);
-
-    // if the trait is implemented you can load by id
-    let (ready, OK) = myagent.load_by_id(agent_id: String);
-
-    // check that your agent is ready again
-    let ready = myagent.ready();
-
-    // printyour id
-    println!("id {:?} version {}", myagent.get_id(), myagent.get_version());
-
-
-
-
-
-
-```
-
-Now that your agent is ready we can start creating documents
-
-```
-
-    // create a custom document, assigning an id and a version, validating a JACs header afters
-    myagent.create_document(json_string, "schema_name"); //returns id, version
-    // agents can store documents in memory
-    myagent.load_document(json_string, "schema_name");
-    myagent.load_document_schema("schema_name", json_string);
-    myagent.update_document("id", json_string); // will error on permission, returns new version, also signs it
-    myagent.get_document("id", remove=False); // serde Value (JSON object)
-    myagent.get_document_string("id", remove=False); //  (JSON string)
-    myagent.copy_document("id"); //returns  new id, version
-    myagent.list_ids_and_versions("id"); //returns  new id, version
-
-```
-
-Most importantly you can verify document
-
-```
-    myagent.verify_document_version("id"); //checks you are last signer, checks sig based on your own public key
-    myagent.verify_document_checksum("id");
-    // myagent.verify_document_version_with_registrar("id"); // ???
-    myagent.verify_document_signature("id", "field", public_key );
-    myagent.get_document_permissions("id", "fields"=None ); //if none return all permisions
-
-
-
-```
-
-You can also interact with other agents with messages, tasks, and plans
-
-```
-create second agent
-first agent grants permissions to second agent
-
-second agent makes some edits
-
-
-now you can verify everychange in the task
-
-```
-
-What is hapening under the hood is that
-
-1. the first agent, when adding a second agent must have admin permissions
-2. the second agent must have permissions
-3. the changes are signed
-4. the first agent can verify the changes
-
-
-
-
-Registering your agent will be provided by HAI.AI and other third parties.
-These third parties can be used to verify that a version and change to a task or agent is legit
-
-
-
-## usage with JWT
-
-
-# Background
-
-The web and html
-Semantic Web and
-
-
-Features include
-
- - an extensible JSON Schema for sharing information between agents and human UIs
- - cryptographic signing of messages
- - cryptographic hashing of chains of messages
-
-## process
-
-JACS runs by
-
-1. creating/loading a private key
-2. creating/loading public key into agent file
-3. validating an agent or task schema
-4. validating signature of agent an agent or task data
-5. validating chain of signatures
-
-## Usage
-
-### from rust
-
-
-### from python
-
-
-
-### extending the schema
-
-You can both extend just the schema file or the library in your own project.
-
-
-# Roadmap
-
-
-
-### advanced/future
-
- - full external audit
- - use post quantum signing tools. [pg crypto dilithium](https://docs.rs/pqcrypto-dilithium/0.5.0/pqcrypto_dilithium/) via https://github.com/pqclean/pqclean/
- - [json-ld](https://json-ld.org/) and  [https://crates.io/crates/sophia](https://crates.io/crates/sophia) integration
 

@@ -7,6 +7,7 @@ pub trait BoilerPlate {
     fn get_public_key(&self) -> Result<Vec<u8>, Box<dyn Error>>;
     fn get_version(&self) -> Result<String, Box<dyn Error>>;
     fn as_string(&self) -> Result<String, Box<dyn Error>>;
+    fn get_lookup_id(&self) -> Result<String, Box<dyn Error>>;
 }
 
 impl BoilerPlate for Agent {
@@ -39,5 +40,13 @@ impl BoilerPlate for Agent {
             Some(value) => serde_json::to_string_pretty(value).map_err(|e| e.into()),
             None => Err("Value is None".into()),
         }
+    }
+
+    /// combination of id and value
+    fn get_lookup_id(&self) -> Result<String, Box<dyn Error>> {
+        // return the id and version
+        let id = &self.get_id()?;
+        let version = &self.get_version()?;
+        return Ok(format!("{}:{}", id, version));
     }
 }
