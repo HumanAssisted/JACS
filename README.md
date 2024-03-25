@@ -1,8 +1,8 @@
-# JACS - JSON Ai Communication Standard
+# JACS
 
-Welcome to JACS.
+Welcome to JACS - JSON Ai Communication Standard.
 
-The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable.
+ q
 
  - verifiable as to their source
  - verifiable as to their schema
@@ -11,14 +11,17 @@ The JACS documents enable trusted data sharing between AI agents and Human UIs. 
 
 The core Rust library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
 
-To use, you create JSON documents and then sign them with your agent. Then share the docs with other agents and services. When those other services have modified the document, you can verifiy the agent, and sign the changes.
 
-JACS started as [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
+## JSON is all you need
+
+To use, you create JSON documents and then sign them with your agent.  When those other services have modified the document, you can verifiy the agent, and sign the changes.
+Documents are meant to be shared and stand-alone, meaning that all. you need is the JACS lib and a document to validate a document.
+Store, index, and search the docouments how you like.
 
 
 ## trust
 
-Documents are meant to be omnipotent.
+Documents are meant to be immutable and idempotent.
 
 When data is changed documents are versioned and the version is cryptographically signed by your agent.
 Changes can be verified and approved by other agents using your public key, allowing for creation and exchange of trusted data.
@@ -192,6 +195,11 @@ You only need to use the agents and header to record and verify permissions on a
 
 For the schema files see [schemas](./schemas).
 For examples see [examples](./examples).
+
+
+## background
+
+JACS started as [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
 
 
 

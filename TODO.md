@@ -2,10 +2,13 @@
 
 ## for release
 
+BUG - agent id and agent version don't make it into signature on creation
+
 - save agent
 - save doc
 - refactor filesystem management for WASM compatability.
-
+- services
+- registrars
 
 
 ### AGENT REGISTRATION ---------------------

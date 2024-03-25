@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/header/v1/header-schema.json",
+  "$id": "https://hai.ai/schemas/header/v1/header.schema.json",
   "title": "Header",
   "description": "The basis for a JACS document",
   "type": "object",
@@ -37,7 +37,7 @@
       "type": "string"
     },
     "self-signature": {
-      "description": "Signature of of every field except this one and the hashing field",
+      "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "versionRegistration": {

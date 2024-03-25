@@ -21,7 +21,7 @@ fn test_validate_agent_creation() {
         }),
     };
 
-    println!("New Agent Created {} ", agent);
+    println!("New Agent Created\n\n\n {} ", agent);
 }
 
 #[test]

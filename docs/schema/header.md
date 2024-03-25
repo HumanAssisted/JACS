@@ -1,7 +1,7 @@
 # Header Schema
 
 ```txt
-https://hai.ai/schemas/header/v1/header-schema.json
+https://hai.ai/schemas/header/v1/header.schema.json
 ```
 
 The basis for a JACS document
@@ -18,17 +18,17 @@ The basis for a JACS document
 
 | Property                                    | Type     | Required | Nullable       | Defined by                                                                                                                       |
 | :------------------------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                                   | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")                           |
-| [registrars](#registrars)                   | `array`  | Optional | cannot be null | [Header](header-properties-registrars.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrars")           |
-| [permissions](#permissions)                 | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")         |
-| [version](#version)                         | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")                 |
-| [versionDate](#versiondate)                 | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")         |
+| [id](#id)                                   | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/id")                           |
+| [registrars](#registrars)                   | `array`  | Optional | cannot be null | [Header](header-properties-registrars.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/registrars")           |
+| [permissions](#permissions)                 | `array`  | Optional | cannot be null | [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/permissions")         |
+| [version](#version)                         | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/version")                 |
+| [versionDate](#versiondate)                 | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/versionDate")         |
 | [self-signature](#self-signature)           | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/self-signature")         |
 | [versionRegistration](#versionregistration) | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/versionRegistration")    |
-| [previousVersion](#previousversion)         | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion") |
-| [originalVersion](#originalversion)         | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion") |
-| [sha256](#sha256)                           | `string` | Optional | cannot be null | [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/sha256")                   |
-| [eval](#eval)                               | `string` | Optional | cannot be null | [Header](header-properties-eval.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/eval")                       |
+| [previousVersion](#previousversion)         | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/previousVersion") |
+| [originalVersion](#originalversion)         | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalVersion") |
+| [sha256](#sha256)                           | `string` | Optional | cannot be null | [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/sha256")                   |
+| [eval](#eval)                               | `string` | Optional | cannot be null | [Header](header-properties-eval.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/eval")                       |
 
 ## id
 
@@ -42,7 +42,7 @@ uuid v4 string
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/id")
+*   defined in: [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/id")
 
 ### id Type
 
@@ -64,7 +64,7 @@ Signing authorities agent is registered with.
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-registrars.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/registrars")
+*   defined in: [Header](header-properties-registrars.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/registrars")
 
 ### registrars Type
 
@@ -82,7 +82,7 @@ array of permissions
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions")
+*   defined in: [Header](header-properties-permissions.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/permissions")
 
 ### permissions Type
 
@@ -100,7 +100,7 @@ Version id of the object. uuid v4 string
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/version")
+*   defined in: [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/version")
 
 ### version Type
 
@@ -122,7 +122,7 @@ Date
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/versionDate")
+*   defined in: [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/versionDate")
 
 ### versionDate Type
 
@@ -180,7 +180,7 @@ Previous Version id of the object. If blank, it's claiming to be the first
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion")
+*   defined in: [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/previousVersion")
 
 ### previousVersion Type
 
@@ -202,7 +202,7 @@ Original Version id of the object. When documents are copied without merging, th
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/originalVersion")
+*   defined in: [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalVersion")
 
 ### originalVersion Type
 
@@ -224,7 +224,7 @@ Hash of every field except this one. During  updates and creation hash is the la
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/sha256")
+*   defined in: [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/sha256")
 
 ### sha256 Type
 
@@ -242,7 +242,7 @@ A description of how the document should be evaluated.
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-eval.md "https://hai.ai/schemas/header/v1/header-schema.json#/properties/eval")
+*   defined in: [Header](header-properties-eval.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/eval")
 
 ### eval Type
 
