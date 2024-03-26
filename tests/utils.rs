@@ -1,6 +1,9 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::Agent;
 use log::{debug, error, warn};
+use std::error::Error;
+use std::fs;
+use std::path::PathBuf;
 
 use std::env;
 
@@ -55,8 +58,25 @@ pub fn load_test_agent_two() -> Agent {
 #[cfg(test)]
 pub fn set_test_env_vars() {
     // to get reliable test outputs, use consistent keys
-    env::set_var("JACS_KEY_DIRECTORY", "./tests/scratch/");
-    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
-    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
+    env::set_var("JACS_DATA_DIRECTORY", "./examples/");
+    env::set_var("JACS_KEY_DIRECTORY", "./examples/keys/");
+    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
+    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
     env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+}
+
+#[cfg(test)]
+pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> {
+    let current_dir = env::current_dir()?;
+    let document_path: PathBuf = current_dir.join(filepath);
+    let json_data = fs::read_to_string(document_path);
+    match json_data {
+        Ok(data) => {
+            debug!("testing data {}", data);
+            Ok(data.to_string())
+        }
+        Err(e) => {
+            panic!("Failed to find file: {} {}", filepath, e);
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
 mod utils;
-use utils::{load_test_agent_one, load_test_agent_two, set_test_env_vars};
+use utils::{load_local_document, load_test_agent_one, load_test_agent_two, set_test_env_vars};
 
 #[test]
 fn test_load_agent_json() {
@@ -70,9 +70,8 @@ fn test_update_agent_and_verify_signature() {
         }
     }
 
-    let modified_agent_string = agent
-        .load_local_document(&"examples/agents/agent-one-modified.json".to_string())
-        .unwrap();
+    let modified_agent_string =
+        load_local_document(&"examples/agent/agent-one-modified.json".to_string()).unwrap();
 
     let new_agent_version = agent.update_self(&modified_agent_string).unwrap();
     println!("NEW AGENT VERSION {}", new_agent_version);

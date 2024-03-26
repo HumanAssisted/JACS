@@ -1,9 +1,10 @@
 // pub mod document;
-
+use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::security::check_data_directory;
+use crate::config::get_default_dir;
 pub mod boilerplate;
 pub mod loaders;
-
-use crate::agent::boilerplate::BoilerPlate;
+pub mod security;
 
 use crate::crypt::hash::hash_string;
 use crate::crypt::KeyManager;
@@ -72,9 +73,10 @@ impl Agent {
         let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let mut document_map = Arc::new(Mutex::new(HashMap::new()));
         let mut public_keys: HashMap<String, String> = HashMap::new();
-        let default_directory = env::var("JACS_AGENT_DEFAULT_DIRECTORY")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| env::current_dir().unwrap());
+
+        check_data_directory();
+        let default_directory = get_default_dir();
+
         Ok(Self {
             schema,
             value: None,
@@ -96,7 +98,7 @@ impl Agent {
         id: String,
         _version: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let agent_string = self.load_local_agent_by_id(&id)?;
+        let agent_string = self.fs_agent_load(&id)?;
         return self.load(&agent_string);
     }
 
@@ -146,7 +148,7 @@ impl Agent {
 
         if self.id.is_some() {
             let id_string = self.id.clone().expect("string expected").to_string();
-            self.load_keys()?;
+            self.fs_load_keys()?;
             debug!("loaded keys for agent")
         }
 
@@ -416,7 +418,7 @@ impl Agent {
     }
 
     fn storeJACSDocument(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
-        let mut documents = self.documents.lock().unwrap();
+        let mut documents = self.documents.lock().expect("JACSDocument lock");
         let doc = JACSDocument {
             id: value.get_str("id").expect("REASON").to_string(),
             version: value.get_str("version").expect("REASON").to_string(),
@@ -428,7 +430,7 @@ impl Agent {
     }
 
     pub fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
-        let documents = self.documents.lock().unwrap();
+        let documents = self.documents.lock().expect("JACSDocument lock");
         match documents.get(document_key) {
             Some(document) => Ok(document.clone()),
             None => Err(format!("Document not found for key: {}", document_key).into()),
@@ -439,7 +441,7 @@ impl Agent {
         &mut self,
         document_key: &String,
     ) -> Result<JACSDocument, Box<dyn Error>> {
-        let mut documents = self.documents.lock().unwrap();
+        let mut documents = self.documents.lock().expect("JACSDocument lock");
         match documents.remove(document_key) {
             Some(document) => Ok(document),
             None => Err(format!("Document not found for key: {}", document_key).into()),
@@ -447,12 +449,12 @@ impl Agent {
     }
 
     pub fn get_document_keys(&mut self) -> Vec<String> {
-        let documents = self.documents.lock().unwrap();
+        let documents = self.documents.lock().expect("documents lock");
         return documents.keys().map(|k| k.to_string()).collect();
     }
 
     pub fn get_schema_keys(&mut self) -> Vec<String> {
-        let document_schemas = self.document_schemas.lock().unwrap();
+        let document_schemas = self.document_schemas.lock().expect("document_schemas lock");
         return document_schemas.keys().map(|k| k.to_string()).collect();
     }
 
@@ -507,7 +509,8 @@ impl Agent {
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
         let new_document: Value = self.schema.validate_header(new_document_string)?;
-        let original_document = self.get_document(document_key).unwrap();
+        let error_message = format!("original document {} not found", document_key);
+        let original_document = self.get_document(document_key).expect(&error_message);
         let mut value = original_document.value;
         // check that new document has same id, value, hash as old
         let orginal_id = &value.get_str("id");
@@ -682,14 +685,13 @@ impl Agent {
         // make sure id and version are empty
         let mut instance = self.schema.create(json)?;
 
-        if let Some(ref value) = self.value {
-            self.id = value.get_str("id");
-            self.version = value.get_str("version");
-        }
+        self.id = instance.get_str("id");
+        self.version = instance.get_str("version");
+
         if create_keys {
             self.generate_keys()?;
         }
-        let _ = self.load_keys();
+        let _ = self.fs_load_keys();
 
         // generate keys
 
