@@ -36,7 +36,7 @@
       "format": "date-time",
       "type": "string"
     },
-    "self-signature": {
+    "selfSignature": {
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },

@@ -7,7 +7,7 @@
   "registered_with": "Example Organization",
   "registration_signature": "b2a7bfc4-a6e0-513z-9f5d-48a42a8e9d14...",
   "registered_date": "2023-04-15T10:00:00Z",
-  "agenttype": "hybrid",
+  "agentType": "hybrid",
   "name": "Agent Smiths",
   "resourcetype": "agent",
   "description": "A hybrid SET OF agent combining human and AI capabilities.",

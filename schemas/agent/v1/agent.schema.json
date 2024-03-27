@@ -10,7 +10,7 @@
     {
       "type": "object",
       "properties": {
-        "agenttype": {
+        "agentType": {
           "type": "string",
           "enum": [
             "human",
@@ -24,6 +24,6 @@
     }
   ],
   "required": [
-    "agenttype"
+    "agentType"
   ]
 }

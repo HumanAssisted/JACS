@@ -5,12 +5,12 @@
   "description": "Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.",
   "type": "object",
   "properties": {
-    "agentid": {
+    "agentID": {
       "description": "The id of agent that produced signature",
       "type": "string",
       "format": "uuid"
     },
-    "agentversion": {
+    "agentVersion": {
       "description": " Version of the agent",
       "type": "string",
       "format": "uuid"
@@ -24,11 +24,11 @@
       "description": "The actual signature, made from the docid, ",
       "type": "string"
     },
-    "public-key-hash": {
+    "publicKeyHash": {
       "description": "Hash of the public key to verify signature with.",
       "type": "string"
     },
-    "signing-algorithm": {
+    "signingAlgorithm": {
       "description": "What signature algorithm was used",
       "type": "string"
     },
@@ -41,11 +41,11 @@
     }
   },
   "required": [
-    "agentid",
-    "agentversion",
+    "agentID",
+    "agentVersion",
     "signature",
     "date",
-    "public-key-hash",
+    "publicKeyHash",
     "fields"
   ]
 }

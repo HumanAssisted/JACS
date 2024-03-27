@@ -2,21 +2,22 @@
 
 Welcome to JACS - JSON Ai Communication Standard.
 
- q
+The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable.
 
  - verifiable as to their source
  - verifiable as to their schema
  - verifiable in a state and version
 
-
 The core Rust library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
 
 
-## JSON is all you need
+## JSON is all you need!
 
-To use, you create JSON documents and then sign them with your agent.  When those other services have modified the document, you can verifiy the agent, and sign the changes.
-Documents are meant to be shared and stand-alone, meaning that all. you need is the JACS lib and a document to validate a document.
-Store, index, and search the docouments how you like.
+All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.  When those other services have modified the document, you can verifiy the agent, and sign the changes.
+
+Documents are meant to be shared and stand-alone.
+
+Flexible for developers - store, index, and search the docouments how you like.
 
 
 ## trust
@@ -41,17 +42,28 @@ Decentralized but trusted data sharing is key to building the apps of the future
 
 # Usage
 
-To use JACS you create an `Agent` and then use it to create docoments that conform to the JACS `Header` format.
+First configure the envirornment variables or use a config file:
 
-To use, just create a json document that follows the schema for an agent, and use it in the library to start building other things.
+```
+use std::env;
 
-Here's all it takes to create your agent.
+env::set_var("JACS_KEY_DIRECTORY", ".");
+env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
+env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
+env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+```
+
+To use JACS you create an `Agent`  and then use it to create docoments that conform to the JACS `Header` format.
+
+First, create a json document that follows the schema for an agent, and use it in the library to start building other things.
+
+To create
 
 ```
 {
   "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "name": "Agent Smith",
-  "agenttype": "ai",
+  "agentType": "ai",
   "description": "An agent without keys, id or version",
   "favorite-snack": "mango"
 }
@@ -63,13 +75,7 @@ Here's a rust example.
 
 ```
 use std::fs;
-use std::env;
 
-
-env::set_var("JACS_KEY_DIRECTORY", ".");
-env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
-env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
-env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
 
 
 #[test]
@@ -89,8 +95,8 @@ Your agent will now look this this
 
 ```
 agent-signature": {
-    "agentid": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
-    "agentversion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
+    "agentID": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
+    "agentVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
     "date": "2024-03-24T09:14:03.028576+00:00",
     "fields": [
       "favorite-snack",
@@ -103,9 +109,9 @@ agent-signature": {
       "agentype",
       "description"
     ],
-    "public-key-hash": "975f6dbe685a186deabab958b30c7c5aa97c144e3cb4357e34440783669e9815",
+    "publicKeyHash": "975f6dbe685a186deabab958b30c7c5aa97c144e3cb4357e34440783669e9815",
     "signature": "C/NQGYlR8zoYu/0rngi12lpG32lkPGPqP1y10u5lAgr5LsvBsfvk6v3xYXvWf4e+hX1sf4YxRbolawXE0wfqRXiLazhBA2zpz0Yn4i4bfaqBd7S8+ARoWyiolXa3tcAaxdXTRiu9VWwdfBhh4Nuku+LY/Q1XkRvwCuGf0MVZmbhX9JhfPTJMK+V2zCnzWOFX15IJBUnKcSY5847Sn/aDESuu7GpRN9XJej2gIQock1iVCITr0OCp9DZryMPARWoSWGdsFZBoUiGEkKtcExcZDaKZbDSfwTXauV2yd2VrhwRhl2eu8MICWui3j7KCIHSBJ+eLTELuUFkurNuffol+aw==",
-    "signing_algorithm": "RSA-PSS"
+    "signingAlgorithm": "RSA-PSS"
   },
   "favorite-snack": "mango",
   "id": "b6a7fcb4-a630-413b-9f5d-48a42a8e9d14",
@@ -115,7 +121,7 @@ agent-signature": {
   "version": "003f2cf6-6fc1-4f09-9877-ff42d5c0170e",
   "versionDate": "2024-03-24T09:14:02.966765+00:00",
   "name": "Agent Smith",
-  "agenttype": "ai",
+  "agentType": "ai",
   "description": "An agent without keys, id or version"
 }
 

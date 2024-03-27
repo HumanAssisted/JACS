@@ -1,7 +1,7 @@
 # Untitled string in Permission Schema
 
 ```txt
-https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentid
+https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentID
 ```
 
 The id of agent with permissions.
@@ -10,6 +10,6 @@ The id of agent with permissions.
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [permission.schema.json\*](../../schemas/components/permission/v1/permission.schema.json "open original schema") |
 
-## agentid Type
+## agentID Type
 
 `string`

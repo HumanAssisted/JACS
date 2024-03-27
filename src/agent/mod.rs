@@ -32,8 +32,8 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 pub const SHA256_FIELDNAME: &str = "sha256";
-pub const AGENT_SIGNATURE_FIELDNAME: &str = "self-signature";
-pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agent-signature";
+pub const AGENT_SIGNATURE_FIELDNAME: &str = "selfSignature";
+pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
 
 pub struct Agent {
     /// the JSONSchema used
@@ -223,12 +223,12 @@ impl Agent {
             document_values_string
         );
 
-        let agentid = json_value[signature_key_from]["agentid"]
+        let agentid = json_value[signature_key_from]["agentID"]
             .as_str()
             .unwrap_or("")
             .trim_matches('"')
             .to_string();
-        let agentversion = json_value[signature_key_from]["agentversion"]
+        let agentversion = json_value[signature_key_from]["agentVersion"]
             .as_str()
             .unwrap_or("")
             .trim_matches('"')
@@ -237,7 +237,7 @@ impl Agent {
         // todo use to get public key in sophon
         let agent_key = format!("{}:{}", agentid, agentversion);
 
-        let public_key_hash = json_value[signature_key_from]["public-key-hash"]
+        let public_key_hash = json_value[signature_key_from]["publicKeyHash"]
             .as_str()
             .unwrap_or("")
             .trim_matches('"')
@@ -294,12 +294,12 @@ impl Agent {
         // error
         let signature_document = json!({
             // based on v1
-            "agentid": agent_id,
-            "agentversion": agent_version,
+            "agentID": agent_id,
+            "agentVersion": agent_version,
             "date": date,
             "signature":signature,
             "signing_algorithm":signing_algorithm,
-            "public-key-hash": public_key_hash,
+            "publicKeyHash": public_key_hash,
             "fields": serialized_fields
         });
         // TODO add sha256 of public key

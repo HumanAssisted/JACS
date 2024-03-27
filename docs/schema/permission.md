@@ -20,8 +20,8 @@ Provides agents access to fields for reading, writing, signing, and amdin.
 | :-------------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
 | [fields](#fields)                       | `array`  | Optional | cannot be null | [Permission](permission-properties-fields.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/fields")   |
 | [default](#default)                     | `string` | Optional | cannot be null | [Permission](permission-properties-default.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/default") |
-| [agentid](#agentid)                     | `string` | Required | cannot be null | [Permission](permission-properties-agentid.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentid") |
-| [grantingsignature](#grantingsignature) | `object` | Optional | cannot be null | [Permission](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/grantingsignature")             |
+| [agentID](#agentid)                     | `string` | Required | cannot be null | [Permission](permission-properties-agentid.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentID") |
+| [grantingSignature](#grantingsignature) | `object` | Optional | cannot be null | [Permission](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/grantingSignature")             |
 
 ## fields
 
@@ -78,11 +78,11 @@ default permission on fields.
 | `"read"`  |             |
 | `"sign"`  |             |
 
-## agentid
+## agentID
 
 The id of agent with permissions.
 
-`agentid`
+`agentID`
 
 *   is required
 
@@ -90,17 +90,17 @@ The id of agent with permissions.
 
 *   cannot be null
 
-*   defined in: [Permission](permission-properties-agentid.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentid")
+*   defined in: [Permission](permission-properties-agentid.md "https://hai.ai/schemas/components/permission/v1/permission-schema.json#/properties/agentID")
 
-### agentid Type
+### agentID Type
 
 `string`
 
-## grantingsignature
+## grantingSignature
 
 Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
-`grantingsignature`
+`grantingSignature`
 
 *   is optional
 
@@ -108,8 +108,8 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Permission](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/grantingsignature")
+*   defined in: [Permission](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/grantingSignature")
 
-### grantingsignature Type
+### grantingSignature Type
 
 `object` ([Signature](signature.md))

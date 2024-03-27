@@ -38,18 +38,18 @@
         "sign"
       ]
     },
-    "agentid": {
+    "agentID": {
       "description": "The id of agent with permissions.",
       "type": "string"
     },
-    "grantingsignature": {
+    "grantingSignature": {
       "description": "the signature of admin granting the permision",
       "$ref": "../../../components/signature/v1/signature.schema.json"
     }
   },
   "required": [
-    "agentid",
-    "agentversion",
+    "agentID",
+    "agentVersion",
     "signature",
     "date"
   ]
