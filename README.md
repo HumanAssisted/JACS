@@ -22,13 +22,13 @@ Flexible for developers - store, index, and search the docouments how you like.
 
 ## trust
 
-Documents are meant to be immutable and idempotent.
+JACS documents are meant to be immutable and idempotent.
 
 When data is changed documents are versioned and the version is cryptographically signed by your agent.
 Changes can be verified and approved by other agents using your public key, allowing for creation and exchange of trusted data.
 
-Any person or software can modify a doc, but only agents can sign the changes.
-If you are familiar with [JWTs](https://jwt.io/), PGP, sha256 hashes on files, then you have a good idea of how JACS works.
+Any person or software can modify a doc, but only agents with the private key can sign the changes.
+If you are familiar with [JWTs](https://jwt.io/) or PGP from email, then you have a good idea of how JACS works.
 
 ## extensible
 
@@ -37,8 +37,11 @@ Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a 
 
 ## open source
 
-Use JACS as is, embed in other projects or libraries, commercial or otherwise.
 Decentralized but trusted data sharing is key to building the apps of the future.
+Use JACS as is, embed in other projects or libraries, commercial or otherwise.
+
+For more features, also open source, check out [Sophon](https://github.com/HumanAssistedIntelligence/sophon).
+
 
 # Usage
 
@@ -202,6 +205,22 @@ You only need to use the agents and header to record and verify permissions on a
 For the schema files see [schemas](./schemas).
 For examples see [examples](./examples).
 
+## security
+
+JACS goal is to introduce no safety vulnerabilities to systems where it is integrated.
+
+### filesystem
+
+However, filesystem acces can also be turned off completely for documents. This means your app passing strings in and out of JACS but can not save().
+
+By default a directory is used that is configured.  JACS should not touch any files outside the key directory JACS_KEY_DIRECTORY and the JACS_DIRECTORY.
+
+There is a feature that can be enabled to attempt to quarantine executable files found in the JACS directory.
+It is untested and somewhat easily circumvented.
+
+### private keys
+
+TODO encrypt private keys.
 
 ## background
 
