@@ -21,6 +21,8 @@ for file in ./examples/*.json; do
   jq   '.' "$file" > temp.json && mv temp.json "$file"
 done
 
+rm temp.json
+
 # create json schema docs
 jsonschema2md -d schemas  -o docs/schema -x -
 

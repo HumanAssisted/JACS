@@ -37,7 +37,7 @@ fn test_load_unsigned_document() {
     let document_string =
         load_local_document(&"examples/documents/my-special-document.json".to_string()).unwrap();
     let document_key = agent.load_document(&document_string).unwrap();
-    println!("loaded valid {}", document_key);
+    println!("loaded valid  doc {}", document_key);
     let signature_field_name = "test-signature".to_string();
     let mut fields: Vec<String> = Vec::new();
     fields.push("favorite-snack".to_string());
@@ -89,6 +89,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
+    let _ = agent.save_document(&document_key);
 }
 
 #[test]
@@ -99,11 +100,11 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/my-special-document.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let modified_document_string =
-        load_local_document(&"examples/documents/my-special-document-modified.json".to_string())
+        load_local_document(&"examples/documents/MODIFIED_6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f.json".to_string())
             .unwrap();
 
     let new_document = agent

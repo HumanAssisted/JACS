@@ -1,8 +1,8 @@
-use log::{error, warn};
+use log::warn;
 use std::env;
 use std::error::Error;
 use std::fs::{self, Permissions};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use walkdir::WalkDir;
 
 /// off by default
@@ -27,7 +27,7 @@ pub fn check_data_directory() -> Result<(), Box<dyn Error>> {
         .filter(|e| e.path().is_file())
     {
         if is_executable(entry.path()) {
-            quarantine_file(entry.path());
+            let _ = quarantine_file(entry.path());
         }
     }
     Ok(())
@@ -43,7 +43,6 @@ use std::os::unix::fs::PermissionsExt;
 
 #[cfg(not(target_os = "windows"))]
 fn is_executable(path: &std::path::Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
     let metadata = match path.metadata() {
         Ok(metadata) => metadata,
         Err(_) => return false,

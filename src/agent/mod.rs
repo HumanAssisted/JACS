@@ -186,22 +186,14 @@ impl Agent {
         let public_key = self.get_public_key()?;
         // validate header
         let signature_key_from = &AGENT_SIGNATURE_FIELDNAME.to_string();
-        match &self.value {
+        match &self.value.clone() {
             Some(embedded_value) => {
-                let (document_values_string, _) =
-                    Agent::get_values_as_string(&embedded_value, None, signature_key_from)?;
-                let signature_base64 = embedded_value[signature_key_from]["signature"]
-                    .as_str()
-                    .unwrap_or("")
-                    .trim_matches('"')
-                    .to_string();
-                match self.verify_string(&document_values_string, &signature_base64, public_key) {
-                    Ok(()) => Ok(()),
-                    error => {
-                        self.unset_self();
-                        return error.into();
-                    }
-                }
+                return self.signature_verification_procedure(
+                    embedded_value,
+                    None,
+                    signature_key_from,
+                    public_key,
+                );
             }
             None => {
                 let error_message = "Value is None";
@@ -230,6 +222,35 @@ impl Agent {
             "signing_procedure document_values_string:\n{}",
             document_values_string
         );
+
+        let agentid = json_value[signature_key_from]["agentid"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+        let agentversion = json_value[signature_key_from]["agentversion"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        // todo use to get public key in sophon
+        let agent_key = format!("{}:{}", agentid, agentversion);
+
+        let public_key_hash = json_value[signature_key_from]["public-key-hash"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let public_key_rehash = hash_string(&String::from_utf8(public_key.clone())?);
+
+        if public_key_rehash != public_key_hash {
+            let error_message = "Incorrect public key used to verify signature";
+            error!("{}", error_message);
+            return Err(error_message.into());
+        }
+
         let signature_base64 = json_value[signature_key_from]["signature"]
             .as_str()
             .unwrap_or("")
@@ -544,7 +565,6 @@ impl Agent {
 /*
 
 todo
-
  - load actor and sign and act on other things
  - which requires a private key
  - also a verifier

@@ -3,7 +3,7 @@ use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
 
 use chrono::Utc;
-use log::{debug, error};
+use log::{debug, error, info};
 use std::env;
 use std::error::Error;
 use std::{fs, path::Path, path::PathBuf};
@@ -42,7 +42,11 @@ pub trait FileLoader {
     fn fs_agent_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
     fn fs_document_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
     fn fs_document_load(&self, document_id: &String) -> Result<String, Box<dyn Error>>;
-
+    fn fs_preload_keys(
+        &mut self,
+        private_key_filename: &String,
+        public_key_filename: &String,
+    ) -> Result<(), Box<dyn Error>>;
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>>;
     fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>>;
 
@@ -129,7 +133,24 @@ impl FileLoader for Agent {
         self.set_keys(private_key, public_key, &key_algorithm)
     }
 
-    // init
+    /// a way to load keys that aren't default
+    fn fs_preload_keys(
+        &mut self,
+        private_key_filename: &String,
+        public_key_filename: &String,
+    ) -> Result<(), Box<dyn Error>> {
+        //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
+        //todo use filepath builder
+        let default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+
+        let private_key = load_key_file(&default_dir, &private_key_filename)?;
+        let public_key = load_key_file(&default_dir, &public_key_filename)?;
+
+        let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
+        self.set_keys(private_key, public_key, &key_algorithm)
+    }
+
+    /// on instantiation load and validata all local documents
     fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
         Err(not_implemented_error())
     }
@@ -182,7 +203,12 @@ impl FileLoader for Agent {
         document_id: &String,
         document_string: &String,
     ) -> Result<String, Box<dyn Error>> {
-        Err(not_implemented_error())
+        let document_path = self.build_filepath(&"documents".to_string(), document_id)?;
+        info!("document path {:?} ", document_path);
+        Ok(save_to_filepath(
+            &document_path,
+            document_string.as_bytes(),
+        )?)
     }
 }
 

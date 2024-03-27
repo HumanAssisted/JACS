@@ -28,7 +28,7 @@
       "description": "Hash of the public key to verify signature with.",
       "type": "string"
     },
-    "signing_algorithm": {
+    "signing-algorithm": {
       "description": "What signature algorithm was used",
       "type": "string"
     },

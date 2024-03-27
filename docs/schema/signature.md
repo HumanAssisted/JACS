@@ -16,15 +16,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 # Signature Properties
 
-| Property                                 | Type     | Required | Nullable       | Defined by                                                                                                                                                  |
-| :--------------------------------------- | :------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [agentid](#agentid)                      | `string` | Required | cannot be null | [Signature](signature-properties-agentid.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/agentid")                     |
-| [agentversion](#agentversion)            | `string` | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/agentversion")           |
-| [date](#date)                            | `string` | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/date")                           |
-| [signature](#signature)                  | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signature")                 |
-| [public-key-hash](#public-key-hash)      | `string` | Required | cannot be null | [Signature](signature-properties-public-key-hash.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/public-key-hash")     |
-| [signing\_algorithm](#signing_algorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signing_algorithm.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signing_algorithm") |
-| [fields](#fields)                        | `array`  | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields")                       |
+| Property                                | Type     | Required | Nullable       | Defined by                                                                                                                                                  |
+| :-------------------------------------- | :------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [agentid](#agentid)                     | `string` | Required | cannot be null | [Signature](signature-properties-agentid.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/agentid")                     |
+| [agentversion](#agentversion)           | `string` | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/agentversion")           |
+| [date](#date)                           | `string` | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/date")                           |
+| [signature](#signature)                 | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signature")                 |
+| [public-key-hash](#public-key-hash)     | `string` | Required | cannot be null | [Signature](signature-properties-public-key-hash.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/public-key-hash")     |
+| [signing-algorithm](#signing-algorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signing-algorithm.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signing-algorithm") |
+| [fields](#fields)                       | `array`  | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields")                       |
 
 ## agentid
 
@@ -128,11 +128,11 @@ Hash of the public key to verify signature with.
 
 `string`
 
-## signing\_algorithm
+## signing-algorithm
 
 What signature algorithm was used
 
-`signing_algorithm`
+`signing-algorithm`
 
 *   is optional
 
@@ -140,9 +140,9 @@ What signature algorithm was used
 
 *   cannot be null
 
-*   defined in: [Signature](signature-properties-signing_algorithm.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signing_algorithm")
+*   defined in: [Signature](signature-properties-signing-algorithm.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/signing-algorithm")
 
-### signing\_algorithm Type
+### signing-algorithm Type
 
 `string`
 

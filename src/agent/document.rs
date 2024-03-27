@@ -1,11 +1,12 @@
 use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
 use chrono::Utc;
-use log::{debug, error, warn};
+use log::error;
 use serde_json::json;
 use serde_json::Value;
 use std::error::Error;
@@ -65,6 +66,7 @@ pub trait Document {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
+    fn save_document(&mut self, document_key: &String) -> Result<(), Box<dyn Error>>;
     fn update_document(
         &mut self,
         document_key: &String,
@@ -239,6 +241,14 @@ impl Document for Agent {
         Ok(self.storeJACSDocument(&value)?)
     }
 
+    fn save_document(&mut self, document_key: &String) -> Result<(), Box<dyn Error>> {
+        let lookup_id = self.get_lookup_id()?;
+        let original_document = self.get_document(document_key).unwrap();
+        let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
+        let _ = self.fs_document_save(&lookup_id, &document_string);
+        Ok(())
+    }
+
     fn verify_document_signature(
         &mut self,
         document_key: &String,
@@ -261,7 +271,7 @@ impl Document for Agent {
             used_public_key,
         );
         match result {
-            Ok(result) => Ok(()),
+            Ok(_) => Ok(()),
             Err(err) => {
                 let error_message =
                     format!("Signatures not verifiable {} {:?}! ", document_key, err);
