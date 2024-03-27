@@ -1,4 +1,5 @@
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::agent::document::Document;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 mod utils;

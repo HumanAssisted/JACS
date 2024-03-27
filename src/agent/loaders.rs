@@ -1,9 +1,9 @@
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
-use crate::document::JACSDocument;
+
 use chrono::Utc;
-use log::{debug, error, warn};
+use log::{debug, error};
 use std::env;
 use std::error::Error;
 use std::{fs, path::Path, path::PathBuf};
@@ -173,7 +173,8 @@ impl FileLoader for Agent {
         agentid: &String,
         agent_string: &String,
     ) -> Result<String, Box<dyn Error>> {
-        Err(not_implemented_error())
+        let agentpath = self.build_filepath(&"agent".to_string(), agentid)?;
+        Ok(save_to_filepath(&agentpath, agent_string.as_bytes())?)
     }
 
     fn fs_document_save(
@@ -217,7 +218,11 @@ fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u
 #[cfg(not(target_arch = "wasm32"))]
 fn save_file(file_path: &Path, filename: &String, content: &[u8]) -> std::io::Result<String> {
     let full_path = file_path.join(filename);
+    save_to_filepath(&full_path, content)
+}
 
+#[cfg(not(target_arch = "wasm32"))]
+fn save_to_filepath(full_path: &PathBuf, content: &[u8]) -> std::io::Result<String> {
     if full_path.exists() {
         let backup_path = create_backup_path(&full_path)?;
         fs::copy(&full_path, backup_path)?;
@@ -225,7 +230,7 @@ fn save_file(file_path: &Path, filename: &String, content: &[u8]) -> std::io::Re
 
     fs::write(full_path.clone(), content)?;
     // .to_string_lossy().into_owned()
-    match full_path.into_os_string().into_string() {
+    match full_path.clone().into_os_string().into_string() {
         Ok(path_string) => Ok(path_string),
         Err(os_string) => {
             // Convert the OsString into an io::Error

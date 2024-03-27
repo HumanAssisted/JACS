@@ -5,18 +5,22 @@ use utils::{load_local_document, load_test_agent_one, load_test_agent_two, set_t
 
 #[test]
 fn test_load_agent_json() {
+    set_test_env_vars();
+
     // cargo test   --test schema_tests -- --nocapture
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    let result = agent.load_by_id("agent-one".to_string(), None);
+    let agentid =
+        "6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f".to_string();
+    let result = agent.load_by_id(agentid, None);
 
     match result {
         Ok(_) => {
             println!(
-                "AGENT LOADED {} {} ",
+                "AGENT ID'd LOADED {} {} ",
                 agent.get_id().unwrap(),
                 agent.get_version().unwrap()
             );
@@ -26,27 +30,10 @@ fn test_load_agent_json() {
             panic!("Agent loading failed");
         }
     }
-
-    let mut agent2 = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent should have instantiated");
-    let _ = agent2
-        .load_by_id("agent-two".to_string(), None)
-        .expect("agent  two should ahve loaded");
-    println!(
-        "AGENT Two LOADED {} {} ",
-        agent2.get_id().unwrap(),
-        agent2.get_version().unwrap()
-    );
-
-    // println!(
-    //     "AGENT Two keys {} {} ",
-    //     agent2.private_key().unwrap(),
-    //     agent2.public_key().unwrap()
-    // );
 }
 
 #[test]
-fn test_update_agent_and_verify_signature() {
+fn test_update_agent_and_verify_versions() {
     set_test_env_vars();
     // cargo test   --test schema_tests -- --nocapture
     let agent_version = "v1".to_string();
@@ -54,7 +41,9 @@ fn test_update_agent_and_verify_signature() {
     let signature_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    let result = agent.load_by_id("agent-one".to_string(), None);
+    let agentid =
+        "6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f".to_string();
+    let result = agent.load_by_id(agentid, None);
 
     match result {
         Ok(_) => {
@@ -73,8 +62,14 @@ fn test_update_agent_and_verify_signature() {
     let modified_agent_string =
         load_local_document(&"examples/agent/agent-one-modified.json".to_string()).unwrap();
 
-    let new_agent_version = agent.update_self(&modified_agent_string).unwrap();
-    println!("NEW AGENT VERSION {}", new_agent_version);
+    match agent.update_self(&modified_agent_string) {
+        Ok(_) => assert!(false),
+        _ => {
+            assert!(true);
+            println!("NEW AGENT VERSION prevented");
+        }
+    };
+
     agent.verify_self_signature().unwrap();
 }
 

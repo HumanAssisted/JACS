@@ -14,7 +14,9 @@ pub fn load_test_agent_one() -> Agent {
 
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    let result = agent.load_by_id("agent-one".to_string(), None);
+    let agentid =
+        "6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f".to_string();
+    let result = agent.load_by_id(agentid, None);
     match result {
         Ok(_) => {
             debug!(

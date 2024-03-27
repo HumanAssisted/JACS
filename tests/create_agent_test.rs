@@ -65,3 +65,30 @@ fn test_temp_validate_agent_creation() {
 
     println!("New Agent Created\n\n\n {} ", agent);
 }
+
+#[test]
+fn test_temp_validate_agent_creation_save_and_load() {
+    set_test_env_vars();
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let signature_version = "v1".to_string();
+    let mut agent =
+        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
+    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
+    let result = agent.create_agent_and_load(&json_data, false, None);
+
+    let _ = match result {
+        Ok(_) => Ok(result),
+        Err(error) => Err({
+            println!("{}", error);
+            assert!(false);
+        }),
+    };
+
+    println!(
+        "test_temp_validate_agent_creation_save_and_load Agent Created\n\n\n {} ",
+        agent
+    );
+
+    agent.save();
+}
