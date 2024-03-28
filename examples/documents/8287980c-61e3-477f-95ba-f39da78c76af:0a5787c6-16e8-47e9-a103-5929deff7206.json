@@ -1,0 +1,137 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "agentSignature": {
+    "agentID": "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d",
+    "agentVersion": "1f639f69-b3a7-45d5-b814-bc7b91fb3b97",
+    "date": "2024-03-28T08:33:28.450733+00:00",
+    "fields": [
+      "$schema",
+      "ecosystem",
+      "id",
+      "originalVersion",
+      "version",
+      "versionDate"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "FJPnydfx34sH2aDyg9raCCJmwDzR7AwrxGp0J5u11hpyVAFUNXCIq8xBTDrJeC6R6He1lvGuFswnDSNM4yY2RazUaOHXrmevEP81ZV2L0Fpc2+DvARCR3+XWcSffxpZUf64aPjrDN6zXzc99MwejUsIfVfEhPB+JmeB1JqN5Fjh0uMLHEBFYX+zTot/NT/Sj0ddcIbMqd17g9YTO7g9xDL92JtXCP4AP3b6yNOSyjw9kuQYkmfmXLsAfRU6bWy0EQ1fWwOuU/2i1z/ENw/khbYDx6b4yckrZWYOP52iOWDsgVGfx0UkMlg1tKM5Afnb2H0sqkQH5s7Cf8Pz9DCD30+aP77LLq+slC5wroIvsf8sh/D9P8zMRio6nIluds6S3XvuKezMHj4ixjcvgUkSBrkU0wqLXAJDBSfWgRzGF05HInm75Ly+ii/XL650izA29HtGKF27c4DEQuY94wX/dS7HYB8/SndnR8ZuYTdnhH1GthQBT/uHeE81HEHVCkhXb5Xw23erac95jZWiHfO4O/DjqGyPpZBX8sVbLMg69i/p3B3T8ZE+woNyZ+odbERt1IKGz3JCc5LydDbVnmZwvKkRqlNfshZwWkOCV6NJ/G69t5hdCoOIPiTijHZovvZmCtOfot9yytf904IyWX8yxDiS5T8Ox0O/C2QcO23fliUg=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "ecosystem": {
+    "creatures": [
+      {
+        "abilities": [
+          "Flight",
+          "Invisibility"
+        ],
+        "name": "Fairy",
+        "preferredRegion": "Mystic Meadows",
+        "type": "Magical"
+      },
+      {
+        "abilities": [
+          "Healing",
+          "Teleportation"
+        ],
+        "name": "Unicorn",
+        "preferredRegion": "Mystic Meadows",
+        "type": "Mythical"
+      },
+      {
+        "abilities": [
+          "Shadow meld",
+          "Enhanced senses"
+        ],
+        "name": "Shadow wolf",
+        "preferredRegion": "Shadowed Woods",
+        "type": "Supernatural"
+      },
+      {
+        "abilities": [
+          "Silent flight",
+          "Intangibility"
+        ],
+        "name": "Ghost owl",
+        "preferredRegion": "Shadowed Woods",
+        "type": "Spectral"
+      }
+    ],
+    "name": "Enchanted Forest",
+    "plants": [
+      {
+        "foundIn": "Mystic Meadows",
+        "name": "Silverleaf",
+        "properties": [
+          "Healing",
+          "Magic enhancement"
+        ],
+        "type": "Herb"
+      },
+      {
+        "foundIn": "Mystic Meadows",
+        "name": "Moonflower",
+        "properties": [
+          "Luminescence",
+          "Sleep inducement"
+        ],
+        "type": "Flower"
+      },
+      {
+        "foundIn": "Shadowed Woods",
+        "name": "Nightshade",
+        "properties": [
+          "Toxic",
+          "Use in dark magic"
+        ],
+        "type": "Poisonous plant"
+      },
+      {
+        "foundIn": "Shadowed Woods",
+        "name": "Fogcap mushroom",
+        "properties": [
+          "Hallucinogenic",
+          "Camouflage"
+        ],
+        "type": "Fungus"
+      }
+    ],
+    "regions": [
+      {
+        "climate": "Temperate",
+        "creatures": [
+          "Fairy",
+          "Unicorn"
+        ],
+        "features": [
+          "Flowering fields",
+          "Crystal lakes"
+        ],
+        "name": "Mystic Meadows",
+        "plants": [
+          "Silverleaf",
+          "Moonflower"
+        ]
+      },
+      {
+        "climate": "Dense fog",
+        "creatures": [
+          "Shadow wolf",
+          "Ghost owl"
+        ],
+        "features": [
+          "Ancient trees",
+          "Fog-covered paths"
+        ],
+        "name": "Shadowed Woods",
+        "plants": [
+          "Nightshade",
+          "Fogcap mushroom"
+        ]
+      }
+    ]
+  },
+  "id": "8287980c-61e3-477f-95ba-f39da78c76af",
+  "originalVersion": "0a5787c6-16e8-47e9-a103-5929deff7206",
+  "sha256": "dbc2721ad2b17980171939c2a069af7cb5f118e5c5e4f7d24d3c68c74c4f3201",
+  "version": "0a5787c6-16e8-47e9-a103-5929deff7206",
+  "versionDate": "2024-03-28T08:33:28.075459+00:00"
+}

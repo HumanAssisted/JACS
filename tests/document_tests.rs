@@ -1,11 +1,13 @@
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::agent::document::Document;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 mod utils;
-use utils::{load_test_agent_one, load_test_agent_two, set_test_env_vars};
+
+use utils::{load_local_document, load_test_agent_one, load_test_agent_two, set_test_env_vars};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
+static SCHEMA: &str = "examples/documents/custom.schema.json";
 //color_eyre::install().unwrap();
 #[test]
 fn test_load_custom_schema_and_custom_document() {
@@ -14,9 +16,8 @@ fn test_load_custom_schema_and_custom_document() {
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
-    let document_string = agent
-        .load_local_document(&"examples/documents/my-special-document.json".to_string())
-        .unwrap();
+    let document_string =
+        load_local_document(&"examples/documents/e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     println!("loaded valid {}", document_key);
@@ -27,38 +28,19 @@ fn test_load_custom_schema_and_custom_document() {
 }
 
 #[test]
-fn test_load_unsigned_document() {
-    color_eyre::install().unwrap();
-    set_test_env_vars();
-    // cargo test   --test document_tests -- --nocapture test_load_document_sign_and_verify
-    let mut agent = load_test_agent_one();
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    let document_string = agent
-        .load_local_document(&"examples/documents/my-special-document.json".to_string())
-        .unwrap();
-    let document_key = agent.load_document(&document_string).unwrap();
-    println!("loaded valid {}", document_key);
-    let signature_field_name = "test-signature".to_string();
-    let mut fields: Vec<String> = Vec::new();
-    fields.push("favorite-snack".to_string());
-}
-
-#[test]
 fn test_load_custom_schema_and_custom_invalid_document() {
     set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
-    let document_string = agent
-        .load_local_document(&"examples/documents/my-special-document-broken.json".to_string())
-        .unwrap();
-    let document = agent.load_document(&document_string).unwrap();
+    let document_string = load_local_document(&"examples/raw/not-fruit.json".to_string()).unwrap();
+    let document = agent.create_document_and_load(&document_string).unwrap();
+    println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
-    println!("loaded valid  {}", document_key);
-    let document = agent.get_document(&document_key).unwrap();
+    let document_ref = agent.get_document(&document_key).unwrap();
 
+    // let _ = agent.save_document(&document_key);
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
         Ok(()) => {
             // Validation succeeded
@@ -74,15 +56,22 @@ fn test_load_custom_schema_and_custom_invalid_document() {
 }
 
 #[test]
+#[ignore]
+fn test_create() {
+    set_test_env_vars();
+    // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create
+    utils::generate_new_docs();
+}
+
+#[test]
 fn test_load_custom_schema_and_new_custom_document() {
     set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
-    let document_string = agent
-        .load_local_document(&"examples/documents/my-special-new-document.json".to_string())
-        .unwrap();
+    let document_string =
+        load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
     let document = agent.create_document_and_load(&document_string).unwrap();
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
@@ -90,6 +79,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
+    // let _ = agent.save_document(&document_key);
 }
 
 #[test]
@@ -99,14 +89,13 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
-    let document_string = agent
-        .load_local_document(&"examples/documents/my-special-document.json".to_string())
-        .unwrap();
+    let document_string =
+        load_local_document(&"examples/documents/e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
-    let modified_document_string = agent
-        .load_local_document(&"examples/documents/my-special-document-modified.json".to_string())
-        .unwrap();
+    let modified_document_string =
+        load_local_document(&"examples/documents/MODIFIED_e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string())
+            .unwrap();
 
     let new_document = agent
         .update_document(&document_key, &modified_document_string)
@@ -135,7 +124,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let copy_newdocument = agent2.load_document(&new_document_string).unwrap();
     let copy_newdocument_key = copy_newdocument.getkey();
     println!("new document with sig: /n {}", new_document_string);
-    agent2
+    agent
         .verify_document_signature(
             &copy_newdocument_key,
             &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),

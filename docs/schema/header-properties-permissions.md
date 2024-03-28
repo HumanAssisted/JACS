@@ -1,7 +1,7 @@
 # Untitled array in Header Schema
 
 ```txt
-https://hai.ai/schemas/header/v1/header-schema.json#/properties/permissions
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/permissions
 ```
 
 array of permissions

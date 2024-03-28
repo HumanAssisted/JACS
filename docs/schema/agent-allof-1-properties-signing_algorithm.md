@@ -1,7 +1,7 @@
 # Untitled string in Agent Schema
 
 ```txt
-https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/signing_algorithm
+https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/signingAlgorithm
 ```
 
 What signature algorithm should be used

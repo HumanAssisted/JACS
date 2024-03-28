@@ -1,0 +1,59 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "agentType": "human",
+  "capabilities": [
+    {
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "name": "withdraw",
+      "operation": "deduct",
+      "units": [
+        {
+          "generaltype": "monetary",
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "label": "net worth",
+          "unit_name": "dollars"
+        }
+      ]
+    }
+  ],
+  "description": "Guy with a bank account",
+  "id": "396155ad-484a-4659-a4e7-341ef52aa63d",
+  "modifications": [],
+  "name": "Ralph",
+  "originalVersion": "a3efb91b-1245-4852-9934-fde8a2cfe6d8",
+  "quantifications": [
+    [
+      120000,
+      {
+        "generaltype": "monetary",
+        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+        "label": "net worth",
+        "unit_name": "dollars"
+      }
+    ]
+  ],
+  "selfSignature": {
+    "agentID": "396155ad-484a-4659-a4e7-341ef52aa63d",
+    "agentVersion": "a3efb91b-1245-4852-9934-fde8a2cfe6d8",
+    "date": "2024-03-28T07:54:03.769046+00:00",
+    "fields": [
+      "$schema",
+      "agentType",
+      "capabilities",
+      "description",
+      "id",
+      "modifications",
+      "name",
+      "originalVersion",
+      "quantifications",
+      "version",
+      "versionDate"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "CbNLYQyVGxSIR0hl/w4B+b867+JTgeslEjCTTXhZEU/5vgNn9Xm4nfafKVi+n9JkiI12C4pzmlbMjAleaZVBipOrYFb6JBY0s8mQaRxnnTSNrJjciK8LJo/FLEoCaLLNejoXUVmRjQ5zITNGAp3KP6/HwvHO2c3i/yMdNHeBPXmEN0hKbgB1utrdRJB3XQ37Xi/oty4NKcKlX9d+sioR3/lqTH7+QssMGO//oRHXuoZTNEGvkAh+FShllkW5p50/PgDAGd6qDIWTaBYjIiMwVX+WnRIOwpRoI/HtMJlWV50+iK80w7AhIIiGOh7GalpeMTtb8T5QHYD/MVEYTI3qQKlbDcnVx15qTgHyTj5OH9fbtKcrknP8B8GhtdiIMquKCQtkpczb4v83AJUJwZDdgcxXXAtDqE48mcD+JrWwtdq/UDWCKTA5vM+eEy7OVUHupMcuy1EOKzuLQu5C/4GgIOVl5ia0h8ERiSnVTFfaPrNSDyaCzO9g/ibBJ/rh3hy2QhB8N8ybYXkUNzFN9hn7ypSG19OvSz2bkr1hmcrApCZ/NnyuJjIN4wf5YdLgYdWGutprcwEou5IrVpydDhRMA32IZvgqm8DYIsDcdYGHRUKJFJ+jx5s4Q8CCPvblCA7VT5InssOln3N7TvGlyG9jccDoSoKCmVw0lONT5ksGljE=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "sha256": "38d0815528d2f805ed12282f6539bdd8acccea28c2ff172c407ae7ed75f5cded",
+  "version": "a3efb91b-1245-4852-9934-fde8a2cfe6d8",
+  "versionDate": "2024-03-28T07:54:03.422663+00:00"
+}

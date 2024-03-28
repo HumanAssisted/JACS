@@ -32,6 +32,7 @@ impl Error for ValidationError {}
 pub struct Schema {
     /// used to validate any JACS document
     headerschema: JSONSchema,
+    headerversion: String,
     /// used to validate any JACS agent
     agentschema: JSONSchema,
     signatureschema: JSONSchema,
@@ -56,8 +57,8 @@ impl Schema {
             "schemas/components/signature/{}/signature.schema.json",
             signatureversion
         );
-        let sginaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion).unwrap();
-        let signatureschema_result: Value = serde_json::from_str(&sginaturedata)?;
+        let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion).unwrap();
+        let signatureschema_result: Value = serde_json::from_str(&signaturedata)?;
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
@@ -79,6 +80,7 @@ impl Schema {
 
         Ok(Self {
             headerschema,
+            headerversion: headerversion.to_string(),
             agentschema,
             signatureschema,
         })
@@ -181,25 +183,13 @@ impl Schema {
         }
     }
 
-    /// utilty function to retrieve the list of fields
-    /// this is especially useful for signatures
-    pub fn get_array_of_values(&self, signature: serde_json::Value, fieldname: &String) -> String {
-        if let Some(array_field) = signature.get(fieldname).and_then(Value::as_array) {
-            let mut result_strings = Vec::new();
-            for value in array_field {
-                if let Some(string_value) = value.as_str() {
-                    result_strings.push(string_value.to_string());
-                }
-            }
-            return format!("Result Strings: {:?}", result_strings);
-        }
-        "".to_string()
+    // TODO get from member var  self.headerschema.to_string())
+    pub fn get_header_schema_url(&self) -> String {
+        format!(
+            "https://hai.ai/schemas/header/{}/header.schema.json",
+            self.headerversion
+        )
     }
-
-    pub fn create_signature(&self) {}
-
-    /// give a signature field
-    pub fn check_signature(&self, fieldname: &String) {}
 
     /// load a document that has data but no id or version
     /// an id and version is assigned
@@ -237,6 +227,11 @@ impl Schema {
         instance["version"] = json!(format!("{}", version));
         instance["versionDate"] = json!(format!("{}", versioncreated));
         instance["originalVersion"] = json!(format!("{}", original_version));
+
+        // if no schema is present insert standard header version
+        if !instance.get_str("$schema").is_some() {
+            instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));
+        }
 
         let validation_result = self.headerschema.validate(&instance);
 

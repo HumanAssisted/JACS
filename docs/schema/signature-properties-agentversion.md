@@ -1,7 +1,7 @@
 # Untitled string in Signature Schema
 
 ```txt
-https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/agentversion
+https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/agentVersion
 ```
 
 Version of the agent
@@ -10,10 +10,10 @@ Version of the agent
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------------ |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [signature.schema.json\*](../../schemas/components/signature/v1/signature.schema.json "open original schema") |
 
-## agentversion Type
+## agentVersion Type
 
 `string`
 
-## agentversion Constraints
+## agentVersion Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")

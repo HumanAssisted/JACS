@@ -1,0 +1,32 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "agentType": "ai",
+  "description": "An agent without keys, id or version",
+  "id": "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d",
+  "name": "Agent Smith",
+  "originalVersion": "1f639f69-b3a7-45d5-b814-bc7b91fb3b97",
+  "selfSignature": {
+    "agentID": "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d",
+    "agentVersion": "1f639f69-b3a7-45d5-b814-bc7b91fb3b97",
+    "date": "2024-03-28T07:54:03.401855+00:00",
+    "fields": [
+      "$schema",
+      "agentType",
+      "description",
+      "id",
+      "name",
+      "originalVersion",
+      "version",
+      "versionDate"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "W42mcPMtl3+2nkZpHZ223dNFlV8NxNDL7oUxkCImA99mzBWQD+PDV9XKx4pTD1JyEFAIt94wkknItb9NnccwDgMioTulhbXACah+0lIuYPK6e0pTXT2FTd31LRw00MTntR1Q8DmZ0++eP2lN+DB5u9YMtsUZLPj6lOg/r1rt+gsAdEAGjbqDvqSq7+0hGDSEoHCliZlTz2CqqUxa+cNFS2nP6kXWsEtHNg1jVCAbREen492p9JQqHsmd0SV5jKVvEPhCQSha4p0UsobAC4zs79gcTjcSo8dMEr8GRHYykJaUQvvjTl19RXNvDqVKVJPYNyXk1nHJ+eVM1lulusMeqJLlucK2eqlVTUOwj52p/3VoJB+Z/m874Ij+tGAWEU1r8dmJgFt97akRR2LrR5OBF8KoYLzXEYIuNT47h5xG5KQ1zG3TvfleDYBKv6B50+BHAK/HClC/ZjXISzfonLmDCfiX1F5GY6YbajbhOGJKWcMpaT+btc6zluVRd/GbzW2xAbOVnruuY28ikklW4IVlQVEBA5C8V3WzCZzR3iT/wAViE33fYwcZSPvGHJKtxV/xrLTnXWpY3D8I8IjSI27U/lH4fcSrf6+iWAaP1ACYLLK629QRUf/cmBJN7AENz2J5dAJWr/jOXbjcSZKrtTRlV6nFP7OHNriXZ8m3DifGpnA=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "sha256": "6d82d6d81c4ec57ca9658cab157804668d93a1938b897c46baad19976a740d8e",
+  "version": "1f639f69-b3a7-45d5-b814-bc7b91fb3b97",
+  "versionDate": "2024-03-28T07:54:03.059399+00:00"
+}
+
+
+

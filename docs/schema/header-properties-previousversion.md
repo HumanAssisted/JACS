@@ -1,7 +1,7 @@
 # Untitled string in Header Schema
 
 ```txt
-https://hai.ai/schemas/header/v1/header-schema.json#/properties/previousVersion
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/previousVersion
 ```
 
 Previous Version id of the object. If blank, it's claiming to be the first

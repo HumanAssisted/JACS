@@ -1,14 +1,19 @@
 // pub mod document;
-
-pub mod boilerplate;
-pub mod loaders;
-
 use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::document::Document;
+use crate::agent::document::JACSDocument;
+
+use crate::agent::security::check_data_directory;
+use crate::config::get_default_dir;
+pub mod boilerplate;
+pub mod document;
+pub mod loaders;
+pub mod security;
 
 use crate::crypt::hash::hash_string;
 use crate::crypt::KeyManager;
 use crate::crypt::{rsawrapper, JACS_AGENT_KEY_ALGORITHM};
-use crate::document::JACSDocument;
+
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 
@@ -27,9 +32,8 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 pub const SHA256_FIELDNAME: &str = "sha256";
-pub const AGENT_SIGNATURE_FIELDNAME: &str = "self-signature";
-pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agent-signature";
-const DEFAULT_DIRECTORY_ENV_VAR: &str = "JACS_AGENT_DEFAULT_DIRECTORY";
+pub const AGENT_SIGNATURE_FIELDNAME: &str = "selfSignature";
+pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
 
 pub struct Agent {
     /// the JSONSchema used
@@ -73,9 +77,10 @@ impl Agent {
         let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let mut document_map = Arc::new(Mutex::new(HashMap::new()));
         let mut public_keys: HashMap<String, String> = HashMap::new();
-        let default_directory = env::var(DEFAULT_DIRECTORY_ENV_VAR)
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| env::current_dir().unwrap());
+
+        check_data_directory();
+        let default_directory = get_default_dir();
+
         Ok(Self {
             schema,
             value: None,
@@ -97,7 +102,7 @@ impl Agent {
         id: String,
         _version: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let agent_string = self.load_local_agent_by_id(&id)?;
+        let agent_string = self.fs_agent_load(&id)?;
         return self.load(&agent_string);
     }
 
@@ -131,6 +136,10 @@ impl Agent {
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
+        // validate schema
+        // then load
+        // then load keys
+        // then validate signatures
         match &self.validate_agent(&agent_string) {
             Ok(value) => {
                 self.value = Some(value.clone());
@@ -147,26 +156,12 @@ impl Agent {
 
         if self.id.is_some() {
             let id_string = self.id.clone().expect("string expected").to_string();
-            self.load_keys()?;
-            debug!("loaded keys for agent")
+            self.fs_load_keys()?;
+            debug!("loaded keys for agent");
+            self.verify_self_signature()?;
         }
 
         return Ok(());
-    }
-
-    pub fn load_document(
-        &mut self,
-        document_string: &String,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
-        match &self.validate_header(&document_string) {
-            Ok(value) => {
-                return self.storeJACSDocument(&value);
-            }
-            Err(e) => {
-                error!("ERROR document ERROR {}", e);
-                return Err(e.to_string().into());
-            }
-        }
     }
 
     // // hashing
@@ -187,52 +182,18 @@ impl Agent {
     //     .filter(|(key, _)| key.starts_with(prefix))
     //     .collect();
 
-    pub fn verify_document_signature(
-        &mut self,
-        document_key: &String,
-        signature_key_from: &String,
-        fields: Option<&Vec<String>>,
-        public_key: Option<Vec<u8>>,
-    ) -> Result<(), Box<dyn Error>> {
-        // check that public key exists
-        let document = self.get_document(document_key).expect("Reason");
-        let document_value = document.getvalue();
-        // this is innefficient since I generate a whole document
-        let used_public_key = match public_key {
-            Some(public_key) => public_key,
-            None => self.get_public_key()?,
-        };
-        let result = self.signature_verification_procedure(
-            &document_value,
-            fields,
-            signature_key_from,
-            used_public_key,
-        );
-        match result {
-            Ok(result) => Ok(()),
-            Err(err) => {
-                let error_message =
-                    format!("Signatures not verifiable {} {:?}! ", document_key, err);
-                error!("{}", error_message);
-                return Err(error_message.into());
-            }
-        }
-    }
-
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
         let public_key = self.get_public_key()?;
         // validate header
         let signature_key_from = &AGENT_SIGNATURE_FIELDNAME.to_string();
-        match &self.value {
+        match &self.value.clone() {
             Some(embedded_value) => {
-                let (document_values_string, _) =
-                    Agent::get_values_as_string(&embedded_value, None, signature_key_from)?;
-                let signature_base64 = embedded_value[signature_key_from]["signature"]
-                    .as_str()
-                    .unwrap_or("")
-                    .trim_matches('"')
-                    .to_string();
-                self.verify_string(&document_values_string, &signature_base64, public_key)
+                return self.signature_verification_procedure(
+                    embedded_value,
+                    None,
+                    signature_key_from,
+                    public_key,
+                );
             }
             None => {
                 let error_message = "Value is None";
@@ -240,6 +201,12 @@ impl Agent {
                 Err(error_message.into())
             }
         }
+    }
+
+    fn unset_self(&mut self) {
+        self.id = None;
+        self.version = None;
+        self.value = None;
     }
 
     fn signature_verification_procedure(
@@ -255,6 +222,35 @@ impl Agent {
             "signing_procedure document_values_string:\n{}",
             document_values_string
         );
+
+        let agentid = json_value[signature_key_from]["agentID"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+        let agentversion = json_value[signature_key_from]["agentVersion"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        // todo use to get public key in sophon
+        let agent_key = format!("{}:{}", agentid, agentversion);
+
+        let public_key_hash = json_value[signature_key_from]["publicKeyHash"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let public_key_rehash = hash_string(&String::from_utf8(public_key.clone())?);
+
+        if public_key_rehash != public_key_hash {
+            let error_message = "Incorrect public key used to verify signature";
+            error!("{}", error_message);
+            return Err(error_message.into());
+        }
+
         let signature_base64 = json_value[signature_key_from]["signature"]
             .as_str()
             .unwrap_or("")
@@ -298,12 +294,12 @@ impl Agent {
         // error
         let signature_document = json!({
             // based on v1
-            "agentid": agent_id,
-            "agentversion": agent_version,
+            "agentID": agent_id,
+            "agentVersion": agent_version,
             "date": date,
             "signature":signature,
             "signing_algorithm":signing_algorithm,
-            "public-key-hash": public_key_hash,
+            "publicKeyHash": public_key_hash,
             "fields": serialized_fields
         });
         // TODO add sha256 of public key
@@ -407,53 +403,8 @@ impl Agent {
         }
     }
 
-    pub fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {
-        let mut doc_copy = doc.clone();
-        doc_copy
-            .as_object_mut()
-            .map(|obj| obj.remove(SHA256_FIELDNAME));
-        let doc_string = serde_json::to_string(&doc_copy)?;
-        Ok(hash_string(&doc_string))
-    }
-
-    fn storeJACSDocument(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
-        let mut documents = self.documents.lock().unwrap();
-        let doc = JACSDocument {
-            id: value.get_str("id").expect("REASON").to_string(),
-            version: value.get_str("version").expect("REASON").to_string(),
-            value: Some(value.clone()).into(),
-        };
-        let key = doc.getkey();
-        documents.insert(key.clone(), doc.clone());
-        Ok(doc)
-    }
-
-    pub fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
-        let documents = self.documents.lock().unwrap();
-        match documents.get(document_key) {
-            Some(document) => Ok(document.clone()),
-            None => Err(format!("Document not found for key: {}", document_key).into()),
-        }
-    }
-
-    pub fn remove_document(
-        &mut self,
-        document_key: &String,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
-        let mut documents = self.documents.lock().unwrap();
-        match documents.remove(document_key) {
-            Some(document) => Ok(document),
-            None => Err(format!("Document not found for key: {}", document_key).into()),
-        }
-    }
-
-    pub fn get_document_keys(&mut self) -> Vec<String> {
-        let documents = self.documents.lock().unwrap();
-        return documents.keys().map(|k| k.to_string()).collect();
-    }
-
     pub fn get_schema_keys(&mut self) -> Vec<String> {
-        let document_schemas = self.document_schemas.lock().unwrap();
+        let document_schemas = self.document_schemas.lock().expect("document_schemas lock");
         return document_schemas.keys().map(|k| k.to_string()).collect();
     }
 
@@ -497,77 +448,9 @@ impl Agent {
         //replace ones self
         self.version = Some(new_self["version"].to_string());
         self.value = Some(new_self.clone());
+        self.validate_agent(&self.to_string())?;
+        self.verify_self_signature()?;
         Ok(new_self.to_string())
-    }
-
-    /// pass in modified doc
-    pub fn update_document(
-        &mut self,
-        document_key: &String,
-        new_document_string: &String,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
-        // check that old document is found
-        let new_document: Value = self.schema.validate_header(new_document_string)?;
-        let original_document = self.get_document(document_key).unwrap();
-        let mut value = original_document.value;
-        // check that new document has same id, value, hash as old
-        let orginal_id = &value.get_str("id");
-        let orginal_version = &value.get_str("version");
-        // check which fields are different
-        let new_doc_orginal_id = &new_document.get_str("id");
-        let new_doc_orginal_version = &new_document.get_str("version");
-        if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
-            return Err(format!(
-                "The id/versions do not match found for key: {}. {:?}{:?}",
-                document_key, new_doc_orginal_id, new_doc_orginal_version
-            )
-            .into());
-        }
-
-        //TODO  show diff
-
-        // validate schema
-        let new_version = Uuid::new_v4().to_string();
-        let last_version = &value["version"];
-        let versioncreated = Utc::now().to_rfc3339();
-
-        value["lastVersion"] = last_version.clone();
-        value["version"] = json!(format!("{}", new_version));
-        value["versionDate"] = json!(format!("{}", versioncreated));
-        // get all fields but reserved
-        value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &value,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
-
-        // hash new version
-        let document_hash = self.hash_doc(&value)?;
-        value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.storeJACSDocument(&value)?)
-    }
-
-    /// copys document without modifications
-    pub fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
-        let original_document = self.get_document(document_key).unwrap();
-        let mut value = original_document.value;
-        let new_version = Uuid::new_v4().to_string();
-        let last_version = &value["version"];
-        let versioncreated = Utc::now().to_rfc3339();
-
-        value["lastVersion"] = last_version.clone();
-        value["version"] = json!(format!("{}", new_version));
-        value["versionDate"] = json!(format!("{}", versioncreated));
-        // sign new version
-        value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &value,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
-        // hash new version
-        let document_hash = self.hash_doc(&value)?;
-        value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.storeJACSDocument(&value)?)
     }
 
     pub fn validate_header(
@@ -589,7 +472,7 @@ impl Agent {
         json: &str,
     ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
         let value = self.schema.validate_agent(json)?;
-
+        //
         // additional validation
         // check hash
         let _ = self.verify_hash(&value)?;
@@ -621,48 +504,6 @@ impl Agent {
         }
     }
 
-    // todo change this to use stored documents only
-    pub fn validate_document_with_custom_schema(
-        &self,
-        schema_path: &str,
-        json: &Value,
-    ) -> Result<(), String> {
-        let schemas = self.document_schemas.lock().unwrap();
-        let validator = schemas
-            .get(schema_path)
-            .ok_or_else(|| format!("Validator not found for path: {}", schema_path))?;
-        //.map(|schema| Arc::new(schema))
-        //.expect("REASON");
-
-        let x = match validator.validate(json) {
-            Ok(()) => Ok(()),
-            Err(errors) => {
-                let error_messages: Vec<String> =
-                    errors.into_iter().map(|e| e.to_string()).collect();
-                Err(error_messages.join(", "))
-            }
-        };
-        x
-    }
-
-    /// create an document, and provde id and version as a result
-    pub fn create_document_and_load(
-        &mut self,
-        json: &String,
-    ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>> {
-        let mut instance = self.schema.create(json)?;
-        // sign document
-        instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &instance,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
-        // hash document
-        let document_hash = self.hash_doc(&instance)?;
-        instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.storeJACSDocument(&instance)?)
-    }
-
     /// returns ID and version separated by a colon
     fn getagentkey(&self) -> String {
         // return the id and version
@@ -670,6 +511,12 @@ impl Agent {
         let id = self.id.as_ref().unwrap_or(&binding);
         let version = self.version.as_ref().unwrap_or(&binding);
         return format!("{}:{}", id, version);
+    }
+
+    pub fn save(&self) -> Result<String, Box<dyn Error>> {
+        let agent_string = self.as_string()?;
+        let lookup_id = self.get_lookup_id()?;
+        self.fs_agent_save(&lookup_id, &agent_string)
     }
 
     /// create an agent, and provde id and version as a result
@@ -683,14 +530,13 @@ impl Agent {
         // make sure id and version are empty
         let mut instance = self.schema.create(json)?;
 
-        if let Some(ref value) = self.value {
-            self.id = value.get_str("id");
-            self.version = value.get_str("version");
-        }
+        self.id = instance.get_str("id");
+        self.version = instance.get_str("version");
+
         if create_keys {
             self.generate_keys()?;
         }
-        let _ = self.load_keys();
+        let _ = self.fs_load_keys();
 
         // generate keys
 
@@ -711,6 +557,7 @@ impl Agent {
         let document_hash = self.hash_doc(&instance)?;
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         self.value = Some(instance.clone());
+        self.verify_self_signature()?;
         return Ok(instance);
     }
 }
@@ -718,7 +565,6 @@ impl Agent {
 /*
 
 todo
-
  - load actor and sign and act on other things
  - which requires a private key
  - also a verifier

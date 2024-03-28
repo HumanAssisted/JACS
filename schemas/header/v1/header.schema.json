@@ -1,12 +1,12 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/header/v1/header-schema.json",
+  "$id": "https://hai.ai/schemas/header/v1/header.schema.json",
   "title": "Header",
   "description": "The basis for a JACS document",
   "type": "object",
   "properties": {
     "id": {
-      "description": "GUID",
+      "description": "uuid v4 string",
       "type": "string",
       "format": "uuid"
     },
@@ -27,7 +27,7 @@
       }
     },
     "version": {
-      "description": "Version id of the object ",
+      "description": "Version id of the object. uuid v4 string ",
       "type": "string",
       "format": "uuid"
     },
@@ -36,8 +36,8 @@
       "format": "date-time",
       "type": "string"
     },
-    "self-signature": {
-      "description": "Signature of of every field except this one and the hashing field",
+    "selfSignature": {
+      "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "versionRegistration": {
@@ -55,7 +55,11 @@
       "format": "uuid"
     },
     "sha256": {
-      "description": "Hash of every field except this one . During  updates and creation hash is the last thing to occur, as it includes the signature.",
+      "description": "Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature. Not immediatly required, but eventually required.",
+      "type": "string"
+    },
+    "eval": {
+      "description": "A description of how the document should be evaluated.",
       "type": "string"
     }
   },
@@ -63,6 +67,7 @@
     "id",
     "version",
     "versionDate",
-    "originalVersion"
+    "originalVersion",
+    "$schema"
   ]
 }

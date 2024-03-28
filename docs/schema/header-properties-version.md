@@ -1,10 +1,10 @@
 # Untitled string in Header Schema
 
 ```txt
-https://hai.ai/schemas/header/v1/header-schema.json#/properties/version
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/version
 ```
 
-Version id of the object
+Version id of the object. uuid v4 string
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------- |

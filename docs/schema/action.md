@@ -108,7 +108,7 @@ units that can be modified
 
 *   is optional
 
-*   Type: `object[]` ([Unit](unit.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -116,4 +116,4 @@ units that can be modified
 
 ### units Type
 
-`object[]` ([Unit](unit.md))
+unknown\[]
