@@ -224,7 +224,7 @@ TODO encrypt private keys.
 
 ## background
 
-JACS started as [OSAP](https://github.com/ and stands for - JSON Ai Communication Standard.
+JACS started as [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) and stands for - JSON Ai Communication Standard.
 
 HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
 
