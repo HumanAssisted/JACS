@@ -96,16 +96,6 @@ pub fn load_test_agent_two() -> Agent {
 }
 
 #[cfg(test)]
-pub fn set_test_env_vars() {
-    // to get reliable test outputs, use consistent keys
-    env::set_var("JACS_DATA_DIRECTORY", "./examples/");
-    env::set_var("JACS_KEY_DIRECTORY", "./examples/keys/");
-    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
-    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
-    env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
-}
-
-#[cfg(test)]
 pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> {
     let current_dir = env::current_dir()?;
     let document_path: PathBuf = current_dir.join(filepath);

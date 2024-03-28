@@ -1,11 +1,10 @@
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::loaders::FileLoader;
+
 mod utils;
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two, set_test_env_vars};
+use utils::load_local_document;
 
 #[test]
 fn test_update_agent_and_verify_versions() {
-    set_test_env_vars();
     // cargo test   --test schema_tests -- --nocapture
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();

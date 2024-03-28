@@ -22,7 +22,7 @@ pub fn get_default_dir() -> PathBuf {
     env::var("JACS_DATA_DIRECTORY")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            env::set_var("JACS_USE_SECURITY", ".");
+            env::set_var("JACS_DATA_DIRECTORY", ".");
             env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
         })
 }

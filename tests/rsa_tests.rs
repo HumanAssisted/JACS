@@ -1,19 +1,17 @@
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::crypt::KeyManager;
-use utils::{load_test_agent_one, set_test_env_vars};
+use utils::load_test_agent_one;
 
 #[test]
 #[ignore]
 fn test_rsa_create() {
-    set_test_env_vars();
     let mut agent = load_test_agent_one();
     agent.generate_keys().expect("Reason");
 }
 
 #[test]
 fn test_rsa_create_and_verify_signature() {
-    set_test_env_vars();
     let mut agent = load_test_agent_one();
     let private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();

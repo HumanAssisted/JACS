@@ -1,10 +1,9 @@
 // pub mod document;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::Document;
-use crate::agent::document::JACSDocument;
+use crate::agent::document::{Document, JACSDocument};
 
 use crate::agent::security::check_data_directory;
-use crate::config::get_default_dir;
+use crate::config::{get_default_dir, set_env_vars};
 pub mod boilerplate;
 pub mod document;
 pub mod loaders;
@@ -73,6 +72,7 @@ impl Agent {
         headerversion: &String,
         signature_version: &String,
     ) -> Result<Self, Box<dyn Error>> {
+        set_env_vars();
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let mut document_map = Arc::new(Mutex::new(HashMap::new()));
