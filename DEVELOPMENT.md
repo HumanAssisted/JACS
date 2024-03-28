@@ -1,9 +1,10 @@
+Some extra things needed.
 
 
 
-# json schema
+ See pre-commit
 
-install jq
+ - install jq
 
 
 - regenerate documentation
@@ -13,12 +14,6 @@ install jq
 # rust
 
 
-
-
-# python
-
-maturin develop
-maturin build --release
 
 
 
