@@ -242,10 +242,9 @@ impl Document for Agent {
     }
 
     fn save_document(&mut self, document_key: &String) -> Result<(), Box<dyn Error>> {
-        let lookup_id = self.get_lookup_id()?;
         let original_document = self.get_document(document_key).unwrap();
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
-        let _ = self.fs_document_save(&lookup_id, &document_string);
+        let _ = self.fs_document_save(&document_key, &document_string);
         Ok(())
     }
 

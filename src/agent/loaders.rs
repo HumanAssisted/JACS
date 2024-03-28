@@ -3,7 +3,7 @@ use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
 
 use chrono::Utc;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use std::env;
 use std::error::Error;
 use std::{fs, path::Path, path::PathBuf};
@@ -251,6 +251,10 @@ fn save_file(file_path: &Path, filename: &String, content: &[u8]) -> std::io::Re
 fn save_to_filepath(full_path: &PathBuf, content: &[u8]) -> std::io::Result<String> {
     if full_path.exists() {
         let backup_path = create_backup_path(&full_path)?;
+        warn!(
+            "path exists for {:?}, saving to {:?}",
+            full_path, backup_path
+        );
         fs::copy(&full_path, backup_path)?;
     }
 

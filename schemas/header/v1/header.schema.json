@@ -67,6 +67,7 @@
     "id",
     "version",
     "versionDate",
-    "originalVersion"
+    "originalVersion",
+    "$schema"
   ]
 }

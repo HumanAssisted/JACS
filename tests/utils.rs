@@ -1,13 +1,42 @@
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::agent::document::Document;
 use jacs::agent::loaders::FileLoader;
 use jacs::agent::Agent;
-use log::{debug, error, warn};
+use log::debug;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
 use std::env;
 
+#[cfg(test)]
+pub fn generate_new_docs() {
+    static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
+    let mut agent = load_test_agent_one();
+    let mut document_string =
+        load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
+    let mut document = agent.create_document_and_load(&document_string).unwrap();
+    let mut document_key = document.getkey();
+    println!("document_key {}", document_key);
+    let mut document_ref = agent.get_document(&document_key).unwrap();
+    let _ = agent.save_document(&document_key);
+
+    document_string = load_local_document(&"examples/raw/gpt-lsd.json".to_string()).unwrap();
+    document = agent.create_document_and_load(&document_string).unwrap();
+    document_key = document.getkey();
+    println!("document_key {}", document_key);
+    document_ref = agent.get_document(&document_key).unwrap();
+    let _ = agent.save_document(&document_key);
+
+    document_string = load_local_document(&"examples/raw/json-ld.json".to_string()).unwrap();
+    document = agent.create_document_and_load(&document_string).unwrap();
+    document_key = document.getkey();
+    println!("document_key {}", document_key);
+    document_ref = agent.get_document(&document_key).unwrap();
+    _ = agent.save_document(&document_key);
+}
+
+#[cfg(test)]
 pub fn load_test_agent_one() -> Agent {
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -16,7 +45,7 @@ pub fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f".to_string();
+        "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d:1f639f69-b3a7-45d5-b814-bc7b91fb3b97".to_string();
     let result = agent.load_by_id(agentid, None);
     match result {
         Ok(_) => {
@@ -34,6 +63,7 @@ pub fn load_test_agent_one() -> Agent {
     agent
 }
 
+#[cfg(test)]
 pub fn load_test_agent_two() -> Agent {
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -41,12 +71,12 @@ pub fn load_test_agent_two() -> Agent {
 
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    agent.fs_preload_keys(
+    let _ = agent.fs_preload_keys(
         &"agent-two.private.pem".to_string(),
         &"agent-two.public.pem".to_string(),
     );
     let result = agent.load_by_id(
-        "2fb4a205-2d0a-41c7-8f68-e222919346d8:4e5cf448-7b09-49da-8463-afff5fb60e39".to_string(),
+        "396155ad-484a-4659-a4e7-341ef52aa63d:a3efb91b-1245-4852-9934-fde8a2cfe6d8".to_string(),
         None,
     );
     match result {

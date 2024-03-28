@@ -4,35 +4,6 @@ mod utils;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two, set_test_env_vars};
 
 #[test]
-fn test_load_agent_json() {
-    set_test_env_vars();
-
-    // cargo test   --test schema_tests -- --nocapture
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
-    let agentid =
-        "6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f".to_string();
-    let result = agent.load_by_id(agentid, None);
-
-    match result {
-        Ok(_) => {
-            println!(
-                "AGENT ID'd LOADED {} {} ",
-                agent.get_id().unwrap(),
-                agent.get_version().unwrap()
-            );
-        }
-        Err(e) => {
-            eprintln!("Error loading agent: {}", e);
-            panic!("Agent loading failed");
-        }
-    }
-}
-
-#[test]
 fn test_update_agent_and_verify_versions() {
     set_test_env_vars();
     // cargo test   --test schema_tests -- --nocapture
@@ -42,7 +13,7 @@ fn test_update_agent_and_verify_versions() {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "6361aa35-ff7c-4b1d-b68a-a0b776caf535:5a54cddf-dadb-4393-b865-2c8cccb17c7f".to_string();
+        "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d:1f639f69-b3a7-45d5-b814-bc7b91fb3b97".to_string();
     let result = agent.load_by_id(agentid, None);
 
     match result {
@@ -60,12 +31,12 @@ fn test_update_agent_and_verify_versions() {
     }
 
     let modified_agent_string =
-        load_local_document(&"examples/agent/agent-one-modified.json".to_string()).unwrap();
+        load_local_document(&"examples/raw/modified-agent-for-updating.json".to_string()).unwrap();
 
     match agent.update_self(&modified_agent_string) {
-        Ok(_) => assert!(false),
+        Ok(_) => assert!(true),
         _ => {
-            assert!(true);
+            assert!(false);
             println!("NEW AGENT VERSION prevented");
         }
     };

@@ -1,6 +1,6 @@
 # JACS
 
-Welcome to JACS - JSON Ai Communication Standard.
+Welcome to JACS.
 
 The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable.
 
@@ -224,7 +224,9 @@ TODO encrypt private keys.
 
 ## background
 
-JACS started as [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
+JACS started as [OSAP](https://github.com/ and stands for - JSON Ai Communication Standard.
+
+HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
 
 
 
