@@ -58,7 +58,8 @@ impl KeyManager for Agent {
                     rsawrapper::generate_keys().map_err(|e| e.to_string())?;
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return Err("ring-Ed25519 key generation is not implemented.".into());
+                (private_key, public_key) =
+                    ringwrapper::generate_keys().map_err(|e| e.to_string())?;
             }
             CryptoSigningAlgorithm::PqDilithium => {
                 (private_key, public_key) = pq::generate_keys().map_err(|e| e.to_string())?;
@@ -85,7 +86,7 @@ impl KeyManager for Agent {
                 return rsawrapper::sign_string(self.get_private_key()?, data)
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return Err("ring-Ed25519 key generation is not implemented.".into());
+                return ringwrapper::sign_string(self.get_private_key()?, data)
             }
             CryptoSigningAlgorithm::PqDilithium => {
                 return pq::sign_string(self.get_private_key()?, data)
@@ -110,7 +111,7 @@ impl KeyManager for Agent {
                 return rsawrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return Err("ring-Ed25519 key generation is not implemented.".into());
+                return ringwrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::PqDilithium => {
                 return pq::verify_string(public_key, data, signature_base64)

@@ -6,14 +6,20 @@ use std::fs;
 use utils::load_test_agent_one;
 
 fn set_enc_to_pq() {
-    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-pq-private.pem");
-    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-pq-public.pem");
-    env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
+    env::set_var(
+        "JACS_AGENT_PRIVATE_KEY_FILENAME",
+        "test-ring-Ed25519-private.pem",
+    );
+    env::set_var(
+        "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        "test-ring-Ed25519-public.pem",
+    );
+    env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
 }
 
 #[test]
 #[ignore]
-fn test_pq_create() {
+fn test_ring_Ed25519_create() {
     set_enc_to_pq();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -28,7 +34,7 @@ fn test_pq_create() {
 }
 
 #[test]
-fn test_pq_create_and_verify_signature() {
+fn test_ring_Ed25519_create_and_verify_signature() {
     set_enc_to_pq();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();

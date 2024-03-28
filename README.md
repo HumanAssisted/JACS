@@ -30,6 +30,10 @@ Changes can be verified and approved by other agents using your public key, allo
 Any person or software can modify a doc, but only agents with the private key can sign the changes.
 If you are familiar with [JWTs](https://jwt.io/) or PGP from email, then you have a good idea of how JACS works.
 
+Signature options are "ring-Ed25519", "RSA-PSS", and "pq-dilithium".
+These are all open source projects and JACS is not an encryption library in itself.
+
+
 ## extensible
 
 Any JSON document can be used as a JACS doc as long as it has the JACS header, which just means some required fields about the creator and version.
