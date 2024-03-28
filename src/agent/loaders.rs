@@ -106,7 +106,7 @@ impl FileLoader for Agent {
     }
 
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
-        let pathstring: &String = &env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
+        let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
         let default_dir = Path::new(pathstring);
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
         save_file(
