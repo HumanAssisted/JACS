@@ -1,0 +1,12 @@
+{
+  "jacs_use_filesystem": "true",
+  "jacs_use_security": "false",
+  "jacs_data_directory": "./data",
+  "jacs_key_directory": "./keys",
+  "jacs_agent_private_key_filename": "rsa_pss_private.pem",
+  "jacs_agent_public_key_filename": "rsa_pss_public.pem",
+  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_agent_version": "v1",
+  "jacs_header_version": "v1",
+  "jacs_signature_version": "v1"
+}

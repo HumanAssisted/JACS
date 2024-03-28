@@ -45,7 +45,8 @@ For more features, also open source, check out [Sophon](https://github.com/Human
 
 # Usage
 
-First configure the envirornment variables or use a config file:
+First configure your  envirornment variables.
+Best to use `jacs.config.json` see [the example](./jacs.config.example.json)
 
 ```
 use std::env;

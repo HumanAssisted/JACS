@@ -1,102 +1,120 @@
 use log::info;
+use serde::Deserialize;
 use std::env;
-
+use std::fs;
 use std::path::PathBuf;
 
-pub fn get_default_dir() -> PathBuf {
-    // Attempt to retrieve the environment variable
-    if let Ok(dir) = env::var("JACS_DATA_DIRECTORY") {
-        // If the environment variable is set, return it as a PathBuf
-        PathBuf::from(dir)
-    } else {
-        // If the environment variable is not set or there's an error, fall back to the current directory
-        env::set_var("JACS_USE_SECURITY", ".");
-        env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    }
+#[derive(Deserialize, Default)]
+struct Config {
+    jacs_use_filesystem: Option<String>,
+    jacs_use_security: Option<String>,
+    jacs_data_directory: Option<String>,
+    jacs_key_directory: Option<String>,
+    jacs_agent_private_key_filename: Option<String>,
+    jacs_agent_public_key_filename: Option<String>,
+    jacs_agent_key_algorithm: Option<String>,
+    jacs_agent_version: Option<String>,
+    jacs_header_version: Option<String>,
+    jacs_signature_version: Option<String>,
 }
-/// sets default env variables for JACS usage
-pub fn set_env_vars() {
-    // to get reliable test outputs, use consistent keys
-    let jacs_use_filesystem = env::var("JACS_USE_FILESYSTEM").unwrap_or_else(|_| {
-        let default = "true";
-        env::set_var("JACS_USE_FILESYSTEM", default);
-        default.to_string()
-    });
 
-    let jacs_use_security = env::var("JACS_USE_SECURITY").unwrap_or_else(|_| {
-        let default = "false";
-        env::set_var("JACS_USE_SECURITY", default);
-        default.to_string()
-    });
-
-    let jacs_default_directory = env::var("JACS_DATA_DIRECTORY").unwrap_or_else(|_| {
-        let default_dir: String = format!("{:?}", env::current_dir());
-
-        env::set_var("JACS_DATA_DIRECTORY", env::current_dir().unwrap());
-        default_dir
-    });
-
-    let jacs_key_directory = env::var("JACS_KEY_DIRECTORY").unwrap_or_else(|_| {
-        let default_dir = ".";
-        env::set_var("JACS_KEY_DIRECTORY", default_dir);
-        default_dir.to_string()
-    });
-    let jacs_agent_private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")
+pub fn get_default_dir() -> PathBuf {
+    env::var("JACS_DATA_DIRECTORY")
+        .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            let filename = "rsa_pss_private.pem";
-            env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", filename);
-            filename.to_string()
-        });
-    let jacs_agent_public_key_filename =
-        env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_else(|_| {
-            let filename = "rsa_pss_public.pem";
-            env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", filename);
-            filename.to_string()
-        });
+            env::set_var("JACS_USE_SECURITY", ".");
+            env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        })
+}
 
-    let jacs_agent_key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_else(|_| {
-        let algo = "RSA-PSS";
-        env::set_var("JACS_AGENT_KEY_ALGORITHM", algo);
-        algo.to_string()
-    });
+pub fn set_env_vars() {
+    let config: Config = match fs::read_to_string("jacs.config.json") {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => Config {
+            jacs_use_filesystem: None,
+            jacs_use_security: None,
+            jacs_data_directory: None,
+            jacs_key_directory: None,
+            jacs_agent_private_key_filename: None,
+            jacs_agent_public_key_filename: None,
+            jacs_agent_key_algorithm: None,
+            jacs_agent_version: None,
+            jacs_header_version: None,
+            jacs_signature_version: None,
+        },
+    };
 
-    let jacs_agent_version = env::var("JACS_AGENT_VERSION").unwrap_or_else(|_| {
-        let version = "v1";
-        env::set_var("JACS_AGENT_VERSION", version);
-        version.to_string()
-    });
-    let jacs_header_version = env::var("JACS_HEADER_VERSION").unwrap_or_else(|_| {
-        let version = "v1";
-        env::set_var("JACS_HEADER_VERSION", version);
-        version.to_string()
-    });
+    let jacs_use_filesystem = config
+        .jacs_use_filesystem
+        .unwrap_or_else(|| "true".to_string());
+    env::set_var("JACS_USE_FILESYSTEM", &jacs_use_filesystem);
 
-    let jacs_signature_version = env::var("JACS_SIGNATURE_VERSION").unwrap_or_else(|_| {
-        let version = "v1";
-        env::set_var("JACS_SIGNATURE_VERSION", version);
-        version.to_string()
-    });
+    let jacs_use_security = config
+        .jacs_use_security
+        .unwrap_or_else(|| "false".to_string());
+    env::set_var("JACS_USE_SECURITY", &jacs_use_security);
 
-    // todo key or key location should be hidden from logs
+    let jacs_data_directory = config
+        .jacs_data_directory
+        .unwrap_or_else(|| format!("{:?}", env::current_dir().unwrap()));
+    env::set_var("JACS_DATA_DIRECTORY", &jacs_data_directory);
+
+    let jacs_key_directory = config.jacs_key_directory.unwrap_or_else(|| ".".to_string());
+    env::set_var("JACS_KEY_DIRECTORY", &jacs_key_directory);
+
+    let jacs_agent_private_key_filename = config
+        .jacs_agent_private_key_filename
+        .unwrap_or_else(|| "rsa_pss_private.pem".to_string());
+    env::set_var(
+        "JACS_AGENT_PRIVATE_KEY_FILENAME",
+        &jacs_agent_private_key_filename,
+    );
+
+    let jacs_agent_public_key_filename = config
+        .jacs_agent_public_key_filename
+        .unwrap_or_else(|| "rsa_pss_public.pem".to_string());
+    env::set_var(
+        "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        &jacs_agent_public_key_filename,
+    );
+
+    let jacs_agent_key_algorithm = config
+        .jacs_agent_key_algorithm
+        .unwrap_or_else(|| "RSA-PSS".to_string());
+    env::set_var("JACS_AGENT_KEY_ALGORITHM", &jacs_agent_key_algorithm);
+
+    let jacs_agent_version = config
+        .jacs_agent_version
+        .unwrap_or_else(|| "v1".to_string());
+    env::set_var("JACS_AGENT_VERSION", &jacs_agent_version);
+
+    let jacs_header_version = config
+        .jacs_header_version
+        .unwrap_or_else(|| "v1".to_string());
+    env::set_var("JACS_HEADER_VERSION", &jacs_header_version);
+
+    let jacs_signature_version = config
+        .jacs_signature_version
+        .unwrap_or_else(|| "v1".to_string());
+    env::set_var("JACS_SIGNATURE_VERSION", &jacs_signature_version);
+
     let loading_message = format!(
         r#"
-
-Loading JACS and Sophon env variables of:
-    JACS_USE_SECURITY                {},
-    JACS_USE_FILESYSTEM:             {},
-    JACS_DATA_DIRECTORY:             {},
-    JACS_KEY_DIRECTORY:              {},
-    JACS_AGENT_PRIVATE_KEY_FILENAME: {},
-    JACS_AGENT_PUBLIC_KEY_FILENAME:  {},
-    JACS_AGENT_KEY_ALGORITHM:        {},
-    JACS_AGENT_VERSION:              {},
-    JACS_HEADER_VERSION:             {},
-    JACS_SIGNATURE_VERSION:          {}
-
+        Loading JACS and Sophon env variables of:
+            JACS_USE_SECURITY                {},
+            JACS_USE_FILESYSTEM:             {},
+            JACS_DATA_DIRECTORY:             {},
+            JACS_KEY_DIRECTORY:              {},
+            JACS_AGENT_PRIVATE_KEY_FILENAME: {},
+            JACS_AGENT_PUBLIC_KEY_FILENAME:  {},
+            JACS_AGENT_KEY_ALGORITHM:        {},
+            JACS_AGENT_VERSION:              {},
+            JACS_HEADER_VERSION:             {},
+            JACS_SIGNATURE_VERSION:          {}
         "#,
         jacs_use_security,
         jacs_use_filesystem,
-        jacs_default_directory,
+        jacs_data_directory,
         jacs_key_directory,
         jacs_agent_private_key_filename,
         jacs_agent_public_key_filename,
