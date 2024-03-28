@@ -32,6 +32,7 @@ git add schemas/.
 git add examples/.
 git add src/.
 git add tests/.
+git add benches/.
 
 # Continue with the commit
 exit 0

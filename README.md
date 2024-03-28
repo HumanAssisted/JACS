@@ -213,6 +213,7 @@ For examples see [examples](./examples).
 ## security
 
 JACS goal is to introduce no safety vulnerabilities to systems where it is integrated.
+Open to ideas on what cryptography to add next: https://cryptography.rs/, like https://doc.dalek.rs/bulletproofs/index.html.
 
 ### filesystem
 

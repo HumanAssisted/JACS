@@ -37,6 +37,7 @@ strum_macros = "0.24.3"
 [dev-dependencies]
 rusqlite = "0.26.0"
 color-eyre = "0.6"
+criterion = "0.3"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -64,3 +65,8 @@ walkdir = "2.5.0"
 # [target.'cfg(not(target_arch = "wasm32"))'.dependencies.pyo3]
 # version =  "0.16.5"
 # features = ["extension-module"]
+
+
+[[bench]]
+name = "sign_and_check_sig"
+harness = false
