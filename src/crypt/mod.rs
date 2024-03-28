@@ -61,7 +61,7 @@ impl KeyManager for Agent {
                 return Err("ring-Ed25519 key generation is not implemented.".into());
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return Err("pq-dilithium key generation is not implemented.".into());
+                (private_key, public_key) = pq::generate_keys().map_err(|e| e.to_string())?;
             }
             _ => {
                 return Err(
@@ -88,7 +88,7 @@ impl KeyManager for Agent {
                 return Err("ring-Ed25519 key generation is not implemented.".into());
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return Err("pq-dilithium key generation is not implemented.".into());
+                return pq::sign_string(self.get_private_key()?, data)
             }
             _ => {
                 return Err(
@@ -113,7 +113,7 @@ impl KeyManager for Agent {
                 return Err("ring-Ed25519 key generation is not implemented.".into());
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return Err("pq-dilithium key generation is not implemented.".into());
+                return pq::verify_string(public_key, data, signature_base64)
             }
             _ => {
                 return Err(
