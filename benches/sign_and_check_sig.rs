@@ -9,7 +9,7 @@ use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use rand::Rng;
 use std::env;
 
-static BENCH_SAMPLE_SIZE: usize = 50;
+static BENCH_SAMPLE_SIZE: usize = 5;
 
 fn set_enc_to_ring() {
     env::set_var(
@@ -95,8 +95,8 @@ fn benchmark_rsa(c: &mut Criterion) {
     let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
     let mut agent = load_test_agent_one();
     c.bench_function("rsa", |b| {
-        b.iter(|| {
-            for document in &documents {
+        for document in &documents {
+            b.iter(|| {
                 black_box({
                     let jacsdocument = agent.create_document_and_load(&document).unwrap();
                     let document_key = jacsdocument.getkey();
@@ -109,8 +109,8 @@ fn benchmark_rsa(c: &mut Criterion) {
                         )
                         .unwrap();
                 });
-            }
-        })
+            })
+        }
     });
 }
 
@@ -119,8 +119,8 @@ fn benchmark_pq(c: &mut Criterion) {
     let mut agent2 = load_test_agent_one();
     let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
     c.bench_function("pq", |b| {
-        b.iter(|| {
-            for document in &documents {
+        for document in &documents {
+            b.iter(|| {
                 black_box({
                     let jacsdocument = agent2.create_document_and_load(&document).unwrap();
                     let document_key = jacsdocument.getkey();
@@ -133,8 +133,8 @@ fn benchmark_pq(c: &mut Criterion) {
                         )
                         .unwrap();
                 });
-            }
-        })
+            })
+        }
     });
 }
 
@@ -143,8 +143,8 @@ fn benchmark_ring(c: &mut Criterion) {
     let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
     let mut agent3 = load_test_agent_one();
     c.bench_function("ring", |b| {
-        b.iter(|| {
-            for document in &documents {
+        for document in &documents {
+            b.iter(|| {
                 black_box({
                     let jacsdocument = agent3.create_document_and_load(&document).unwrap();
                     let document_key = jacsdocument.getkey();
@@ -157,8 +157,8 @@ fn benchmark_ring(c: &mut Criterion) {
                         )
                         .unwrap();
                 });
-            }
-        })
+            })
+        }
     });
 }
 
