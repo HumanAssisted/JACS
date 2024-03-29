@@ -9,6 +9,8 @@ use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use rand::Rng;
 use std::env;
 
+static BENCH_SAMPLE_SIZE: usize = 50;
+
 fn set_enc_to_ring() {
     env::set_var(
         "JACS_AGENT_PRIVATE_KEY_FILENAME",
@@ -89,60 +91,13 @@ fn generate_synthetic_data(count: usize) -> Vec<String> {
     documents
 }
 
-fn benchmark_function(c: &mut Criterion) {
-    let documents = generate_synthetic_data(1000);
-    let mut count = 0;
+fn benchmark_rsa(c: &mut Criterion) {
+    let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
     let mut agent = load_test_agent_one();
     c.bench_function("rsa", |b| {
         b.iter(|| {
-            count = 0;
             for document in &documents {
                 black_box({
-                    count += 1;
-                    let jacsdocument = agent.create_document_and_load(&document).unwrap();
-                    let document_key = jacsdocument.getkey();
-                    agent
-                        .verify_document_signature(
-                            &document_key,
-                            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-                            None,
-                            None,
-                        )
-                        .unwrap();
-                });
-            }
-        })
-    });
-
-    c.bench_function("pq", |b| {
-        set_enc_to_pq();
-        b.iter(|| {
-            for document in &documents {
-                count = 0;
-                black_box({
-                    count += 1;
-                    let jacsdocument = agent.create_document_and_load(&document).unwrap();
-                    let document_key = jacsdocument.getkey();
-                    agent
-                        .verify_document_signature(
-                            &document_key,
-                            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-                            None,
-                            None,
-                        )
-                        .unwrap();
-                });
-            }
-        })
-    });
-
-    c.bench_function("ring", |b| {
-        set_enc_to_ring();
-        b.iter(|| {
-            for document in &documents {
-                count = 0;
-                black_box({
-                    count += 1;
                     let jacsdocument = agent.create_document_and_load(&document).unwrap();
                     let document_key = jacsdocument.getkey();
                     agent
@@ -159,5 +114,53 @@ fn benchmark_function(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, benchmark_function);
+fn benchmark_pq(c: &mut Criterion) {
+    set_enc_to_pq();
+    let mut agent2 = load_test_agent_one();
+    let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
+    c.bench_function("pq", |b| {
+        b.iter(|| {
+            for document in &documents {
+                black_box({
+                    let jacsdocument = agent2.create_document_and_load(&document).unwrap();
+                    let document_key = jacsdocument.getkey();
+                    agent2
+                        .verify_document_signature(
+                            &document_key,
+                            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+                            None,
+                            None,
+                        )
+                        .unwrap();
+                });
+            }
+        })
+    });
+}
+
+fn benchmark_ring(c: &mut Criterion) {
+    set_enc_to_ring();
+    let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
+    let mut agent3 = load_test_agent_one();
+    c.bench_function("ring", |b| {
+        b.iter(|| {
+            for document in &documents {
+                black_box({
+                    let jacsdocument = agent3.create_document_and_load(&document).unwrap();
+                    let document_key = jacsdocument.getkey();
+                    agent3
+                        .verify_document_signature(
+                            &document_key,
+                            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+                            None,
+                            None,
+                        )
+                        .unwrap();
+                });
+            }
+        })
+    });
+}
+
+criterion_group!(benches, benchmark_rsa, benchmark_pq, benchmark_ring);
 criterion_main!(benches);

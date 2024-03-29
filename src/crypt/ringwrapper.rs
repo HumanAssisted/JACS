@@ -13,7 +13,7 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
         .map_err(|e| KeyRejectedError(e))?;
     let public_key = key_pair.public_key().as_ref().to_vec();
     let private_key = pkcs8_bytes.as_ref().to_vec();
-    Ok((public_key, private_key))
+    Ok((private_key, public_key))
 }
 
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {

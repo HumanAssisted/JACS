@@ -10,7 +10,7 @@ use std::error::Error;
 
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let (pk, sk) = keypair();
-    Ok((pk.as_bytes().to_vec(), sk.as_bytes().to_vec()))
+    Ok((sk.as_bytes().to_vec(), pk.as_bytes().to_vec()))
 }
 
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {
