@@ -20,6 +20,10 @@ Documents are meant to be shared and stand-alone.
 Flexible for developers - store, index, and search the docouments how you like.
 
 
+Check out the presentation
+
+![Presentation](./presentation.png)
+
 ## trust
 
 JACS documents are meant to be immutable and idempotent.

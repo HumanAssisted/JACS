@@ -9,7 +9,7 @@ use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use rand::Rng;
 use std::env;
 
-static BENCH_SAMPLE_SIZE: usize = 5;
+static BENCH_SAMPLE_SIZE: usize = 100;
 
 fn set_enc_to_ring() {
     env::set_var(
