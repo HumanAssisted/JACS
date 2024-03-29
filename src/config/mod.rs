@@ -1,10 +1,11 @@
+use log::debug;
 use log::info;
 use serde::Deserialize;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Debug)]
 struct Config {
     jacs_use_filesystem: Option<String>,
     jacs_use_security: Option<String>,
@@ -43,6 +44,7 @@ pub fn set_env_vars() {
             jacs_signature_version: None,
         },
     };
+    debug!("configs from file {:?}", config);
 
     let jacs_use_filesystem = config
         .jacs_use_filesystem
