@@ -12,7 +12,6 @@ use std::fmt;
 pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
     "schemas/agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
     "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),
-    "schemas/components/permission/v1/permission.schema.json" => include_str!("../../schemas/components/permission/v1/permission.schema.json"),
     "schemas/components/signature/v1/signature.schema.json" => include_str!("../../schemas/components/signature/v1/signature.schema.json"),
     // todo get all files in schema directory, dynamically
 };
