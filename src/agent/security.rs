@@ -33,6 +33,8 @@ pub fn check_data_directory() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// determine if the system is configured ot use security features
+/// EXPERIMENTAL
 pub fn use_security() -> bool {
     let env_var_value = env::var(JACS_USE_SECURITY).unwrap_or_else(|_| "false".to_string());
     return matches!(env_var_value.to_lowercase().as_str(), "true" | "1");
