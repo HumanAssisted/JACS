@@ -22,7 +22,7 @@ Flexible for developers - store, index, and search the docouments how you like.
 
 Check out the presentation
 
-![Presentation](./presentation.png)
+[![Presentation](./presentation.png)](https://bit.ly/4axQKuz)
 
 ## trust
 
