@@ -230,7 +230,8 @@ It is untested and somewhat easily circumvented.
 
 ### private keys
 
-TODO encrypt private keys.
+Private keys are stored in memory with https://docs.rs/secrecy/latest/secrecy/
+TODO optionally encrypt private keys on filesystem
 
 ## background
 

@@ -1,3 +1,4 @@
+use secrecy::ExposeSecret;
 pub mod hash;
 pub mod pq;
 pub mod ringwrapper;
@@ -83,13 +84,23 @@ impl KeyManager for Agent {
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                return rsawrapper::sign_string(self.get_private_key()?, data)
+                let binding = self.get_private_key()?;
+                let borrowed_key = binding.expose_secret();
+                let key_vec = borrowed_key.use_secret();
+
+                return rsawrapper::sign_string(key_vec.to_vec(), data);
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return ringwrapper::sign_string(self.get_private_key()?, data)
+                let binding = self.get_private_key()?;
+                let borrowed_key = binding.expose_secret();
+                let key_vec = borrowed_key.use_secret();
+                return ringwrapper::sign_string(key_vec.to_vec(), data);
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return pq::sign_string(self.get_private_key()?, data)
+                let binding = self.get_private_key()?;
+                let borrowed_key = binding.expose_secret();
+                let key_vec = borrowed_key.use_secret();
+                return pq::sign_string(key_vec.to_vec(), data);
             }
             _ => {
                 return Err(

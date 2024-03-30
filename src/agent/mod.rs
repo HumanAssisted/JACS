@@ -34,6 +34,35 @@ pub const SHA256_FIELDNAME: &str = "sha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "selfSignature";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
 
+use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
+
+#[derive(Clone)]
+pub struct PrivateKey(Vec<u8>);
+
+impl Zeroize for PrivateKey {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+/// Permits cloning
+impl CloneableSecret for PrivateKey {}
+
+/// Provides a `Debug` impl (by default `[[REDACTED]]`)
+impl DebugSecret for PrivateKey {}
+
+impl PrivateKey {
+    /// A method that operates on the private key.
+    /// This method is just an example; it prints the length of the private key.
+    /// Replace this with your actual cryptographic operation.
+    pub fn use_secret(&self) -> &Vec<u8> {
+        &self.0
+    }
+}
+
+/// Use this alias when storing secret values
+pub type SecretPrivateKey = Secret<PrivateKey>;
+
 pub struct Agent {
     /// the JSONSchema used
     schema: Schema,
@@ -50,7 +79,7 @@ pub struct Agent {
     id: Option<String>,
     version: Option<String>,
     public_key: Option<Vec<u8>>,
-    private_key: Option<Vec<u8>>,
+    private_key: Option<SecretPrivateKey>,
     key_algorithm: Option<String>,
 }
 
@@ -116,17 +145,34 @@ impl Agent {
         public_key: Vec<u8>,
         key_algorithm: &String,
     ) -> Result<(), Box<dyn Error>> {
-        self.private_key = Some(private_key);
+        self.private_key = Some(Secret::new(PrivateKey(private_key))); //Some(private_key);
         self.public_key = Some(public_key);
         //TODO check algo
         self.key_algorithm = Some(key_algorithm.to_string());
         Ok(())
     }
 
+    // /// Gets a reference to the private key, if it exists.
+    // /// Since we're dealing with secrets, this function returns an Option<&Secret<PrivateKey>>
+    // /// to ensure the secret is not cloned or moved accidentally.
+    // pub fn get_private_key(&self) -> Option<&Secret<PrivateKey>> {
+    //     self.private_key.as_ref()
+    // }
+
+    // /// Consumes the secret, returning the inner PrivateKey if it exists.
+    // /// This is a more dangerous operation as it moves the secret out of its secure container.
+    // /// Use with caution.
+    // pub fn take_private_key(self) -> Option<PrivateKey> {
+    //     self.private_key.map(|secret| secret.into_inner())
+    // }
+
     // todo keep this as private
-    pub fn get_private_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn get_private_key(&self) -> Result<Secret<PrivateKey>, Box<dyn Error>> {
         match &self.private_key {
-            Some(private_key) => Ok(private_key.clone()),
+            Some(private_key) => {
+                // Ok(self.private_key.map(|secret| secret.into()).expect("REASON"))
+                Ok(private_key.clone())
+            }
             None => Err("private_key is None".into()),
         }
     }

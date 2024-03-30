@@ -1,6 +1,7 @@
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
+use secrecy::ExposeSecret;
 
 use chrono::Utc;
 use log::{debug, error, info, warn};
@@ -109,11 +110,10 @@ impl FileLoader for Agent {
         let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
         let default_dir = Path::new(pathstring);
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
-        save_file(
-            &default_dir,
-            &private_key_filename,
-            &self.get_private_key()?,
-        );
+        let binding = self.get_private_key()?;
+        let borrowed_key = binding.expose_secret();
+        let key_vec = borrowed_key.use_secret();
+        save_file(&default_dir, &private_key_filename, &key_vec);
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
         save_file(&default_dir, &public_key_filename, &self.get_public_key()?);
         Ok(())

@@ -30,6 +30,7 @@ phf = { version = "0.11.1", features = ["macros"] }
 
 strum = "0.24.1"
 strum_macros = "0.24.3"
+secrecy = "0.8.0"
 
 
 
