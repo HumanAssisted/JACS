@@ -73,7 +73,6 @@ pub struct Agent {
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
-    public_keys: HashMap<String, String>,
     default_directory: PathBuf,
     /// everything needed for the agent to sign things
     id: Option<String>,
@@ -103,11 +102,10 @@ impl Agent {
     ) -> Result<Self, Box<dyn Error>> {
         set_env_vars();
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
-        let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
-        let mut document_map = Arc::new(Mutex::new(HashMap::new()));
-        let mut public_keys: HashMap<String, String> = HashMap::new();
+        let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
+        let document_map = Arc::new(Mutex::new(HashMap::new()));
 
-        check_data_directory();
+        let _ = check_data_directory();
         let default_directory = get_default_dir();
 
         Ok(Self {
@@ -115,7 +113,6 @@ impl Agent {
             value: None,
             document_schemas: document_schemas_map,
             documents: document_map,
-            public_keys: public_keys,
             default_directory: default_directory,
             id: None,
             version: None,
