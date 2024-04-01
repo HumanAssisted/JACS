@@ -44,7 +44,7 @@ pub trait Document {
     fn verify_document_signature(
         &mut self,
         document_key: &String,
-        signature_key_from: &String,
+        signature_key_from: Option<&String>,
         fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
@@ -252,7 +252,7 @@ impl Document for Agent {
     fn verify_document_signature(
         &mut self,
         document_key: &String,
-        signature_key_from: &String,
+        signature_key_from: Option<&String>,
         fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
@@ -265,10 +265,17 @@ impl Document for Agent {
             Some(public_key) => public_key,
             None => self.get_public_key()?,
         };
+
+        let binding = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let signature_key_from_final = match signature_key_from {
+            Some(signature_key_from) => signature_key_from,
+            None => binding,
+        };
+
         let result = self.signature_verification_procedure(
             &document_value,
             fields,
-            signature_key_from,
+            signature_key_from_final,
             used_public_key,
             public_key_enc_type,
         );
