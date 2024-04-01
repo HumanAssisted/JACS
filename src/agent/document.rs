@@ -13,7 +13,7 @@ use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct JACSDocument {
     pub id: String,
     pub version: String,
@@ -47,6 +47,7 @@ pub trait Document {
         signature_key_from: &String,
         fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
+        public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>>;
 
     fn validate_document_with_custom_schema(
@@ -254,6 +255,7 @@ impl Document for Agent {
         signature_key_from: &String,
         fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
+        public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
         let document = self.get_document(document_key).expect("Reason");
@@ -268,6 +270,7 @@ impl Document for Agent {
             fields,
             signature_key_from,
             used_public_key,
+            public_key_enc_type,
         );
         match result {
             Ok(_) => Ok(()),

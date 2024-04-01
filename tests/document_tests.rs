@@ -110,6 +110,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
             &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
             None,
             None,
+            None,
         )
         .unwrap();
 
@@ -125,6 +126,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
             &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
             None,
             Some(agent_one_public_key),
+            None,
         )
         .unwrap();
 }

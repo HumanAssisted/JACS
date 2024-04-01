@@ -42,6 +42,7 @@ pub trait KeyManager {
         data: &String,
         signature_base64: &String,
         public_key: Vec<u8>,
+        public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
@@ -114,9 +115,14 @@ impl KeyManager for Agent {
         data: &String,
         signature_base64: &String,
         public_key: Vec<u8>,
+        public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
-        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        let algo = match public_key_enc_type {
+            Some(public_key_enc_type) => CryptoSigningAlgorithm::from_str(&public_key_enc_type)?,
+            None => CryptoSigningAlgorithm::from_str(&key_algorithm)?,
+        };
+
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
                 return rsawrapper::verify_string(public_key, data, signature_base64)

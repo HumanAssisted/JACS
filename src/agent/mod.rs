@@ -63,6 +63,7 @@ impl PrivateKey {
 /// Use this alias when storing secret values
 pub type SecretPrivateKey = Secret<PrivateKey>;
 
+#[derive(Debug)]
 pub struct Agent {
     /// the JSONSchema used
     schema: Schema,
@@ -236,6 +237,7 @@ impl Agent {
                     None,
                     signature_key_from,
                     public_key,
+                    None,
                 );
             }
             None => {
@@ -252,20 +254,26 @@ impl Agent {
         self.value = None;
     }
 
-    fn signature_verification_procedure(
+    pub fn get_agent_for_doc(
         &mut self,
-        json_value: &Value,
-        fields: Option<&Vec<String>>,
-        signature_key_from: &String,
-        public_key: Vec<u8>,
-    ) -> Result<(), Box<dyn Error>> {
-        let (document_values_string, _) =
-            Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
-        debug!(
-            "signing_procedure document_values_string:\n{}",
-            document_values_string
-        );
+        document_key: String,
+        signature_key_from: Option<&String>,
+    ) -> Result<String, Box<dyn Error>> {
+        let document = self.get_document(&document_key).expect("Reason");
+        let document_value = document.getvalue();
+        let binding = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let signature_key_from_final = match signature_key_from {
+            Some(signature_key_from) => signature_key_from,
+            None => binding,
+        };
+        return self.get_signature_agent_id_and_version(&document_value, signature_key_from_final);
+    }
 
+    fn get_signature_agent_id_and_version(
+        &self,
+        json_value: &Value,
+        signature_key_from: &String,
+    ) -> Result<String, Box<dyn Error>> {
         let agentid = json_value[signature_key_from]["agentID"]
             .as_str()
             .unwrap_or("")
@@ -276,9 +284,23 @@ impl Agent {
             .unwrap_or("")
             .trim_matches('"')
             .to_string();
+        return Ok(format!("{}:{}", agentid, agentversion));
+    }
 
-        // todo use to get public key in sophon
-        let agent_key = format!("{}:{}", agentid, agentversion);
+    fn signature_verification_procedure(
+        &mut self,
+        json_value: &Value,
+        fields: Option<&Vec<String>>,
+        signature_key_from: &String,
+        public_key: Vec<u8>,
+        public_key_enc_type: Option<String>,
+    ) -> Result<(), Box<dyn Error>> {
+        let (document_values_string, _) =
+            Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
+        debug!(
+            "signing_procedure document_values_string:\n{}",
+            document_values_string
+        );
 
         let public_key_hash = json_value[signature_key_from]["publicKeyHash"]
             .as_str()
@@ -299,7 +321,12 @@ impl Agent {
             .unwrap_or("")
             .trim_matches('"')
             .to_string();
-        self.verify_string(&document_values_string, &signature_base64, public_key)
+        self.verify_string(
+            &document_values_string,
+            &signature_base64,
+            public_key,
+            public_key_enc_type,
+        )
     }
 
     /// re-used function to generate a signature json fragment
