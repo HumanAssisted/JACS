@@ -5,13 +5,12 @@ use aes_gcm::{
 };
 use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
-use std::str;
+use std::env;
 
 // Encrypt a private key with a password
-pub fn encrypt_private_key(
-    password: &str,
-    private_key: &[u8],
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let password = env::var("JACS_PRIVATE_KEY_PASSWORD".to_string())?;
+
     // Generate a random salt
     let mut salt = [0u8; 16];
     thread_rng().fill(&mut salt[..]);
@@ -46,9 +45,10 @@ pub fn encrypt_private_key(
 
 // Decrypt the private key with the password
 pub fn decrypt_private_key(
-    password: &str,
     encrypted_key_with_salt_and_nonce: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let password = env::var("JACS_PRIVATE_KEY_PASSWORD".to_string())?;
+
     if encrypted_key_with_salt_and_nonce.len() < 16 + 12 {
         return Err("encrypted data is too short".into());
     }

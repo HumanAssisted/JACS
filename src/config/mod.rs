@@ -17,6 +17,7 @@ struct Config {
     jacs_agent_version: Option<String>,
     jacs_header_version: Option<String>,
     jacs_signature_version: Option<String>,
+    jacs_private_key_password: Option<String>,
 }
 
 pub fn get_default_dir() -> PathBuf {
@@ -42,6 +43,7 @@ pub fn set_env_vars() {
             jacs_agent_version: None,
             jacs_header_version: None,
             jacs_signature_version: None,
+            jacs_private_key_password: None,
         },
     };
     debug!("configs from file {:?}", config);
@@ -50,6 +52,11 @@ pub fn set_env_vars() {
         .jacs_use_filesystem
         .unwrap_or_else(|| "true".to_string());
     env::set_var("JACS_USE_FILESYSTEM", &jacs_use_filesystem);
+
+    let jacs_private_key_password = config
+        .jacs_private_key_password
+        .unwrap_or_else(|| "true".to_string());
+    env::set_var("JACS_PRIVATE_KEY_PASSWORD", &jacs_private_key_password);
 
     let jacs_use_security = config
         .jacs_use_security
@@ -112,7 +119,8 @@ pub fn set_env_vars() {
             JACS_AGENT_KEY_ALGORITHM:        {},
             JACS_AGENT_VERSION:              {},
             JACS_HEADER_VERSION:             {},
-            JACS_SIGNATURE_VERSION:          {}
+            JACS_SIGNATURE_VERSION:          {},
+            JACS_PRIVATE_KEY_PASSWORD        {}
         "#,
         jacs_use_security,
         jacs_use_filesystem,
@@ -123,7 +131,8 @@ pub fn set_env_vars() {
         jacs_agent_key_algorithm,
         jacs_agent_version,
         jacs_header_version,
-        jacs_signature_version
+        jacs_signature_version,
+        jacs_private_key_password
     );
 
     info!("{}", loading_message);

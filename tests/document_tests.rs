@@ -107,7 +107,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     agent
         .verify_document_signature(
             &new_document_key,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
             None,
             None,
             None,
@@ -123,7 +123,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     agent
         .verify_document_signature(
             &copy_newdocument_key,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
             None,
             Some(agent_one_public_key),
             None,

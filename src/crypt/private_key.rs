@@ -1,7 +1,5 @@
 // use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
-
-
 // #[derive(Clone)]
 // pub struct PrivateKey(Vec<u8>);
 
@@ -21,7 +19,22 @@
 //     /// A method that operates on the private key.
 //     /// This method is just an example; it prints the length of the private key.
 //     /// Replace this with your actual cryptographic operation.
-//     pub fn use_secret(&self) -> &Vec<u8> {
-//         &self.0
+//     pub fn use_secret(&self) -> Vec<u8> {
+//         decrypt_private_key(&self.0).expect("use_secret decrypt failed")
 //     }
 // }
+
+
+// // impl PrivateKey {
+// //     pub fn with_secret<F, R>(&self, f: F) -> R
+// //     where
+// //         F: FnOnce(&[u8]) -> R,
+// //     {
+// //         let decrypted_key = decrypt_private_key(&self.0).expect("use_secret decrypt failed");
+// //         f(&decrypted_key)
+// //     }
+// // }
+
+
+// /// Use this alias when storing secret values
+// pub type SecretPrivateKey = Secret<PrivateKey>;

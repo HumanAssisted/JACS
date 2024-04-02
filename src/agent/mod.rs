@@ -9,6 +9,7 @@ pub mod document;
 pub mod loaders;
 pub mod security;
 
+use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::hash::hash_string;
 use crate::crypt::KeyManager;
 use crate::crypt::{rsawrapper, JACS_AGENT_KEY_ALGORITHM};
@@ -37,7 +38,7 @@ pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
 #[derive(Clone)]
-struct PrivateKey(Vec<u8>);
+pub struct PrivateKey(Vec<u8>);
 
 impl Zeroize for PrivateKey {
     fn zeroize(&mut self) {
@@ -55,10 +56,20 @@ impl PrivateKey {
     /// A method that operates on the private key.
     /// This method is just an example; it prints the length of the private key.
     /// Replace this with your actual cryptographic operation.
-    pub fn use_secret(&self) -> &Vec<u8> {
-        &self.0
+    pub fn use_secret(&self) -> Vec<u8> {
+        decrypt_private_key(&self.0).expect("use_secret decrypt failed")
     }
 }
+
+// impl PrivateKey {
+//     pub fn with_secret<F, R>(&self, f: F) -> R
+//     where
+//         F: FnOnce(&[u8]) -> R,
+//     {
+//         let decrypted_key = decrypt_private_key(&self.0).expect("use_secret decrypt failed");
+//         f(&decrypted_key)
+//     }
+// }
 
 /// Use this alias when storing secret values
 pub type SecretPrivateKey = Secret<PrivateKey>;
@@ -143,7 +154,8 @@ impl Agent {
         public_key: Vec<u8>,
         key_algorithm: &String,
     ) -> Result<(), Box<dyn Error>> {
-        self.private_key = Some(Secret::new(PrivateKey(private_key))); //Some(private_key);
+        let private_key_encrypted = encrypt_private_key(&private_key)?;
+        self.private_key = Some(Secret::new(PrivateKey(private_key_encrypted))); //Some(private_key);
         self.public_key = Some(public_key);
         //TODO check algo
         self.key_algorithm = Some(key_algorithm.to_string());
@@ -223,7 +235,7 @@ impl Agent {
     // get docs by prrefix
     // let user_values: HashMap<&String, &Value> = map
     //     .iter()
-    //     .filter(|(key, _)| key.starts_with(prefix))
+    //     .filter(|(key, _)| key.starts    _with(prefix))
     //     .collect();
 
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
