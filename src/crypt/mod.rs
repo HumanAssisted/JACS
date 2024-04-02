@@ -3,17 +3,13 @@ pub mod hash;
 pub mod pq;
 pub mod ringwrapper;
 pub mod rsawrapper;
-
-use log::{debug, error, warn};
+// pub mod private_key;
+pub mod aes_encrypt;
 
 use crate::agent::Agent;
-
 use std::env;
-use std::error::Error;
-
 use std::str::FromStr;
 
-use crate::agent::boilerplate::BoilerPlate;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::agent::loaders::FileLoader;
 use strum_macros::{AsRefStr, Display, EnumString};

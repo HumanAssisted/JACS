@@ -19,7 +19,7 @@ use crate::schema::Schema;
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
-use log::{debug, error, warn};
+use log::{debug, error};
 use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
@@ -37,7 +37,7 @@ pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
 #[derive(Clone)]
-pub struct PrivateKey(Vec<u8>);
+struct PrivateKey(Vec<u8>);
 
 impl Zeroize for PrivateKey {
     fn zeroize(&mut self) {
