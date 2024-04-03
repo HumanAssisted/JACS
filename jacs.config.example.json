@@ -6,8 +6,8 @@
   "jacs_agent_private_key_filename": "rsa_pss_private.pem",
   "jacs_agent_public_key_filename": "rsa_pss_public.pem",
   "jacs_agent_key_algorithm": "RSA-PSS",
-  "jacs_agent_version": "v1",
-  "jacs_header_version": "v1",
-  "jacs_signature_version": "v1",
+  "jacs_agent_schema_version": "v1",
+  "jacs_header_schema_version": "v1",
+  "jacs_signature_schema_version": "v1",
   "jacs_private_key_password": "secretpassord"
 }

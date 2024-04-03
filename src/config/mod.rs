@@ -14,9 +14,9 @@ struct Config {
     jacs_agent_private_key_filename: Option<String>,
     jacs_agent_public_key_filename: Option<String>,
     jacs_agent_key_algorithm: Option<String>,
-    jacs_agent_version: Option<String>,
-    jacs_header_version: Option<String>,
-    jacs_signature_version: Option<String>,
+    jacs_agent_schema_version: Option<String>,
+    jacs_header_schema_version: Option<String>,
+    jacs_signature_schema_version: Option<String>,
     jacs_private_key_password: Option<String>,
 }
 
@@ -40,9 +40,9 @@ pub fn set_env_vars() {
             jacs_agent_private_key_filename: None,
             jacs_agent_public_key_filename: None,
             jacs_agent_key_algorithm: None,
-            jacs_agent_version: None,
-            jacs_header_version: None,
-            jacs_signature_version: None,
+            jacs_agent_schema_version: None,
+            jacs_header_schema_version: None,
+            jacs_signature_schema_version: None,
             jacs_private_key_password: None,
         },
     };
@@ -92,20 +92,23 @@ pub fn set_env_vars() {
         .unwrap_or_else(|| "RSA-PSS".to_string());
     env::set_var("JACS_AGENT_KEY_ALGORITHM", &jacs_agent_key_algorithm);
 
-    let jacs_agent_version = config
-        .jacs_agent_version
+    let jacs_agent_schema_version = config
+        .jacs_agent_schema_version
         .unwrap_or_else(|| "v1".to_string());
-    env::set_var("JACS_AGENT_VERSION", &jacs_agent_version);
+    env::set_var("JACS_AGENT_SCHEMA_VERSION", &jacs_agent_schema_version);
 
-    let jacs_header_version = config
-        .jacs_header_version
+    let jacs_header_schema_version = config
+        .jacs_header_schema_version
         .unwrap_or_else(|| "v1".to_string());
-    env::set_var("JACS_HEADER_VERSION", &jacs_header_version);
+    env::set_var("JACS_HEADER_SCHEMA_VERSION", &jacs_header_schema_version);
 
-    let jacs_signature_version = config
-        .jacs_signature_version
+    let jacs_signature_schema_version = config
+        .jacs_signature_schema_version
         .unwrap_or_else(|| "v1".to_string());
-    env::set_var("JACS_SIGNATURE_VERSION", &jacs_signature_version);
+    env::set_var(
+        "JACS_SIGNATURE_SCHEMA_VERSION",
+        &jacs_signature_schema_version,
+    );
 
     let loading_message = format!(
         r#"
@@ -117,9 +120,9 @@ pub fn set_env_vars() {
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},
             JACS_AGENT_PUBLIC_KEY_FILENAME:  {},
             JACS_AGENT_KEY_ALGORITHM:        {},
-            JACS_AGENT_VERSION:              {},
-            JACS_HEADER_VERSION:             {},
-            JACS_SIGNATURE_VERSION:          {},
+            JACS_AGENT_SCHEMA_VERSION:              {},
+            JACS_HEADER_SCHEMA_VERSION:             {},
+            JACS_SIGNATURE_SCHEMA_VERSION:          {},
             JACS_PRIVATE_KEY_PASSWORD        {}
         "#,
         jacs_use_security,
@@ -129,9 +132,9 @@ pub fn set_env_vars() {
         jacs_agent_private_key_filename,
         jacs_agent_public_key_filename,
         jacs_agent_key_algorithm,
-        jacs_agent_version,
-        jacs_header_version,
-        jacs_signature_version,
+        jacs_agent_schema_version,
+        jacs_header_schema_version,
+        jacs_signature_schema_version,
         jacs_private_key_password
     );
 
