@@ -16,10 +16,6 @@
 
 ### Arrays
 
-*   [Untitled array in Header](./header-properties-registrars.md "Signing authorities agent is registered with") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/registrars`
-
-*   [Untitled array in Header](./header-properties-permissions.md "array of permissions") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/permissions`
-
 *   [Untitled array in Signature](./signature-properties-fields.md "fields fields from document which were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/fields`
 
 ## Version Note
