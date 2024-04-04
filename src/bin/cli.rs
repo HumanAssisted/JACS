@@ -2,17 +2,22 @@ use clap::{value_parser, Arg, ArgAction, Command};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::Agent;
 use jacs::config::set_env_vars;
+use jacs::crypt::KeyManager;
 
 use std::env;
 use std::fs;
 
-fn load_agent(filepath: String) -> Agent {
-    let mut agent = Agent::new(
+fn get_agent() -> Agent {
+    Agent::new(
         &env::var("JACS_AGENT_SCHEMA_VERSION").unwrap(),
         &env::var("JACS_HEADER_SCHEMA_VERSION").unwrap(),
         &env::var("JACS_SIGNATURE_SCHEMA_VERSION").unwrap(),
     )
-    .expect("Failed to init Agent");
+    .expect("Failed to init Agent")
+}
+
+fn load_agent(filepath: String) -> Agent {
+    let mut agent = get_agent();
     let agentstring = fs::read_to_string(filepath.clone()).expect("agent file loading");
     let _ = agent.load(&agentstring);
     agent
@@ -27,6 +32,7 @@ fn main() {
                     Command::new("create")
                         .arg(
                             Arg::new("filename")
+                                .short('f')
                                 .required(true)
                                 .value_parser(value_parser!(String)),
                         )
@@ -107,28 +113,38 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("agent", agent_matches)) => {
-            match agent_matches.subcommand() {
-                Some(("create", create_matches)) => {
-                    let filename = create_matches.get_one::<String>("filename").unwrap();
-                    let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
-                    // Call the JACS library function to create an agent
-                    // Example: Agent::create(filename, create_keys);
-                }
-                Some(("verify", verify_matches)) => {
-                    let agentfile = verify_matches.get_one::<String>("agent-file").unwrap();
-                    let mut agent = load_agent(agentfile.to_string());
-                    agent
-                        .verify_self_signature()
-                        .expect("signature verification");
+        Some(("agent", agent_matches)) => match agent_matches.subcommand() {
+            Some(("create", create_matches)) => {
+                let filename = create_matches.get_one::<String>("filename").unwrap();
+                let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
+                let agentstring = fs::read_to_string(filename.clone()).expect("agent file loading");
+                let mut agent = get_agent();
+                agent
+                    .create_agent_and_load(&agentstring, false, None)
+                    .expect("agent creation failed");
+                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
+
+                if create_keys {
+                    agent.generate_keys().expect("Reason");
                     println!(
-                        "Agent {} signature verified OK.",
-                        agent.get_lookup_id().expect("id")
-                    );
+                        "keys created in {}",
+                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
+                    )
                 }
-                _ => unreachable!(),
             }
-        }
+            Some(("verify", verify_matches)) => {
+                let agentfile = verify_matches.get_one::<String>("agent-file").unwrap();
+                let mut agent = load_agent(agentfile.to_string());
+                agent
+                    .verify_self_signature()
+                    .expect("signature verification");
+                println!(
+                    "Agent {} signature verified OK.",
+                    agent.get_lookup_id().expect("id")
+                );
+            }
+            _ => unreachable!(),
+        },
         Some(("document", document_matches)) => {
             match document_matches.subcommand() {
                 Some(("create", create_matches)) => {

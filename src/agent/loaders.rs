@@ -248,7 +248,11 @@ fn save_private_key(
                 format!("Encryption error: {}", e),
             )
         })?;
-        let encrypted_filename = format!("{}.enc", filename);
+        let encrypted_filename = if !filename.ends_with(".enc") {
+            format!("{}.enc", filename)
+        } else {
+            filename.to_string()
+        };
         save_file(file_path, &encrypted_filename, &encrypted_key)
     } else {
         save_file(file_path, filename, private_key)
