@@ -32,6 +32,7 @@ strum = "0.24.1"
 strum_macros = "0.24.3"
 secrecy = "0.8.0"
 aes-gcm = "0.10.3"
+clap = "4.5.4"
 
 
 
@@ -67,6 +68,9 @@ walkdir = "2.5.0"
 # version =  "0.16.5"
 # features = ["extension-module"]
 
+[[bin]]
+name = "jacs"
+path = "src/bin/cli.rs"
 
 [[bench]]
 name = "sign_and_check_sig"
