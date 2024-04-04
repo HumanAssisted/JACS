@@ -1,4 +1,5 @@
 use crate::schema::Url;
+use log::debug;
 use phf::phf_map;
 
 use jsonschema::SchemaResolver;
@@ -102,7 +103,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
 
-        println!(" url, relative_path {} {}", url, relative_path);
+        debug!(" url, relative_path {} {}", url, relative_path);
         let schema_json = super::DEFAULT_SCHEMA_STRINGS
             .get(relative_path)
             .ok_or_else(|| {

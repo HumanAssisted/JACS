@@ -3,7 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    let target_dir = PathBuf::from(env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string()));
+    let target_dir =
+        PathBuf::from(env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string()));
     let release_dir = target_dir.join("release");
 
     // Get the directories in the system's PATH
@@ -20,7 +21,11 @@ fn main() {
 
             // Copy the 'jacs' binary to the installation directory
             fs::copy(&bin_file, &install_file).unwrap_or_else(|err| {
-                eprintln!("Failed to install 'jacs' to '{}': {}", install_file.display(), err);
+                eprintln!(
+                    "Failed to install 'jacs' to '{}': {}",
+                    install_file.display(),
+                    err
+                );
                 std::process::exit(1);
             });
 

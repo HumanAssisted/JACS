@@ -1,25 +1,25 @@
 use clap::{value_parser, Arg, ArgAction, Command};
+use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::Agent;
 use jacs::config::set_env_vars;
-use jacs::crypt::KeyManager;
+
 use std::env;
 use std::fs;
-use std::path::Path;
 
 fn load_agent(filepath: String) -> Agent {
-    set_env_vars();
     let mut agent = Agent::new(
         &env::var("JACS_AGENT_SCHEMA_VERSION").unwrap(),
         &env::var("JACS_HEADER_SCHEMA_VERSION").unwrap(),
         &env::var("JACS_SIGNATURE_SCHEMA_VERSION").unwrap(),
     )
     .expect("Failed to init Agent");
-    let agentstring = fs::read_to_string(filepath.clone()).expect("fileloading");
+    let agentstring = fs::read_to_string(filepath.clone()).expect("agent file loading");
     let _ = agent.load(&agentstring);
     agent
 }
 
 fn main() {
+    set_env_vars();
     let matches = Command::new("jacs")
         .subcommand(
             Command::new("agent")
@@ -117,8 +117,14 @@ fn main() {
                 }
                 Some(("verify", verify_matches)) => {
                     let agentfile = verify_matches.get_one::<String>("agent-file").unwrap();
-                    let agent = load_agent(agentfile.to_string());
-                    // Example: Agent::verify(agentid, agentversion);
+                    let mut agent = load_agent(agentfile.to_string());
+                    agent
+                        .verify_self_signature()
+                        .expect("signature verification");
+                    println!(
+                        "Agent {} signature verified OK.",
+                        agent.get_lookup_id().expect("id")
+                    );
                 }
                 _ => unreachable!(),
             }
