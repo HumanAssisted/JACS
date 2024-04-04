@@ -1,24 +1,18 @@
+Welcome. Thanks for your help.
+
+The pre-commit hook requires some libraries
+
+See pre-commit
+
+ - install `jq` e.g. `brew install jq`
+ - for documentation    `npm install -g @adobe/jsonschema2md`
+
+Otherwise it's a standard Rust project.
+
+ - install Rust and your favorite editor
+ - see tests, examples, and benches
 
 
-
-# json schema
-
-install jq
-
-
-- regenerate documentation
-
-    npm install -g @adobe/jsonschema2md
-
-# rust
-
-
-
-
-# python
-
-maturin develop
-maturin build --release
 
 
 

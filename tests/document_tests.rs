@@ -4,14 +4,13 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 mod utils;
 
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two, set_test_env_vars};
+use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 static SCHEMA: &str = "examples/documents/custom.schema.json";
 //color_eyre::install().unwrap();
 #[test]
 fn test_load_custom_schema_and_custom_document() {
-    set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
@@ -29,7 +28,6 @@ fn test_load_custom_schema_and_custom_document() {
 
 #[test]
 fn test_load_custom_schema_and_custom_invalid_document() {
-    set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
@@ -58,14 +56,12 @@ fn test_load_custom_schema_and_custom_invalid_document() {
 #[test]
 #[ignore]
 fn test_create() {
-    set_test_env_vars();
     // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create
     utils::generate_new_docs();
 }
 
 #[test]
 fn test_load_custom_schema_and_new_custom_document() {
-    set_test_env_vars();
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
@@ -85,7 +81,6 @@ fn test_load_custom_schema_and_new_custom_document() {
 #[test]
 fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     // cargo test   --test document_tests -- --nocapture
-    set_test_env_vars();
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
@@ -112,7 +107,8 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     agent
         .verify_document_signature(
             &new_document_key,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
+            None,
             None,
             None,
         )
@@ -127,9 +123,10 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     agent
         .verify_document_signature(
             &copy_newdocument_key,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
             None,
             Some(agent_one_public_key),
+            None,
         )
         .unwrap();
 }

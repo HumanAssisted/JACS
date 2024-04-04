@@ -1,18 +1,15 @@
+use secrecy::ExposeSecret;
 pub mod hash;
 pub mod pq;
 pub mod ringwrapper;
 pub mod rsawrapper;
-
-use log::{debug, error, warn};
+// pub mod private_key;
+pub mod aes_encrypt;
 
 use crate::agent::Agent;
-
 use std::env;
-use std::error::Error;
-
 use std::str::FromStr;
 
-use crate::agent::boilerplate::BoilerPlate;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::agent::loaders::FileLoader;
 use strum_macros::{AsRefStr, Display, EnumString};
@@ -41,6 +38,7 @@ pub trait KeyManager {
         data: &String,
         signature_base64: &String,
         public_key: Vec<u8>,
+        public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
@@ -58,10 +56,11 @@ impl KeyManager for Agent {
                     rsawrapper::generate_keys().map_err(|e| e.to_string())?;
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return Err("ring-Ed25519 key generation is not implemented.".into());
+                (private_key, public_key) =
+                    ringwrapper::generate_keys().map_err(|e| e.to_string())?;
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return Err("pq-dilithium key generation is not implemented.".into());
+                (private_key, public_key) = pq::generate_keys().map_err(|e| e.to_string())?;
             }
             _ => {
                 return Err(
@@ -82,13 +81,23 @@ impl KeyManager for Agent {
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                return rsawrapper::sign_string(self.get_private_key()?, data)
+                let binding = self.get_private_key()?;
+                let borrowed_key = binding.expose_secret();
+                let key_vec = borrowed_key.use_secret();
+
+                return rsawrapper::sign_string(key_vec.to_vec(), data);
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return Err("ring-Ed25519 key generation is not implemented.".into());
+                let binding = self.get_private_key()?;
+                let borrowed_key = binding.expose_secret();
+                let key_vec = borrowed_key.use_secret();
+                return ringwrapper::sign_string(key_vec.to_vec(), data);
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return Err("pq-dilithium key generation is not implemented.".into());
+                let binding = self.get_private_key()?;
+                let borrowed_key = binding.expose_secret();
+                let key_vec = borrowed_key.use_secret();
+                return pq::sign_string(key_vec.to_vec(), data);
             }
             _ => {
                 return Err(
@@ -102,18 +111,23 @@ impl KeyManager for Agent {
         data: &String,
         signature_base64: &String,
         public_key: Vec<u8>,
+        public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
-        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        let algo = match public_key_enc_type {
+            Some(public_key_enc_type) => CryptoSigningAlgorithm::from_str(&public_key_enc_type)?,
+            None => CryptoSigningAlgorithm::from_str(&key_algorithm)?,
+        };
+
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
                 return rsawrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return Err("ring-Ed25519 key generation is not implemented.".into());
+                return ringwrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return Err("pq-dilithium key generation is not implemented.".into());
+                return pq::verify_string(public_key, data, signature_base64)
             }
             _ => {
                 return Err(

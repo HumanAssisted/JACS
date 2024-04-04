@@ -3,6 +3,15 @@ name = "jacs"
 version = "0.1.0"
 edition = "2021"
 include = ["src/**/*", "schemas/*.json", "examples/*.json", "Cargo.toml", "README.md", "LICENSE"]
+description = "JACS JSON AI Communication Standard"
+readme = "README.md"
+authors = ["Jonathan Hendler <engineering@hai.io>"]
+license = "Apache-2.0"
+# homepage = "https://github.com/"
+repository = "https://github.com/HumanAssistedIntelligence/JACS"
+keywords = ["cryptography", "json", "ai"]
+categories = ["cryptography", "ai", "no-std"]
+
 
 [dependencies]
 base64 = "0.22.0"
@@ -21,11 +30,15 @@ phf = { version = "0.11.1", features = ["macros"] }
 
 strum = "0.24.1"
 strum_macros = "0.24.3"
+secrecy = "0.8.0"
+aes-gcm = "0.10.3"
+
 
 
 [dev-dependencies]
 rusqlite = "0.26.0"
 color-eyre = "0.6"
+criterion = "0.3"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -43,7 +56,9 @@ features = [
 ]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-pqcrypto-dilithium = "0.5.0"
+pqcrypto = "0.17.0"
+pqcrypto-dilithium = {version = "0.5.0", features=["serialization"] }
+pqcrypto-traits = "0.3.5"
 ring = "0.17.8"
 reqwest = "0.11.26"
 walkdir = "2.5.0"
@@ -51,3 +66,8 @@ walkdir = "2.5.0"
 # [target.'cfg(not(target_arch = "wasm32"))'.dependencies.pyo3]
 # version =  "0.16.5"
 # features = ["extension-module"]
+
+
+[[bench]]
+name = "sign_and_check_sig"
+harness = false

@@ -1,23 +1,32 @@
 # JACS
 
-Welcome to JACS.
+Welcome to JACS. JSON Agent Communication Standard.
 
-The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable.
+The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable:
 
- - verifiable as to their source
- - verifiable as to their schema
- - verifiable in a state and version
+ -  source
+ -  schema
+ -  state and version
 
-The core Rust library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
-
+The library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
 
 ## JSON is all you need!
 
-All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.  When those other services have modified the document, you can verifiy the agent, and sign the changes.
+Documents are in a format already widely adopted and enjoyed: JSON.
+Therefore, they are independent of network protocols or database formats and an be shared and stand-alone.
 
-Documents are meant to be shared and stand-alone.
+All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.
+When those other services have modified the document, you can verifiy the agent, verify the changes, and sign the changes.
 
 Flexible for developers - store, index, and search the docouments how you like.
+Any JSON document can be used as a JACS doc as long as it has the JACS header, which are some required fields about the creator and version.
+Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a basic formalization.
+
+Most devs building connected Agent Apps will want to use [Sophon](https://github.com/HumanAssistedIntelligence/sophon).
+
+Check out the presentation on JACS here:
+
+[![Presentation](./presentation.png)](https://docs.google.com/presentation/d/18mO-tftG-9JnKd7rBtdipcX5t0dm4VfBPReKyWvrmXA/edit#slide=id.p)
 
 
 ## trust
@@ -30,31 +39,39 @@ Changes can be verified and approved by other agents using your public key, allo
 Any person or software can modify a doc, but only agents with the private key can sign the changes.
 If you are familiar with [JWTs](https://jwt.io/) or PGP from email, then you have a good idea of how JACS works.
 
+Signature options are "ring-Ed25519", "RSA-PSS", and "pq-dilithium".
+These are all open source projects and JACS is not an encryption library in itself.
+
+
 ## extensible
 
-Any JSON document can be used as a JACS doc as long as it has the JACS header, which just means some required fields about the creator and version.
-Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a basic formalization.
+Use any type of json document, and you can enforce any type of document using
+[JSON Schema](https://json-schema.org/). If you are just getting started with JSON schema
+
+ 1. [checkout their introduction](https://json-schema.org/understanding-json-schema)
+ 2. [github page](https://github.com/json-schema-org)
+ 3. [youtube channel](https://www.youtube.com/@JSONSchemaOrgOfficial)
+
 
 ## open source
 
+In addition, JACS depends on the work of great open source efforts in standards and encryption.
+See the [Cargo.toml](./Cargo.toml)
+
 Decentralized but trusted data sharing is key to building the apps of the future.
 Use JACS as is, embed in other projects or libraries, commercial or otherwise.
-
-For more features, also open source, check out [Sophon](https://github.com/HumanAssistedIntelligence/sophon).
+[Sophon](https://github.com/HumanAssistedIntelligence/sophon) will make it easy to use, but also imposes a lot of opinions.
 
 
 # Usage
 
-First configure the envirornment variables or use a config file:
+## setting up
 
-```
-use std::env;
+First configure your configuration which are loaded as envirornment variables.
+Create a `jacs.config.json` from [the example](./jacs.config.example.json)
 
-env::set_var("JACS_KEY_DIRECTORY", ".");
-env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
-env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
-env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
-```
+Note: Do not use `jacs_private_key_password` in production. Use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
+
 
 To use JACS you create an `Agent`  and then use it to create docoments that conform to the JACS `Header` format.
 
@@ -74,12 +91,10 @@ To create
 ```
 
 An id, version etc, will be created for you when you use it.
-Here's a rust example.
+Here's a rust example from a test env.
 
 ```
 use std::fs;
-
-
 
 #[test]
 fn test_validate_agent_creation() {
@@ -208,6 +223,9 @@ For examples see [examples](./examples).
 ## security
 
 JACS goal is to introduce no safety vulnerabilities to systems where it is integrated.
+Open to ideas on what cryptography to add next: https://cryptography.rs/, like https://doc.dalek.rs/bulletproofs/index.html.
+
+A little more abotu how signing works can be found at [Header Validation](./HEADER_VALIDATION.md)
 
 ### filesystem
 
@@ -215,16 +233,14 @@ However, filesystem acces can also be turned off completely for documents. This 
 
 By default a directory is used that is configured.  JACS should not touch any files outside the key directory JACS_KEY_DIRECTORY and the JACS_DIRECTORY.
 
-There is a feature that can be enabled to attempt to quarantine executable files found in the JACS directory.
-It is untested and somewhat easily circumvented.
-
 ### private keys
 
-TODO encrypt private keys.
+Private keys are stored in memory with https://docs.rs/secrecy/latest/secrecy/
+The are also encrypted when on the filesystem if you have set the password with the keys are created.
 
 ## background
 
-JACS started as [OSAP](https://github.com/ and stands for - JSON Ai Communication Standard.
+JACS started as [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) and stands for - JSON Agent Communication Standard.
 
 HumanAssistedIntelligence/OSAP) used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
 

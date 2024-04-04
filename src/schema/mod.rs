@@ -29,6 +29,7 @@ impl fmt::Display for ValidationError {
 
 impl Error for ValidationError {}
 
+#[derive(Debug)]
 pub struct Schema {
     /// used to validate any JACS document
     headerschema: JSONSchema,

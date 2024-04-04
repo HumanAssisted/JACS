@@ -1,15 +1,13 @@
 // pub mod document;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::Document;
-use crate::agent::document::JACSDocument;
+use crate::agent::document::{Document, JACSDocument};
 
-use crate::agent::security::check_data_directory;
-use crate::config::get_default_dir;
+use crate::config::{get_default_dir, set_env_vars};
 pub mod boilerplate;
 pub mod document;
 pub mod loaders;
-pub mod security;
 
+use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::hash::hash_string;
 use crate::crypt::KeyManager;
 use crate::crypt::{rsawrapper, JACS_AGENT_KEY_ALGORITHM};
@@ -20,7 +18,7 @@ use crate::schema::Schema;
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
-use log::{debug, error, warn};
+use log::{debug, error};
 use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
@@ -35,6 +33,46 @@ pub const SHA256_FIELDNAME: &str = "sha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "selfSignature";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
 
+use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
+
+#[derive(Clone)]
+pub struct PrivateKey(Vec<u8>);
+
+impl Zeroize for PrivateKey {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+/// Permits cloning
+impl CloneableSecret for PrivateKey {}
+
+/// Provides a `Debug` impl (by default `[[REDACTED]]`)
+impl DebugSecret for PrivateKey {}
+
+impl PrivateKey {
+    /// A method that operates on the private key.
+    /// This method is just an example; it prints the length of the private key.
+    /// Replace this with your actual cryptographic operation.
+    pub fn use_secret(&self) -> Vec<u8> {
+        decrypt_private_key(&self.0).expect("use_secret decrypt failed")
+    }
+}
+
+// impl PrivateKey {
+//     pub fn with_secret<F, R>(&self, f: F) -> R
+//     where
+//         F: FnOnce(&[u8]) -> R,
+//     {
+//         let decrypted_key = decrypt_private_key(&self.0).expect("use_secret decrypt failed");
+//         f(&decrypted_key)
+//     }
+// }
+
+/// Use this alias when storing secret values
+pub type SecretPrivateKey = Secret<PrivateKey>;
+
+#[derive(Debug)]
 pub struct Agent {
     /// the JSONSchema used
     schema: Schema,
@@ -45,13 +83,12 @@ pub struct Agent {
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
-    public_keys: HashMap<String, String>,
     default_directory: PathBuf,
     /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
     public_key: Option<Vec<u8>>,
-    private_key: Option<Vec<u8>>,
+    private_key: Option<SecretPrivateKey>,
     key_algorithm: Option<String>,
 }
 
@@ -73,12 +110,11 @@ impl Agent {
         headerversion: &String,
         signature_version: &String,
     ) -> Result<Self, Box<dyn Error>> {
+        set_env_vars();
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
-        let mut document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
-        let mut document_map = Arc::new(Mutex::new(HashMap::new()));
-        let mut public_keys: HashMap<String, String> = HashMap::new();
+        let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
+        let document_map = Arc::new(Mutex::new(HashMap::new()));
 
-        check_data_directory();
         let default_directory = get_default_dir();
 
         Ok(Self {
@@ -86,7 +122,6 @@ impl Agent {
             value: None,
             document_schemas: document_schemas_map,
             documents: document_map,
-            public_keys: public_keys,
             default_directory: default_directory,
             id: None,
             version: None,
@@ -116,17 +151,35 @@ impl Agent {
         public_key: Vec<u8>,
         key_algorithm: &String,
     ) -> Result<(), Box<dyn Error>> {
-        self.private_key = Some(private_key);
+        let private_key_encrypted = encrypt_private_key(&private_key)?;
+        self.private_key = Some(Secret::new(PrivateKey(private_key_encrypted))); //Some(private_key);
         self.public_key = Some(public_key);
         //TODO check algo
         self.key_algorithm = Some(key_algorithm.to_string());
         Ok(())
     }
 
+    // /// Gets a reference to the private key, if it exists.
+    // /// Since we're dealing with secrets, this function returns an Option<&Secret<PrivateKey>>
+    // /// to ensure the secret is not cloned or moved accidentally.
+    // pub fn get_private_key(&self) -> Option<&Secret<PrivateKey>> {
+    //     self.private_key.as_ref()
+    // }
+
+    // /// Consumes the secret, returning the inner PrivateKey if it exists.
+    // /// This is a more dangerous operation as it moves the secret out of its secure container.
+    // /// Use with caution.
+    // pub fn take_private_key(self) -> Option<PrivateKey> {
+    //     self.private_key.map(|secret| secret.into_inner())
+    // }
+
     // todo keep this as private
-    pub fn get_private_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn get_private_key(&self) -> Result<Secret<PrivateKey>, Box<dyn Error>> {
         match &self.private_key {
-            Some(private_key) => Ok(private_key.clone()),
+            Some(private_key) => {
+                // Ok(self.private_key.map(|secret| secret.into()).expect("REASON"))
+                Ok(private_key.clone())
+            }
             None => Err("private_key is None".into()),
         }
     }
@@ -179,7 +232,7 @@ impl Agent {
     // get docs by prrefix
     // let user_values: HashMap<&String, &Value> = map
     //     .iter()
-    //     .filter(|(key, _)| key.starts_with(prefix))
+    //     .filter(|(key, _)| key.starts    _with(prefix))
     //     .collect();
 
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
@@ -193,6 +246,7 @@ impl Agent {
                     None,
                     signature_key_from,
                     public_key,
+                    None,
                 );
             }
             None => {
@@ -209,20 +263,26 @@ impl Agent {
         self.value = None;
     }
 
-    fn signature_verification_procedure(
+    pub fn get_agent_for_doc(
         &mut self,
-        json_value: &Value,
-        fields: Option<&Vec<String>>,
-        signature_key_from: &String,
-        public_key: Vec<u8>,
-    ) -> Result<(), Box<dyn Error>> {
-        let (document_values_string, _) =
-            Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
-        debug!(
-            "signing_procedure document_values_string:\n{}",
-            document_values_string
-        );
+        document_key: String,
+        signature_key_from: Option<&String>,
+    ) -> Result<String, Box<dyn Error>> {
+        let document = self.get_document(&document_key).expect("Reason");
+        let document_value = document.getvalue();
+        let binding = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let signature_key_from_final = match signature_key_from {
+            Some(signature_key_from) => signature_key_from,
+            None => binding,
+        };
+        return self.get_signature_agent_id_and_version(&document_value, signature_key_from_final);
+    }
 
+    fn get_signature_agent_id_and_version(
+        &self,
+        json_value: &Value,
+        signature_key_from: &String,
+    ) -> Result<String, Box<dyn Error>> {
         let agentid = json_value[signature_key_from]["agentID"]
             .as_str()
             .unwrap_or("")
@@ -233,9 +293,23 @@ impl Agent {
             .unwrap_or("")
             .trim_matches('"')
             .to_string();
+        return Ok(format!("{}:{}", agentid, agentversion));
+    }
 
-        // todo use to get public key in sophon
-        let agent_key = format!("{}:{}", agentid, agentversion);
+    fn signature_verification_procedure(
+        &mut self,
+        json_value: &Value,
+        fields: Option<&Vec<String>>,
+        signature_key_from: &String,
+        public_key: Vec<u8>,
+        public_key_enc_type: Option<String>,
+    ) -> Result<(), Box<dyn Error>> {
+        let (document_values_string, _) =
+            Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
+        debug!(
+            "signing_procedure document_values_string:\n{}",
+            document_values_string
+        );
 
         let public_key_hash = json_value[signature_key_from]["publicKeyHash"]
             .as_str()
@@ -256,7 +330,12 @@ impl Agent {
             .unwrap_or("")
             .trim_matches('"')
             .to_string();
-        self.verify_string(&document_values_string, &signature_base64, public_key)
+        self.verify_string(
+            &document_values_string,
+            &signature_base64,
+            public_key,
+            public_key_enc_type,
+        )
     }
 
     /// re-used function to generate a signature json fragment

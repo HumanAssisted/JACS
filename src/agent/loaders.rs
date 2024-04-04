@@ -1,6 +1,9 @@
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
+use crate::crypt::aes_encrypt::decrypt_private_key;
+use crate::crypt::aes_encrypt::encrypt_private_key;
+use secrecy::ExposeSecret;
 
 use chrono::Utc;
 use log::{debug, error, info, warn};
@@ -106,16 +109,15 @@ impl FileLoader for Agent {
     }
 
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
-        let pathstring: &String = &env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
+        let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
         let default_dir = Path::new(pathstring);
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
-        save_file(
-            &default_dir,
-            &private_key_filename,
-            &self.get_private_key()?,
-        );
+        let binding = self.get_private_key()?;
+        let borrowed_key = binding.expose_secret();
+        let key_vec = borrowed_key.use_secret();
+        let _ = save_private_key(&default_dir, &private_key_filename, &key_vec)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
-        save_file(&default_dir, &public_key_filename, &self.get_public_key()?);
+        let _ = save_file(&default_dir, &public_key_filename, &self.get_public_key()?);
         Ok(())
     }
 
@@ -125,7 +127,7 @@ impl FileLoader for Agent {
         let default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
 
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
-        let private_key = load_key_file(&default_dir, &private_key_filename)?;
+        let private_key = load_private_key(&default_dir, &private_key_filename)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
         let public_key = load_key_file(&default_dir, &public_key_filename)?;
 
@@ -233,6 +235,42 @@ fn create_backup_path(file_path: &Path) -> std::io::Result<PathBuf> {
     let backup_path = file_path.with_file_name(backup_filename);
 
     Ok(backup_path)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn save_private_key(
+    file_path: &Path,
+    filename: &String,
+    private_key: &[u8],
+) -> std::io::Result<String> {
+    let password = env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default();
+    if !password.is_empty() {
+        let encrypted_key = encrypt_private_key(private_key).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Encryption error: {}", e),
+            )
+        })?;
+        let encrypted_filename = format!("{}.enc", filename);
+        save_file(file_path, &encrypted_filename, &encrypted_key)
+    } else {
+        save_file(file_path, filename, private_key)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_private_key(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
+    let loaded_key = load_key_file(file_path, filename)?;
+    if filename.ends_with(".enc") {
+        decrypt_private_key(&loaded_key).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Decryption error: {}", e),
+            )
+        })
+    } else {
+        Ok(loaded_key)
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

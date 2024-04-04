@@ -1,25 +1,47 @@
+use jacs::agent::loaders::FileLoader;
+use secrecy::ExposeSecret;
+use std::env;
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::crypt::KeyManager;
-use utils::{load_test_agent_one, set_test_env_vars};
+use utils::load_test_agent_one;
+
+fn set_enc_to_rsa() {
+    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
+    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
+    env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+}
 
 #[test]
 #[ignore]
 fn test_rsa_create() {
-    set_test_env_vars();
+    set_enc_to_rsa();
     let mut agent = load_test_agent_one();
     agent.generate_keys().expect("Reason");
 }
 
 #[test]
-fn test_rsa_create_and_verify_signature() {
-    set_test_env_vars();
+#[ignore]
+fn test_rsa_save_encrypted() {
+    set_enc_to_rsa();
     let mut agent = load_test_agent_one();
-    let private = agent.get_private_key().unwrap();
+    agent.fs_save_keys().expect("Reason");
+}
+
+#[test]
+fn test_rsa_create_and_verify_signature() {
+    set_enc_to_rsa();
+    let agent = load_test_agent_one();
+    let _private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
+
+    let binding = agent.get_private_key().unwrap();
+    let borrowed_key = binding.expose_secret();
+    let key_vec = borrowed_key.use_secret();
+
     println!(
         "loaded keys {} {} ",
-        std::str::from_utf8(&private).expect("Failed to convert bytes to string"),
+        std::str::from_utf8(&key_vec).expect("Failed to convert bytes to string"),
         std::str::from_utf8(&public).expect("Failed to convert bytes to string")
     );
 

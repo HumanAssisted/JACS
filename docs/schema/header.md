@@ -78,7 +78,7 @@ array of permissions
 
 *   is optional
 
-*   Type: `object[]` ([Permission](permission.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -86,7 +86,7 @@ array of permissions
 
 ### permissions Type
 
-`object[]` ([Permission](permission.md))
+unknown\[]
 
 ## version
 
