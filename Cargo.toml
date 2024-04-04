@@ -11,7 +11,7 @@ license = "Apache-2.0"
 repository = "https://github.com/HumanAssistedIntelligence/JACS"
 keywords = ["cryptography", "json", "ai"]
 categories = ["cryptography", "ai", "no-std"]
-
+build = "build.rs"
 
 [dependencies]
 base64 = "0.22.0"
@@ -75,3 +75,7 @@ path = "src/bin/cli.rs"
 [[bench]]
 name = "sign_and_check_sig"
 harness = false
+
+[package.metadata.cargo-install]
+bin = ["jacs"]
+
