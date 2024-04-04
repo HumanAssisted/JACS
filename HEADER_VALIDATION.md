@@ -13,7 +13,7 @@ The following is a brief explanation of documents are created, signed, and verif
 
 ## verifying
 
-1. a document is loaded and the it is verfied as being a jacs document using the schema
+1. a document is loaded and is verified as being a jacs document using the schema
 2. the hash is checked by taking the value of the fields excluding signature areas, and checking the hash
 3. the agent id is used to find the public key of the document and the signature is checked
 
