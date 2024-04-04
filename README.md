@@ -53,17 +53,14 @@ For more features, also open source, check out [Sophon](https://github.com/Human
 
 # Usage
 
+## setting up
+
 First configure your  envirornment variables.
 Best to use `jacs.config.json` see [the example](./jacs.config.example.json)
 
-```
-use std::env;
+Do not use `jacs_private_key_password` in production. Use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signging documents. You can create a new version of your agent with a new key, but this is not ideal.
 
-env::set_var("JACS_KEY_DIRECTORY", ".");
-env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
-env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
-env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
-```
+
 
 To use JACS you create an `Agent`  and then use it to create docoments that conform to the JACS `Header` format.
 

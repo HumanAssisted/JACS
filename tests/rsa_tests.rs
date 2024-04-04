@@ -1,3 +1,4 @@
+use jacs::agent::loaders::FileLoader;
 use secrecy::ExposeSecret;
 use std::env;
 mod utils;
@@ -20,10 +21,18 @@ fn test_rsa_create() {
 }
 
 #[test]
-fn test_rsa_create_and_verify_signature() {
+#[ignore]
+fn test_rsa_save_encrypted() {
     set_enc_to_rsa();
     let mut agent = load_test_agent_one();
-    let private = agent.get_private_key().unwrap();
+    agent.fs_save_keys().expect("Reason");
+}
+
+#[test]
+fn test_rsa_create_and_verify_signature() {
+    set_enc_to_rsa();
+    let agent = load_test_agent_one();
+    let _private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
 
     let binding = agent.get_private_key().unwrap();
