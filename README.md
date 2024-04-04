@@ -2,27 +2,32 @@
 
 Welcome to JACS. JSON Agent Communication Standard.
 
-The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable.
+The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable:
 
- - verifiable as to their source
- - verifiable as to their schema
- - verifiable in a state and version
+ -  source
+ -  schema
+ -  state and version
 
-The core Rust library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
-
+The library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
 
 ## JSON is all you need!
 
-All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.  When those other services have modified the document, you can verifiy the agent, and sign the changes.
+Documents are in a format already widely adopted and enjoyed: JSON.
+Therefore, they are independent of network protocols or database formats and an be shared and stand-alone.
 
-Documents are meant to be shared and stand-alone.
+All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.
+When those other services have modified the document, you can verifiy the agent, verify the changes, and sign the changes.
 
 Flexible for developers - store, index, and search the docouments how you like.
+Any JSON document can be used as a JACS doc as long as it has the JACS header, which are some required fields about the creator and version.
+Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a basic formalization.
 
+Most devs building connected Agent Apps will want to use [Sophon](https://github.com/HumanAssistedIntelligence/sophon).
 
-Check out the presentation
+Check out the presentation on JACS here:
 
 [![Presentation](./presentation.png)](https://docs.google.com/presentation/d/18mO-tftG-9JnKd7rBtdipcX5t0dm4VfBPReKyWvrmXA/edit#slide=id.p)
+
 
 ## trust
 
@@ -40,26 +45,32 @@ These are all open source projects and JACS is not an encryption library in itse
 
 ## extensible
 
-Any JSON document can be used as a JACS doc as long as it has the JACS header, which just means some required fields about the creator and version.
-Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a basic formalization.
+Use any type of json document, and you can enforce any type of document using
+[JSON Schema](https://json-schema.org/). If you are just getting started with JSON schema
+
+ 1. [checkout their introduction](https://json-schema.org/understanding-json-schema)
+ 2. [github page](https://github.com/json-schema-org)
+ 3. [youtube channel](https://www.youtube.com/@JSONSchemaOrgOfficial)
+
 
 ## open source
 
+In addition, JACS depends on the work of great open source efforts in standards and encryption.
+See the [Cargo.toml](./Cargo.toml)
+
 Decentralized but trusted data sharing is key to building the apps of the future.
 Use JACS as is, embed in other projects or libraries, commercial or otherwise.
-
-For more features, also open source, check out [Sophon](https://github.com/HumanAssistedIntelligence/sophon).
+[Sophon](https://github.com/HumanAssistedIntelligence/sophon) will make it easy to use, but also imposes a lot of opinions.
 
 
 # Usage
 
 ## setting up
 
-First configure your  envirornment variables.
-Best to use `jacs.config.json` see [the example](./jacs.config.example.json)
+First configure your configuration which are loaded as envirornment variables.
+Create a `jacs.config.json` from [the example](./jacs.config.example.json)
 
-Do not use `jacs_private_key_password` in production. Use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signging documents. You can create a new version of your agent with a new key, but this is not ideal.
-
+Note: Do not use `jacs_private_key_password` in production. Use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
 
 
 To use JACS you create an `Agent`  and then use it to create docoments that conform to the JACS `Header` format.
