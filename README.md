@@ -91,12 +91,10 @@ To create
 ```
 
 An id, version etc, will be created for you when you use it.
-Here's a rust example.
+Here's a rust example from a test env.
 
 ```
 use std::fs;
-
-
 
 #[test]
 fn test_validate_agent_creation() {
@@ -227,19 +225,18 @@ For examples see [examples](./examples).
 JACS goal is to introduce no safety vulnerabilities to systems where it is integrated.
 Open to ideas on what cryptography to add next: https://cryptography.rs/, like https://doc.dalek.rs/bulletproofs/index.html.
 
+A little more abotu how signing works can be found at [Header Validation](./HEADER_VALIDATION.md)
+
 ### filesystem
 
 However, filesystem acces can also be turned off completely for documents. This means your app passing strings in and out of JACS but can not save().
 
 By default a directory is used that is configured.  JACS should not touch any files outside the key directory JACS_KEY_DIRECTORY and the JACS_DIRECTORY.
 
-There is a feature that can be enabled to attempt to quarantine executable files found in the JACS directory.
-It is untested and somewhat easily circumvented.
-
 ### private keys
 
 Private keys are stored in memory with https://docs.rs/secrecy/latest/secrecy/
-TODO optionally encrypt private keys on filesystem
+The are also encrypted when on the filesystem if you have set the password with the keys are created.
 
 ## background
 
