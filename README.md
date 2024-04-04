@@ -104,9 +104,8 @@ An id, version etc, will be created  when you load the file from the command lin
 
     jacs agent create ./examples/raw/mysecondagent.new.json --create-keys true
 
-Your agent will look something like this and you will have also created keys.
-The agent is self-signed and all the fields are hashed.
-There is also a public and private key created in the directory set with `jacs_key_directory`.
+Your agent will look something like this and you will have also created keys. The agent is self-signed and all the fields are hashed.
+There is also a public and private key created in the directory set with `jacs_key_directory`. DO NOT use the keys included in the repo.
 
 
 ```
@@ -159,8 +158,7 @@ Now you can verify a document is valid, even with custom JSON schema, and verify
 
 
 
-If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet.
-
+If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.
 
 ## Schemas IDs and Versions vs Signatures
 

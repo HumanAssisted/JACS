@@ -228,6 +228,7 @@ impl Schema {
         instance["version"] = json!(format!("{}", version));
         instance["versionDate"] = json!(format!("{}", versioncreated));
         instance["originalVersion"] = json!(format!("{}", original_version));
+        instance["originalDate"] = json!(format!("{}", versioncreated));
 
         // if no schema is present insert standard header version
         if !instance.get_str("$schema").is_some() {
