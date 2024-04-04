@@ -1,6 +1,7 @@
 // pub mod document;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
+use std::fs;
 
 use crate::config::{get_default_dir, set_env_vars};
 pub mod boilerplate;
@@ -10,7 +11,7 @@ pub mod loaders;
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::hash::hash_string;
 use crate::crypt::KeyManager;
-use crate::crypt::{rsawrapper, JACS_AGENT_KEY_ALGORITHM};
+use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
@@ -116,6 +117,9 @@ impl Agent {
         let document_map = Arc::new(Mutex::new(HashMap::new()));
 
         let default_directory = get_default_dir();
+
+        let config = fs::read_to_string("jacs.config.json").expect("config loading");
+        schema.validate_config(&config).expect("config validation");
 
         Ok(Self {
             schema,

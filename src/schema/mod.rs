@@ -1,17 +1,17 @@
 use crate::schema::utils::ValueExt;
+use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::json;
 use serde_json::Value;
-use std::io::ErrorKind;
+
 use url::Url;
 use uuid::Uuid;
 
 pub mod signature;
 pub mod utils;
-use jsonschema::SchemaResolverError;
-use signature::SignatureVerifiers;
+
 use utils::{EmbeddedSchemaResolver, DEFAULT_SCHEMA_STRINGS};
 
 use std::error::Error;
@@ -37,6 +37,7 @@ pub struct Schema {
     /// used to validate any JACS agent
     agentschema: JSONSchema,
     signatureschema: JSONSchema,
+    jacsconfigschema: JSONSchema,
 }
 
 impl Schema {
@@ -61,6 +62,8 @@ impl Schema {
         let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion).unwrap();
         let signatureschema_result: Value = serde_json::from_str(&signaturedata)?;
 
+        let jacsconfigschema_result: Value = serde_json::from_str(&CONFIG_SCHEMA_STRING)?;
+
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new()) // current_dir.clone()
@@ -79,12 +82,54 @@ impl Schema {
             .compile(&signatureschema_result)
             .expect("A valid schema");
 
+        let jacsconfigschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&jacsconfigschema_result)
+            .expect("A valid schema");
+
         Ok(Self {
             headerschema,
             headerversion: headerversion.to_string(),
             agentschema,
             signatureschema,
+            jacsconfigschema,
         })
+    }
+
+    pub fn validate_config(
+        &self,
+        json: &str,
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        let instance: serde_json::Value = match serde_json::from_str(json) {
+            Ok(value) => {
+                debug!("validate json {:?}", value);
+                value
+            }
+            Err(e) => {
+                let error_message = format!("Invalid JSON: {}", e);
+                error!("validate error {:?}", error_message);
+                return Err(error_message.into());
+            }
+        };
+
+        let validation_result = self.jacsconfigschema.validate(&instance);
+
+        match validation_result {
+            Ok(_) => Ok(instance.clone()),
+            Err(errors) => {
+                error!("error validating config file");
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        "Unexpected error during validation: no error messages found".to_string()
+                    })
+                    .into())
+            }
+        }
     }
 
     /// basic check this conforms to a schema

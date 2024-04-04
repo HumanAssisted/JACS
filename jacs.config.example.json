@@ -1,4 +1,5 @@
 {
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_use_filesystem": "true",
   "jacs_use_security": "false",
   "jacs_data_directory": "./data",
