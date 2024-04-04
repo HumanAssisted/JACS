@@ -2,12 +2,10 @@
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
 
-use crate::agent::security::check_data_directory;
 use crate::config::{get_default_dir, set_env_vars};
 pub mod boilerplate;
 pub mod document;
 pub mod loaders;
-pub mod security;
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::hash::hash_string;
@@ -117,7 +115,6 @@ impl Agent {
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
 
-        let _ = check_data_directory();
         let default_directory = get_default_dir();
 
         Ok(Self {
