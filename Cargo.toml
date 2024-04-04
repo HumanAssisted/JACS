@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 include = ["src/**/*", "schemas/*.json", "examples/*.json", "Cargo.toml", "README.md", "LICENSE"]
 description = "JACS JSON AI Communication Standard"
@@ -9,7 +9,7 @@ authors = ["Jonathan Hendler <engineering@hai.io>"]
 license = "Apache-2.0"
 # homepage = "https://github.com/"
 repository = "https://github.com/HumanAssistedIntelligence/JACS"
-keywords = ["cryptography", "json", "ai"]
+keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
 categories = ["cryptography", "ai", "no-std"]
 build = "build.rs"
 
@@ -43,8 +43,6 @@ criterion = "0.3"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-
-
 
 [dependencies.uuid]
 version = "1.7.0"
