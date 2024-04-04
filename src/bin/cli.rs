@@ -1,5 +1,6 @@
 use clap::{value_parser, Arg, ArgAction, Command};
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::agent::document::Document;
 use jacs::agent::Agent;
 use jacs::config::set_env_vars;
 use jacs::crypt::KeyManager;
@@ -88,6 +89,7 @@ fn main() {
                         .arg(
                             Arg::new("no-save")
                                 .long("no-save")
+                                .short('n')
                                 .help("Instead of saving files, print to stdout")
                                 .action(ArgAction::SetTrue),
                         )
@@ -95,7 +97,7 @@ fn main() {
                             Arg::new("schema")
                                 .short('s')
                                 .help("Path to JSON schema file to use to create")
-                                .long("no-save")
+                                .long("schema")
                                 .value_parser(value_parser!(String)),
                         ),
                 )
@@ -130,7 +132,7 @@ fn main() {
                             Arg::new("schema")
                                 .short('s')
                                 .help("Path to JSON schema file to use to validate")
-                                .long("no-save")
+                                .long("schema")
                                 .value_parser(value_parser!(String)),
                         ),
                 )
@@ -168,7 +170,7 @@ fn main() {
                     agent.get_lookup_id().expect("id")
                 );
             }
-            _ => unreachable!(),
+            _ => println!("please enter subcommand see jacs agent --help"),
         },
         Some(("document", document_matches)) => match document_matches.subcommand() {
             Some(("create", create_matches)) => {
@@ -177,28 +179,115 @@ fn main() {
                 let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file").unwrap();
-                let schema = create_matches.get_one::<String>("schema").unwrap();
-                let agent = load_agent(agentfile.to_string());
+                let schema = create_matches.get_one::<String>("schema");
+                let mut agent = load_agent(agentfile.to_string());
+                let mut files: Vec<String> = Vec::new();
                 if filename.is_none() && directory.is_none() {
                     eprintln!("Error: You must specify either a filename or a directory.");
                     std::process::exit(1);
+                } else if let Some(file) = filename {
+                    files.push(file.to_string());
+                } else if let Some(dir) = directory {
+                    // Traverse the directory and store filenames ending with .json
+                    for entry in fs::read_dir(dir).expect("Failed to read directory") {
+                        if let Ok(entry) = entry {
+                            let path = entry.path();
+                            if path.is_file() && path.extension().map_or(false, |ext| ext == "json")
+                            {
+                                files.push(path.to_str().unwrap().to_string());
+                            }
+                        }
+                    }
                 }
+
+                let mut schemastring: String = "".to_string();
+
+                if let Some(schema_file) = schema {
+                    schemastring =
+                        fs::read_to_string(schema_file).expect("Failed to load schema file");
+                    let schemas = [schemastring.clone()];
+                    agent.load_custom_schemas(&schemas);
+                }
+
+                // iterate over filenames
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading");
+                    let document = agent.create_document_and_load(&document_string).unwrap();
+                    let document_key = document.getkey();
+                    if no_save {
+                        println!("{}", document_key.to_string());
+                    } else {
+                        agent.save_document(&document_key).expect("save document");
+                    }
+
+                    if let Some(schema_file) = schema {
+                        let document_ref = agent.get_document(&document_key).unwrap();
+
+                        // todo don't unwrap but warn instead
+                        agent
+                            .validate_document_with_custom_schema(
+                                &schemastring,
+                                &document.getvalue(),
+                            )
+                            .unwrap();
+                    }
+                } // end iteration
             }
             Some(("verify", verify_matches)) => {
                 let filename = verify_matches.get_one::<String>("filename");
                 let directory = verify_matches.get_one::<String>("directory");
                 let verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = verify_matches.get_one::<String>("agent-file").unwrap();
-                let agent = load_agent(agentfile.to_string());
-                let schema = verify_matches.get_one::<String>("schema").unwrap();
+                let mut agent = load_agent(agentfile.to_string());
+                let schema = verify_matches.get_one::<String>("schema");
+                let mut files: Vec<String> = Vec::new();
                 if filename.is_none() && directory.is_none() {
                     eprintln!("Error: You must specify either a filename or a directory.");
                     std::process::exit(1);
+                } else if let Some(file) = filename {
+                    files.push(file.to_string());
+                } else if let Some(dir) = directory {
+                    // Traverse the directory and store filenames ending with .json
+                    for entry in fs::read_dir(dir).expect("Failed to read directory") {
+                        if let Ok(entry) = entry {
+                            let path = entry.path();
+                            if path.is_file() && path.extension().map_or(false, |ext| ext == "json")
+                            {
+                                files.push(path.to_str().unwrap().to_string());
+                            }
+                        }
+                    }
+                }
+                let mut schemastring: String = "".to_string();
+
+                if let Some(schema_file) = schema {
+                    schemastring =
+                        fs::read_to_string(schema_file).expect("Failed to load schema file");
+                    let schemas = [schemastring.clone()];
+                    agent.load_custom_schemas(&schemas);
+                }
+
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let document = agent.load_document(&document_string).unwrap();
+                    let document_key = document.getkey();
+
+                    if let Some(schema_file) = schema {
+                        // todo don't unwrap but warn instead
+                        agent
+                            .validate_document_with_custom_schema(
+                                &schemastring,
+                                &document.getvalue(),
+                            )
+                            .unwrap();
+                    }
+
+                    println!("document {} validated", document_key);
                 }
             }
 
-            _ => unreachable!(),
+            _ => println!("please enter subcommand see jacs document --help"),
         },
-        _ => unreachable!(),
+        _ => println!("please enter command see jacs --help"),
     }
 }
