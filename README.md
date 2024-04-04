@@ -65,9 +65,19 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
 
 # Usage
 
+To install the command line tool for creating and verifying agents and documents
+
+    cargo install jacs
+
+To add the lib to your project
+
+    cargo add jacs
+
+
+
 ## setting up
 
-First configure your configuration which are loaded as envirornment variables.
+First, configure your configuration which are loaded as envirornment variables.
 Create a `jacs.config.json` from [the example](./jacs.config.example.json)
 
 Note: Do not use `jacs_private_key_password` in production. Use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
@@ -77,7 +87,7 @@ To use JACS you create an `Agent`  and then use it to create docoments that conf
 
 First, create a json document that follows the schema for an agent, and use it in the library to start building other things.
 
-To create
+
 
 ```
 {
@@ -90,26 +100,14 @@ To create
 
 ```
 
-An id, version etc, will be created for you when you use it.
-Here's a rust example from a test env.
+An id, version etc, will be created  when you load the file from the command line
 
-```
-use std::fs;
+    jacs agent create ./examples/raw/mysecondagent.new.json --create-keys true
 
-#[test]
-fn test_validate_agent_creation() {
-    set_test_env_vars();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("examples/agents/myagent.new.json").expect("REASON");
-    let _ = agent.create_agent_and_load(&json_data, false, None);
+Your agent will look something like this and you will have also created keys.
+The agent is self-signed and all the fields are hashed.
+There is also a public and private key created in the directory set with `jacs_key_directory`.
 
-
-```
-
-Your agent will now look this this
 
 ```
 agent-signature": {
@@ -145,61 +143,26 @@ agent-signature": {
 
 ```
 
-The agent is self-signed and all the fields are hashed.
-There is also a public and private key created in the directory set with `JACS_KEY_DIRECTORY`.
+You can verify you are set up with this command:
 
-Now you can create, update, and sign documents with your agent. If you share your public key, other agents can verify the document is from your agent.
+    jacs agent verify  -a ./examples/agent/fe00bb15-8c7f-43ac-9413-5a7bd5bb039d\:1f639f69-b3a7-45d5-b814-bc7b91fb3b97.json
 
-```
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    let document_string = agent
-        .load_local_document(&"examples/documents/my-special-document.json".to_string())
-        .unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
-    let modified_document_string = agent
-        .load_local_document(&"examples/documents/my-special-document-modified.json".to_string())
-        .unwrap();
 
-    let new_document = agent
-        .update_document(&document_key, &modified_document_string)
-        .unwrap();
+Now you can create, update, and sign documents with your agent.
 
-    let new_document_key = new_document.getkey();
+To create create documents, select a file or directory and the documents will be copied to `jacs_data_directory` and renamed.
 
-    let new_document_ref = agent.get_document(&new_document_key).unwrap();
-    agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
-        .unwrap();
 
-    println!("updated {} {}", new_document_key, new_document_ref);
-    agent
-        .verify_document_signature(
-            &new_document_key,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-            None,
-            None,
-        )
-        .unwrap();
 
-    let agent_one_public_key = agent.get_public_key().unwrap();
-    let mut agent2 = load_test_agent_two();
-    let new_document_string = new_document_ref.to_string();
-    let copy_newdocument = agent2.load_document(&new_document_string).unwrap();
-    let copy_newdocument_key = copy_newdocument.getkey();
-    println!("new document with sig: /n {}", new_document_string);
-    agent2
-        .verify_document_signature(
-            &copy_newdocument_key,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-            None,
-            Some(agent_one_public_key),
-        )
-        .unwrap();
-```
+Now you can verify a document is valid, even with custom JSON schema, and verify the signature of the document.
 
-## IDs and Versions vs Signatures
+
+
+
+If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet.
+
+
+## Schemas IDs and Versions vs Signatures
 
 IDs of agents and documents should be unique to your agent as they are a combination of ID and Version. However, if you share your documents, and we expect that you will, documents can be copied by other agents at any time and they can forge IDs and sign their docs.
 
@@ -215,7 +178,6 @@ You only need to use the agents and header to record and verify permissions on a
  - [Header](./docs/schema/header.md) -  the signature along with permissions
  - [Agents](./docs/schema/agent.md) - a type of resource that can take action
  - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
- - [Permission](./docs/schema/components/permission.md) -  the signature along with  access rules for the document fields
 
 For the schema files see [schemas](./schemas).
 For examples see [examples](./examples).

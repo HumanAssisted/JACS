@@ -45,8 +45,6 @@ pub trait KeyManager {
 impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // todo encrypt private key
-        let default_dir = env::var(JACS_KEY_DIRECTORY)?;
         let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
         let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
@@ -69,9 +67,9 @@ impl KeyManager for Agent {
             }
         }
 
-        self.set_keys(private_key, public_key, &key_algorithm);
+        let _ = self.set_keys(private_key, public_key, &key_algorithm);
         #[cfg(not(target_arch = "wasm32"))]
-        self.fs_save_keys();
+        let _ = self.fs_save_keys();
 
         Ok(())
     }
