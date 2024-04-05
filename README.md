@@ -177,7 +177,7 @@ If you share your public key, other agents can verify the document is from your 
 
 IDs of agents and documents should be unique to your agent as they are a combination of ID and Version. However, if you share your documents, and we expect that you will, documents can be copied by other agents at any time and they can forge IDs and sign their docs.
 
-The solution to this is the value of the signature and where the signature is registered.
+Semantic versioning would break if the document forks because multiple agents will work on a single document. So each id/version is a UUID, and the previous version is stored so a trace can be constructed. (In itself, it's not a blockchain such that each version can be verified in the context of the previous version).
 
 
 ## Schemas: basic types
