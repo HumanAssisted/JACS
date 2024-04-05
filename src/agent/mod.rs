@@ -1,6 +1,7 @@
 // pub mod document;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
+use std::fs;
 
 use crate::config::{get_default_dir, set_env_vars};
 pub mod boilerplate;
@@ -10,7 +11,7 @@ pub mod loaders;
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::hash::hash_string;
 use crate::crypt::KeyManager;
-use crate::crypt::{rsawrapper, JACS_AGENT_KEY_ALGORITHM};
+use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
@@ -117,6 +118,9 @@ impl Agent {
 
         let default_directory = get_default_dir();
 
+        let config = fs::read_to_string("jacs.config.json").expect("config loading");
+        schema.validate_config(&config).expect("config validation");
+
         Ok(Self {
             schema,
             value: None,
@@ -134,10 +138,14 @@ impl Agent {
     // loads and validates agent
     pub fn load_by_id(
         &mut self,
-        id: String,
+        id: Option<String>,
         _version: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let agent_string = self.fs_agent_load(&id)?;
+        let lookup_id = id
+            .or_else(|| env::var("JACS_AGENT_ID_AND_VERSION").ok())
+            .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
+
+        let agent_string = self.fs_agent_load(&lookup_id)?;
         return self.load(&agent_string);
     }
 
@@ -572,6 +580,7 @@ impl Agent {
                     .unwrap()
             } else {
                 // Load schema from local file
+                println!("loading custom schema {}", path);
                 let schema_json = std::fs::read_to_string(path).unwrap();
                 let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
                 JSONSchema::options()

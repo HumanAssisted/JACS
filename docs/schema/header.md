@@ -24,6 +24,7 @@ The basis for a JACS document
 | [selfSignature](#selfsignature)     | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/selfSignature")          |
 | [previousVersion](#previousversion) | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/previousVersion") |
 | [originalVersion](#originalversion) | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalVersion") |
+| [originalDate](#originaldate)       | `string` | Optional | cannot be null | [Header](header-properties-originaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalDate")       |
 | [sha256](#sha256)                   | `string` | Optional | cannot be null | [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/sha256")                   |
 
 ## id
@@ -134,7 +135,7 @@ Previous Version id of the object. If blank, it's claiming to be the first
 
 ## originalVersion
 
-Original Version id of the object. When documents are copied without merging, this becomes the way to track them.
+Original Version id of the object.
 
 `originalVersion`
 
@@ -153,6 +154,28 @@ Original Version id of the object. When documents are copied without merging, th
 ### originalVersion Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
+
+## originalDate
+
+Original creation date of the document.
+
+`originalDate`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-originaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalDate")
+
+### originalDate Type
+
+`string`
+
+### originalDate Constraints
+
+**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
 ## sha256
 

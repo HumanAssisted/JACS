@@ -18,6 +18,7 @@ struct Config {
     jacs_header_schema_version: Option<String>,
     jacs_signature_schema_version: Option<String>,
     jacs_private_key_password: Option<String>,
+    jacs_agent_id_and_version: Option<String>,
 }
 
 pub fn get_default_dir() -> PathBuf {
@@ -44,6 +45,7 @@ pub fn set_env_vars() {
             jacs_header_schema_version: None,
             jacs_signature_schema_version: None,
             jacs_private_key_password: None,
+            jacs_agent_id_and_version: None,
         },
     };
     debug!("configs from file {:?}", config);
@@ -110,6 +112,11 @@ pub fn set_env_vars() {
         &jacs_signature_schema_version,
     );
 
+    let jacs_agent_id_and_version = config
+        .jacs_agent_id_and_version
+        .unwrap_or_else(|| "".to_string());
+    env::set_var("JACS_AGENT_ID_AND_VERSION", &jacs_agent_id_and_version);
+
     let loading_message = format!(
         r#"
         Loading JACS and Sophon env variables of:
@@ -120,10 +127,11 @@ pub fn set_env_vars() {
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},
             JACS_AGENT_PUBLIC_KEY_FILENAME:  {},
             JACS_AGENT_KEY_ALGORITHM:        {},
-            JACS_AGENT_SCHEMA_VERSION:              {},
-            JACS_HEADER_SCHEMA_VERSION:             {},
-            JACS_SIGNATURE_SCHEMA_VERSION:          {},
-            JACS_PRIVATE_KEY_PASSWORD        {}
+            JACS_AGENT_SCHEMA_VERSION:       {},
+            JACS_HEADER_SCHEMA_VERSION:      {},
+            JACS_SIGNATURE_SCHEMA_VERSION:   {},
+            JACS_PRIVATE_KEY_PASSWORD        {},
+            JACS_AGENT_ID_AND_VERSION        {}
         "#,
         jacs_use_security,
         jacs_use_filesystem,
@@ -135,7 +143,8 @@ pub fn set_env_vars() {
         jacs_agent_schema_version,
         jacs_header_schema_version,
         jacs_signature_schema_version,
-        jacs_private_key_password
+        jacs_private_key_password,
+        jacs_agent_id_and_version,
     );
 
     info!("{}", loading_message);

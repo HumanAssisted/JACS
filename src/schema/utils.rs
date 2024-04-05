@@ -1,4 +1,5 @@
 use crate::schema::Url;
+use log::debug;
 use phf::phf_map;
 
 use jsonschema::SchemaResolver;
@@ -14,7 +15,10 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),
     "schemas/components/signature/v1/signature.schema.json" => include_str!("../../schemas/components/signature/v1/signature.schema.json"),
     // todo get all files in a schemas directory, dynamically
+    // "schemas/jacs.config.schema.json" => include_str!("../../schemas/jacs.config.schema.json"),
 };
+
+pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
 
 #[derive(Debug)]
 struct SchemaResolverErrorWrapper(String);
@@ -66,17 +70,27 @@ impl SchemaResolver for LocalSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
         let path = self.base_path.join(relative_path);
-
+        println!(" url, relative_path {} {}", url, relative_path);
         let schema_json = fs::read_to_string(&path).map_err(|io_err| {
             // Map I/O errors
             // SchemaResolverError::new(format!("{:?} {}", io_err, url.clone()))
-            io_err
+
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "JACS io_err {:?} {}",
+                io_err,
+                url.clone()
+            )))
         })?;
 
         let schema_value: Value = serde_json::from_str(&schema_json).map_err(|serde_err| {
             // Map JSON parsing errors
             //SchemaResolverError::new(format!("{:?} {}", serde_err, url.clone()))
-            serde_err
+            // serde_err
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "JACS SchemaResolverError {:?} {}",
+                serde_err,
+                url.clone()
+            )))
         })?;
 
         Ok(Arc::new(schema_value))
@@ -115,7 +129,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
         let schema_value: Value = serde_json::from_str(schema_json).map_err(|serde_err| {
             // Map JSON parsing errors
             SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "{:?} {}",
+                "JACS SchemaResolverError {:?} {}",
                 serde_err,
                 url.clone()
             )))

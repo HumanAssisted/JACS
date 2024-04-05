@@ -1,3 +1,4 @@
 {
+  "$schema": "https://hai.ai/examples/documents/custom.schema.json",
   "favorite-snack": "durian"
 }

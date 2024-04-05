@@ -1,5 +1,4 @@
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
@@ -70,7 +69,6 @@ pub trait FileLoader {
 #[cfg(not(target_arch = "wasm32"))]
 impl FileLoader for Agent {
     fn build_filepath(&self, doctype: &String, docid: &String) -> Result<PathBuf, Box<dyn Error>> {
-        check_data_directory();
         if !use_filesystem() {
             let error_message = format!(
                 " build_filepathFilesystem features set to off with JACS_USE_FILESYSTEM: {} {}",
@@ -93,7 +91,6 @@ impl FileLoader for Agent {
         doctype: &String,
         key_filename: &String,
     ) -> Result<PathBuf, Box<dyn Error>> {
-        check_data_directory();
         if !use_filesystem() {
             let error_message = format!(
                 "build_key_filepath Filesystem features set to off with JACS_USE_FILESYSTEM: {} {}",
@@ -251,7 +248,11 @@ fn save_private_key(
                 format!("Encryption error: {}", e),
             )
         })?;
-        let encrypted_filename = format!("{}.enc", filename);
+        let encrypted_filename = if !filename.ends_with(".enc") {
+            format!("{}.enc", filename)
+        } else {
+            filename.to_string()
+        };
         save_file(file_path, &encrypted_filename, &encrypted_key)
     } else {
         save_file(file_path, filename, private_key)
