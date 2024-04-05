@@ -46,7 +46,7 @@ pub fn load_test_agent_one() -> Agent {
         .expect("Agent schema should have instantiated");
     let agentid =
         "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d:1f639f69-b3a7-45d5-b814-bc7b91fb3b97".to_string();
-    let result = agent.load_by_id(agentid, None);
+    let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
             debug!(
@@ -76,7 +76,9 @@ pub fn load_test_agent_two() -> Agent {
         &"agent-two.public.pem".to_string(),
     );
     let result = agent.load_by_id(
-        "396155ad-484a-4659-a4e7-341ef52aa63d:a3efb91b-1245-4852-9934-fde8a2cfe6d8".to_string(),
+        Some(
+            "396155ad-484a-4659-a4e7-341ef52aa63d:a3efb91b-1245-4852-9934-fde8a2cfe6d8".to_string(),
+        ),
         None,
     );
     match result {
