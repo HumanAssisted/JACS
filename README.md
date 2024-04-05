@@ -24,9 +24,7 @@ Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a 
 
 Most devs building connected Agent Apps will want to use [Sophon](https://github.com/HumanAssistedIntelligence/sophon).
 
-Check out the presentation on JACS here:
-
-[![Presentation](./presentation.png)](https://docs.google.com/presentation/d/18mO-tftG-9JnKd7rBtdipcX5t0dm4VfBPReKyWvrmXA/edit#slide=id.p)
+Check out the [presentation on JACS.](https://docs.google.com/presentation/d/18mO-tftG-9JnKd7rBtdipcX5t0dm4VfBPReKyWvrmXA/edit#slide=id.p)
 
 
 ## trust
