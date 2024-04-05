@@ -24,6 +24,12 @@ fn load_agent(filepath: String) -> Agent {
     agent
 }
 
+fn load_agent_by_id() -> Agent {
+    let mut agent = get_agent();
+    let _ = agent.load_by_id(None, None);
+    agent
+}
+
 fn main() {
     set_env_vars();
     let matches = Command::new("jacs")
@@ -50,8 +56,7 @@ fn main() {
                     Command::new("verify").arg(
                         Arg::new("agent-file")
                             .short('a')
-                            .help("Path to the agent file")
-                            .required(true)
+                            .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
                             .value_parser(value_parser!(String)),
                     ),
                 ),
@@ -64,8 +69,7 @@ fn main() {
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
-                                .help("Path to the agent file")
-                                .required(true)
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -106,8 +110,7 @@ fn main() {
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
-                                .help("Path to the agent file")
-                                .required(true)
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -160,8 +163,13 @@ fn main() {
                 }
             }
             Some(("verify", verify_matches)) => {
-                let agentfile = verify_matches.get_one::<String>("agent-file").unwrap();
-                let mut agent = load_agent(agentfile.to_string());
+                let agentfile = verify_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = if let Some(file) = agentfile {
+                    load_agent(file.to_string())
+                } else {
+                    load_agent_by_id()
+                };
+
                 agent
                     .verify_self_signature()
                     .expect("signature verification");
@@ -178,9 +186,15 @@ fn main() {
                 let directory = create_matches.get_one::<String>("directory");
                 let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
-                let agentfile = create_matches.get_one::<String>("agent-file").unwrap();
+                let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
-                let mut agent = load_agent(agentfile.to_string());
+
+                let mut agent: Agent = if let Some(file) = agentfile {
+                    load_agent(file.to_string())
+                } else {
+                    load_agent_by_id()
+                };
+
                 let mut files: Vec<String> = Vec::new();
                 if filename.is_none() && directory.is_none() {
                     eprintln!("Error: You must specify either a filename or a directory.");
@@ -237,8 +251,12 @@ fn main() {
                 let filename = verify_matches.get_one::<String>("filename");
                 let directory = verify_matches.get_one::<String>("directory");
                 let verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
-                let agentfile = verify_matches.get_one::<String>("agent-file").unwrap();
-                let mut agent = load_agent(agentfile.to_string());
+                let agentfile = verify_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = if let Some(file) = agentfile {
+                    load_agent(file.to_string())
+                } else {
+                    load_agent_by_id()
+                };
                 let schema = verify_matches.get_one::<String>("schema");
                 let mut files: Vec<String> = Vec::new();
                 if filename.is_none() && directory.is_none() {
