@@ -146,6 +146,9 @@ You can verify you are set up with this command:
 
     jacs agent verify  -a ./examples/agent/fe00bb15-8c7f-43ac-9413-5a7bd5bb039d\:1f639f69-b3a7-45d5-b814-bc7b91fb3b97.json
 
+To make it easier to use, add `jacs_agent_id_and_version` to your config and you can just run
+
+    jacs agent verify
 
 Now you can create, update, and sign documents with your agent.
 
@@ -153,9 +156,15 @@ To create create documents, select a file or directory and the documents will be
 
 
 
+
+
 Now you can verify a document is valid, even with custom JSON schema, and verify the signature of the document.
 
+    jacs document verify -f ./examples/documents/MODIFIED_e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d\:975f4523-e2e0-4b64-9c31-c718796fbdb1.json
 
+Or a whole directory
+
+    jacs document verify -d ./examples/documents/
 
 
 If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.
