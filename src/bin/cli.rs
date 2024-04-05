@@ -226,24 +226,43 @@ fn main() {
                 // iterate over filenames
                 for file in &files {
                     let document_string = fs::read_to_string(file).expect("document file loading");
-                    let document = agent.create_document_and_load(&document_string).unwrap();
-                    let document_key = document.getkey();
-                    if no_save {
-                        println!("{}", document_key.to_string());
-                    } else {
-                        agent.save_document(&document_key).expect("save document");
-                    }
+                    let result = agent.create_document_and_load(&document_string);
+                    match result {
+                        Ok(ref document) => {
+                            let document_key = document.getkey();
+                            if no_save {
+                                println!("{}", document_key.to_string());
+                            } else {
+                                println!("created doc {}", document_key.to_string());
+                                agent.save_document(&document_key).expect("save document");
+                            }
 
-                    if let Some(schema_file) = schema {
-                        let document_ref = agent.get_document(&document_key).unwrap();
+                            if let Some(schema_file) = schema {
+                                //let document_ref = agent.get_document(&document_key).unwrap();
 
-                        // todo don't unwrap but warn instead
-                        agent
-                            .validate_document_with_custom_schema(
-                                &schema_file,
-                                &document.getvalue(),
-                            )
-                            .unwrap();
+                                let validate_result = agent.validate_document_with_custom_schema(
+                                    &schema_file,
+                                    &document.getvalue(),
+                                );
+                                match validate_result {
+                                    Ok(doc) => {
+                                        println!(
+                                            "document specialised schema {} validated",
+                                            document_key
+                                        );
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "document specialised schema {} validation failed {}",
+                                            document_key, e
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("document creation   {}   {}", file, e);
+                        }
                     }
                 } // end iteration
             }
@@ -287,8 +306,8 @@ fn main() {
 
                 for file in &files {
                     let document_string = fs::read_to_string(file).expect("document file loading ");
-                    let result = agent.load_document(&document_string);
-                    match result {
+                    let docresult = agent.load_document(&document_string);
+                    match docresult {
                         Ok(ref document) => {
                             let document_key = document.getkey();
                             println!("document {} validated", document_key);

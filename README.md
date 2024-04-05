@@ -155,7 +155,7 @@ Now you can create, update, and sign documents with your agent.
 To create create documents, select a file or directory and the documents will be copied to `jacs_data_directory` and renamed.
 
 
-
+    jacs document create -d ./examples/raw/
 
 
 Now you can verify a document is valid, even with custom JSON schema, and verify the signature of the document.
