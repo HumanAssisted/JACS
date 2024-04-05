@@ -287,20 +287,39 @@ fn main() {
 
                 for file in &files {
                     let document_string = fs::read_to_string(file).expect("document file loading ");
-                    let document = agent.load_document(&document_string).unwrap();
-                    let document_key = document.getkey();
+                    let result = agent.load_document(&document_string);
+                    match result {
+                        Ok(ref document) => {
+                            let document_key = document.getkey();
+                            println!("document {} validated", document_key);
 
-                    if let Some(schema_file) = schema {
-                        // todo don't unwrap but warn instead
-                        agent
-                            .validate_document_with_custom_schema(
-                                &schemastring,
-                                &document.getvalue(),
-                            )
-                            .unwrap();
+                            if let Some(schema_file) = schema {
+                                // todo don't unwrap but warn instead
+                                let document_key = document.getkey();
+                                let result = agent.validate_document_with_custom_schema(
+                                    &schemastring,
+                                    &document.getvalue(),
+                                );
+                                match result {
+                                    Ok(doc) => {
+                                        println!(
+                                            "document specialised schema {} validated",
+                                            document_key
+                                        );
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "document specialised schema {} validation failed",
+                                            document_key
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(ref e) => {
+                            eprintln!("document {} validation failed {}", file, e);
+                        }
                     }
-
-                    println!("document {} validated", document_key);
                 }
             }
 
