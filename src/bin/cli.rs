@@ -214,12 +214,12 @@ fn main() {
                     }
                 }
 
-                let mut schemastring: String = "".to_string();
+                // let mut schemastring: String = "".to_string();
 
                 if let Some(schema_file) = schema {
-                    schemastring =
-                        fs::read_to_string(schema_file).expect("Failed to load schema file");
-                    let schemas = [schemastring.clone()];
+                    // schemastring =
+                    fs::read_to_string(schema_file).expect("Failed to load schema file");
+                    let schemas = [schema_file.clone()];
                     agent.load_custom_schemas(&schemas);
                 }
 
@@ -240,7 +240,7 @@ fn main() {
                         // todo don't unwrap but warn instead
                         agent
                             .validate_document_with_custom_schema(
-                                &schemastring,
+                                &schema_file,
                                 &document.getvalue(),
                             )
                             .unwrap();
@@ -276,12 +276,12 @@ fn main() {
                         }
                     }
                 }
-                let mut schemastring: String = "".to_string();
+                // let mut schemastring: String = "".to_string();
 
                 if let Some(schema_file) = schema {
-                    schemastring =
-                        fs::read_to_string(schema_file).expect("Failed to load schema file");
-                    let schemas = [schemastring.clone()];
+                    // schemastring =
+                    //     fs::read_to_string(schema_file).expect("Failed to load schema file");
+                    let schemas = [schema_file.clone()];
                     agent.load_custom_schemas(&schemas);
                 }
 
@@ -297,7 +297,7 @@ fn main() {
                                 // todo don't unwrap but warn instead
                                 let document_key = document.getkey();
                                 let result = agent.validate_document_with_custom_schema(
-                                    &schemastring,
+                                    &schema_file,
                                     &document.getvalue(),
                                 );
                                 match result {
@@ -309,8 +309,8 @@ fn main() {
                                     }
                                     Err(e) => {
                                         eprintln!(
-                                            "document specialised schema {} validation failed",
-                                            document_key
+                                            "document specialised schema {} validation failed {}",
+                                            document_key, e
                                         );
                                     }
                                 }

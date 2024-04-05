@@ -167,6 +167,10 @@ Or a whole directory
     jacs document verify -d ./examples/documents/
 
 
+You can also verify using a custom JSON Schema
+
+     jacs document verify -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -s ./examples/documents/custom.schema.json
+
 If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.
 
 ## Schemas IDs and Versions vs Signatures

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://hai.ai/examples/documents/custom.schema.json",
+  "agentSignature": {
+    "agentID": "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d",
+    "agentVersion": "1f639f69-b3a7-45d5-b814-bc7b91fb3b97",
+    "date": "2024-04-05T10:15:25.281176+00:00",
+    "fields": [
+      "$schema",
+      "favorite-snack",
+      "id",
+      "originalDate",
+      "originalVersion",
+      "version",
+      "versionDate"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "f7IEJFZZhzrH4u1j+wMYGivI8R5WhCxmsJQkWRV6nDU3FnUF4il7xdRGBPGz9NQB1Ved4B3TQSaFIvkM2TwpbIqdnUzLNeK2/E5Cz7k38EiCYCNPqD3r0heYQ1Cyvzks3qtBYcCiqacx9rGJRvRkgfOUDaq+pWZzBoPnRREvXoPNWMqKxDtod3N2+qj7OCRnR4wIE29882RaIBjc5s5kz77Hl+K/YMDicz6Zl939ZsO/ARpdT5QdbkuL53ld2A1Z22HwQ0vSHUeFORnAxz3Cg24jEpY6G4mZ7LpC8blYGg2wFHcZJAnbYX97AIDjnDpWYMlC0WG+YBZEdUfJz2T/cuuJgHp5WhVv1nIJJeh0bVNPaPQyYAXR+WIraZiDtbuz+opiqmj7Y4/rCaQ0R4bbKX0fArjeD6BM6YGkcUnlqdmO9BGZ7TSTruVHMFev6IeqX4jDRLxB9hB5a24wawlSDeedK9kXLku00INOkeP9qYuhvCULSkSIW5DqUYtDQadEMZNmutfyGKYJ2otjhRN8LQqDXZX8aRwhjhm+ohFfo/Eh1Mg3FTgRSTmie3MkF4/pLSqvpVnWpB5UC1s/hDGQNnQePfYiJ8AKMXXgR4po+2VwB+JvvJoGf9s1LSerX5ACmEHsbBdoQiPMOSz35je3zr0BRoc71ha1yq+LEGB+76Y=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "favorite-snack": "durian",
+  "id": "dc645034-d83b-4d62-881a-2ea7d2a88367",
+  "originalDate": "2024-04-05T10:15:25.266453+00:00",
+  "originalVersion": "f7a75fbb-32a9-41b4-8308-8682bef12387",
+  "sha256": "d94dc5da1cd0dac4a7e00f609118e9923b4f8c8c7413428ce47e232e40849fb9",
+  "version": "f7a75fbb-32a9-41b4-8308-8682bef12387",
+  "versionDate": "2024-04-05T10:15:25.266453+00:00"
+}

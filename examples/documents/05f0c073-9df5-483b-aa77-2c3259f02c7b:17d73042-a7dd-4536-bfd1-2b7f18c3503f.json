@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../examples/documents/custom.schema.json",
+  "agentSignature": {
+    "agentID": "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d",
+    "agentVersion": "1f639f69-b3a7-45d5-b814-bc7b91fb3b97",
+    "date": "2024-04-05T09:53:40.740927+00:00",
+    "fields": [
+      "$schema",
+      "favorite-snack",
+      "id",
+      "originalDate",
+      "originalVersion",
+      "version",
+      "versionDate"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "g75iLejSKjlzcibHvOdTM1uLgGklVwPuBx4Ig+UOl2p90kZx2kx+q/Yx8Kw1uFK9oyhTpU/hBifqg/201b+G3MC/6DmfJ1nvli/gddCTxyI35VoL48kYOe0pr3C31NrNTnNnemPJaeRvAAKrCNjz1DHFIAgvEdJxJS7sfyDyr1U9bTEGrs/5TwLvq17OnOIZki6sr65os3zYkvk4oQLm2k7a6BqNpPUHc5OBpo0Su45Y9Qqy+OSrqZn1uVlJnR5rfyzVUVtdLKs1hA7+Dbs+n4utwJ/UGWWeBxb7qAwraTfYVCKPTwkYi81lEiHLgJ8cFY+NAKKcX6gKHLhv3l47VlB2UZ6tEfKFi1JIEoSE3fsQ9lqNpvyDIGrZKnjDs0G3PXBw23XSJZrrhrR7EHm+k8NS228KrJotz2Jl1vEV4uBi0I1sUihX8+rfxx/HKf8cEscb2BAP/GtkQ9LCYoiWqrvQjg4TQF1hvl7kL2SnoJBAQyhStquQz3rHm9exrHfHlp2WsM3Y6e0scVZzB4YksUdRd622VKsLj8kW3pnAxLX06bWuL1lBCSidISEudYS900TOWFF4AjXwZiHT9GTxyDQKEBeyfGcfEVgWCBroFP/zrVG2Fm0TcHtcGcMb/e1gWjgE/6gP5BgbY6O+C6huy9csoAIxxjCn6ZtWxn/ONGw=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "favorite-snack": "durian",
+  "id": "05f0c073-9df5-483b-aa77-2c3259f02c7b",
+  "originalDate": "2024-04-05T09:53:40.726161+00:00",
+  "originalVersion": "17d73042-a7dd-4536-bfd1-2b7f18c3503f",
+  "sha256": "b2102255de245e9f27c92967a6a669b7430f53ed50a9267858c2b5c9411f67db",
+  "version": "17d73042-a7dd-4536-bfd1-2b7f18c3503f",
+  "versionDate": "2024-04-05T09:53:40.726161+00:00"
+}

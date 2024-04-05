@@ -580,6 +580,7 @@ impl Agent {
                     .unwrap()
             } else {
                 // Load schema from local file
+                println!("loading custom schema {}", path);
                 let schema_json = std::fs::read_to_string(path).unwrap();
                 let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
                 JSONSchema::options()

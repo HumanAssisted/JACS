@@ -70,17 +70,27 @@ impl SchemaResolver for LocalSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
         let path = self.base_path.join(relative_path);
-
+        println!(" url, relative_path {} {}", url, relative_path);
         let schema_json = fs::read_to_string(&path).map_err(|io_err| {
             // Map I/O errors
             // SchemaResolverError::new(format!("{:?} {}", io_err, url.clone()))
-            io_err
+
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "JACS io_err {:?} {}",
+                io_err,
+                url.clone()
+            )))
         })?;
 
         let schema_value: Value = serde_json::from_str(&schema_json).map_err(|serde_err| {
             // Map JSON parsing errors
             //SchemaResolverError::new(format!("{:?} {}", serde_err, url.clone()))
-            serde_err
+            // serde_err
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "JACS SchemaResolverError {:?} {}",
+                serde_err,
+                url.clone()
+            )))
         })?;
 
         Ok(Arc::new(schema_value))
@@ -106,7 +116,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
 
-        debug!(" url, relative_path {} {}", url, relative_path);
+        println!(" url, relative_path {} {}", url, relative_path);
         let schema_json = super::DEFAULT_SCHEMA_STRINGS
             .get(relative_path)
             .ok_or_else(|| {
@@ -119,7 +129,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
         let schema_value: Value = serde_json::from_str(schema_json).map_err(|serde_err| {
             // Map JSON parsing errors
             SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "{:?} {}",
+                "JACS SchemaResolverError {:?} {}",
                 serde_err,
                 url.clone()
             )))
