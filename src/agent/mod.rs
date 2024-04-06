@@ -403,7 +403,7 @@ impl Agent {
     /// * If an error occurs while serializing the accepted fields.
     /// * If an error occurs while retrieving the agent's public key.
     /// * If an error occurs while validating the generated signature against the schema.
-    fn signing_procedure(
+    pub fn signing_procedure(
         &mut self,
         json_value: &Value,
         fields: Option<&Vec<String>>,
