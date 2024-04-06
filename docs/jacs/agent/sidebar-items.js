@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AGENT_SIGNATURE_FIELDNAME","DOCUMENT_AGENT_SIGNATURE_FIELDNAME","SHA256_FIELDNAME"],"mod":["boilerplate","document","loaders"],"struct":["Agent","PrivateKey"],"type":["SecretPrivateKey"]};
