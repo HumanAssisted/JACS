@@ -346,9 +346,63 @@ impl Agent {
         )
     }
 
-    /// re-used function to generate a signature json fragment
-    /// if no fields are provided get_values_as_string() will choose system defaults
-    /// NOTE: system default fields if they change could cause problems
+    /// Generates a signature JSON fragment for the specified JSON value.
+    ///
+    /// This function takes a JSON value, an optional list of fields to include in the signature,
+    /// and a placement key. It retrieves the values of the specified fields from the JSON value,
+    /// signs them using the agent's signing key, and returns a new JSON value containing the
+    /// signature and related metadata.
+    ///
+    /// If no fields are provided, the function will choose system default fields. Note that if
+    /// the system default fields change, it could cause problems with signature verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `json_value` - A reference to the JSON value to be signed.
+    /// * `fields` - An optional reference to a vector of field names to include in the signature.
+    ///              If `None`, system default fields will be used.
+    /// * `placement_key` - A reference to a string representing the key where the signature
+    ///                     should be placed in the resulting JSON value.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Value)` - A new JSON value containing the signature and related metadata.
+    /// * `Err(Box<dyn Error>)` - An error occurred while generating the signature.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use jacs::Agent;
+    /// use serde_json::json;
+    ///
+    /// let mut agent = Agent::new();
+    /// let json_value = json!({
+    ///     "name": "John Doe",
+    ///     "age": 30
+    /// });
+    /// let fields = Some(&vec!["name".to_string(), "age".to_string()]);
+    /// let placement_key = "signature".to_string();
+    ///
+    /// let signature_result = agent.signing_procedure(&json_value, fields, &placement_key);
+    /// match signature_result {
+    ///     Ok(signature_value) => {
+    ///         println!("Signature: {}", signature_value);
+    ///     }
+    ///     Err(error) => {
+    ///         eprintln!("Error generating signature: {}", error);
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// This function may return an error in the following cases:
+    ///
+    /// * If the specified fields are not found in the JSON value.
+    /// * If an error occurs while signing the values.
+    /// * If an error occurs while serializing the accepted fields.
+    /// * If an error occurs while retrieving the agent's public key.
+    /// * If an error occurs while validating the generated signature against the schema.
     fn signing_procedure(
         &mut self,
         json_value: &Value,
