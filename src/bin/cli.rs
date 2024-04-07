@@ -75,7 +75,13 @@ fn main() {
                         .arg(
                             Arg::new("filename")
                                 .short('f')
-                                .help("Path to file. Must be JSON")
+                                .help("Path to input file. Must be JSON")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .help("Output filename. Must end with json")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -116,7 +122,7 @@ fn main() {
                         .arg(
                             Arg::new("filename")
                                 .short('f')
-                                .help("Path to file. Must be JSON")
+                                .help("Path to input file. Must be JSON")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(

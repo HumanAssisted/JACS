@@ -171,6 +171,10 @@ You can also verify using a custom JSON Schema
 
 If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.
 
+
+For more examples, see the repo for different use cases:
+https://github.com/HumanAssisted/jacs-examples
+
 ## Schemas IDs and Versions vs Signatures
 
 IDs of agents and documents should be unique to your agent as they are a combination of ID and Version. However, if you share your documents, and we expect that you will, documents can be copied by other agents at any time and they can forge IDs and sign their docs.
