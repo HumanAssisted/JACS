@@ -4,10 +4,10 @@ use jacs::agent::document::Document;
 use jacs::agent::Agent;
 use jacs::config::set_env_vars;
 use jacs::crypt::KeyManager;
-use std::path::Path;
-
+use regex::Regex;
 use std::env;
 use std::fs;
+use std::path::Path;
 
 fn get_agent() -> Agent {
     Agent::new(
@@ -242,9 +242,9 @@ fn main() {
                 // iterate over filenames
                 for file in &files {
                     let document_string = fs::read_to_string(file).expect("document file loading");
-                    // let path = Path::new(file);
-                    // let loading_filename = path.file_name().unwrap().to_str().unwrap();
-
+                    let path = Path::new(file);
+                    let loading_filename = path.file_name().unwrap().to_str().unwrap();
+                    let loading_filename_string = loading_filename.to_string();
                     let result = agent.create_document_and_load(&document_string);
 
                     match result {
@@ -254,14 +254,15 @@ fn main() {
 
                             let intermediate_filename = match outputfilename {
                                 Some(filename) => filename,
-                                None => &document_key_string,
+                                None => &loading_filename_string,
                             };
 
                             if no_save {
                                 println!("{}", document_key.to_string());
                             } else {
+                                let re = Regex::new(r"(\.[^.]+)$").unwrap();
                                 let signed_filename =
-                                    intermediate_filename.replace(".json", ".jacs.json");
+                                    re.replace(intermediate_filename, ".jacs$1").to_string();
                                 agent
                                     .save_document(
                                         &document_key,
