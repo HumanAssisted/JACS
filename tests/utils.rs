@@ -18,22 +18,22 @@ pub fn generate_new_docs() {
     let mut document = agent.create_document_and_load(&document_string).unwrap();
     let mut document_key = document.getkey();
     println!("document_key {}", document_key);
-    let mut document_ref = agent.get_document(&document_key).unwrap();
-    let _ = agent.save_document(&document_key);
+    // let mut document_ref = agent.get_document(&document_key).unwrap();
+    let _ = agent.save_document(&document_key, None);
 
     document_string = load_local_document(&"examples/raw/gpt-lsd.json".to_string()).unwrap();
     document = agent.create_document_and_load(&document_string).unwrap();
     document_key = document.getkey();
     println!("document_key {}", document_key);
-    document_ref = agent.get_document(&document_key).unwrap();
-    let _ = agent.save_document(&document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    let _ = agent.save_document(&document_key, None);
 
     document_string = load_local_document(&"examples/raw/json-ld.json".to_string()).unwrap();
     document = agent.create_document_and_load(&document_string).unwrap();
     document_key = document.getkey();
     println!("document_key {}", document_key);
-    document_ref = agent.get_document(&document_key).unwrap();
-    _ = agent.save_document(&document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    _ = agent.save_document(&document_key, None);
 }
 
 #[cfg(test)]

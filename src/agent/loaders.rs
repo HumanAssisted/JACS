@@ -63,6 +63,7 @@ pub trait FileLoader {
         &self,
         document_id: &String,
         document_string: &String,
+        output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
 }
 
@@ -201,8 +202,13 @@ impl FileLoader for Agent {
         &self,
         document_id: &String,
         document_string: &String,
+        output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
-        let document_path = self.build_filepath(&"documents".to_string(), document_id)?;
+        let documentoutput_filename = output_filename
+            .or_else(|| Some(document_id.to_string()))
+            .unwrap();
+        let document_path =
+            self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
         info!("document path {:?} ", document_path);
         Ok(save_to_filepath(
             &document_path,

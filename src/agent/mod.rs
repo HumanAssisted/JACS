@@ -369,30 +369,6 @@ impl Agent {
     /// * `Ok(Value)` - A new JSON value containing the signature and related metadata.
     /// * `Err(Box<dyn Error>)` - An error occurred while generating the signature.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// use jacs::Agent;
-    /// use serde_json::json;
-    ///
-    /// let mut agent = Agent::new();
-    /// let json_value = json!({
-    ///     "name": "John Doe",
-    ///     "age": 30
-    /// });
-    /// let fields = Some(&vec!["name".to_string(), "age".to_string()]);
-    /// let placement_key = "signature".to_string();
-    ///
-    /// let signature_result = agent.signing_procedure(&json_value, fields, &placement_key);
-    /// match signature_result {
-    ///     Ok(signature_value) => {
-    ///         println!("Signature: {}", signature_value);
-    ///     }
-    ///     Err(error) => {
-    ///         eprintln!("Error generating signature: {}", error);
-    ///     }
-    /// }
-    /// ```
     ///
     /// # Errors
     ///

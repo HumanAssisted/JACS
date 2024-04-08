@@ -38,7 +38,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     let document_key = document.getkey();
     let document_ref = agent.get_document(&document_key).unwrap();
 
-    // let _ = agent.save_document(&document_key);
+    // let _ = agent.save_document(&document_key, None);
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
         Ok(()) => {
             // Validation succeeded
@@ -75,7 +75,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
-    // let _ = agent.save_document(&document_key);
+    // let _ = agent.save_document(&document_key, None);
 }
 
 #[test]

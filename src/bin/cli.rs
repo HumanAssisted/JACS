@@ -4,6 +4,7 @@ use jacs::agent::document::Document;
 use jacs::agent::Agent;
 use jacs::config::set_env_vars;
 use jacs::crypt::KeyManager;
+use std::path::Path;
 
 use std::env;
 use std::fs;
@@ -81,7 +82,7 @@ fn main() {
                         .arg(
                             Arg::new("output")
                                 .short('o')
-                                .help("Output filename. Must end with json")
+                                .help("Output filename. ")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -189,6 +190,7 @@ fn main() {
         Some(("document", document_matches)) => match document_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
+                let outputfilename = create_matches.get_one::<String>("output");
                 let directory = create_matches.get_one::<String>("directory");
                 let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
@@ -200,6 +202,13 @@ fn main() {
                 } else {
                     load_agent_by_id()
                 };
+
+                if !outputfilename.is_none() && !directory.is_none() {
+                    eprintln!("Error: if there is a directory you can't name the file the same for multiple files.");
+                    std::process::exit(1);
+                }
+
+                // check if output filename exists and that if so it's for one file
 
                 let mut files: Vec<String> = Vec::new();
                 if filename.is_none() && directory.is_none() {
@@ -225,6 +234,7 @@ fn main() {
                 if let Some(schema_file) = schema {
                     // schemastring =
                     fs::read_to_string(schema_file).expect("Failed to load schema file");
+
                     let schemas = [schema_file.clone()];
                     agent.load_custom_schemas(&schemas);
                 }
@@ -232,15 +242,33 @@ fn main() {
                 // iterate over filenames
                 for file in &files {
                     let document_string = fs::read_to_string(file).expect("document file loading");
+                    // let path = Path::new(file);
+                    // let loading_filename = path.file_name().unwrap().to_str().unwrap();
+
                     let result = agent.create_document_and_load(&document_string);
+
                     match result {
                         Ok(ref document) => {
                             let document_key = document.getkey();
+                            let document_key_string = document_key.to_string();
+
+                            let intermediate_filename = match outputfilename {
+                                Some(filename) => filename,
+                                None => &document_key_string,
+                            };
+
                             if no_save {
                                 println!("{}", document_key.to_string());
                             } else {
+                                let signed_filename =
+                                    intermediate_filename.replace(".json", ".jacs.json");
+                                agent
+                                    .save_document(
+                                        &document_key,
+                                        format!("{}", signed_filename).into(),
+                                    )
+                                    .expect("save document");
                                 println!("created doc {}", document_key.to_string());
-                                agent.save_document(&document_key).expect("save document");
                             }
 
                             if let Some(schema_file) = schema {
@@ -251,7 +279,7 @@ fn main() {
                                     &document.getvalue(),
                                 );
                                 match validate_result {
-                                    Ok(doc) => {
+                                    Ok(_doc) => {
                                         println!(
                                             "document specialised schema {} validated",
                                             document_key

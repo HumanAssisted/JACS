@@ -67,7 +67,11 @@ pub trait Document {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
-    fn save_document(&mut self, document_key: &String) -> Result<(), Box<dyn Error>>;
+    fn save_document(
+        &mut self,
+        document_key: &String,
+        output_filename: Option<String>,
+    ) -> Result<(), Box<dyn Error>>;
     fn update_document(
         &mut self,
         document_key: &String,
@@ -117,6 +121,7 @@ impl Document for Agent {
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         Ok(self.storeJACSDocument(&instance)?)
     }
+
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>> {
         match &self.validate_header(&document_string) {
             Ok(value) => {
@@ -242,10 +247,14 @@ impl Document for Agent {
         Ok(self.storeJACSDocument(&value)?)
     }
 
-    fn save_document(&mut self, document_key: &String) -> Result<(), Box<dyn Error>> {
+    fn save_document(
+        &mut self,
+        document_key: &String,
+        output_filename: Option<String>,
+    ) -> Result<(), Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
-        let _ = self.fs_document_save(&document_key, &document_string);
+        let _ = self.fs_document_save(&document_key, &document_string, output_filename);
         Ok(())
     }
 
