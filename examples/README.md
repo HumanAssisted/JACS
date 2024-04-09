@@ -1,3 +1,6 @@
+Some command line examples that interact with this directory are in the main README.
 
 
-Raw documents are documents that are plain json docs to be converted to JACS docs, etc.
+See also
+https://github.com/HumanAssisted/jacs-examples
+

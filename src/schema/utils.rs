@@ -14,6 +14,7 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
     "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),
     "schemas/components/signature/v1/signature.schema.json" => include_str!("../../schemas/components/signature/v1/signature.schema.json"),
+    "schemas/components/files/v1/files.schema.json" => include_str!("../../schemas/components/files/v1/files.schema.json"),
     // todo get all files in a schemas directory, dynamically
     // "schemas/jacs.config.schema.json" => include_str!("../../schemas/jacs.config.schema.json"),
 };

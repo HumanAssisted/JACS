@@ -143,7 +143,7 @@ fn main() {
                         .arg(
                             Arg::new("output")
                                 .short('o')
-                                .help("Output filename. ")
+                                .help("Output filename. Filenames will always end with \"jacs.json\"")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(

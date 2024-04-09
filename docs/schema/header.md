@@ -26,6 +26,7 @@ The basis for a JACS document
 | [originalVersion](#originalversion) | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalVersion") |
 | [originalDate](#originaldate)       | `string` | Optional | cannot be null | [Header](header-properties-originaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalDate")       |
 | [sha256](#sha256)                   | `string` | Optional | cannot be null | [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/sha256")                   |
+| [files](#files)                     | `array`  | Optional | cannot be null | [Header](header-properties-files.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/files")                     |
 
 ## id
 
@@ -194,3 +195,21 @@ Hash of every field except this one. During  updates and creation hash is the la
 ### sha256 Type
 
 `string`
+
+## files
+
+A set of files included with the jacs document
+
+`files`
+
+*   is optional
+
+*   Type: an array of merged types ([File](files.md))
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-files.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/files")
+
+### files Type
+
+an array of merged types ([File](files.md))
