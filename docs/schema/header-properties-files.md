@@ -12,4 +12,4 @@ A set of files included with the jacs document
 
 ## files Type
 
-an array of merged types ([File](files.md))
+`object[]` ([File](files.md))

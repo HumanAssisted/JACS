@@ -204,7 +204,7 @@ A set of files included with the jacs document
 
 *   is optional
 
-*   Type: an array of merged types ([File](files.md))
+*   Type: `object[]` ([File](files.md))
 
 *   cannot be null
 
@@ -212,4 +212,4 @@ A set of files included with the jacs document
 
 ### files Type
 
-an array of merged types ([File](files.md))
+`object[]` ([File](files.md))

@@ -18,8 +18,6 @@
 
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1`
 
-*   [Untitled object in File](./files-allof-1.md) – `https://hai.ai/schemas/components/files/v1/files.schema.json#/allOf/1`
-
 ### Arrays
 
 *   [Untitled array in Header](./header-properties-files.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/files`

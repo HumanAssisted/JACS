@@ -3,36 +3,29 @@
   "$id": "https://hai.ai/schemas/components/files/v1/files.schema.json",
   "title": "File",
   "description": "General data about unstructured content not in JACS",
-  "allOf": [
-    {
-      "$ref": "../../../resource/v1/resource.schema.json"
+  "type": "object",
+  "properties": {
+    "mimetype": {
+      "type": "string",
+      "description": "Type of file. e.g. https://www.iana.org/assignments/media-types/application/json"
     },
-    {
-      "type": "object",
-      "properties": {
-        "mimetype": {
-          "type": "string",
-          "description": "Type of file. e.g. https://www.iana.org/assignments/media-types/application/json"
-        },
-        "path": {
-          "type": "string",
-          "description": "where can the file be found on the filesystem, online. ipfs, https, etc"
-        },
-        "contents": {
-          "type": "string",
-          "description": "base64 encoded contents, possibly compressed"
-        },
-        "compressed": {
-          "type": "boolean",
-          "description": "are the base64 contents compressed?"
-        },
-        "checksum": {
-          "type": "string",
-          "description": "sha checksum to verify contents on download"
-        }
-      }
+    "path": {
+      "type": "string",
+      "description": "where can the file be found on the filesystem, online. ipfs, https, etc"
+    },
+    "contents": {
+      "type": "string",
+      "description": "base64 encoded contents, possibly compressed"
+    },
+    "compressed": {
+      "type": "boolean",
+      "description": "are the base64 contents compressed?"
+    },
+    "checksum": {
+      "type": "string",
+      "description": "sha checksum to verify contents on download"
     }
-  ],
+  },
   "required": [
     "mimetype"
   ],
