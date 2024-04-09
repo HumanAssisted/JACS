@@ -36,8 +36,10 @@ fn main() {
     let matches = Command::new("jacs")
         .subcommand(
             Command::new("agent")
+                .about(" work with a JACS agent")
                 .subcommand(
                     Command::new("create")
+                        .about(" create an agent")
                         .arg(
                             Arg::new("filename")
                                 .short('f')
@@ -54,7 +56,9 @@ fn main() {
                         ),
                 )
                 .subcommand(
-                    Command::new("verify").arg(
+                    Command::new("verify")
+                    .about(" verify an agent")
+                    .arg(
                         Arg::new("agent-file")
                             .short('a')
                             .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
@@ -64,9 +68,10 @@ fn main() {
         )
         .subcommand(
             Command::new("document")
+                .about(" work with a JACS document")
                 .subcommand(
                     Command::new("create")
-
+                        .about(" create a new JACS header, either by embedding or parsing a document")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -114,6 +119,7 @@ fn main() {
                 )
                 .subcommand(
                     Command::new("update")
+                        .about("create a new version of document. requires both the original JACS file and the modified jacs metadata")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -163,6 +169,7 @@ fn main() {
                 )
                 .subcommand(
                     Command::new("verify")
+                        .about(" verify a documents hash, siginatures, and schema")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
