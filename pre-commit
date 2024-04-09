@@ -28,7 +28,7 @@ jsonschema2md -d schemas  -o docs/schema -x -
 
 cargo doc --no-deps
 rsync -av --delete --exclude 'target' ./target/doc/jacs/ ./docs/jacs/jacs/
-cp -R target/doc/static.files/ ./docs/jacs/
+cp -R target/doc/static.files/ ./docs/jacs/static.files/
 
 
 # Add the formatted files to the staging area
