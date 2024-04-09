@@ -16,8 +16,6 @@ With JACS, data can be securely stored or shared, and different versions of the 
 
 By using JACS, AI agents can have confidence in the integrity and authenticity of the data received, making it easier to build secure, reliable agents.
 
-NOTE: Doesn’t *require* central key authority yet, but this does mean that anyone can spoof anyone.
-Until then, use for self signing only, or exchange public keys only with trusted services.
 
 ## JSON is all you need!
 
@@ -50,6 +48,9 @@ If you are familiar with [JWTs](https://jwt.io/) or PGP from email, then you hav
 Signature options are "ring-Ed25519", "RSA-PSS", and "pq-dilithium".
 These are all open source projects and JACS is not an encryption library in itself.
 
+NOTE: Doesn’t *require* central key authority yet, but this does mean that anyone can spoof anyone.
+Until then, use for self signing only, or exchange public keys only with trusted services.
+JACS should not need to make network calls for JSON schema as they are loaded into the lib.
 
 ## extensible
 
@@ -185,6 +186,7 @@ To modify a document, copy the original and modify how you'd like, and then JACS
 
     jacs document update -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -n examples/raw/howtoupdate-05f0c073-9df5-483b-aa77-2c3259f02c7b.json -o updatedfruit.json
 
+Filenames will always end with "jacs.json", so the -o
 
 For more examples, see the repo for different use cases:
 https://github.com/HumanAssisted/jacs-examples

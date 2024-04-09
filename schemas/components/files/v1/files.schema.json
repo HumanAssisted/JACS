@@ -11,46 +11,24 @@
     },
     "path": {
       "type": "string",
-      "description": "where can the file be found on the filesystem, online. ipfs, https, etc"
+      "description": "where can the file be found on the filesystem. For now no online. ipfs, https, etc"
     },
     "contents": {
       "type": "string",
       "description": "base64 encoded contents, possibly compressed"
     },
-    "compressed": {
+    "embed": {
       "type": "boolean",
-      "description": "are the base64 contents compressed?"
+      "description": "should JACS embed the file contents?"
     },
-    "checksum": {
+    "sha256": {
       "type": "string",
-      "description": "sha checksum to verify contents on download"
+      "description": "conent checksum to verify contents on download."
     }
   },
   "required": [
-    "mimetype"
-  ],
-  "oneOf": [
-    {
-      "required": [
-        "path"
-      ],
-      "not": {
-        "required": [
-          "contents",
-          "compressed"
-        ]
-      }
-    },
-    {
-      "required": [
-        "contents",
-        "compressed"
-      ],
-      "not": {
-        "required": [
-          "path"
-        ]
-      }
-    }
+    "mimetype",
+    "embed",
+    "path"
   ]
 }

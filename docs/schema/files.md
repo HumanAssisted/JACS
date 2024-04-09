@@ -14,25 +14,15 @@ General data about unstructured content not in JACS
 
 `object` ([File](files.md))
 
-one (and only one) of
-
-*   not
-
-    *   [Untitled undefined type in File](files-oneof-0-not.md "check type definition")
-
-*   not
-
-    *   [Untitled undefined type in File](files-oneof-1-not.md "check type definition")
-
 # File Properties
 
-| Property                  | Type      | Required | Nullable       | Defined by                                                                                                                   |
-| :------------------------ | :-------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------- |
-| [mimetype](#mimetype)     | `string`  | Required | cannot be null | [File](files-properties-mimetype.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/mimetype")     |
-| [path](#path)             | `string`  | Optional | cannot be null | [File](files-properties-path.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/path")             |
-| [contents](#contents)     | `string`  | Optional | cannot be null | [File](files-properties-contents.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/contents")     |
-| [compressed](#compressed) | `boolean` | Optional | cannot be null | [File](files-properties-compressed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/compressed") |
-| [checksum](#checksum)     | `string`  | Optional | cannot be null | [File](files-properties-checksum.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/checksum")     |
+| Property              | Type      | Required | Nullable       | Defined by                                                                                                               |
+| :-------------------- | :-------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------- |
+| [mimetype](#mimetype) | `string`  | Required | cannot be null | [File](files-properties-mimetype.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/mimetype") |
+| [path](#path)         | `string`  | Required | cannot be null | [File](files-properties-path.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/path")         |
+| [contents](#contents) | `string`  | Optional | cannot be null | [File](files-properties-contents.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/contents") |
+| [embed](#embed)       | `boolean` | Required | cannot be null | [File](files-properties-embed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/embed")       |
+| [sha256](#sha256)     | `string`  | Optional | cannot be null | [File](files-properties-sha256.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/sha256")     |
 
 ## mimetype
 
@@ -54,11 +44,11 @@ Type of file. e.g. <https://www.iana.org/assignments/media-types/application/jso
 
 ## path
 
-where can the file be found on the filesystem, online. ipfs, https, etc
+where can the file be found on the filesystem. For now no online. ipfs, https, etc
 
 `path`
 
-*   is optional
+*   is required
 
 *   Type: `string`
 
@@ -88,29 +78,29 @@ base64 encoded contents, possibly compressed
 
 `string`
 
-## compressed
+## embed
 
-are the base64 contents compressed?
+should JACS embed the file contents?
 
-`compressed`
+`embed`
 
-*   is optional
+*   is required
 
 *   Type: `boolean`
 
 *   cannot be null
 
-*   defined in: [File](files-properties-compressed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/compressed")
+*   defined in: [File](files-properties-embed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/embed")
 
-### compressed Type
+### embed Type
 
 `boolean`
 
-## checksum
+## sha256
 
-sha checksum to verify contents on download
+conent checksum to verify contents on download.
 
-`checksum`
+`sha256`
 
 *   is optional
 
@@ -118,8 +108,8 @@ sha checksum to verify contents on download
 
 *   cannot be null
 
-*   defined in: [File](files-properties-checksum.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/checksum")
+*   defined in: [File](files-properties-sha256.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/sha256")
 
-### checksum Type
+### sha256 Type
 
 `string`

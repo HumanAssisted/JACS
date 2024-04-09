@@ -3,6 +3,7 @@ use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
 use secrecy::ExposeSecret;
+use serde::ser::StdError;
 
 use chrono::Utc;
 use log::{debug, error, info, warn};
@@ -65,6 +66,9 @@ pub trait FileLoader {
         document_string: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
+
+    /// used to get base64 content from a filepath
+    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -220,6 +224,12 @@ impl FileLoader for Agent {
             &document_path,
             document_string.as_bytes(),
         )?)
+    }
+    fn fs_get_document_content(
+        &self,
+        _: std::string::String,
+    ) -> Result<std::string::String, Box<(dyn StdError + 'static)>> {
+        todo!()
     }
 }
 
