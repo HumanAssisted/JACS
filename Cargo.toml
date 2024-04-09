@@ -33,6 +33,7 @@ strum_macros = "0.24.3"
 secrecy = "0.8.0"
 aes-gcm = "0.10.3"
 clap = "4.5.4"
+regex = "1.10.4"
 
 
 

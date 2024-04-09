@@ -113,6 +113,55 @@ fn main() {
                         ),
                 )
                 .subcommand(
+                    Command::new("update")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("new")
+                                .short('n')
+                                .required(true)
+                                .help("Path to new version of modification.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("original")
+                                .short('o')
+                                .required(true)
+                                .help("Path to original file.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .help("Output filename. ")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("no-save")
+                                .long("no-save")
+                                .short('n')
+                                .help("Instead of saving files, print to stdout")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to create")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        ),
+                )
+                .subcommand(
                     Command::new("verify")
                         .arg(
                             Arg::new("agent-file")
@@ -301,6 +350,87 @@ fn main() {
                     }
                 } // end iteration
             }
+            // TODO copy for sharing
+            // Some(("copy", create_matches)) => {
+            Some(("update", create_matches)) => {
+                let new_filename = create_matches.get_one::<String>("new").unwrap();
+                let original_filename = create_matches.get_one::<String>("original").unwrap();
+                let outputfilename = create_matches.get_one::<String>("output");
+                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let schema = create_matches.get_one::<String>("schema");
+
+                let mut agent: Agent = if let Some(file) = agentfile {
+                    load_agent(file.to_string())
+                } else {
+                    load_agent_by_id()
+                };
+
+                if let Some(schema_file) = schema {
+                    // schemastring =
+                    fs::read_to_string(schema_file).expect("Failed to load schema file");
+
+                    let schemas = [schema_file.clone()];
+                    agent.load_custom_schemas(&schemas);
+                }
+
+                let new_document_string =
+                    fs::read_to_string(new_filename).expect("modified document file loading");
+                let original_document_string =
+                    fs::read_to_string(original_filename).expect("original document file loading");
+                let original_doc = agent
+                    .load_document(&original_document_string)
+                    .expect("document parse of original");
+                let original_doc_key = original_doc.getkey();
+                let updated_document = agent
+                    .update_document(&original_doc_key, &new_document_string)
+                    .expect("update document");
+
+                let path = Path::new(new_filename);
+                let loading_filename = path.file_name().unwrap().to_str().unwrap();
+                let loading_filename_string = loading_filename.to_string();
+
+                let new_document_key = updated_document.getkey();
+                let document_key_string = new_document_key.to_string();
+
+                let intermediate_filename = match outputfilename {
+                    Some(filename) => filename,
+                    None => &loading_filename_string,
+                };
+
+                if no_save {
+                    println!("{}", new_document_key.to_string());
+                } else {
+                    let re = Regex::new(r"(\.[^.]+)$").unwrap();
+                    let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
+                    agent
+                        .save_document(&new_document_key, format!("{}", signed_filename).into())
+                        .expect("save document");
+                    println!("created doc {}", new_document_key.to_string());
+                }
+
+                if let Some(schema_file) = schema {
+                    //let document_ref = agent.get_document(&document_key).unwrap();
+
+                    let validate_result = agent.validate_document_with_custom_schema(
+                        &schema_file,
+                        &updated_document.getvalue(),
+                    );
+                    match validate_result {
+                        Ok(_doc) => {
+                            println!("document specialised schema {} validated", new_document_key);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "document specialised schema {} validation failed {}",
+                                new_document_key, e
+                            );
+                        }
+                    }
+                }
+            }
+
             Some(("verify", verify_matches)) => {
                 let filename = verify_matches.get_one::<String>("filename");
                 let directory = verify_matches.get_one::<String>("directory");
