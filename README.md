@@ -2,7 +2,7 @@
 
 Welcome to JACS. JSON Agent Communication Standard.
 
-Current version 0.2.2 ALPHA.
+NOTE: Current version 0.2.2 *ALPHA*.
 
 The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable:
 
@@ -16,10 +16,14 @@ With JACS, data can be securely stored or shared, and different versions of the 
 
 By using JACS, AI agents can have confidence in the integrity and authenticity of the data received, making it easier to build secure, reliable agents.
 
+NOTE: Doesn’t *require* central key authority yet, but this does mean that anyone can spoof anyone.
+Until then, use for self signing only, or exchange public keys only with trusted services.
+
 ## JSON is all you need!
 
 Documents are in a format already widely adopted and enjoyed: JSON.
 Therefore, they are independent of network protocols or database formats and an be shared and stand-alone.
+JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document.
 
 All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.
 When those other services have modified the document, you can verifiy the agent, verify the changes, and sign the changes.
