@@ -181,6 +181,10 @@ You can also verify using a custom JSON Schema
 
 If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.
 
+To modify a document, copy the original and modify how you'd like, and then JACS can update the version and signature
+
+    jacs document update -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -n examples/raw/howtoupdate-05f0c073-9df5-483b-aa77-2c3259f02c7b.json -o updatedfruit.json
+
 
 For more examples, see the repo for different use cases:
 https://github.com/HumanAssisted/jacs-examples

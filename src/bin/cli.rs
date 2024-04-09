@@ -134,8 +134,8 @@ fn main() {
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
-                            Arg::new("original")
-                                .short('o')
+                            Arg::new("filename")
+                                .short('f')
                                 .required(true)
                                 .help("Path to original file.")
                                 .value_parser(value_parser!(String)),
@@ -361,7 +361,7 @@ fn main() {
             // Some(("copy", create_matches)) => {
             Some(("update", create_matches)) => {
                 let new_filename = create_matches.get_one::<String>("new").unwrap();
-                let original_filename = create_matches.get_one::<String>("original").unwrap();
+                let original_filename = create_matches.get_one::<String>("filename").unwrap();
                 let outputfilename = create_matches.get_one::<String>("output");
                 let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
@@ -399,7 +399,7 @@ fn main() {
                 let loading_filename_string = loading_filename.to_string();
 
                 let new_document_key = updated_document.getkey();
-                let document_key_string = new_document_key.to_string();
+                // let document_key_string = new_document_key.to_string();
 
                 let intermediate_filename = match outputfilename {
                     Some(filename) => filename,
@@ -409,8 +409,14 @@ fn main() {
                 if no_save {
                     println!("{}", new_document_key.to_string());
                 } else {
+                    // let re = Regex::new(r"(\.[^.]+)$").unwrap();
+                    // //let re = Regex::new(r"\.([^.]+)$").unwrap();
+                    // let signed_filename = re.replace(intermediate_filename, ".jacs.$1").to_string();
+                    //  println!("output filename is {}", signed_filename);
+
                     let re = Regex::new(r"(\.[^.]+)$").unwrap();
                     let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
+                    println!("output cl filename is {}", signed_filename);
                     agent
                         .save_document(&new_document_key, format!("{}", signed_filename).into())
                         .expect("save document");

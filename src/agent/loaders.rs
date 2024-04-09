@@ -81,10 +81,16 @@ impl FileLoader for Agent {
 
         let current_dir = env::current_dir()?;
         let jacs_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
-        return Ok(current_dir
-            .join(jacs_dir)
-            .join(doctype)
-            .join(format!("{}.json", docid)));
+
+        let path = current_dir.join(jacs_dir).join(doctype);
+
+        let filename = if docid.ends_with(".json") {
+            docid.to_string()
+        } else {
+            format!("{}.json", docid)
+        };
+
+        return Ok(path.join(filename));
     }
 
     fn build_key_filepath(

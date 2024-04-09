@@ -183,7 +183,7 @@ impl Document for Agent {
         new_document_string: &String,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
-        let new_document: Value = self.schema.validate_header(new_document_string)?;
+        let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let error_message = format!("original document {} not found", document_key);
         let original_document = self.get_document(document_key).expect(&error_message);
         let mut value = original_document.value;
@@ -208,20 +208,20 @@ impl Document for Agent {
         let last_version = &value["version"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        value["lastVersion"] = last_version.clone();
-        value["version"] = json!(format!("{}", new_version));
-        value["versionDate"] = json!(format!("{}", versioncreated));
+        new_document["lastVersion"] = last_version.clone();
+        new_document["version"] = json!(format!("{}", new_version));
+        new_document["versionDate"] = json!(format!("{}", versioncreated));
         // get all fields but reserved
-        value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &value,
+        new_document[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
+            &new_document,
             None,
             &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
         )?;
 
         // hash new version
-        let document_hash = self.hash_doc(&value)?;
-        value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.storeJACSDocument(&value)?)
+        let document_hash = self.hash_doc(&new_document)?;
+        new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        Ok(self.storeJACSDocument(&new_document)?)
     }
 
     /// copys document without modifications

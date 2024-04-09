@@ -1,0 +1,29 @@
+{
+  "$schema": "../../../examples/documents/custom.schema.json",
+  "agentSignature": {
+    "agentID": "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d",
+    "agentVersion": "1f639f69-b3a7-45d5-b814-bc7b91fb3b97",
+    "date": "2024-04-09T09:38:05.524875+00:00",
+    "fields": [
+      "$schema",
+      "favorite-snack",
+      "id",
+      "lastVersion",
+      "originalDate",
+      "originalVersion",
+      "version",
+      "versionDate"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "CPXIkKVsP3iSOH+7KN5CD1E+E5UlGy56SjqHO664EpLW8hbNWwZTOvLE6DJsj5HqyWdpxGnmpqnDRxL6KqdkyHE734DDTA7sgaDO47dYHVih739LkeK4tTFYAMxCC1kW4kedpJ3Zi3r+9md3C1T+amtA3qNBAIar/c829zL2zuZz89d/hx/KTcoKPL08oD7Hw9NNTupSfLglU7FD68BJQB5gEOlvUebfPf7QsYsG0jaI8IB12YRM4VyD1se9zfBXR2C8Tog4C24W6u69euKHRJK9O8yRNxqxEbOhjclhiJOqA+etx7EpFJRhNzOs8vAHmVYOvKfK248ehUVbFQc02udutfY9EHnXtnfJV6gWamSRndTVP5240kMkzXpMZIlhx3uEobl+dVI1nhQr8b1Ws1YCUxlq9IRg/P9XBM9J0WLhcmJhvGqvGOXHve6iRzXQ/pivSlUBKSZHxOaPuNsTBKw3vFDOoL9nE0AVeQBsiQHa/FmK5PMqotAEpJaQ0snmBPraMHPHrH5s9kzkQPaNQIECxZxNDZcUZaT2SjJt5yOJcKAZvlJCwnYaWASFsSrEej89OpLNjGwGo9/LxT9Xw4iKS5idC4eM0+4sc8D5xQBDSuTxvON3b5ZFwCLW2KXXVIzw0roSeh87eKMC5wTiqo/7RIW5GrNp1FyNLVSU4bA=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "favorite-snack": "mango",
+  "id": "05f0c073-9df5-483b-aa77-2c3259f02c7b",
+  "lastVersion": "17d73042-a7dd-4536-bfd1-2b7f18c3503f",
+  "originalDate": "2024-04-05T09:53:40.726161+00:00",
+  "originalVersion": "17d73042-a7dd-4536-bfd1-2b7f18c3503f",
+  "sha256": "efaae804df7ff335de1e307b46ff8a4d22227c1da73cbd1df5b54fb99f35edde",
+  "version": "75ee6ac7-2bbe-482d-a4a9-fcd0f86c3aa6",
+  "versionDate": "2024-04-09T09:38:05.509167+00:00"
+}
