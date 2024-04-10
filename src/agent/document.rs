@@ -59,7 +59,7 @@ pub trait Document {
     fn create_document_and_load(
         &mut self,
         json: &String,
-        attachements: Option<Vec<String>>,
+        attachments: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
@@ -78,13 +78,14 @@ pub trait Document {
         &mut self,
         document_key: &String,
         new_document_string: &String,
-        attachements: Option<Vec<String>>,
+        attachments: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     fn create_file_json(
         &mut self,
         filepath: &String,
         embed: bool,
     ) -> Result<serde_json::Value, Box<dyn Error>>;
+    fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>>;
 }
 
 impl Document for Agent {
@@ -154,14 +155,65 @@ impl Document for Agent {
         Ok(file_json)
     }
 
+    fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>> {
+        // Check if the "files" field exists
+        if let Some(files_array) = document.get("files").and_then(|files| files.as_array()) {
+            // Iterate over each file object
+            for file_obj in files_array {
+                // Get the file path and sha256 hash from the file object
+                let file_path = file_obj
+                    .get("path")
+                    .and_then(|path| path.as_str())
+                    .ok_or("Missing file path")?;
+                let expected_hash = file_obj
+                    .get("sha256")
+                    .and_then(|hash| hash.as_str())
+                    .ok_or("Missing SHA256 hash")?;
+
+                // Load the file contents and encode as base64
+                let base64_contents = self.fs_get_document_content(file_path.to_string())?;
+
+                // Calculate the SHA256 hash of the loaded contents
+                let mut hasher = Sha256::new();
+                hasher.update(&base64_contents);
+                let actual_hash = format!("{:x}", hasher.finalize());
+
+                // Compare the actual hash with the expected hash
+                if actual_hash != expected_hash {
+                    return Err(format!("Hash mismatch for file: {}", file_path).into());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// create an document, and provde id and version as a result
     /// filepaths:
     fn create_document_and_load(
         &mut self,
         json: &String,
-        attachements: Option<Vec<String>>,
+        attachments: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>> {
         let mut instance = self.schema.create(json)?;
+
+        if let Some(attachment_list) = attachments {
+            let mut files_array: Vec<Value> = Vec::new();
+
+            // Iterate over each attachment
+            for attachment_path in attachment_list {
+                // Call create_file_json with embed set to false
+                let file_json = self.create_file_json(&attachment_path, false).unwrap();
+
+                // Add the file JSON to the files array
+                files_array.push(file_json);
+            }
+
+            // Create a new "files" field in the document
+            let instance_map = instance.as_object_mut().unwrap();
+            instance_map.insert("files".to_string(), Value::Array(files_array));
+        }
+
         // sign document
         instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
             &instance,
@@ -229,17 +281,50 @@ impl Document for Agent {
     }
 
     /// pass in modified doc
+    /// TODO validate that the new document is owned by editor
     fn update_document(
         &mut self,
         document_key: &String,
         new_document_string: &String,
-        attachements: Option<Vec<String>>,
+        attachments: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let error_message = format!("original document {} not found", document_key);
         let original_document = self.get_document(document_key).expect(&error_message);
         let value = original_document.value;
+
+        let files_array: &mut Vec<Value> = new_document
+            .as_object_mut()
+            .and_then(|obj| obj.get_mut("files"))
+            .and_then(|files| files.as_array_mut())
+            .unwrap_or_else(|| {
+                new_document
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("files".to_string(), Value::Array(Vec::new()));
+                new_document["files"].as_array_mut().unwrap()
+            });
+
+        // now re-verify these files
+        let _ = self
+            .verify_document_files(&new_document)
+            .expect("file verification");
+        if let Some(attachment_list) = attachments {
+            // Iterate over each attachment
+            for attachment_path in attachment_list {
+                // Call create_file_json with embed set to false
+                let file_json = self.create_file_json(&attachment_path, false).unwrap();
+
+                // Add the file JSON to the files array
+                files_array.push(file_json);
+            }
+
+            // Create a new "files" field in the document
+            let instance_map = new_document.as_object_mut().unwrap();
+            instance_map.insert("files".to_string(), Value::Array(files_array));
+        }
+
         // check that new document has same id, value, hash as old
         let orginal_id = &value.get_str("id");
         let orginal_version = &value.get_str("version");
@@ -322,6 +407,9 @@ impl Document for Agent {
         // check that public key exists
         let document = self.get_document(document_key).expect("Reason");
         let document_value = document.getvalue();
+        let _ = self
+            .verify_document_files(&document_value)
+            .expect("file verification");
         // this is innefficient since I generate a whole document
         let used_public_key = match public_key {
             Some(public_key) => public_key,
