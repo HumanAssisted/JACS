@@ -9,6 +9,7 @@ use chrono::Utc;
 use log::error;
 use serde_json::json;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
@@ -58,12 +59,13 @@ pub trait Document {
     fn create_document_and_load(
         &mut self,
         json: &String,
+        attachements: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn remove_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
-    fn storeJACSDocument(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>>;
+    fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>>;
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
@@ -76,7 +78,13 @@ pub trait Document {
         &mut self,
         document_key: &String,
         new_document_string: &String,
+        attachements: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
+    fn create_file_json(
+        &mut self,
+        filepath: &String,
+        embed: bool,
+    ) -> Result<serde_json::Value, Box<dyn Error>>;
 }
 
 impl Document for Agent {
@@ -104,11 +112,54 @@ impl Document for Agent {
         x
     }
 
+    fn create_file_json(
+        &mut self,
+        filepath: &String,
+        embed: bool,
+    ) -> Result<serde_json::Value, Box<dyn Error>> {
+        // Get the file contents as base64
+        let base64_contents = self.fs_get_document_content(filepath.clone())?;
+
+        // Determine the MIME type using a Rust library (e.g., mime_guess)
+        let mime_type = mime_guess::from_path(filepath)
+            .first_or_octet_stream()
+            .to_string();
+
+        // Calculate the SHA256 hash of the contents
+        let mut hasher = Sha256::new();
+        hasher.update(&base64_contents);
+        let sha256_hash = format!("{:x}", hasher.finalize());
+
+        // Create the JSON object
+        let file_json = json!({
+            "mimetype": mime_type,
+            "path": filepath,
+            "embed": embed,
+            "sha256": sha256_hash
+        });
+
+        // Add the contents field if embed is true
+        let file_json = if embed {
+            file_json
+                .as_object()
+                .unwrap()
+                .clone()
+                .into_iter()
+                .chain(vec![("contents".to_string(), json!(base64_contents))])
+                .collect()
+        } else {
+            file_json
+        };
+
+        Ok(file_json)
+    }
+
     /// create an document, and provde id and version as a result
     /// filepaths:
     fn create_document_and_load(
         &mut self,
         json: &String,
+        attachements: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>> {
         let mut instance = self.schema.create(json)?;
         // sign document
@@ -120,13 +171,13 @@ impl Document for Agent {
         // hash document
         let document_hash = self.hash_doc(&instance)?;
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.storeJACSDocument(&instance)?)
+        Ok(self.store_jacs_document(&instance)?)
     }
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>> {
         match &self.validate_header(&document_string) {
             Ok(value) => {
-                return self.storeJACSDocument(&value);
+                return self.store_jacs_document(&value);
             }
             Err(e) => {
                 error!("ERROR document ERROR {}", e);
@@ -144,7 +195,7 @@ impl Document for Agent {
         Ok(hash_string(&doc_string))
     }
 
-    fn storeJACSDocument(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
+    fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
         let mut documents = self.documents.lock().expect("JACSDocument lock");
         let doc = JACSDocument {
             id: value.get_str("id").expect("REASON").to_string(),
@@ -182,12 +233,13 @@ impl Document for Agent {
         &mut self,
         document_key: &String,
         new_document_string: &String,
+        attachements: Option<Vec<String>>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let error_message = format!("original document {} not found", document_key);
         let original_document = self.get_document(document_key).expect(&error_message);
-        let mut value = original_document.value;
+        let value = original_document.value;
         // check that new document has same id, value, hash as old
         let orginal_id = &value.get_str("id");
         let orginal_version = &value.get_str("version");
@@ -222,7 +274,7 @@ impl Document for Agent {
         // hash new version
         let document_hash = self.hash_doc(&new_document)?;
         new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.storeJACSDocument(&new_document)?)
+        Ok(self.store_jacs_document(&new_document)?)
     }
 
     /// copys document without modifications
@@ -245,7 +297,7 @@ impl Document for Agent {
         // hash new version
         let document_hash = self.hash_doc(&value)?;
         value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.storeJACSDocument(&value)?)
+        Ok(self.store_jacs_document(&value)?)
     }
 
     fn save_document(

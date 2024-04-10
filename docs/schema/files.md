@@ -98,7 +98,7 @@ should JACS embed the file contents?
 
 ## sha256
 
-conent checksum to verify contents on download.
+content checksum to verify contents on download.
 
 `sha256`
 

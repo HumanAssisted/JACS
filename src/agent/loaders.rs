@@ -225,11 +225,21 @@ impl FileLoader for Agent {
             document_string.as_bytes(),
         )?)
     }
-    fn fs_get_document_content(
-        &self,
-        _: std::string::String,
-    ) -> Result<std::string::String, Box<(dyn StdError + 'static)>> {
-        todo!()
+
+    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>> {
+        // if file_is_executable(&document_filepath) {
+        //     return Err("Executable files are not allowed.".into());
+        // }
+
+        // Check if the file path is a local filesystem path
+        if !Path::new(&document_filepath).is_file() {
+            return Err("Only local filesystem paths are supported.".into());
+        }
+
+        let contents = fs::read(&document_filepath)?;
+        let base64_contents = base64::encode(&contents);
+
+        Ok(base64_contents)
     }
 }
 

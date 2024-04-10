@@ -23,7 +23,7 @@
     },
     "sha256": {
       "type": "string",
-      "description": "conent checksum to verify contents on download."
+      "description": "content checksum to verify contents on download."
     }
   },
   "required": [
