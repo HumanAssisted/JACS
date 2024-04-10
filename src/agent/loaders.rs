@@ -233,7 +233,8 @@ impl FileLoader for Agent {
 
         // Check if the file path is a local filesystem path
         if !Path::new(&document_filepath).is_file() {
-            return Err("Only local filesystem paths are supported.".into());
+            println!("document_filepath ? {}", document_filepath);
+            return Err("File not found, only local filesystem paths are supported.".into());
         }
 
         let contents = fs::read(&document_filepath)?;

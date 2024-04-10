@@ -33,7 +33,7 @@ pub fn generate_new_docs_with_attachments() {
     document = agent
         .create_document_and_load(
             &document_string,
-            vec!["examples/raw/mobious.jpeg".to_string()].into(),
+            vec!["examples/raw/mobius.jpeg".to_string()].into(),
         )
         .unwrap();
     document_key = document.getkey();
