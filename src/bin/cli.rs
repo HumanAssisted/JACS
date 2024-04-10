@@ -301,7 +301,7 @@ fn main() {
                     let path = Path::new(file);
                     let loading_filename = path.file_name().unwrap().to_str().unwrap();
                     let loading_filename_string = loading_filename.to_string();
-                    let result = agent.create_document_and_load(&document_string);
+                    let result = agent.create_document_and_load(&document_string, None);
 
                     match result {
                         Ok(ref document) => {
@@ -391,7 +391,7 @@ fn main() {
                     .expect("document parse of original");
                 let original_doc_key = original_doc.getkey();
                 let updated_document = agent
-                    .update_document(&original_doc_key, &new_document_string)
+                    .update_document(&original_doc_key, &new_document_string, None)
                     .expect("update document");
 
                 let path = Path::new(new_filename);

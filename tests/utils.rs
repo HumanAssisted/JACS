@@ -10,6 +10,39 @@ use std::path::PathBuf;
 use std::env;
 
 #[cfg(test)]
+pub fn generate_new_docs_with_attachments() {
+    let mut agent = load_test_agent_one();
+    let mut document_string =
+        load_local_document(&"examples/raw/embed-xml.json".to_string()).unwrap();
+    let mut document = agent
+        .create_document_and_load(
+            &document_string,
+            vec![
+                "examples/raw/plants.xml".to_string(),
+                "examples/raw/breakfast.xml".to_string(),
+            ]
+            .into(),
+        )
+        .unwrap();
+    let mut document_key = document.getkey();
+    println!("document_key {}", document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    _ = agent.save_document(&document_key, None);
+
+    document_string = load_local_document(&"examples/raw/image-embed.json".to_string()).unwrap();
+    document = agent
+        .create_document_and_load(
+            &document_string,
+            vec!["examples/raw/mobious.jpeg".to_string()].into(),
+        )
+        .unwrap();
+    document_key = document.getkey();
+    println!("document_key {}", document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    _ = agent.save_document(&document_key, None);
+}
+
+#[cfg(test)]
 pub fn generate_new_docs() {
     static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
     let mut agent = load_test_agent_one();

@@ -63,6 +63,12 @@ fn test_create() {
 }
 
 #[test]
+fn test_create_attachments() {
+    // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments
+    utils::generate_new_docs_with_attachments();
+}
+
+#[test]
 fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
