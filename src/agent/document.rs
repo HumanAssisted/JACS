@@ -294,19 +294,14 @@ impl Document for Agent {
         let original_document = self.get_document(document_key).expect(&error_message);
         let value = original_document.value;
 
-        let files_array: &mut Vec<Value> = new_document
-            .as_object_mut()
-            .and_then(|obj| obj.get_mut("files"))
-            .and_then(|files| files.as_array_mut())
-            .unwrap_or_else(|| {
-                new_document
-                    .as_object_mut()
-                    .unwrap()
-                    .insert("files".to_string(), Value::Array(Vec::new()));
-                new_document["files"].as_array_mut().unwrap()
-            });
+        let mut files_array: Vec<Value> = new_document
+            .get("files")
+            .and_then(|files| files.as_array())
+            .cloned()
+            .unwrap_or_else(Vec::new);
 
         // now re-verify these files
+
         let _ = self
             .verify_document_files(&new_document)
             .expect("file verification");
@@ -319,9 +314,10 @@ impl Document for Agent {
                 // Add the file JSON to the files array
                 files_array.push(file_json);
             }
+        }
 
-            // Create a new "files" field in the document
-            let instance_map = new_document.as_object_mut().unwrap();
+        // Create a new "files" field in the document
+        if let Some(instance_map) = new_document.as_object_mut() {
             instance_map.insert("files".to_string(), Value::Array(files_array));
         }
 

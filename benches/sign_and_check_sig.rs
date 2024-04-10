@@ -98,12 +98,13 @@ fn benchmark_rsa(c: &mut Criterion) {
         for document in &documents {
             b.iter(|| {
                 black_box({
-                    let jacsdocument = agent.create_document_and_load(&document).unwrap();
+                    let jacsdocument = agent.create_document_and_load(&document, None).unwrap();
                     let document_key = jacsdocument.getkey();
                     agent
                         .verify_document_signature(
                             &document_key,
-                            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+                            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
+                            None,
                             None,
                             None,
                         )
@@ -122,12 +123,13 @@ fn benchmark_pq(c: &mut Criterion) {
         for document in &documents {
             b.iter(|| {
                 black_box({
-                    let jacsdocument = agent2.create_document_and_load(&document).unwrap();
+                    let jacsdocument = agent2.create_document_and_load(&document, None).unwrap();
                     let document_key = jacsdocument.getkey();
                     agent2
                         .verify_document_signature(
                             &document_key,
-                            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+                            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
+                            None,
                             None,
                             None,
                         )
@@ -146,12 +148,13 @@ fn benchmark_ring(c: &mut Criterion) {
         for document in &documents {
             b.iter(|| {
                 black_box({
-                    let jacsdocument = agent3.create_document_and_load(&document).unwrap();
+                    let jacsdocument = agent3.create_document_and_load(&document, None).unwrap();
                     let document_key = jacsdocument.getkey();
                     agent3
                         .verify_document_signature(
                             &document_key,
-                            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
+                            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
+                            None,
                             None,
                             None,
                         )
