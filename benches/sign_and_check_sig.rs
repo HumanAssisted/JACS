@@ -37,7 +37,7 @@ fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d:1f639f69-b3a7-45d5-b814-bc7b91fb3b97".to_string();
+        "37e6b2e0-5100-4eb7-b042-2630beaa8531:c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3".to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -98,7 +98,9 @@ fn benchmark_rsa(c: &mut Criterion) {
         for document in &documents {
             b.iter(|| {
                 black_box({
-                    let jacsdocument = agent.create_document_and_load(&document, None).unwrap();
+                    let jacsdocument = agent
+                        .create_document_and_load(&document, None, None)
+                        .unwrap();
                     let document_key = jacsdocument.getkey();
                     agent
                         .verify_document_signature(
@@ -123,7 +125,9 @@ fn benchmark_pq(c: &mut Criterion) {
         for document in &documents {
             b.iter(|| {
                 black_box({
-                    let jacsdocument = agent2.create_document_and_load(&document, None).unwrap();
+                    let jacsdocument = agent2
+                        .create_document_and_load(&document, None, None)
+                        .unwrap();
                     let document_key = jacsdocument.getkey();
                     agent2
                         .verify_document_signature(
@@ -148,7 +152,9 @@ fn benchmark_ring(c: &mut Criterion) {
         for document in &documents {
             b.iter(|| {
                 black_box({
-                    let jacsdocument = agent3.create_document_and_load(&document, None).unwrap();
+                    let jacsdocument = agent3
+                        .create_document_and_load(&document, None, None)
+                        .unwrap();
                     let document_key = jacsdocument.getkey();
                     agent3
                         .verify_document_signature(

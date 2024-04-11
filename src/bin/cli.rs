@@ -71,7 +71,7 @@ fn main() {
                 .about(" work with a JACS document")
                 .subcommand(
                     Command::new("create")
-                        .about(" create a new JACS header, either by embedding or parsing a document")
+                        .about(" create a new JACS file, either by embedding or parsing a document")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -115,6 +115,19 @@ fn main() {
                                 .help("Path to JSON schema file to use to create")
                                 .long("schema")
                                 .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("attach")
+                                .help("Path to file or directory for file attachments")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("embed")
+                                .short('e')
+                                .help("Embed documents or keep the documents external")
+                                .long("schema")
+                                .value_parser(value_parser!(bool)),
                         ),
                 )
                 .subcommand(
@@ -165,7 +178,21 @@ fn main() {
                                 .help("Path to JSON schema file to use to create")
                                 .long("schema")
                                 .value_parser(value_parser!(String)),
-                        ),
+                        )
+                        .arg(
+                            Arg::new("attach")
+                                .help("Path to file or directory for file attachments")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("embed")
+                                .short('e')
+                                .help("Embed documents or keep the documents external")
+                                .long("schema")
+                                .value_parser(value_parser!(bool)),
+                        )
+                        ,
                 )
                 .subcommand(
                     Command::new("verify")
@@ -254,12 +281,16 @@ fn main() {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
+                let attachments = create_matches.get_one::<String>("attach");
+                let embed = create_matches.get_one::<bool>("embed");
 
                 let mut agent: Agent = if let Some(file) = agentfile {
                     load_agent(file.to_string())
                 } else {
                     load_agent_by_id()
                 };
+
+                let attachment_links = agent.parse_attachement_arg(attachments);
 
                 if !outputfilename.is_none() && !directory.is_none() {
                     eprintln!("Error: if there is a directory you can't name the file the same for multiple files.");
@@ -303,7 +334,11 @@ fn main() {
                     let path = Path::new(file);
                     let loading_filename = path.file_name().unwrap().to_str().unwrap();
                     let loading_filename_string = loading_filename.to_string();
-                    let result = agent.create_document_and_load(&document_string, None);
+                    let result = agent.create_document_and_load(
+                        &document_string,
+                        attachment_links.clone(),
+                        embed.copied(),
+                    );
 
                     match result {
                         Ok(ref document) => {
@@ -369,12 +404,16 @@ fn main() {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
+                let attachments = create_matches.get_one::<String>("attach");
+                let embed = create_matches.get_one::<bool>("embed");
 
                 let mut agent: Agent = if let Some(file) = agentfile {
                     load_agent(file.to_string())
                 } else {
                     load_agent_by_id()
                 };
+
+                let attachment_links = agent.parse_attachement_arg(attachments);
 
                 if let Some(schema_file) = schema {
                     // schemastring =
@@ -393,7 +432,12 @@ fn main() {
                     .expect("document parse of original");
                 let original_doc_key = original_doc.getkey();
                 let updated_document = agent
-                    .update_document(&original_doc_key, &new_document_string, None)
+                    .update_document(
+                        &original_doc_key,
+                        &new_document_string,
+                        attachment_links.clone(),
+                        embed.copied(),
+                    )
                     .expect("update document");
 
                 let path = Path::new(new_filename);

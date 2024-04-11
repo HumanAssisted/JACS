@@ -34,7 +34,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     agent.load_custom_schemas(&schemas);
     let document_string = load_local_document(&"examples/raw/not-fruit.json".to_string()).unwrap();
     let document = agent
-        .create_document_and_load(&document_string, None)
+        .create_document_and_load(&document_string, None, None)
         .unwrap();
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
@@ -78,7 +78,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     let document_string =
         load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
     let document = agent
-        .create_document_and_load(&document_string, None)
+        .create_document_and_load(&document_string, None, None)
         .unwrap();
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();

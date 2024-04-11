@@ -12,6 +12,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
+use std::fs;
+use std::path::Path;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -60,6 +62,7 @@ pub trait Document {
         &mut self,
         json: &String,
         attachments: Option<Vec<String>>,
+        embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
@@ -79,6 +82,7 @@ pub trait Document {
         document_key: &String,
         new_document_string: &String,
         attachments: Option<Vec<String>>,
+        embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     fn create_file_json(
         &mut self,
@@ -86,6 +90,8 @@ pub trait Document {
         embed: bool,
     ) -> Result<serde_json::Value, Box<dyn Error>>;
     fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>>;
+    /// util function for parsing arguments for attachments
+    fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>>;
 }
 
 impl Document for Agent {
@@ -194,6 +200,7 @@ impl Document for Agent {
         &mut self,
         json: &String,
         attachments: Option<Vec<String>>,
+        embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>> {
         let mut instance = self.schema.create(json)?;
 
@@ -202,8 +209,10 @@ impl Document for Agent {
 
             // Iterate over each attachment
             for attachment_path in attachment_list {
-                // Call create_file_json with embed set to false
-                let file_json = self.create_file_json(&attachment_path, false).unwrap();
+                let final_embed = embed.unwrap_or(false);
+                let file_json = self
+                    .create_file_json(&attachment_path, final_embed)
+                    .unwrap();
 
                 // Add the file JSON to the files array
                 files_array.push(file_json);
@@ -287,6 +296,7 @@ impl Document for Agent {
         document_key: &String,
         new_document_string: &String,
         attachments: Option<Vec<String>>,
+        embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
@@ -309,7 +319,10 @@ impl Document for Agent {
             // Iterate over each attachment
             for attachment_path in attachment_list {
                 // Call create_file_json with embed set to false
-                let file_json = self.create_file_json(&attachment_path, false).unwrap();
+                let final_embed = embed.unwrap_or(false);
+                let file_json = self
+                    .create_file_json(&attachment_path, final_embed)
+                    .unwrap();
 
                 // Add the file JSON to the files array
                 files_array.push(file_json);
@@ -433,6 +446,40 @@ impl Document for Agent {
                 error!("{}", error_message);
                 return Err(error_message.into());
             }
+        }
+    }
+
+    fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>> {
+        match attachments {
+            Some(path_str) => {
+                let path = Path::new(path_str);
+                if path.is_dir() {
+                    // If the path is a directory, read the directory and collect file paths
+                    match fs::read_dir(path) {
+                        Ok(entries) => {
+                            let file_paths: Vec<String> = entries
+                                .filter_map(|entry| {
+                                    entry
+                                        .ok()
+                                        .and_then(|e| e.path().to_str().map(|s| s.to_string()))
+                                })
+                                .collect();
+                            Some(file_paths)
+                        }
+                        Err(_) => {
+                            eprintln!("Failed to read directory: {}", path_str);
+                            None
+                        }
+                    }
+                } else if path.is_file() {
+                    // If the path is a file, create a vector with the single file path
+                    Some(vec![path_str.to_string()])
+                } else {
+                    eprintln!("Invalid path: {}", path_str);
+                    None
+                }
+            }
+            None => None,
         }
     }
 }

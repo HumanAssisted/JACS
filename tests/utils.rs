@@ -22,6 +22,7 @@ pub fn generate_new_docs_with_attachments() {
                 "examples/raw/breakfast.xml".to_string(),
             ]
             .into(),
+            Some(false),
         )
         .unwrap();
     let mut document_key = document.getkey();
@@ -34,6 +35,7 @@ pub fn generate_new_docs_with_attachments() {
         .create_document_and_load(
             &document_string,
             vec!["examples/raw/mobius.jpeg".to_string()].into(),
+            Some(true),
         )
         .unwrap();
     document_key = document.getkey();
@@ -49,7 +51,7 @@ pub fn generate_new_docs() {
     let mut document_string =
         load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
     let mut document = agent
-        .create_document_and_load(&document_string, None)
+        .create_document_and_load(&document_string, None, None)
         .unwrap();
     let mut document_key = document.getkey();
     println!("document_key {}", document_key);
@@ -58,7 +60,7 @@ pub fn generate_new_docs() {
 
     document_string = load_local_document(&"examples/raw/gpt-lsd.json".to_string()).unwrap();
     document = agent
-        .create_document_and_load(&document_string, None)
+        .create_document_and_load(&document_string, None, None)
         .unwrap();
     document_key = document.getkey();
     println!("document_key {}", document_key);
@@ -67,7 +69,7 @@ pub fn generate_new_docs() {
 
     document_string = load_local_document(&"examples/raw/json-ld.json".to_string()).unwrap();
     document = agent
-        .create_document_and_load(&document_string, None)
+        .create_document_and_load(&document_string, None, None)
         .unwrap();
     document_key = document.getkey();
     println!("document_key {}", document_key);
