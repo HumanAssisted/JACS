@@ -39,7 +39,7 @@ pub fn generate_new_docs_with_attachments() {
     document_key = document.getkey();
     println!("document_key {}", document_key);
     // document_ref = agent.get_document(&document_key).unwrap();
-    _ = agent.save_document(&document_key, None);
+    // _ = agent.save_document(&document_key, None);
 }
 
 #[cfg(test)]

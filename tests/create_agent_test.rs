@@ -5,6 +5,7 @@ use utils::{load_test_agent_one, load_test_agent_two};
 
 #[test]
 fn test_validate_agent_creation() {
+    // RUST_BACKTRACE=1 cargo test create_agent_tests -- --test test_validate_agent_creation
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
@@ -24,7 +25,7 @@ fn test_validate_agent_creation() {
 
     println!("New Agent Created\n\n\n {} ", agent);
     // switch keys
-    agent.fs_preload_keys(
+    let _ = agent.fs_preload_keys(
         &"agent-two.private.pem".to_string(),
         &"agent-two.public.pem".to_string(),
     );
@@ -40,7 +41,7 @@ fn test_validate_agent_creation() {
     };
 
     println!("New Agent2 Created\n\n\n {} ", agent);
-    //agent.save();
+    let _ = agent.save();
 }
 
 #[test]

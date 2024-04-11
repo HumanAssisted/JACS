@@ -224,6 +224,8 @@ fn main() {
                         env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
                     )
                 }
+
+                let _ = agent.save();
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
