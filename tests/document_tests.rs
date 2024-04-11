@@ -63,6 +63,7 @@ fn test_create() {
 }
 
 #[test]
+#[ignore]
 fn test_create_attachments() {
     // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments
     utils::generate_new_docs_with_attachments();

@@ -39,7 +39,7 @@ pub fn generate_new_docs_with_attachments() {
     document_key = document.getkey();
     println!("document_key {}", document_key);
     // document_ref = agent.get_document(&document_key).unwrap();
-    // _ = agent.save_document(&document_key, None);
+    _ = agent.save_document(&document_key, None);
 }
 
 #[cfg(test)]
@@ -116,7 +116,7 @@ pub fn load_test_agent_two() -> Agent {
     );
     let result = agent.load_by_id(
         Some(
-            "396155ad-484a-4659-a4e7-341ef52aa63d:a3efb91b-1245-4852-9934-fde8a2cfe6d8".to_string(),
+            "958b8b36-0734-4f13-b660-17496f88acc5:fe216e87-74af-4b16-a86a-6776afa682b4".to_string(),
         ),
         None,
     );

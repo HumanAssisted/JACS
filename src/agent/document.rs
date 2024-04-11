@@ -157,7 +157,7 @@ impl Document for Agent {
 
     fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>> {
         // Check if the "files" field exists
-        if let Some(files_array) = document.get("files").and_then(|files| files.as_array()) {
+        if let Some(files_array) = document.get("jacsFiles").and_then(|files| files.as_array()) {
             // Iterate over each file object
             for file_obj in files_array {
                 // Get the file path and sha256 hash from the file object
@@ -211,7 +211,7 @@ impl Document for Agent {
 
             // Create a new "files" field in the document
             let instance_map = instance.as_object_mut().unwrap();
-            instance_map.insert("files".to_string(), Value::Array(files_array));
+            instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
         }
 
         // sign document
@@ -295,7 +295,7 @@ impl Document for Agent {
         let value = original_document.value;
 
         let mut files_array: Vec<Value> = new_document
-            .get("files")
+            .get("jacsFiles")
             .and_then(|files| files.as_array())
             .cloned()
             .unwrap_or_else(Vec::new);
@@ -318,7 +318,7 @@ impl Document for Agent {
 
         // Create a new "files" field in the document
         if let Some(instance_map) = new_document.as_object_mut() {
-            instance_map.insert("files".to_string(), Value::Array(files_array));
+            instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
         }
 
         // check that new document has same id, value, hash as old
