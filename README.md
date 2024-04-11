@@ -189,6 +189,10 @@ To modify a document, copy the original and modify how you'd like, and then JACS
 
 Filenames will always end with "jacs.json", so the -o
 
+You can embed external files
+
+    jacs document create -f ./examples/raw/not-fruit.json --attach ./examples/raw/mobius.jpeg --embed true
+
 For more examples, see the repo for different use cases:
 https://github.com/HumanAssisted/jacs-examples
 

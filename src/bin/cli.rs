@@ -119,14 +119,14 @@ fn main() {
                         .arg(
                             Arg::new("attach")
                                 .help("Path to file or directory for file attachments")
-                                .long("schema")
+                                .long("attach")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
                             Arg::new("embed")
                                 .short('e')
                                 .help("Embed documents or keep the documents external")
-                                .long("schema")
+                                .long("embed")
                                 .value_parser(value_parser!(bool)),
                         ),
                 )
@@ -182,14 +182,14 @@ fn main() {
                         .arg(
                             Arg::new("attach")
                                 .help("Path to file or directory for file attachments")
-                                .long("schema")
+                                .long("attach")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
                             Arg::new("embed")
                                 .short('e')
                                 .help("Embed documents or keep the documents external")
-                                .long("schema")
+                                .long("embed")
                                 .value_parser(value_parser!(bool)),
                         )
                         ,
