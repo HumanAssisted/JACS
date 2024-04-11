@@ -300,9 +300,11 @@ fn main() {
                 // check if output filename exists and that if so it's for one file
 
                 let mut files: Vec<String> = Vec::new();
-                if filename.is_none() && directory.is_none() {
-                    eprintln!("Error: You must specify either a filename or a directory.");
+                if filename.is_none() && directory.is_none() && attachments.is_none() {
+                    eprintln!("Error: You must specify either a filename or a directory or create from attachments.");
                     std::process::exit(1);
+                } else if filename.is_none() && directory.is_none() {
+                    files.push("no filepath given".to_string()); // hack to get the iterator to open
                 } else if let Some(file) = filename {
                     files.push(file.to_string());
                 } else if let Some(dir) = directory {
@@ -330,7 +332,11 @@ fn main() {
 
                 // iterate over filenames
                 for file in &files {
-                    let document_string = fs::read_to_string(file).expect("document file loading");
+                    let document_string: String = if filename.is_none() && directory.is_none() {
+                        "{}".to_string()
+                    } else {
+                        fs::read_to_string(file).expect("document file loading")
+                    };
                     let path = Path::new(file);
                     let loading_filename = path.file_name().unwrap().to_str().unwrap();
                     let loading_filename_string = loading_filename.to_string();
@@ -555,12 +561,14 @@ fn main() {
                                             "document specialised schema {} validation failed {}",
                                             document_key, e
                                         );
+                                        std::process::exit(1);
                                     }
                                 }
                             }
                         }
                         Err(ref e) => {
                             eprintln!("document {} validation failed {}", file, e);
+                            std::process::exit(1);
                         }
                     }
                 }
