@@ -12,7 +12,7 @@ fn test_update_agent_and_verify_versions() {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "809750ec-215d-440f-9e03-f71114924a1d:8675c919-cb3a-40c8-a716-7f8e04350651".to_string();
+        "37e6b2e0-5100-4eb7-b042-2630beaa8531:c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3".to_string();
     let result = agent.load_by_id(Some(agentid), None);
 
     match result {

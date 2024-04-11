@@ -1,7 +1,6 @@
 use jacs::agent::loaders::FileLoader;
 use std::fs;
 mod utils;
-use utils::{load_test_agent_one, load_test_agent_two};
 
 #[test]
 fn test_validate_agent_creation() {
