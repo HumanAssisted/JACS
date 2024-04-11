@@ -16,7 +16,7 @@ fn test_load_custom_schema_and_custom_document() {
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     println!("loaded valid {}", document_key);
@@ -96,11 +96,11 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let modified_document_string =
-        load_local_document(&"examples/documents/MODIFIED_e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string())
+        load_local_document(&"examples/documents/MODIFIED_40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string())
             .unwrap();
 
     let new_document = agent
