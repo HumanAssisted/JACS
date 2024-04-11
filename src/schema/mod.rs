@@ -256,7 +256,7 @@ impl Schema {
         };
 
         // make sure there is no id or version field
-        if instance.get_str("id").is_some() || instance.get_str("version").is_some() {
+        if instance.get_str("jacsId").is_some() || instance.get_str("jacsVersion").is_some() {
             let error_message = "New JACs documents should have no id or version";
             error!("{}", error_message);
             return Err(error_message.into());

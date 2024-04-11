@@ -118,35 +118,36 @@ There is also a public and private key created in the directory set with `jacs_k
 
 
 ```
-agent-signature": {
-    "agentID": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
-    "agentVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
-    "date": "2024-03-24T09:14:03.028576+00:00",
-    "fields": [
-      "favorite-snack",
-      "id",
-      "lastVersion",
-      "originalVersion",
-      "version",
-      "versionDate",
-      "name",
-      "agentype",
-      "description"
-    ],
-    "publicKeyHash": "975f6dbe685a186deabab958b30c7c5aa97c144e3cb4357e34440783669e9815",
-    "signature": "C/NQGYlR8zoYu/0rngi12lpG32lkPGPqP1y10u5lAgr5LsvBsfvk6v3xYXvWf4e+hX1sf4YxRbolawXE0wfqRXiLazhBA2zpz0Yn4i4bfaqBd7S8+ARoWyiolXa3tcAaxdXTRiu9VWwdfBhh4Nuku+LY/Q1XkRvwCuGf0MVZmbhX9JhfPTJMK+V2zCnzWOFX15IJBUnKcSY5847Sn/aDESuu7GpRN9XJej2gIQock1iVCITr0OCp9DZryMPARWoSWGdsFZBoUiGEkKtcExcZDaKZbDSfwTXauV2yd2VrhwRhl2eu8MICWui3j7KCIHSBJ+eLTELuUFkurNuffol+aw==",
-    "signingAlgorithm": "RSA-PSS"
-  },
-  "favorite-snack": "mango",
-  "id": "b6a7fcb4-a630-413b-9f5d-48a42a8e9d14",
-  "lastVersion": "b6a7f3b4-a6e0-413b-9f5d-48a42a8e9d14",
-  "originalVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
-  "sha256": "19585c7a77b8416711a298e5c02056d5ed864a11218c563b3b4ef83563831fea",
-  "version": "003f2cf6-6fc1-4f09-9877-ff42d5c0170e",
-  "versionDate": "2024-03-24T09:14:02.966765+00:00",
-  "name": "Agent Smith",
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "agentType": "ai",
-  "description": "An agent without keys, id or version"
+  "description": "An agent without keys, id or version",
+  "jacsId": "809750ec-215d-440f-9e03-f71114924a1d",
+  "jacsOriginalDate": "2024-04-11T05:40:15.934777+00:00",
+  "jacsOriginalVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+  "jacsSha256": "45c7af0a701a97907926910df7005a0a69e769380314b1daf15c7186d3c7263f",
+  "jacsSignature": {
+    "agentID": "809750ec-215d-440f-9e03-f71114924a1d",
+    "agentVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+    "date": "2024-04-11T05:40:15.949350+00:00",
+    "fields": [
+      "$schema",
+      "agentType",
+      "description",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate",
+      "name"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "LcsuFUqYIVsLfzaDTcXv+HN/ujd+Zv6A1QEiLTSPPHQVRlktmHIX+igd9wgStMVXB0uXH0yZknjJXv/7hQC0J5o5ZuNVN+ITBqG8fg8CEKPAzkQo3zdKfTWBw/GfjyyvItpZzQMGAPoOChS0tc0po5Z8ftOTmsxbfkM4ULGzLrVrhs21i/HpFa8qBzSVyhznwBT4fqOP6b1NZl7IABJS3pQdKbEZ9+Az+O4/Nl55mpfgAppOEbr5XNFIGRKvQ3K5oJS55l6e3GrbH3+5J3bDC1Gxh4wbqYJXVBVKipdJVCtoftEoi1ipTxVtv6j/86egUG7+N1CA6p33q1TXJqwqh4YNFq+9XAAj4X7oSyChA5j4VGegl6x5g+qGMszLGJC2oK6Xalna4dGETe3bjx9+QBQKrYc9T3K3X7Ros0uahiUyx8ekuX25ERGojtYIOpjcGLiPGtp95lbbnX/0cLcbJC2IZjduBeS76RTHlt3/RG5ygbzwK3Pao41wVNJyjLoy5SCi6pguTDjMBGQWjTOfKmK3vv9E8tI6T2lJJqeLtNLIkBpZ2KodqkcTr+80ySehMKglwHBQkjx646afCb+dOwdqhhHQt1gSasQRTxHUWg9NcmZ2uqJoXgQ/mGhsz3b8lgRcZEdA8jf9bxMal3+vWhrY/c3o7y0wiajx838ijYE=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "jacsVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+  "jacsVersionDate": "2024-04-11T05:40:15.934777+00:00",
+  "name": "Agent Smith"
 }
 
 ```

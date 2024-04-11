@@ -250,8 +250,8 @@ impl Document for Agent {
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
         let mut documents = self.documents.lock().expect("JACSDocument lock");
         let doc = JACSDocument {
-            id: value.get_str("id").expect("REASON").to_string(),
-            version: value.get_str("version").expect("REASON").to_string(),
+            id: value.get_str("jacsId").expect("REASON").to_string(),
+            version: value.get_str("jacsVersion").expect("REASON").to_string(),
             value: Some(value.clone()).into(),
         };
         let key = doc.getkey();
@@ -322,11 +322,11 @@ impl Document for Agent {
         }
 
         // check that new document has same id, value, hash as old
-        let orginal_id = &value.get_str("id");
-        let orginal_version = &value.get_str("version");
+        let orginal_id = &value.get_str("jacsId");
+        let orginal_version = &value.get_str("jacsVersion");
         // check which fields are different
-        let new_doc_orginal_id = &new_document.get_str("id");
-        let new_doc_orginal_version = &new_document.get_str("version");
+        let new_doc_orginal_id = &new_document.get_str("jacsId");
+        let new_doc_orginal_version = &new_document.get_str("jacsVersion");
         if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
             return Err(format!(
                 "The id/versions do not match found for key: {}. {:?}{:?}",
@@ -339,7 +339,7 @@ impl Document for Agent {
 
         // validate schema
         let new_version = Uuid::new_v4().to_string();
-        let last_version = &value["version"];
+        let last_version = &value["javsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
         new_document["jacsLastVersion"] = last_version.clone();
@@ -363,7 +363,7 @@ impl Document for Agent {
         let original_document = self.get_document(document_key).unwrap();
         let mut value = original_document.value;
         let new_version = Uuid::new_v4().to_string();
-        let last_version = &value["version"];
+        let last_version = &value["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
         value["jacsLastVersion"] = last_version.clone();

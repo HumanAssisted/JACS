@@ -240,7 +240,7 @@ fn main() {
                     .expect("signature verification");
                 println!(
                     "Agent {} signature verified OK.",
-                    agent.get_lookup_id().expect("id")
+                    agent.get_lookup_id().expect("jacsId")
                 );
             }
             _ => println!("please enter subcommand see jacs agent --help"),

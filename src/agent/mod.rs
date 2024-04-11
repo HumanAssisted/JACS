@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 pub const SHA256_FIELDNAME: &str = "jacsSha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
-pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
+pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsAgentSignature";
 
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
@@ -205,8 +205,8 @@ impl Agent {
             Ok(value) => {
                 self.value = Some(value.clone());
                 if let Some(ref value) = self.value {
-                    self.id = value.get_str("id");
-                    self.version = value.get_str("version");
+                    self.id = value.get_str("jacsId");
+                    self.version = value.get_str("jacsVersion");
                 }
             }
             Err(e) => {
@@ -216,9 +216,8 @@ impl Agent {
         }
 
         if self.id.is_some() {
-            let id_string = self.id.clone().expect("string expected").to_string();
+            let _id_string = self.id.clone().expect("string expected").to_string();
             self.fs_load_keys()?;
-            debug!("loaded keys for agent");
             self.verify_self_signature()?;
         }
 
@@ -576,11 +575,10 @@ impl Agent {
     ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
         let value = self.schema.validate_header(json)?;
 
-        // additional validation
-
         // check hash
         let _ = self.verify_hash(&value)?;
         // check signature
+
         return Ok(value);
     }
 
@@ -594,6 +592,7 @@ impl Agent {
         // check hash
         let _ = self.verify_hash(&value)?;
         // check signature
+
         return Ok(value);
     }
 
@@ -654,7 +653,8 @@ impl Agent {
         if create_keys {
             self.generate_keys()?;
         }
-        let _ = self.fs_load_keys();
+
+        let _ = self.fs_load_keys()?;
 
         // generate keys
 

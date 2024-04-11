@@ -1,0 +1,61 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "capabilities": [
+    {
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "name": "withdraw",
+      "operation": "deduct",
+      "units": [
+        {
+          "generaltype": "monetary",
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "label": "net worth",
+          "unit_name": "dollars"
+        }
+      ]
+    }
+  ],
+  "description": "Guy with a bank account",
+  "jacsAgentType": "human",
+  "jacsId": "958b8b36-0734-4f13-b660-17496f88acc5",
+  "jacsOriginalDate": "2024-04-11T06:22:25.787485+00:00",
+  "jacsOriginalVersion": "fe216e87-74af-4b16-a86a-6776afa682b4",
+  "jacsSha256": "e51ce83bd0021c3a994d66ff89d57a546a8638d0a8a0fdec82c38073deb0bbbe",
+  "jacsSignature": {
+    "agentID": "958b8b36-0734-4f13-b660-17496f88acc5",
+    "agentVersion": "fe216e87-74af-4b16-a86a-6776afa682b4",
+    "date": "2024-04-11T06:22:26.256388+00:00",
+    "fields": [
+      "$schema",
+      "capabilities",
+      "description",
+      "jacsAgentType",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate",
+      "modifications",
+      "name",
+      "quantifications"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "WwUtauVCMe3XTwmVyEdFPGqu4XMHs95MvccJPHbE8BhvnOFrIhrrvpe06ls9JuY0NcS3uBjV+hmWW79o60eooBhBxZJokV/um1FBlJsJ3k+o5f+L9mlmvvzCDHLI5Eyji+y5aoNx5JbJ1TgB+aISlTDyTcI5qBu4lnatURPuuwp1Gfm1sL1lLJ4CcAfC3Wu3PlPhqcQWavFETl1WIXGerJgF05XnfGTbCLZ0QQH2LjNalB7IcmBMKGjrKPOjAvN1fjhp4HcmwYZ/+95TYqMFuQkK8a19Css6vQ1CM0Px/C7UtU8Z8Q4thklB4xMAX5Q+z5EUg4az6XzCPQKBUpluGLTro9uZycj5seq1farF93TGx/JnDGJ4c7sF/qvkSA/5TiMbK5SHcetJJUydRhU0ZmREWIkL0kBIxIjF7ege4t/NVZINrCV73PZ5/A+DXrgxjgA98qWsyGGO5jyQT+giKKIPhtURpR23pktmwOvJE5YOLa91wz73rTNS5/Cd7qXk5pqBNnZTTc8WJwMJI0dmGuVxZaoGzYeLciSAjRuuxTHzqk2OjDUmjLYxjWgQA834FxXbiHNHv7JVllYQCQuF89NuVpc4ng2TQqShcB2iRnGHwe1H52ikPfWlSENWo/oZeJ6FaVDZE4XLfX0atoMvdk8esVly2gj+bhTn2Z5Lakg=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "jacsVersion": "fe216e87-74af-4b16-a86a-6776afa682b4",
+  "jacsVersionDate": "2024-04-11T06:22:25.787485+00:00",
+  "modifications": [],
+  "name": "Ralph",
+  "quantifications": [
+    [
+      120000,
+      {
+        "generaltype": "monetary",
+        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+        "label": "net worth",
+        "unit_name": "dollars"
+      }
+    ]
+  ]
+}
