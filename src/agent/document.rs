@@ -342,9 +342,9 @@ impl Document for Agent {
         let last_version = &value["version"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        new_document["lastVersion"] = last_version.clone();
-        new_document["version"] = json!(format!("{}", new_version));
-        new_document["versionDate"] = json!(format!("{}", versioncreated));
+        new_document["jacsLastVersion"] = last_version.clone();
+        new_document["jacsVersion"] = json!(format!("{}", new_version));
+        new_document["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // get all fields but reserved
         new_document[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
             &new_document,
@@ -366,9 +366,9 @@ impl Document for Agent {
         let last_version = &value["version"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        value["lastVersion"] = last_version.clone();
-        value["version"] = json!(format!("{}", new_version));
-        value["versionDate"] = json!(format!("{}", versioncreated));
+        value["jacsLastVersion"] = last_version.clone();
+        value["jacsVersion"] = json!(format!("{}", new_version));
+        value["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // sign new version
         value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
             &value,

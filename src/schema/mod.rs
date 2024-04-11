@@ -269,11 +269,11 @@ impl Schema {
         // let now: DateTime<Utc> = Utc::now();
         let versioncreated = Utc::now().to_rfc3339();
 
-        instance["id"] = json!(format!("{}", id));
-        instance["version"] = json!(format!("{}", version));
-        instance["versionDate"] = json!(format!("{}", versioncreated));
-        instance["originalVersion"] = json!(format!("{}", original_version));
-        instance["originalDate"] = json!(format!("{}", versioncreated));
+        instance["jacsId"] = json!(format!("{}", id));
+        instance["jacsVersion"] = json!(format!("{}", version));
+        instance["jacsVersionDate"] = json!(format!("{}", versioncreated));
+        instance["jacsOriginalVersion"] = json!(format!("{}", original_version));
+        instance["jacsOriginalDate"] = json!(format!("{}", versioncreated));
 
         // if no schema is present insert standard header version
         if !instance.get_str("$schema").is_some() {
@@ -290,7 +290,6 @@ impl Schema {
                 let error_message = error_messages.first().cloned().unwrap_or_else(|| {
                     "Unexpected error during validation: no error messages found".to_string()
                 });
-                println!("adsfadfadfadsf");
                 error!("{}", error_message);
                 return Err(Box::new(ValidationError(error_message))
                     as Box<dyn std::error::Error + 'static>);

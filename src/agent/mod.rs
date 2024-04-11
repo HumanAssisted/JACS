@@ -30,8 +30,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-pub const SHA256_FIELDNAME: &str = "sha256";
-pub const AGENT_SIGNATURE_FIELDNAME: &str = "selfSignature";
+pub const SHA256_FIELDNAME: &str = "jacsSha256";
+pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
 
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
@@ -497,8 +497,8 @@ impl Agent {
         if original_hash_string != new_hash_string {
             let error_message = format!(
                 "Hashes don't match for doc {:?} {:?}! {:?} != {:?}",
-                doc.get_str("id").expect("REASON"),
-                doc.get_str("version").expect("REASON"),
+                doc.get_str("jacsId").expect("REASON"),
+                doc.get_str("jacsVersion").expect("REASON"),
                 original_hash_string,
                 new_hash_string
             );
@@ -533,11 +533,11 @@ impl Agent {
     pub fn update_self(&mut self, new_agent_string: &String) -> Result<String, Box<dyn Error>> {
         let mut new_self: Value = self.schema.validate_agent(new_agent_string)?;
         let original_self = self.value.as_ref().expect("REASON");
-        let orginal_id = &original_self.get_str("id");
-        let orginal_version = &original_self.get_str("version");
+        let orginal_id = &original_self.get_str("jacsId");
+        let orginal_version = &original_self.get_str("jacsVersion");
         // check which fields are different
-        let new_doc_orginal_id = &new_self.get_str("id");
-        let new_doc_orginal_version = &new_self.get_str("version");
+        let new_doc_orginal_id = &new_self.get_str("jacsId");
+        let new_doc_orginal_version = &new_self.get_str("jacsVersion");
         if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
             return Err(format!(
                 "The id/versions do not match for old and new agent:  . {:?}{:?}",
@@ -548,12 +548,12 @@ impl Agent {
 
         // validate schema
         let new_version = Uuid::new_v4().to_string();
-        let last_version = &original_self["version"];
+        let last_version = &original_self["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        new_self["lastVersion"] = last_version.clone();
-        new_self["version"] = json!(format!("{}", new_version));
-        new_self["versionDate"] = json!(format!("{}", versioncreated));
+        new_self["jacsLastVersion"] = last_version.clone();
+        new_self["jacsVersion"] = json!(format!("{}", new_version));
+        new_self["jacsVersionDate"] = json!(format!("{}", versioncreated));
 
         // generate new keys?
         // sign new version
@@ -563,7 +563,7 @@ impl Agent {
         let document_hash = self.hash_doc(&new_self)?;
         new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         //replace ones self
-        self.version = Some(new_self["version"].to_string());
+        self.version = Some(new_self["jacsVersion"].to_string());
         self.value = Some(new_self.clone());
         self.validate_agent(&self.to_string())?;
         self.verify_self_signature()?;
@@ -648,8 +648,8 @@ impl Agent {
         // make sure id and version are empty
         let mut instance = self.schema.create(json)?;
 
-        self.id = instance.get_str("id");
-        self.version = instance.get_str("version");
+        self.id = instance.get_str("jacsId");
+        self.version = instance.get_str("jacsVersion");
 
         if create_keys {
             self.generate_keys()?;

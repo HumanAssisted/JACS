@@ -16,23 +16,23 @@ The basis for a JACS document
 
 # Header Properties
 
-| Property                            | Type     | Required | Nullable       | Defined by                                                                                                                       |
-| :---------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                           | `string` | Required | cannot be null | [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/id")                           |
-| [version](#version)                 | `string` | Required | cannot be null | [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/version")                 |
-| [versionDate](#versiondate)         | `string` | Required | cannot be null | [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/versionDate")         |
-| [selfSignature](#selfsignature)     | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/selfSignature")          |
-| [previousVersion](#previousversion) | `string` | Optional | cannot be null | [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/previousVersion") |
-| [originalVersion](#originalversion) | `string` | Required | cannot be null | [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalVersion") |
-| [originalDate](#originaldate)       | `string` | Optional | cannot be null | [Header](header-properties-originaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalDate")       |
-| [sha256](#sha256)                   | `string` | Optional | cannot be null | [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/sha256")                   |
-| [files](#files)                     | `array`  | Optional | cannot be null | [Header](header-properties-files.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/files")                     |
+| Property                                    | Type     | Required | Nullable       | Defined by                                                                                                                               |
+| :------------------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")                           |
+| [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")                 |
+| [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")         |
+| [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/jacsSignature")                  |
+| [jacsPreviousVersion](#jacspreviousversion) | `string` | Optional | cannot be null | [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion") |
+| [jacsOriginalVersion](#jacsoriginalversion) | `string` | Required | cannot be null | [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion") |
+| [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")       |
+| [jacsSha256](#jacssha256)                   | `string` | Optional | cannot be null | [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")                   |
+| [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")                     |
 
-## id
+## jacsId
 
 uuid v4 string
 
-`id`
+`jacsId`
 
 *   is required
 
@@ -40,21 +40,21 @@ uuid v4 string
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-id.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/id")
+*   defined in: [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")
 
-### id Type
+### jacsId Type
 
 `string`
 
-### id Constraints
+### jacsId Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-## version
+## jacsVersion
 
 Version id of the object. uuid v4 string
 
-`version`
+`jacsVersion`
 
 *   is required
 
@@ -62,21 +62,21 @@ Version id of the object. uuid v4 string
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-version.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/version")
+*   defined in: [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")
 
-### version Type
+### jacsVersion Type
 
 `string`
 
-### version Constraints
+### jacsVersion Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-## versionDate
+## jacsVersionDate
 
 Date
 
-`versionDate`
+`jacsVersionDate`
 
 *   is required
 
@@ -84,21 +84,21 @@ Date
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-versiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/versionDate")
+*   defined in: [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")
 
-### versionDate Type
+### jacsVersionDate Type
 
 `string`
 
-### versionDate Constraints
+### jacsVersionDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
-## selfSignature
+## jacsSignature
 
 Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
-`selfSignature`
+`jacsSignature`
 
 *   is optional
 
@@ -106,17 +106,17 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/selfSignature")
+*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/jacsSignature")
 
-### selfSignature Type
+### jacsSignature Type
 
 `object` ([Signature](signature.md))
 
-## previousVersion
+## jacsPreviousVersion
 
 Previous Version id of the object. If blank, it's claiming to be the first
 
-`previousVersion`
+`jacsPreviousVersion`
 
 *   is optional
 
@@ -124,21 +124,21 @@ Previous Version id of the object. If blank, it's claiming to be the first
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-previousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/previousVersion")
+*   defined in: [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")
 
-### previousVersion Type
+### jacsPreviousVersion Type
 
 `string`
 
-### previousVersion Constraints
+### jacsPreviousVersion Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-## originalVersion
+## jacsOriginalVersion
 
 Original Version id of the object.
 
-`originalVersion`
+`jacsOriginalVersion`
 
 *   is required
 
@@ -146,43 +146,43 @@ Original Version id of the object.
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-originalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalVersion")
+*   defined in: [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")
 
-### originalVersion Type
+### jacsOriginalVersion Type
 
 `string`
 
-### originalVersion Constraints
+### jacsOriginalVersion Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
-## originalDate
+## jacsOriginalDate
 
 Original creation date of the document.
 
-`originalDate`
+`jacsOriginalDate`
 
-*   is optional
+*   is required
 
 *   Type: `string`
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-originaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/originalDate")
+*   defined in: [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")
 
-### originalDate Type
+### jacsOriginalDate Type
 
 `string`
 
-### originalDate Constraints
+### jacsOriginalDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
-## sha256
+## jacsSha256
 
 Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature. Not immediatly required, but eventually required.
 
-`sha256`
+`jacsSha256`
 
 *   is optional
 
@@ -190,17 +190,17 @@ Hash of every field except this one. During  updates and creation hash is the la
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-sha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/sha256")
+*   defined in: [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")
 
-### sha256 Type
+### jacsSha256 Type
 
 `string`
 
-## files
+## jacsFiles
 
 A set of files included with the jacs document
 
-`files`
+`jacsFiles`
 
 *   is optional
 
@@ -208,8 +208,8 @@ A set of files included with the jacs document
 
 *   cannot be null
 
-*   defined in: [Header](header-properties-files.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/files")
+*   defined in: [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")
 
-### files Type
+### jacsFiles Type
 
 `object[]` ([File](files.md))
