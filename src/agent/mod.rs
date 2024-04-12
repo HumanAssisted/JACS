@@ -30,9 +30,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-pub const SHA256_FIELDNAME: &str = "sha256";
-pub const AGENT_SIGNATURE_FIELDNAME: &str = "selfSignature";
-pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "agentSignature";
+pub const SHA256_FIELDNAME: &str = "jacsSha256";
+pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
+pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsAgentSignature";
 
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
@@ -118,7 +118,7 @@ impl Agent {
 
         let default_directory = get_default_dir();
 
-        let config = fs::read_to_string("jacs.config.json").expect("config loading");
+        let config = fs::read_to_string("jacs.config.json").expect("config file missing");
         schema.validate_config(&config).expect("config validation");
 
         Ok(Self {
@@ -205,8 +205,8 @@ impl Agent {
             Ok(value) => {
                 self.value = Some(value.clone());
                 if let Some(ref value) = self.value {
-                    self.id = value.get_str("id");
-                    self.version = value.get_str("version");
+                    self.id = value.get_str("jacsId");
+                    self.version = value.get_str("jacsVersion");
                 }
             }
             Err(e) => {
@@ -216,9 +216,8 @@ impl Agent {
         }
 
         if self.id.is_some() {
-            let id_string = self.id.clone().expect("string expected").to_string();
+            let _id_string = self.id.clone().expect("string expected").to_string();
             self.fs_load_keys()?;
-            debug!("loaded keys for agent");
             self.verify_self_signature()?;
         }
 
@@ -369,30 +368,6 @@ impl Agent {
     /// * `Ok(Value)` - A new JSON value containing the signature and related metadata.
     /// * `Err(Box<dyn Error>)` - An error occurred while generating the signature.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// use jacs::Agent;
-    /// use serde_json::json;
-    ///
-    /// let mut agent = Agent::new();
-    /// let json_value = json!({
-    ///     "name": "John Doe",
-    ///     "age": 30
-    /// });
-    /// let fields = Some(&vec!["name".to_string(), "age".to_string()]);
-    /// let placement_key = "signature".to_string();
-    ///
-    /// let signature_result = agent.signing_procedure(&json_value, fields, &placement_key);
-    /// match signature_result {
-    ///     Ok(signature_value) => {
-    ///         println!("Signature: {}", signature_value);
-    ///     }
-    ///     Err(error) => {
-    ///         eprintln!("Error generating signature: {}", error);
-    ///     }
-    /// }
-    /// ```
     ///
     /// # Errors
     ///
@@ -521,8 +496,8 @@ impl Agent {
         if original_hash_string != new_hash_string {
             let error_message = format!(
                 "Hashes don't match for doc {:?} {:?}! {:?} != {:?}",
-                doc.get_str("id").expect("REASON"),
-                doc.get_str("version").expect("REASON"),
+                doc.get_str("jacsId").expect("REASON"),
+                doc.get_str("jacsVersion").expect("REASON"),
                 original_hash_string,
                 new_hash_string
             );
@@ -557,11 +532,11 @@ impl Agent {
     pub fn update_self(&mut self, new_agent_string: &String) -> Result<String, Box<dyn Error>> {
         let mut new_self: Value = self.schema.validate_agent(new_agent_string)?;
         let original_self = self.value.as_ref().expect("REASON");
-        let orginal_id = &original_self.get_str("id");
-        let orginal_version = &original_self.get_str("version");
+        let orginal_id = &original_self.get_str("jacsId");
+        let orginal_version = &original_self.get_str("jacsVersion");
         // check which fields are different
-        let new_doc_orginal_id = &new_self.get_str("id");
-        let new_doc_orginal_version = &new_self.get_str("version");
+        let new_doc_orginal_id = &new_self.get_str("jacsId");
+        let new_doc_orginal_version = &new_self.get_str("jacsVersion");
         if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
             return Err(format!(
                 "The id/versions do not match for old and new agent:  . {:?}{:?}",
@@ -572,12 +547,12 @@ impl Agent {
 
         // validate schema
         let new_version = Uuid::new_v4().to_string();
-        let last_version = &original_self["version"];
+        let last_version = &original_self["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        new_self["lastVersion"] = last_version.clone();
-        new_self["version"] = json!(format!("{}", new_version));
-        new_self["versionDate"] = json!(format!("{}", versioncreated));
+        new_self["jacsLastVersion"] = last_version.clone();
+        new_self["jacsVersion"] = json!(format!("{}", new_version));
+        new_self["jacsVersionDate"] = json!(format!("{}", versioncreated));
 
         // generate new keys?
         // sign new version
@@ -587,7 +562,7 @@ impl Agent {
         let document_hash = self.hash_doc(&new_self)?;
         new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         //replace ones self
-        self.version = Some(new_self["version"].to_string());
+        self.version = Some(new_self["jacsVersion"].to_string());
         self.value = Some(new_self.clone());
         self.validate_agent(&self.to_string())?;
         self.verify_self_signature()?;
@@ -600,11 +575,10 @@ impl Agent {
     ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
         let value = self.schema.validate_header(json)?;
 
-        // additional validation
-
         // check hash
         let _ = self.verify_hash(&value)?;
         // check signature
+
         return Ok(value);
     }
 
@@ -618,6 +592,7 @@ impl Agent {
         // check hash
         let _ = self.verify_hash(&value)?;
         // check signature
+
         return Ok(value);
     }
 
@@ -672,13 +647,14 @@ impl Agent {
         // make sure id and version are empty
         let mut instance = self.schema.create(json)?;
 
-        self.id = instance.get_str("id");
-        self.version = instance.get_str("version");
+        self.id = instance.get_str("jacsId");
+        self.version = instance.get_str("jacsVersion");
 
         if create_keys {
             self.generate_keys()?;
         }
-        let _ = self.fs_load_keys();
+
+        let _ = self.fs_load_keys()?;
 
         // generate keys
 

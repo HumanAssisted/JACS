@@ -10,30 +10,71 @@ use std::path::PathBuf;
 use std::env;
 
 #[cfg(test)]
+pub fn generate_new_docs_with_attachments() {
+    let mut agent = load_test_agent_one();
+    let mut document_string =
+        load_local_document(&"examples/raw/embed-xml.json".to_string()).unwrap();
+    let mut document = agent
+        .create_document_and_load(
+            &document_string,
+            vec![
+                "examples/raw/plants.xml".to_string(),
+                "examples/raw/breakfast.xml".to_string(),
+            ]
+            .into(),
+            Some(false),
+        )
+        .unwrap();
+    let mut document_key = document.getkey();
+    println!("document_key {}", document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    _ = agent.save_document(&document_key, None);
+
+    document_string = load_local_document(&"examples/raw/image-embed.json".to_string()).unwrap();
+    document = agent
+        .create_document_and_load(
+            &document_string,
+            vec!["examples/raw/mobius.jpeg".to_string()].into(),
+            Some(true),
+        )
+        .unwrap();
+    document_key = document.getkey();
+    println!("document_key {}", document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    _ = agent.save_document(&document_key, None);
+}
+
+#[cfg(test)]
 pub fn generate_new_docs() {
     static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
     let mut agent = load_test_agent_one();
     let mut document_string =
         load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
-    let mut document = agent.create_document_and_load(&document_string).unwrap();
+    let mut document = agent
+        .create_document_and_load(&document_string, None, None)
+        .unwrap();
     let mut document_key = document.getkey();
     println!("document_key {}", document_key);
-    let mut document_ref = agent.get_document(&document_key).unwrap();
-    let _ = agent.save_document(&document_key);
+    // let mut document_ref = agent.get_document(&document_key).unwrap();
+    let _ = agent.save_document(&document_key, None);
 
     document_string = load_local_document(&"examples/raw/gpt-lsd.json".to_string()).unwrap();
-    document = agent.create_document_and_load(&document_string).unwrap();
+    document = agent
+        .create_document_and_load(&document_string, None, None)
+        .unwrap();
     document_key = document.getkey();
     println!("document_key {}", document_key);
-    document_ref = agent.get_document(&document_key).unwrap();
-    let _ = agent.save_document(&document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    let _ = agent.save_document(&document_key, None);
 
     document_string = load_local_document(&"examples/raw/json-ld.json".to_string()).unwrap();
-    document = agent.create_document_and_load(&document_string).unwrap();
+    document = agent
+        .create_document_and_load(&document_string, None, None)
+        .unwrap();
     document_key = document.getkey();
     println!("document_key {}", document_key);
-    document_ref = agent.get_document(&document_key).unwrap();
-    _ = agent.save_document(&document_key);
+    // document_ref = agent.get_document(&document_key).unwrap();
+    _ = agent.save_document(&document_key, None);
 }
 
 #[cfg(test)]
@@ -45,7 +86,7 @@ pub fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "fe00bb15-8c7f-43ac-9413-5a7bd5bb039d:1f639f69-b3a7-45d5-b814-bc7b91fb3b97".to_string();
+        "37e6b2e0-5100-4eb7-b042-2630beaa8531:c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3".to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -77,7 +118,7 @@ pub fn load_test_agent_two() -> Agent {
     );
     let result = agent.load_by_id(
         Some(
-            "396155ad-484a-4659-a4e7-341ef52aa63d:a3efb91b-1245-4852-9934-fde8a2cfe6d8".to_string(),
+            "958b8b36-0734-4f13-b660-17496f88acc5:fe216e87-74af-4b16-a86a-6776afa682b4".to_string(),
         ),
         None,
     );

@@ -1,5 +1,4 @@
 use crate::agent::Agent;
-use log::{debug, error, warn};
 use std::error::Error;
 
 pub trait BoilerPlate {
@@ -20,7 +19,6 @@ impl BoilerPlate for Agent {
 
     fn get_public_key(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         match &self.public_key {
-            // Some(public_key) => Ok(String::from_utf8(public_key.to_vec())?),
             Some(public_key) => Ok(public_key.to_vec()),
             None => Err("public_key is None".into()),
         }

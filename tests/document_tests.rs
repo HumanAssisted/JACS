@@ -16,7 +16,7 @@ fn test_load_custom_schema_and_custom_document() {
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     println!("loaded valid {}", document_key);
@@ -33,12 +33,14 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string = load_local_document(&"examples/raw/not-fruit.json".to_string()).unwrap();
-    let document = agent.create_document_and_load(&document_string).unwrap();
+    let document = agent
+        .create_document_and_load(&document_string, None, None)
+        .unwrap();
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
     let document_ref = agent.get_document(&document_key).unwrap();
 
-    // let _ = agent.save_document(&document_key);
+    // let _ = agent.save_document(&document_key, None);
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
         Ok(()) => {
             // Validation succeeded
@@ -61,6 +63,13 @@ fn test_create() {
 }
 
 #[test]
+#[ignore]
+fn test_create_attachments() {
+    // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments
+    utils::generate_new_docs_with_attachments();
+}
+
+#[test]
 fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
@@ -68,14 +77,16 @@ fn test_load_custom_schema_and_new_custom_document() {
     agent.load_custom_schemas(&schemas);
     let document_string =
         load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
-    let document = agent.create_document_and_load(&document_string).unwrap();
+    let document = agent
+        .create_document_and_load(&document_string, None, None)
+        .unwrap();
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
     let document_ref = agent.get_document(&document_key).unwrap();
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
-    // let _ = agent.save_document(&document_key);
+    // let _ = agent.save_document(&document_key, None);
 }
 
 #[test]
@@ -85,15 +96,15 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let modified_document_string =
-        load_local_document(&"examples/documents/MODIFIED_e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d:975f4523-e2e0-4b64-9c31-c718796fbdb1.json".to_string())
+        load_local_document(&"examples/documents/MODIFIED_40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string())
             .unwrap();
 
     let new_document = agent
-        .update_document(&document_key, &modified_document_string)
+        .update_document(&document_key, &modified_document_string, None)
         .unwrap();
 
     let new_document_key = new_document.getkey();

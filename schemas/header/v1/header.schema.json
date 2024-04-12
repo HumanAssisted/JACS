@@ -5,50 +5,58 @@
   "description": "The basis for a JACS document",
   "type": "object",
   "properties": {
-    "id": {
+    "jacsId": {
       "description": "uuid v4 string",
       "type": "string",
       "format": "uuid"
     },
-    "version": {
+    "jacsVersion": {
       "description": "Version id of the object. uuid v4 string ",
       "type": "string",
       "format": "uuid"
     },
-    "versionDate": {
+    "jacsVersionDate": {
       "description": "Date ",
       "format": "date-time",
       "type": "string"
     },
-    "selfSignature": {
+    "jacsSignature": {
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
-    "previousVersion": {
+    "jacsPreviousVersion": {
       "description": "Previous Version id of the object. If blank, it's claiming to be the first ",
       "type": "string",
       "format": "uuid"
     },
-    "originalVersion": {
+    "jacsOriginalVersion": {
       "description": "Original Version id of the object.",
       "type": "string",
       "format": "uuid"
     },
-    "originalDate": {
+    "jacsOriginalDate": {
       "description": "Original creation date of the document.",
       "type": "string",
       "format": "date-time"
     },
-    "sha256": {
+    "jacsSha256": {
       "description": "Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature. Not immediatly required, but eventually required.",
       "type": "string"
+    },
+    "jacsFiles": {
+      "description": "A set of files included with the jacs document",
+      "type": "array",
+      "items": {
+        "$ref": "../../components/files/v1/files.schema.json"
+      }
     }
   },
   "required": [
-    "id",
-    "version",
-    "versionDate",
-    "originalVersion",
+    "jacsId",
+    "jacsVersion",
+    "jacsVersionDate",
+    "jacsOriginalVersion",
+    "jacsOriginalDate",
     "$schema"
   ]
 }

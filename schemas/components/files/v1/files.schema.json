@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/components/files/v1/files.schema.json",
+  "title": "File",
+  "description": "General data about unstructured content not in JACS",
+  "type": "object",
+  "properties": {
+    "mimetype": {
+      "type": "string",
+      "description": "Type of file. e.g. https://www.iana.org/assignments/media-types/application/json"
+    },
+    "path": {
+      "type": "string",
+      "description": "where can the file be found on the filesystem. For now no online. ipfs, https, etc"
+    },
+    "contents": {
+      "type": "string",
+      "description": "base64 encoded contents, possibly compressed"
+    },
+    "embed": {
+      "type": "boolean",
+      "description": "should JACS embed the file contents?"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "content checksum to verify contents on download."
+    }
+  },
+  "required": [
+    "mimetype",
+    "embed",
+    "path"
+  ]
+}

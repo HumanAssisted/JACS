@@ -16,15 +16,15 @@ https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1
 
 # 1 Properties
 
-| Property                | Type     | Required | Nullable       | Defined by                                                                                                                       |
-| :---------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| [agentType](#agenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-agenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/agentType") |
+| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                               |
+| :------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/jacsAgentType") |
 
-## agentType
+## jacsAgentType
 
 Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence.
 
-`agentType`
+`jacsAgentType`
 
 *   is optional
 
@@ -32,13 +32,13 @@ Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a c
 
 *   cannot be null
 
-*   defined in: [Agent](agent-allof-1-properties-agenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/agentType")
+*   defined in: [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/jacsAgentType")
 
-### agentType Type
+### jacsAgentType Type
 
 `string`
 
-### agentType Constraints
+### jacsAgentType Constraints
 
 **enum**: the value of this property must be equal to one of the following values:
 

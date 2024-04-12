@@ -1,0 +1,36 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "description": "We should embed an image here",
+  "jacsAgentSignature": {
+    "agentID": "37e6b2e0-5100-4eb7-b042-2630beaa8531",
+    "agentVersion": "c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3",
+    "date": "2024-04-11T06:40:38.292085+00:00",
+    "fields": [
+      "$schema",
+      "description",
+      "jacsFiles",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "bsVz2Met9rVU75QB/NFpFOR4DyOBXlPfy7vGrWEw032k2i8POwh8+wUNYHW/5S5GAIC7sWAxrcxkSlSW+yuo9A58MIKPmTe3hp3ckR1dUsvb4jcHDIDsnFzND4zO3Pon9F59AfXsqrzz1zJDWprQrm6xz02TW8yuoTDdkAnm8lIa9EFe2I5UF4u+pzkNtW07Ax2I0i9AJjylGlpu/ldmyu4IXMEbC0J/UsGIA97ev/oCRrCLCAy8G7DKvLPnVB73AmQ5EIRLaYzVrB/CzDRGq5IdCQ9z5WHAZMXW89Hd/vz04KW0jbSg526rKcVSLTvjmODSvMhDaMhX/r9xYQXt6hgdQDAG3w3rsfOFqOe9Z3BHM23JaOgOCEXLeW0+7e1EgzyXa1qrupM0KmMLjvOTJm8D01DKcrehSBibe/KZw/TX4o+Ufg9UgjNZEwYDHzUjsVyqazuArprjJAHDjHk+YSRFdyGmbsrEjvRcbfs+hOsNrsgXAhWnn273nQ3kdhZ+VYk76baOcMkBR843GCLnRfOP8T06DFJH4mx/X1t6PyxelOPwUUrSIxP6StRAGAAdOADzm/hGexp6/nvEsalMbV/ORxrBMJEGItpINdgW82mV7Dlz63j+siDjeFJlQJpDE5W9K9LrFFhruN0Y0dOvVNT4nf492o3yGFdzyBkUuUQ=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "jacsFiles": [
+    {
+      "embed": false,
+      "mimetype": "image/jpeg",
+      "path": "examples/raw/mobius.jpeg",
+      "sha256": "31b515123a220b51800a194cac5516b2407af3396ac5e09d0c35cb94cc1b386b"
+    }
+  ],
+  "jacsId": "2e126d43-9b39-4592-bc3d-530a0386798c",
+  "jacsOriginalDate": "2024-04-11T06:40:37.891233+00:00",
+  "jacsOriginalVersion": "9530a2dd-7bfa-4ffd-b495-d0c822758f06",
+  "jacsSha256": "8b5882bae55f3ea5c36c049fbbda1af9889c568cd46d0c3fe3efaebdaeb02eef",
+  "jacsVersion": "9530a2dd-7bfa-4ffd-b495-d0c822758f06",
+  "jacsVersionDate": "2024-04-11T06:40:37.891233+00:00"
+}

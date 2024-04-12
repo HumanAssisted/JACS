@@ -3,6 +3,7 @@ use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
 use secrecy::ExposeSecret;
+use serde::ser::StdError;
 
 use chrono::Utc;
 use log::{debug, error, info, warn};
@@ -63,7 +64,11 @@ pub trait FileLoader {
         &self,
         document_id: &String,
         document_string: &String,
+        output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
+
+    /// used to get base64 content from a filepath
+    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -80,10 +85,16 @@ impl FileLoader for Agent {
 
         let current_dir = env::current_dir()?;
         let jacs_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
-        return Ok(current_dir
-            .join(jacs_dir)
-            .join(doctype)
-            .join(format!("{}.json", docid)));
+
+        let path = current_dir.join(jacs_dir).join(doctype);
+
+        let filename = if docid.ends_with(".json") {
+            docid.to_string()
+        } else {
+            format!("{}.json", docid)
+        };
+
+        return Ok(path.join(filename));
     }
 
     fn build_key_filepath(
@@ -201,13 +212,35 @@ impl FileLoader for Agent {
         &self,
         document_id: &String,
         document_string: &String,
+        output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
-        let document_path = self.build_filepath(&"documents".to_string(), document_id)?;
+        let documentoutput_filename = output_filename
+            .or_else(|| Some(document_id.to_string()))
+            .unwrap();
+        let document_path =
+            self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
         info!("document path {:?} ", document_path);
         Ok(save_to_filepath(
             &document_path,
             document_string.as_bytes(),
         )?)
+    }
+
+    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>> {
+        // if file_is_executable(&document_filepath) {
+        //     return Err("Executable files are not allowed.".into());
+        // }
+
+        // Check if the file path is a local filesystem path
+        if !Path::new(&document_filepath).is_file() {
+            println!("document_filepath ? {}", document_filepath);
+            return Err("File not found, only local filesystem paths are supported.".into());
+        }
+
+        let contents = fs::read(&document_filepath)?;
+        let base64_contents = base64::encode(&contents);
+
+        Ok(base64_contents)
     }
 }
 

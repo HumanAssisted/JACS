@@ -10,7 +10,7 @@
     {
       "type": "object",
       "properties": {
-        "agentType": {
+        "jacsAgentType": {
           "type": "string",
           "enum": [
             "human",
@@ -24,6 +24,6 @@
     }
   ],
   "required": [
-    "agentType"
+    "jacsAgentType"
   ]
 }

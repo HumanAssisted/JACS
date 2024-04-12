@@ -2,18 +2,26 @@
 
 Welcome to JACS. JSON Agent Communication Standard.
 
+NOTE: Current version 0.2.2 *ALPHA*.
+
 The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable:
 
  -  source
  -  schema
  -  state and version
 
-The library provides data validation, cryptography tooling that might useful for both human interfaces and AI.
+The library provides data validation, cryptography tooling that might useful for both human interfaces and AI. JACS  is a format for creating secure, verifiable JSON documents that AI agents can exchange and process. The goal of JACS is to ensure that these documents remain unchanged (immutable), produce the same verification result every time (idempotent), and can be used flexibly by the software or people processing them.
+
+With JACS, data can be securely stored or shared, and different versions of the data can be tracked. One of the key features of JACS is its ability to provide instant verification of document ownership. Each version of a JACS document is signed with a unique digital signature, allowing an AI agent to prove its data claims. This enables trusted interactions between agents and provides flexibility in how documents are versioned and exchanged.
+
+By using JACS, AI agents can have confidence in the integrity and authenticity of the data received, making it easier to build secure, reliable agents.
+
 
 ## JSON is all you need!
 
 Documents are in a format already widely adopted and enjoyed: JSON.
 Therefore, they are independent of network protocols or database formats and an be shared and stand-alone.
+JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document.
 
 All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.
 When those other services have modified the document, you can verifiy the agent, verify the changes, and sign the changes.
@@ -25,7 +33,7 @@ Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a 
 Most devs building connected Agent Apps will want to use [Sophon](https://github.com/HumanAssistedIntelligence/sophon).
 
 Check out the [presentation on JACS.](https://docs.google.com/presentation/d/18mO-tftG-9JnKd7rBtdipcX5t0dm4VfBPReKyWvrmXA/edit#slide=id.p)
-
+See also  [Rust docs](https://humanassisted.github.io/JACS/).
 
 ## trust
 
@@ -40,6 +48,9 @@ If you are familiar with [JWTs](https://jwt.io/) or PGP from email, then you hav
 Signature options are "ring-Ed25519", "RSA-PSS", and "pq-dilithium".
 These are all open source projects and JACS is not an encryption library in itself.
 
+NOTE: Doesn’t *require* central key authority yet, but this does mean that anyone can spoof anyone.
+Until then, use for self signing only, or exchange public keys only with trusted services.
+JACS should not need to make network calls for JSON schema as they are loaded into the lib.
 
 ## extensible
 
@@ -107,35 +118,36 @@ There is also a public and private key created in the directory set with `jacs_k
 
 
 ```
-agent-signature": {
-    "agentID": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
-    "agentVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14-erweowoeuir",
-    "date": "2024-03-24T09:14:03.028576+00:00",
-    "fields": [
-      "favorite-snack",
-      "id",
-      "lastVersion",
-      "originalVersion",
-      "version",
-      "versionDate",
-      "name",
-      "agentype",
-      "description"
-    ],
-    "publicKeyHash": "975f6dbe685a186deabab958b30c7c5aa97c144e3cb4357e34440783669e9815",
-    "signature": "C/NQGYlR8zoYu/0rngi12lpG32lkPGPqP1y10u5lAgr5LsvBsfvk6v3xYXvWf4e+hX1sf4YxRbolawXE0wfqRXiLazhBA2zpz0Yn4i4bfaqBd7S8+ARoWyiolXa3tcAaxdXTRiu9VWwdfBhh4Nuku+LY/Q1XkRvwCuGf0MVZmbhX9JhfPTJMK+V2zCnzWOFX15IJBUnKcSY5847Sn/aDESuu7GpRN9XJej2gIQock1iVCITr0OCp9DZryMPARWoSWGdsFZBoUiGEkKtcExcZDaKZbDSfwTXauV2yd2VrhwRhl2eu8MICWui3j7KCIHSBJ+eLTELuUFkurNuffol+aw==",
-    "signingAlgorithm": "RSA-PSS"
-  },
-  "favorite-snack": "mango",
-  "id": "b6a7fcb4-a630-413b-9f5d-48a42a8e9d14",
-  "lastVersion": "b6a7f3b4-a6e0-413b-9f5d-48a42a8e9d14",
-  "originalVersion": "b6a7fcb4-a6e0-413b-9f5d-48a42a8e9d14",
-  "sha256": "19585c7a77b8416711a298e5c02056d5ed864a11218c563b3b4ef83563831fea",
-  "version": "003f2cf6-6fc1-4f09-9877-ff42d5c0170e",
-  "versionDate": "2024-03-24T09:14:02.966765+00:00",
-  "name": "Agent Smith",
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "agentType": "ai",
-  "description": "An agent without keys, id or version"
+  "description": "An agent without keys, id or version",
+  "jacsId": "809750ec-215d-440f-9e03-f71114924a1d",
+  "jacsOriginalDate": "2024-04-11T05:40:15.934777+00:00",
+  "jacsOriginalVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+  "jacsSha256": "45c7af0a701a97907926910df7005a0a69e769380314b1daf15c7186d3c7263f",
+  "jacsSignature": {
+    "agentID": "809750ec-215d-440f-9e03-f71114924a1d",
+    "agentVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+    "date": "2024-04-11T05:40:15.949350+00:00",
+    "fields": [
+      "$schema",
+      "agentType",
+      "description",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate",
+      "name"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "LcsuFUqYIVsLfzaDTcXv+HN/ujd+Zv6A1QEiLTSPPHQVRlktmHIX+igd9wgStMVXB0uXH0yZknjJXv/7hQC0J5o5ZuNVN+ITBqG8fg8CEKPAzkQo3zdKfTWBw/GfjyyvItpZzQMGAPoOChS0tc0po5Z8ftOTmsxbfkM4ULGzLrVrhs21i/HpFa8qBzSVyhznwBT4fqOP6b1NZl7IABJS3pQdKbEZ9+Az+O4/Nl55mpfgAppOEbr5XNFIGRKvQ3K5oJS55l6e3GrbH3+5J3bDC1Gxh4wbqYJXVBVKipdJVCtoftEoi1ipTxVtv6j/86egUG7+N1CA6p33q1TXJqwqh4YNFq+9XAAj4X7oSyChA5j4VGegl6x5g+qGMszLGJC2oK6Xalna4dGETe3bjx9+QBQKrYc9T3K3X7Ros0uahiUyx8ekuX25ERGojtYIOpjcGLiPGtp95lbbnX/0cLcbJC2IZjduBeS76RTHlt3/RG5ygbzwK3Pao41wVNJyjLoy5SCi6pguTDjMBGQWjTOfKmK3vv9E8tI6T2lJJqeLtNLIkBpZ2KodqkcTr+80ySehMKglwHBQkjx646afCb+dOwdqhhHQt1gSasQRTxHUWg9NcmZ2uqJoXgQ/mGhsz3b8lgRcZEdA8jf9bxMal3+vWhrY/c3o7y0wiajx838ijYE=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "jacsVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+  "jacsVersionDate": "2024-04-11T05:40:15.934777+00:00",
+  "name": "Agent Smith"
 }
 
 ```
@@ -170,6 +182,19 @@ You can also verify using a custom JSON Schema
      jacs document verify -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -s ./examples/documents/custom.schema.json
 
 If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.
+
+To modify a document, copy the original and modify how you'd like, and then JACS can update the version and signature
+
+    jacs document update -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -n examples/raw/howtoupdate-05f0c073-9df5-483b-aa77-2c3259f02c7b.json -o updatedfruit.json
+
+Filenames will always end with "jacs.json", so the -o
+
+You can embed external files
+
+    jacs document create -f ./examples/raw/not-fruit.json --attach ./examples/raw/mobius.jpeg --embed true
+
+For more examples, see the repo for different use cases:
+https://github.com/HumanAssisted/jacs-examples
 
 ## Schemas IDs and Versions vs Signatures
 

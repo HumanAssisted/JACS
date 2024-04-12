@@ -26,8 +26,10 @@ rm temp.json
 # create json schema docs
 jsonschema2md -d schemas  -o docs/schema -x -
 
-cargo doc
-rsync -av --delete --exclude 'target' ./target/doc/jacs/ ./docs/jacs/
+cargo doc --no-deps
+rsync -av --delete --exclude 'target' ./target/doc/jacs/ ./docs/jacs/jacs/
+cp -R target/doc/static.files/ ./docs/jacs/static.files/
+
 
 # Add the formatted files to the staging area
 git add docs/.
