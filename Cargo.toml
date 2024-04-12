@@ -2,7 +2,7 @@
 name = "jacs"
 version = "0.2.2"
 edition = "2021"
-include = ["src/**/*", "schemas/*.json", "examples/*.json", "Cargo.toml", "README.md", "LICENSE", "build.rs", "CHANGELOG.md", "benches/sign_and_check_sig.rs"]
+include = ["src/**/*", "schemas/*/*.json","schemas/components/*/*.json", "examples/*.json", "Cargo.toml", "README.md", "LICENSE", "build.rs", "CHANGELOG.md", "benches/sign_and_check_sig.rs"]
 description = "JACS JSON AI Communication Standard"
 readme = "README.md"
 authors = ["Jonathan Hendler <engineering@hai.io>"]
