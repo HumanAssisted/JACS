@@ -1,8 +1,9 @@
 # JACS
 
 Welcome to JACS. JSON Agent Communication Standard.
+by https://hai.ai
 
-NOTE: Current version 0.2.2 *ALPHA*.
+NOTE: Current version 0.2.2 *ALPHA* .
 
 The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable:
 
@@ -212,6 +213,7 @@ You only need to use the agents and header to record and verify permissions on a
  - [Header](./docs/schema/header.md) -  the signature along with permissions
  - [Agents](./docs/schema/agent.md) - a type of resource that can take action
  - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
+ - [Files](./docs/schema/components/files.md) - documents you can sign and "attach"
 
 For the schema files see [schemas](./schemas).
 For examples see [examples](./examples).

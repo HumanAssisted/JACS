@@ -1,10 +1,14 @@
 
 
+planned
+
+ - add filesystem minimal security to prevent executables from being embedded
+
 ## 0.2.2 - April 12 2024
 
  - prevent name collisions with jacs as prefix on required header fields
  - add "jacsFiles" schema to embed files or sign files that can't be embedded
- - add filesystem minimal security to prevent executables from being embedded
+
 
 
 ## 0.2.1
