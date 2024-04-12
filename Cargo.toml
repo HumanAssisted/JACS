@@ -2,7 +2,7 @@
 name = "jacs"
 version = "0.2.2"
 edition = "2021"
-include = ["src/**/*", "schemas/*.json", "examples/*.json", "Cargo.toml", "README.md", "LICENSE"]
+include = ["src/**/*", "schemas/*.json", "examples/*.json", "Cargo.toml", "README.md", "LICENSE", "build.rs", "CHANGELOG.md"]
 description = "JACS JSON AI Communication Standard"
 readme = "README.md"
 authors = ["Jonathan Hendler <engineering@hai.io>"]
@@ -12,6 +12,7 @@ repository = "https://github.com/HumanAssistedIntelligence/JACS"
 keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
 categories = ["cryptography", "ai", "no-std"]
 build = "build.rs"
+
 
 [dependencies]
 base64 = "0.22.0"
@@ -75,7 +76,6 @@ path = "src/bin/cli.rs"
 [[bench]]
 name = "sign_and_check_sig"
 harness = false
-path = "./benches/sign_and_check_sig.rs"
 
 [package.metadata.cargo-install]
 bin = ["jacs"]
