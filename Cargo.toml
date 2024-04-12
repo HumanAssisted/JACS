@@ -75,6 +75,7 @@ path = "src/bin/cli.rs"
 [[bench]]
 name = "sign_and_check_sig"
 harness = false
+path = "./benches/sign_and_check_sig.rs"
 
 [package.metadata.cargo-install]
 bin = ["jacs"]
