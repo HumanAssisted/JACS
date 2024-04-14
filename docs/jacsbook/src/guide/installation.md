@@ -26,3 +26,25 @@ Which will give you this dialog.
 You can use `jacs config read` to check the configs.
 
 Note: Do not use `jacs_private_key_password` in production. Use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
+
+## developing
+
+The pre-commit hook requires some libraries
+
+See pre-commit
+
+ - install `jq` e.g. `brew install jq`
+ - for documentation    `npm install -g @adobe/jsonschema2md`
+ - cargo install mdbook
+
+Otherwise it's a standard Rust project.
+
+ - install Rust and your favorite editor
+ - see tests, examples, and benches
+
+
+
+
+
+
+
