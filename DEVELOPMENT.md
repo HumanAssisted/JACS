@@ -6,6 +6,7 @@ See pre-commit
 
  - install `jq` e.g. `brew install jq`
  - for documentation    `npm install -g @adobe/jsonschema2md`
+ - cargo install mdbook
 
 Otherwise it's a standard Rust project.
 

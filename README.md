@@ -3,9 +3,10 @@
 Welcome to JACS. JSON Agent Communication Standard.
 by https://hai.ai
 
-NOTE: Current version 0.2.2 *ALPHA* .
+** NOTE: Current version 0.2.3 *ALPHA* .
+** Currently, you can create and verify internal documents, where the public and private key are known between internal services.
 
-The JACS documents enable trusted data sharing between AI agents and Human UIs. It does this by making JSON documents verifiable:
+The JACS documents enable trusted data sharing between AI agents and Human UIs. Primarily, it does this by making JSON documents verifiable:
 
  -  source
  -  schema
@@ -20,11 +21,10 @@ By using JACS, AI agents can have confidence in the integrity and authenticity o
 
 ## JSON is all you need!
 
-Documents are in a format already widely adopted and enjoyed: JSON.
-Therefore, they are independent of network protocols or database formats and an be shared and stand-alone.
-JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document.
+JACS docs are in a format already widely adopted and enjoyed: JSON. However, JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document. The documents with signatures are always JSON. Therefore, they are independent of network protocols or database formats and can be shared and stand-alone.
 
-All you need is the JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.
+You will use JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.
+
 When those other services have modified the document, you can verifiy the agent, verify the changes, and sign the changes.
 
 Flexible for developers - store, index, and search the docouments how you like.
@@ -73,13 +73,17 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
 [Sophon](https://github.com/HumanAssistedIntelligence/sophon) will make it easy to use, but also imposes a lot of opinions.
 
 
-# Usage
+# Quick Start
 
 To install the command line tool for creating and verifying agents and documents
 
     cargo install jacs
 
-To add the lib to your project
+Fr usage see:
+
+
+
+To add the rust lib to your project
 
     cargo add jacs
 

@@ -4,6 +4,7 @@
 
  - add config creation and viewing to CLI
  - added gzip to content embedding
+ - started mdbook documentation
 
 todo
  - add filesystem minimal security to prevent executables from being embedded

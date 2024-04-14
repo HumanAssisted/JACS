@@ -30,6 +30,7 @@ cargo doc --no-deps
 rsync -av --delete --exclude 'target' ./target/doc/jacs/ ./docs/jacs/jacs/
 cp -R target/doc/static.files/ ./docs/jacs/static.files/
 
+mdbook build docs/jacsbook -d docs
 
 # Add the formatted files to the staging area
 git add docs/.
