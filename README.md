@@ -19,7 +19,7 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
 
 ## Documentation
 
- - [Usage Docs] (https://humanassisted.github.io/JACS/)
+ - [Usage Docs](https://humanassisted.github.io/JACS/)
  - [API docs](https://docs.rs/jacs/latest/jacs/)
  - [Schema docs](./schemas)
  - [example files](./examples)
@@ -57,7 +57,7 @@ If you are working in Rust, add the rust lib to your project
 
     cargo add jacs
 
-Then start reading the [usage docs] (https://humanassisted.github.io/JACS/)
+Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 
 ## background
 
