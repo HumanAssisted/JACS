@@ -1,7 +1,7 @@
 # JACS
 
 Welcome to JACS. JSON Agent Communication Standard.
-by https://hai.ai
+
 
 ** NOTE: Current version 0.2.3 *ALPHA* .
 
@@ -62,11 +62,5 @@ If you are working in Rust, add the rust lib to your project
 
 Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 
-## background
 
-JACS is used and developed by [HAI.AI (Human Assisted Intelligence)](https://hai.ai) to allow more secure communications between hetrogeneous AI agents and human UIs.
-
-
-
-
-
+2024 https://hai.ai
