@@ -23,6 +23,10 @@ The following is a brief explanation of documents are created, signed, and verif
 
 ### signing
 
+Signature options are "ring-Ed25519", "RSA-PSS", and "pq-dilithium".
+These are all open source projects and JACS is not an encryption library in itself.
+
+
 1. a json document is loaded as a "new" document
 2. as a new document it must not have an id, version etc
 3. an id and version uuid is created, along with date, etc
@@ -36,5 +40,13 @@ The following is a brief explanation of documents are created, signed, and verif
 3. the agent id is used to find the public key of the document and the signature is checked
 
 
+## trust
+
+When data is changed documents are versioned and the version is cryptographically signed by your agent.
+Changes can be verified and approved by other agents using your public key, allowing for creation and exchange of trusted data.
 
 
+NOTE: Doesn’t *require* central key authority yet, but this does mean that anyone can spoof anyone.
+Until then, use for self signing only, or exchange public keys only with trusted services.
+
+JACS should not need to make network calls for JSON schema as they are loaded into the lib.
