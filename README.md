@@ -18,6 +18,11 @@ With JACS, data can be securely stored or shared, and different versions of the 
 
 By using JACS, AI agents can have confidence in the integrity and authenticity of the data received, making it easier to build secure, reliable agents.
 
+To get started, please see:
+
+[Usage Docs] (https://humanassisted.github.io/JACS/)
+[API docs](https://docs.rs/jacs/latest/jacs/)
+
 
 ## JSON is all you need!
 
@@ -231,23 +236,6 @@ You only need to use the agents and header to record and verify permissions on a
 For the schema files see [schemas](./schemas).
 For examples see [examples](./examples).
 
-## security
-
-JACS goal is to introduce no safety vulnerabilities to systems where it is integrated.
-Open to ideas on what cryptography to add next: https://cryptography.rs/, like https://doc.dalek.rs/bulletproofs/index.html.
-
-A little more abotu how signing works can be found at [Header Validation](./HEADER_VALIDATION.md)
-
-### filesystem
-
-However, filesystem acces can also be turned off completely for documents. This means your app passing strings in and out of JACS but can not save().
-
-By default a directory is used that is configured.  JACS should not touch any files outside the key directory JACS_KEY_DIRECTORY and the JACS_DIRECTORY.
-
-### private keys
-
-Private keys are stored in memory with https://docs.rs/secrecy/latest/secrecy/
-The are also encrypted when on the filesystem if you have set the password with the keys are created.
 
 ## background
 
