@@ -3,7 +3,7 @@
 ## 0.2.3
 
  - add config creation and viewing to CLI
-
+ - added gzip to content embedding
 
 todo
  - add filesystem minimal security to prevent executables from being embedded

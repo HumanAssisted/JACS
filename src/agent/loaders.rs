@@ -2,8 +2,12 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use secrecy::ExposeSecret;
-use serde::ser::StdError;
+use std::fs::File;
+use std::io::Read;
+use std::io::Write;
 
 use chrono::Utc;
 use log::{debug, error, info, warn};
@@ -237,8 +241,17 @@ impl FileLoader for Agent {
             return Err("File not found, only local filesystem paths are supported.".into());
         }
 
-        let contents = fs::read(&document_filepath)?;
-        let base64_contents = base64::encode(&contents);
+        let mut contents = Vec::new();
+        let mut file = File::open(&document_filepath)?;
+        file.read_to_end(&mut contents)?;
+
+        // Compress the contents using gzip
+        let mut gz_encoder = GzEncoder::new(Vec::new(), Compression::default());
+        gz_encoder.write_all(&contents)?;
+        let compressed_contents = gz_encoder.finish()?;
+
+        // Encode the compressed contents using base64
+        let base64_contents = base64::encode(&compressed_contents);
 
         Ok(base64_contents)
     }
