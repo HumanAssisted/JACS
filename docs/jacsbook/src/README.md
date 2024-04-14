@@ -1,5 +1,8 @@
 # JSON is all you need! **
 
+As a developer, this is a good place to start.
+Be sure you've seen the    [JACS on github](https://github.com/HumanAssisted/JACS)
+
 JACS docs are in a format already widely adopted and enjoyed: JSON. However, JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document. The documents with signatures are always JSON. Therefore, they are independent of network protocols or database formats and can be shared and stand-alone.
 
 You will use JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.
