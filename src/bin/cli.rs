@@ -35,6 +35,33 @@ fn main() {
     set_env_vars();
     let matches = Command::new("jacs")
         .subcommand(
+            Command::new("config")
+                .about(" work with JACS configuration")
+                .subcommand(
+                    Command::new("create")
+                        .about(" create an agent")
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                 .help("Name of the file")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("create-keys")
+                                .long("create-keys")
+                                .required(true)
+                                .help("Create keys or not if they already exist. Configure key type in jacs.config.json")
+                                .value_parser(value_parser!(bool)),
+                        ),
+                )
+                .subcommand(
+                    Command::new("read")
+                    .about("read configuration and display to screen. This includes both the config file and the env variables.")
+                     ,
+                ),
+        )
+        .subcommand(
             Command::new("agent")
                 .about(" work with a JACS agent")
                 .subcommand(
@@ -233,6 +260,35 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
+        Some(("config", agent_matches)) => match agent_matches.subcommand() {
+            Some(("create", create_matches)) => {
+                let filename = create_matches.get_one::<String>("filename").unwrap();
+                let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
+                let agentstring = fs::read_to_string(filename.clone()).expect("agent file loading");
+                let mut agent = get_agent();
+                agent
+                    .create_agent_and_load(&agentstring, false, None)
+                    .expect("agent creation failed");
+                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
+
+                if create_keys {
+                    agent.generate_keys().expect("Reason");
+                    println!(
+                        "keys created in {}",
+                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
+                    )
+                }
+
+                let _ = agent.save();
+            }
+            Some(("read", verify_matches)) => {
+                // agent is loaded because of    schema.validate_config(&config).expect("config validation");
+                let _ = load_agent_by_id();
+                let configs = set_env_vars();
+                println!("{}", configs);
+            }
+            _ => println!("please enter subcommand see jacs agent --help"),
+        },
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename").unwrap();

@@ -30,7 +30,7 @@ pub fn get_default_dir() -> PathBuf {
         })
 }
 
-pub fn set_env_vars() {
+pub fn set_env_vars() -> String {
     let config: Config = match fs::read_to_string("jacs.config.json") {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => Config {
@@ -148,4 +148,5 @@ pub fn set_env_vars() {
     );
 
     info!("{}", loading_message);
+    loading_message
 }
