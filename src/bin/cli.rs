@@ -1,13 +1,19 @@
+use chrono::DateTime;
+use chrono::Local;
 use clap::{value_parser, Arg, ArgAction, Command};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
 use jacs::agent::Agent;
-use jacs::config::set_env_vars;
+use jacs::config::{set_env_vars, Config};
 use jacs::crypt::KeyManager;
 use regex::Regex;
+use serde_json::Value;
 use std::env;
 use std::fs;
+use std::io;
+use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 fn get_agent() -> Agent {
     Agent::new(
@@ -31,6 +37,23 @@ fn load_agent_by_id() -> Agent {
     agent
 }
 
+fn request_string(message: &str, default: &str) -> String {
+    let mut input = String::new();
+    println!("{}: (default: {})", message, default);
+
+    match io::stdin().read_line(&mut input) {
+        Ok(_) => {
+            let trimmed = input.trim();
+            if trimmed.is_empty() {
+                default.to_string() // Return default if no input
+            } else {
+                trimmed.to_string() // Return trimmed input if there's any
+            }
+        }
+        Err(_) => default.to_string(), // Return default on error
+    }
+}
+
 fn main() {
     set_env_vars();
     let matches = Command::new("jacs")
@@ -39,26 +62,11 @@ fn main() {
                 .about(" work with JACS configuration")
                 .subcommand(
                     Command::new("create")
-                        .about(" create an agent")
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .required(true)
-                                 .help("Name of the file")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("create-keys")
-                                .long("create-keys")
-                                .required(true)
-                                .help("Create keys or not if they already exist. Configure key type in jacs.config.json")
-                                .value_parser(value_parser!(bool)),
-                        ),
+                        .about(" create a config file")
                 )
                 .subcommand(
                     Command::new("read")
                     .about("read configuration and display to screen. This includes both the config file and the env variables.")
-                     ,
                 ),
         )
         .subcommand(
@@ -262,24 +270,89 @@ fn main() {
     match matches.subcommand() {
         Some(("config", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
-                let filename = create_matches.get_one::<String>("filename").unwrap();
-                let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
-                let agentstring = fs::read_to_string(filename.clone()).expect("agent file loading");
-                let mut agent = get_agent();
-                agent
-                    .create_agent_and_load(&agentstring, false, None)
-                    .expect("agent creation failed");
-                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
+                println!("Welcome to the JACS Config Generator!");
 
-                if create_keys {
-                    agent.generate_keys().expect("Reason");
-                    println!(
-                        "keys created in {}",
-                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
-                    )
+                println!("Enter the path to the agent file (leave empty to skip):");
+                let mut agent_filename = String::new();
+                io::stdin().read_line(&mut agent_filename).unwrap();
+                agent_filename = agent_filename.trim().to_string();
+
+                let jacs_agent_id_and_version = if !agent_filename.is_empty() {
+                    let agent_path = PathBuf::from(agent_filename);
+                    if agent_path.exists() {
+                        match fs::read_to_string(&agent_path) {
+                            Ok(agent_content) => {
+                                match serde_json::from_str::<Value>(&agent_content) {
+                                    Ok(agent_json) => {
+                                        let jacs_id = agent_json["jacsId"].as_str().unwrap_or("");
+                                        let jacs_version =
+                                            agent_json["jacsVersion"].as_str().unwrap_or("");
+                                        format!("{}:{}", jacs_id, jacs_version)
+                                    }
+                                    Err(e) => {
+                                        println!("Error parsing JSON: {}", e);
+                                        String::new()
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("Failed to read agent file: {}", e);
+                                String::new()
+                            }
+                        }
+                    } else {
+                        println!("Agent file not found. Skipping...");
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                let jacs_agent_private_key_filename =
+                    request_string("Enter the private key filename:", "jacs.private.pem");
+                let jacs_agent_public_key_filename =
+                    request_string("Enter the public key filename:", "jacs.public.pem");
+                let jacs_agent_key_algorithm = request_string("Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS) no default:", "");
+                let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
+
+                let jacs_use_filesystem =
+                    request_string("Use filesystem. If false, will print to std:io", "true");
+                let jacs_use_security =
+                    request_string("Use experimental security features", "false");
+                let jacs_data_directory = request_string("Directory for data storage", "./jacs");
+                let jacs_key_directory =
+                    request_string("Directory to load keys from", "./jacs/keys");
+
+                let config = Config::new(
+                    "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
+                    Some(jacs_use_filesystem),
+                    Some(jacs_use_security),
+                    Some(jacs_data_directory),
+                    Some(jacs_key_directory),
+                    Some(jacs_agent_private_key_filename),
+                    Some(jacs_agent_public_key_filename),
+                    Some(jacs_agent_key_algorithm),
+                    Some("v1".to_string()),
+                    Some("v1".to_string()),
+                    Some("v1".to_string()),
+                    Some(jacs_private_key_password),
+                    Some(jacs_agent_id_and_version),
+                );
+
+                let serialized = serde_json::to_string_pretty(&config).unwrap();
+
+                let config_path = "jacs.config.json";
+                if fs::metadata(config_path).is_ok() {
+                    let now: DateTime<Local> = Local::now();
+                    let backup_path =
+                        format!("{}-backup-jacs.config.json", now.format("%Y%m%d%H%M%S"));
+                    fs::rename(config_path, backup_path.clone()).unwrap();
+                    println!("Backed up existing jacs.config.json to {}", backup_path);
                 }
 
-                let _ = agent.save();
+                let mut file = fs::File::create(config_path).unwrap();
+                file.write_all(serialized.as_bytes()).unwrap();
+
+                println!("jacs.config.json file generated successfully!");
             }
             Some(("read", verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");

@@ -208,6 +208,13 @@ impl Agent {
                     self.id = value.get_str("jacsId");
                     self.version = value.get_str("jacsVersion");
                 }
+
+                if !Uuid::parse_str(&self.id.clone().expect("string expected").to_string()).is_ok()
+                    || !Uuid::parse_str(&self.version.clone().expect("string expected").to_string())
+                        .is_ok()
+                {
+                    println!("ID and Version must be UUID");
+                }
             }
             Err(e) => {
                 error!("ERROR document ERROR {}", e);

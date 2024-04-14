@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["get_default_dir","set_env_vars"]};
+window.SIDEBAR_ITEMS = {"fn":["get_default_dir","set_env_vars","split_id"],"struct":["Config"]};
