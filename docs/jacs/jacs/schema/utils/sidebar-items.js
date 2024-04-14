@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"static":["CONFIG_SCHEMA_STRING","DEFAULT_SCHEMA_STRINGS"],"struct":["EmbeddedSchemaResolver","LocalSchemaResolver"],"trait":["ValueExt"]};

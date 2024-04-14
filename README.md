@@ -18,11 +18,14 @@ With JACS, data can be securely stored or shared, and different versions of the 
 
 By using JACS, AI agents can have confidence in the integrity and authenticity of the data received, making it easier to build secure, reliable agents.
 
-To get started, please see:
 
-[Usage Docs] (https://humanassisted.github.io/JACS/)
-[API docs](https://docs.rs/jacs/latest/jacs/)
+## Documentation
 
+ - [Usage Docs] (https://humanassisted.github.io/JACS/)
+ - [API docs](https://docs.rs/jacs/latest/jacs/)
+ - [Schema docs](./schemas)
+ - [example files](./examples)
+ - [use case examples](https://github.com/HumanAssisted/jacs-examples)
 
 ## JSON is all you need!
 
@@ -213,7 +216,7 @@ You can embed external files
     jacs document create -f ./examples/raw/not-fruit.json --attach ./examples/raw/mobius.jpeg --embed true
 
 For more examples, see the repo for different use cases:
-https://github.com/HumanAssisted/jacs-examples
+
 
 ## Schemas IDs and Versions vs Signatures
 
@@ -233,8 +236,7 @@ You only need to use the agents and header to record and verify permissions on a
  - [Signatures](./docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
  - [Files](./docs/schema/components/files.md) - documents you can sign and "attach"
 
-For the schema files see [schemas](./schemas).
-For examples see [examples](./examples).
+
 
 
 ## background
