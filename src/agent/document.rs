@@ -83,6 +83,7 @@ pub trait Document {
         document_key: &String,
         output_filename: Option<String>,
         export_embedded: Option<bool>,
+        extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>>;
     fn update_document(
         &mut self,
@@ -406,10 +407,19 @@ impl Document for Agent {
         document_key: &String,
         output_filename: Option<String>,
         export_embedded: Option<bool>,
+        extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
-        let _ = self.fs_document_save(&document_key, &document_string, output_filename)?;
+
+        let is_extract_only = match extract_only {
+            Some(extract_only) => extract_only,
+            None => false,
+        };
+
+        if !is_extract_only {
+            let _ = self.fs_document_save(&document_key, &document_string, output_filename)?;
+        }
 
         let do_export = match export_embedded {
             Some(export_embedded) => export_embedded,
