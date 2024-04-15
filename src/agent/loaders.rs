@@ -179,7 +179,7 @@ impl FileLoader for Agent {
             }
             Err(e) => {
                 panic!(
-                    "Failed to find agent: {} at {:?} {} ",
+                    "Failed to find agent: agentid {} \nat agentpath {:?} \n{} ",
                     agentid, agentpath, e
                 );
             }
