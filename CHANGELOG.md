@@ -6,8 +6,6 @@
  - added gzip to content embedding
  - started mdbook documentation
 
-todo
- - add filesystem minimal security to prevent executables from being embedded
 
 ## 0.2.2 - April 12 2024
 

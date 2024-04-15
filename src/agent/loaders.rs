@@ -221,6 +221,7 @@ impl FileLoader for Agent {
         let documentoutput_filename = output_filename
             .or_else(|| Some(document_id.to_string()))
             .unwrap();
+
         let document_path =
             self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
         info!("document path {:?} ", document_path);

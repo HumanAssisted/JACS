@@ -495,6 +495,7 @@ fn main() {
                                     .save_document(
                                         &document_key,
                                         format!("{}", signed_filename).into(),
+                                        None,
                                     )
                                     .expect("save document");
                                 println!("created doc {}", document_key.to_string());
@@ -599,7 +600,11 @@ fn main() {
                     let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
                     println!("output cl filename is {}", signed_filename);
                     agent
-                        .save_document(&new_document_key, format!("{}", signed_filename).into())
+                        .save_document(
+                            &new_document_key,
+                            format!("{}", signed_filename).into(),
+                            None,
+                        )
                         .expect("save document");
                     println!("created doc {}", new_document_key.to_string());
                 }

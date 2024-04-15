@@ -16,3 +16,4 @@ Cargo.lock
 grant.md
 scratch.md
 jacs.config.json
+.DS_Store
