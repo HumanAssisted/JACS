@@ -40,7 +40,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     let document_key = document.getkey();
     let document_ref = agent.get_document(&document_key).unwrap();
 
-    // let _ = agent.save_document(&document_key, None);
+    // let _ = agent.save_document(&document_key, None, None);
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
         Ok(()) => {
             // Validation succeeded
@@ -63,10 +63,16 @@ fn test_create() {
 }
 
 #[test]
-#[ignore]
+// #[ignore]
 fn test_create_attachments() {
     // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments
-    utils::generate_new_docs_with_attachments();
+    utils::generate_new_docs_with_attachments(true);
+}
+
+#[test]
+fn test_create_attachments_no_save() {
+    // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments_no_save
+    utils::generate_new_docs_with_attachments(false);
 }
 
 #[test]
@@ -86,7 +92,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
-    // let _ = agent.save_document(&document_key, None);
+    // let _ = agent.save_document(&document_key, None, None);
 }
 
 #[test]
@@ -104,7 +110,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
             .unwrap();
 
     let new_document = agent
-        .update_document(&document_key, &modified_document_string, None)
+        .update_document(&document_key, &modified_document_string, None, None)
         .unwrap();
 
     let new_document_key = new_document.getkey();

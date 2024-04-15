@@ -50,6 +50,8 @@ aes-gcm = "0.10.3"
 clap = "4.5.4"
 regex = "1.10.4"
 mime_guess = "2.0.4"
+flate2 = "1.0.28"
+mdbook = "0.4.37"
 
 
 

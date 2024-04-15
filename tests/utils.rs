@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::env;
 
 #[cfg(test)]
-pub fn generate_new_docs_with_attachments() {
+pub fn generate_new_docs_with_attachments(save: bool) {
     let mut agent = load_test_agent_one();
     let mut document_string =
         load_local_document(&"examples/raw/embed-xml.json".to_string()).unwrap();
@@ -28,7 +28,7 @@ pub fn generate_new_docs_with_attachments() {
     let mut document_key = document.getkey();
     println!("document_key {}", document_key);
     // document_ref = agent.get_document(&document_key).unwrap();
-    _ = agent.save_document(&document_key, None);
+    _ = agent.save_document(&document_key, None, None, None);
 
     document_string = load_local_document(&"examples/raw/image-embed.json".to_string()).unwrap();
     document = agent
@@ -41,7 +41,10 @@ pub fn generate_new_docs_with_attachments() {
     document_key = document.getkey();
     println!("document_key {}", document_key);
     // document_ref = agent.get_document(&document_key).unwrap();
-    _ = agent.save_document(&document_key, None);
+    if save {
+        let export_embedded = true;
+        _ = agent.save_document(&document_key, None, Some(export_embedded), None);
+    }
 }
 
 #[cfg(test)]
@@ -56,7 +59,7 @@ pub fn generate_new_docs() {
     let mut document_key = document.getkey();
     println!("document_key {}", document_key);
     // let mut document_ref = agent.get_document(&document_key).unwrap();
-    let _ = agent.save_document(&document_key, None);
+    let _ = agent.save_document(&document_key, None, None, None);
 
     document_string = load_local_document(&"examples/raw/gpt-lsd.json".to_string()).unwrap();
     document = agent
@@ -65,7 +68,7 @@ pub fn generate_new_docs() {
     document_key = document.getkey();
     println!("document_key {}", document_key);
     // document_ref = agent.get_document(&document_key).unwrap();
-    let _ = agent.save_document(&document_key, None);
+    let _ = agent.save_document(&document_key, None, None, None);
 
     document_string = load_local_document(&"examples/raw/json-ld.json".to_string()).unwrap();
     document = agent
@@ -74,7 +77,7 @@ pub fn generate_new_docs() {
     document_key = document.getkey();
     println!("document_key {}", document_key);
     // document_ref = agent.get_document(&document_key).unwrap();
-    _ = agent.save_document(&document_key, None);
+    _ = agent.save_document(&document_key, None, None, None);
 }
 
 #[cfg(test)]

@@ -1,39 +1,54 @@
+use chrono::DateTime;
+use chrono::Local;
 use clap::{value_parser, Arg, ArgAction, Command};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
 use jacs::agent::Agent;
-use jacs::config::set_env_vars;
+use jacs::config::{set_env_vars, Config};
 use jacs::crypt::KeyManager;
+use jacs::load_agent;
+use jacs::{get_empty_agent, load_agent_by_id};
 use regex::Regex;
+use serde_json::Value;
 use std::env;
 use std::fs;
+use std::io;
+use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
-fn get_agent() -> Agent {
-    Agent::new(
-        &env::var("JACS_AGENT_SCHEMA_VERSION").unwrap(),
-        &env::var("JACS_HEADER_SCHEMA_VERSION").unwrap(),
-        &env::var("JACS_SIGNATURE_SCHEMA_VERSION").unwrap(),
-    )
-    .expect("Failed to init Agent")
-}
+fn request_string(message: &str, default: &str) -> String {
+    let mut input = String::new();
+    println!("{}: (default: {})", message, default);
 
-fn load_agent(filepath: String) -> Agent {
-    let mut agent = get_agent();
-    let agentstring = fs::read_to_string(filepath.clone()).expect("agent file loading");
-    let _ = agent.load(&agentstring);
-    agent
-}
-
-fn load_agent_by_id() -> Agent {
-    let mut agent = get_agent();
-    let _ = agent.load_by_id(None, None);
-    agent
+    match io::stdin().read_line(&mut input) {
+        Ok(_) => {
+            let trimmed = input.trim();
+            if trimmed.is_empty() {
+                default.to_string() // Return default if no input
+            } else {
+                trimmed.to_string() // Return trimmed input if there's any
+            }
+        }
+        Err(_) => default.to_string(), // Return default on error
+    }
 }
 
 fn main() {
     set_env_vars();
     let matches = Command::new("jacs")
+        .subcommand(
+            Command::new("config")
+                .about(" work with JACS configuration")
+                .subcommand(
+                    Command::new("create")
+                        .about(" create a config file")
+                )
+                .subcommand(
+                    Command::new("read")
+                    .about("read configuration and display to screen. This includes both the config file and the env variables.")
+                ),
+        )
         .subcommand(
             Command::new("agent")
                 .about(" work with a JACS agent")
@@ -229,16 +244,145 @@ fn main() {
                                 .value_parser(value_parser!(String)),
                         ),
                 )
+                .subcommand(
+                    Command::new("extract")
+                        .about(" given  documents, extract embedded contents if any")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .help("Path to input file. Must be JSON")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("directory")
+                                .short('d')
+                                .help("Path to directory of files. Files should end with .json")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to validate")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        ),
+                )
         )
         .get_matches();
 
     match matches.subcommand() {
+        Some(("config", agent_matches)) => match agent_matches.subcommand() {
+            Some(("create", create_matches)) => {
+                println!("Welcome to the JACS Config Generator!");
+
+                println!("Enter the path to the agent file (leave empty to skip):");
+                let mut agent_filename = String::new();
+                io::stdin().read_line(&mut agent_filename).unwrap();
+                agent_filename = agent_filename.trim().to_string();
+
+                let jacs_agent_id_and_version = if !agent_filename.is_empty() {
+                    let agent_path = PathBuf::from(agent_filename);
+                    if agent_path.exists() {
+                        match fs::read_to_string(&agent_path) {
+                            Ok(agent_content) => {
+                                match serde_json::from_str::<Value>(&agent_content) {
+                                    Ok(agent_json) => {
+                                        let jacs_id = agent_json["jacsId"].as_str().unwrap_or("");
+                                        let jacs_version =
+                                            agent_json["jacsVersion"].as_str().unwrap_or("");
+                                        format!("{}:{}", jacs_id, jacs_version)
+                                    }
+                                    Err(e) => {
+                                        println!("Error parsing JSON: {}", e);
+                                        String::new()
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("Failed to read agent file: {}", e);
+                                String::new()
+                            }
+                        }
+                    } else {
+                        println!("Agent file not found. Skipping...");
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                let jacs_agent_private_key_filename =
+                    request_string("Enter the private key filename:", "jacs.private.pem");
+                let jacs_agent_public_key_filename =
+                    request_string("Enter the public key filename:", "jacs.public.pem");
+                let jacs_agent_key_algorithm = request_string("Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS) no default:", "");
+                let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
+
+                let jacs_use_filesystem =
+                    request_string("Use filesystem. If false, will print to std:io", "true");
+                let jacs_use_security =
+                    request_string("Use experimental security features", "false");
+                let jacs_data_directory = request_string("Directory for data storage", "./jacs");
+                let jacs_key_directory =
+                    request_string("Directory to load keys from", "./jacs/keys");
+
+                let config = Config::new(
+                    "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
+                    Some(jacs_use_filesystem),
+                    Some(jacs_use_security),
+                    Some(jacs_data_directory),
+                    Some(jacs_key_directory),
+                    Some(jacs_agent_private_key_filename),
+                    Some(jacs_agent_public_key_filename),
+                    Some(jacs_agent_key_algorithm),
+                    Some("v1".to_string()),
+                    Some("v1".to_string()),
+                    Some("v1".to_string()),
+                    Some(jacs_private_key_password),
+                    Some(jacs_agent_id_and_version),
+                );
+
+                let serialized = serde_json::to_string_pretty(&config).unwrap();
+
+                let config_path = "jacs.config.json";
+                if fs::metadata(config_path).is_ok() {
+                    let now: DateTime<Local> = Local::now();
+                    let backup_path =
+                        format!("{}-backup-jacs.config.json", now.format("%Y%m%d%H%M%S"));
+                    fs::rename(config_path, backup_path.clone()).unwrap();
+                    println!("Backed up existing jacs.config.json to {}", backup_path);
+                }
+
+                let mut file = fs::File::create(config_path).unwrap();
+                file.write_all(serialized.as_bytes()).unwrap();
+
+                println!("jacs.config.json file generated successfully!");
+            }
+            Some(("read", verify_matches)) => {
+                // agent is loaded because of    schema.validate_config(&config).expect("config validation");
+                let _ = load_agent_by_id();
+                let configs = set_env_vars();
+                println!("{}", configs);
+            }
+            _ => println!("please enter subcommand see jacs agent --help"),
+        },
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename").unwrap();
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
                 let agentstring = fs::read_to_string(filename.clone()).expect("agent file loading");
-                let mut agent = get_agent();
+                let mut agent = get_empty_agent();
                 agent
                     .create_agent_and_load(&agentstring, false, None)
                     .expect("agent creation failed");
@@ -256,11 +400,7 @@ fn main() {
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = if let Some(file) = agentfile {
-                    load_agent(file.to_string())
-                } else {
-                    load_agent_by_id()
-                };
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
 
                 agent
                     .verify_self_signature()
@@ -284,11 +424,7 @@ fn main() {
                 let attachments = create_matches.get_one::<String>("attach");
                 let embed = create_matches.get_one::<bool>("embed");
 
-                let mut agent: Agent = if let Some(file) = agentfile {
-                    load_agent(file.to_string())
-                } else {
-                    load_agent_by_id()
-                };
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
 
@@ -366,6 +502,8 @@ fn main() {
                                     .save_document(
                                         &document_key,
                                         format!("{}", signed_filename).into(),
+                                        None,
+                                        None,
                                     )
                                     .expect("save document");
                                 println!("created doc {}", document_key.to_string());
@@ -413,11 +551,7 @@ fn main() {
                 let attachments = create_matches.get_one::<String>("attach");
                 let embed = create_matches.get_one::<bool>("embed");
 
-                let mut agent: Agent = if let Some(file) = agentfile {
-                    load_agent(file.to_string())
-                } else {
-                    load_agent_by_id()
-                };
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
 
@@ -470,7 +604,12 @@ fn main() {
                     let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
                     println!("output cl filename is {}", signed_filename);
                     agent
-                        .save_document(&new_document_key, format!("{}", signed_filename).into())
+                        .save_document(
+                            &new_document_key,
+                            format!("{}", signed_filename).into(),
+                            None,
+                            None,
+                        )
                         .expect("save document");
                     println!("created doc {}", new_document_key.to_string());
                 }
@@ -501,11 +640,7 @@ fn main() {
                 let directory = verify_matches.get_one::<String>("directory");
                 let verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = if let Some(file) = agentfile {
-                    load_agent(file.to_string())
-                } else {
-                    load_agent_by_id()
-                };
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 let mut files: Vec<String> = Vec::new();
                 if filename.is_none() && directory.is_none() {
@@ -565,6 +700,89 @@ fn main() {
                                     }
                                 }
                             }
+                        }
+                        Err(ref e) => {
+                            eprintln!("document {} validation failed {}", file, e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
+
+            Some(("extract", extract_matches)) => {
+                let filename = extract_matches.get_one::<String>("filename");
+                let directory = extract_matches.get_one::<String>("directory");
+                let verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let agentfile = extract_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let schema = extract_matches.get_one::<String>("schema");
+                let mut files: Vec<String> = Vec::new();
+                if filename.is_none() && directory.is_none() {
+                    eprintln!("Error: You must specify either a filename or a directory.");
+                    std::process::exit(1);
+                } else if let Some(file) = filename {
+                    files.push(file.to_string());
+                } else if let Some(dir) = directory {
+                    // Traverse the directory and store filenames ending with .json
+                    for entry in fs::read_dir(dir).expect("Failed to read directory") {
+                        if let Ok(entry) = entry {
+                            let path = entry.path();
+                            if path.is_file() && path.extension().map_or(false, |ext| ext == "json")
+                            {
+                                files.push(path.to_str().unwrap().to_string());
+                            }
+                        }
+                    }
+                }
+                // let mut schemastring: String = "".to_string();
+
+                if let Some(schema_file) = schema {
+                    // schemastring =
+                    //     fs::read_to_string(schema_file).expect("Failed to load schema file");
+                    let schemas = [schema_file.clone()];
+                    agent.load_custom_schemas(&schemas);
+                }
+
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let docresult = agent.load_document(&document_string);
+                    match docresult {
+                        Ok(ref document) => {
+                            let document_key = document.getkey();
+                            println!("document {} validated", document_key);
+
+                            if let Some(schema_file) = schema {
+                                // todo don't unwrap but warn instead
+                                let document_key = document.getkey();
+                                let result = agent.validate_document_with_custom_schema(
+                                    &schema_file,
+                                    &document.getvalue(),
+                                );
+                                match result {
+                                    Ok(doc) => {
+                                        println!(
+                                            "document specialised schema {} validated",
+                                            document_key
+                                        );
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "document specialised schema {} validation failed {}",
+                                            document_key, e
+                                        );
+                                        std::process::exit(1);
+                                    }
+                                }
+                            }
+                            //after validation do export of contents
+                            let export_embedded = true;
+                            let extract_only = true;
+                            agent.save_document(
+                                &document_key,
+                                None,
+                                Some(export_embedded),
+                                Some(extract_only),
+                            );
                         }
                         Err(ref e) => {
                             eprintln!("document {} validation failed {}", file, e);

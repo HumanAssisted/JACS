@@ -1,5 +1,5 @@
 use crate::schema::Url;
-use log::debug;
+
 use phf::phf_map;
 
 use jsonschema::SchemaResolver;

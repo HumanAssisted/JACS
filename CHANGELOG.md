@@ -1,8 +1,12 @@
 
 
-planned
+## 0.2.3
 
- - add filesystem minimal security to prevent executables from being embedded
+ - add config creation and viewing to CLI
+ - added gzip to content embedding
+ - added extraction for embedded content
+ - started mdbook documentation
+
 
 ## 0.2.2 - April 12 2024
 

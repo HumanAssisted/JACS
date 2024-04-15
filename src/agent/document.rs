@@ -5,14 +5,18 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
+use chrono::Local;
 use chrono::Utc;
+use flate2::read::GzDecoder;
 use log::error;
 use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use uuid::Uuid;
 
@@ -72,10 +76,14 @@ pub trait Document {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
+
+    /// export_embedded if there is embedded files recreate them, default false
     fn save_document(
         &mut self,
         document_key: &String,
         output_filename: Option<String>,
+        export_embedded: Option<bool>,
+        extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>>;
     fn update_document(
         &mut self,
@@ -398,10 +406,65 @@ impl Document for Agent {
         &mut self,
         document_key: &String,
         output_filename: Option<String>,
+        export_embedded: Option<bool>,
+        extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
-        let _ = self.fs_document_save(&document_key, &document_string, output_filename);
+
+        let is_extract_only = match extract_only {
+            Some(extract_only) => extract_only,
+            None => false,
+        };
+
+        if !is_extract_only {
+            let _ = self.fs_document_save(&document_key, &document_string, output_filename)?;
+        }
+
+        let do_export = match export_embedded {
+            Some(export_embedded) => export_embedded,
+            None => false,
+        };
+
+        if do_export {
+            if let Some(jacs_files) = original_document.value["jacsFiles"].as_array() {
+                for item in jacs_files {
+                    if item["embed"].as_bool().unwrap_or(false) {
+                        let contents = item["contents"].as_str().ok_or("Contents not found")?;
+                        let path = item["path"].as_str().ok_or("Path not found")?;
+
+                        let decoded_contents = base64::decode(contents)?;
+
+                        // Inflate the gzip-compressed contents
+                        let mut gz_decoder = GzDecoder::new(std::io::Cursor::new(decoded_contents));
+                        let mut inflated_contents = Vec::new();
+                        gz_decoder.read_to_end(&mut inflated_contents)?;
+
+                        /// TODO move this portion of code out of document as it's filesystem dependent
+                        // Backup the existing file if it exists
+                        let file_path = Path::new(path);
+                        if file_path.exists() {
+                            let backup_path =
+                                format!("{}.{}.bkp", path, Local::now().format("%Y%m%d_%H%M%S"));
+                            fs::rename(file_path, &backup_path)?;
+                        }
+
+                        // Save the inflated contents to the file
+                        let mut file = File::create(file_path)?;
+                        file.write_all(&inflated_contents)?;
+
+                        // Mark the file as not executable
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            let mut permissions = file.metadata()?.permissions();
+                            permissions.set_mode(0o644);
+                            file.set_permissions(permissions)?;
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
