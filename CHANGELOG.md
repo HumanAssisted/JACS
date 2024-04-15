@@ -4,6 +4,7 @@
 
  - add config creation and viewing to CLI
  - added gzip to content embedding
+ - added extraction for embedded content
  - started mdbook documentation
 
 
