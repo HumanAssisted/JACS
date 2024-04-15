@@ -3,8 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Page not found - JACS Usage Documentation</title>
-        <base href="/">
+        <title>Creating an Agent - JACS Usage Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -13,21 +12,21 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" href="highlight.css">
-        <link rel="stylesheet" href="tomorrow-night.css">
-        <link rel="stylesheet" href="ayu-highlight.css">
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
@@ -36,7 +35,7 @@
     <div id="body-container">
         <!-- Provide site root to javascript -->
         <script>
-            var path_to_root = "";
+            var path_to_root = "../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
@@ -89,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="guide/reading.html"><strong aria-hidden="true">2.</strong> Reading Books</a></li><li class="chapter-item expanded "><a href="guide/creating.html"><strong aria-hidden="true">3.</strong> Creating a Book</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cli/init.html"><strong aria-hidden="true">4.1.</strong> init</a></li><li class="chapter-item expanded "><a href="cli/build.html"><strong aria-hidden="true">4.2.</strong> build</a></li><li class="chapter-item expanded "><a href="cli/watch.html"><strong aria-hidden="true">4.3.</strong> watch</a></li><li class="chapter-item expanded "><a href="cli/serve.html"><strong aria-hidden="true">4.4.</strong> serve</a></li><li class="chapter-item expanded "><a href="cli/test.html"><strong aria-hidden="true">4.5.</strong> test</a></li><li class="chapter-item expanded "><a href="cli/clean.html"><strong aria-hidden="true">4.6.</strong> clean</a></li><li class="chapter-item expanded "><a href="cli/completions.html"><strong aria-hidden="true">4.7.</strong> completions</a></li></ol></li><li class="chapter-item expanded "><a href="continuous-integration.html"><strong aria-hidden="true">5.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="for_developers/index.html"><strong aria-hidden="true">7.</strong> For Developers</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="for_developers/preprocessors.html"><strong aria-hidden="true">7.1.</strong> Preprocessors</a></li><li class="chapter-item expanded "><a href="for_developers/backends.html"><strong aria-hidden="true">7.2.</strong> Alternative Backends</a></li><li class="spacer"></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/agent.html" class="active"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../guide/documents.html"><strong aria-hidden="true">3.</strong> working with documents</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">5.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -145,7 +144,7 @@
                     <h1 class="menu-title">JACS Usage Documentation</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -174,14 +173,74 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="document-not-found-404"><a class="header" href="#document-not-found-404">Document not found (404)</a></h1>
-<p>This URL is invalid, sorry. Please use the navigation bar or search to continue.</p>
+                        <h1 id="agents"><a class="header" href="#agents">Agents</a></h1>
+<p>To use JACS you create an <code>Agent</code>  and then use it to create docoments that conform to the JACS <code>Header</code> format.</p>
+<p>First, create a json document that follows the schema for an agent, and use it in the library to start building other things.</p>
+<pre><code>{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "name": "Agent Smith",
+  "agentType": "ai",
+  "description": "An agent without keys, id or version",
+  "favorite-snack": "mango"
+}
+
+</code></pre>
+<p>An id, version etc, will be created  when you load the file from the command line</p>
+<pre><code>jacs agent create ./examples/raw/mysecondagent.new.json --create-keys true
+</code></pre>
+<p>Your agent will look something like this and you will have also created keys. The agent is self-signed and all the fields are hashed.
+There is also a public and private key created in the directory set with <code>jacs_key_directory</code>. DO NOT use the keys included in the repo.</p>
+<pre><code>{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "agentType": "ai",
+  "description": "An agent without keys, id or version",
+  "jacsId": "809750ec-215d-440f-9e03-f71114924a1d",
+  "jacsOriginalDate": "2024-04-11T05:40:15.934777+00:00",
+  "jacsOriginalVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+  "jacsSha256": "45c7af0a701a97907926910df7005a0a69e769380314b1daf15c7186d3c7263f",
+  "jacsSignature": {
+    "agentID": "809750ec-215d-440f-9e03-f71114924a1d",
+    "agentVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+    "date": "2024-04-11T05:40:15.949350+00:00",
+    "fields": [
+      "$schema",
+      "agentType",
+      "description",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate",
+      "name"
+    ],
+    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
+    "signature": "LcsuFUqYIVsLfzaDTcXv+HN/ujd+Zv6A1QEiLTSPPHQVRlktmHIX+igd9wgStMVXB0uXH0yZknjJXv/7hQC0J5o5ZuNVN+ITBqG8fg8CEKPAzkQo3zdKfTWBw/GfjyyvItpZzQMGAPoOChS0tc0po5Z8ftOTmsxbfkM4ULGzLrVrhs21i/HpFa8qBzSVyhznwBT4fqOP6b1NZl7IABJS3pQdKbEZ9+Az+O4/Nl55mpfgAppOEbr5XNFIGRKvQ3K5oJS55l6e3GrbH3+5J3bDC1Gxh4wbqYJXVBVKipdJVCtoftEoi1ipTxVtv6j/86egUG7+N1CA6p33q1TXJqwqh4YNFq+9XAAj4X7oSyChA5j4VGegl6x5g+qGMszLGJC2oK6Xalna4dGETe3bjx9+QBQKrYc9T3K3X7Ros0uahiUyx8ekuX25ERGojtYIOpjcGLiPGtp95lbbnX/0cLcbJC2IZjduBeS76RTHlt3/RG5ygbzwK3Pao41wVNJyjLoy5SCi6pguTDjMBGQWjTOfKmK3vv9E8tI6T2lJJqeLtNLIkBpZ2KodqkcTr+80ySehMKglwHBQkjx646afCb+dOwdqhhHQt1gSasQRTxHUWg9NcmZ2uqJoXgQ/mGhsz3b8lgRcZEdA8jf9bxMal3+vWhrY/c3o7y0wiajx838ijYE=",
+    "signing_algorithm": "RSA-PSS"
+  },
+  "jacsVersion": "8675c919-cb3a-40c8-a716-7f8e04350651",
+  "jacsVersionDate": "2024-04-11T05:40:15.934777+00:00",
+  "name": "Agent Smith"
+}
+
+</code></pre>
+<p>You can verify you are set up with this command:</p>
+<pre><code>jacs agent verify  -a ./examples/agent/fe00bb15-8c7f-43ac-9413-5a7bd5bb039d\:1f639f69-b3a7-45d5-b814-bc7b91fb3b97.json
+</code></pre>
+<p>To make it easier to use, add <code>jacs_agent_id_and_version</code> to your config and you can just run</p>
+<pre><code>jacs agent verify
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
 
+                            <a rel="next prefetch" href="../guide/documents.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -189,7 +248,13 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
 
+                    <a rel="next prefetch" href="../guide/documents.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
             </nav>
 
         </div>
@@ -202,13 +267,13 @@
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

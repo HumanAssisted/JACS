@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>test - JACS Usage Documentation</title>
+        <title>Security - JACS Usage Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/reading.html"><strong aria-hidden="true">2.</strong> Reading Books</a></li><li class="chapter-item expanded "><a href="../guide/creating.html"><strong aria-hidden="true">3.</strong> Creating a Book</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../cli/init.html"><strong aria-hidden="true">4.1.</strong> init</a></li><li class="chapter-item expanded "><a href="../cli/build.html"><strong aria-hidden="true">4.2.</strong> build</a></li><li class="chapter-item expanded "><a href="../cli/watch.html"><strong aria-hidden="true">4.3.</strong> watch</a></li><li class="chapter-item expanded "><a href="../cli/serve.html"><strong aria-hidden="true">4.4.</strong> serve</a></li><li class="chapter-item expanded "><a href="../cli/test.html" class="active"><strong aria-hidden="true">4.5.</strong> test</a></li><li class="chapter-item expanded "><a href="../cli/clean.html"><strong aria-hidden="true">4.6.</strong> clean</a></li><li class="chapter-item expanded "><a href="../cli/completions.html"><strong aria-hidden="true">4.7.</strong> completions</a></li></ol></li><li class="chapter-item expanded "><a href="../continuous-integration.html"><strong aria-hidden="true">5.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="../for_developers/index.html"><strong aria-hidden="true">7.</strong> For Developers</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../for_developers/preprocessors.html"><strong aria-hidden="true">7.1.</strong> Preprocessors</a></li><li class="chapter-item expanded "><a href="../for_developers/backends.html"><strong aria-hidden="true">7.2.</strong> Alternative Backends</a></li><li class="spacer"></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../guide/documents.html"><strong aria-hidden="true">3.</strong> working with documents</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li class="chapter-item expanded "><a href="../design/security.html" class="active"><strong aria-hidden="true">5.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -173,17 +173,49 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="test"><a class="header" href="#test">test</a></h1>
+                        <h1 id="security"><a class="header" href="#security">Security</a></h1>
+<p>JACS goal is to introduce no safety vulnerabilities to systems where it is integrated.
+Open to ideas on what cryptography to add next: https://cryptography.rs/, like https://doc.dalek.rs/bulletproofs/index.html.</p>
+<h3 id="filesystem"><a class="header" href="#filesystem">filesystem</a></h3>
+<p>However, filesystem acces can also be turned off completely for documents. This means your app passing strings in and out of JACS but can not save().</p>
+<p>By default a directory is used that is configured.  JACS should not touch any files outside the key directory JACS_KEY_DIRECTORY and the JACS_DIRECTORY.</p>
+<h3 id="private-keys"><a class="header" href="#private-keys">private keys</a></h3>
+<p>Private keys are stored in memory with https://docs.rs/secrecy/latest/secrecy/
+The are also encrypted when on the filesystem if you have set the password with the keys are created.</p>
+<h2 id="header-validation-process"><a class="header" href="#header-validation-process">header validation process</a></h2>
+<p>The following is a brief explanation of documents are created, signed, and verified.</p>
+<h3 id="signing"><a class="header" href="#signing">signing</a></h3>
+<p>Signature options are "ring-Ed25519", "RSA-PSS", and "pq-dilithium".
+These are all open source projects and JACS is not an encryption library in itself.</p>
+<ol>
+<li>a json document is loaded as a "new" document</li>
+<li>as a new document it must not have an id, version etc</li>
+<li>an id and version uuid is created, along with date, etc</li>
+<li>all the fields are hashed and put into a field that is not part of the hash, and the hash is added</li>
+<li>all the fields are used to sign with the agent's private key, and the public keys sha256 is aded to the document, as well as the signing agent's id and version</li>
+</ol>
+<h3 id="verifying"><a class="header" href="#verifying">verifying</a></h3>
+<ol>
+<li>a document is loaded and is verified as being a jacs document using the schema</li>
+<li>the hash is checked by taking the value of the fields excluding signature areas, and checking the hash</li>
+<li>the agent id is used to find the public key of the document and the signature is checked</li>
+</ol>
+<h2 id="trust"><a class="header" href="#trust">trust</a></h2>
+<p>When data is changed documents are versioned and the version is cryptographically signed by your agent.
+Changes can be verified and approved by other agents using your public key, allowing for creation and exchange of trusted data.</p>
+<p>NOTE: Doesn’t <em>require</em> central key authority yet, but this does mean that anyone can spoof anyone.
+Until then, use for self signing only, or exchange public keys only with trusted services.</p>
+<p>JACS should not need to make network calls for JSON schema as they are loaded into the lib.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../cli/serve.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../cli/index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../cli/clean.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../design/schemas.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -193,11 +225,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../cli/serve.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../cli/index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../cli/clean.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../design/schemas.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Continuous Integration - JACS Usage Documentation</title>
+        <title>JSON schemas - JACS Usage Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -12,21 +12,21 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" href="highlight.css">
-        <link rel="stylesheet" href="tomorrow-night.css">
-        <link rel="stylesheet" href="ayu-highlight.css">
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
@@ -35,7 +35,7 @@
     <div id="body-container">
         <!-- Provide site root to javascript -->
         <script>
-            var path_to_root = "";
+            var path_to_root = "../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="guide/reading.html"><strong aria-hidden="true">2.</strong> Reading Books</a></li><li class="chapter-item expanded "><a href="guide/creating.html"><strong aria-hidden="true">3.</strong> Creating a Book</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cli/init.html"><strong aria-hidden="true">4.1.</strong> init</a></li><li class="chapter-item expanded "><a href="cli/build.html"><strong aria-hidden="true">4.2.</strong> build</a></li><li class="chapter-item expanded "><a href="cli/watch.html"><strong aria-hidden="true">4.3.</strong> watch</a></li><li class="chapter-item expanded "><a href="cli/serve.html"><strong aria-hidden="true">4.4.</strong> serve</a></li><li class="chapter-item expanded "><a href="cli/test.html"><strong aria-hidden="true">4.5.</strong> test</a></li><li class="chapter-item expanded "><a href="cli/clean.html"><strong aria-hidden="true">4.6.</strong> clean</a></li><li class="chapter-item expanded "><a href="cli/completions.html"><strong aria-hidden="true">4.7.</strong> completions</a></li></ol></li><li class="chapter-item expanded "><a href="continuous-integration.html" class="active"><strong aria-hidden="true">5.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="for_developers/index.html"><strong aria-hidden="true">7.</strong> For Developers</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="for_developers/preprocessors.html"><strong aria-hidden="true">7.1.</strong> Preprocessors</a></li><li class="chapter-item expanded "><a href="for_developers/backends.html"><strong aria-hidden="true">7.2.</strong> Alternative Backends</a></li><li class="spacer"></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../guide/documents.html"><strong aria-hidden="true">3.</strong> working with documents</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">5.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html" class="active"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -144,7 +144,7 @@
                     <h1 class="menu-title">JACS Usage Documentation</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -173,19 +173,28 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="continuous-integration"><a class="header" href="#continuous-integration">Continuous Integration</a></h1>
+                        <h1 id="json-schemas"><a class="header" href="#json-schemas">JSON schemas</a></h1>
+<h2 id="schemas-ids-and-versions-vs-signatures"><a class="header" href="#schemas-ids-and-versions-vs-signatures">Schemas IDs and Versions vs Signatures</a></h2>
+<p>IDs of agents and documents should be unique to your agent as they are a combination of ID and Version. However, if you share your documents, and we expect that you will, documents can be copied by other agents at any time and they can forge IDs and sign their docs.</p>
+<p>Semantic versioning would break if the document forks because multiple agents will work on a single document. So each id/version is a UUID, and the previous version is stored so a trace can be constructed. (In itself, it's not a blockchain such that each version can be verified in the context of the previous version).</p>
+<h2 id="schemas-basic-types"><a class="header" href="#schemas-basic-types">Schemas: basic types</a></h2>
+<p>Every JACS doc has a header. These are created automatically.</p>
+<p>You only need to use the agents and header to record and verify permissions on any type of document</p>
+<ul>
+<li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/header.md">Header</a> -  the signature along with permissions</li>
+<li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/agent.md">Agents</a> - a type of resource that can take action</li>
+<li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/signature.md">Signatures</a> - cryptographically signed signature of the version of the document</li>
+<li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/files.md">Files</a> - documents you can sign and "attach"</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="cli/completions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../design/security.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="design/security.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -193,13 +202,10 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="cli/completions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../design/security.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="design/security.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
             </nav>
 
         </div>
@@ -212,13 +218,13 @@
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

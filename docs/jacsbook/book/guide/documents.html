@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Command Line Tool - JACS Usage Documentation</title>
+        <title>working with documents - JACS Usage Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/reading.html"><strong aria-hidden="true">2.</strong> Reading Books</a></li><li class="chapter-item expanded "><a href="../guide/creating.html"><strong aria-hidden="true">3.</strong> Creating a Book</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../cli/index.html" class="active"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../cli/init.html"><strong aria-hidden="true">4.1.</strong> init</a></li><li class="chapter-item expanded "><a href="../cli/build.html"><strong aria-hidden="true">4.2.</strong> build</a></li><li class="chapter-item expanded "><a href="../cli/watch.html"><strong aria-hidden="true">4.3.</strong> watch</a></li><li class="chapter-item expanded "><a href="../cli/serve.html"><strong aria-hidden="true">4.4.</strong> serve</a></li><li class="chapter-item expanded "><a href="../cli/test.html"><strong aria-hidden="true">4.5.</strong> test</a></li><li class="chapter-item expanded "><a href="../cli/clean.html"><strong aria-hidden="true">4.6.</strong> clean</a></li><li class="chapter-item expanded "><a href="../cli/completions.html"><strong aria-hidden="true">4.7.</strong> completions</a></li></ol></li><li class="chapter-item expanded "><a href="../continuous-integration.html"><strong aria-hidden="true">5.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="../for_developers/index.html"><strong aria-hidden="true">7.</strong> For Developers</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../for_developers/preprocessors.html"><strong aria-hidden="true">7.1.</strong> Preprocessors</a></li><li class="chapter-item expanded "><a href="../for_developers/backends.html"><strong aria-hidden="true">7.2.</strong> Alternative Backends</a></li><li class="spacer"></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../guide/documents.html" class="active"><strong aria-hidden="true">3.</strong> working with documents</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">5.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -173,17 +173,40 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="command-line-tool"><a class="header" href="#command-line-tool">Command Line Tool</a></h1>
+                        <h1 id="working-with-documents"><a class="header" href="#working-with-documents">working with documents</a></h1>
+<p>Now that your agent is set up can create, update, and sign documents with your agent.</p>
+<h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
+<p>To create create documents, select a file or directory and the documents will be copied to <code>jacs_data_directory</code> and renamed.</p>
+<pre><code>jacs document create -d ./examples/raw/
+</code></pre>
+<p>Now you can verify a document is valid, even with custom JSON schema, and verify the signature of the document.</p>
+<pre><code>jacs document verify -f ./examples/documents/MODIFIED_e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d\:975f4523-e2e0-4b64-9c31-c718796fbdb1.json
+</code></pre>
+<p>Or a whole directory</p>
+<pre><code>jacs document verify -d ./examples/documents/
+</code></pre>
+<p>You can also verify using a custom JSON Schema</p>
+<pre><code> jacs document verify -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -s ./examples/documents/custom.schema.json
+</code></pre>
+<p>If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.</p>
+<p>To modify a document, copy the original and modify how you'd like, and then JACS can update the version and signature</p>
+<pre><code>jacs document update -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -n examples/raw/howtoupdate-05f0c073-9df5-483b-aa77-2c3259f02c7b.json -o updatedfruit.json
+</code></pre>
+<p>Filenames will always end with "jacs.json", so the -o</p>
+<p>You can embed external files</p>
+<pre><code>jacs document create -f ./examples/raw/not-fruit.json --attach ./examples/raw/mobius.jpeg --embed true
+</code></pre>
+<h2 id="api"><a class="header" href="#api">API</a></h2>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../guide/creating.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../guide/agent.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../cli/init.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../cli/index.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -193,11 +216,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../guide/creating.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../guide/agent.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../cli/init.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../cli/index.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
