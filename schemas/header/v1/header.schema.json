@@ -24,6 +24,10 @@
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
+    "jacsRegistration": {
+      "description": "Signature by a sigining authority like https://hai.ai.",
+      "$ref": "../../components/signature/v1/signature.schema.json"
+    },
     "jacsPreviousVersion": {
       "description": "Previous Version id of the object. If blank, it's claiming to be the first ",
       "type": "string",

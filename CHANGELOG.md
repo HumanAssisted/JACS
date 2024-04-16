@@ -1,4 +1,6 @@
+## 0.2.4
 
+- add jacsRegistration signature field
 
 ## 0.2.3
 
