@@ -28,6 +28,10 @@
       "description": "Signature by a sigining authority like https://hai.ai.",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
+    "jacsAgreement": {
+      "description": "Signature signfying an agreement between agents.",
+      "$ref": "../../components/agreement/v1/agreement.schema.json"
+    },
     "jacsPreviousVersion": {
       "description": "Previous Version id of the object. If blank, it's claiming to be the first ",
       "type": "string",

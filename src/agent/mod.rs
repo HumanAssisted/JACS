@@ -33,6 +33,7 @@ use uuid::Uuid;
 pub const SHA256_FIELDNAME: &str = "jacsSha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const AGENT_REGISTRATION_SIGNATURE_FIELDNAME: &str = "jacsRegistration";
+pub const AGENT_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsAgentSignature";
 
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
@@ -458,6 +459,7 @@ impl Agent {
                             && key != AGENT_SIGNATURE_FIELDNAME
                             && key != DOCUMENT_AGENT_SIGNATURE_FIELDNAME
                             && key != AGENT_REGISTRATION_SIGNATURE_FIELDNAME
+                            && key != AGENT_AGREEMENT_FIELDNAME
                     })
                     .map(|key| key.to_string())
                     .collect();
@@ -473,15 +475,17 @@ impl Agent {
                         || str_value == AGENT_SIGNATURE_FIELDNAME
                         || str_value == DOCUMENT_AGENT_SIGNATURE_FIELDNAME
                         || str_value == AGENT_REGISTRATION_SIGNATURE_FIELDNAME
+                        || str_value == AGENT_AGREEMENT_FIELDNAME
                     {
                         let error_message = format!(
                             "Field names for signature must not include itself or hashing
-                              - these are reserved for this signature {}: see {} {} {} {}",
+                              - these are reserved for this signature {}: see {} {} {} {} {}",
                             placement_key,
                             SHA256_FIELDNAME,
                             AGENT_SIGNATURE_FIELDNAME,
                             DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
-                            AGENT_REGISTRATION_SIGNATURE_FIELDNAME
+                            AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
+                            AGENT_AGREEMENT_FIELDNAME
                         );
                         error!("{}", error_message);
                         return Err(error_message.into());

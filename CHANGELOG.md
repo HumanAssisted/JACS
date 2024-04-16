@@ -1,6 +1,7 @@
 ## 0.2.4
 
 - add jacsRegistration signature field
+- add jacsAgreement field
 
 ## 0.2.3
 

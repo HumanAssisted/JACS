@@ -8,7 +8,7 @@ General data about unstructured content not in JACS
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                      |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [files.schema.json](../../schemas/components/files/v1/files.schema.json "open original schema") |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [files.schema.json](../../schemas/components/files/v1/files.schema.json "open original schema") |
 
 ## File Type
 

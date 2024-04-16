@@ -1,15 +1,15 @@
-# Untitled string in Signature Schema
+# Untitled array in agreement Schema
 
 ```txt
-https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm
+https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs
 ```
 
-What signature algorithm was used
+The agents which are required in order to sign the document
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                    |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------------ |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [signature.schema.json\*](../../schemas/components/signature/v1/signature.schema.json "open original schema") |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [agreement.schema.json\*](../../schemas/components/agreement/v1/agreement.schema.json "open original schema") |
 
-## signingAlgorithm Type
+## agentIDs Type
 
-`string`
+`uuid[]`

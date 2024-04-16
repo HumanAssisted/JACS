@@ -1,7 +1,7 @@
 # Untitled string in Signature Schema
 
 ```txt
-https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/publicKeyHash
+https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash
 ```
 
 Hash of the public key to verify signature with.
