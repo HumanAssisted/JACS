@@ -12,4 +12,4 @@ The agents which are required in order to sign the document
 
 ## agentIDs Type
 
-`uuid[]`
+`string[]`

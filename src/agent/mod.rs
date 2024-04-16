@@ -423,7 +423,7 @@ impl Agent {
             "agentVersion": agent_version,
             "date": date,
             "signature":signature,
-            "signing_algorithm":signing_algorithm,
+            "signingAlgorithm":signing_algorithm,
             "publicKeyHash": public_key_hash,
             "fields": serialized_fields
         });

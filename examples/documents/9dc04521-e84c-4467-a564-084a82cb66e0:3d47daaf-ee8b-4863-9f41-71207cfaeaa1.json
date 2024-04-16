@@ -47,9 +47,9 @@
   "gender": "Male",
   "image": "https://s.gravatar.com/avatar/961997eb7fd5c22b3e12fb3c8ca14e11?s=512&r=g",
   "jacsAgentSignature": {
-    "agentID": "37e6b2e0-5100-4eb7-b042-2630beaa8531",
-    "agentVersion": "c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3",
-    "date": "2024-04-11T06:40:38.723800+00:00",
+    "agentID": "49c48c7a-db1d-4e8c-9133-4c27f73737b8",
+    "agentVersion": "06a9a142-ef51-4980-b29a-576ab2b3aadb",
+    "date": "2024-04-16T22:36:01.386980+00:00",
     "fields": [
       "$schema",
       "@context",
@@ -77,15 +77,15 @@
       "worksFor"
     ],
     "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
-    "signature": "WplpruawT8jncg1JkrO2pkt6y84sp+kF3WpsSMlEsySFccTHwxogizFLc6fCdTSWd/nEd3vSfsGjfRzAHzWWkE2xAJ+v5H3P+Z3p/S/qYcokJWiu+B5odNeP70SZKDa93rCt2DiYCJbd851C8HVv10njLtYmvQh7C6CeqxC8y3/puyPxspDsree/tzgReiPOoP/6X+bdoPc3D8TEysiBl0N5WhxdKiXJp/HVHC4fl+3P+Cqf6Z/fFOiLe7yy/s3Gjc0qjo/W/k3CxsXOWPPzNjqOkPYrmipZe7wDphkrgoPvfMi/rixMf0wHdzxScExskh3Qjzha7oa+UfXlM88pF+Ud0fGQfdfATpFAOOnByqGGoLcDA/XqOsefHZf4/x9D5NpGhHVhgg6ZUNHc3kH+5qbip+U8ade5RgXDe7Kkt83gBAf/k9oE1Qxo0lFTDSseS70Abj41Kj5Iqv1u+YETKfAwe5oqn0eBb/kCrlZXU4FHkFgBn5PbZbdUboUDydbbFibxct968qAWszryc6Q7wPGiJVvUzcEUI5jMe/4FqTL1+5b5Raz25m4Qenu2v4GSoeDcnM4X0XFNQgo/K0oIuC/my2resGMWpt/fXYwD9vMCoJt23LzNgicYv8Jc4WkQ3sBi169j5AxaIsJ/68A2df+ZS0nrjBgFyuLDCBUl8z4=",
-    "signing_algorithm": "RSA-PSS"
+    "signature": "cfaNFbkxJ/DBwVbRBFQq8Qvngzk65wKFzdE17Ff7RJh/aF2k8tX65eFuvd3qzlVdOC7aqNWko6zDJT2uar5T7BvpdVCC+IAHN7VbscMFgIQ50H2HYQUF0mxvnrCIt5ZlhD2Sgq0GJ0plsqTmVopREkNyW3H7vjbm6chy4u09ou/UygOXaYj2cDDoPXgHo7DUR/DejVuKwhzHOA0wP7AxxC+3ahysBcM3seqTpZiNxALZBUdb3lY3Ld8Es3QEpZ5Q3Mb4DWdCCZOuaBR6czjAKVxQtwXYJh61uXgJRmfzkgpVYXMaWistGVcBBr9EXfT61m6Gt6aqnlUNr5pW4oR5btp1f9o/Jn2rne7IluAFbLSrSThgIm87ktvyKSOrVCrnRN9pnO5kNH/9BOOqT5KtJMU2JfbKkm9RoOZIAmx7xztP0eNGaaAbMc0fK3vIZiJLKuXopuAZR4YQfWS3vF0L/Qx2NOvhnL25+qAC1ZfXTnpSD3dvdtIK4a2y7tfOjACqEPH5rw6nO2n9VCl3HvdHscX0Ffjya15HJsEr/FDLjy/hr4ccs8K/SQtq0AvlGtK3MFOnI2PiIdDcG638H9Vgg3R47TPFVS2zGSMjV4AXarkodScLts5N6U1EOwIfn4XEI6EFENGm/UhSadzXlw9ywaC9m8nB/1f2xqgGvGNWHnc=",
+    "signingAlgorithm": "RSA-PSS"
   },
-  "jacsId": "d7ae1314-a783-4136-9df4-9d06d73794f1",
-  "jacsOriginalDate": "2024-04-11T06:40:38.289175+00:00",
-  "jacsOriginalVersion": "eba019d7-f23f-4914-b5a0-30dec0523107",
-  "jacsSha256": "24d40d05fc5a5048e0354cfeb98c34c215cd9de5c825c457e43ca8f450d2ece7",
-  "jacsVersion": "eba019d7-f23f-4914-b5a0-30dec0523107",
-  "jacsVersionDate": "2024-04-11T06:40:38.289175+00:00",
+  "jacsId": "9dc04521-e84c-4467-a564-084a82cb66e0",
+  "jacsOriginalDate": "2024-04-16T22:36:00.974395+00:00",
+  "jacsOriginalVersion": "3d47daaf-ee8b-4863-9f41-71207cfaeaa1",
+  "jacsSha256": "521420d15b9bb0995b161390a857e4d47191e7a4c73b30b535bff718f0320c38",
+  "jacsVersion": "3d47daaf-ee8b-4863-9f41-71207cfaeaa1",
+  "jacsVersionDate": "2024-04-16T22:36:00.974395+00:00",
   "jobTitle": "Technical Director",
   "name": "Jay Holtslander",
   "nationality": "Canadian",

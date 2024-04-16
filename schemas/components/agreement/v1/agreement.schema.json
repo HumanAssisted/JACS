@@ -16,7 +16,8 @@
       "type": "array",
       "description": "The agents which are required in order to sign the document",
       "items": {
-        "type": "uuid"
+        "type": "string",
+        "format": "uuid"
       }
     }
   },

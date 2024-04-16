@@ -16,11 +16,6 @@ for file in ./schemas/components/*/*/*.json; do
 done
 
 
-for file in ./examples/*.json; do
-  echo "formatting $file"
-  jq   '.' "$file" > temp.json && mv temp.json "$file"
-done
-
 rm temp.json
 
 # create json schema docs

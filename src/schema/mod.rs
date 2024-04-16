@@ -51,8 +51,10 @@ impl Schema {
         // TODO let the agent, header, and signature versions for verifying being flexible
         let header_path = format!("schemas/header/{}/header.schema.json", headerversion);
         let agentversion_path = format!("schemas/agent/{}/agent.schema.json", agentversion);
-        let agreementversion_path =
-            format!("schemas/agreement/{}/agreement.schema.json", agentversion);
+        let agreementversion_path = format!(
+            "schemas/components/agreement/{}/agreement.schema.json",
+            agentversion
+        );
         let signatureversion_path = format!(
             "schemas/components/signature/{}/signature.schema.json",
             signatureversion

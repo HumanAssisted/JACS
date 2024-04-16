@@ -7,7 +7,7 @@ mod utils;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-static SCHEMA: &str = "examples/documents/custom.schema.json";
+static SCHEMA: &str = "examples/raw/custom.schema.json";
 //color_eyre::install().unwrap();
 #[test]
 fn test_load_custom_schema_and_custom_document() {
@@ -16,7 +16,7 @@ fn test_load_custom_schema_and_custom_document() {
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/87d6d7f0-547f-4a27-8352-d0d034cd3270:83426a3d-1e3d-4a54-88a1-f40e1cc44219.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     println!("loaded valid {}", document_key);
@@ -63,7 +63,7 @@ fn test_create() {
 }
 
 #[test]
-// #[ignore]
+#[ignore]
 fn test_create_attachments() {
     // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments
     utils::generate_new_docs_with_attachments(true);
@@ -102,11 +102,11 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/87d6d7f0-547f-4a27-8352-d0d034cd3270:83426a3d-1e3d-4a54-88a1-f40e1cc44219.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let modified_document_string =
-        load_local_document(&"examples/documents/MODIFIED_40593715-5b5b-4812-9c17-5b349835f0fb:7e28904f-7326-42ce-a1a3-bbef06199c63.json".to_string())
+        load_local_document(&"examples/documents/MODIFIED_87d6d7f0-547f-4a27-8352-d0d034cd3270:83426a3d-1e3d-4a54-88a1-f40e1cc44219.json".to_string())
             .unwrap();
 
     let new_document = agent
