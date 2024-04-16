@@ -311,7 +311,7 @@ impl Agent {
         return Ok(format!("{}:{}", agentid, agentversion));
     }
 
-    fn signature_verification_procedure(
+    pub fn signature_verification_procedure(
         &mut self,
         json_value: &Value,
         fields: Option<&Vec<String>>,
