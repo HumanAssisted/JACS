@@ -19,7 +19,7 @@ pub fn get_empty_agent() -> Agent {
 
 pub fn load_agent_by_id() -> Agent {
     let mut agent = get_empty_agent();
-    let _ = agent.load_by_id(None, None);
+    agent.load_by_id(None, None).expect("agent.load_by_id. ");
     agent
 }
 

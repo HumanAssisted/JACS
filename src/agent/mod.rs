@@ -1,13 +1,15 @@
-// pub mod document;
+pub mod agreement;
+pub mod boilerplate;
+pub mod document;
+pub mod loaders;
+
+use crate::agent::agreement::Agreement;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
 use crate::crypt::hash::hash_public_key;
 use std::fs;
 
 use crate::config::{get_default_dir, set_env_vars};
-pub mod boilerplate;
-pub mod document;
-pub mod loaders;
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
