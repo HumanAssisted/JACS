@@ -336,7 +336,10 @@ impl Agent {
         let public_key_rehash = hash_string(&String::from_utf8(public_key.clone())?);
 
         if public_key_rehash != public_key_hash {
-            let error_message = "Incorrect public key used to verify signature";
+            let error_message = format!(
+                "Incorrect public key used to verify signature {} {} ",
+                public_key_rehash, public_key_hash
+            );
             error!("{}", error_message);
             return Err(error_message.into());
         }
