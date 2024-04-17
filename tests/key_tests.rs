@@ -4,6 +4,7 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 mod utils;
 
+use jacs::crypt::hash::hash_public_key;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 
@@ -28,8 +29,9 @@ d/6Zl2SKGrehc2P6YlOvf5tI2bhI/m8AnQDdNgdDjzBAVYPw7G/7gEiqeyNHHOb9
 OAK/sL2gdG/+sgqthGFss9NQvmAxqz1TMKzrPQOxE98SmErA7VdhhnTImT35BtqQ
 Jsiq8X4NITPf5LMB6vX08XQPaPuDjku2NGMi0ZF0MKPsODreGHnWVRHUe855IMP/
 hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
------END PUBLIC KEY-----"
-        .to_string();
+-----END PUBLIC KEY-----
+"
+    .to_string();
     let exepected_hash = "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6";
     let new_expected_hash = "ce3d294bafee5c388be88f74ad8d8e0054e390964caacc2955c42179638d6df8";
 
@@ -59,6 +61,16 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
 
     let hardocded_hash = jacs_hash_string(&hardcoded);
     println!("hardocded_hash {}  ", hardocded_hash,);
+
+    let hardcoded_hash_as_vec: Vec<u8> = hardcoded.into_bytes();
+    let hardocded_hash2 =
+        jacs_hash_string(&String::from_utf8(hardcoded_hash_as_vec.clone()).unwrap());
+    println!("hardocded_hash2 {}  ", hardocded_hash2,);
+
+    println!(
+        "hardcoded_hash_as_vec  hash_public_key {}  ",
+        hash_public_key(hardcoded_hash_as_vec)
+    );
 
     // let public_key_string = String::from_utf8(public_key_with_newline.to_vec()).expect("Invalid UTF-8");
     // let public_key_rehash2 = jacs_hash_string(&public_key_with_newline);

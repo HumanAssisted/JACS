@@ -1,6 +1,7 @@
 // pub mod document;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
+use crate::crypt::hash::hash_public_key;
 use std::fs;
 
 use crate::config::{get_default_dir, set_env_vars};
@@ -9,7 +10,7 @@ pub mod document;
 pub mod loaders;
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
-use crate::crypt::hash::hash_string;
+
 use crate::crypt::KeyManager;
 use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
@@ -333,7 +334,7 @@ impl Agent {
             .trim_matches('"')
             .to_string();
 
-        let public_key_rehash = hash_string(&String::from_utf8(public_key.clone())?);
+        let public_key_rehash = hash_public_key(public_key.clone());
 
         if public_key_rehash != public_key_hash {
             let error_message = format!(
@@ -417,7 +418,8 @@ impl Agent {
             Err(err) => return Err(Box::new(err)),
         };
         let public_key = self.get_public_key()?;
-        let public_key_hash = hash_string(&String::from_utf8(public_key)?);
+        let public_key_hash = hash_public_key(public_key);
+        println!("hash {:?} ", public_key_hash);
         //TODO fields must never include sha256 at top level
         // error
         let signature_document = json!({
