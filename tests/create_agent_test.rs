@@ -20,7 +20,7 @@ fn test_validate_agent_creation() {
             assert!(false);
         }),
     };
-    // agent.save();
+    agent.save();
 
     println!("New Agent Created\n\n\n {} ", agent);
     // switch keys

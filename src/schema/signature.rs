@@ -1,6 +1,5 @@
+use crate::crypt::hash::hash_string as crypt_hash_string;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
-
 /// abstract traits that must be implemented by importing libraries
 pub trait SignatureVerifiers {
     fn hash_string(&self, input_string: &String) -> String;
@@ -9,11 +8,7 @@ pub trait SignatureVerifiers {
 
 impl SignatureVerifiers for super::Schema {
     fn hash_string(&self, input_string: &String) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(input_string.as_bytes());
-        let result = hasher.finalize();
-        let hash_string = format!("{:x}", result);
-        return hash_string;
+        return crypt_hash_string(input_string);
     }
 
     /// utilty function to retrieve the list of fields

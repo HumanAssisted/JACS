@@ -2,6 +2,7 @@
 
 - add jacsRegistration signature field
 - add jacsAgreement field
+- tests for issue with public key hashing from various sources
 
 ## 0.2.3
 

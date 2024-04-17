@@ -1,10 +1,9 @@
-use log::debug;
 use sha2::{Digest, Sha256};
 
-pub fn hash_string(content: &String) -> String {
+pub fn hash_string(input_string: &String) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(content);
+    hasher.update(input_string.as_bytes());
     let result = hasher.finalize();
-    debug!("SHA-256 hash: {:x}", result);
-    format!("{:x}", result)
+    let hash_string = format!("{:x}", result);
+    return hash_string;
 }

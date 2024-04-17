@@ -157,7 +157,7 @@ impl FileLoader for Agent {
         //todo use filepath builder
         let default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
 
-        let private_key = load_key_file(&default_dir, &private_key_filename)?;
+        let private_key = load_private_key(&default_dir, &private_key_filename)?;
         let public_key = load_key_file(&default_dir, &public_key_filename)?;
 
         let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;

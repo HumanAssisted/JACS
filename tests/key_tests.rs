@@ -10,20 +10,37 @@ use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 #[test]
 fn test_key_hashing() {
     // cargo test   --test key_tests -- --nocapture
-    let public_key_with_newline =
+    let public_key_with_newline: Vec<u8> =
         std::fs::read(&"tests/fixtures/public_key_with_newline.pem".to_string()).unwrap();
-    let public_key_no_newline =
+    let public_key_no_newline: Vec<u8> =
         std::fs::read(&"tests/fixtures/public_key_no_newline.pem".to_string()).unwrap();
 
+    let hardcoded = "-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqXxe+VRMQROrxX6i+1xh
+nvF6ZNE/zNJzLAUbNdTQte1mTCmCUyI8+XQXuC0JoetfvZm71/wEQe5F8vNONyv4
+g3iHpBa0d4eEtlvcD8nqdNFEaSfT4cuBVBBwyOM6ZPSEFrxAV4TmoqeI3GXarls2
+X+HQW3TBTcYAq7yGS5kcUbzYsQvqR0CjJ5R1JmtlSODvv42EXY9QYsZCJ+QPPEPH
+SFWM9uFUP5H8VQK2aTt0ZWWDO+0Rc2we3RdapfWNpftSqTm8EIUHYxbvjpMF2xMT
+YxQPCIM8ChqDZHfKf7VgHC9MyLdyg9CRlfOkz493ubdj/MrayVooZbn1T3pn7Ggt
+P0fcckCPROdXOSlgMAaCG+//wGM/v/1jjEa5Wb5OMzahZvfFCzXujSgBd37I7MoN
+d/6Zl2SKGrehc2P6YlOvf5tI2bhI/m8AnQDdNgdDjzBAVYPw7G/7gEiqeyNHHOb9
+5h01nV7URKrB5iJnZoJC8g1GV5CgDlAB04S3PF8J2Cy+7pyG866D9gCm+1anL/nM
+OAK/sL2gdG/+sgqthGFss9NQvmAxqz1TMKzrPQOxE98SmErA7VdhhnTImT35BtqQ
+Jsiq8X4NITPf5LMB6vX08XQPaPuDjku2NGMi0ZF0MKPsODreGHnWVRHUe855IMP/
+hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
+-----END PUBLIC KEY-----"
+        .to_string();
     let exepected_hash = "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6";
+    let new_expected_hash = "ce3d294bafee5c388be88f74ad8d8e0054e390964caacc2955c42179638d6df8";
+
     let exepected_hash_from_file =
         load_local_document(&"tests/fixtures/public_key_expected_hash.txt".to_string()).unwrap();
 
     // hash
     let public_key_with_newline_hash =
-        jacs_hash_string(&String::from_utf8(public_key_with_newline.clone()).unwrap());
+        jacs_hash_string(&String::from_utf8(public_key_with_newline.to_vec()).unwrap());
     let public_key_no_newline_hash =
-        jacs_hash_string(&String::from_utf8(public_key_no_newline.clone()).unwrap());
+        jacs_hash_string(&String::from_utf8(public_key_no_newline.to_vec()).unwrap());
 
     println!(
         "public_key_with_newline_hash {} \n public_key_no_newline_hash {}",
@@ -39,6 +56,9 @@ fn test_key_hashing() {
         "public_key_hash_from_utf8 {} \n public_key_hash_from_utf8nnl {}",
         public_key_hash_from_utf8, public_key_hash_from_utf8nnl
     );
+
+    let hardocded_hash = jacs_hash_string(&hardcoded);
+    println!("hardocded_hash {}  ", hardocded_hash,);
 
     // let public_key_string = String::from_utf8(public_key_with_newline.to_vec()).expect("Invalid UTF-8");
     // let public_key_rehash2 = jacs_hash_string(&public_key_with_newline);
