@@ -1,0 +1,31 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "description": "An agent without keys, id or version",
+  "jacsAgentType": "ai",
+  "jacsId": "5305e3e1-9b14-4cb7-94ff-902f9c101d91",
+  "jacsOriginalDate": "2024-04-17T07:56:18.344999+00:00",
+  "jacsOriginalVersion": "a2ecf623-64a1-43c6-a8f2-4a6c95552c25",
+  "jacsSha256": "4d47c621b55c382bae277ad892ccf0e14a3b3196a93f72b15d09d569511fb49b",
+  "jacsSignature": {
+    "agentID": "5305e3e1-9b14-4cb7-94ff-902f9c101d91",
+    "agentVersion": "a2ecf623-64a1-43c6-a8f2-4a6c95552c25",
+    "date": "2024-04-17T07:56:18.742068+00:00",
+    "fields": [
+      "$schema",
+      "description",
+      "jacsAgentType",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate",
+      "name"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "ULsyLARg3syrKAuqIQJ+6u+x9zeY9T08hKlCW33YPPFkbrRy6VkJRSTcMcD0+O0WCRgd8vadeh+SgCs2SApc2rWB6lp9zSdolU4nHcOzOAEkFqtuwO04iPRFdQGanmrJb/Lzvl7tu4WwCd4c+t2EicSW2MOiV2Q9kE1xDl5h9jxn7qvAOT46EQuA88TlfXz+t0Bff5ZNv8WtOZeD2rlXrQfFg51HAP/CnS50q3Gfxqntrf94ka6C2V+VEciYxXBx0DxXP5BoDB4x+PsZLDSjp0Gf4rVW5TcyVo3H683sDx+lmORgvfq+9oil81HCG6pOJ2HXVP6mg4n5MS8/wc6OthAJnmMYLjei17zhc77Zi69C8Tl8GA7/vY82WamTu8pkvPuj6FKLN0Rhn7+EmMXGOb3DVbH43cYTFwmdkqzels11xj89JcxZAS/VDXSywvBkCFM8k2qbl/2AFIUnf3FGPRz1qusDCAduQxYEHbzWqJbKq3LgDRlVDQhOmTcGh56zM2uemxzNGwoW0Jy8e1KyGqtQBdsjzLFI8APczxtJeq95y3gqjwnWi9P9U27DEcKotT4Vk4EV5JH11G+8x4J1f4UXYComew6cUQAYU+xIsUfr2Fz/WPBQUfRbWJO4xFMGo2X4uY4ychkCCcaYLTuQOB9yxwREGsaojxoBLAjf1cA=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsVersion": "a2ecf623-64a1-43c6-a8f2-4a6c95552c25",
+  "jacsVersionDate": "2024-04-17T07:56:18.344999+00:00",
+  "name": "Agent Smith"
+}

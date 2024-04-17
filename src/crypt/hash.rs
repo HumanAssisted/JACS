@@ -13,6 +13,7 @@ pub fn hash_public_key(public_key_bytes: Vec<u8>) -> String {
     let (encoding, _) =
         encoding_rs::Encoding::for_bom(&public_key_bytes).unwrap_or((encoding_rs::UTF_8, 0));
     let public_key_string = encoding.decode(&public_key_bytes).0.into_owned();
-    println!("Detected encoding: {:?}", encoding);
-    return hash_string(&public_key_string);
+    // see test ... cargo test   --test key_tests -- --nocapture
+    let normalized = public_key_string.trim().replace("\r", "");
+    return hash_string(&normalized.to_string());
 }

@@ -32,6 +32,10 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
 -----END PUBLIC KEY-----
 "
     .to_string();
+
+    let mut agent = load_test_agent_one();
+    let agent_one_public_key = agent.get_public_key().unwrap();
+
     let exepected_hash = "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6";
     let new_expected_hash = "ce3d294bafee5c388be88f74ad8d8e0054e390964caacc2955c42179638d6df8";
 
@@ -50,7 +54,7 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
     );
 
     let public_key_hash_from_utf8 =
-        jacs_hash_string(&String::from_utf8(public_key_with_newline).unwrap());
+        jacs_hash_string(&String::from_utf8(public_key_with_newline.clone()).unwrap());
     let public_key_hash_from_utf8nnl =
         jacs_hash_string(&String::from_utf8(public_key_no_newline).unwrap());
 
@@ -62,7 +66,7 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
     let hardocded_hash = jacs_hash_string(&hardcoded);
     println!("hardocded_hash {}  ", hardocded_hash,);
 
-    let hardcoded_hash_as_vec: Vec<u8> = hardcoded.into_bytes();
+    let hardcoded_hash_as_vec: Vec<u8> = hardcoded.clone().into_bytes();
     let hardocded_hash2 =
         jacs_hash_string(&String::from_utf8(hardcoded_hash_as_vec.clone()).unwrap());
     println!("hardocded_hash2 {}  ", hardocded_hash2,);
@@ -71,6 +75,42 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
         "hardcoded_hash_as_vec  hash_public_key {}  ",
         hash_public_key(hardcoded_hash_as_vec)
     );
+
+    println!(
+        "agent_one_public_key  hash_public_key {}  \n {:?}",
+        hash_public_key(agent_one_public_key.clone()),
+        agent_one_public_key
+    );
+
+    let (same, add, remove) = agent.diff_strings(
+        &hardcoded,
+        &String::from_utf8(agent_one_public_key.clone()).unwrap(),
+    );
+
+    println!("same\n{}\nadd\n{}\nremove\n{}", same, add, remove);
+    println!(
+        "len 1 {} - len 2 {} - len 3 {}",
+        hardcoded.len(),
+        String::from_utf8(public_key_with_newline.clone())
+            .unwrap()
+            .len(),
+        String::from_utf8(agent_one_public_key.clone())
+            .unwrap()
+            .len()
+    );
+
+    //  for (i, (c1, c2)) in hardcoded.chars().zip(String::from_utf8(agent_one_public_key.clone()).unwrap().chars()).enumerate() {
+    //     if c1 != c2 {
+    //         println!("Difference found at index {}: '{}' vs '{}'", i, c1, c2);
+    //     }
+    // }
+
+    // // Check if there are any trailing characters in either string
+    // if hardcoded.len() > agent_one_public_key.len() {
+    //     println!("Hardcoded string has extra characters: '{}'", &hardcoded[agent_one_public_key.len()..]);
+    // } else if agent_one_public_key.len() > hardcoded.len() {
+    //     println!("Agent public key has extra characters: '{}'", &String::from_utf8(agent_one_public_key.clone()).unwrap()[hardcoded.len()..]);
+    // }
 
     // let public_key_string = String::from_utf8(public_key_with_newline.to_vec()).expect("Invalid UTF-8");
     // let public_key_rehash2 = jacs_hash_string(&public_key_with_newline);

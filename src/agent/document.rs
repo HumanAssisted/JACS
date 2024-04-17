@@ -7,6 +7,7 @@ use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
 use chrono::Local;
 use chrono::Utc;
+use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
 use serde_json::json;
@@ -100,6 +101,7 @@ pub trait Document {
     fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>>;
     /// util function for parsing arguments for attachments
     fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>>;
+    fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String);
 }
 
 impl Document for Agent {
@@ -544,5 +546,23 @@ impl Document for Agent {
             }
             None => None,
         }
+    }
+
+    fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String) {
+        let changeset = Changeset::new(string_one, string_two, " ");
+        let mut same = String::new();
+        let mut add = String::new();
+        let mut rem = String::new();
+
+        // Collect detailed differences
+        for diff in &changeset.diffs {
+            match diff {
+                Difference::Same(ref x) => same.push_str(x),
+                Difference::Add(ref x) => add.push_str(x),
+                Difference::Rem(ref x) => rem.push_str(x),
+            }
+        }
+
+        (same, add, rem)
     }
 }

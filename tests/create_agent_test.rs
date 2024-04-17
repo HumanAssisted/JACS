@@ -40,7 +40,7 @@ fn test_validate_agent_creation() {
     };
 
     println!("New Agent2 Created\n\n\n {} ", agent);
-    // let _ = agent.save();
+    let _ = agent.save();
 }
 
 #[test]
