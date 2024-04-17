@@ -5,14 +5,14 @@ use utils::load_local_document;
 
 #[test]
 fn test_update_agent_and_verify_versions() {
-    // cargo test   --test schema_tests -- --nocapture
+    // cargo test   --test agent_tests -- --nocapture
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "49c48c7a-db1d-4e8c-9133-4c27f73737b8:06a9a142-ef51-4980-b29a-576ab2b3aadb".to_string();
+        "5305e3e1-9b14-4cb7-94ff-902f9c101d91:a2ecf623-64a1-43c6-a8f2-4a6c95552c25".to_string();
     let result = agent.load_by_id(Some(agentid), None);
 
     match result {

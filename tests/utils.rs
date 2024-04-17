@@ -89,7 +89,7 @@ pub fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "49c48c7a-db1d-4e8c-9133-4c27f73737b8:06a9a142-ef51-4980-b29a-576ab2b3aadb".to_string();
+        "5305e3e1-9b14-4cb7-94ff-902f9c101d91:a2ecf623-64a1-43c6-a8f2-4a6c95552c25".to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -121,7 +121,7 @@ pub fn load_test_agent_two() -> Agent {
     );
     let result = agent.load_by_id(
         Some(
-            "350d80d4-2a81-4c5e-ac40-1acc5c682fae:fd2b2e0a-84db-43da-8f7f-50f80f1a28f1".to_string(),
+            "a0917e64-dfdf-40ba-a8b2-e877e3686f27:592d4114-a957-4aaf-b483-0b31fc8bf371".to_string(),
         ),
         None,
     );
