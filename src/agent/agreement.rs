@@ -41,19 +41,6 @@ pub trait Agreement {
     /// given a document, check all agreement signatures
     fn check_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>>;
 
-    fn agreement_signed_agents(
-        &mut self,
-        document_key: &String,
-    ) -> Result<Vec<String>, Box<dyn Error>>;
-    fn agreement_unsigned_agents(
-        &mut self,
-        document_key: &String,
-    ) -> Result<Vec<String>, Box<dyn Error>>;
-    fn agreement_requested_agents(
-        &mut self,
-        document_key: &String,
-    ) -> Result<Vec<String>, Box<dyn Error>>;
-
     /// agreements update documents
     /// however this updates the document, which updates, version, lastversion and version date
     /// the agreement itself needs it's own hash to track
@@ -127,7 +114,7 @@ impl Agreement for Agent {
         if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
                 if let Some(agents_array) = agents.as_array_mut() {
-                    let merged_agents = subtract(
+                    let merged_agents = subtract_vecs(
                         &agents_array
                             .iter()
                             .map(|v| v.as_str().unwrap().to_string())
@@ -257,40 +244,9 @@ impl Agreement for Agent {
     ) -> Result<bool, Box<(dyn StdError + 'static)>> {
         todo!()
     }
-
-    fn agreement_signed_agents(
-        &mut self,
-        document_key: &String,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
-        todo!()
-    }
-    fn agreement_unsigned_agents(
-        &mut self,
-        document_key: &String,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
-        todo!()
-    }
-    fn agreement_requested_agents(
-        &mut self,
-        document_key: &String,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
-        let document = self.get_document(document_key)?;
-        let mut value = document.value;
-        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
-            if let Some(agents) = jacs_agreement.get("agentIDs") {
-                if let Some(agents_array) = agents.as_array() {
-                    return Ok(agents_array
-                        .iter()
-                        .map(|v| v.as_str().unwrap().to_string())
-                        .collect());
-                }
-            }
-        }
-        return Err("no agreement or agents in agreement".into());
-    }
 }
 
-fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
+pub fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
     let mut set: HashSet<String> = HashSet::new();
 
     for item in vec1 {
@@ -302,7 +258,7 @@ fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<Strin
     set.into_iter().collect()
 }
 
-fn subtract(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
+pub fn subtract_vecs(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
     let to_remove: HashSet<&String> = vec2.iter().collect();
     vec1.iter()
         .filter(|item| !to_remove.contains(item))

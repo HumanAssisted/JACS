@@ -54,29 +54,30 @@ fn test_add_and_remove_agents() {
         load_local_document(&"examples/documents/e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
-    let doc_v1 = agent
+    let mut doc_v1 = agent
         .create_agreement(&document_key, &agents_orig)
         .expect("create_agreement");
     let doc_v1_key = doc_v1.getkey();
     println!(
-        "doc_v1_key agents {:?}",
-        agent.agreement_requested_agents(&doc_v1_key).unwrap()
+        "doc_v1_key agents requested {:?} unsigned {:?}",
+        doc_v1.agreement_requested_agents().unwrap(),
+        doc_v1.agreement_unsigned_agents().unwrap()
     );
-    let doc_v2 = agent
+    let mut doc_v2 = agent
         .add_agents_to_agreement(&doc_v1_key, &agents_to_add)
         .expect("add_agents_to_agreement");
     let doc_v2_key = doc_v2.getkey();
     println!(
         "doc_v2_key agents {:?}",
-        agent.agreement_requested_agents(&doc_v2_key).unwrap()
+        doc_v2.agreement_requested_agents().unwrap()
     );
-    let doc_v3 = agent
+    let mut doc_v3 = agent
         .remove_agents_from_agreement(&doc_v2_key, &agents_to_remove)
         .expect("remove_agents_from_agreement");
     let doc_v3_key = doc_v3.getkey();
     println!(
         "doc_v3 agents {:?}",
-        agent.agreement_requested_agents(&doc_v3_key).unwrap()
+        doc_v3.agreement_requested_agents().unwrap()
     );
 
     // println!(
@@ -113,7 +114,7 @@ fn test_sign_agreement() {
         serde_json::to_string_pretty(&signed_document.value).expect("pretty print");
 
     let _ = agent_two.load_document(&signed_document_string).unwrap();
-    let both_signed_document = agent_two
+    let mut both_signed_document = agent_two
         .sign_agreement(&signed_document_key)
         .expect("signed_document ");
 
@@ -123,6 +124,13 @@ fn test_sign_agreement() {
         signed_document_key,
         both_signed_document.getkey(),
         serde_json::to_string_pretty(&both_signed_document.value).expect("pretty print")
+    );
+
+    println!(
+        "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
+        both_signed_document.agreement_requested_agents().unwrap(),
+        both_signed_document.agreement_unsigned_agents().unwrap(),
+        both_signed_document.agreement_signed_agents().unwrap()
     );
 
     // agent one  tries and fails to creates agreement document

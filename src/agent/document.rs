@@ -1,6 +1,8 @@
+use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
+use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
@@ -28,6 +30,7 @@ pub struct JACSDocument {
     pub value: Value,
 }
 
+// extend with functions for types
 impl JACSDocument {
     pub fn getkey(&self) -> String {
         // return the id and version
@@ -38,6 +41,56 @@ impl JACSDocument {
 
     pub fn getvalue(&self) -> Value {
         self.value.clone()
+    }
+
+    pub fn agreement_unsigned_agents(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
+        let all_requested_agents = self.agreement_requested_agents()?;
+        let all_agreement_signed_agents = self.agreement_signed_agents()?;
+        return Ok(subtract_vecs(
+            &all_requested_agents,
+            &all_agreement_signed_agents,
+        ));
+    }
+
+    pub fn agreement_requested_agents(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
+        let value: &mut serde_json::Value = &mut self.value;
+        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(agents) = jacs_agreement.get("agentIDs") {
+                if let Some(agents_array) = agents.as_array() {
+                    return Ok(agents_array
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_string())
+                        .collect());
+                }
+            }
+        }
+        return Err("no agreement or agents in agreement".into());
+    }
+
+    pub fn signing_agent(&mut self) -> Result<String, Box<dyn Error>> {
+        let value: &mut serde_json::Value = &mut self.value;
+        if let Some(jacs_signature) = value.get_mut(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
+            return Ok(jacs_signature.get("agentID").expect("REASON").to_string());
+        }
+        return Err("no agreement or signatures in agreement".into());
+    }
+
+    pub fn agreement_signed_agents(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
+        let value: &mut serde_json::Value = &mut self.value;
+        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(signatures) = jacs_agreement.get("signatures") {
+                if let Some(signatures_array) = signatures.as_array() {
+                    let mut signed_agents: Vec<String> = Vec::<String>::new();
+                    for signature in signatures_array {
+                        let agentid: String =
+                            signature["agentID"].as_str().expect("REASON").to_string();
+                        signed_agents.push(agentid);
+                    }
+                    return Ok(signed_agents);
+                }
+            }
+        }
+        return Err("no agreement or signatures in agreement".into());
     }
 }
 
