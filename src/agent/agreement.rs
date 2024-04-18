@@ -10,6 +10,8 @@ use serde_json::json;
 use serde_json::Value;
 use std::error::Error;
 
+pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "agreementHash";
+
 pub trait Agreement {
     /// given a document id and a list of agents, return an updated document with an agreement field
     /// fails if an agreement field exists
@@ -73,11 +75,18 @@ impl Agreement for Agent {
         let agreement_hash_value = json!(self.agreement_hash(value.clone())?);
         value[AGENT_AGREEMENT_FIELDNAME] = json!({
             // based on v1
-            "agreementHash": agreement_hash_value,
+            DOCUMENT_AGREEMENT_HASH_FIELDNAME: agreement_hash_value,
             "signatures": [],
             "agentIDs": agentids
         });
-
+        let agreement_hash_value_after = json!(self.agreement_hash(value.clone())?);
+        if agreement_hash_value != agreement_hash_value_after {
+            return Err(format!(
+                "Signature failed hashes don't match for document_key {}",
+                document_key
+            )
+            .into());
+        }
         return self.update_document(document_key, &serde_json::to_string(&value)?, None, None);
     }
     fn remove_agents_from_agreement(
