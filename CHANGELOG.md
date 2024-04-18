@@ -2,7 +2,8 @@
 
 - add jacsRegistration signature field
 - add jacsAgreement field
-- tests for issue with public key hashing from various sources
+- tests for issue with public key hashing because of \r
+- add agreement functions in trait for agent
 
 ## 0.2.3
 
