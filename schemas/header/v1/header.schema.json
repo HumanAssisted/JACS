@@ -32,6 +32,10 @@
       "description": "Signature signfying an agreement between agents.",
       "$ref": "../../components/agreement/v1/agreement.schema.json"
     },
+    "jacsAgreementHash": {
+      "type": "string",
+      "description": "A hash that must not change for each signature. "
+    },
     "jacsPreviousVersion": {
       "description": "Previous Version id of the object. If blank, it's claiming to be the first ",
       "type": "string",

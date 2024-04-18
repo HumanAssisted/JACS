@@ -1,16 +1,16 @@
 use crate::agent::document::{Document, JACSDocument};
 use crate::agent::Agent;
-use crate::agent::AGENT_AGREEMENT_FIELDNAME;
-use crate::agent::JACS_PREVIOUS_VERSION_FIELDNAME;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;
 use crate::agent::JACS_VERSION_FIELDNAME;
+use crate::agent::{
+    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME,
+    SHA256_FIELDNAME,
+};
 use crate::crypt::hash::hash_string;
 use serde::ser::StdError;
 use serde_json::json;
 use serde_json::Value;
 use std::error::Error;
-
-pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "agreementHash";
 
 pub trait Agreement {
     /// given a document id and a list of agents, return an updated document with an agreement field
@@ -53,6 +53,7 @@ impl Agreement for Agent {
     fn agreement_hash(&self, mut value: Value) -> Result<String, Box<dyn Error>> {
         // remove update document fields
         value.as_object_mut().map(|obj| {
+            obj.remove(DOCUMENT_AGREEMENT_HASH_FIELDNAME);
             obj.remove(JACS_PREVIOUS_VERSION_FIELDNAME);
             obj.remove(JACS_VERSION_FIELDNAME);
             return obj.remove(JACS_VERSION_DATE_FIELDNAME);
@@ -73,21 +74,31 @@ impl Agreement for Agent {
 
         // todo error if value[AGENT_AGREEMENT_FIELDNAME] exists.validate
         let agreement_hash_value = json!(self.agreement_hash(value.clone())?);
+        value[DOCUMENT_AGREEMENT_HASH_FIELDNAME] = agreement_hash_value.clone();
         value[AGENT_AGREEMENT_FIELDNAME] = json!({
             // based on v1
-            DOCUMENT_AGREEMENT_HASH_FIELDNAME: agreement_hash_value,
             "signatures": [],
             "agentIDs": agentids
         });
-        let agreement_hash_value_after = json!(self.agreement_hash(value.clone())?);
+        let updated_document =
+            self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
+
+        let agreement_hash_value_after =
+            json!(self.agreement_hash(updated_document.value.clone())?);
+        // could be unit test, but want this in for safety
         if agreement_hash_value != agreement_hash_value_after {
             return Err(format!(
-                "Signature failed hashes don't match for document_key {}",
+                "Agreement field hashes don't match for document_key {}",
                 document_key
             )
             .into());
         }
-        return self.update_document(document_key, &serde_json::to_string(&value)?, None, None);
+
+        if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
+            return Err(format!("document hashes should have changed {}", document_key).into());
+        };
+
+        Ok(updated_document)
     }
     fn remove_agents_from_agreement(
         &self,

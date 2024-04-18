@@ -33,6 +33,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+/// this field is only ignored by itself, but other
+/// document signatures and hashes include this to detect tampering
+pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "jacsAgreementHash";
+
+// these fields generally exclude themselves when hashing
 pub const SHA256_FIELDNAME: &str = "jacsSha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const AGENT_REGISTRATION_SIGNATURE_FIELDNAME: &str = "jacsRegistration";

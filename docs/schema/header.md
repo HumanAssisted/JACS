@@ -24,6 +24,7 @@ The basis for a JACS document
 | [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")                  |
 | [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")               |
 | [jacsAgreement](#jacsagreement)             | `object` | Optional | cannot be null | [Header](agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")                  |
+| [jacsAgreementHash](#jacsagreementhash)     | `string` | Optional | cannot be null | [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")     |
 | [jacsPreviousVersion](#jacspreviousversion) | `string` | Optional | cannot be null | [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion") |
 | [jacsOriginalVersion](#jacsoriginalversion) | `string` | Required | cannot be null | [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion") |
 | [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")       |
@@ -149,6 +150,24 @@ A set of required signatures signifying an agreement.
 ### jacsAgreement Type
 
 `object` ([agreement](agreement.md))
+
+## jacsAgreementHash
+
+A hash that must not change for each signature.
+
+`jacsAgreementHash`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")
+
+### jacsAgreementHash Type
+
+`string`
 
 ## jacsPreviousVersion
 
