@@ -1,6 +1,10 @@
 use crate::agent::document::{Document, JACSDocument};
 use crate::agent::Agent;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
+use crate::agent::JACS_PREVIOUS_VERSION_FIELDNAME;
+use crate::agent::JACS_VERSION_DATE_FIELDNAME;
+use crate::agent::JACS_VERSION_FIELDNAME;
+use crate::crypt::hash::hash_string;
 use serde::ser::StdError;
 use serde_json::json;
 use serde_json::Value;
@@ -9,6 +13,8 @@ use std::error::Error;
 pub trait Agreement {
     /// given a document id and a list of agents, return an updated document with an agreement field
     /// fails if an agreement field exists
+    /// no other fields can be modified or the agreement fails
+    /// overwrites previous agreements
     fn create_agreement(
         &mut self,
         document_key: &String,
@@ -30,9 +36,31 @@ pub trait Agreement {
     fn sign_agreement(&self, document_key: &String) -> Result<Value, Box<dyn Error>>;
     /// given a document, check all agreement signatures
     fn check_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>>;
+    fn get_signed_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>>;
+    fn get_unsigned_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>>;
+
+    /// agreements update documents
+    /// however this updates the document, which updates, version, lastversion and version date
+    /// the agreement itself needs it's own hash to track
+    /// on a subset of fields
+    /// the standard hash detects any changes at all
+    fn agreement_hash(&self, value: Value) -> Result<String, Box<dyn Error>>;
 }
 
 impl Agreement for Agent {
+    fn agreement_hash(&self, mut value: Value) -> Result<String, Box<dyn Error>> {
+        // remove update document fields
+        value.as_object_mut().map(|obj| {
+            obj.remove(JACS_PREVIOUS_VERSION_FIELDNAME);
+            obj.remove(JACS_VERSION_FIELDNAME);
+            return obj.remove(JACS_VERSION_DATE_FIELDNAME);
+        });
+
+        let (values_as_string, _fields) =
+            Agent::get_values_as_string(&value, None, &AGENT_AGREEMENT_FIELDNAME.to_string())?;
+        Ok(hash_string(&values_as_string))
+    }
+
     fn create_agreement(
         &mut self,
         document_key: &std::string::String,
@@ -42,9 +70,10 @@ impl Agreement for Agent {
         let mut value = document.value;
 
         // todo error if value[AGENT_AGREEMENT_FIELDNAME] exists.validate
-
+        let agreement_hash_value = json!(self.agreement_hash(value.clone())?);
         value[AGENT_AGREEMENT_FIELDNAME] = json!({
             // based on v1
+            "agreementHash": agreement_hash_value,
             "signatures": [],
             "agentIDs": agentids
         });
@@ -75,6 +104,13 @@ impl Agreement for Agent {
         &self,
         document_key: &std::string::String,
     ) -> Result<bool, Box<(dyn StdError + 'static)>> {
+        todo!()
+    }
+
+    fn get_signed_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>> {
+        todo!()
+    }
+    fn get_unsigned_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>> {
         todo!()
     }
 }

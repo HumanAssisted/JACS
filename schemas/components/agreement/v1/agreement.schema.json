@@ -12,6 +12,10 @@
         "$ref": "../../../components/signature/v1/signature.schema.json"
       }
     },
+    "agreementHash": {
+      "type": "string",
+      "description": "A hash that must not change for each signature. "
+    },
     "agentIDs": {
       "type": "array",
       "description": "The agents which are required in order to sign the document",
@@ -23,6 +27,7 @@
   },
   "additionalProperties": false,
   "required": [
-    "agentIDs"
+    "agentIDs",
+    "agreementHash"
   ]
 }

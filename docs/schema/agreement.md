@@ -16,10 +16,11 @@ A set of required signatures signifying an agreement.
 
 # agreement Properties
 
-| Property                  | Type    | Required | Nullable       | Defined by                                                                                                                                    |
-| :------------------------ | :------ | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
-| [signatures](#signatures) | `array` | Optional | cannot be null | [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures") |
-| [agentIDs](#agentids)     | `array` | Required | cannot be null | [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")     |
+| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                                          |
+| :------------------------------ | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [signatures](#signatures)       | `array`  | Optional | cannot be null | [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")       |
+| [agreementHash](#agreementhash) | `string` | Required | cannot be null | [agreement](agreement-properties-agreementhash.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agreementHash") |
+| [agentIDs](#agentids)           | `array`  | Required | cannot be null | [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")           |
 
 ## signatures
 
@@ -38,6 +39,24 @@ Signatures of agents
 ### signatures Type
 
 `object[]` ([Signature](signature.md))
+
+## agreementHash
+
+A hash that must not change for each signature.
+
+`agreementHash`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [agreement](agreement-properties-agreementhash.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agreementHash")
+
+### agreementHash Type
+
+`string`
 
 ## agentIDs
 
