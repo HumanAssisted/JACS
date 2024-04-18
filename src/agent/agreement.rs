@@ -39,7 +39,7 @@ pub trait Agreement {
     /// given a document id sign a document, return an updated document
     fn sign_agreement(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document, check all agreement signatures
-    fn check_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>>;
+    fn check_agreement(&self, document_key: &String) -> Result<String, Box<dyn Error>>;
 
     /// agreements update documents
     /// however this updates the document, which updates, version, lastversion and version date
@@ -237,12 +237,37 @@ impl Agreement for Agent {
         Ok(updated_document)
     }
 
-    // TODO move these to Jacs Document Itself
+    /// if the document hashes don't match or there are unsigned, it will fail
     fn check_agreement(
         &self,
         document_key: &std::string::String,
-    ) -> Result<bool, Box<(dyn StdError + 'static)>> {
-        todo!()
+    ) -> Result<String, Box<(dyn StdError + 'static)>> {
+        let document = self.get_document(document_key)?;
+
+        let original_agreement_hash_value = document.value[DOCUMENT_AGREEMENT_HASH_FIELDNAME]
+            .as_str()
+            .expect("DOCUMENT_AGREEMENT_HASH_FIELDNAME");
+        let calculated_agreement_hash_value = self.agreement_hash(document.value.clone())?;
+        if original_agreement_hash_value != calculated_agreement_hash_value {
+            return Err("check_agreement: agreement hashes don't match".into());
+        }
+
+        let unsigned = document.agreement_unsigned_agents()?;
+        if unsigned.len() > 0 {
+            return Err(format!("not all agents have signed: {:?}", unsigned).into());
+        }
+
+        if let Some(jacs_agreement) = document.value.get(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(signatures) = jacs_agreement.get("signatures") {
+                if let Some(signatures_array) = signatures.as_array() {
+                    for signature in signatures_array {
+                        // todo validate each signature
+                        return Ok("TODO".to_string());
+                    }
+                }
+            }
+        }
+        return Err("check_agreement: document has no agreement".into());
     }
 }
 

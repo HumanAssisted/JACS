@@ -128,7 +128,7 @@ pub trait Document {
     fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>>;
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
-    fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
+    fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
 
     /// export_embedded if there is embedded files recreate them, default false
@@ -331,7 +331,7 @@ impl Document for Agent {
         Ok(doc)
     }
 
-    fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
         let documents = self.documents.lock().expect("JACSDocument lock");
         match documents.get(document_key) {
             Some(document) => Ok(document.clone()),

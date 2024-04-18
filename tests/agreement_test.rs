@@ -84,6 +84,11 @@ fn test_add_and_remove_agents() {
     //     "final signature requests were\n {}",
     //     serde_json::to_string_pretty(&doc_v3.value).expect("pretty print")
     // );
+    let result = agent.check_agreement(&doc_v3.getkey());
+    match result {
+        Err(_) => assert!(true),
+        Ok(_) => assert!(false),
+    }
 }
 
 #[test]
@@ -132,6 +137,15 @@ fn test_sign_agreement() {
         both_signed_document.agreement_unsigned_agents().unwrap(),
         both_signed_document.agreement_signed_agents().unwrap()
     );
+
+    let result = agent_two.check_agreement(&both_signed_document.getkey());
+    match result {
+        Err(err) => {
+            println!("{}", err);
+            assert!(false)
+        }
+        Ok(_) => assert!(true),
+    }
 
     // agent one  tries and fails to creates agreement document
 
