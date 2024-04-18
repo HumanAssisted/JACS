@@ -42,8 +42,8 @@ fn test_create_agreement() {
 }
 
 #[test]
-fn test_hack_agreement() {
-    // cargo test   --test agreement_test -- --nocapture test_create_agreement
+fn test_sign_agreement() {
+    // cargo test   --test agreement_test -- --nocapture test_sign_agreement
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
     let mut agentids: Vec<String> = Vec::new();
@@ -59,10 +59,22 @@ fn test_hack_agreement() {
         .create_agreement(&document_key, &agentids)
         .expect("create_agreement");
 
-    println!("{}", unsigned_doc.to_string());
+    let unsigned_doc_key = unsigned_doc.getkey();
+
+    let signed_document = agent
+        .sign_agreement(&unsigned_doc_key)
+        .expect("signed_document ");
+    let signed_document_key = signed_document.getkey();
+
+    println!(
+        "SIGNED DOCUMENT was {} now {} \n {}",
+        unsigned_doc_key,
+        signed_document_key,
+        serde_json::to_string_pretty(&signed_document.value).expect("pretty print")
+    );
 
     // agent one  tries and fails to creates agreement document
-    let result = agent.create_agreement(&document_key, &agentids);
+
     // agent two signs document
 
     // agent one checks document

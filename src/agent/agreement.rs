@@ -35,7 +35,7 @@ pub trait Agreement {
         agentids: &Vec<String>,
     ) -> Result<Value, Box<dyn Error>>;
     /// given a document id sign a document, return an updated document
-    fn sign_agreement(&self, document_key: &String) -> Result<Value, Box<dyn Error>>;
+    fn sign_agreement(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document, check all agreement signatures
     fn check_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>>;
     fn get_signed_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>>;
@@ -114,11 +114,64 @@ impl Agreement for Agent {
     ) -> Result<serde_json::Value, Box<(dyn StdError + 'static)>> {
         todo!()
     }
+
     fn sign_agreement(
-        &self,
+        &mut self,
         document_key: &std::string::String,
-    ) -> Result<serde_json::Value, Box<(dyn StdError + 'static)>> {
-        todo!()
+    ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
+        let document = self.get_document(document_key)?;
+        let mut value = document.value;
+        let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
+        let original_agreement_hash_value = binding.as_str();
+        let calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
+
+        //  generate signature object
+        let agents_signature: Value =
+            self.signing_procedure(&value.clone(), None, &AGENT_AGREEMENT_FIELDNAME.to_string())?;
+
+        println!(
+            "agents_signature {}",
+            serde_json::to_string_pretty(&agents_signature).expect("agents_signature print")
+        );
+
+        let mut existing_signatures: Value = value[AGENT_AGREEMENT_FIELDNAME].clone();
+
+        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(signatures) = jacs_agreement.get_mut("signatures") {
+                if let Some(signatures_array) = signatures.as_array_mut() {
+                    signatures_array.push(agents_signature);
+                } else {
+                    *signatures = json!([agents_signature]);
+                }
+            } else {
+                jacs_agreement["signatures"] = json!([agents_signature]);
+            }
+        } else {
+            value[AGENT_AGREEMENT_FIELDNAME] = json!({
+                "agentIDs": [],
+                "signatures": [agents_signature]
+            });
+        }
+        /// add to doc
+        let updated_document =
+            self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
+
+        let agreement_hash_value_after = self.agreement_hash(updated_document.value.clone())?;
+
+        // could be unit test, but want this in for safety
+        if original_agreement_hash_value != Some(&agreement_hash_value_after) {
+            return Err(format!(
+                "aborting signature on agreement. field hashes don't match for document_key {} \n {} {}",
+                document_key, original_agreement_hash_value.expect("original_agreement_hash_value"), agreement_hash_value_after
+            )
+            .into());
+        }
+
+        if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
+            return Err(format!("document hashes should have changed {}", document_key).into());
+        };
+
+        Ok(updated_document)
     }
     fn check_agreement(
         &self,

@@ -29,7 +29,7 @@
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
     "jacsAgreement": {
-      "description": "Signature signfying an agreement between agents.",
+      "description": "Signatures signfying an agreement between agents.",
       "$ref": "../../components/agreement/v1/agreement.schema.json"
     },
     "jacsAgreementHash": {
