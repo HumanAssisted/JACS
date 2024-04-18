@@ -43,7 +43,7 @@ impl JACSDocument {
         self.value.clone()
     }
 
-    pub fn agreement_unsigned_agents(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
+    pub fn agreement_unsigned_agents(&self) -> Result<Vec<String>, Box<dyn Error>> {
         let all_requested_agents = self.agreement_requested_agents()?;
         let all_agreement_signed_agents = self.agreement_signed_agents()?;
         return Ok(subtract_vecs(
@@ -52,9 +52,9 @@ impl JACSDocument {
         ));
     }
 
-    pub fn agreement_requested_agents(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
-        let value: &mut serde_json::Value = &mut self.value;
-        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+    pub fn agreement_requested_agents(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_agreement) = value.get(AGENT_AGREEMENT_FIELDNAME) {
             if let Some(agents) = jacs_agreement.get("agentIDs") {
                 if let Some(agents_array) = agents.as_array() {
                     return Ok(agents_array
@@ -67,17 +67,17 @@ impl JACSDocument {
         return Err("no agreement or agents in agreement".into());
     }
 
-    pub fn signing_agent(&mut self) -> Result<String, Box<dyn Error>> {
-        let value: &mut serde_json::Value = &mut self.value;
-        if let Some(jacs_signature) = value.get_mut(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
+    pub fn signing_agent(&self) -> Result<String, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
             return Ok(jacs_signature.get("agentID").expect("REASON").to_string());
         }
         return Err("no agreement or signatures in agreement".into());
     }
 
-    pub fn agreement_signed_agents(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
-        let value: &mut serde_json::Value = &mut self.value;
-        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+    pub fn agreement_signed_agents(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_agreement) = value.get(AGENT_AGREEMENT_FIELDNAME) {
             if let Some(signatures) = jacs_agreement.get("signatures") {
                 if let Some(signatures_array) = signatures.as_array() {
                     let mut signed_agents: Vec<String> = Vec::<String>::new();
