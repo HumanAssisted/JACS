@@ -65,12 +65,20 @@ fn test_sign_agreement() {
         .sign_agreement(&unsigned_doc_key)
         .expect("signed_document ");
     let signed_document_key = signed_document.getkey();
+    let signed_document_string =
+        serde_json::to_string_pretty(&signed_document.value).expect("pretty print");
+
+    let _ = agent_two.load_document(&signed_document_string).unwrap();
+    let both_signed_document = agent_two
+        .sign_agreement(&signed_document_key)
+        .expect("signed_document ");
 
     println!(
-        "SIGNED DOCUMENT was {} now {} \n {}",
+        "SIGNED DOCUMENT was {} now {}, then {} \n {}",
         unsigned_doc_key,
         signed_document_key,
-        serde_json::to_string_pretty(&signed_document.value).expect("pretty print")
+        both_signed_document.getkey(),
+        serde_json::to_string_pretty(&both_signed_document.value).expect("pretty print")
     );
 
     // agent one  tries and fails to creates agreement document
