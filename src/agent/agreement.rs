@@ -40,8 +40,19 @@ pub trait Agreement {
     fn sign_agreement(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document, check all agreement signatures
     fn check_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>>;
-    fn get_signed_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>>;
-    fn get_unsigned_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>>;
+
+    fn agreement_signed_agents(
+        &mut self,
+        document_key: &String,
+    ) -> Result<Vec<String>, Box<dyn Error>>;
+    fn agreement_unsigned_agents(
+        &mut self,
+        document_key: &String,
+    ) -> Result<Vec<String>, Box<dyn Error>>;
+    fn agreement_requested_agents(
+        &mut self,
+        document_key: &String,
+    ) -> Result<Vec<String>, Box<dyn Error>>;
 
     /// agreements update documents
     /// however this updates the document, which updates, version, lastversion and version date
@@ -102,6 +113,8 @@ impl Agreement for Agent {
 
         Ok(updated_document)
     }
+
+    /// TODO also remove their signature
     fn remove_agents_from_agreement(
         &mut self,
         document_key: &std::string::String,
@@ -110,8 +123,6 @@ impl Agreement for Agent {
         let document = self.get_document(document_key)?;
         let mut value = document.value;
         let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
-        let original_agreement_hash_value = binding.as_str();
-        let calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
 
         if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
@@ -148,8 +159,6 @@ impl Agreement for Agent {
         let document = self.get_document(document_key)?;
         let mut value = document.value;
         let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
-        let original_agreement_hash_value = binding.as_str();
-        let calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
 
         if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
@@ -240,6 +249,8 @@ impl Agreement for Agent {
 
         Ok(updated_document)
     }
+
+    // TODO move these to Jacs Document Itself
     fn check_agreement(
         &self,
         document_key: &std::string::String,
@@ -247,11 +258,35 @@ impl Agreement for Agent {
         todo!()
     }
 
-    fn get_signed_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>> {
+    fn agreement_signed_agents(
+        &mut self,
+        document_key: &String,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
         todo!()
     }
-    fn get_unsigned_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>> {
+    fn agreement_unsigned_agents(
+        &mut self,
+        document_key: &String,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
         todo!()
+    }
+    fn agreement_requested_agents(
+        &mut self,
+        document_key: &String,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let document = self.get_document(document_key)?;
+        let mut value = document.value;
+        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(agents) = jacs_agreement.get("agentIDs") {
+                if let Some(agents_array) = agents.as_array() {
+                    return Ok(agents_array
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_string())
+                        .collect());
+                }
+            }
+        }
+        return Err("no agreement or agents in agreement".into());
     }
 }
 

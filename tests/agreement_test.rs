@@ -58,21 +58,31 @@ fn test_add_and_remove_agents() {
         .create_agreement(&document_key, &agents_orig)
         .expect("create_agreement");
     let doc_v1_key = doc_v1.getkey();
-
+    println!(
+        "doc_v1_key agents {:?}",
+        agent.agreement_requested_agents(&doc_v1_key).unwrap()
+    );
     let doc_v2 = agent
         .add_agents_to_agreement(&doc_v1_key, &agents_to_add)
         .expect("add_agents_to_agreement");
     let doc_v2_key = doc_v2.getkey();
-
+    println!(
+        "doc_v2_key agents {:?}",
+        agent.agreement_requested_agents(&doc_v2_key).unwrap()
+    );
     let doc_v3 = agent
         .remove_agents_from_agreement(&doc_v2_key, &agents_to_remove)
         .expect("remove_agents_from_agreement");
     let doc_v3_key = doc_v3.getkey();
-
     println!(
-        "final signature requests were\n {}",
-        serde_json::to_string_pretty(&doc_v3.value).expect("pretty print")
+        "doc_v3 agents {:?}",
+        agent.agreement_requested_agents(&doc_v3_key).unwrap()
     );
+
+    // println!(
+    //     "final signature requests were\n {}",
+    //     serde_json::to_string_pretty(&doc_v3.value).expect("pretty print")
+    // );
 }
 
 #[test]
