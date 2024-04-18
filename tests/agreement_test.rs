@@ -29,7 +29,8 @@ fn test_create_agreement() {
     println!("{}", unsigned_doc.to_string());
 
     // agent one  tries and fails to creates agreement document
-    let result = agent.create_agreement(&document_key, &agentids);
+    let _result = agent.create_agreement(&document_key, &agentids);
+
     // agent two signs document
 
     // agent one checks document
@@ -39,6 +40,39 @@ fn test_create_agreement() {
     // agent one checks document
 
     // agent two checks document
+}
+
+#[test]
+fn test_add_and_remove_agents() {
+    // cargo test   --test agreement_test -- --nocapture test_add_and_remove_agents
+    let mut agent = load_test_agent_one();
+    let agents_orig: Vec<String> = vec!["mariko".to_string(), "takeda".to_string()];
+    let agents_to_add: Vec<String> = vec!["gaijin".to_string()];
+    let agents_to_remove: Vec<String> = vec!["mariko".to_string()];
+
+    let document_string =
+        load_local_document(&"examples/documents/e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string()).unwrap();
+    let document = agent.load_document(&document_string).unwrap();
+    let document_key = document.getkey();
+    let doc_v1 = agent
+        .create_agreement(&document_key, &agents_orig)
+        .expect("create_agreement");
+    let doc_v1_key = doc_v1.getkey();
+
+    let doc_v2 = agent
+        .add_agents_to_agreement(&doc_v1_key, &agents_to_add)
+        .expect("add_agents_to_agreement");
+    let doc_v2_key = doc_v2.getkey();
+
+    let doc_v3 = agent
+        .remove_agents_from_agreement(&doc_v2_key, &agents_to_remove)
+        .expect("remove_agents_from_agreement");
+    let doc_v3_key = doc_v3.getkey();
+
+    println!(
+        "final signature requests were\n {}",
+        serde_json::to_string_pretty(&doc_v3.value).expect("pretty print")
+    );
 }
 
 #[test]

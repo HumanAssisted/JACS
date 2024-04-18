@@ -1,3 +1,4 @@
+use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
 use crate::agent::Agent;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;
@@ -10,6 +11,7 @@ use crate::crypt::hash::hash_string;
 use serde::ser::StdError;
 use serde_json::json;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::error::Error;
 
 pub trait Agreement {
@@ -24,16 +26,16 @@ pub trait Agreement {
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id and a list of agents, return an updated document
     fn add_agents_to_agreement(
-        &self,
+        &mut self,
         document_key: &String,
         agentids: &Vec<String>,
-    ) -> Result<Value, Box<dyn Error>>;
+    ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id and a list of agents, return an updated document
     fn remove_agents_from_agreement(
-        &self,
+        &mut self,
         document_key: &String,
         agentids: &Vec<String>,
-    ) -> Result<Value, Box<dyn Error>>;
+    ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id sign a document, return an updated document
     fn sign_agreement(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document, check all agreement signatures
@@ -101,20 +103,86 @@ impl Agreement for Agent {
         Ok(updated_document)
     }
     fn remove_agents_from_agreement(
-        &self,
+        &mut self,
         document_key: &std::string::String,
         agentids: &Vec<String>,
-    ) -> Result<serde_json::Value, Box<(dyn StdError + 'static)>> {
-        todo!()
-    }
-    fn add_agents_to_agreement(
-        &self,
-        document_key: &std::string::String,
-        agentids: &Vec<String>,
-    ) -> Result<serde_json::Value, Box<(dyn StdError + 'static)>> {
-        todo!()
+    ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
+        let document = self.get_document(document_key)?;
+        let mut value = document.value;
+        let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
+        let original_agreement_hash_value = binding.as_str();
+        let calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
+
+        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
+                if let Some(agents_array) = agents.as_array_mut() {
+                    let merged_agents = subtract(
+                        &agents_array
+                            .iter()
+                            .map(|v| v.as_str().unwrap().to_string())
+                            .collect(),
+                        agentids,
+                    );
+                    *agents = json!(merged_agents);
+                } else {
+                    return Err("no agreement  agents  present".into());
+                }
+            } else {
+                return Err("no agreement  agents present".into());
+            }
+        } else {
+            return Err("no agreement   present".into());
+        }
+
+        let updated_document =
+            self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
+
+        Ok(updated_document)
     }
 
+    fn add_agents_to_agreement(
+        &mut self,
+        document_key: &std::string::String,
+        agentids: &Vec<String>,
+    ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
+        let document = self.get_document(document_key)?;
+        let mut value = document.value;
+        let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
+        let original_agreement_hash_value = binding.as_str();
+        let calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
+
+        if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
+                if let Some(agents_array) = agents.as_array_mut() {
+                    let merged_agents = merge_without_duplicates(
+                        &agents_array
+                            .iter()
+                            .map(|v| v.as_str().unwrap().to_string())
+                            .collect(),
+                        agentids,
+                    );
+                    *agents = json!(merged_agents);
+                } else {
+                    *agents = json!(agentids);
+                }
+            } else {
+                jacs_agreement["agentIDs"] = json!(agentids);
+            }
+        } else {
+            value[AGENT_AGREEMENT_FIELDNAME] = json!({
+                "agentIDs": agentids,
+                "signatures": [],
+            });
+        }
+
+        let updated_document =
+            self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
+
+        Ok(updated_document)
+    }
+
+    // TODO Check if signing agent is already in agent_ids
+    // if not ???
     fn sign_agreement(
         &mut self,
         document_key: &std::string::String,
@@ -123,7 +191,8 @@ impl Agreement for Agent {
         let mut value = document.value;
         let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
         let original_agreement_hash_value = binding.as_str();
-        let calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
+        // todod use this
+        let _calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
 
         //  generate signature object
         let agents_signature: Value =
@@ -133,8 +202,6 @@ impl Agreement for Agent {
             "agents_signature {}",
             serde_json::to_string_pretty(&agents_signature).expect("agents_signature print")
         );
-
-        let mut existing_signatures: Value = value[AGENT_AGREEMENT_FIELDNAME].clone();
 
         if let Some(jacs_agreement) = value.get_mut(AGENT_AGREEMENT_FIELDNAME) {
             if let Some(signatures) = jacs_agreement.get_mut("signatures") {
@@ -148,11 +215,11 @@ impl Agreement for Agent {
             }
         } else {
             value[AGENT_AGREEMENT_FIELDNAME] = json!({
-                "agentIDs": [],
+                "agentIDs": [self.get_id().expect("agent id")],
                 "signatures": [agents_signature]
             });
         }
-        /// add to doc
+        // add to doc
         let updated_document =
             self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
 
@@ -186,4 +253,24 @@ impl Agreement for Agent {
     fn get_unsigned_agents(&self, document_key: &String) -> Result<Vec<String>, Box<dyn Error>> {
         todo!()
     }
+}
+
+fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
+    let mut set: HashSet<String> = HashSet::new();
+
+    for item in vec1 {
+        set.insert(item.to_string());
+    }
+    for item in vec2 {
+        set.insert(item.to_string());
+    }
+    set.into_iter().collect()
+}
+
+fn subtract(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
+    let to_remove: HashSet<&String> = vec2.iter().collect();
+    vec1.iter()
+        .filter(|item| !to_remove.contains(item))
+        .cloned()
+        .collect()
 }
