@@ -555,6 +555,7 @@ impl Document for Agent {
             signature_key_from_final,
             used_public_key,
             public_key_enc_type,
+            None,
         );
         match result {
             Ok(_) => Ok(()),

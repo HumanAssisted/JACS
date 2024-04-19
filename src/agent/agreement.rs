@@ -269,27 +269,34 @@ impl Agreement for Agent {
                         // todo validate each signature
                         let agent_id_and_version = format!(
                             "{}:{}",
-                            signature.get_str("agentID").expect("REASON").to_string(),
+                            signature
+                                .get_str("agentID")
+                                .expect("REASON agreement signature agentID")
+                                .to_string(),
                             signature
                                 .get_str("agentVersion")
-                                .expect("REASON")
+                                .expect("REASON agreement signature agentVersion")
                                 .to_string()
                         )
                         .to_string();
+
                         let noted_hash = signature
                             .get_str("publicKeyHash")
-                            .expect("REASON")
+                            .expect("REASON noted_hash")
                             .to_string();
+
                         let public_key_enc_type = signature
                             .get_str("signingAlgorithm")
-                            .expect("REASON")
+                            .expect("REASON public_key_enc_type")
                             .to_string();
-                        let agents_public_key = self.fs_load_public_key(&agent_id_and_version)?;
+                        let agents_public_key = self.fs_load_public_key(&noted_hash)?;
                         let new_hash = hash_public_key(agents_public_key.clone());
                         if new_hash != noted_hash {
-                            return Err(
-                                format!("wrong public key for {}", agent_id_and_version).into()
-                            );
+                            return Err(format!(
+                                "wrong public key for {} , {}",
+                                agent_id_and_version, noted_hash
+                            )
+                            .into());
                         }
 
                         let _ = self.signature_verification_procedure(
@@ -298,6 +305,7 @@ impl Agreement for Agent {
                             &AGENT_AGREEMENT_FIELDNAME.to_string(),
                             agents_public_key,
                             Some(public_key_enc_type),
+                            Some(noted_hash),
                         )?;
                     }
                     return Ok("All signatures passed".to_string());

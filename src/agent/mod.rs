@@ -275,6 +275,7 @@ impl Agent {
                     signature_key_from,
                     public_key,
                     None,
+                    None,
                 );
             }
             None => {
@@ -331,6 +332,7 @@ impl Agent {
         signature_key_from: &String,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
+        original_public_key_hash: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         let (document_values_string, _) =
             Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
@@ -339,17 +341,20 @@ impl Agent {
             document_values_string
         );
 
-        let public_key_hash = json_value[signature_key_from]["publicKeyHash"]
-            .as_str()
-            .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+        let public_key_hash: String = match original_public_key_hash {
+            Some(orig) => orig,
+            _ => json_value[signature_key_from]["publicKeyHash"]
+                .as_str()
+                .unwrap_or("")
+                .trim_matches('"')
+                .to_string(),
+        };
 
         let public_key_rehash = hash_public_key(public_key.clone());
 
         if public_key_rehash != public_key_hash {
             let error_message = format!(
-                "Incorrect public key used to verify signature {} {} ",
+                "Incorrect public key used to verify signature public_key_rehash {} public_key_hash {} ",
                 public_key_rehash, public_key_hash
             );
             error!("{}", error_message);
