@@ -556,6 +556,7 @@ impl Document for Agent {
             used_public_key,
             public_key_enc_type,
             None,
+            None,
         );
         match result {
             Ok(_) => Ok(()),

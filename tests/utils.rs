@@ -118,6 +118,7 @@ pub fn load_test_agent_two() -> Agent {
     let _ = agent.fs_preload_keys(
         &"agent-two.private.pem".to_string(),
         &"agent-two.public.pem".to_string(),
+        Some("RSA-PSS".to_string()),
     );
     let result = agent.load_by_id(
         Some(

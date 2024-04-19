@@ -289,6 +289,10 @@ impl Agreement for Agent {
                             .get_str("signingAlgorithm")
                             .expect("REASON public_key_enc_type")
                             .to_string();
+                        let agents_signature = signature
+                            .get_str("signature")
+                            .expect("REASON public_key_enc_type")
+                            .to_string();
                         let agents_public_key = self.fs_load_public_key(&noted_hash)?;
                         let new_hash = hash_public_key(agents_public_key.clone());
                         if new_hash != noted_hash {
@@ -298,14 +302,18 @@ impl Agreement for Agent {
                             )
                             .into());
                         }
-
-                        let _ = self.signature_verification_procedure(
+                        debug!(
+                            "testing agreement sig agent_id_and_version {} {} {} ",
+                            agent_id_and_version, noted_hash, public_key_enc_type
+                        );
+                        let result = self.signature_verification_procedure(
                             &document.value,
                             None,
                             &AGENT_AGREEMENT_FIELDNAME.to_string(),
                             agents_public_key,
-                            Some(public_key_enc_type),
-                            Some(noted_hash),
+                            Some(public_key_enc_type.clone()),
+                            Some(noted_hash.clone()),
+                            Some(agents_signature),
                         )?;
                     }
                     return Ok("All signatures passed".to_string());

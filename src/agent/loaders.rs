@@ -54,6 +54,7 @@ pub trait FileLoader {
         &mut self,
         private_key_filename: &String,
         public_key_filename: &String,
+        custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>>;
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>>;
     fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>>;
@@ -162,6 +163,7 @@ impl FileLoader for Agent {
         &mut self,
         private_key_filename: &String,
         public_key_filename: &String,
+        custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
         //todo use filepath builder
@@ -170,7 +172,11 @@ impl FileLoader for Agent {
         let private_key = load_private_key(&default_dir, &private_key_filename)?;
         let public_key = load_key_file(&default_dir, &public_key_filename)?;
 
-        let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
+        // todo make this optional param
+        let key_algorithm = match custom_key_algorithm {
+            Some(algo) => algo,
+            _ => env::var("JACS_AGENT_KEY_ALGORITHM")?,
+        };
         self.set_keys(private_key, public_key, &key_algorithm)
     }
 

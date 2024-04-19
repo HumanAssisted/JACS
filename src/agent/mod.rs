@@ -276,6 +276,7 @@ impl Agent {
                     public_key,
                     None,
                     None,
+                    None,
                 );
             }
             None => {
@@ -333,6 +334,7 @@ impl Agent {
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
         original_public_key_hash: Option<String>,
+        signature: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         let (document_values_string, _) =
             Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
@@ -361,11 +363,15 @@ impl Agent {
             return Err(error_message.into());
         }
 
-        let signature_base64 = json_value[signature_key_from]["signature"]
-            .as_str()
-            .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+        let signature_base64 = match signature {
+            Some(sig) => sig,
+            _ => json_value[signature_key_from]["signature"]
+                .as_str()
+                .unwrap_or("")
+                .trim_matches('"')
+                .to_string(),
+        };
+
         self.verify_string(
             &document_values_string,
             &signature_base64,
