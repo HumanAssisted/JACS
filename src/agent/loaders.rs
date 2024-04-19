@@ -5,6 +5,7 @@ use crate::crypt::aes_encrypt::encrypt_private_key;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use secrecy::ExposeSecret;
+use serde::ser::StdError;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -73,6 +74,7 @@ pub trait FileLoader {
 
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
+    fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -145,6 +147,14 @@ impl FileLoader for Agent {
 
         let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
         self.set_keys(private_key, public_key, &key_algorithm)
+    }
+
+    /// in JACS the public keys need to be added manually
+    fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        default_dir = format!("{}/public_keys/", default_dir);
+        let public_key_filename = format!("{}.pem", agent_id_and_version);
+        return Ok(load_key_file(&default_dir, &public_key_filename)?);
     }
 
     /// a way to load keys that aren't default
@@ -323,6 +333,9 @@ fn load_private_key(file_path: &String, filename: &String) -> std::io::Result<Ve
 
 #[cfg(not(target_arch = "wasm32"))]
 fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
+    if let Some(parent) = Path::new(file_path).parent() {
+        fs::create_dir_all(parent)?;
+    }
     let full_path = Path::new(file_path).join(filename);
     return std::fs::read(full_path);
 }

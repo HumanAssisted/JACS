@@ -325,7 +325,7 @@ impl Agent {
     }
 
     pub fn signature_verification_procedure(
-        &mut self,
+        &self,
         json_value: &Value,
         fields: Option<&Vec<String>>,
         signature_key_from: &String,

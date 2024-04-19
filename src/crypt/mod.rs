@@ -34,7 +34,7 @@ pub trait KeyManager {
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
     fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>>;
     fn verify_string(
-        &mut self,
+        &self,
         data: &String,
         signature_base64: &String,
         public_key: Vec<u8>,
@@ -105,7 +105,7 @@ impl KeyManager for Agent {
         }
     }
     fn verify_string(
-        &mut self,
+        &self,
         data: &String,
         signature_base64: &String,
         public_key: Vec<u8>,

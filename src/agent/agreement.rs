@@ -1,5 +1,6 @@
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
+use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;
 use crate::agent::JACS_VERSION_FIELDNAME;
@@ -7,7 +8,9 @@ use crate::agent::{
     AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME,
     SHA256_FIELDNAME,
 };
+use crate::crypt::hash::hash_public_key;
 use crate::crypt::hash::hash_string;
+use crate::schema::utils::ValueExt;
 use log::debug;
 use serde::ser::StdError;
 use serde_json::json;
@@ -238,6 +241,7 @@ impl Agreement for Agent {
         Ok(updated_document)
     }
 
+    /// checking agreements requires you have the public key of each signatory
     /// if the document hashes don't match or there are unsigned, it will fail
     fn check_agreement(
         &self,
@@ -263,8 +267,40 @@ impl Agreement for Agent {
                 if let Some(signatures_array) = signatures.as_array() {
                     for signature in signatures_array {
                         // todo validate each signature
-                        return Ok("TODO".to_string());
+                        let agent_id_and_version = format!(
+                            "{}:{}",
+                            signature.get_str("agentID").expect("REASON").to_string(),
+                            signature
+                                .get_str("agentVersion")
+                                .expect("REASON")
+                                .to_string()
+                        )
+                        .to_string();
+                        let noted_hash = signature
+                            .get_str("publicKeyHash")
+                            .expect("REASON")
+                            .to_string();
+                        let public_key_enc_type = signature
+                            .get_str("signingAlgorithm")
+                            .expect("REASON")
+                            .to_string();
+                        let agents_public_key = self.fs_load_public_key(&agent_id_and_version)?;
+                        let new_hash = hash_public_key(agents_public_key.clone());
+                        if new_hash != noted_hash {
+                            return Err(
+                                format!("wrong public key for {}", agent_id_and_version).into()
+                            );
+                        }
+
+                        let _ = self.signature_verification_procedure(
+                            &document.value,
+                            None,
+                            &AGENT_AGREEMENT_FIELDNAME.to_string(),
+                            agents_public_key,
+                            Some(public_key_enc_type),
+                        )?;
                     }
+                    return Ok("All signatures passed".to_string());
                 }
             }
         }
