@@ -1,4 +1,5 @@
 use crate::schema::Url;
+use log::info;
 
 use phf::phf_map;
 
@@ -72,7 +73,7 @@ impl SchemaResolver for LocalSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
         let path = self.base_path.join(relative_path);
-        println!(" url, relative_path {} {}", url, relative_path);
+        info!(" url, relative_path {} {}", url, relative_path);
         let schema_json = fs::read_to_string(&path).map_err(|io_err| {
             // Map I/O errors
             // SchemaResolverError::new(format!("{:?} {}", io_err, url.clone()))
@@ -118,7 +119,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
 
-        println!(" url, relative_path {} {}", url, relative_path);
+        info!(" url, relative_path {} {}", url, relative_path);
         let schema_json = super::DEFAULT_SCHEMA_STRINGS
             .get(relative_path)
             .ok_or_else(|| {

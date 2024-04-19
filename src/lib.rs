@@ -7,6 +7,7 @@ pub mod agent;
 pub mod config;
 pub mod crypt;
 pub mod schema;
+pub mod shared;
 
 pub fn get_empty_agent() -> Agent {
     Agent::new(
@@ -32,6 +33,7 @@ fn load_path_agent(filepath: String) -> Agent {
 }
 
 pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Error>> {
+    println!("cli agentfile = {:?}", agentfile);
     if let Some(file) = agentfile {
         return Ok(load_path_agent(file.to_string()));
     } else {

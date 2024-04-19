@@ -51,21 +51,35 @@ pub trait Agreement {
     /// on a subset of fields
     /// the standard hash detects any changes at all
     fn agreement_hash(&self, value: Value) -> Result<String, Box<dyn Error>>;
+
+    /// remove fields that should not be used for agreement signature
+    fn trim_fields_for_hashing_and_signing(
+        &self,
+        value: Value,
+    ) -> Result<(String, Vec<String>), Box<dyn Error>>;
 }
 
 impl Agreement for Agent {
-    fn agreement_hash(&self, mut value: Value) -> Result<String, Box<dyn Error>> {
-        // remove update document fields
-        value.as_object_mut().map(|obj| {
+    fn agreement_hash(&self, value: Value) -> Result<String, Box<dyn Error>> {
+        let (values_as_string, _fields) = self.trim_fields_for_hashing_and_signing(value)?;
+        Ok(hash_string(&values_as_string))
+    }
+
+    fn trim_fields_for_hashing_and_signing(
+        &self,
+        value: Value,
+    ) -> Result<(String, Vec<String>), Box<dyn Error>> {
+        let mut new_obj: Value = value.clone();
+        new_obj.as_object_mut().map(|obj| {
             obj.remove(DOCUMENT_AGREEMENT_HASH_FIELDNAME);
             obj.remove(JACS_PREVIOUS_VERSION_FIELDNAME);
             obj.remove(JACS_VERSION_FIELDNAME);
             return obj.remove(JACS_VERSION_DATE_FIELDNAME);
         });
 
-        let (values_as_string, _fields) =
-            Agent::get_values_as_string(&value, None, &AGENT_AGREEMENT_FIELDNAME.to_string())?;
-        Ok(hash_string(&values_as_string))
+        let (values_as_string, fields) =
+            Agent::get_values_as_string(&new_obj, None, &AGENT_AGREEMENT_FIELDNAME.to_string())?;
+        return Ok((values_as_string, fields));
     }
 
     fn create_agreement(
@@ -191,13 +205,23 @@ impl Agreement for Agent {
         let mut value = document.value;
         let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
         let original_agreement_hash_value = binding.as_str();
-        // todod use this
+        // todo use this
         let _calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
         let signing_agent_id = self.get_id().expect("agent id");
         //  generate signature object
-        let agents_signature: Value =
-            self.signing_procedure(&value.clone(), None, &AGENT_AGREEMENT_FIELDNAME.to_string())?;
-        self.add_agents_to_agreement(document_key, &vec![signing_agent_id.clone()])?;
+        let (_values_as_string, fields) =
+            self.trim_fields_for_hashing_and_signing(value.clone())?;
+        let agents_signature: Value = self.signing_procedure(
+            &value.clone(),
+            Some(&fields),
+            &AGENT_AGREEMENT_FIELDNAME.to_string(),
+        )?;
+
+        // redundant but make sure agent is listed as a signatory
+        let agent_complete_document =
+            self.add_agents_to_agreement(document_key, &vec![signing_agent_id.clone()])?;
+        value = agent_complete_document.getvalue();
+        let agent_complete_key = agent_complete_document.getkey();
         debug!(
             "agents_signature {}",
             serde_json::to_string_pretty(&agents_signature).expect("agents_signature print")
@@ -220,8 +244,12 @@ impl Agreement for Agent {
             });
         }
         // add to doc
-        let updated_document =
-            self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
+        let updated_document = self.update_document(
+            &agent_complete_key,
+            &serde_json::to_string(&value)?,
+            None,
+            None,
+        )?;
 
         let agreement_hash_value_after = self.agreement_hash(updated_document.value.clone())?;
 
@@ -229,7 +257,7 @@ impl Agreement for Agent {
         if original_agreement_hash_value != Some(&agreement_hash_value_after) {
             return Err(format!(
                 "aborting signature on agreement. field hashes don't match for document_key {} \n {} {}",
-                document_key, original_agreement_hash_value.expect("original_agreement_hash_value"), agreement_hash_value_after
+                agent_complete_key, original_agreement_hash_value.expect("original_agreement_hash_value"), agreement_hash_value_after
             )
             .into());
         }
@@ -248,6 +276,7 @@ impl Agreement for Agent {
         document_key: &std::string::String,
     ) -> Result<String, Box<(dyn StdError + 'static)>> {
         let document = self.get_document(document_key)?;
+        let local_doc_value = document.value.clone();
 
         let original_agreement_hash_value = document.value[DOCUMENT_AGREEMENT_HASH_FIELDNAME]
             .as_str()
@@ -259,7 +288,12 @@ impl Agreement for Agent {
 
         let unsigned = document.agreement_unsigned_agents()?;
         if unsigned.len() > 0 {
-            return Err(format!("not all agents have signed: {:?}", unsigned).into());
+            return Err(format!(
+                "not all agents have signed: {:?} {:?}",
+                unsigned,
+                document.value.get(AGENT_AGREEMENT_FIELDNAME).unwrap()
+            )
+            .into());
         }
 
         if let Some(jacs_agreement) = document.value.get(AGENT_AGREEMENT_FIELDNAME) {
@@ -306,9 +340,11 @@ impl Agreement for Agent {
                             "testing agreement sig agent_id_and_version {} {} {} ",
                             agent_id_and_version, noted_hash, public_key_enc_type
                         );
+                        let (_values_as_string, fields) =
+                            self.trim_fields_for_hashing_and_signing(local_doc_value.clone())?;
                         let result = self.signature_verification_procedure(
                             &document.value,
-                            None,
+                            Some(&fields),
                             &AGENT_AGREEMENT_FIELDNAME.to_string(),
                             agents_public_key,
                             Some(public_key_enc_type.clone()),
@@ -337,9 +373,14 @@ pub fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<S
 }
 
 pub fn subtract_vecs(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
+    println!("subtract_vecs A {:?} {:?} ", vec1, vec2);
+
     let to_remove: HashSet<&String> = vec2.iter().collect();
-    vec1.iter()
+    let return_vec1 = vec1
+        .iter()
         .filter(|item| !to_remove.contains(item))
         .cloned()
-        .collect()
+        .collect();
+    println!("subtract_vecs B {:?}- {:?} = {:?}", vec1, vec2, return_vec1);
+    return return_vec1;
 }

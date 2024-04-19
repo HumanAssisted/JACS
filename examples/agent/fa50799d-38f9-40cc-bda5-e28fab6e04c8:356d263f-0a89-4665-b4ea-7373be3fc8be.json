@@ -1,0 +1,61 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "capabilities": [
+    {
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "name": "withdraw",
+      "operation": "deduct",
+      "units": [
+        {
+          "generaltype": "monetary",
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "label": "net worth",
+          "unit_name": "dollars"
+        }
+      ]
+    }
+  ],
+  "description": "Guy with a bank account",
+  "jacsAgentType": "human",
+  "jacsId": "fa50799d-38f9-40cc-bda5-e28fab6e04c8",
+  "jacsOriginalDate": "2024-04-19T06:02:22.252689+00:00",
+  "jacsOriginalVersion": "356d263f-0a89-4665-b4ea-7373be3fc8be",
+  "jacsSha256": "f89dade3a8f38c9535807d1911e2ebb88af0b3f017e988259a770287445ced72",
+  "jacsSignature": {
+    "agentID": "fa50799d-38f9-40cc-bda5-e28fab6e04c8",
+    "agentVersion": "356d263f-0a89-4665-b4ea-7373be3fc8be",
+    "date": "2024-04-19T06:02:22.317306+00:00",
+    "fields": [
+      "$schema",
+      "capabilities",
+      "description",
+      "jacsAgentType",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate",
+      "modifications",
+      "name",
+      "quantifications"
+    ],
+    "publicKeyHash": "bf5df6ed03f9ab3876aa4c3cbc27bac24d907631f4f04d90474387ce90cf5529",
+    "signature": "I9RNKDg73Fb8b+jDaGpE7AfOoGzxaiGb2Wo2ADi65iikrOebtUTHrZNMJg5VllAg0O5ItcgREoWzNOvoe8gAwYlA6S/oQbWf3bMRs5EK3uamsQML8dpHCqhGtOkmjrbPoRQJSnlgx5jJxnRIquEde87AwgIEsc5fLqxcct49/IPGAq/a+rFfaa7uaUALRIInXGDPxGXLsCKKW0jHTmdO9cBykgiK9XMQZK4bSY8ffCKHtcnhaMYv5i525Gz/DsXeMgwjMH0G1bSWJaofziBFb/2hhc2089QJ4Nx1EJb5PftHDDHAxrRm8wEMlVgdja4ALGM1qxf3KTyA1aqXWm+LKA==",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsVersion": "356d263f-0a89-4665-b4ea-7373be3fc8be",
+  "jacsVersionDate": "2024-04-19T06:02:22.252689+00:00",
+  "modifications": [],
+  "name": "Ralph",
+  "quantifications": [
+    [
+      120000,
+      {
+        "generaltype": "monetary",
+        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+        "label": "net worth",
+        "unit_name": "dollars"
+      }
+    ]
+  ]
+}

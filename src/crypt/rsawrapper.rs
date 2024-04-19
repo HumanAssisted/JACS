@@ -47,6 +47,10 @@ pub fn sign_string(
     let signature_base64 = general_purpose::STANDARD.encode(signature_bytes);
     // TODO
     // assert_ne!(signature.to_bytes().as_ref(), data);
+    debug!(
+        "xxx sign_string  sig: {}     --------CONTENT: {}",
+        signature_base64, data
+    );
     Ok(signature_base64)
 }
 
@@ -70,7 +74,10 @@ pub fn verify_string(
     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
     debug!("verifying_key pem {:?}", verifying_key);
 
-    debug!("signature_base64  {}", signature_base64);
+    debug!(
+        "xxx verify_string  sig: {}     --------CONTENT: {}",
+        signature_base64, data
+    );
 
     let signature_bytes = general_purpose::STANDARD.decode(signature_base64)?;
     debug!("Decoded signature bytes: {:?}", signature_bytes);

@@ -46,6 +46,7 @@ impl JACSDocument {
     pub fn agreement_unsigned_agents(&self) -> Result<Vec<String>, Box<dyn Error>> {
         let all_requested_agents = self.agreement_requested_agents()?;
         let all_agreement_signed_agents = self.agreement_signed_agents()?;
+
         return Ok(subtract_vecs(
             &all_requested_agents,
             &all_agreement_signed_agents,
@@ -415,7 +416,7 @@ impl Document for Agent {
 
         // validate schema
         let new_version = Uuid::new_v4().to_string();
-        let last_version = &value["javsVersion"];
+        let last_version = &value["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
         new_document["jacsLastVersion"] = last_version.clone();

@@ -122,7 +122,7 @@ pub fn load_test_agent_two() -> Agent {
     );
     let result = agent.load_by_id(
         Some(
-            "a0917e64-dfdf-40ba-a8b2-e877e3686f27:592d4114-a957-4aaf-b483-0b31fc8bf371".to_string(),
+            "fa50799d-38f9-40cc-bda5-e28fab6e04c8:356d263f-0a89-4665-b4ea-7373be3fc8be".to_string(),
         ),
         None,
     );

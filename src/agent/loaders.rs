@@ -238,6 +238,16 @@ impl FileLoader for Agent {
             .or_else(|| Some(document_id.to_string()))
             .unwrap();
 
+        // optional add jacs
+        // let re = Regex::new(r"(\.[^.]+)$").unwrap();
+        // let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
+
+        // let signed_filename = if already_signed.is_match(documentoutput_filename) {
+        //     documentoutput_filename.to_string()  // Do not modify if '.jacs' is already there
+        // } else {
+        //     re.replace(documentoutput_filename, ".jacs$1").to_string()  // Append '.jacs' before the extension
+        // };
+
         let document_path =
             self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
         info!("document path {:?} ", document_path);

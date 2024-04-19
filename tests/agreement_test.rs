@@ -3,6 +3,7 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
+use secrecy::ExposeSecret;
 mod utils;
 
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
@@ -96,6 +97,23 @@ fn test_sign_agreement() {
     // cargo test   --test agreement_test -- --nocapture test_sign_agreement
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
+
+    let a1k = agent.get_private_key().unwrap();
+    let a2k = agent_two.get_private_key().unwrap();
+    let borrowed_key = a1k.expose_secret();
+    let key_vec = borrowed_key.use_secret();
+
+    let borrowed_key2 = a2k.expose_secret();
+    let key_vec2 = borrowed_key2.use_secret();
+
+    println!(
+        "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
+        String::from_utf8(agent.get_public_key().unwrap()).unwrap(),
+        String::from_utf8(agent_two.get_public_key().unwrap()).unwrap(),
+        String::from_utf8(key_vec).unwrap(),
+        String::from_utf8(key_vec2).unwrap()
+    );
+
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
@@ -119,7 +137,7 @@ fn test_sign_agreement() {
         serde_json::to_string_pretty(&signed_document.value).expect("pretty print");
 
     let _ = agent_two.load_document(&signed_document_string).unwrap();
-    let mut both_signed_document = agent_two
+    let both_signed_document = agent_two
         .sign_agreement(&signed_document_key)
         .expect("signed_document ");
 
@@ -147,15 +165,17 @@ fn test_sign_agreement() {
         Ok(_) => assert!(true),
     }
 
-    // agent one  tries and fails to creates agreement document
+    let both_signed_document_string =
+        serde_json::to_string_pretty(&both_signed_document.value).expect("pretty print");
 
-    // agent two signs document
-
-    // agent one checks document
-
-    // agent one signs document
-
-    // agent one checks document
-
-    // agent two checks document
+    let agent_one_both_signed_document = agent.load_document(&both_signed_document_string).unwrap();
+    let agent_one_both_signed_document_key = agent_one_both_signed_document.getkey();
+    let result = agent.check_agreement(&agent_one_both_signed_document_key);
+    match result {
+        Err(err) => {
+            println!("{}", err);
+            assert!(false)
+        }
+        Ok(_) => assert!(true),
+    }
 }

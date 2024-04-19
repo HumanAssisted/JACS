@@ -46,7 +46,7 @@ pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsAgentSignature";
 
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
-pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsPreviousVersion";
+pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsLastVersion";
 
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
@@ -238,7 +238,13 @@ impl Agent {
 
         if self.id.is_some() {
             let _id_string = self.id.clone().expect("string expected").to_string();
-            self.fs_load_keys()?;
+            // check if keys are already loaded
+            if self.public_key.is_none() || self.private_key.is_none() {
+                self.fs_load_keys()?;
+            } else {
+                println!("keys already loaded for agent");
+            }
+
             self.verify_self_signature()?;
         }
 
@@ -339,8 +345,13 @@ impl Agent {
         let (document_values_string, _) =
             Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
         debug!(
-            "signing_procedure document_values_string:\n{}",
+            "signature_verification_procedure document_values_string:\n{}",
             document_values_string
+        );
+
+        debug!(
+            "signature_verification_procedure placement_key:\n{}",
+            signature_key_from
         );
 
         let public_key_hash: String = match original_public_key_hash {
@@ -363,7 +374,7 @@ impl Agent {
             return Err(error_message.into());
         }
 
-        let signature_base64 = match signature {
+        let signature_base64 = match signature.clone() {
             Some(sig) => sig,
             _ => json_value[signature_key_from]["signature"]
                 .as_str()
@@ -371,6 +382,12 @@ impl Agent {
                 .trim_matches('"')
                 .to_string(),
         };
+
+        debug!("\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n", json_value[signature_key_from]["signature"]
+                .as_str()
+                .unwrap_or("")
+                .trim_matches('"')
+                .to_string(), signature , signature_base64);
 
         self.verify_string(
             &document_values_string,
@@ -422,8 +439,8 @@ impl Agent {
         debug!("placement_key:\n{}", placement_key);
         let (document_values_string, accepted_fields) =
             Agent::get_values_as_string(&json_value, fields.cloned(), placement_key)?;
-        debug!(
-            "signing_procedure document_values_string:\n{}",
+        println!(
+            "signing_procedure document_values_string:\n\n{}\n\n",
             document_values_string
         );
         let signature = self.sign_string(&document_values_string)?;
@@ -441,7 +458,7 @@ impl Agent {
         };
         let public_key = self.get_public_key()?;
         let public_key_hash = hash_public_key(public_key);
-        println!("hash {:?} ", public_key_hash);
+        debug!("hash {:?} ", public_key_hash);
         //TODO fields must never include sha256 at top level
         // error
         let signature_document = json!({
@@ -663,15 +680,6 @@ impl Agent {
         }
     }
 
-    /// returns ID and version separated by a colon
-    fn getagentkey(&self) -> String {
-        // return the id and version
-        let binding = String::new();
-        let id = self.id.as_ref().unwrap_or(&binding);
-        let version = self.version.as_ref().unwrap_or(&binding);
-        return format!("{}:{}", id, version);
-    }
-
     pub fn save(&self) -> Result<String, Box<dyn Error>> {
         let agent_string = self.as_string()?;
         let lookup_id = self.get_lookup_id()?;
@@ -695,20 +703,10 @@ impl Agent {
         if create_keys {
             self.generate_keys()?;
         }
+        if self.public_key.is_none() || self.private_key.is_none() {
+            let _ = self.fs_load_keys()?;
+        }
 
-        let _ = self.fs_load_keys()?;
-
-        // generate keys
-
-        // create keys
-        // self-sign as owner
-        // validate signature
-        // save
-        // updatekey is the except we increment version and preserve id
-        // update actions produces signatures
-        // hash agent
-        // self.validate();
-        // sign agent
         instance[AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&instance, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;
         // write  file to disk at [jacs]/agents/
