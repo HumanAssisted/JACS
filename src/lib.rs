@@ -1,4 +1,5 @@
 use crate::agent::Agent;
+use log::debug;
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -33,7 +34,7 @@ fn load_path_agent(filepath: String) -> Agent {
 }
 
 pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Error>> {
-    println!("cli agentfile = {:?}", agentfile);
+    debug!("load_agent agentfile = {:?}", agentfile);
     if let Some(file) = agentfile {
         return Ok(load_path_agent(file.to_string()));
     } else {
