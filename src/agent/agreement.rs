@@ -8,6 +8,7 @@ use crate::agent::{
     SHA256_FIELDNAME,
 };
 use crate::crypt::hash::hash_string;
+use log::debug;
 use serde::ser::StdError;
 use serde_json::json;
 use serde_json::Value;
@@ -189,12 +190,12 @@ impl Agreement for Agent {
         let original_agreement_hash_value = binding.as_str();
         // todod use this
         let _calculated_agreement_hash_value = self.agreement_hash(value.clone())?;
-
+        let signing_agent_id = self.get_id().expect("agent id");
         //  generate signature object
         let agents_signature: Value =
             self.signing_procedure(&value.clone(), None, &AGENT_AGREEMENT_FIELDNAME.to_string())?;
-
-        println!(
+        self.add_agents_to_agreement(document_key, &vec![signing_agent_id.clone()])?;
+        debug!(
             "agents_signature {}",
             serde_json::to_string_pretty(&agents_signature).expect("agents_signature print")
         );
@@ -211,7 +212,7 @@ impl Agreement for Agent {
             }
         } else {
             value[AGENT_AGREEMENT_FIELDNAME] = json!({
-                "agentIDs": [self.get_id().expect("agent id")],
+                "agentIDs": [signing_agent_id],
                 "signatures": [agents_signature]
             });
         }
