@@ -9,6 +9,7 @@ use jacs::crypt::KeyManager;
 use jacs::load_agent;
 use jacs::{get_empty_agent, load_agent_by_id};
 use regex::Regex;
+use rpassword::read_password;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -158,14 +159,14 @@ fn main() {
                             Arg::new("new")
                                 .short('n')
                                 .required(true)
-                                .help("Path to new version of modification.")
+                                .help("Path to new version of document.")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
                             Arg::new("filename")
                                 .short('f')
                                 .required(true)
-                                .help("Path to original file.")
+                                .help("Path to original document.")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -209,6 +210,64 @@ fn main() {
                         )
                         ,
                 )
+                .subcommand(
+                    Command::new("create-agreement")
+                        .about("given a document, provide alist of agents that should sign document")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("new")
+                                .short('n')
+                                .required(true)
+                                .help("Path to new version of document.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                .help("Path to original document.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("agent-ids")
+                                .required(true)
+                                .help("a list of agent ids to add to agreement, separated by commas")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .help("Output filename. Filenames will always end with \"jacs.json\"")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("no-save")
+                                .long("no-save")
+                                .short('n')
+                                .help("Instead of saving files, print to stdout")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to create")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
+
+                )
+
                 .subcommand(
                     Command::new("verify")
                         .about(" verify a documents hash, siginatures, and schema")
@@ -287,7 +346,9 @@ fn main() {
             Some(("create", create_matches)) => {
                 println!("Welcome to the JACS Config Generator!");
 
-                println!("Enter the path to the agent file (leave empty to skip):");
+                println!(
+                    "Enter the path to the agent file if it already exists (leave empty to skip):"
+                );
                 let mut agent_filename = String::new();
                 io::stdin().read_line(&mut agent_filename).unwrap();
                 agent_filename = agent_filename.trim().to_string();
@@ -326,8 +387,23 @@ fn main() {
                     request_string("Enter the private key filename:", "jacs.private.pem");
                 let jacs_agent_public_key_filename =
                     request_string("Enter the public key filename:", "jacs.public.pem");
-                let jacs_agent_key_algorithm = request_string("Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS) no default:", "");
-                let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
+                let jacs_agent_key_algorithm = request_string(
+                    "Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS)",
+                    "RSA-PSS",
+                );
+                //let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
+
+                println!("Please enter your password:");
+                let jacs_private_key_password = match read_password() {
+                    Ok(password) => {
+                        // If you want to use the password here or later, it's now stored in `jacs_private_key_password`
+                        password // No need for return; just pass the password directly
+                    }
+                    Err(e) => {
+                        eprintln!("Error reading password: {}", e);
+                        std::process::exit(1); // Exit if there's an error
+                    }
+                };
 
                 let jacs_use_filesystem =
                     request_string("Use filesystem. If false, will print to std:io", "true");
@@ -371,7 +447,7 @@ fn main() {
             }
             Some(("read", verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");
-                let _ = load_agent_by_id();
+                // let _ = load_agent_by_id();
                 let configs = set_env_vars();
                 println!("{}", configs);
             }
@@ -383,18 +459,21 @@ fn main() {
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
                 let agentstring = fs::read_to_string(filename.clone()).expect("agent file loading");
                 let mut agent = get_empty_agent();
-                agent
-                    .create_agent_and_load(&agentstring, false, None)
-                    .expect("agent creation failed");
-                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
-
+                let configs = set_env_vars();
+                println!("creating agent with config {}", configs);
                 if create_keys {
+                    println!("creating keys");
                     agent.generate_keys().expect("Reason");
                     println!(
                         "keys created in {}",
                         env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
                     )
                 }
+
+                agent
+                    .create_agent_and_load(&agentstring, false, None)
+                    .expect("agent creation failed");
+                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
 
                 let _ = agent.save();
             }
@@ -492,23 +571,6 @@ fn main() {
                                 None => &loading_filename_string,
                             };
 
-                            if no_save {
-                                println!("{}", document_key.to_string());
-                            } else {
-                                let re = Regex::new(r"(\.[^.]+)$").unwrap();
-                                let signed_filename =
-                                    re.replace(intermediate_filename, ".jacs$1").to_string();
-                                agent
-                                    .save_document(
-                                        &document_key,
-                                        format!("{}", signed_filename).into(),
-                                        None,
-                                        None,
-                                    )
-                                    .expect("save document");
-                                println!("created doc {}", document_key.to_string());
-                            }
-
                             if let Some(schema_file) = schema {
                                 //let document_ref = agent.get_document(&document_key).unwrap();
 
@@ -530,6 +592,23 @@ fn main() {
                                         );
                                     }
                                 }
+                            }
+
+                            if no_save {
+                                println!("{}", document_key.to_string());
+                            } else {
+                                let re = Regex::new(r"(\.[^.]+)$").unwrap();
+                                let signed_filename =
+                                    re.replace(intermediate_filename, ".jacs$1").to_string();
+                                agent
+                                    .save_document(
+                                        &document_key,
+                                        format!("{}", signed_filename).into(),
+                                        None,
+                                        None,
+                                    )
+                                    .expect("save document");
+                                println!("created doc {}", document_key.to_string());
                             }
                         }
                         Err(e) => {
@@ -600,6 +679,88 @@ fn main() {
                     // let signed_filename = re.replace(intermediate_filename, ".jacs.$1").to_string();
                     //  println!("output filename is {}", signed_filename);
 
+                    let re = Regex::new(r"(\.[^.]+)$").unwrap();
+                    let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
+                    println!("output cl filename is {}", signed_filename);
+                    agent
+                        .save_document(
+                            &new_document_key,
+                            format!("{}", signed_filename).into(),
+                            None,
+                            None,
+                        )
+                        .expect("save document");
+                    println!("created doc {}", new_document_key.to_string());
+                }
+
+                if let Some(schema_file) = schema {
+                    //let document_ref = agent.get_document(&document_key).unwrap();
+
+                    let validate_result = agent.validate_document_with_custom_schema(
+                        &schema_file,
+                        &updated_document.getvalue(),
+                    );
+                    match validate_result {
+                        Ok(_doc) => {
+                            println!("document specialised schema {} validated", new_document_key);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "document specialised schema {} validation failed {}",
+                                new_document_key, e
+                            );
+                        }
+                    }
+                }
+            }
+
+            Some(("create-agreement", create_matches)) => {
+                let new_filename = create_matches.get_one::<String>("new").unwrap();
+                let original_filename = create_matches.get_one::<String>("filename").unwrap();
+                let outputfilename = create_matches.get_one::<String>("output");
+                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let schema = create_matches.get_one::<String>("schema");
+                let agent_ids = create_matches.get_one::<String>("agent-ids");
+
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+
+                if let Some(schema_file) = schema {
+                    // schemastring =
+                    fs::read_to_string(schema_file).expect("Failed to load schema file");
+
+                    let schemas = [schema_file.clone()];
+                    agent.load_custom_schemas(&schemas);
+                }
+
+                let new_document_string =
+                    fs::read_to_string(new_filename).expect("modified document file loading");
+                let original_document_string =
+                    fs::read_to_string(original_filename).expect("original document file loading");
+                let original_doc = agent
+                    .load_document(&original_document_string)
+                    .expect("document parse of original");
+                let original_doc_key = original_doc.getkey();
+                let updated_document = agent
+                    .update_document(&original_doc_key, &new_document_string, None, None)
+                    .expect("update document");
+
+                let path = Path::new(new_filename);
+                let loading_filename = path.file_name().unwrap().to_str().unwrap();
+                let loading_filename_string = loading_filename.to_string();
+
+                let new_document_key = updated_document.getkey();
+                // let document_key_string = new_document_key.to_string();
+
+                let intermediate_filename = match outputfilename {
+                    Some(filename) => filename,
+                    None => &loading_filename_string,
+                };
+
+                if no_save {
+                    println!("{}", new_document_key.to_string());
+                } else {
                     let re = Regex::new(r"(\.[^.]+)$").unwrap();
                     let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
                     println!("output cl filename is {}", signed_filename);

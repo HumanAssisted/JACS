@@ -344,6 +344,10 @@ fn save_to_filepath(full_path: &PathBuf, content: &[u8]) -> std::io::Result<Stri
         fs::copy(&full_path, backup_path)?;
     }
 
+    if let Some(parent) = full_path.parent() {
+        fs::create_dir_all(parent)?; // Create the directory path if it doesn't exist
+    }
+
     fs::write(full_path.clone(), content)?;
     // .to_string_lossy().into_owned()
     match full_path.clone().into_os_string().into_string() {
