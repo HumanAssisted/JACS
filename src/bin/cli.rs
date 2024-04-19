@@ -59,8 +59,7 @@ fn main() {
                         .arg(
                             Arg::new("filename")
                                 .short('f')
-                                .required(true)
-                                 .help("Name of the file")
+                                .help("Name of the json file with agent schema and jacsAgentType")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -457,7 +456,14 @@ fn main() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename").unwrap();
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
-                let agentstring = fs::read_to_string(filename.clone()).expect("agent file loading");
+
+                let agentstring = match Some(filename) {
+                    Some(filename) => {
+                        fs::read_to_string(filename.clone()).expect("agent file loading")
+                    }
+                    (_) => "{\"jacsAgentType\":\"ai\"}".to_string(),
+                };
+
                 let mut agent = get_empty_agent();
                 let configs = set_env_vars();
                 println!("creating agent with config {}", configs);
