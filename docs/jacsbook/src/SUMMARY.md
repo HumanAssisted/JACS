@@ -5,11 +5,12 @@
 
 - [Installation](guide/installation.md)
 - [Creating an Agent](guide/agent.md)
-- [working with documents](guide/documents.md)
+- [Working with documents](guide/documents.md)
+- [Creating and using agreements](guide/agreements.md)
 
 # Reference Guide
 
-- [Command Line Tool](cli/README.md)
+- [JSON schemas](design/schemas.md)
 - [Security](design/security.md)
 - [JSON schemas](design/schemas.md)
 
