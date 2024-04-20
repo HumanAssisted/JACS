@@ -93,6 +93,63 @@ pub fn document_load_and_save(
     }
 }
 
+pub fn document_check_agreement(
+    agent: &mut Agent,
+    document_string: &String,
+    custom_schema: Option<String>,
+) -> Result<String, Box<dyn Error>> {
+    if let Some(ref schema_file) = custom_schema {
+        let schemas = [schema_file.clone()];
+        agent.load_custom_schemas(&schemas);
+    }
+    let docresult = agent.load_document(&document_string)?;
+    let document_key = docresult.getkey();
+    let result = agent.check_agreement(&document_key);
+    match result {
+        Err(err) => Err(format!("{}", err).into()),
+        Ok(_) => {
+            return Ok(format!(
+                "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
+                docresult.agreement_requested_agents().unwrap(),
+                docresult.agreement_unsigned_agents().unwrap(),
+                docresult.agreement_signed_agents().unwrap()
+            ));
+        }
+    }
+}
+
+pub fn document_sign_agreement(
+    agent: &mut Agent,
+    document_string: &String,
+    custom_schema: Option<String>,
+    save_filename: Option<String>,
+    export_embedded: Option<bool>,
+    extract_only: Option<bool>,
+    load_only: bool,
+) -> Result<String, Box<dyn Error>> {
+    if let Some(ref schema_file) = custom_schema {
+        let schemas = [schema_file.clone()];
+        agent.load_custom_schemas(&schemas);
+    }
+    let docresult = agent.load_document(&document_string)?;
+    let document_key = docresult.getkey();
+
+    let signed_document = agent.sign_agreement(&document_key)?;
+    let signed_document_key = signed_document.getkey();
+    if !load_only {
+        return save_document(
+            agent,
+            Ok(signed_document),
+            custom_schema,
+            save_filename,
+            export_embedded,
+            extract_only,
+        );
+    } else {
+        return Ok(signed_document.value.to_string());
+    }
+}
+
 pub fn document_add_agreement(
     agent: &mut Agent,
     document_string: &String,

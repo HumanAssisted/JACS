@@ -9,8 +9,10 @@ use jacs::crypt::KeyManager;
 use jacs::get_empty_agent;
 use jacs::load_agent;
 use jacs::shared::document_add_agreement;
+use jacs::shared::document_check_agreement;
 use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
+use jacs::shared::document_sign_agreement;
 use jacs::shared::get_file_list;
 use regex::Regex;
 use rpassword::read_password;
@@ -214,6 +216,37 @@ fn main() {
                         ,
                 )
                 .subcommand(
+                    Command::new("check-agreement")
+                        .about("given a document, provide alist of agents that should sign document")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                .help("Path to original document.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("directory")
+                                .short('d')
+                                .help("Path to directory of files. Files should end with .json")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to create")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
+
+                )
+                .subcommand(
                     Command::new("create-agreement")
                         .about("given a document, provide alist of agents that should sign document")
                         .arg(
@@ -272,8 +305,56 @@ fn main() {
                                 .value_parser(value_parser!(String)),
                         )
 
-                )
+                ).subcommand(
+                    Command::new("sign-agreement")
+                        .about("given a document, sign the agreement section")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                .help("Path to original document.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("directory")
+                                .short('d')
+                                .help("Path to directory of files. Files should end with .json")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .help("Output filename. Filenames will always end with \"jacs.json\"")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("no-save")
+                                .long("no-save")
+                                .short('n')
+                                .help("Instead of saving files, print to stdout")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to create")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
 
+                )
                 .subcommand(
                     Command::new("verify")
                         .about(" verify a documents hash, siginatures, and schema")
@@ -643,8 +724,50 @@ fn main() {
                     println!("created doc {}", new_document_key.to_string());
                 }
             }
-            Some(("sign-agreement", create_matches)) => {}
-            Some(("check-agreement", create_matches)) => {}
+            Some(("sign-agreement", create_matches)) => {
+                let filename = create_matches.get_one::<String>("filename");
+                let directory = create_matches.get_one::<String>("directory");
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let schema = create_matches.get_one::<String>("schema");
+                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+
+                let files: Vec<String> = set_file_list(filename, directory, None);
+
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let result = document_sign_agreement(
+                        &mut agent,
+                        &document_string,
+                        schema.cloned(),
+                        None,
+                        None,
+                        None,
+                        no_save,
+                    )
+                    .expect("reason");
+                    println!("{}", result);
+                }
+            }
+            Some(("check-agreement", create_matches)) => {
+                let filename = create_matches.get_one::<String>("filename");
+                let directory = create_matches.get_one::<String>("directory");
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let schema = create_matches.get_one::<String>("schema");
+
+                let files: Vec<String> = set_file_list(filename, directory, None);
+
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let result =
+                        document_check_agreement(&mut agent, &document_string, schema.cloned())
+                            .expect("reason");
+                    println!("{}", result);
+                }
+            }
             Some(("create-agreement", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");

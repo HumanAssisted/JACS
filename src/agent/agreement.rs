@@ -277,10 +277,10 @@ impl Agreement for Agent {
     ) -> Result<String, Box<(dyn StdError + 'static)>> {
         let document = self.get_document(document_key)?;
         let local_doc_value = document.value.clone();
-
+        let error_message = format!("{} missing", DOCUMENT_AGREEMENT_HASH_FIELDNAME);
         let original_agreement_hash_value = document.value[DOCUMENT_AGREEMENT_HASH_FIELDNAME]
             .as_str()
-            .expect("DOCUMENT_AGREEMENT_HASH_FIELDNAME");
+            .expect(&error_message);
         let calculated_agreement_hash_value = self.agreement_hash(document.value.clone())?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
             return Err("check_agreement: agreement hashes don't match".into());
