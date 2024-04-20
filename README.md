@@ -2,8 +2,7 @@
 
 Welcome to JACS. JSON Agent Communication Standard.
 
-
-** NOTE: Current version 0.2.3 *ALPHA* .
+** NOTE: Current version 0.2.4 *ALPHA* .
 
 The JACS documents enable more trusted data sharing between AI agents and Human UIs.
 
@@ -15,6 +14,13 @@ JACS also provides standardization for agreement between agents. While each docu
 
 Decentralized but trusted data sharing is key to building the apps of the future.
 Use JACS as is, embed in other projects or libraries, commercial or otherwise.
+
+## Basic use cases
+
+  1. version json documents and test against a schema
+  2. capture metadata about files and versions and securely verify
+  3. sign documents
+  4. create agreements between human and ai agents
 
 
 ## Documentation
