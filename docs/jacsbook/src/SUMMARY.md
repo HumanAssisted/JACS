@@ -11,7 +11,7 @@
 - [Working with documents](cli/documents.md)
 - [Creating and using agreements](cli/agreements.md)
 
-# Reference Guide
+# Design
 
 - [JSON schemas](design/schemas.md)
 - [Security](design/security.md)
