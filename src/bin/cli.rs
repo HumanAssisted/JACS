@@ -223,20 +223,19 @@ fn main() {
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
-                            Arg::new("new")
-                                .short('n')
-                                .required(true)
-                                .help("Path to new version of document.")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
                             Arg::new("filename")
                                 .short('f')
                                 .required(true)
                                 .help("Path to original document.")
                                 .value_parser(value_parser!(String)),
                         )
-                            .arg(
+                        .arg(
+                            Arg::new("directory")
+                                .short('d')
+                                .help("Path to directory of files. Files should end with .json")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
                                 Arg::new("agentids")
                                 .short('i')
                                 .long("agentids")
@@ -653,13 +652,12 @@ fn main() {
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
-
+                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentids: Vec<String> = matches
                     .get_many::<String>("agentids")
                     .unwrap_or_default()
                     .map(|s| s.to_string())
                     .collect();
-                let no_save = false;
 
                 let files: Vec<String> = set_file_list(filename, directory, None);
 
