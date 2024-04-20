@@ -4,7 +4,9 @@ use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use regex::Regex;
 use secrecy::ExposeSecret;
+use serde::ser::StdError;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -53,6 +55,7 @@ pub trait FileLoader {
         &mut self,
         private_key_filename: &String,
         public_key_filename: &String,
+        custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>>;
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>>;
     fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>>;
@@ -73,6 +76,7 @@ pub trait FileLoader {
 
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
+    fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -147,20 +151,33 @@ impl FileLoader for Agent {
         self.set_keys(private_key, public_key, &key_algorithm)
     }
 
+    /// in JACS the public keys need to be added manually
+    fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        default_dir = format!("{}/public_keys/", default_dir);
+        let public_key_filename = format!("{}.pem", agent_id_and_version);
+        return Ok(load_key_file(&default_dir, &public_key_filename)?);
+    }
+
     /// a way to load keys that aren't default
     fn fs_preload_keys(
         &mut self,
         private_key_filename: &String,
         public_key_filename: &String,
+        custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
         //todo use filepath builder
         let default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
 
-        let private_key = load_key_file(&default_dir, &private_key_filename)?;
+        let private_key = load_private_key(&default_dir, &private_key_filename)?;
         let public_key = load_key_file(&default_dir, &public_key_filename)?;
 
-        let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
+        // todo make this optional param
+        let key_algorithm = match custom_key_algorithm {
+            Some(algo) => algo,
+            _ => env::var("JACS_AGENT_KEY_ALGORITHM")?,
+        };
         self.set_keys(private_key, public_key, &key_algorithm)
     }
 
@@ -179,7 +196,7 @@ impl FileLoader for Agent {
             }
             Err(e) => {
                 panic!(
-                    "Failed to find agent: {} at {:?} {} ",
+                    "Failed to find agent: agentid {} \nat agentpath {:?} \n{} ",
                     agentid, agentpath, e
                 );
             }
@@ -218,13 +235,24 @@ impl FileLoader for Agent {
         document_string: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
-        let documentoutput_filename = output_filename
-            .or_else(|| Some(document_id.to_string()))
-            .unwrap();
+        let documentoutput_filename = match output_filename {
+            Some(filname) => {
+                // optional add jacs
+                let re = Regex::new(r"(\.[^.]+)$").unwrap();
+                let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
+                let signed_filename = if already_signed.is_match(&filname) {
+                    filname.to_string() // Do not modify if '.jacs' is already there
+                } else {
+                    re.replace(&filname, ".jacs$1").to_string() // Append '.jacs' before the extension
+                };
+                signed_filename
+            }
+            _ => document_id.to_string(),
+        };
 
         let document_path =
             self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
-        info!("document path {:?} ", document_path);
+        info!("saving {:?} ", document_path);
         Ok(save_to_filepath(
             &document_path,
             document_string.as_bytes(),
@@ -323,6 +351,9 @@ fn load_private_key(file_path: &String, filename: &String) -> std::io::Result<Ve
 
 #[cfg(not(target_arch = "wasm32"))]
 fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
+    if let Some(parent) = Path::new(file_path).parent() {
+        fs::create_dir_all(parent)?;
+    }
     let full_path = Path::new(file_path).join(filename);
     return std::fs::read(full_path);
 }
@@ -342,6 +373,10 @@ fn save_to_filepath(full_path: &PathBuf, content: &[u8]) -> std::io::Result<Stri
             full_path, backup_path
         );
         fs::copy(&full_path, backup_path)?;
+    }
+
+    if let Some(parent) = full_path.parent() {
+        fs::create_dir_all(parent)?; // Create the directory path if it doesn't exist
     }
 
     fs::write(full_path.clone(), content)?;

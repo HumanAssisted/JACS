@@ -1,14 +1,3 @@
-# Installation
-
-To install the command line tool for creating and verifying agents and documents
-
-    $ cargo install jacs
-    $ jacs --help
-
-If you are working in Rust, add the rust lib to your project
-
-    cargo add jacs
-
 
 ## setting up
 

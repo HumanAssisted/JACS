@@ -89,7 +89,7 @@ pub fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "37e6b2e0-5100-4eb7-b042-2630beaa8531:c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3".to_string();
+        "5305e3e1-9b14-4cb7-94ff-902f9c101d91:a2ecf623-64a1-43c6-a8f2-4a6c95552c25".to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -118,10 +118,11 @@ pub fn load_test_agent_two() -> Agent {
     let _ = agent.fs_preload_keys(
         &"agent-two.private.pem".to_string(),
         &"agent-two.public.pem".to_string(),
+        Some("RSA-PSS".to_string()),
     );
     let result = agent.load_by_id(
         Some(
-            "958b8b36-0734-4f13-b660-17496f88acc5:fe216e87-74af-4b16-a86a-6776afa682b4".to_string(),
+            "fa50799d-38f9-40cc-bda5-e28fab6e04c8:356d263f-0a89-4665-b4ea-7373be3fc8be".to_string(),
         ),
         None,
     );

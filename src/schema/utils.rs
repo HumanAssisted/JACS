@@ -1,4 +1,5 @@
 use crate::schema::Url;
+use log::info;
 
 use phf::phf_map;
 
@@ -15,6 +16,7 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),
     "schemas/components/signature/v1/signature.schema.json" => include_str!("../../schemas/components/signature/v1/signature.schema.json"),
     "schemas/components/files/v1/files.schema.json" => include_str!("../../schemas/components/files/v1/files.schema.json"),
+    "schemas/components/agreement/v1/agreement.schema.json" => include_str!("../../schemas/components/agreement/v1/agreement.schema.json"),
     // todo get all files in a schemas directory, dynamically
     // "schemas/jacs.config.schema.json" => include_str!("../../schemas/jacs.config.schema.json"),
 };
@@ -71,7 +73,7 @@ impl SchemaResolver for LocalSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
         let path = self.base_path.join(relative_path);
-        println!(" url, relative_path {} {}", url, relative_path);
+        info!(" url, relative_path {} {}", url, relative_path);
         let schema_json = fs::read_to_string(&path).map_err(|io_err| {
             // Map I/O errors
             // SchemaResolverError::new(format!("{:?} {}", io_err, url.clone()))
@@ -117,7 +119,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
 
-        println!(" url, relative_path {} {}", url, relative_path);
+        info!(" url, relative_path {} {}", url, relative_path);
         let schema_json = super::DEFAULT_SCHEMA_STRINGS
             .get(relative_path)
             .ok_or_else(|| {

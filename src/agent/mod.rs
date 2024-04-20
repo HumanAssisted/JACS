@@ -1,15 +1,18 @@
-// pub mod document;
-use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{Document, JACSDocument};
-use std::fs;
-
-use crate::config::{get_default_dir, set_env_vars};
+pub mod agreement;
 pub mod boilerplate;
 pub mod document;
 pub mod loaders;
 
+use crate::agent::agreement::Agreement;
+use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::document::{Document, JACSDocument};
+use crate::crypt::hash::hash_public_key;
+use std::fs;
+
+use crate::config::{get_default_dir, set_env_vars};
+
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
-use crate::crypt::hash::hash_string;
+
 use crate::crypt::KeyManager;
 use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
@@ -30,9 +33,20 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+/// this field is only ignored by itself, but other
+/// document signatures and hashes include this to detect tampering
+pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "jacsAgreementHash";
+
+// these fields generally exclude themselves when hashing
 pub const SHA256_FIELDNAME: &str = "jacsSha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
+pub const AGENT_REGISTRATION_SIGNATURE_FIELDNAME: &str = "jacsRegistration";
+pub const AGENT_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsAgentSignature";
+
+pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
+pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
+pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsLastVersion";
 
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
@@ -224,7 +238,13 @@ impl Agent {
 
         if self.id.is_some() {
             let _id_string = self.id.clone().expect("string expected").to_string();
-            self.fs_load_keys()?;
+            // check if keys are already loaded
+            if self.public_key.is_none() || self.private_key.is_none() {
+                self.fs_load_keys()?;
+            } else {
+                println!("keys already loaded for agent");
+            }
+
             self.verify_self_signature()?;
         }
 
@@ -260,6 +280,8 @@ impl Agent {
                     None,
                     signature_key_from,
                     public_key,
+                    None,
+                    None,
                     None,
                 );
             }
@@ -310,40 +332,63 @@ impl Agent {
         return Ok(format!("{}:{}", agentid, agentversion));
     }
 
-    fn signature_verification_procedure(
-        &mut self,
+    pub fn signature_verification_procedure(
+        &self,
         json_value: &Value,
         fields: Option<&Vec<String>>,
         signature_key_from: &String,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
+        original_public_key_hash: Option<String>,
+        signature: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         let (document_values_string, _) =
             Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
         debug!(
-            "signing_procedure document_values_string:\n{}",
+            "signature_verification_procedure document_values_string:\n{}",
             document_values_string
         );
 
-        let public_key_hash = json_value[signature_key_from]["publicKeyHash"]
-            .as_str()
-            .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+        debug!(
+            "signature_verification_procedure placement_key:\n{}",
+            signature_key_from
+        );
 
-        let public_key_rehash = hash_string(&String::from_utf8(public_key.clone())?);
+        let public_key_hash: String = match original_public_key_hash {
+            Some(orig) => orig,
+            _ => json_value[signature_key_from]["publicKeyHash"]
+                .as_str()
+                .unwrap_or("")
+                .trim_matches('"')
+                .to_string(),
+        };
+
+        let public_key_rehash = hash_public_key(public_key.clone());
 
         if public_key_rehash != public_key_hash {
-            let error_message = "Incorrect public key used to verify signature";
+            let error_message = format!(
+                "Incorrect public key used to verify signature public_key_rehash {} public_key_hash {} ",
+                public_key_rehash, public_key_hash
+            );
             error!("{}", error_message);
             return Err(error_message.into());
         }
 
-        let signature_base64 = json_value[signature_key_from]["signature"]
-            .as_str()
-            .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+        let signature_base64 = match signature.clone() {
+            Some(sig) => sig,
+            _ => json_value[signature_key_from]["signature"]
+                .as_str()
+                .unwrap_or("")
+                .trim_matches('"')
+                .to_string(),
+        };
+
+        debug!("\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n", json_value[signature_key_from]["signature"]
+                .as_str()
+                .unwrap_or("")
+                .trim_matches('"')
+                .to_string(), signature , signature_base64);
+
         self.verify_string(
             &document_values_string,
             &signature_base64,
@@ -394,8 +439,8 @@ impl Agent {
         debug!("placement_key:\n{}", placement_key);
         let (document_values_string, accepted_fields) =
             Agent::get_values_as_string(&json_value, fields.cloned(), placement_key)?;
-        debug!(
-            "signing_procedure document_values_string:\n{}",
+        println!(
+            "signing_procedure document_values_string:\n\n{}\n\n",
             document_values_string
         );
         let signature = self.sign_string(&document_values_string)?;
@@ -412,7 +457,8 @@ impl Agent {
             Err(err) => return Err(Box::new(err)),
         };
         let public_key = self.get_public_key()?;
-        let public_key_hash = hash_string(&String::from_utf8(public_key)?);
+        let public_key_hash = hash_public_key(public_key);
+        debug!("hash {:?} ", public_key_hash);
         //TODO fields must never include sha256 at top level
         // error
         let signature_document = json!({
@@ -421,7 +467,7 @@ impl Agent {
             "agentVersion": agent_version,
             "date": date,
             "signature":signature,
-            "signing_algorithm":signing_algorithm,
+            "signingAlgorithm":signing_algorithm,
             "publicKeyHash": public_key_hash,
             "fields": serialized_fields
         });
@@ -456,6 +502,8 @@ impl Agent {
                             && key != SHA256_FIELDNAME
                             && key != AGENT_SIGNATURE_FIELDNAME
                             && key != DOCUMENT_AGENT_SIGNATURE_FIELDNAME
+                            && key != AGENT_REGISTRATION_SIGNATURE_FIELDNAME
+                            && key != AGENT_AGREEMENT_FIELDNAME
                     })
                     .map(|key| key.to_string())
                     .collect();
@@ -470,14 +518,18 @@ impl Agent {
                         || str_value == SHA256_FIELDNAME
                         || str_value == AGENT_SIGNATURE_FIELDNAME
                         || str_value == DOCUMENT_AGENT_SIGNATURE_FIELDNAME
+                        || str_value == AGENT_REGISTRATION_SIGNATURE_FIELDNAME
+                        || str_value == AGENT_AGREEMENT_FIELDNAME
                     {
                         let error_message = format!(
                             "Field names for signature must not include itself or hashing
-                              - these are reserved for this signature {}: see {} {} {}",
+                              - these are reserved for this signature {}: see {} {} {} {} {}",
                             placement_key,
                             SHA256_FIELDNAME,
                             AGENT_SIGNATURE_FIELDNAME,
-                            DOCUMENT_AGENT_SIGNATURE_FIELDNAME
+                            DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
+                            AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
+                            AGENT_AGREEMENT_FIELDNAME
                         );
                         error!("{}", error_message);
                         return Err(error_message.into());
@@ -628,15 +680,6 @@ impl Agent {
         }
     }
 
-    /// returns ID and version separated by a colon
-    fn getagentkey(&self) -> String {
-        // return the id and version
-        let binding = String::new();
-        let id = self.id.as_ref().unwrap_or(&binding);
-        let version = self.version.as_ref().unwrap_or(&binding);
-        return format!("{}:{}", id, version);
-    }
-
     pub fn save(&self) -> Result<String, Box<dyn Error>> {
         let agent_string = self.as_string()?;
         let lookup_id = self.get_lookup_id()?;
@@ -660,20 +703,10 @@ impl Agent {
         if create_keys {
             self.generate_keys()?;
         }
+        if self.public_key.is_none() || self.private_key.is_none() {
+            let _ = self.fs_load_keys()?;
+        }
 
-        let _ = self.fs_load_keys()?;
-
-        // generate keys
-
-        // create keys
-        // self-sign as owner
-        // validate signature
-        // save
-        // updatekey is the except we increment version and preserve id
-        // update actions produces signatures
-        // hash agent
-        // self.validate();
-        // sign agent
         instance[AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&instance, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;
         // write  file to disk at [jacs]/agents/

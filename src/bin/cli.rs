@@ -6,9 +6,16 @@ use jacs::agent::document::Document;
 use jacs::agent::Agent;
 use jacs::config::{set_env_vars, Config};
 use jacs::crypt::KeyManager;
+use jacs::get_empty_agent;
 use jacs::load_agent;
-use jacs::{get_empty_agent, load_agent_by_id};
+use jacs::shared::document_add_agreement;
+use jacs::shared::document_check_agreement;
+use jacs::shared::document_create;
+use jacs::shared::document_load_and_save;
+use jacs::shared::document_sign_agreement;
+use jacs::shared::get_file_list;
 use regex::Regex;
+use rpassword::read_password;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -58,8 +65,7 @@ fn main() {
                         .arg(
                             Arg::new("filename")
                                 .short('f')
-                                .required(true)
-                                 .help("Name of the file")
+                                .help("Name of the json file with agent schema and jacsAgentType")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -158,14 +164,14 @@ fn main() {
                             Arg::new("new")
                                 .short('n')
                                 .required(true)
-                                .help("Path to new version of modification.")
+                                .help("Path to new version of document.")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
                             Arg::new("filename")
                                 .short('f')
                                 .required(true)
-                                .help("Path to original file.")
+                                .help("Path to original document.")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -208,6 +214,146 @@ fn main() {
                                 .value_parser(value_parser!(bool)),
                         )
                         ,
+                )
+                .subcommand(
+                    Command::new("check-agreement")
+                        .about("given a document, provide alist of agents that should sign document")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                .help("Path to original document.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("directory")
+                                .short('d')
+                                .help("Path to directory of files. Files should end with .json")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to create")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
+
+                )
+                .subcommand(
+                    Command::new("create-agreement")
+                        .about("given a document, provide alist of agents that should sign document")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                .help("Path to original document.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("directory")
+                                .short('d')
+                                .help("Path to directory of files. Files should end with .json")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                                Arg::new("agentids")
+                                .short('i')
+                                .long("agentids")
+                                .value_name("VALUES")
+                                .help("Comma-separated list of agent ids")
+                                .value_delimiter(',')
+                                .required(true)
+                                .action(clap::ArgAction::Set),
+                            )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .help("Output filename. Filenames will always end with \"jacs.json\"")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("no-save")
+                                .long("no-save")
+                                .short('n')
+                                .help("Instead of saving files, print to stdout")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to create")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
+
+                ).subcommand(
+                    Command::new("sign-agreement")
+                        .about("given a document, sign the agreement section")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                .help("Path to original document.")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("directory")
+                                .short('d')
+                                .help("Path to directory of files. Files should end with .json")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .help("Output filename. Filenames will always end with \"jacs.json\"")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("verbose")
+                                .short('v')
+                                .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("no-save")
+                                .long("no-save")
+                                .short('n')
+                                .help("Instead of saving files, print to stdout")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("schema")
+                                .short('s')
+                                .help("Path to JSON schema file to use to create")
+                                .long("schema")
+                                .value_parser(value_parser!(String)),
+                        )
+
                 )
                 .subcommand(
                     Command::new("verify")
@@ -287,7 +433,9 @@ fn main() {
             Some(("create", create_matches)) => {
                 println!("Welcome to the JACS Config Generator!");
 
-                println!("Enter the path to the agent file (leave empty to skip):");
+                println!(
+                    "Enter the path to the agent file if it already exists (leave empty to skip):"
+                );
                 let mut agent_filename = String::new();
                 io::stdin().read_line(&mut agent_filename).unwrap();
                 agent_filename = agent_filename.trim().to_string();
@@ -326,8 +474,23 @@ fn main() {
                     request_string("Enter the private key filename:", "jacs.private.pem");
                 let jacs_agent_public_key_filename =
                     request_string("Enter the public key filename:", "jacs.public.pem");
-                let jacs_agent_key_algorithm = request_string("Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS) no default:", "");
-                let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
+                let jacs_agent_key_algorithm = request_string(
+                    "Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS)",
+                    "RSA-PSS",
+                );
+                //let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
+
+                println!("Please enter your password:");
+                let jacs_private_key_password = match read_password() {
+                    Ok(password) => {
+                        // If you want to use the password here or later, it's now stored in `jacs_private_key_password`
+                        password // No need for return; just pass the password directly
+                    }
+                    Err(e) => {
+                        eprintln!("Error reading password: {}", e);
+                        std::process::exit(1); // Exit if there's an error
+                    }
+                };
 
                 let jacs_use_filesystem =
                     request_string("Use filesystem. If false, will print to std:io", "true");
@@ -371,7 +534,7 @@ fn main() {
             }
             Some(("read", verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");
-                let _ = load_agent_by_id();
+                // let _ = load_agent_by_id();
                 let configs = set_env_vars();
                 println!("{}", configs);
             }
@@ -381,20 +544,30 @@ fn main() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename").unwrap();
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
-                let agentstring = fs::read_to_string(filename.clone()).expect("agent file loading");
-                let mut agent = get_empty_agent();
-                agent
-                    .create_agent_and_load(&agentstring, false, None)
-                    .expect("agent creation failed");
-                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
 
+                let agentstring = match Some(filename) {
+                    Some(filename) => {
+                        fs::read_to_string(filename.clone()).expect("agent file loading")
+                    }
+                    _ => "{\"jacsAgentType\":\"ai\"}".to_string(),
+                };
+
+                let mut agent = get_empty_agent();
+                let configs = set_env_vars();
+                println!("creating agent with config {}", configs);
                 if create_keys {
+                    println!("creating keys");
                     agent.generate_keys().expect("Reason");
                     println!(
                         "keys created in {}",
                         env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
                     )
                 }
+
+                agent
+                    .create_agent_and_load(&agentstring, false, None)
+                    .expect("agent creation failed");
+                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
 
                 let _ = agent.save();
             }
@@ -422,11 +595,11 @@ fn main() {
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
                 let attachments = create_matches.get_one::<String>("attach");
-                let embed = create_matches.get_one::<bool>("embed");
+                let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
 
-                let attachment_links = agent.parse_attachement_arg(attachments);
+                // let attachment_links = agent.parse_attachement_arg(attachments);
 
                 if !outputfilename.is_none() && !directory.is_none() {
                     eprintln!("Error: if there is a directory you can't name the file the same for multiple files.");
@@ -435,36 +608,7 @@ fn main() {
 
                 // check if output filename exists and that if so it's for one file
 
-                let mut files: Vec<String> = Vec::new();
-                if filename.is_none() && directory.is_none() && attachments.is_none() {
-                    eprintln!("Error: You must specify either a filename or a directory or create from attachments.");
-                    std::process::exit(1);
-                } else if filename.is_none() && directory.is_none() {
-                    files.push("no filepath given".to_string()); // hack to get the iterator to open
-                } else if let Some(file) = filename {
-                    files.push(file.to_string());
-                } else if let Some(dir) = directory {
-                    // Traverse the directory and store filenames ending with .json
-                    for entry in fs::read_dir(dir).expect("Failed to read directory") {
-                        if let Ok(entry) = entry {
-                            let path = entry.path();
-                            if path.is_file() && path.extension().map_or(false, |ext| ext == "json")
-                            {
-                                files.push(path.to_str().unwrap().to_string());
-                            }
-                        }
-                    }
-                }
-
-                // let mut schemastring: String = "".to_string();
-
-                if let Some(schema_file) = schema {
-                    // schemastring =
-                    fs::read_to_string(schema_file).expect("Failed to load schema file");
-
-                    let schemas = [schema_file.clone()];
-                    agent.load_custom_schemas(&schemas);
-                }
+                let files: Vec<String> = set_file_list(filename, directory, attachments);
 
                 // iterate over filenames
                 for file in &files {
@@ -476,65 +620,19 @@ fn main() {
                     let path = Path::new(file);
                     let loading_filename = path.file_name().unwrap().to_str().unwrap();
                     let loading_filename_string = loading_filename.to_string();
-                    let result = agent.create_document_and_load(
+
+                    let result = document_create(
+                        &mut agent,
                         &document_string,
-                        attachment_links.clone(),
-                        embed.copied(),
-                    );
-
-                    match result {
-                        Ok(ref document) => {
-                            let document_key = document.getkey();
-                            let document_key_string = document_key.to_string();
-
-                            let intermediate_filename = match outputfilename {
-                                Some(filename) => filename,
-                                None => &loading_filename_string,
-                            };
-
-                            if no_save {
-                                println!("{}", document_key.to_string());
-                            } else {
-                                let re = Regex::new(r"(\.[^.]+)$").unwrap();
-                                let signed_filename =
-                                    re.replace(intermediate_filename, ".jacs$1").to_string();
-                                agent
-                                    .save_document(
-                                        &document_key,
-                                        format!("{}", signed_filename).into(),
-                                        None,
-                                        None,
-                                    )
-                                    .expect("save document");
-                                println!("created doc {}", document_key.to_string());
-                            }
-
-                            if let Some(schema_file) = schema {
-                                //let document_ref = agent.get_document(&document_key).unwrap();
-
-                                let validate_result = agent.validate_document_with_custom_schema(
-                                    &schema_file,
-                                    &document.getvalue(),
-                                );
-                                match validate_result {
-                                    Ok(_doc) => {
-                                        println!(
-                                            "document specialised schema {} validated",
-                                            document_key
-                                        );
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "document specialised schema {} validation failed {}",
-                                            document_key, e
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("document creation   {}   {}", file, e);
-                        }
+                        schema.cloned(),
+                        outputfilename.cloned(),
+                        no_save,
+                        attachments,
+                        embed,
+                    )
+                    .expect("document_create");
+                    if no_save {
+                        println!("{}", result);
                     }
                 } // end iteration
             }
@@ -592,28 +690,6 @@ fn main() {
                     None => &loading_filename_string,
                 };
 
-                if no_save {
-                    println!("{}", new_document_key.to_string());
-                } else {
-                    // let re = Regex::new(r"(\.[^.]+)$").unwrap();
-                    // //let re = Regex::new(r"\.([^.]+)$").unwrap();
-                    // let signed_filename = re.replace(intermediate_filename, ".jacs.$1").to_string();
-                    //  println!("output filename is {}", signed_filename);
-
-                    let re = Regex::new(r"(\.[^.]+)$").unwrap();
-                    let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
-                    println!("output cl filename is {}", signed_filename);
-                    agent
-                        .save_document(
-                            &new_document_key,
-                            format!("{}", signed_filename).into(),
-                            None,
-                            None,
-                        )
-                        .expect("save document");
-                    println!("created doc {}", new_document_key.to_string());
-                }
-
                 if let Some(schema_file) = schema {
                     //let document_ref = agent.get_document(&document_key).unwrap();
 
@@ -633,6 +709,96 @@ fn main() {
                         }
                     }
                 }
+
+                if no_save {
+                    println!("{}", new_document_key.to_string());
+                } else {
+                    agent
+                        .save_document(
+                            &new_document_key,
+                            format!("{}", intermediate_filename).into(),
+                            None,
+                            None,
+                        )
+                        .expect("save document");
+                    println!("created doc {}", new_document_key.to_string());
+                }
+            }
+            Some(("sign-agreement", create_matches)) => {
+                let filename = create_matches.get_one::<String>("filename");
+                let directory = create_matches.get_one::<String>("directory");
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let schema = create_matches.get_one::<String>("schema");
+                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+
+                let files: Vec<String> = set_file_list(filename, directory, None);
+
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let result = document_sign_agreement(
+                        &mut agent,
+                        &document_string,
+                        schema.cloned(),
+                        None,
+                        None,
+                        None,
+                        no_save,
+                    )
+                    .expect("reason");
+                    println!("{}", result);
+                }
+            }
+            Some(("check-agreement", create_matches)) => {
+                let filename = create_matches.get_one::<String>("filename");
+                let directory = create_matches.get_one::<String>("directory");
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let schema = create_matches.get_one::<String>("schema");
+
+                let files: Vec<String> = set_file_list(filename, directory, None);
+
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let result =
+                        document_check_agreement(&mut agent, &document_string, schema.cloned())
+                            .expect("reason");
+                    println!("{}", result);
+                }
+            }
+            Some(("create-agreement", create_matches)) => {
+                let filename = create_matches.get_one::<String>("filename");
+                let directory = create_matches.get_one::<String>("directory");
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let schema = create_matches.get_one::<String>("schema");
+                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+                let agentids: Vec<String> = matches
+                    .get_many::<String>("agentids")
+                    .unwrap_or_default()
+                    .map(|s| s.to_string())
+                    .collect();
+
+                let files: Vec<String> = set_file_list(filename, directory, None);
+
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let result = document_add_agreement(
+                        &mut agent,
+                        &document_string,
+                        agentids.clone(),
+                        schema.cloned(),
+                        None,
+                        None,
+                        None,
+                        no_save,
+                    )
+                    .expect("reason");
+                    println!("{}", result);
+                }
             }
 
             Some(("verify", verify_matches)) => {
@@ -642,70 +808,22 @@ fn main() {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
-                let mut files: Vec<String> = Vec::new();
-                if filename.is_none() && directory.is_none() {
-                    eprintln!("Error: You must specify either a filename or a directory.");
-                    std::process::exit(1);
-                } else if let Some(file) = filename {
-                    files.push(file.to_string());
-                } else if let Some(dir) = directory {
-                    // Traverse the directory and store filenames ending with .json
-                    for entry in fs::read_dir(dir).expect("Failed to read directory") {
-                        if let Ok(entry) = entry {
-                            let path = entry.path();
-                            if path.is_file() && path.extension().map_or(false, |ext| ext == "json")
-                            {
-                                files.push(path.to_str().unwrap().to_string());
-                            }
-                        }
-                    }
-                }
-                // let mut schemastring: String = "".to_string();
-
-                if let Some(schema_file) = schema {
-                    // schemastring =
-                    //     fs::read_to_string(schema_file).expect("Failed to load schema file");
-                    let schemas = [schema_file.clone()];
-                    agent.load_custom_schemas(&schemas);
-                }
+                let files: Vec<String> = set_file_list(filename, directory, None);
 
                 for file in &files {
+                    let load_only = true;
                     let document_string = fs::read_to_string(file).expect("document file loading ");
-                    let docresult = agent.load_document(&document_string);
-                    match docresult {
-                        Ok(ref document) => {
-                            let document_key = document.getkey();
-                            println!("document {} validated", document_key);
-
-                            if let Some(schema_file) = schema {
-                                // todo don't unwrap but warn instead
-                                let document_key = document.getkey();
-                                let result = agent.validate_document_with_custom_schema(
-                                    &schema_file,
-                                    &document.getvalue(),
-                                );
-                                match result {
-                                    Ok(doc) => {
-                                        println!(
-                                            "document specialised schema {} validated",
-                                            document_key
-                                        );
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "document specialised schema {} validation failed {}",
-                                            document_key, e
-                                        );
-                                        std::process::exit(1);
-                                    }
-                                }
-                            }
-                        }
-                        Err(ref e) => {
-                            eprintln!("document {} validation failed {}", file, e);
-                            std::process::exit(1);
-                        }
-                    }
+                    let result = document_load_and_save(
+                        &mut agent,
+                        &document_string,
+                        schema.cloned(),
+                        None,
+                        None,
+                        None,
+                        load_only,
+                    )
+                    .expect("reason");
+                    println!("{}", result);
                 }
             }
 
@@ -716,79 +834,23 @@ fn main() {
                 let agentfile = extract_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
-                let mut files: Vec<String> = Vec::new();
-                if filename.is_none() && directory.is_none() {
-                    eprintln!("Error: You must specify either a filename or a directory.");
-                    std::process::exit(1);
-                } else if let Some(file) = filename {
-                    files.push(file.to_string());
-                } else if let Some(dir) = directory {
-                    // Traverse the directory and store filenames ending with .json
-                    for entry in fs::read_dir(dir).expect("Failed to read directory") {
-                        if let Ok(entry) = entry {
-                            let path = entry.path();
-                            if path.is_file() && path.extension().map_or(false, |ext| ext == "json")
-                            {
-                                files.push(path.to_str().unwrap().to_string());
-                            }
-                        }
-                    }
-                }
+                let files: Vec<String> = set_file_list(filename, directory, None);
                 // let mut schemastring: String = "".to_string();
-
-                if let Some(schema_file) = schema {
-                    // schemastring =
-                    //     fs::read_to_string(schema_file).expect("Failed to load schema file");
-                    let schemas = [schema_file.clone()];
-                    agent.load_custom_schemas(&schemas);
-                }
-
+                // extract the contents but do not save
+                let load_only = false;
                 for file in &files {
                     let document_string = fs::read_to_string(file).expect("document file loading ");
-                    let docresult = agent.load_document(&document_string);
-                    match docresult {
-                        Ok(ref document) => {
-                            let document_key = document.getkey();
-                            println!("document {} validated", document_key);
-
-                            if let Some(schema_file) = schema {
-                                // todo don't unwrap but warn instead
-                                let document_key = document.getkey();
-                                let result = agent.validate_document_with_custom_schema(
-                                    &schema_file,
-                                    &document.getvalue(),
-                                );
-                                match result {
-                                    Ok(doc) => {
-                                        println!(
-                                            "document specialised schema {} validated",
-                                            document_key
-                                        );
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "document specialised schema {} validation failed {}",
-                                            document_key, e
-                                        );
-                                        std::process::exit(1);
-                                    }
-                                }
-                            }
-                            //after validation do export of contents
-                            let export_embedded = true;
-                            let extract_only = true;
-                            agent.save_document(
-                                &document_key,
-                                None,
-                                Some(export_embedded),
-                                Some(extract_only),
-                            );
-                        }
-                        Err(ref e) => {
-                            eprintln!("document {} validation failed {}", file, e);
-                            std::process::exit(1);
-                        }
-                    }
+                    let result = document_load_and_save(
+                        &mut agent,
+                        &document_string,
+                        schema.cloned(),
+                        None,
+                        Some(true),
+                        Some(true),
+                        load_only,
+                    )
+                    .expect("reason");
+                    println!("{}", result);
                 }
             }
 
@@ -796,4 +858,26 @@ fn main() {
         },
         _ => println!("please enter command see jacs --help"),
     }
+}
+
+fn set_file_list(
+    filename: Option<&String>,
+    directory: Option<&String>,
+    attachments: Option<&String>,
+) -> Vec<String> {
+    let mut files: Vec<String> = Vec::new();
+    if filename.is_none() && directory.is_none() && attachments.is_none() {
+        eprintln!(
+            "Error: You must specify either a filename or a directory or create from attachments."
+        );
+        std::process::exit(1);
+    } else if filename.is_none() && directory.is_none() {
+        files.push("no filepath given".to_string()); // hack to get the iterator to open
+    } else if let Some(file) = filename {
+        files = get_file_list(file.to_string()).expect("REASON");
+    } else if let Some(dir) = directory {
+        // Traverse the directory and store filenames ending with .json
+        files = get_file_list(dir.to_string()).expect("REASON");
+    }
+    return files;
 }

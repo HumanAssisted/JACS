@@ -24,6 +24,18 @@
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "../../components/signature/v1/signature.schema.json"
     },
+    "jacsRegistration": {
+      "description": "Signature by a sigining authority like https://hai.ai.",
+      "$ref": "../../components/signature/v1/signature.schema.json"
+    },
+    "jacsAgreement": {
+      "description": "Signatures signfying an agreement between agents.",
+      "$ref": "../../components/agreement/v1/agreement.schema.json"
+    },
+    "jacsAgreementHash": {
+      "type": "string",
+      "description": "A hash that must not change for each signature. "
+    },
     "jacsPreviousVersion": {
       "description": "Previous Version id of the object. If blank, it's claiming to be the first ",
       "type": "string",

@@ -20,13 +20,14 @@ fn test_validate_agent_creation() {
             assert!(false);
         }),
     };
-    //agent.save();
+    // agent.save();
 
     println!("New Agent Created\n\n\n {} ", agent);
     // switch keys
     let _ = agent.fs_preload_keys(
         &"agent-two.private.pem".to_string(),
         &"agent-two.public.pem".to_string(),
+        Some("RSA-PSS".to_string()),
     );
     let json_data = fs::read_to_string("examples/raw/mysecondagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
@@ -40,7 +41,7 @@ fn test_validate_agent_creation() {
     };
 
     println!("New Agent2 Created\n\n\n {} ", agent);
-    //let _ = agent.save();
+    let _ = agent.save();
 }
 
 #[test]

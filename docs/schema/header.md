@@ -21,7 +21,10 @@ The basis for a JACS document
 | [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")                           |
 | [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")                 |
 | [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")         |
-| [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/jacsSignature")                  |
+| [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")                  |
+| [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")               |
+| [jacsAgreement](#jacsagreement)             | `object` | Optional | cannot be null | [Header](agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")                  |
+| [jacsAgreementHash](#jacsagreementhash)     | `string` | Optional | cannot be null | [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")     |
 | [jacsPreviousVersion](#jacspreviousversion) | `string` | Optional | cannot be null | [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion") |
 | [jacsOriginalVersion](#jacsoriginalversion) | `string` | Required | cannot be null | [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion") |
 | [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")       |
@@ -106,11 +109,65 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   cannot be null
 
-*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature-schema.json#/properties/jacsSignature")
+*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")
 
 ### jacsSignature Type
 
 `object` ([Signature](signature.md))
+
+## jacsRegistration
+
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+
+`jacsRegistration`
+
+*   is optional
+
+*   Type: `object` ([Signature](signature.md))
+
+*   cannot be null
+
+*   defined in: [Header](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")
+
+### jacsRegistration Type
+
+`object` ([Signature](signature.md))
+
+## jacsAgreement
+
+A set of required signatures signifying an agreement.
+
+`jacsAgreement`
+
+*   is optional
+
+*   Type: `object` ([agreement](agreement.md))
+
+*   cannot be null
+
+*   defined in: [Header](agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")
+
+### jacsAgreement Type
+
+`object` ([agreement](agreement.md))
+
+## jacsAgreementHash
+
+A hash that must not change for each signature.
+
+`jacsAgreementHash`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")
+
+### jacsAgreementHash Type
+
+`string`
 
 ## jacsPreviousVersion
 

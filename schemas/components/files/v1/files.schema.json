@@ -26,6 +26,7 @@
       "description": "content checksum to verify contents on download."
     }
   },
+  "additionalProperties": false,
   "required": [
     "mimetype",
     "embed",

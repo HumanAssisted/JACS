@@ -38,6 +38,7 @@ pub struct Schema {
     agentschema: JSONSchema,
     signatureschema: JSONSchema,
     jacsconfigschema: JSONSchema,
+    agreementschema: JSONSchema,
 }
 
 impl Schema {
@@ -48,20 +49,26 @@ impl Schema {
     ) -> Result<Self, Box<dyn std::error::Error + 'static>> {
         // let current_dir = env::current_dir()?;
         // TODO let the agent, header, and signature versions for verifying being flexible
-        let headerkey = format!("schemas/header/{}/header.schema.json", headerversion);
-        let headerdata = DEFAULT_SCHEMA_STRINGS.get(&headerkey).unwrap();
-        let agentversion = format!("schemas/agent/{}/agent.schema.json", agentversion);
-        let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion).unwrap();
-        let agentschema_result: Value = serde_json::from_str(&agentdata)?;
-        let headerchema_result: Value = serde_json::from_str(&headerdata)?;
-
-        let signatureversion = format!(
+        let header_path = format!("schemas/header/{}/header.schema.json", headerversion);
+        let agentversion_path = format!("schemas/agent/{}/agent.schema.json", agentversion);
+        let agreementversion_path = format!(
+            "schemas/components/agreement/{}/agreement.schema.json",
+            agentversion
+        );
+        let signatureversion_path = format!(
             "schemas/components/signature/{}/signature.schema.json",
             signatureversion
         );
-        let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion).unwrap();
-        let signatureschema_result: Value = serde_json::from_str(&signaturedata)?;
 
+        let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
+        let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
+        let agreementdata = DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path).unwrap();
+        let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion_path).unwrap();
+
+        let agentschema_result: Value = serde_json::from_str(&agentdata)?;
+        let headerchema_result: Value = serde_json::from_str(&headerdata)?;
+        let agreementschema_result: Value = serde_json::from_str(&agreementdata)?;
+        let signatureschema_result: Value = serde_json::from_str(&signaturedata)?;
         let jacsconfigschema_result: Value = serde_json::from_str(&CONFIG_SCHEMA_STRING)?;
 
         let agentschema = JSONSchema::options()
@@ -82,6 +89,12 @@ impl Schema {
             .compile(&signatureschema_result)
             .expect("A valid schema");
 
+        let agreementschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&agreementschema_result)
+            .expect("A valid schema");
+
         let jacsconfigschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
@@ -94,6 +107,7 @@ impl Schema {
             agentschema,
             signatureschema,
             jacsconfigschema,
+            agreementschema,
         })
     }
 

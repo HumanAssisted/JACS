@@ -1,7 +1,7 @@
 # Untitled object in Agent Schema
 
 ```txt
-https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1
+https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1
 ```
 
 
@@ -18,7 +18,7 @@ https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1
 
 | Property                        | Type     | Required | Nullable       | Defined by                                                                                                                               |
 | :------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
-| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/jacsAgentType") |
+| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType") |
 
 ## jacsAgentType
 
@@ -32,7 +32,7 @@ Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a c
 
 *   cannot be null
 
-*   defined in: [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent-schema.json#/allOf/1/properties/jacsAgentType")
+*   defined in: [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType")
 
 ### jacsAgentType Type
 

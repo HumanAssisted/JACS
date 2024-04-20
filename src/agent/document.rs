@@ -1,12 +1,15 @@
+use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
+use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
 use chrono::Local;
 use chrono::Utc;
+use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
 use serde_json::json;
@@ -27,6 +30,7 @@ pub struct JACSDocument {
     pub value: Value,
 }
 
+// extend with functions for types
 impl JACSDocument {
     pub fn getkey(&self) -> String {
         // return the id and version
@@ -37,6 +41,57 @@ impl JACSDocument {
 
     pub fn getvalue(&self) -> Value {
         self.value.clone()
+    }
+
+    pub fn agreement_unsigned_agents(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        let all_requested_agents = self.agreement_requested_agents()?;
+        let all_agreement_signed_agents = self.agreement_signed_agents()?;
+
+        return Ok(subtract_vecs(
+            &all_requested_agents,
+            &all_agreement_signed_agents,
+        ));
+    }
+
+    pub fn agreement_requested_agents(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_agreement) = value.get(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(agents) = jacs_agreement.get("agentIDs") {
+                if let Some(agents_array) = agents.as_array() {
+                    return Ok(agents_array
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_string())
+                        .collect());
+                }
+            }
+        }
+        return Err("no agreement or agents in agreement".into());
+    }
+
+    pub fn signing_agent(&self) -> Result<String, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
+            return Ok(jacs_signature.get("agentID").expect("REASON").to_string());
+        }
+        return Err("no agreement or signatures in agreement".into());
+    }
+
+    pub fn agreement_signed_agents(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_agreement) = value.get(AGENT_AGREEMENT_FIELDNAME) {
+            if let Some(signatures) = jacs_agreement.get("signatures") {
+                if let Some(signatures_array) = signatures.as_array() {
+                    let mut signed_agents: Vec<String> = Vec::<String>::new();
+                    for signature in signatures_array {
+                        let agentid: String =
+                            signature["agentID"].as_str().expect("REASON").to_string();
+                        signed_agents.push(agentid);
+                    }
+                    return Ok(signed_agents);
+                }
+            }
+        }
+        return Err("no agreement or signatures in agreement".into());
     }
 }
 
@@ -74,7 +129,7 @@ pub trait Document {
     fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>>;
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
-    fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
+    fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
 
     /// export_embedded if there is embedded files recreate them, default false
@@ -100,6 +155,7 @@ pub trait Document {
     fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>>;
     /// util function for parsing arguments for attachments
     fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>>;
+    fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String);
 }
 
 impl Document for Agent {
@@ -276,7 +332,7 @@ impl Document for Agent {
         Ok(doc)
     }
 
-    fn get_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
         let documents = self.documents.lock().expect("JACSDocument lock");
         match documents.get(document_key) {
             Some(document) => Ok(document.clone()),
@@ -360,7 +416,7 @@ impl Document for Agent {
 
         // validate schema
         let new_version = Uuid::new_v4().to_string();
-        let last_version = &value["javsVersion"];
+        let last_version = &value["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
         new_document["jacsLastVersion"] = last_version.clone();
@@ -500,6 +556,8 @@ impl Document for Agent {
             signature_key_from_final,
             used_public_key,
             public_key_enc_type,
+            None,
+            None,
         );
         match result {
             Ok(_) => Ok(()),
@@ -544,5 +602,23 @@ impl Document for Agent {
             }
             None => None,
         }
+    }
+
+    fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String) {
+        let changeset = Changeset::new(string_one, string_two, " ");
+        let mut same = String::new();
+        let mut add = String::new();
+        let mut rem = String::new();
+
+        // Collect detailed differences
+        for diff in &changeset.diffs {
+            match diff {
+                Difference::Same(ref x) => same.push_str(x),
+                Difference::Add(ref x) => add.push_str(x),
+                Difference::Rem(ref x) => rem.push_str(x),
+            }
+        }
+
+        (same, add, rem)
     }
 }

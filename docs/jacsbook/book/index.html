@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html" class="active">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="guide/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="guide/documents.html"><strong aria-hidden="true">3.</strong> working with documents</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li class="chapter-item expanded "><a href="design/security.html"><strong aria-hidden="true">5.</strong> Security</a></li><li class="chapter-item expanded "><a href="design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html" class="active">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="cli/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="cli/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="cli/documents.html"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="cli/agreements.html"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded affix "><li class="part-title">Design</li><li class="chapter-item expanded "><a href="design/schemas.html"><strong aria-hidden="true">5.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="design/schemas.html"><strong aria-hidden="true">7.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -174,11 +174,19 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="json-is-all-you-need-"><a class="header" href="#json-is-all-you-need-">JSON is all you need! **</a></h1>
-<p>As a developer, this is a good place to start.
-Be sure you've seen the    <a href="https://github.com/HumanAssisted/JACS">JACS on github</a></p>
+<p>As a developer, this is a good place to start, or review the code at <a href="https://github.com/HumanAssisted/JACS">JACS on github</a></p>
 <p>JACS docs are in a format already widely adopted and enjoyed: JSON. However, JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document. The documents with signatures are always JSON. Therefore, they are independent of network protocols or database formats and can be shared and stand-alone.</p>
 <p>You will use JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.</p>
 <p>When those other services have modified the document, you can verifiy the agent, verify the changes, and sign the changes.</p>
+<h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<p>To install the command line tool for creating and verifying agents and documents</p>
+<pre><code>$ cargo install jacs
+$ jacs --help
+</code></pre>
+<p>If you are working in Rust, add the rust lib to your project</p>
+<pre><code>cargo add jacs
+</code></pre>
+<h1 id="flexible"><a class="header" href="#flexible">Flexible</a></h1>
 <p>Flexible for developers - store, index, and search the docouments how you like.
 Any JSON document can be used as a JACS doc as long as it has the JACS header, which are some required fields about the creator and version.
 Enforcement of schemas relies on <a href="https://json-schema.org/">JSON Schema's</a> as a basic formalization.</p>
@@ -190,7 +198,7 @@ Enforcement of schemas relies on <a href="https://json-schema.org/">JSON Schema'
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
 
-                            <a rel="next prefetch" href="guide/installation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="cli/installation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -201,7 +209,7 @@ Enforcement of schemas relies on <a href="https://json-schema.org/">JSON Schema'
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
 
-                    <a rel="next prefetch" href="guide/installation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="cli/installation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

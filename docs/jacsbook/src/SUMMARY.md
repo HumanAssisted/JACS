@@ -3,13 +3,17 @@
 
 # User Guide
 
-- [Installation](guide/installation.md)
-- [Creating an Agent](guide/agent.md)
-- [working with documents](guide/documents.md)
 
-# Reference Guide
+## cli
 
-- [Command Line Tool](cli/README.md)
+- [Installation](cli/installation.md)
+- [Creating an Agent](cli/agent.md)
+- [Working with documents](cli/documents.md)
+- [Creating and using agreements](cli/agreements.md)
+
+# Design
+
+- [JSON schemas](design/schemas.md)
 - [Security](design/security.md)
 - [JSON schemas](design/schemas.md)
 

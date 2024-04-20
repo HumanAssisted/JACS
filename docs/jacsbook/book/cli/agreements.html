@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Installation - JACS Usage Documentation</title>
+        <title>Creating and using agreements - JACS Usage Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html" class="active"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../guide/documents.html"><strong aria-hidden="true">3.</strong> working with documents</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../cli/index.html"><strong aria-hidden="true">4.</strong> Command Line Tool</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">5.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../cli/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../cli/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../cli/documents.html"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="../cli/agreements.html" class="active"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded affix "><li class="part-title">Design</li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">5.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">7.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -173,47 +173,32 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
-<p>To install the command line tool for creating and verifying agents and documents</p>
-<pre><code>$ cargo install jacs
-$ jacs --help
+                        <h1 id="agreements"><a class="header" href="#agreements">Agreements</a></h1>
+<p>Agreements are one of the basic reasons JACS exists. An agreement is a collection of signatures from required agents.
+You may want to use it to ensure that agents agree. You can also create human-in-the-loop scenarios, where automated agents sign, but the human using the cli must sign the document for a process to contineu.</p>
+<p>If all the agreements are signed.</p>
+<p>To create an agreement you need an existing jacs document and agent ids (no version):</p>
+<pre><code>jacs document verify -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:4f041628-5a2d-48d3-aa17-a8bd9b9fc00e.json
 </code></pre>
-<p>If you are working in Rust, add the rust lib to your project</p>
-<pre><code>cargo add jacs
+<p>Then create add a comma separated list of agents where <code>-i</code> are the agent identities.</p>
+<pre><code>jacs document create-agreement -f ./examples/documents/newjsonld.json -i 432e0415-5317-4999-abd4-f2a125dab90a, 5305e3e1-9b14-4cb7-94ff-902f9c101d91
 </code></pre>
-<h2 id="setting-up"><a class="header" href="#setting-up">setting up</a></h2>
-<p>First, configure your configuration which are loaded as environment variables.
-Create a <code>jacs.config.json</code> from <a href="./jacs.config.example.json">the example</a>
-For an explanation see <a href="./schemas/jacs.config.schema.json">the schema for the config.</a></p>
-<p>To create a config file, you can run</p>
-<pre><code>jacs config create
+<p>To sign the document, sign the new document that was created by <code>create-agreement</code></p>
+<pre><code>jacs document sign-agreement  -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:1c37d69f-243a-45d2-aa99-c298af6b1304.json
 </code></pre>
-<p>Which will give you this dialog.</p>
-<p>You can use <code>jacs config read</code> to check the configs.</p>
-<p>Note: Do not use <code>jacs_private_key_password</code> in production. Use the environment variable <code>JACS_PRIVATE_KEY_PASSWORD</code> in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.</p>
-<h2 id="developing"><a class="header" href="#developing">developing</a></h2>
-<p>The pre-commit hook requires some libraries</p>
-<p>See pre-commit</p>
-<ul>
-<li>install <code>jq</code> e.g. <code>brew install jq</code></li>
-<li>for documentation    <code>npm install -g @adobe/jsonschema2md</code></li>
-<li>cargo install mdbook</li>
-</ul>
-<p>Otherwise it's a standard Rust project.</p>
-<ul>
-<li>install Rust and your favorite editor</li>
-<li>see tests, examples, and benches</li>
-</ul>
+<p>Now you can check if the agreement was signed. If all agents have signed, it will continue, if not all agents have signed, it will error.</p>
+<pre><code>jacs document check-agreement  -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:1c37d69f-243a-45d2-aa99-c298af6b1304.json
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../cli/documents.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../guide/agent.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../design/schemas.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -223,11 +208,11 @@ For an explanation see <a href="./schemas/jacs.config.schema.json">the schema fo
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../cli/documents.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../guide/agent.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../design/schemas.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

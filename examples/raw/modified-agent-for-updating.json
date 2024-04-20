@@ -2,14 +2,14 @@
   "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "description": "An agent without keys, id or version",
   "jacsAgentType": "ai",
-  "jacsId": "37e6b2e0-5100-4eb7-b042-2630beaa8531",
-  "jacsOriginalDate": "2024-04-11T06:22:25.309388+00:00",
-  "jacsOriginalVersion": "c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3",
-  "jacsSha256": "706a0a2f24fd492bf3d9c611b7368c44e61f36d7713c0e1f92e28204dc0bce0d",
+  "jacsId": "5305e3e1-9b14-4cb7-94ff-902f9c101d91",
+  "jacsOriginalDate": "2024-04-17T07:56:18.344999+00:00",
+  "jacsOriginalVersion": "a2ecf623-64a1-43c6-a8f2-4a6c95552c25",
+  "jacsSha256": "4d47c621b55c382bae277ad892ccf0e14a3b3196a93f72b15d09d569511fb49b",
   "jacsSignature": {
-    "agentID": "37e6b2e0-5100-4eb7-b042-2630beaa8531",
-    "agentVersion": "c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3",
-    "date": "2024-04-11T06:22:25.757882+00:00",
+    "agentID": "5305e3e1-9b14-4cb7-94ff-902f9c101d91",
+    "agentVersion": "a2ecf623-64a1-43c6-a8f2-4a6c95552c25",
+    "date": "2024-04-17T07:56:18.742068+00:00",
     "fields": [
       "$schema",
       "description",
@@ -21,11 +21,11 @@
       "jacsVersionDate",
       "name"
     ],
-    "publicKeyHash": "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6",
-    "signature": "Pb/JuLMn7Tj2MrBEtREokrUBktKsJKF8rVyLAa0bODZnOrGiSkttoyCczr5JVEZwnS4MqchA0C6UVLTw/3ij7bk6o6OMb9Dm/wqKZHH/4jvgVsBKQU3KhCFGjWUOXZVpEAsxABOOGUniDhQ0ts4E2Wtfl7zcMujFcXOlt9BgwHZPW2SuJYTWXdbRQGDIbQO9X6xVxwJGDCmDCgKz1xhqs38bdvqa8khjg3Gy7TCuwKEe3SecyRvUvhNX2mV7ZV7mfxqXAOMBsDh4falQNoEbEvkyShUwZ7nKZCHpIWnbrQQPpXeyZy5ad9HJ+Tq7jSQHsNs7BmgvL/8Nm4dDzBh6h45vqDfkJd3yU8bW+XDUwQyN5NcKuk4k7wv9RYMYrVnGmdSvn6MoSFqxKt7mJ3EfUb9KmvR6/C7Lmc5owp11G9BEwlGQ4Isatda6lqnQTOAFu+Ukz7KUcvmhkjFfpR0cL1xCqexx6aBvGlkNiAXqAHwuTK6NdeHDw7x7oXVmWTo8TorIaSGCHCvCiIDdjrdIZFuTPiltzsr5GSQu3BD5XATJf5lHvjB5yEOkXeyCnv8JUzMkCDXtf/Sf/vDNHdltTjXM59VAsxTU3nINjIQR53DF9omJfJBxSR5lHkmoyJMsb2p79EOOaFHNgSEQ0x1LLJ9/515bCV5UDFnGmQGismo=",
-    "signing_algorithm": "RSA-PSS"
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "ULsyLARg3syrKAuqIQJ+6u+x9zeY9T08hKlCW33YPPFkbrRy6VkJRSTcMcD0+O0WCRgd8vadeh+SgCs2SApc2rWB6lp9zSdolU4nHcOzOAEkFqtuwO04iPRFdQGanmrJb/Lzvl7tu4WwCd4c+t2EicSW2MOiV2Q9kE1xDl5h9jxn7qvAOT46EQuA88TlfXz+t0Bff5ZNv8WtOZeD2rlXrQfFg51HAP/CnS50q3Gfxqntrf94ka6C2V+VEciYxXBx0DxXP5BoDB4x+PsZLDSjp0Gf4rVW5TcyVo3H683sDx+lmORgvfq+9oil81HCG6pOJ2HXVP6mg4n5MS8/wc6OthAJnmMYLjei17zhc77Zi69C8Tl8GA7/vY82WamTu8pkvPuj6FKLN0Rhn7+EmMXGOb3DVbH43cYTFwmdkqzels11xj89JcxZAS/VDXSywvBkCFM8k2qbl/2AFIUnf3FGPRz1qusDCAduQxYEHbzWqJbKq3LgDRlVDQhOmTcGh56zM2uemxzNGwoW0Jy8e1KyGqtQBdsjzLFI8APczxtJeq95y3gqjwnWi9P9U27DEcKotT4Vk4EV5JH11G+8x4J1f4UXYComew6cUQAYU+xIsUfr2Fz/WPBQUfRbWJO4xFMGo2X4uY4ychkCCcaYLTuQOB9yxwREGsaojxoBLAjf1cA=",
+    "signingAlgorithm": "RSA-PSS"
   },
-  "jacsVersion": "c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3",
-  "jacsVersionDate": "2024-04-11T06:22:25.309388+00:00",
+  "jacsVersion": "a2ecf623-64a1-43c6-a8f2-4a6c95552c25",
+  "jacsVersionDate": "2024-04-17T07:56:18.344999+00:00",
   "name": "Agent Smyth"
 }
