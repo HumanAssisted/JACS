@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Working with documents - JACS Usage Documentation</title>
+        <title>Creating and using agreements - JACS Usage Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../guide/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../guide/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../guide/documents.html" class="active"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="../guide/agreements.html"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">5.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">7.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../cli/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../cli/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../cli/documents.html"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="../cli/agreements.html" class="active"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference Guide</li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">5.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">6.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">7.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -173,40 +173,35 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="working-with-documents"><a class="header" href="#working-with-documents">working with documents</a></h1>
-<p>Now that your agent is set up can create, update, and sign documents with your agent.</p>
-<h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
-<p>To create create documents, select a file or directory and the documents will be copied to <code>jacs_data_directory</code> and renamed.</p>
-<pre><code>jacs document create -d ./examples/raw/
+                        <h1 id="agreements"><a class="header" href="#agreements">Agreements</a></h1>
+<p>Agreements are one of the basic reasons JACS exists. An agreement is a collection of signatures from required agents.
+If all the agreements are signed.</p>
+<p>To create an agreement you need an existing jacs document and agent ids (no version):</p>
+<pre><code>jacs document verify -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:4f041628-5a2d-48d3-aa17-a8bd9b9fc00e.json
 </code></pre>
-<p>Now you can verify a document is valid, even with custom JSON schema, and verify the signature of the document.</p>
-<pre><code>jacs document verify -f ./examples/documents/MODIFIED_e4b3ac57-71f4-4128-b0c4-a44a3bb4d98d\:975f4523-e2e0-4b64-9c31-c718796fbdb1.json
+<p>Then create add a comma separated list of agents</p>
+<pre><code>jacs document create-agreement -f ./examples/documents/newjsonld.json -i 432e0415-5317-4999-abd4-f2a125dab90a, 5305e3e1-9b14-4cb7-94ff-902f9c101d91
+
+
+
+
+jacs document sign-agreement  -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:4f041628-5a2d-48d3-aa17-a8bd9b9fc00e.json
+jacs document check-agreement  -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:1c37d69f-243a-45d2-aa99-c298af6b1304.json
+jacs document check-agreement  -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:679006d0-c095-4bbc-b4e6-6bb1c7cb6f2b.json
 </code></pre>
-<p>Or a whole directory</p>
-<pre><code>jacs document verify -d ./examples/documents/
-</code></pre>
-<p>You can also verify using a custom JSON Schema</p>
-<pre><code> jacs document verify -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -s ./examples/documents/custom.schema.json
-</code></pre>
-<p>If you share your public key, other agents can verify the document is from your agent , but is not available in the command line yet. Also, note that the command line doesn't yet allow for the modification of documents or agents.</p>
-<p>To modify a document, copy the original and modify how you'd like, and then JACS can update the version and signature</p>
-<pre><code>jacs document update -f ./examples/documents/05f0c073-9df5-483b-aa77-2c3259f02c7b\:17d73042-a7dd-4536-bfd1-2b7f18c3503f.json -n examples/raw/howtoupdate-05f0c073-9df5-483b-aa77-2c3259f02c7b.json -o updatedfruit.json
-</code></pre>
-<p>Filenames will always end with "jacs.json", so the -o</p>
-<p>You can embed external files</p>
-<pre><code>jacs document create -f ./examples/raw/not-fruit.json --attach ./examples/raw/mobius.jpeg --embed true
-</code></pre>
-<h2 id="api"><a class="header" href="#api">API</a></h2>
+<p>432e0415-5317-4999-abd4-f2a125dab90a:b3699f46-51dc-46b9-8995-9b1b65fea5a4.json
+5305e3e1-9b14-4cb7-94ff-902f9c101d91:a2ecf623-64a1-43c6-a8f2-4a6c95552c25.json
+fa50799d-38f9-40cc-bda5-e28fab6e04c8:356d263f-0a89-4665-b4ea-7373be3fc8be.json</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../guide/agent.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../cli/documents.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../guide/agreements.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../design/schemas.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -216,11 +211,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../guide/agent.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../cli/documents.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../guide/agreements.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../design/schemas.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

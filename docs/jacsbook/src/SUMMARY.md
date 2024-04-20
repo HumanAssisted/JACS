@@ -3,10 +3,13 @@
 
 # User Guide
 
-- [Installation](guide/installation.md)
-- [Creating an Agent](guide/agent.md)
-- [Working with documents](guide/documents.md)
-- [Creating and using agreements](guide/agreements.md)
+
+## cli
+
+- [Installation](cli/installation.md)
+- [Creating an Agent](cli/agent.md)
+- [Working with documents](cli/documents.md)
+- [Creating and using agreements](cli/agreements.md)
 
 # Reference Guide
 
