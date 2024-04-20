@@ -1,3 +1,4 @@
+use crate::agent::agreement::Agreement;
 use crate::agent::document::Document;
 use crate::agent::document::JACSDocument;
 use crate::Agent;
@@ -89,6 +90,41 @@ pub fn document_load_and_save(
         );
     } else {
         return Ok(docresult?.to_string());
+    }
+}
+
+pub fn document_add_agreement(
+    agent: &mut Agent,
+    document_string: &String,
+    agentids: Vec<String>,
+    custom_schema: Option<String>,
+    save_filename: Option<String>,
+    export_embedded: Option<bool>,
+    extract_only: Option<bool>,
+    load_only: bool,
+) -> Result<String, Box<dyn Error>> {
+    if let Some(ref schema_file) = custom_schema {
+        let schemas = [schema_file.clone()];
+        agent.load_custom_schemas(&schemas);
+    }
+    let docresult = agent.load_document(&document_string)?;
+    let document_key = docresult.getkey();
+    // agent one creates agreement document
+    let unsigned_doc = agent.create_agreement(&document_key, &agentids)?;
+
+    let unsigned_doc_key = unsigned_doc.getkey();
+
+    if !load_only {
+        return save_document(
+            agent,
+            Ok(unsigned_doc),
+            custom_schema,
+            save_filename,
+            export_embedded,
+            extract_only,
+        );
+    } else {
+        return Ok(unsigned_doc.value.to_string());
     }
 }
 

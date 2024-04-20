@@ -8,6 +8,7 @@ use jacs::config::{set_env_vars, Config};
 use jacs::crypt::KeyManager;
 use jacs::get_empty_agent;
 use jacs::load_agent;
+use jacs::shared::document_add_agreement;
 use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::get_file_list;
@@ -235,12 +236,16 @@ fn main() {
                                 .help("Path to original document.")
                                 .value_parser(value_parser!(String)),
                         )
-                        .arg(
-                            Arg::new("agent-ids")
+                            .arg(
+                                Arg::new("agentids")
+                                .short('i')
+                                .long("agentids")
+                                .value_name("VALUES")
+                                .help("Comma-separated list of agent ids")
+                                .value_delimiter(',')
                                 .required(true)
-                                .help("a list of agent ids to add to agreement, separated by commas")
-                                .value_parser(value_parser!(String)),
-                        )
+                                .action(clap::ArgAction::Set),
+                            )
                         .arg(
                             Arg::new("output")
                                 .short('o')
@@ -642,84 +647,36 @@ fn main() {
             Some(("sign-agreement", create_matches)) => {}
             Some(("check-agreement", create_matches)) => {}
             Some(("create-agreement", create_matches)) => {
-                let new_filename = create_matches.get_one::<String>("new").unwrap();
-                let original_filename = create_matches.get_one::<String>("filename").unwrap();
-                let outputfilename = create_matches.get_one::<String>("output");
-                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
-                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+                let filename = create_matches.get_one::<String>("filename");
+                let directory = create_matches.get_one::<String>("directory");
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let schema = create_matches.get_one::<String>("schema");
-                let agent_ids = create_matches.get_one::<String>("agent-ids");
-
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let schema = create_matches.get_one::<String>("schema");
 
-                if let Some(schema_file) = schema {
-                    // schemastring =
-                    fs::read_to_string(schema_file).expect("Failed to load schema file");
+                let agentids: Vec<String> = matches
+                    .get_many::<String>("agentids")
+                    .unwrap_or_default()
+                    .map(|s| s.to_string())
+                    .collect();
+                let no_save = false;
 
-                    let schemas = [schema_file.clone()];
-                    agent.load_custom_schemas(&schemas);
-                }
+                let files: Vec<String> = set_file_list(filename, directory, None);
 
-                let new_document_string =
-                    fs::read_to_string(new_filename).expect("modified document file loading");
-                let original_document_string =
-                    fs::read_to_string(original_filename).expect("original document file loading");
-                let original_doc = agent
-                    .load_document(&original_document_string)
-                    .expect("document parse of original");
-                let original_doc_key = original_doc.getkey();
-                let updated_document = agent
-                    .update_document(&original_doc_key, &new_document_string, None, None)
-                    .expect("update document");
-
-                let path = Path::new(new_filename);
-                let loading_filename = path.file_name().unwrap().to_str().unwrap();
-                let loading_filename_string = loading_filename.to_string();
-
-                let new_document_key = updated_document.getkey();
-                // let document_key_string = new_document_key.to_string();
-
-                let intermediate_filename = match outputfilename {
-                    Some(filename) => filename,
-                    None => &loading_filename_string,
-                };
-
-                if no_save {
-                    println!("{}", new_document_key.to_string());
-                } else {
-                    let re = Regex::new(r"(\.[^.]+)$").unwrap();
-                    let signed_filename = re.replace(intermediate_filename, ".jacs$1").to_string();
-                    println!("output cl filename is {}", signed_filename);
-                    agent
-                        .save_document(
-                            &new_document_key,
-                            format!("{}", signed_filename).into(),
-                            None,
-                            None,
-                        )
-                        .expect("save document");
-                    println!("created doc {}", new_document_key.to_string());
-                }
-
-                if let Some(schema_file) = schema {
-                    //let document_ref = agent.get_document(&document_key).unwrap();
-
-                    let validate_result = agent.validate_document_with_custom_schema(
-                        &schema_file,
-                        &updated_document.getvalue(),
-                    );
-                    match validate_result {
-                        Ok(_doc) => {
-                            println!("document specialised schema {} validated", new_document_key);
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "document specialised schema {} validation failed {}",
-                                new_document_key, e
-                            );
-                        }
-                    }
+                for file in &files {
+                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    let result = document_add_agreement(
+                        &mut agent,
+                        &document_string,
+                        agentids.clone(),
+                        schema.cloned(),
+                        None,
+                        None,
+                        None,
+                        no_save,
+                    )
+                    .expect("reason");
+                    println!("{}", result);
                 }
             }
 
@@ -731,15 +688,6 @@ fn main() {
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 let files: Vec<String> = set_file_list(filename, directory, None);
-
-                // let mut schemastring: String = "".to_string();
-
-                if let Some(schema_file) = schema {
-                    // schemastring =
-                    //     fs::read_to_string(schema_file).expect("Failed to load schema file");
-                    let schemas = [schema_file.clone()];
-                    agent.load_custom_schemas(&schemas);
-                }
 
                 for file in &files {
                     let load_only = true;
