@@ -4,6 +4,7 @@ use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use regex::Regex;
 use secrecy::ExposeSecret;
 use serde::ser::StdError;
 use std::fs::File;
@@ -234,23 +235,24 @@ impl FileLoader for Agent {
         document_string: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
-        let documentoutput_filename = output_filename
-            .or_else(|| Some(document_id.to_string()))
-            .unwrap();
-
-        // optional add jacs
-        // let re = Regex::new(r"(\.[^.]+)$").unwrap();
-        // let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
-
-        // let signed_filename = if already_signed.is_match(documentoutput_filename) {
-        //     documentoutput_filename.to_string()  // Do not modify if '.jacs' is already there
-        // } else {
-        //     re.replace(documentoutput_filename, ".jacs$1").to_string()  // Append '.jacs' before the extension
-        // };
+        let documentoutput_filename = match output_filename {
+            Some(filname) => {
+                // optional add jacs
+                let re = Regex::new(r"(\.[^.]+)$").unwrap();
+                let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
+                let signed_filename = if already_signed.is_match(&filname) {
+                    filname.to_string() // Do not modify if '.jacs' is already there
+                } else {
+                    re.replace(&filname, ".jacs$1").to_string() // Append '.jacs' before the extension
+                };
+                signed_filename
+            }
+            _ => document_id.to_string(),
+        };
 
         let document_path =
             self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
-        info!("document path {:?} ", document_path);
+        info!("saving {:?} ", document_path);
         Ok(save_to_filepath(
             &document_path,
             document_string.as_bytes(),
