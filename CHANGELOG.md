@@ -1,4 +1,7 @@
 ## 0.2.4
+ - filesystem security module
+
+## 0.2.4
 
 - add jacsRegistration signature field
 - add jacsAgreement field

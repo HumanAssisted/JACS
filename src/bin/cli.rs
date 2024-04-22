@@ -471,7 +471,7 @@ fn main() {
                     String::new()
                 };
                 let jacs_agent_private_key_filename =
-                    request_string("Enter the private key filename:", "jacs.private.pem");
+                    request_string("Enter the private key filename:", "jacs.private.pem.enc");
                 let jacs_agent_public_key_filename =
                     request_string("Enter the public key filename:", "jacs.public.pem");
                 let jacs_agent_key_algorithm = request_string(

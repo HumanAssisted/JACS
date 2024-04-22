@@ -2,6 +2,7 @@ pub mod agreement;
 pub mod boilerplate;
 pub mod document;
 pub mod loaders;
+pub mod security;
 
 use crate::agent::agreement::Agreement;
 use crate::agent::boilerplate::BoilerPlate;
