@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/service/v1/service-schema.json",
+  "title": "Service",
+  "description": "Services that an Agent claims to provide.",
+  "type": "object",
+  "properties": {
+    "serviceDescription": {
+      "type": "string",
+      "description": "Description of basic service provided."
+    },
+    "successDescription": {
+      "type": "string",
+      "description": "Description of successful delivery of service."
+    },
+    "failureDescription": {
+      "type": "string",
+      "description": "Description of failure of delivery of service."
+    },
+
+
+    "costDescription": {
+      "type": "string",
+      "description": "types of costs"
+    },
+    "idealCustomerDescription": {
+      "type": "string",
+      "description": "Description of ideal customer"
+    },
+    "piiDesired": {
+      "type": "array",
+      "description": "Sensitive data required from customer.",
+       "items": {
+        "type": "string",
+        "enum": [
+          "singature",
+          "id",
+          "email",
+          "phone",
+          "address",
+          "zip",
+        ]
+      }
+    }
+  },
+
+  "required": [
+    "serviceDescription",
+    "successDescription",
+    "failureDescription"
+  ]
+}
