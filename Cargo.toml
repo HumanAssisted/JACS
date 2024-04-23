@@ -9,6 +9,8 @@ include = [
     "schemas/components/files/v1/files.schema.json",
     "schemas/components/signature/v1/signature.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
+    "schemas/components/unit/v1/unit.schema.json",
+    "schemas/components/service/v1/service.schema.json",
     "jacs.config.schema.json",
     "examples/*.json",
     "Cargo.toml",
