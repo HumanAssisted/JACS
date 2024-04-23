@@ -21,7 +21,10 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
   2. capture metadata about files and versions and securely verify
   3. sign documents
   4. create agreements between human and ai agents
+  5. create agents and describe what they can do
+  6. create tasks manage their state
 
+![Schemas](basic-schemas.png)
 
 ## Documentation
 
