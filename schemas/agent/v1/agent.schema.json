@@ -18,12 +18,50 @@
             "hybrid",
             "ai"
           ],
-          "description": "Type of the agent. 'human' indicates a biological entity; 'hybrid' indicates a combination of human and artificial components; 'ai' indicates a fully artificial intelligence."
+          "description": "Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence."
+        }
+      },
+      "jacsServices": {
+        "type": "array",
+        "minItems": 1,
+        "description": "Services the agent can perform.",
+        "items": {
+          "$ref": "../../../components/service/v1/service.schema.json"
+        }
+      },
+      "jacsContacts": {
+        "type": "array",
+        "description": "Contact information for the agent",
+        "items": {
+          "$ref": "../../../components/contact/v1/contact.schema.json"
         }
       }
     }
   ],
+  "if": {
+    "properties": {
+      "jacsAgentType": {
+        "type": "string",
+        "enum": [
+          "human",
+          "human-org",
+          "hybrid"
+        ]
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "jacsContacts": {
+        "minItems": 1
+      }
+    },
+    "required": [
+      "jacsContacts"
+    ]
+  },
   "required": [
-    "jacsAgentType"
+    "jacsAgentType",
+    "jacsServices"
   ]
 }

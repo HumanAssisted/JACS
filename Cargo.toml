@@ -10,7 +10,10 @@ include = [
     "schemas/components/signature/v1/signature.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
     "schemas/components/unit/v1/unit.schema.json",
+    "schemas/components/action/v1/action.schema.json",
     "schemas/components/service/v1/service.schema.json",
+    "schemas/components/tool/v1/tool.schema.json",
+    "schemas/components/contact/v1/contact.schema.json",
     "jacs.config.schema.json",
     "examples/*.json",
     "Cargo.toml",
@@ -57,8 +60,6 @@ flate2 = "1.0.28"
 encoding_rs = "0.8.34"
 difference = "2.0.0"
 rpassword = "7.3.1"
-
-
 
 
 [dev-dependencies]

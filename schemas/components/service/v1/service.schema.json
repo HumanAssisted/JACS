@@ -27,18 +27,36 @@
       "type": "string",
       "description": "Description of ideal customer"
     },
+    "isDev": {
+      "type": "boolean",
+      "description": "Is the test/development version of the service?"
+    },
+    "tools": {
+      "type": "array",
+      "description": "URLs of tools that can be called",
+      "items": {
+        "$ref": "../../tool/v1/tool.schema.json"
+      }
+    },
     "piiDesired": {
       "type": "array",
-      "description": "Sensitive data required from customer.",
+      "description": "Sensitive data desired.",
        "items": {
         "type": "string",
         "enum": [
-          "singature",
-          "id",
+          "signature",
+          "cryptoaddress",
+          "creditcard",
+          "govid",
+          "social",
           "email",
           "phone",
           "address",
           "zip",
+          "PHI",
+          "MHI",
+          "identity",
+          "political",
         ]
       }
     }

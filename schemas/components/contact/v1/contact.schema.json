@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/contact/v1/contact-schema.json",
+  "title": "Contact",
+  "description": "How to contact over human channels.",
+  "type": "object",
+  "properties": {
+    "phone": {
+      "type": "string",
+      "description": "Contact phone number."
+    },
+    "email": {
+      "type": "string",
+      "description": "Description of successful delivery of service.",
+      "format": "email"
+    },
+    "mailName": {
+      "type": "string",
+      "description": "Name to reach at address"
+    },
+    "mailAddress": {
+      "type": "string",
+      "description": "Street and Street Address"
+    },
+    "mailAddressTwo": {
+      "type": "string",
+      "description": "Part two mailing address"
+    },
+    "mailState": {
+      "type": "string",
+      "description": "State or province"
+    },
+    "mailZip": {
+      "type": "string",
+      "description": "Zipcode"
+    },
+    "mailCountry": {
+      "type": "string",
+      "description": "Country"
+    },
+    "isPrimary": {
+      "type": "boolean",
+      "description": "Is the primary way to contact agent."
+    }
+  }
+}

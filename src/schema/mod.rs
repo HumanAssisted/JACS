@@ -41,6 +41,9 @@ pub struct Schema {
     agreementschema: JSONSchema,
     serviceschema: JSONSchema,
     unitschema: JSONSchema,
+    actionschema: JSONSchema,
+    toolschema: JSONSchema,
+    contactschema: JSONSchema,
 }
 
 impl Schema {
@@ -73,12 +76,30 @@ impl Schema {
             default_version
         );
 
+        let action_path = format!(
+            "schemas/components/action/{}/action.schema.json",
+            default_version
+        );
+
+        let tool_path = format!(
+            "schemas/components/tool/{}/tool.schema.json",
+            default_version
+        );
+
+        let contact_path = format!(
+            "schemas/components/contact/{}/contact.schema.json",
+            default_version
+        );
+
         let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
         let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
         let agreementdata = DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path).unwrap();
         let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion_path).unwrap();
         let servicedata = DEFAULT_SCHEMA_STRINGS.get(&service_path).unwrap();
         let unitdata = DEFAULT_SCHEMA_STRINGS.get(&unit_path).unwrap();
+        let actiondata = DEFAULT_SCHEMA_STRINGS.get(&action_path).unwrap();
+        let tooldata = DEFAULT_SCHEMA_STRINGS.get(&tool_path).unwrap();
+        let contactdata = DEFAULT_SCHEMA_STRINGS.get(&contact_path).unwrap();
 
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;
@@ -87,6 +108,9 @@ impl Schema {
         let jacsconfigschema_result: Value = serde_json::from_str(&CONFIG_SCHEMA_STRING)?;
         let serviceschema_result: Value = serde_json::from_str(&servicedata)?;
         let unitschema_result: Value = serde_json::from_str(&unitdata)?;
+        let actionschema_result: Value = serde_json::from_str(&actiondata)?;
+        let toolschema_result: Value = serde_json::from_str(&tooldata)?;
+        let contactschema_result: Value = serde_json::from_str(&contactdata)?;
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
@@ -124,10 +148,28 @@ impl Schema {
             .compile(&unitschema_result)
             .expect("A valid schema");
 
+        let actionschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&actionschema_result)
+            .expect("A valid schema");
+
+        let toolschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&toolschema_result)
+            .expect("A valid schema");
+
         let jacsconfigschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&jacsconfigschema_result)
+            .expect("A valid schema");
+
+        let contactschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&contactschema_result)
             .expect("A valid schema");
 
         Ok(Self {
@@ -139,6 +181,9 @@ impl Schema {
             agreementschema,
             serviceschema,
             unitschema,
+            actionschema,
+            toolschema,
+            contactschema,
         })
     }
 
