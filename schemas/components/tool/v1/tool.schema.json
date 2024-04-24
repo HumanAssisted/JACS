@@ -94,5 +94,6 @@
       "function",
       "url"
     ]
-  }
+  },
+  "additionalProperties": false
 }

@@ -17,8 +17,6 @@
       "type": "string",
       "description": "Description of failure of delivery of service."
     },
-
-
     "costDescription": {
       "type": "string",
       "description": "types of costs"
@@ -61,10 +59,10 @@
       }
     }
   },
-
   "required": [
     "serviceDescription",
     "successDescription",
     "failureDescription"
-  ]
+  ],
+  "additionalProperties": false
 }
