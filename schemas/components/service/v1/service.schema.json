@@ -31,7 +31,7 @@
     },
     "tools": {
       "type": "array",
-      "description": "URLs of tools that can be called",
+      "description": "URLs and function definitions of of tools that can be called",
       "items": {
         "$ref": "../../tool/v1/tool.schema.json"
       }

@@ -4,7 +4,7 @@
 https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools
 ```
 
-URLs of tools that can be called
+URLs and function definitions of of tools that can be called
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                              |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------ |

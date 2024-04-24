@@ -137,7 +137,7 @@ Is the test/development version of the service?
 
 ## tools
 
-URLs of tools that can be called
+URLs and function definitions of of tools that can be called
 
 `tools`
 
