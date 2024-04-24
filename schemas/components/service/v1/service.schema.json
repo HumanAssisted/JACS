@@ -39,7 +39,7 @@
     "piiDesired": {
       "type": "array",
       "description": "Sensitive data desired.",
-       "items": {
+      "items": {
         "type": "string",
         "enum": [
           "signature",
@@ -54,7 +54,7 @@
           "PHI",
           "MHI",
           "identity",
-          "political",
+          "political"
         ]
       }
     }

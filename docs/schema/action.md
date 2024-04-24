@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/action/v1/action-schema.json
 ```
 
-General type of actions a resource or agent can take, and a set of things that can happen to a resource or agent.
+General actions definitions which can comprise a service. Distinct from function calling.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
@@ -18,51 +18,10 @@ General type of actions a resource or agent can take, and a set of things that c
 
 | Property                | Type     | Required | Nullable       | Defined by                                                                                                                      |
 | :---------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| [id](#id)               | `string` | Required | cannot be null | [Action](action-properties-id.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/id")               |
-| [version](#version)     | `string` | Optional | cannot be null | [Action](action-properties-version.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/version")     |
-| [name](#name)           | `string` | Required | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name")           |
+| [name](#name)           | `string` | Optional | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name")           |
 | [operation](#operation) | `string` | Required | cannot be null | [Action](action-properties-operation.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/operation") |
+| [tools](#tools)         | `array`  | Optional | cannot be null | [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools")         |
 | [units](#units)         | `array`  | Optional | cannot be null | [Action](action-properties-units.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units")         |
-
-## id
-
-Action GUID
-
-`id`
-
-*   is required
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Action](action-properties-id.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/id")
-
-### id Type
-
-`string`
-
-### id Constraints
-
-**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
-
-## version
-
-Semantic Version number of the action
-
-`version`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Action](action-properties-version.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/version")
-
-### version Type
-
-`string`
 
 ## name
 
@@ -70,7 +29,7 @@ Semantic Version number of the action
 
 `name`
 
-*   is required
+*   is optional
 
 *   Type: `string`
 
@@ -100,6 +59,24 @@ type of change that can happen
 
 `string`
 
+## tools
+
+units that can be modified
+
+`tools`
+
+*   is optional
+
+*   Type: `object[][]` ([Details](tool-items.md))
+
+*   cannot be null
+
+*   defined in: [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools")
+
+### tools Type
+
+`object[][]` ([Details](tool-items.md))
+
 ## units
 
 units that can be modified
@@ -108,7 +85,7 @@ units that can be modified
 
 *   is optional
 
-*   Type: unknown\[]
+*   Type: `object[]` ([Unit](unit.md))
 
 *   cannot be null
 
@@ -116,4 +93,4 @@ units that can be modified
 
 ### units Type
 
-unknown\[]
+`object[]` ([Unit](unit.md))

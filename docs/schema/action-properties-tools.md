@@ -1,7 +1,7 @@
 # Untitled array in Action Schema
 
 ```txt
-https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units
+https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools
 ```
 
 units that can be modified
@@ -10,6 +10,6 @@ units that can be modified
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [action.schema.json\*](../../schemas/components/action/v1/action.schema.json "open original schema") |
 
-## units Type
+## tools Type
 
-`object[]` ([Unit](unit.md))
+`object[][]` ([Details](tool-items.md))
