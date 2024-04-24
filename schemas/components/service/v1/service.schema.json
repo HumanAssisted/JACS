@@ -25,6 +25,22 @@
       "type": "string",
       "description": "Description of ideal customer"
     },
+    "termsOfService": {
+      "type": "string",
+      "description": "Legal TOS"
+    },
+    "privacyPolicy": {
+      "type": "string",
+      "description": "How data will be used"
+    },
+    "copyright": {
+      "type": "string",
+      "description": "How can data provided be used"
+    },
+    "eula": {
+      "type": "string",
+      "description": "End user license agreement"
+    },
     "isDev": {
       "type": "boolean",
       "description": "Is the test/development version of the service?"

@@ -23,6 +23,10 @@ Services that an Agent claims to provide.
 | [failureDescription](#failuredescription)             | `string`  | Required | cannot be null | [Service](service-properties-failuredescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/failureDescription")             |
 | [costDescription](#costdescription)                   | `string`  | Optional | cannot be null | [Service](service-properties-costdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/costDescription")                   |
 | [idealCustomerDescription](#idealcustomerdescription) | `string`  | Optional | cannot be null | [Service](service-properties-idealcustomerdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/idealCustomerDescription") |
+| [termsOfService](#termsofservice)                     | `string`  | Optional | cannot be null | [Service](service-properties-termsofservice.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/termsOfService")                     |
+| [privacyPolicy](#privacypolicy)                       | `string`  | Optional | cannot be null | [Service](service-properties-privacypolicy.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/privacyPolicy")                       |
+| [copyright](#copyright)                               | `string`  | Optional | cannot be null | [Service](service-properties-copyright.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/copyright")                               |
+| [eula](#eula)                                         | `string`  | Optional | cannot be null | [Service](service-properties-eula.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/eula")                                         |
 | [isDev](#isdev)                                       | `boolean` | Optional | cannot be null | [Service](service-properties-isdev.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/isDev")                                       |
 | [tools](#tools)                                       | `array`   | Optional | cannot be null | [Service](service-properties-tools.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools")                                       |
 | [piiDesired](#piidesired)                             | `array`   | Optional | cannot be null | [Service](service-properties-piidesired.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/piiDesired")                             |
@@ -114,6 +118,78 @@ Description of ideal customer
 *   defined in: [Service](service-properties-idealcustomerdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/idealCustomerDescription")
 
 ### idealCustomerDescription Type
+
+`string`
+
+## termsOfService
+
+Legal TOS
+
+`termsOfService`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Service](service-properties-termsofservice.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/termsOfService")
+
+### termsOfService Type
+
+`string`
+
+## privacyPolicy
+
+How data will be used
+
+`privacyPolicy`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Service](service-properties-privacypolicy.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/privacyPolicy")
+
+### privacyPolicy Type
+
+`string`
+
+## copyright
+
+How can data provided be used
+
+`copyright`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Service](service-properties-copyright.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/copyright")
+
+### copyright Type
+
+`string`
+
+## eula
+
+End user license agreement
+
+`eula`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Service](service-properties-eula.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/eula")
+
+### eula Type
 
 `string`
 
