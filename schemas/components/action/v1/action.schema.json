@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/components/action/v1/action-schema.json",
+  "title": "Action",
+  "description": "General actions definitions which can comprise a service. Distinct from function calling.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "operation": {
+      "type": "string",
+      "description": "type of change that can happen"
+    },
+    "tools": {
+      "type": "array",
+      "description": "units that can be modified",
+      "items": {
+        "$ref": "../../tool/v1/tool.schema.json"
+      }
+    },
+    "units": {
+      "type": "array",
+      "description": "units that can be modified",
+      "items": {
+        "$ref": "../../unit/v1/unit.schema.json"
+      }
+    }
+  },
+  "required": [
+    "operation"
+  ]
+}

@@ -16,7 +16,7 @@ fn test_load_custom_schema_and_custom_document() {
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/9e647c2a-3d4b-422a-8c26-722a3e5d31ee:7a2056f0-b262-4102-ba38-7b45cad709ce.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     println!("loaded valid {}", document_key);
@@ -56,16 +56,16 @@ fn test_load_custom_schema_and_custom_invalid_document() {
 }
 
 #[test]
-#[ignore]
+// #[ignore]
 fn test_create() {
-    // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create
+    // RUST_BACKTRACE=1 cargo test  --test document_tests test_create  -- --nocapture
     utils::generate_new_docs();
 }
 
 #[test]
 #[ignore]
 fn test_create_attachments() {
-    // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments
+    // RUST_BACKTRACE=1 cargo test --test document_tests test_create_attachments  --
     utils::generate_new_docs_with_attachments(true);
 }
 
@@ -122,11 +122,11 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
     let document_string =
-        load_local_document(&"examples/documents/e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/9e647c2a-3d4b-422a-8c26-722a3e5d31ee:7a2056f0-b262-4102-ba38-7b45cad709ce.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let modified_document_string =
-        load_local_document(&"examples/documents/MODIFIED_e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string())
+        load_local_document(&"examples/documents/MODIFIED_9e647c2a-3d4b-422a-8c26-722a3e5d31ee:7a2056f0-b262-4102-ba38-7b45cad709ce.json".to_string())
             .unwrap();
 
     let new_document = agent

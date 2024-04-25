@@ -5,7 +5,7 @@
   "description": "General schema for human, hybrid, and AI agents",
   "allOf": [
     {
-      "$ref": "../../header/v1/header.schema.json"
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
     },
     {
       "favorite-snack": {

@@ -1,4 +1,5 @@
 use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
@@ -6,7 +7,7 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use regex::Regex;
 use secrecy::ExposeSecret;
-use serde::ser::StdError;
+
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -203,15 +204,15 @@ impl FileLoader for Agent {
         }
     }
 
-    fn fs_agent_new(&self, filename: &String) -> Result<String, Box<dyn Error>> {
+    fn fs_agent_new(&self, _filename: &String) -> Result<String, Box<dyn Error>> {
         Err(not_implemented_error())
     }
 
-    fn fs_document_new(&self, filename: &String) -> Result<String, Box<dyn Error>> {
+    fn fs_document_new(&self, _filename: &String) -> Result<String, Box<dyn Error>> {
         Err(not_implemented_error())
     }
 
-    fn fs_document_load(&self, document_id: &String) -> Result<String, Box<dyn Error>> {
+    fn fs_document_load(&self, _document_id: &String) -> Result<String, Box<dyn Error>> {
         Err(not_implemented_error())
     }
 
@@ -235,6 +236,7 @@ impl FileLoader for Agent {
         document_string: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
+        check_data_directory();
         let documentoutput_filename = match output_filename {
             Some(filname) => {
                 // optional add jacs

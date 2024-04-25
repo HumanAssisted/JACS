@@ -11,7 +11,7 @@
     },
     "path": {
       "type": "string",
-      "description": "where can the file be found on the filesystem. For now no online. ipfs, https, etc"
+      "description": "where can the file be found on the filesystem. For now no online. ipfs, https, etc. todo \"format\": \"uri\" "
     },
     "contents": {
       "type": "string",

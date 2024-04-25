@@ -39,6 +39,13 @@ pub struct Schema {
     signatureschema: JSONSchema,
     jacsconfigschema: JSONSchema,
     agreementschema: JSONSchema,
+    serviceschema: JSONSchema,
+    unitschema: JSONSchema,
+    actionschema: JSONSchema,
+    toolschema: JSONSchema,
+    contactschema: JSONSchema,
+    taskschema: JSONSchema,
+    messageschema: JSONSchema,
 }
 
 impl Schema {
@@ -49,6 +56,7 @@ impl Schema {
     ) -> Result<Self, Box<dyn std::error::Error + 'static>> {
         // let current_dir = env::current_dir()?;
         // TODO let the agent, header, and signature versions for verifying being flexible
+        let default_version = "v1";
         let header_path = format!("schemas/header/{}/header.schema.json", headerversion);
         let agentversion_path = format!("schemas/agent/{}/agent.schema.json", agentversion);
         let agreementversion_path = format!(
@@ -60,16 +68,62 @@ impl Schema {
             signatureversion
         );
 
+        let unit_path = format!(
+            "schemas/components/unit/{}/unit.schema.json",
+            default_version
+        );
+
+        let service_path = format!(
+            "schemas/components/service/{}/service.schema.json",
+            default_version
+        );
+
+        let action_path = format!(
+            "schemas/components/action/{}/action.schema.json",
+            default_version
+        );
+
+        let tool_path = format!(
+            "schemas/components/tool/{}/tool.schema.json",
+            default_version
+        );
+
+        let contact_path = format!(
+            "schemas/components/contact/{}/contact.schema.json",
+            default_version
+        );
+
+        let task_path = format!("schemas/task/{}/task.schema.json", default_version);
+
+        let message_path = format!(
+            "schemas/components/message/{}/message.schema.json",
+            default_version
+        );
+
         let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
         let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
         let agreementdata = DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path).unwrap();
         let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion_path).unwrap();
+        let servicedata = DEFAULT_SCHEMA_STRINGS.get(&service_path).unwrap();
+        let unitdata = DEFAULT_SCHEMA_STRINGS.get(&unit_path).unwrap();
+        let actiondata = DEFAULT_SCHEMA_STRINGS.get(&action_path).unwrap();
+        let tooldata = DEFAULT_SCHEMA_STRINGS.get(&tool_path).unwrap();
+        let contactdata = DEFAULT_SCHEMA_STRINGS.get(&contact_path).unwrap();
+        let taskdata = DEFAULT_SCHEMA_STRINGS.get(&task_path).unwrap();
+        let messagedata = DEFAULT_SCHEMA_STRINGS.get(&message_path).unwrap();
 
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;
         let agreementschema_result: Value = serde_json::from_str(&agreementdata)?;
         let signatureschema_result: Value = serde_json::from_str(&signaturedata)?;
         let jacsconfigschema_result: Value = serde_json::from_str(&CONFIG_SCHEMA_STRING)?;
+        let serviceschema_result: Value = serde_json::from_str(&servicedata)?;
+        let unitschema_result: Value = serde_json::from_str(&unitdata)?;
+        let actionschema_result: Value = serde_json::from_str(&actiondata)?;
+        let toolschema_result: Value = serde_json::from_str(&tooldata)?;
+        let contactschema_result: Value = serde_json::from_str(&contactdata)?;
+        let taskschema_result: Value = serde_json::from_str(&taskdata)?;
+        let messageschema_result: Value = serde_json::from_str(&messagedata)?;
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
@@ -95,10 +149,52 @@ impl Schema {
             .compile(&agreementschema_result)
             .expect("A valid schema");
 
+        let serviceschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&serviceschema_result)
+            .expect("A valid schema");
+
+        let unitschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&unitschema_result)
+            .expect("A valid schema");
+
+        let actionschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&actionschema_result)
+            .expect("A valid schema");
+
+        let toolschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&toolschema_result)
+            .expect("A valid schema");
+
         let jacsconfigschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&jacsconfigschema_result)
+            .expect("A valid schema");
+
+        let contactschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&contactschema_result)
+            .expect("A valid schema");
+
+        let messageschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&messageschema_result)
+            .expect("A valid schema");
+
+        let taskschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&taskschema_result)
             .expect("A valid schema");
 
         Ok(Self {
@@ -108,6 +204,13 @@ impl Schema {
             signatureschema,
             jacsconfigschema,
             agreementschema,
+            serviceschema,
+            unitschema,
+            actionschema,
+            toolschema,
+            contactschema,
+            taskschema,
+            messageschema,
         })
     }
 

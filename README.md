@@ -21,6 +21,9 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
   2. capture metadata about files and versions and securely verify
   3. sign documents
   4. create agreements between human and ai agents
+  5. create agents and describe what they can do
+  6. create tasks manage their state
+
 
 
 ## Documentation
@@ -33,10 +36,7 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
  - [presentation on JACS](https://docs.google.com/presentation/d/18mO-tftG-9JnKd7rBtdipcX5t0dm4VfBPReKyWvrmXA/edit#slide=id.p)
  - [changelog](./CHANGELOG.md)
 
-
-As of version 0.2, you can create and verify internal documents, when the public and private key are known between internal services.
-
-
+![Schemas](basic-schemas.png)
 
 ## extensible
 

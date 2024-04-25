@@ -1,6 +1,7 @@
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
+use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
@@ -484,6 +485,7 @@ impl Document for Agent {
 
         if do_export {
             if let Some(jacs_files) = original_document.value["jacsFiles"].as_array() {
+                let _ = check_data_directory();
                 for item in jacs_files {
                     if item["embed"].as_bool().unwrap_or(false) {
                         let contents = item["contents"].as_str().ok_or("Contents not found")?;

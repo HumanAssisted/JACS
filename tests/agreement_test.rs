@@ -19,7 +19,7 @@ fn test_create_agreement() {
     agentids.push(agent_two.get_id().expect("REASON"));
 
     let document_string =
-        load_local_document(&"examples/documents/e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/e6453a94-10ff-4865-9e97-ddc18c2c0614:415b1eb3-afec-49f2-a80f-dd0409082dfc.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document
@@ -52,7 +52,7 @@ fn test_add_and_remove_agents() {
     let agents_to_remove: Vec<String> = vec!["mariko".to_string()];
 
     let document_string =
-        load_local_document(&"examples/documents/e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/e6453a94-10ff-4865-9e97-ddc18c2c0614:415b1eb3-afec-49f2-a80f-dd0409082dfc.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let mut doc_v1 = agent
@@ -119,7 +119,7 @@ fn test_sign_agreement() {
     agentids.push(agent_two.get_id().expect("REASON"));
 
     let document_string =
-        load_local_document(&"examples/documents/e957d062-d684-456b-8680-14a1c4edcb2a:5599ac70-a3d6-429b-85ae-c9b17c78d2c5.json".to_string()).unwrap();
+        load_local_document(&"examples/documents/e6453a94-10ff-4865-9e97-ddc18c2c0614:415b1eb3-afec-49f2-a80f-dd0409082dfc.json".to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document
