@@ -22,9 +22,9 @@
           "description": "customer signature",
           "$ref": "../../components/signature/v1/signature.schema.json"
         },
-        "jacsTaskService": {
-          "description": "Service assigned the task",
-          "$ref": "../../components/service/v1/service.schema.json"
+        "jacsTaskAgent": {
+          "description": "Agent assigned the task",
+          "$ref": "../../components/signature/v1/signature.schema.json"
         },
         "jacsTaskState": {
           "description": "Is the document locked from edits",
@@ -49,12 +49,13 @@
           "type": "array",
           "desciption": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
           "items": {
+            "minItems": 1,
             "$ref": "../../components/action/v1/action.schema.json"
           }
         },
         "jacsTaskMessages": {
           "type": "array",
-          "desciption": "discussion between agents added to task",
+          "desciption": "discussion between agents added to task and includes files",
           "items": {
             "$ref": "../../components/message/v1/message.schema.json"
           }
@@ -89,5 +90,9 @@
       }
     }
   ],
-  "required": []
+  "required": [
+    "jacsTaskCustomer",
+    "jacsTaskState",
+    "jacsTaskActionsDesired"
+  ]
 }
