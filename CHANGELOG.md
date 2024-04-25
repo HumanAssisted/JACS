@@ -1,7 +1,7 @@
 ## 0.2.5
  - filesystem security module
  - unit, action, tool, contact, and service schemas
-
+ - tasks and message schemas
 
 ## 0.2.4
 

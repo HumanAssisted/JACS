@@ -33,7 +33,7 @@
         "type": "array",
         "description": "Contact information for the agent",
         "items": {
-          "$ref": "../../../components/contact/v1/contact.schema.json"
+          "$ref": "../../components/contact/v1/contact.schema.json"
         }
       }
     }

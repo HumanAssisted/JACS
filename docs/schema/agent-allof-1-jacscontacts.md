@@ -12,4 +12,4 @@ Contact information for the agent
 
 ## jacsContacts Type
 
-unknown\[]
+`object[]` ([Contact](contact.md))

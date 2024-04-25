@@ -44,6 +44,8 @@ pub struct Schema {
     actionschema: JSONSchema,
     toolschema: JSONSchema,
     contactschema: JSONSchema,
+    taskschema: JSONSchema,
+    messageschema: JSONSchema,
 }
 
 impl Schema {
@@ -91,6 +93,13 @@ impl Schema {
             default_version
         );
 
+        let task_path = format!("schemas/task/{}/task.schema.json", default_version);
+
+        let message_path = format!(
+            "schemas/components/message/{}/message.schema.json",
+            default_version
+        );
+
         let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
         let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
         let agreementdata = DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path).unwrap();
@@ -100,6 +109,8 @@ impl Schema {
         let actiondata = DEFAULT_SCHEMA_STRINGS.get(&action_path).unwrap();
         let tooldata = DEFAULT_SCHEMA_STRINGS.get(&tool_path).unwrap();
         let contactdata = DEFAULT_SCHEMA_STRINGS.get(&contact_path).unwrap();
+        let taskdata = DEFAULT_SCHEMA_STRINGS.get(&task_path).unwrap();
+        let messagedata = DEFAULT_SCHEMA_STRINGS.get(&message_path).unwrap();
 
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;
@@ -111,6 +122,8 @@ impl Schema {
         let actionschema_result: Value = serde_json::from_str(&actiondata)?;
         let toolschema_result: Value = serde_json::from_str(&tooldata)?;
         let contactschema_result: Value = serde_json::from_str(&contactdata)?;
+        let taskschema_result: Value = serde_json::from_str(&taskdata)?;
+        let messageschema_result: Value = serde_json::from_str(&messagedata)?;
 
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
@@ -172,6 +185,18 @@ impl Schema {
             .compile(&contactschema_result)
             .expect("A valid schema");
 
+        let messageschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&messageschema_result)
+            .expect("A valid schema");
+
+        let taskschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&taskschema_result)
+            .expect("A valid schema");
+
         Ok(Self {
             headerschema,
             headerversion: headerversion.to_string(),
@@ -184,6 +209,8 @@ impl Schema {
             actionschema,
             toolschema,
             contactschema,
+            taskschema,
+            messageschema,
         })
     }
 

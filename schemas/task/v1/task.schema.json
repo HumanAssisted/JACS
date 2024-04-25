@@ -5,7 +5,7 @@
   "description": "General schema for stateful resources.",
   "allOf": [
     {
-      "$ref": "../../../../JACS/schemas/header/v1/header.schema.json"
+      "$ref": "../../header/v1/header.schema.json"
     },
     {
       "type": "object",
