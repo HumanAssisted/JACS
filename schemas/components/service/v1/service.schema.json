@@ -70,7 +70,9 @@
           "PHI",
           "MHI",
           "identity",
-          "political"
+          "political",
+          "bankaddress",
+          "income"
         ]
       }
     }

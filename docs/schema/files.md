@@ -44,7 +44,7 @@ Type of file. e.g. <https://www.iana.org/assignments/media-types/application/jso
 
 ## path
 
-where can the file be found on the filesystem. For now no online. ipfs, https, etc
+where can the file be found on the filesystem. For now no online. ipfs, https, etc. todo "format": "uri"
 
 `path`
 

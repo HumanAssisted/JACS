@@ -33,3 +33,5 @@ https://hai.ai/schemas/service/v1/service-schema.json#/properties/piiDesired/ite
 | `"MHI"`           |             |
 | `"identity"`      |             |
 | `"political"`     |             |
+| `"bankaddress"`   |             |
+| `"income"`        |             |

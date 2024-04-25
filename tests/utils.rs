@@ -49,7 +49,7 @@ pub fn generate_new_docs_with_attachments(save: bool) {
 
 #[cfg(test)]
 pub fn generate_new_docs() {
-    static SCHEMA: &str = "examples/documents/my-custom-doctype.schema.json";
+    static SCHEMA: &str = "examples/raw/custom.schema.json";
     let mut agent = load_test_agent_one();
     let mut document_string =
         load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
@@ -89,7 +89,7 @@ pub fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "5305e3e1-9b14-4cb7-94ff-902f9c101d91:a2ecf623-64a1-43c6-a8f2-4a6c95552c25".to_string();
+        "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -122,7 +122,7 @@ pub fn load_test_agent_two() -> Agent {
     );
     let result = agent.load_by_id(
         Some(
-            "fa50799d-38f9-40cc-bda5-e28fab6e04c8:356d263f-0a89-4665-b4ea-7373be3fc8be".to_string(),
+            "9f62bc98-b871-4c26-a5c9-29457e291448:15da36cb-a131-41cc-b1df-3afeec6acc74".to_string(),
         ),
         None,
     );

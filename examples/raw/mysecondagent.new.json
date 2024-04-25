@@ -29,5 +29,55 @@
         "label": "net worth"
       }
     ]
+  ],
+    "jacsContacts": [
+    {
+
+      "name": "Frodo Baggins",
+      "email": "smith@example.com",
+      "isPrimary": true,
+      "mailAddress": "123 Example St.",
+      "mailAddressTwo": "Suite 101",
+      "mailCountry": "ExampleCountry",
+      "mailName": "Smith",
+      "mailState": "ExampleState",
+      "mailZip": "12345",
+      "phone": "123-456-7890"
+    }
+  ],
+  "jacsServices": [
+    {
+      "serviceDescription": "Bank account manager",
+      "successDescription": "Everything is under control",
+      "failureDescription": "Not everything is under control",
+      "costDescription": "monthly fee",
+      "idealCustomerDescription": "wealthy",
+      "isDev": true,
+      "tools": [
+        {
+          "type": "function",
+          "url": "https://api.example.com/tool",
+          "function": {
+            "name": "ExampleFunction",
+            "description": "An example function provided by the tool.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "param1": {
+                  "type": "string",
+                  "description": "A string parameter."
+                },
+                "param2": {
+                  "type": "integer",
+                  "description": "An integer parameter."
+                }
+              },
+              "required": ["param1"]
+            }
+          }
+        }
+      ],
+      "piiDesired": ["email", "phone"]
+    }
   ]
 }
