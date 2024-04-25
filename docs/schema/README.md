@@ -14,9 +14,13 @@
 
 *   [Header](./header.md "The basis for a JACS document") – `https://hai.ai/schemas/header/v1/header.schema.json`
 
+*   [Message](./message.md "A signed, immutable message from a user") – `https://hai.ai/schemas/components/message/v1/message-schema.json`
+
 *   [Service](./service.md "Services that an Agent claims to provide") – `https://hai.ai/schemas/service/v1/service-schema.json`
 
 *   [Signature](./signature.md "Cryptographic signature to be embedded in other documents") – `https://hai.ai/schemas/components/signature/v1/signature.schema.json`
+
+*   [Task](./task.md "General schema for stateful resources") – `https://hai.ai/schemas/task/v1/task-schema.json`
 
 *   [Tool](./tool.md "OpenAI function calling definitions https://platform") – `https://hai.ai/schemas/components/tool/v1/tool-schema.json`
 
@@ -29,6 +33,10 @@
 ### Objects
 
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1`
+
+*   [Untitled object in Message](./message-properties-content.md "body , subject etc") – `https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content`
+
+*   [Untitled object in Task](./task-allof-1.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1`
 
 *   [Untitled object in Tool](./tool-items.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items`
 
@@ -52,11 +60,23 @@
 
 *   [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
 
+*   [Untitled array in Message](./message-properties-originalcontent.md) – `https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/originalContent`
+
 *   [Untitled array in Service](./service-properties-tools.md "URLs and function definitions of of tools that can be called") – `https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools`
 
 *   [Untitled array in Service](./service-properties-piidesired.md "Sensitive data desired") – `https://hai.ai/schemas/service/v1/service-schema.json#/properties/piiDesired`
 
 *   [Untitled array in Signature](./signature-properties-fields.md "fields fields from document which were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields`
+
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskactionsdesired.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired`
+
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskmessages.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMessages`
+
+*   [Untitled array in Task](./task-allof-1-properties-jacstasksubtaskof.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSubTaskOf`
+
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskcopyof.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCopyOf`
+
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskmergedtasks.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMergedTasks`
 
 *   [Untitled array in Tool](./tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum`
 
