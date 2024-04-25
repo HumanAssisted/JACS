@@ -2,7 +2,7 @@
 
 Welcome to JACS. JSON Agent Communication Standard.
 
-** NOTE: Current version 0.2.4 *ALPHA* .
+** NOTE: Current version 0.2.5 *ALPHA* .
 
 The JACS documents enable more trusted data sharing between AI agents and Human UIs.
 
