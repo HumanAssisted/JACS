@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 include = [
     "src/**/*",
@@ -23,6 +23,7 @@ include = [
     "LICENSE",
     "build.rs",
     "CHANGELOG.md",
+    "basic-schemas.png",
     "benches/sign_and_check_sig.rs",
 ]
 description = "JACS JSON AI Communication Standard"

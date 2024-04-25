@@ -1,18 +1,15 @@
 # JACS
 
-Welcome to JACS. JSON Agent Communication Standard.
+Welcome to JACS. JSON Agent Communication Standard. JACS documents enable more trusted data sharing between AI agents and Human UIs.
 
-** NOTE: Current version 0.2.5 *ALPHA* .
-
-The JACS documents enable more trusted data sharing between AI agents and Human UIs.
+** NOTE: Current version 0.2.6 *ALPHA* .
 
 JACS is a JSON document format for creating secure, verifiable documents that AI agents, ML pipelines, SaaS services, and UIs can exchange and process. The goal of JACS is to ensure that these documents remain unchanged (immutable), produce the same verification result every time (idempotent), and can be used flexibly by software.
 
 With JACS, data can be securely stored or shared, and different versions of the data can be tracked. One of the key features of JACS is its ability to provide instant verification of document ownership. Each version of a JACS document is signed with a unique digital signature, allowing an AI agent to prove its data claims. This enables trusted interactions between agents and provides flexibility in how documents are versioned and exchanged. Any person or software can modify a doc, but only agents with the private key can sign new versions, and only holders of the public key can verify.
 
-JACS also provides standardization for agreement between agents. While each document will only have been modified by one agent, any agent can create a new version. Knowing that other agents agree is critical infrastructure for sharing tasks.
+JACS also provides standardization for agreement between agents. While each document will only have been modified by one agent, any agent can create a new version. With a JACS document, one can guarantee that other agents agree to new versions is critical infrastructure for sharing tasks.
 
-Decentralized but trusted data sharing is key to building the apps of the future.
 Use JACS as is, embed in other projects or libraries, commercial or otherwise.
 
 ## Basic use cases
@@ -23,8 +20,6 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
   4. create agreements between human and ai agents
   5. create agents and describe what they can do
   6. create tasks manage their state
-
-
 
 ## Documentation
 
@@ -47,11 +42,11 @@ Use any type of JSON document, and you can enforce structure of type of JSON doc
  2. [github page](https://github.com/json-schema-org)
  3. [youtube channel](https://www.youtube.com/@JSONSchemaOrgOfficial)
 
-You can also embed any document, so if you want to sign a gif or .csv, you can link or embed that document with JACS.
+JSON isn't the only document you can work with. You can embed any document, so if you want to sign a gif or .csv, you can link or embed that document with JACS.
 
 ## open source
 
-In addition, JACS depends on the work of great open source efforts in standards and encryption.
+In addition, JACS also depends on the work of great other open source efforts in standards and encryption.
 
 See the [Cargo.toml](./Cargo.toml)
 
@@ -68,5 +63,5 @@ If you are working in Rust, add the rust lib to your project
 
 Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 
-
+------
 2024 https://hai.ai
