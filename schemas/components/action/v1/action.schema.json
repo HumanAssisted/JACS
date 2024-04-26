@@ -11,7 +11,8 @@
     },
     "description": {
       "type": "string",
-      "description": "type of change that can happen"
+      "description": "type of change that can happen",
+      "hai": true
     },
     "tools": {
       "type": "array",
