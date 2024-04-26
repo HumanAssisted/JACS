@@ -29,6 +29,7 @@ pub fn create_minimal_task(
     complete_date: Option<DateTime<Utc>>,
 ) -> Result<Value, String> {
     let mut task = json!({
+        "$schema": "https://hai.ai/schemas/task/v1/task.schema.json",
         "jacsTaskState": "creating",
     });
 

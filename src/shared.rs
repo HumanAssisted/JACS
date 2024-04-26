@@ -169,7 +169,7 @@ pub fn document_add_agreement(
     // agent one creates agreement document
     let unsigned_doc = agent.create_agreement(&document_key, &agentids)?;
 
-    let unsigned_doc_key = unsigned_doc.getkey();
+    let _unsigned_doc_key = unsigned_doc.getkey();
 
     if !load_only {
         return save_document(

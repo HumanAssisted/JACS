@@ -34,6 +34,7 @@ pub fn create_minimal_agent(
     }
 
     let mut agent = json!({
+        "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
         "jacsAgentType": agent_type,
         "jacsServices": services,
     });

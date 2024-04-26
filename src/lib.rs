@@ -85,12 +85,15 @@ pub fn create_task(
     // create document
     let embed = None;
     let docresult = agent.create_document_and_load(&task.to_string(), None, embed);
-    let cloned_docresult = docresult?.clone();
-    let task_value = cloned_docresult.value;
+
+    save_document(agent, docresult, None, None, None, None)?;
+
+    let task_value = agent
+        .get_document(&task["id"].as_str().unwrap().to_string())?
+        .value;
     let validation_result = agent.schema.taskschema.validate(&task_value);
     match validation_result {
         Ok(_) => {
-            save_document(agent, docresult, None, None, None, None)?;
             return Ok(task_value.to_string());
         }
         Err(errors) => {
