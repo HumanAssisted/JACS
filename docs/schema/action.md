@@ -16,12 +16,12 @@ General actions definitions which can comprise a service. Distinct from function
 
 # Action Properties
 
-| Property                | Type     | Required | Nullable       | Defined by                                                                                                                      |
-| :---------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| [name](#name)           | `string` | Optional | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name")           |
-| [operation](#operation) | `string` | Required | cannot be null | [Action](action-properties-operation.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/operation") |
-| [tools](#tools)         | `array`  | Optional | cannot be null | [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools")         |
-| [units](#units)         | `array`  | Optional | cannot be null | [Action](action-properties-units.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units")         |
+| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                          |
+| :-------------------------- | :------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| [name](#name)               | `string` | Optional | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name")               |
+| [description](#description) | `string` | Optional | cannot be null | [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/description") |
+| [tools](#tools)             | `array`  | Optional | cannot be null | [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools")             |
+| [units](#units)             | `array`  | Optional | cannot be null | [Action](action-properties-units.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units")             |
 
 ## name
 
@@ -41,27 +41,27 @@ General actions definitions which can comprise a service. Distinct from function
 
 `string`
 
-## operation
+## description
 
 type of change that can happen
 
-`operation`
+`description`
 
-*   is required
+*   is optional
 
 *   Type: `string`
 
 *   cannot be null
 
-*   defined in: [Action](action-properties-operation.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/operation")
+*   defined in: [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/description")
 
-### operation Type
+### description Type
 
 `string`
 
 ## tools
 
-units that can be modified
+tools that can be utilized
 
 `tools`
 

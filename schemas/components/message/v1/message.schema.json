@@ -20,7 +20,7 @@
     },
     "content": {
       "description": "body , subject etc",
-      "type": "object"
+      "type": "string"
     },
     "attachments": {
       "type": "array",

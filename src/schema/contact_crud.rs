@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 use validator::Validate;
+use validator::ValidateEmail;
 
 /// Creates a minimal contact with optional fields.
 ///
@@ -26,7 +27,7 @@ use validator::Validate;
 ///
 /// Returns an error if:
 /// - `email` is provided but is not a valid email address.
-fn create_minimal_contact(
+pub fn create_minimal_contact(
     first_name: Option<&str>,
     last_name: Option<&str>,
     address_name: Option<&str>,
@@ -55,9 +56,9 @@ fn create_minimal_contact(
         contact["phone"] = json!(phone);
     }
     if let Some(email) = email {
-        let email_value = validator::validate_email(email);
-        if let Err(e) = email_value {
-            return Err(format!("Invalid email address: {}", e));
+        let email_valid: bool = ValidateEmail::validate_email(&email);
+        if !email_valid {
+            return Err(format!("Invalid email address: {}", email));
         }
         contact["email"] = json!(email);
     }
@@ -130,10 +131,11 @@ fn update_contact_last_name(contact: &mut Value, new_last_name: &str) -> Result<
 /// * `Ok(())` - If the contact email was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the contact email.
 fn update_contact_email(contact: &mut Value, new_email: &str) -> Result<(), String> {
-    let email_value = validator::validate_email(new_email);
-    if let Err(e) = email_value {
-        return Err(format!("Invalid email address: {}", e));
+    let email_valid: bool = ValidateEmail::validate_email(&new_email);
+    if !email_valid {
+        return Err(format!("Invalid email address: {}", new_email));
     }
+
     contact["email"] = json!(new_email);
     Ok(())
 }
@@ -269,7 +271,10 @@ fn remove_contact_mail_address(contact: &mut Value) -> Result<(), String> {
 ///
 /// * `Ok(())` - If the contact mail address two was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the contact mail address two.
-fn update_contact_mail_address_two(contact: &mut Value, new_mail_address_two: &str) -> Result<(), String> {
+fn update_contact_mail_address_two(
+    contact: &mut Value,
+    new_mail_address_two: &str,
+) -> Result<(), String> {
     contact["mailAddressTwo"] = json!(new_mail_address_two);
     Ok(())
 }

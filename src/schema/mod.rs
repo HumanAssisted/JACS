@@ -9,8 +9,14 @@ use serde_json::Value;
 use url::Url;
 use uuid::Uuid;
 
+pub mod action_crud;
 pub mod agent_crud;
+pub mod contact_crud;
+pub mod message_crud;
+pub mod service_crud;
 pub mod signature;
+pub mod task_crud;
+pub mod tools_crud;
 pub mod utils;
 
 use utils::{EmbeddedSchemaResolver, DEFAULT_SCHEMA_STRINGS};

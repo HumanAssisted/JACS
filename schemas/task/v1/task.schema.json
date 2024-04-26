@@ -30,9 +30,13 @@
           "description": "Is the document locked from edits",
           "type": "string",
           "enum": [
-            "open",
-            "editlock",
-            "closed"
+            "creating",
+            "rfp",
+            "proposal",
+            "negotiation",
+            "started",
+            "review",
+            "completed"
           ]
         },
         "jacsTaskStartDate": {

@@ -5,6 +5,7 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
 use jacs::agent::Agent;
 use jacs::config::{set_env_vars, Config};
+use jacs::create_minimal_blank_agent;
 use jacs::crypt::KeyManager;
 use jacs::get_empty_agent;
 use jacs::load_agent;
@@ -542,14 +543,14 @@ fn main() {
         },
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
-                let filename = create_matches.get_one::<String>("filename").unwrap();
+                let filename = create_matches.get_one::<String>("filename");
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
 
-                let agentstring = match Some(filename) {
+                let agentstring = match filename {
                     Some(filename) => {
                         fs::read_to_string(filename.clone()).expect("agent file loading")
                     }
-                    _ => "{\"jacsAgentType\":\"ai\"}".to_string(),
+                    _ => create_minimal_blank_agent("ai".to_string()).unwrap(),
                 };
 
                 let mut agent = get_empty_agent();

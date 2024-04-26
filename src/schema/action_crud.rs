@@ -1,8 +1,13 @@
 use serde_json::{json, Value};
 
-fn create_minimal_action(operation: &str, tools: Option<Vec<Value>>, units: Option<Vec<Value>>) -> Value {
+fn create_minimal_action(
+    name: &str,
+    description: &str,
+    tools: Option<Vec<Value>>,
+    units: Option<Vec<Value>>,
+) -> Value {
     let mut action = json!({
-        "operation": operation,
+        "description": description,
     });
 
     if let Some(tools) = tools {
@@ -17,7 +22,7 @@ fn create_minimal_action(operation: &str, tools: Option<Vec<Value>>, units: Opti
 }
 
 fn add_tool_to_action(action: &mut Value, tool: Value) -> Result<(), String> {
-    if !action.has_key("tools") {
+    if !action.get("tools").is_some() {
         action["tools"] = json!([]);
     }
     action["tools"]
@@ -27,7 +32,11 @@ fn add_tool_to_action(action: &mut Value, tool: Value) -> Result<(), String> {
     Ok(())
 }
 
-fn update_tool_in_action(action: &mut Value, old_tool: Value, new_tool: Value) -> Result<(), String> {
+fn update_tool_in_action(
+    action: &mut Value,
+    old_tool: Value,
+    new_tool: Value,
+) -> Result<(), String> {
     let tools = action["tools"]
         .as_array_mut()
         .ok_or_else(|| "Invalid action format".to_string())?;

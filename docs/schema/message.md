@@ -21,7 +21,7 @@ A signed, immutable message from a user
 | [id](#id)                   | `string`      | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                   |
 | [signature](#signature)     | Not specified | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/signature")     |
 | [datetime](#datetime)       | `string`      | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")       |
-| [content](#content)         | `object`      | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")         |
+| [content](#content)         | `string`      | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")         |
 | [attachments](#attachments) | `array`       | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments") |
 
 ## id
@@ -94,7 +94,7 @@ body , subject etc
 
 *   is required
 
-*   Type: `object` ([Details](message-properties-content.md))
+*   Type: `string`
 
 *   cannot be null
 
@@ -102,7 +102,7 @@ body , subject etc
 
 ### content Type
 
-`object` ([Details](message-properties-content.md))
+`string`
 
 ## attachments
 

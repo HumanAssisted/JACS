@@ -34,8 +34,6 @@
 
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1`
 
-*   [Untitled object in Message](./message-properties-content.md "body , subject etc") – `https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content`
-
 *   [Untitled object in Task](./task-allof-1.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1`
 
 *   [Untitled object in Tool](./tool-items.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items`
@@ -50,7 +48,7 @@
 
 ### Arrays
 
-*   [Untitled array in Action](./action-properties-tools.md "units that can be modified") – `https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools`
+*   [Untitled array in Action](./action-properties-tools.md "tools that can be utilized") – `https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools`
 
 *   [Untitled array in Action](./action-properties-units.md "units that can be modified") – `https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units`
 

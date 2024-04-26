@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 ///
 /// Returns an error if:
 /// - `service_description`, `success_description`, or `failure_description` is empty.
-fn create_minimal_service(
+pub fn create_minimal_service(
     service_description: &str,
     success_description: &str,
     failure_description: &str,
@@ -64,7 +64,7 @@ fn create_minimal_service(
 /// * `Ok(())` - If the tool was added successfully.
 /// * `Err(String)` - If an error occurred while adding the tool.
 fn add_tool_to_service(service: &mut Value, tool: Value) -> Result<(), String> {
-    if !service.has_key("tools") {
+    if !service.get("tools").is_some() {
         service["tools"] = json!([]);
     }
     service["tools"]
@@ -141,7 +141,7 @@ fn remove_tool_from_service(service: &mut Value, tool: Value) -> Result<(), Stri
 /// * `Ok(())` - If the desired PII was added successfully.
 /// * `Err(String)` - If an error occurred while adding the desired PII.
 fn add_pii_desired_to_service(service: &mut Value, pii: String) -> Result<(), String> {
-    if !service.has_key("piiDesired") {
+    if !service.get("piiDesired").is_some() {
         service["piiDesired"] = json!([]);
     }
     service["piiDesired"]

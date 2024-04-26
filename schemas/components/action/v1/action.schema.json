@@ -8,13 +8,13 @@
     "name": {
       "type": "string"
     },
-    "operation": {
+    "description": {
       "type": "string",
       "description": "type of change that can happen"
     },
     "tools": {
       "type": "array",
-      "description": "units that can be modified",
+      "description": "tools that can be utilized",
       "items": {
         "$ref": "../../tool/v1/tool.schema.json"
       }

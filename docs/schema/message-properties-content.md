@@ -1,4 +1,4 @@
-# Untitled object in Message Schema
+# Untitled string in Message Schema
 
 ```txt
 https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content
@@ -12,4 +12,4 @@ body , subject etc
 
 ## content Type
 
-`object` ([Details](message-properties-content.md))
+`string`

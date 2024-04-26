@@ -1,5 +1,8 @@
 use crate::agent::Agent;
+use crate::schema::agent_crud::create_minimal_agent;
+use crate::schema::service_crud::create_minimal_service;
 use log::debug;
+use serde_json::Value;
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -40,4 +43,37 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
     } else {
         return Ok(load_agent_by_id());
     };
+}
+
+pub fn create_minimal_blank_agent(agentype: String) -> Result<String, Box<dyn Error>> {
+    let mut services: Vec<Value> = Vec::new();
+    // create service
+    let service_description = "Describe a service the agent provides";
+    let success_description = "Describe a success of the service the agent provides";
+    let failure_description = "Describe what failure is of the service the agent provides";
+    let service = create_minimal_service(
+        service_description,
+        success_description,
+        failure_description,
+        None,
+        None,
+    )?;
+    services.push(service);
+    // add service
+    let agent_value = create_minimal_agent(&agentype, Some(services), None)?;
+    return Ok(agent_value.to_string());
+}
+
+pub fn create_task() -> Result<String, Box<dyn Error>> {
+    // sign doc at "jacsTaskCustomer"
+
+    // validate and save
+    // sign document
+    return Ok("".to_string());
+}
+
+pub fn update_task(previoustask: String) -> Result<String, Box<dyn Error>> {
+    // update document
+    // validate
+    return Ok("".to_string());
 }
