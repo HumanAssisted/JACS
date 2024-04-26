@@ -1,3 +1,7 @@
+## 0.2.8
+
+
+
 ## 0.2.7
 
  - crud operations for agent, service, message, task - lacking tests
