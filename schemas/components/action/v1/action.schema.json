@@ -6,7 +6,8 @@
   "type": "object",
   "properties": {
     "name": {
-      "type": "string"
+      "type": "string",
+      "hai": true
     },
     "description": {
       "type": "string",
@@ -19,15 +20,25 @@
         "$ref": "../../tool/v1/tool.schema.json"
       }
     },
+    "completionAgreement": {
+      "description": "Signatures signfying an agreement between agents.",
+      "$ref": "../../components/agreement/v1/agreement.schema.json"
+    },
     "units": {
       "type": "array",
       "description": "units that can be modified",
       "items": {
         "$ref": "../../unit/v1/unit.schema.json"
       }
+    },
+    "completionAgreementRequired": {
+      "type": "boolean",
+      "description": "Do agents need to agree task is completed.",
+      "hai": true
     }
   },
   "required": [
-    "operation"
+    "name"
+    "description"
   ]
 }

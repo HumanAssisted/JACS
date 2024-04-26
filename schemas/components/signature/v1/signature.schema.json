@@ -7,16 +7,19 @@
   "properties": {
     "agentID": {
       "description": "The id of agent that produced signature",
+      "hai": true,
       "type": "string",
       "format": "uuid"
     },
     "agentVersion": {
       "description": " Version of the agent",
+      "hai": true,
       "type": "string",
       "format": "uuid"
     },
     "date": {
       "description": "Date ",
+      "hai": true,
       "format": "date-time",
       "type": "string"
     },

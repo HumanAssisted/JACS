@@ -19,7 +19,17 @@
         "type": "string",
         "format": "uuid"
       }
-    }
+    },
+    "question": {
+      "type": "string",
+      "description": "When prompting an agent, what are they agreeing to?",
+      "hai": true
+    },
+    "context": {
+      "type": "string",
+      "description": "Context for the question?",
+      "hai": true
+    },
   },
   "additionalProperties": false,
   "required": [
