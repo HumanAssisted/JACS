@@ -1,6 +1,6 @@
 ## 0.2.6
  - doc include image
- -
+ - crud operations for agent, service, message, task
 
 ## 0.2.5
  - filesystem security module
