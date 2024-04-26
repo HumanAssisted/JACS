@@ -22,7 +22,7 @@
       "description": "body , subject etc",
       "type": "object"
     },
-    "originalContent": {
+    "attachments": {
       "type": "array",
       "desciption": "list of files  ",
       "items": {
@@ -32,8 +32,7 @@
   },
   "required": [
     "id",
-    "name",
-    "resourcetype",
-    "description"
+    "datetime",
+    "content",
   ]
 }

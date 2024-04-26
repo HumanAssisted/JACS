@@ -5,6 +5,18 @@
   "description": "How to contact over human channels.",
   "type": "object",
   "properties": {
+    "firstName": {
+      "type": "string",
+      "description": "First name of Person"
+    },
+    "lastName": {
+      "type": "string",
+      "description": "Last name of person"
+    },
+    "addressName": {
+      "type": "string",
+      "description": "Location name of address"
+    },
     "phone": {
       "type": "string",
       "description": "Contact phone number."

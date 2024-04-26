@@ -9,6 +9,7 @@ use serde_json::Value;
 use url::Url;
 use uuid::Uuid;
 
+pub mod agent_crud;
 pub mod signature;
 pub mod utils;
 
