@@ -1,6 +1,7 @@
 ## 0.2.6
  - doc include image
- - crud operations for agent, service, message, task
+ - crud operations for agent, service, message, task - lacking tests
+ - more complete agent and cli task creation
 
 ## 0.2.5
  - filesystem security module
