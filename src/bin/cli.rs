@@ -6,6 +6,7 @@ use jacs::agent::document::Document;
 use jacs::agent::Agent;
 use jacs::config::{set_env_vars, Config};
 use jacs::create_minimal_blank_agent;
+use jacs::create_task;
 use jacs::crypt::KeyManager;
 use jacs::get_empty_agent;
 use jacs::load_agent;
@@ -88,9 +89,45 @@ fn main() {
                     ),
                 ),
         )
+
+        .subcommand(
+            Command::new("task")
+            .about(" work with a JACS  Agent task")
+            .subcommand(
+                Command::new("create")
+                    .about(" create a new JACS Task file, either by embedding or parsing a document")
+                    .arg(
+                        Arg::new("agent-file")
+                            .short('a')
+                            .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
+                            .value_parser(value_parser!(String)),
+                    )
+                    .arg(
+                        Arg::new("filename")
+                            .short('f')
+                            .help("Path to input file. Must be JSON")
+                            .value_parser(value_parser!(String)),
+                    )
+                    .arg(
+                        Arg::new("name")
+                            .short('n')
+                            .required(true)
+                            .help("name of task")
+                            .value_parser(value_parser!(String)),
+                    )
+                    .arg(
+                        Arg::new("description")
+                            .short('d')
+                            .required(true)
+                            .help("description of task")
+                            .value_parser(value_parser!(String)),
+                    )
+                )
+            )
+
         .subcommand(
             Command::new("document")
-                .about(" work with a JACS document")
+                .about(" work with a general JACS document")
                 .subcommand(
                     Command::new("create")
                         .about(" create a new JACS file, either by embedding or parsing a document")
@@ -586,6 +623,23 @@ fn main() {
             }
             _ => println!("please enter subcommand see jacs agent --help"),
         },
+
+        Some(("task", task_matches)) => match task_matches.subcommand() {
+            Some(("create", create_matches)) => {
+                let agentfile = create_matches.get_one::<String>("agent-file");
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let name = create_matches.get_one::<String>("name").expect("REASON");
+                let description = create_matches
+                    .get_one::<String>("description")
+                    .expect("REASON");
+                println!(
+                    "{}",
+                    create_task(&mut agent, name.to_string(), description.to_string()).unwrap()
+                );
+            }
+            _ => println!("please enter subcommand see jacs task --help"),
+        },
+
         Some(("document", document_matches)) => match document_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");

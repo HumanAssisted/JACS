@@ -1,3 +1,4 @@
+
 use crate::schema::utils::ValueExt;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use chrono::prelude::*;
@@ -39,10 +40,10 @@ impl Error for ValidationError {}
 #[derive(Debug)]
 pub struct Schema {
     /// used to validate any JACS document
-    headerschema: JSONSchema,
+    pub headerschema: JSONSchema,
     headerversion: String,
     /// used to validate any JACS agent
-    agentschema: JSONSchema,
+    pub agentschema: JSONSchema,
     signatureschema: JSONSchema,
     jacsconfigschema: JSONSchema,
     agreementschema: JSONSchema,
@@ -51,7 +52,7 @@ pub struct Schema {
     actionschema: JSONSchema,
     toolschema: JSONSchema,
     contactschema: JSONSchema,
-    taskschema: JSONSchema,
+    pub taskschema: JSONSchema,
     messageschema: JSONSchema,
 }
 

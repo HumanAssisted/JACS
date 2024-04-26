@@ -91,7 +91,7 @@ pub type SecretPrivateKey = Secret<PrivateKey>;
 #[derive(Debug)]
 pub struct Agent {
     /// the JSONSchema used
-    schema: Schema,
+    pub schema: Schema,
     /// the agent JSON Struct
     /// TODO make this threadsafe
     value: Option<Value>,

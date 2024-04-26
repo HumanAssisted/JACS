@@ -185,8 +185,9 @@ pub fn document_add_agreement(
     }
 }
 
+// todo make private again
 /// helper function
-fn save_document(
+pub fn save_document(
     agent: &mut Agent,
     docresult: Result<JACSDocument, Box<dyn Error>>,
     custom_schema: Option<String>,

@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 
-fn create_minimal_action(
+pub fn create_minimal_action(
     name: &str,
     description: &str,
     tools: Option<Vec<Value>>,

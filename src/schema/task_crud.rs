@@ -22,7 +22,7 @@ use uuid::Uuid;
 /// Returns an error if:
 /// - `customer` is empty.
 /// - `state` is not one of the allowed values.
-fn create_minimal_task(
+pub fn create_minimal_task(
     actions: Option<Vec<Value>>,
     messages: Option<Vec<Value>>,
     start_date: Option<DateTime<Utc>>,
