@@ -33,6 +33,6 @@
   "required": [
     "id",
     "datetime",
-    "content",
+    "content"
   ]
 }

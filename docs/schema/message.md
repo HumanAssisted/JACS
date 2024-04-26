@@ -16,13 +16,13 @@ A signed, immutable message from a user
 
 # Message Properties
 
-| Property                            | Type          | Required | Nullable       | Defined by                                                                                                                                      |
-| :---------------------------------- | :------------ | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                           | `string`      | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                           |
-| [signature](#signature)             | Not specified | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/signature")             |
-| [datetime](#datetime)               | `string`      | Optional | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")               |
-| [content](#content)                 | `object`      | Optional | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")                 |
-| [originalContent](#originalcontent) | `array`       | Optional | cannot be null | [Message](message-properties-originalcontent.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/originalContent") |
+| Property                    | Type          | Required | Nullable       | Defined by                                                                                                                              |
+| :-------------------------- | :------------ | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                   | `string`      | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                   |
+| [signature](#signature)     | Not specified | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/signature")     |
+| [datetime](#datetime)       | `string`      | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")       |
+| [content](#content)         | `object`      | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")         |
+| [attachments](#attachments) | `array`       | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments") |
 
 ## id
 
@@ -70,7 +70,7 @@ Date of message, unverified
 
 `datetime`
 
-*   is optional
+*   is required
 
 *   Type: `string`
 
@@ -92,7 +92,7 @@ body , subject etc
 
 `content`
 
-*   is optional
+*   is required
 
 *   Type: `object` ([Details](message-properties-content.md))
 
@@ -104,11 +104,11 @@ body , subject etc
 
 `object` ([Details](message-properties-content.md))
 
-## originalContent
+## attachments
 
 
 
-`originalContent`
+`attachments`
 
 *   is optional
 
@@ -116,8 +116,8 @@ body , subject etc
 
 *   cannot be null
 
-*   defined in: [Message](message-properties-originalcontent.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/originalContent")
+*   defined in: [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments")
 
-### originalContent Type
+### attachments Type
 
 `object[]` ([File](files.md))

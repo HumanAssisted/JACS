@@ -60,7 +60,7 @@
 
 *   [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
 
-*   [Untitled array in Message](./message-properties-originalcontent.md) – `https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/originalContent`
+*   [Untitled array in Message](./message-properties-attachments.md) – `https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments`
 
 *   [Untitled array in Service](./service-properties-tools.md "URLs and function definitions of of tools that can be called") – `https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools`
 

@@ -18,6 +18,9 @@ How to contact over human channels.
 
 | Property                          | Type      | Required | Nullable       | Defined by                                                                                                                         |
 | :-------------------------------- | :-------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| [firstName](#firstname)           | `string`  | Optional | cannot be null | [Contact](contact-properties-firstname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/firstName")           |
+| [lastName](#lastname)             | `string`  | Optional | cannot be null | [Contact](contact-properties-lastname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/lastName")             |
+| [addressName](#addressname)       | `string`  | Optional | cannot be null | [Contact](contact-properties-addressname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/addressName")       |
 | [phone](#phone)                   | `string`  | Optional | cannot be null | [Contact](contact-properties-phone.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/phone")                   |
 | [email](#email)                   | `string`  | Optional | cannot be null | [Contact](contact-properties-email.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/email")                   |
 | [mailName](#mailname)             | `string`  | Optional | cannot be null | [Contact](contact-properties-mailname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailName")             |
@@ -27,6 +30,60 @@ How to contact over human channels.
 | [mailZip](#mailzip)               | `string`  | Optional | cannot be null | [Contact](contact-properties-mailzip.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailZip")               |
 | [mailCountry](#mailcountry)       | `string`  | Optional | cannot be null | [Contact](contact-properties-mailcountry.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailCountry")       |
 | [isPrimary](#isprimary)           | `boolean` | Optional | cannot be null | [Contact](contact-properties-isprimary.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/isPrimary")           |
+
+## firstName
+
+First name of Person
+
+`firstName`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Contact](contact-properties-firstname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/firstName")
+
+### firstName Type
+
+`string`
+
+## lastName
+
+Last name of person
+
+`lastName`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Contact](contact-properties-lastname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/lastName")
+
+### lastName Type
+
+`string`
+
+## addressName
+
+Location name of address
+
+`addressName`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Contact](contact-properties-addressname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/addressName")
+
+### addressName Type
+
+`string`
 
 ## phone
 
