@@ -18,7 +18,8 @@
       "items": {
         "type": "string",
         "format": "uuid"
-      }
+      },
+      "hai": true
     },
     "question": {
       "type": "string",
@@ -29,7 +30,7 @@
       "type": "string",
       "description": "Context for the question?",
       "hai": true
-    },
+    }
   },
   "additionalProperties": false,
   "required": [
