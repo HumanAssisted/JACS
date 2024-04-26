@@ -1,7 +1,11 @@
-## 0.2.6
- - doc include image
+## 0.2.7
+
  - crud operations for agent, service, message, task - lacking tests
  - more complete agent and cli task creation
+
+## 0.2.6
+ - doc include image
+
 
 ## 0.2.5
  - filesystem security module
