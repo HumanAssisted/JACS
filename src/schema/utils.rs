@@ -40,6 +40,7 @@ impl fmt::Display for SchemaResolverErrorWrapper {
 }
 impl Error for SchemaResolverErrorWrapper {}
 
+// todo move
 pub trait ValueExt {
     fn get_str(&self, field: &str) -> Option<String>;
     fn get_i64(&self, key: &str) -> Option<i64>;
@@ -77,7 +78,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
         _original_reference: &str,
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let path = url.path();
-
+        let relative_path = path.trim_start_matches("https://hai.ai/");
         // Check if the path starts with a slash (root-relative)
         if path.starts_with('/') {
             // Remove the leading slash and use the remaining path as the key
@@ -90,8 +91,10 @@ impl SchemaResolver for EmbeddedSchemaResolver {
     }
 }
 
+// todo handle case for url retrieval
 fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolverError> {
-    let schema_json = DEFAULT_SCHEMA_STRINGS.get(path).ok_or_else(|| {
+    let relative_path = path.trim_start_matches("https://hai.ai/");
+    let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
         SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
             "Schema not found: {}",
             url.clone()

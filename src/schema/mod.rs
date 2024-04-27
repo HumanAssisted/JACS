@@ -86,7 +86,7 @@ impl Schema {
         let base_url = Url::parse("https://hai.ai")?;
         let url = base_url.join(schema_url)?;
         let schema_value_result = schema_resolver.resolve(&Value::Null, &url, schema_url);
-        let mut schema_value: Arc<Value>;
+        let schema_value: Arc<Value>;
         match schema_value_result {
             Err(_schema_value_result) => {
                 let default_url =
@@ -96,7 +96,9 @@ impl Schema {
             _ => schema_value = schema_value_result?,
         }
 
+        println!("\n\nschema_value {}\n {} \n\n", url, schema_value);
         let mut processed_fields = Vec::new();
+        let exclude_fields: Vec<String> = vec!["$schema".to_string(), "$id".to_string()];
 
         match schema_value.as_ref() {
             Value::Object(schema_map) => {
@@ -161,7 +163,9 @@ impl Schema {
         // Extract fields from the document that are not present in the schema
         if let Some(document_object) = document.as_object() {
             for (field_name, field_value) in document_object {
-                if !processed_fields.contains(field_name) {
+                if !processed_fields.contains(field_name)
+                    && (!exclude_fields.contains(field_name) || level == "base")
+                {
                     result[field_name] = field_value.clone();
                 }
             }
