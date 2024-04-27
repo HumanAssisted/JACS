@@ -43,7 +43,7 @@ pub const SHA256_FIELDNAME: &str = "jacsSha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const AGENT_REGISTRATION_SIGNATURE_FIELDNAME: &str = "jacsRegistration";
 pub const AGENT_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
-pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsAgentSignature";
+pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";

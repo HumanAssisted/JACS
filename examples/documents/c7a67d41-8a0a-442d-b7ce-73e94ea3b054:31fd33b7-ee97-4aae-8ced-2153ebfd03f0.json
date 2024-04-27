@@ -1,0 +1,42 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "description": "We should embed an xml document here",
+  "jacsFiles": [
+    {
+      "embed": false,
+      "mimetype": "text/xml",
+      "path": "examples/raw/plants.xml",
+      "sha256": "8615f88410eeafb38e2c386ed9dbae8fadf3d4d0e50a8dc43c4287246f104311"
+    },
+    {
+      "embed": false,
+      "mimetype": "text/xml",
+      "path": "examples/raw/breakfast.xml",
+      "sha256": "71ae785d2f68d8b818da97171013033a5bfc632b6cad7d286e8e1907e023d0dd"
+    }
+  ],
+  "jacsId": "c7a67d41-8a0a-442d-b7ce-73e94ea3b054",
+  "jacsOriginalDate": "2024-04-27T10:55:49.831658+00:00",
+  "jacsOriginalVersion": "31fd33b7-ee97-4aae-8ced-2153ebfd03f0",
+  "jacsSha256": "d18d751d823e6897b04dc28e5d3293f9d47d340771a810e4dcd6c04cf9b13dd2",
+  "jacsSignature": {
+    "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+    "agentVersion": "12ccba24-8997-47b1-9e6f-d699d7ab0e41",
+    "date": "2024-04-27T10:55:50.248140+00:00",
+    "fields": [
+      "$schema",
+      "description",
+      "jacsFiles",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "JE7etjYH5PoKB++nUWHg0cg7acKtp6p4ZiMmDeRcVZfB4+KWw+CYYXMnKqgrY/gcKfDtK0AuIi9sliudFQCpPICy1ho3mVBXofiZY1nq3aeDyhKija+j1YAhXPJQzfvNECgNkFNjwFDfnZJSYqzQQRUHHqPAkamhrj1jLwvidAkrW1cZkrnkK3LUTcjaUqbAzUeRX1VdEJgNBd7OV74S0O/MSygz00h46ToJz79Eyb712Ya5zju2iXhGNJkuxb411iM723x8HZ/BK6oJ8Ygw+f7xuhLT1HwuXYpmNeE+O6xCQB3sMFPJcu8Z5ZZ2kJVTsw2d9QkEWou1/mA6u+U9NLm5yY9sYhuB5MLcwbbvzEPjeMG1clVKZrOtdWS8+cLfRYon0DpZQCUIlUr44Dfq8I4reFRq+crLsVEb07XKsceJ2FLlAb2FU/jnhMbofwrhjfe1Ea9nntNB3F4gg9yE7c5PFBwrKThcnwOw3a7y+F1RmZbvXt1QhNREI8LGI+9qLvS313ueo2XP89Ak/dyFi5iFKxo5sLrTRnuZ5XGzJpMUph1NFuwvqOpnVUZqSsiQVEyW+35ZCONmtOlgJrcjsR7ScCSTQ2qLybZG5h7bAts6gTlvfdmzZlI1wnau8zK2RnkwTolN2cLuH9wEX0o0HLdt3+jwQulQtYCifoTF2oo=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsVersion": "31fd33b7-ee97-4aae-8ced-2153ebfd03f0",
+  "jacsVersionDate": "2024-04-27T10:55:49.831658+00:00"
+}

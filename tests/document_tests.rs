@@ -3,11 +3,14 @@ use jacs::agent::document::Document;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 mod utils;
+use utils::DOCTESTFILE;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 static SCHEMA: &str = "examples/raw/custom.schema.json";
+
+static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
 //color_eyre::install().unwrap();
 #[test]
 fn test_load_custom_schema_and_custom_document() {
@@ -15,8 +18,7 @@ fn test_load_custom_schema_and_custom_document() {
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
-    let document_string =
-        load_local_document(&"examples/documents/9e647c2a-3d4b-422a-8c26-722a3e5d31ee:7a2056f0-b262-4102-ba38-7b45cad709ce.json".to_string()).unwrap();
+    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     println!("loaded valid {}", document_key);
@@ -56,7 +58,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
 }
 
 #[test]
-// #[ignore]
+#[ignore]
 fn test_create() {
     // RUST_BACKTRACE=1 cargo test  --test document_tests test_create  -- --nocapture
     utils::generate_new_docs();
@@ -121,13 +123,10 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
     agent.load_custom_schemas(&schemas);
-    let document_string =
-        load_local_document(&"examples/documents/9e647c2a-3d4b-422a-8c26-722a3e5d31ee:7a2056f0-b262-4102-ba38-7b45cad709ce.json".to_string()).unwrap();
+    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
-    let modified_document_string =
-        load_local_document(&"examples/documents/MODIFIED_9e647c2a-3d4b-422a-8c26-722a3e5d31ee:7a2056f0-b262-4102-ba38-7b45cad709ce.json".to_string())
-            .unwrap();
+    let modified_document_string = load_local_document(&TESTFILE_MODIFIED.to_string()).unwrap();
 
     let new_document = agent
         .update_document(&document_key, &modified_document_string, None, None)

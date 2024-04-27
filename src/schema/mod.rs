@@ -84,18 +84,19 @@ impl Schema {
         // Load the schema using the EmbeddedSchemaResolver
         let schema_resolver = EmbeddedSchemaResolver::new();
         let base_url = Url::parse("https://hai.ai")?;
-        // let url = Url::parse(schema_url)?;
         let url = base_url.join(schema_url)?;
         let schema_value_result = schema_resolver.resolve(&Value::Null, &url, schema_url);
         let mut schema_value: Arc<Value>;
         match schema_value_result {
-            Err(schema_value_result) => {
+            Err(_schema_value_result) => {
                 let default_url =
                     Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")?;
                 schema_value = schema_resolver.resolve(&Value::Null, &default_url, schema_url)?;
             }
             _ => schema_value = schema_value_result?,
         }
+
+        let mut processed_fields = Vec::new();
 
         match schema_value.as_ref() {
             Value::Object(schema_map) => {
@@ -106,37 +107,35 @@ impl Schema {
                                 .get("hai")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
-                            if let Some(tfield_value) = document.get(field_name) {
-                                println!("field_name {} {}", field_name, tfield_value);
-                            }
-                            if !field_schema.get("$ref").is_some() {
-                                match level {
-                                    "agent" => {
-                                        if hai_level == "agent" {
-                                            if let Some(field_value) = document.get(field_name) {
-                                                result[field_name] = field_value.clone();
-                                            }
-                                        }
-                                    }
-                                    "meta" => {
-                                        if hai_level == "agent" || hai_level == "meta" {
-                                            if let Some(field_value) = document.get(field_name) {
-                                                result[field_name] = field_value.clone();
-                                            }
-                                        }
-                                    }
-                                    "base" => {
-                                        if let Some(field_value) = document.get(field_name) {
-                                            result[field_name] = field_value.clone();
-                                        }
-                                    }
-                                    _ => {
+
+                            match level {
+                                "agent" => {
+                                    if hai_level == "agent" {
                                         if let Some(field_value) = document.get(field_name) {
                                             result[field_name] = field_value.clone();
                                         }
                                     }
                                 }
+                                "meta" => {
+                                    if hai_level == "agent" || hai_level == "meta" {
+                                        if let Some(field_value) = document.get(field_name) {
+                                            result[field_name] = field_value.clone();
+                                        }
+                                    }
+                                }
+                                "base" => {
+                                    if let Some(field_value) = document.get(field_name) {
+                                        result[field_name] = field_value.clone();
+                                    }
+                                }
+                                _ => {
+                                    if let Some(field_value) = document.get(field_name) {
+                                        result[field_name] = field_value.clone();
+                                    }
+                                }
                             }
+
+                            processed_fields.push(field_name.clone());
 
                             if let Some(ref_url) = field_schema.get("$ref") {
                                 if let Some(ref_schema_url) = ref_url.as_str() {
@@ -157,6 +156,15 @@ impl Schema {
                 }
             }
             _ => return Err("Invalid schema format".into()),
+        }
+
+        // Extract fields from the document that are not present in the schema
+        if let Some(document_object) = document.as_object() {
+            for (field_name, field_value) in document_object {
+                if !processed_fields.contains(field_name) {
+                    result[field_name] = field_value.clone();
+                }
+            }
         }
 
         Ok(result)

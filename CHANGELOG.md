@@ -1,7 +1,7 @@
 ## 0.2.8
 
  - add question and context to agreement, useful to UIs and prompting
- - adding "hai": true, fields to denote which fields are useful for agents
+ - adding "hai", fields to schema denote which fields are useful for agents "base", "meta", "agent"
 
 ## 0.2.7
 
