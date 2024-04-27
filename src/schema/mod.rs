@@ -1,6 +1,7 @@
 use crate::schema::utils::ValueExt;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use chrono::prelude::*;
+use jsonschema::SchemaResolver;
 use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::json;
@@ -57,16 +58,16 @@ pub struct Schema {
 }
 
 impl Schema {
+    /// we extract only fields that the schema identitifies
     pub fn extract_hai_fields(document: &Value, schema_url: &str) -> Result<Value, Box<dyn Error>> {
         let mut result = json!({});
 
-        // Load the schema from the DEFAULT_SCHEMA_STRINGS map
-        let schema_string = DEFAULT_SCHEMA_STRINGS
-            .get(schema_url)
-            .ok_or_else(|| format!("Schema not found: {}", schema_url))?;
-        let schema: Value = serde_json::from_str(schema_string)?;
+        // Load the schema using the EmbeddedSchemaResolver
+        let schema_resolver = EmbeddedSchemaResolver::new();
+        let url = Url::parse(schema_url)?;
+        let schema_value = schema_resolver.resolve(&Value::Null, &url, schema_url)?;
 
-        match schema {
+        match schema_value.as_ref() {
             Value::Object(schema_map) => {
                 if let Some(properties) = schema_map.get("properties") {
                     if let Value::Object(properties_map) = properties {
