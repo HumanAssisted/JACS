@@ -7,22 +7,27 @@
   "properties": {
     "mimetype": {
       "type": "string",
+      "hai": "meta",
       "description": "Type of file. e.g. https://www.iana.org/assignments/media-types/application/json"
     },
     "path": {
       "type": "string",
+      "hai": "agent",
       "description": "where can the file be found on the filesystem. For now no online. ipfs, https, etc. todo \"format\": \"uri\" "
     },
     "contents": {
       "type": "string",
+      "hai": "meta",
       "description": "base64 encoded contents, possibly compressed"
     },
     "embed": {
       "type": "boolean",
+      "hai": "base",
       "description": "should JACS embed the file contents?"
     },
     "sha256": {
       "type": "string",
+      "hai": "base",
       "description": "content checksum to verify contents on download."
     }
   },

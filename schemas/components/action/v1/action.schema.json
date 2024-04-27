@@ -7,12 +7,12 @@
   "properties": {
     "name": {
       "type": "string",
-      "hai": true
+       "hai": "agent",
     },
     "description": {
       "type": "string",
       "description": "type of change that can happen",
-      "hai": true
+      "hai": "agent",
     },
     "tools": {
       "type": "array",
@@ -35,7 +35,7 @@
     "completionAgreementRequired": {
       "type": "boolean",
       "description": "Do agents need to agree task is completed.",
-      "hai": true
+       "hai": "meta",
     }
   },
   "required": [
