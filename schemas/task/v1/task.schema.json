@@ -12,10 +12,12 @@
       "properties": {
         "jacsTaskName": {
           "description": "Name of the agent, unique per registrar",
+          "hai": true,
           "type": "string"
         },
         "jacsTaskSuccess": {
           "description": "Description of success",
+          "hai": true,
           "type": "string"
         },
         "jacsTaskCustomer": {
@@ -29,6 +31,7 @@
         "jacsTaskState": {
           "description": "Is the document locked from edits",
           "type": "string",
+          "hai": true,
           "enum": [
             "creating",
             "rfp",
@@ -42,12 +45,14 @@
         "jacsTaskStartDate": {
           "description": "When the lock expires",
           "format": "date-time",
-          "type": "string"
+          "type": "string",
+          "hai": true
         },
         "jacsTaskCompleteDate": {
           "description": "When the lock expires",
           "format": "date-time",
-          "type": "string"
+          "type": "string",
+          "hai": true
         },
         "jacsTaskActionsDesired": {
           "type": "array",
@@ -67,6 +72,7 @@
         "jacsTaskSubTaskOf": {
           "type": "array",
           "desciption": "list of task ids this may be a subtask of.",
+          "hai": true,
           "items": {
             "type": "string",
             "description": "taskid",

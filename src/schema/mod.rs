@@ -5,6 +5,7 @@ use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::json;
 use serde_json::Value;
+use std::collections::HashMap;
 
 use url::Url;
 use uuid::Uuid;
@@ -56,6 +57,46 @@ pub struct Schema {
 }
 
 impl Schema {
+    pub fn extract_hai_fields(document: &Value, schema_url: &str) -> Result<Value, Box<dyn Error>> {
+        let mut result = json!({});
+
+        // Load the schema from the DEFAULT_SCHEMA_STRINGS map
+        let schema_string = DEFAULT_SCHEMA_STRINGS
+            .get(schema_url)
+            .ok_or_else(|| format!("Schema not found: {}", schema_url))?;
+        let schema: Value = serde_json::from_str(schema_string)?;
+
+        match schema {
+            Value::Object(schema_map) => {
+                if let Some(properties) = schema_map.get("properties") {
+                    if let Value::Object(properties_map) = properties {
+                        for (field_name, field_schema) in properties_map {
+                            if let Some(hai) = field_schema.get("hai") {
+                                if hai.as_bool().unwrap_or(false) {
+                                    if let Some(field_value) = document.get(field_name) {
+                                        result[field_name] = field_value.clone();
+                                    }
+                                }
+                            } else if let Some(ref_url) = field_schema.get("$ref") {
+                                if let Some(ref_schema_url) = ref_url.as_str() {
+                                    if let Some(field_value) = document.get(field_name) {
+                                        let child_result =
+                                            Self::extract_hai_fields(field_value, ref_schema_url)?;
+                                        if !child_result.is_null() {
+                                            result[field_name] = child_result;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => return Err("Invalid schema format".into()),
+        }
+
+        Ok(result)
+    }
     pub fn new(
         agentversion: &String,
         headerversion: &String,

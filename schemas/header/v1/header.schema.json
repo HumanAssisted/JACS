@@ -8,17 +8,20 @@
     "jacsId": {
       "description": "uuid v4 string",
       "type": "string",
-      "format": "uuid"
+      "format": "uuid",
+      "hai": true
     },
     "jacsVersion": {
       "description": "Version id of the object. uuid v4 string ",
       "type": "string",
-      "format": "uuid"
+      "format": "uuid",
+      "hai": true
     },
     "jacsVersionDate": {
       "description": "Date ",
       "format": "date-time",
-      "type": "string"
+      "type": "string",
+      "hai": true
     },
     "jacsSignature": {
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
@@ -44,12 +47,14 @@
     "jacsOriginalVersion": {
       "description": "Original Version id of the object.",
       "type": "string",
-      "format": "uuid"
+      "format": "uuid",
+      "hai": true
     },
     "jacsOriginalDate": {
       "description": "Original creation date of the document.",
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "hai": true
     },
     "jacsSha256": {
       "description": "Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature. Not immediatly required, but eventually required.",
@@ -58,6 +63,7 @@
     "jacsFiles": {
       "description": "A set of files included with the jacs document",
       "type": "array",
+      "hai": true,
       "items": {
         "$ref": "../../components/files/v1/files.schema.json"
       }
