@@ -12,9 +12,12 @@ Semantic versioning would break if the document forks because multiple agents wi
 
 Every JACS doc has a header. These are created automatically.
 
-You only need to use the agents and header to record and verify permissions on any type of document
+You only need to use the agents and header to record and verify permissions on any type of document. Here are the basic types.
 
  - [Header](https://github.com/HumanAssisted/JACS/tree/main/docs/schema/header.md) -  the signature along with permissions
  - [Agents](https://github.com/HumanAssisted/JACS/tree/main/docs/schema/agent.md) - a type of resource that can take action
+ - [Tasks](https://github.com/HumanAssisted/JACS/tree/main/docs/schema/task.md) -a set of actions and a desired outcome as well as state management, can reference other tasks
  - [Signatures](https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/signature.md) - cryptographically signed signature of the version of the document
  - [Files](https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/files.md) - documents you can sign and "attach"
+
+

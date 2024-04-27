@@ -179,10 +179,11 @@
 <p>Semantic versioning would break if the document forks because multiple agents will work on a single document. So each id/version is a UUID, and the previous version is stored so a trace can be constructed. (In itself, it's not a blockchain such that each version can be verified in the context of the previous version).</p>
 <h2 id="schemas-basic-types"><a class="header" href="#schemas-basic-types">Schemas: basic types</a></h2>
 <p>Every JACS doc has a header. These are created automatically.</p>
-<p>You only need to use the agents and header to record and verify permissions on any type of document</p>
+<p>You only need to use the agents and header to record and verify permissions on any type of document. Here are the basic types.</p>
 <ul>
 <li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/header.md">Header</a> -  the signature along with permissions</li>
 <li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/agent.md">Agents</a> - a type of resource that can take action</li>
+<li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/task.md">Tasks</a> -a set of actions and a desired outcome as well as state management, can reference other tasks</li>
 <li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/signature.md">Signatures</a> - cryptographically signed signature of the version of the document</li>
 <li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/files.md">Files</a> - documents you can sign and "attach"</li>
 </ul>

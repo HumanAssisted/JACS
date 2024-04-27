@@ -6,7 +6,7 @@ use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::json;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::sync::Arc;
 
 use url::Url;
 use uuid::Uuid;
@@ -58,14 +58,39 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// we extract only fields that the schema identitifies
-    pub fn extract_hai_fields(document: &Value, schema_url: &str) -> Result<Value, Box<dyn Error>> {
+    ///  we extract only fields that the schema identitifies has useful to humans
+    /// logs store the complete valid file, but for databases or applications we may want
+    /// only certain fields
+    /// if fieldnames are tagged with "hai" in the schema, they are excluded from here
+    pub fn extract_hai_fields(&self, document: &Value) -> Result<Value, Box<dyn Error>> {
+        let schema_url = document["$schema"]
+            .as_str()
+            .unwrap_or("schemas/header/v1/header.schema.json");
+        return self._extract_hai_fields(document, &schema_url);
+    }
+
+    fn _extract_hai_fields(
+        &self,
+        document: &Value,
+        schema_url: &str,
+    ) -> Result<Value, Box<dyn Error>> {
         let mut result = json!({});
 
         // Load the schema using the EmbeddedSchemaResolver
         let schema_resolver = EmbeddedSchemaResolver::new();
-        let url = Url::parse(schema_url)?;
-        let schema_value = schema_resolver.resolve(&Value::Null, &url, schema_url)?;
+        let base_url = Url::parse("https://hai.ai")?;
+        // let url = Url::parse(schema_url)?;
+        let url = base_url.join(schema_url)?;
+        let schema_value_result = schema_resolver.resolve(&Value::Null, &url, schema_url);
+        let mut schema_value: Arc<Value>;
+        match schema_value_result {
+            Err(schema_value_result) => {
+                let default_url =
+                    Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")?;
+                schema_value = schema_resolver.resolve(&Value::Null, &default_url, schema_url)?;
+            }
+            _ => schema_value = schema_value_result?,
+        }
 
         match schema_value.as_ref() {
             Value::Object(schema_map) => {
@@ -82,7 +107,7 @@ impl Schema {
                                 if let Some(ref_schema_url) = ref_url.as_str() {
                                     if let Some(field_value) = document.get(field_name) {
                                         let child_result =
-                                            Self::extract_hai_fields(field_value, ref_schema_url)?;
+                                            self._extract_hai_fields(field_value, ref_schema_url)?;
                                         if !child_result.is_null() {
                                             result[field_name] = child_result;
                                         }
