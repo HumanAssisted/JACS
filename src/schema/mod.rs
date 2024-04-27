@@ -62,17 +62,22 @@ impl Schema {
     /// logs store the complete valid file, but for databases or applications we may want
     /// only certain fields
     /// if fieldnames are tagged with "hai" in the schema, they are excluded from here
-    pub fn extract_hai_fields(&self, document: &Value) -> Result<Value, Box<dyn Error>> {
+    pub fn extract_hai_fields(
+        &self,
+        document: &Value,
+        level: &str,
+    ) -> Result<Value, Box<dyn Error>> {
         let schema_url = document["$schema"]
             .as_str()
             .unwrap_or("schemas/header/v1/header.schema.json");
-        return self._extract_hai_fields(document, &schema_url);
+        return self._extract_hai_fields(document, &schema_url, level);
     }
 
     fn _extract_hai_fields(
         &self,
         document: &Value,
         schema_url: &str,
+        level: &str,
     ) -> Result<Value, Box<dyn Error>> {
         let mut result = json!({});
 
@@ -97,17 +102,50 @@ impl Schema {
                 if let Some(properties) = schema_map.get("properties") {
                     if let Value::Object(properties_map) = properties {
                         for (field_name, field_schema) in properties_map {
-                            if let Some(hai) = field_schema.get("hai") {
-                                if hai.as_bool().unwrap_or(false) {
-                                    if let Some(field_value) = document.get(field_name) {
-                                        result[field_name] = field_value.clone();
+                            let hai_level = field_schema
+                                .get("hai")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if let Some(tfield_value) = document.get(field_name) {
+                                println!("field_name {} {}", field_name, tfield_value);
+                            }
+                            if !field_schema.get("$ref").is_some() {
+                                match level {
+                                    "agent" => {
+                                        if hai_level == "agent" {
+                                            if let Some(field_value) = document.get(field_name) {
+                                                result[field_name] = field_value.clone();
+                                            }
+                                        }
+                                    }
+                                    "meta" => {
+                                        if hai_level == "agent" || hai_level == "meta" {
+                                            if let Some(field_value) = document.get(field_name) {
+                                                result[field_name] = field_value.clone();
+                                            }
+                                        }
+                                    }
+                                    "base" => {
+                                        if let Some(field_value) = document.get(field_name) {
+                                            result[field_name] = field_value.clone();
+                                        }
+                                    }
+                                    _ => {
+                                        if let Some(field_value) = document.get(field_name) {
+                                            result[field_name] = field_value.clone();
+                                        }
                                     }
                                 }
-                            } else if let Some(ref_url) = field_schema.get("$ref") {
+                            }
+
+                            if let Some(ref_url) = field_schema.get("$ref") {
                                 if let Some(ref_schema_url) = ref_url.as_str() {
                                     if let Some(field_value) = document.get(field_name) {
-                                        let child_result =
-                                            self._extract_hai_fields(field_value, ref_schema_url)?;
+                                        let child_result = self._extract_hai_fields(
+                                            field_value,
+                                            ref_schema_url,
+                                            level,
+                                        )?;
                                         if !child_result.is_null() {
                                             result[field_name] = child_result;
                                         }

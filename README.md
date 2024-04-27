@@ -1,6 +1,8 @@
 # JACS
 
-Welcome to JACS. JSON Agent Communication Standard. JACS documents enable more trusted data sharing between AI agents and Human UIs.
+Welcome to JACS, the source of truth document.
+
+JACS is JSON Agent Communication Standard. JACS documents enable more trusted data sharing between AI agents and Human UIs.
 
 ** NOTE: Current version 0.2.8 *ALPHA* .
 

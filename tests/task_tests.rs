@@ -27,7 +27,7 @@ fn test_hai_fields_custom_schema_and_custom_document() {
 
     let value = document_copy.getvalue();
     println!("found schema {}", value["$schema"]);
-    let extracted_fields_result = agent.schema.extract_hai_fields(&value);
+    let extracted_fields_result = agent.schema.extract_hai_fields(&value, "meta");
     match extracted_fields_result {
         Err(error) => {
             println!(" ERROR {}", error.to_string());
