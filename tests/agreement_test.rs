@@ -109,13 +109,13 @@ fn test_sign_agreement() {
     let borrowed_key2 = a2k.expose_secret();
     let key_vec2 = borrowed_key2.use_secret();
 
-    println!(
-        "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
-        String::from_utf8(agent.get_public_key().unwrap()).unwrap(),
-        String::from_utf8(agent_two.get_public_key().unwrap()).unwrap(),
-        String::from_utf8(key_vec).unwrap(),
-        String::from_utf8(key_vec2).unwrap()
-    );
+    // println!(
+    //     "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
+    //     String::from_utf8(agent.get_public_key().unwrap()).unwrap(),
+    //     String::from_utf8(agent_two.get_public_key().unwrap()).unwrap(),
+    //     String::from_utf8(key_vec).unwrap(),
+    //     String::from_utf8(key_vec2).unwrap()
+    // );
 
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));

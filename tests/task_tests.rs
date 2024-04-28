@@ -1,3 +1,6 @@
+use jacs::schema::action_crud::create_minimal_action;
+use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
+
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
 use jacs::agent::loaders::FileLoader;
@@ -9,6 +12,7 @@ use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 static SCHEMA: &str = "examples/raw/custom.schema.json";
+use chrono::{DateTime, Duration, Utc};
 
 #[test]
 fn test_hai_fields_custom_schema_and_custom_document() {
@@ -65,6 +69,39 @@ fn test_hai_fields_custom_schema_and_custom_document() {
             extracted_fields.to_string()
         ),
     }
+}
+
+#[test]
+fn test_create_task_with_actions() {
+    // cargo test   --test task_tests test_create_task_with_actions -- --nocapture
+    let mut agent = load_test_agent_one();
+    let mut agent_two = load_test_agent_two();
+    let mut actions: Vec<Value> = Vec::new();
+    let start_in_a_week = Utc::now() + Duration::weeks(1);
+    let action = create_minimal_action(
+        &"go to mars".to_string(),
+        &" how to go to mars".to_string(),
+        None,
+        None,
+    );
+    actions.push(action);
+    let mut task =
+        create_minimal_task(Some(actions), None, Some(start_in_a_week), None).expect("reason");
+    let action = create_minimal_action(
+        &"terraform mars".to_string(),
+        &" how to terraform mars".to_string(),
+        None,
+        None,
+    );
+    add_action_to_task(&mut task, action).expect("reason");
+    //create jacs task
+    let task_doc = agent
+        .create_document_and_load(&task.to_string(), None, None)
+        .unwrap();
+    let task_doc_key = task_doc.getkey();
+    // add agreement to completionAgreement
+
+    // sign completion argreement
 }
 
 fn get_field_count(value: &Value) -> usize {
