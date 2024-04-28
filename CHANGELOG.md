@@ -1,5 +1,7 @@
 ## 0.2.9
 
+- tests for task and actions creation
+- handle case of allOf in JSON schema when recursively retrieving "hai" print level
 
 ## 0.2.8
 
