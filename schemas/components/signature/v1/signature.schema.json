@@ -7,34 +7,41 @@
   "properties": {
     "agentID": {
       "description": "The id of agent that produced signature",
+      "hai": "agent",
       "type": "string",
       "format": "uuid"
     },
     "agentVersion": {
       "description": " Version of the agent",
+      "hai": "meta",
       "type": "string",
       "format": "uuid"
     },
     "date": {
       "description": "Date ",
+      "hai": "meta",
       "format": "date-time",
       "type": "string"
     },
     "signature": {
       "description": "The actual signature, made from the docid, ",
+      "hai": "base",
       "type": "string"
     },
     "publicKeyHash": {
       "description": "Hash of the public key to verify signature with.",
+      "hai": "meta",
       "type": "string"
     },
     "signingAlgorithm": {
       "description": "What signature algorithm was used",
+      "hai": "base",
       "type": "string"
     },
     "fields": {
       "type": "array",
       "description": "fields fields from document which were used to generate signature.",
+      "hai": "base",
       "items": {
         "type": "string"
       }

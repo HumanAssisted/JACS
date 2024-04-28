@@ -16,12 +16,14 @@ General actions definitions which can comprise a service. Distinct from function
 
 # Action Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                          |
-| :-------------------------- | :------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
-| [name](#name)               | `string` | Optional | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name")               |
-| [description](#description) | `string` | Optional | cannot be null | [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/description") |
-| [tools](#tools)             | `array`  | Optional | cannot be null | [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools")             |
-| [units](#units)             | `array`  | Optional | cannot be null | [Action](action-properties-units.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units")             |
+| Property                                                    | Type          | Required | Nullable       | Defined by                                                                                                                                                          |
+| :---------------------------------------------------------- | :------------ | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [name](#name)                                               | `string`      | Required | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name")                                               |
+| [description](#description)                                 | `string`      | Required | cannot be null | [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/description")                                 |
+| [tools](#tools)                                             | `array`       | Optional | cannot be null | [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools")                                             |
+| [completionAgreement](#completionagreement)                 | Not specified | Optional | cannot be null | [Action](action-properties-completionagreement.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/completionAgreement")                 |
+| [units](#units)                                             | `array`       | Optional | cannot be null | [Action](action-properties-units.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units")                                             |
+| [completionAgreementRequired](#completionagreementrequired) | `boolean`     | Optional | cannot be null | [Action](action-properties-completionagreementrequired.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/completionAgreementRequired") |
 
 ## name
 
@@ -29,7 +31,7 @@ General actions definitions which can comprise a service. Distinct from function
 
 `name`
 
-*   is optional
+*   is required
 
 *   Type: `string`
 
@@ -47,7 +49,7 @@ type of change that can happen
 
 `description`
 
-*   is optional
+*   is required
 
 *   Type: `string`
 
@@ -77,6 +79,24 @@ tools that can be utilized
 
 `object[][]` ([Details](tool-items.md))
 
+## completionAgreement
+
+Signatures signfying an agreement between agents.
+
+`completionAgreement`
+
+*   is optional
+
+*   Type: unknown
+
+*   cannot be null
+
+*   defined in: [Action](action-properties-completionagreement.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/completionAgreement")
+
+### completionAgreement Type
+
+unknown
+
 ## units
 
 units that can be modified
@@ -94,3 +114,21 @@ units that can be modified
 ### units Type
 
 `object[]` ([Unit](unit.md))
+
+## completionAgreementRequired
+
+Do agents need to agree task is completed.
+
+`completionAgreementRequired`
+
+*   is optional
+
+*   Type: `boolean`
+
+*   cannot be null
+
+*   defined in: [Action](action-properties-completionagreementrequired.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/completionAgreementRequired")
+
+### completionAgreementRequired Type
+
+`boolean`

@@ -1,3 +1,8 @@
+## 0.2.8
+
+ - add question and context to agreement, useful to UIs and prompting
+ - adding "hai", fields to schema denote which fields are useful for agents "base", "meta", "agent"
+
 ## 0.2.7
 
  - crud operations for agent, service, message, task - lacking tests

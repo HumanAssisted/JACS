@@ -12,4 +12,4 @@ A set of files included with the jacs document
 
 ## jacsFiles Type
 
-`object[]` ([File](files.md))
+`object[]` ([File](header-properties-jacsfiles-file.md))

@@ -6,11 +6,13 @@
   "type": "object",
   "properties": {
     "name": {
-      "type": "string"
+      "type": "string",
+      "hai": "agent"
     },
     "description": {
       "type": "string",
-      "description": "type of change that can happen"
+      "description": "type of change that can happen",
+      "hai": "agent"
     },
     "tools": {
       "type": "array",
@@ -19,15 +21,25 @@
         "$ref": "../../tool/v1/tool.schema.json"
       }
     },
+    "completionAgreement": {
+      "description": "Signatures signfying an agreement between agents.",
+      "$ref": "../../components/agreement/v1/agreement.schema.json"
+    },
     "units": {
       "type": "array",
       "description": "units that can be modified",
       "items": {
         "$ref": "../../unit/v1/unit.schema.json"
       }
+    },
+    "completionAgreementRequired": {
+      "type": "boolean",
+      "description": "Do agents need to agree task is completed.",
+      "hai": "meta"
     }
   },
   "required": [
-    "operation"
+    "name",
+    "description"
   ]
 }

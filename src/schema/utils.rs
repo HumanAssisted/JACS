@@ -40,6 +40,7 @@ impl fmt::Display for SchemaResolverErrorWrapper {
 }
 impl Error for SchemaResolverErrorWrapper {}
 
+// todo move
 pub trait ValueExt {
     fn get_str(&self, field: &str) -> Option<String>;
     fn get_i64(&self, key: &str) -> Option<i64>;
@@ -59,59 +60,11 @@ impl ValueExt for Value {
     }
 }
 
-/// Custom Resolver that resolves schemas from the local filesystem
-pub struct LocalSchemaResolver {
-    base_path: PathBuf,
-}
-
-impl LocalSchemaResolver {
-    // Constructor to create a new resolver with a specified base path
-    pub fn new(base_path: PathBuf) -> Self {
-        Self { base_path }
-    }
-}
-
-impl SchemaResolver for LocalSchemaResolver {
-    fn resolve(
-        &self,
-        _root_schema: &Value,
-        url: &Url,
-        _original_reference: &str,
-    ) -> Result<Arc<Value>, SchemaResolverError> {
-        let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
-        let path = self.base_path.join(relative_path);
-        info!(" url, relative_path {} {}", url, relative_path);
-        let schema_json = fs::read_to_string(&path).map_err(|io_err| {
-            // Map I/O errors
-            // SchemaResolverError::new(format!("{:?} {}", io_err, url.clone()))
-
-            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "JACS io_err {:?} {}",
-                io_err,
-                url.clone()
-            )))
-        })?;
-
-        let schema_value: Value = serde_json::from_str(&schema_json).map_err(|serde_err| {
-            // Map JSON parsing errors
-            //SchemaResolverError::new(format!("{:?} {}", serde_err, url.clone()))
-            // serde_err
-            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "JACS SchemaResolverError {:?} {}",
-                serde_err,
-                url.clone()
-            )))
-        })?;
-
-        Ok(Arc::new(schema_value))
-    }
-}
-
 /// Custom Resolver that resolves schemas from memory
 pub struct EmbeddedSchemaResolver {}
 
 impl EmbeddedSchemaResolver {
-    // Constructor to create a new resolver with a specified base path
+    // Constructor to create a new resolver
     pub fn new() -> Self {
         EmbeddedSchemaResolver {}
     }
@@ -124,27 +77,37 @@ impl SchemaResolver for EmbeddedSchemaResolver {
         url: &Url,
         _original_reference: &str,
     ) -> Result<Arc<Value>, SchemaResolverError> {
-        let relative_path = url.path().trim_start_matches('/'); // Strips leading slash
-
-        info!(" url, relative_path {} {}", url, relative_path);
-        let schema_json = super::DEFAULT_SCHEMA_STRINGS
-            .get(relative_path)
-            .ok_or_else(|| {
-                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                    "Schema not found: {}",
-                    url.clone()
-                )))
-            })?;
-
-        let schema_value: Value = serde_json::from_str(schema_json).map_err(|serde_err| {
-            // Map JSON parsing errors
-            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "JACS SchemaResolverError {:?} {}",
-                serde_err,
-                url.clone()
-            )))
-        })?;
-
-        Ok(Arc::new(schema_value))
+        let path = url.path();
+        let relative_path = path.trim_start_matches("https://hai.ai/");
+        // Check if the path starts with a slash (root-relative)
+        if path.starts_with('/') {
+            // Remove the leading slash and use the remaining path as the key
+            let relative_path = &path[1..];
+            resolve_schema(relative_path, url)
+        } else {
+            // Use the full path as the key (relative or URI)
+            resolve_schema(path, url)
+        }
     }
+}
+
+// todo handle case for url retrieval
+fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolverError> {
+    let relative_path = path.trim_start_matches("https://hai.ai/");
+    let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
+        SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+            "Schema not found: {}",
+            url.clone()
+        )))
+    })?;
+
+    let schema_value: Value = serde_json::from_str(schema_json).map_err(|serde_err| {
+        SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+            "JACS SchemaResolverError {:?} {}",
+            serde_err,
+            url.clone()
+        )))
+    })?;
+
+    Ok(Arc::new(schema_value))
 }

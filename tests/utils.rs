@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 use std::env;
 
+pub static DOCTESTFILE: &str = "examples/documents/9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
+
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
     let mut agent = load_test_agent_one();

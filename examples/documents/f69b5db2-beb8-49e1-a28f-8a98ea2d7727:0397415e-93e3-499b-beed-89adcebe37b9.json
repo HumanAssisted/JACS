@@ -46,10 +46,14 @@
   "disambiguatingDescription": "Co-founder of CodeCore Bootcamp",
   "gender": "Male",
   "image": "https://s.gravatar.com/avatar/961997eb7fd5c22b3e12fb3c8ca14e11?s=512&r=g",
-  "jacsAgentSignature": {
+  "jacsId": "f69b5db2-beb8-49e1-a28f-8a98ea2d7727",
+  "jacsOriginalDate": "2024-04-27T10:55:50.643167+00:00",
+  "jacsOriginalVersion": "0397415e-93e3-499b-beed-89adcebe37b9",
+  "jacsSha256": "4f08fecbbd03140cad8ce8482ed6979d24d61239ffac7f7e03700510393e910d",
+  "jacsSignature": {
     "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
     "agentVersion": "12ccba24-8997-47b1-9e6f-d699d7ab0e41",
-    "date": "2024-04-25T06:07:27.116641+00:00",
+    "date": "2024-04-27T10:55:51.066253+00:00",
     "fields": [
       "$schema",
       "@context",
@@ -77,15 +81,11 @@
       "worksFor"
     ],
     "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
-    "signature": "k+j7w5CjxibamEHFBVnZxYb4VDV32Kt/liYE5Qlpme2FddrDaM/pp4xr6NyUSjWaro1JrDAmpwa8TqiV7gIJwSeMIpiW/LWZaoF35n/rno7GC1R/fRTjbTvdo3LFKDzj/87bKI6tK49Ko4moSJc0DgPuJwnNm+Um8kJqOKPjUmsXxbHdyZBjIJKkZy+OrwEyEcxP+EENhW6WXwAxPPxj3F0d75cI3uqPxmtAInrbM16gqngLlqKCqG6mobExeBBinjfxnwoVyT6o1Ax00pOF5/fTei4rBHEcVA46IJImcmACDZcuzDurdyINw6iocNl0s5Wsx8lDUBy/3/hOfKdfVeI78s9WOj0yaNHx+AynrAMVmbelZI8ehjQb+jON8jX1/zH1brEpLhp5zQEbpwo/2du1aWwI+Z1+KRtDv7smMlfnymSpS6XSn8a8AOru19t/9r2Nvo/5zd364bRimz2ARXEDyYy/E1LOqsAPZrHLSwXmubj0zjO+m/aZqafZDhxWG4yw80+MWxOtH1oMLEeG+IST26VhZHi63xe4ZYD5811DDSHxEgTBew7I2Q8r/K2AGNRuodj+LIGVg2PxVE1bUE5dhaVWCpVRAqGYZctmsj7iSRuXtndZBt4yrDJhPpiF+SypIlKhZ7Z0Le0MGNOg+l8geVSHzifF9DtHoiKyciI=",
+    "signature": "k/Df0U/J5CD7/5fUDcKgSO+q6gpIV4MCsjrHnooNZVTXFS5XguW8u/+xwY5+vJbKewfziw4BtEB46wsL+8AoaCHSKqH0L+YszV2guXDjeJUDirjL3FqW99gjtWCIn0zLINWBHsx3+bs1y4yaRV3y7XOx+/OnFHvq3xPU06WpEmH4zhd0n/4k+esQvUT2kkM7Pv6vAVqGdTFB1+0L6okb7uijzW/twVCpiPL6UDuBe9GIJNemaeLLs59SJ0jVqTtESoixNiP674wSZD1uTBm0pc6Gww6UUPe/YsuAMw8Aajbq2mFKxO1hnNqoYmym+nlTBwTVilqn6mWGoUofTKKam75WlwMFXpXup7Qqm+t+p8gyhDUF0S5iP2BcZBwHJuqpjnYORZGHYJSWc+6XskT0fe9xWKHmdA6og8UdjzsjI4J2ZY4oKOXtV3lW6XQY4buqwT0QwWfYmTAPHzngTK37RlSp4DLIXQeGCXFHXaXA7A6AE4wy2hw0EO6az/OdHCH9Du+LfHKCwnCBupknu11Bwu1+9S/syzJ1yjy129+jj2Tu/2e8LdEOxxnPMDNHLbR9qEFb4u88cqBcyELRbOf8cuObGTmNXsHcRUWKCnCRL+PhLAevCoSxc1xrb9vpzExE+u/4bZAnHk38gLjcx8rm9ftnuENjeMfucWd1oQ7vAdY=",
     "signingAlgorithm": "RSA-PSS"
   },
-  "jacsId": "58173567-2b91-4c25-b347-9be2f6a4c008",
-  "jacsOriginalDate": "2024-04-25T06:07:26.755430+00:00",
-  "jacsOriginalVersion": "88ac81f1-0024-44b3-b4d3-d78e16968505",
-  "jacsSha256": "591ec18500c19f7fca3726809ab9b7209aebf3827cc682276b9e65bdf47fecb6",
-  "jacsVersion": "88ac81f1-0024-44b3-b4d3-d78e16968505",
-  "jacsVersionDate": "2024-04-25T06:07:26.755430+00:00",
+  "jacsVersion": "0397415e-93e3-499b-beed-89adcebe37b9",
+  "jacsVersionDate": "2024-04-27T10:55:50.643167+00:00",
   "jobTitle": "Technical Director",
   "name": "Jay Holtslander",
   "nationality": "Canadian",

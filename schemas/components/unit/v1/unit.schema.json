@@ -7,11 +7,13 @@
   "properties": {
     "id": {
       "description": "Quantification GUID",
+      "hai": "meta",
       "type": "string"
     },
     "generaltype": {
       "type": "string",
       "description": "general type of resource",
+      "hai": "meta",
       "enum": [
         "agent",
         "time",
@@ -22,10 +24,12 @@
     },
     "unit_name": {
       "type": "string",
+      "hai": "meta",
       "description": "pounds, square ft, dollars, hours, etc"
     },
     "label": {
       "type": "string",
+      "hai": "meta",
       "description": "age, weight, net worth etc"
     }
   },

@@ -12,6 +12,7 @@
       "properties": {
         "jacsAgentType": {
           "type": "string",
+          "hai": "agent",
           "enum": [
             "human",
             "human-org",

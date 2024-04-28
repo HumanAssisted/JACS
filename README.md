@@ -1,8 +1,10 @@
 # JACS
 
-Welcome to JACS. JSON Agent Communication Standard. JACS documents enable more trusted data sharing between AI agents and Human UIs.
+Welcome to JACS, the source of truth document.
 
-** NOTE: Current version 0.2.6 *ALPHA* .
+JACS is JSON Agent Communication Standard. JACS documents enable more trusted data sharing between AI agents and Human UIs.
+
+** NOTE: Current version 0.2.8 *ALPHA* .
 
 JACS is a JSON document format for creating secure, verifiable documents that AI agents, ML pipelines, SaaS services, and UIs can exchange and process. The goal of JACS is to ensure that these documents remain unchanged (immutable), produce the same verification result every time (idempotent), and can be used flexibly by software.
 

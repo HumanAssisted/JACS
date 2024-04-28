@@ -18,7 +18,18 @@
       "items": {
         "type": "string",
         "format": "uuid"
-      }
+      },
+      "hai": "meta"
+    },
+    "question": {
+      "type": "string",
+      "description": "When prompting an agent, what are they agreeing to?",
+      "hai": "agent"
+    },
+    "context": {
+      "type": "string",
+      "description": "Context for the question?",
+      "hai": "agent"
     }
   },
   "additionalProperties": false,

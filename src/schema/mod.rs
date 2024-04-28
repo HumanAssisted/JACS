@@ -1,10 +1,12 @@
 use crate::schema::utils::ValueExt;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use chrono::prelude::*;
+use jsonschema::SchemaResolver;
 use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::json;
 use serde_json::Value;
+use std::sync::Arc;
 
 use url::Url;
 use uuid::Uuid;
@@ -56,6 +58,121 @@ pub struct Schema {
 }
 
 impl Schema {
+    ///  we extract only fields that the schema identitifies has useful to humans
+    /// logs store the complete valid file, but for databases or applications we may want
+    /// only certain fields
+    /// if fieldnames are tagged with "hai" in the schema, they are excluded from here
+    pub fn extract_hai_fields(
+        &self,
+        document: &Value,
+        level: &str,
+    ) -> Result<Value, Box<dyn Error>> {
+        let schema_url = document["$schema"]
+            .as_str()
+            .unwrap_or("schemas/header/v1/header.schema.json");
+        return self._extract_hai_fields(document, &schema_url, level);
+    }
+
+    fn _extract_hai_fields(
+        &self,
+        document: &Value,
+        schema_url: &str,
+        level: &str,
+    ) -> Result<Value, Box<dyn Error>> {
+        let mut result = json!({});
+
+        // Load the schema using the EmbeddedSchemaResolver
+        let schema_resolver = EmbeddedSchemaResolver::new();
+        let base_url = Url::parse("https://hai.ai")?;
+        let url = base_url.join(schema_url)?;
+        let schema_value_result = schema_resolver.resolve(&Value::Null, &url, schema_url);
+        let schema_value: Arc<Value>;
+        match schema_value_result {
+            Err(_schema_value_result) => {
+                let default_url =
+                    Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")?;
+                schema_value = schema_resolver.resolve(&Value::Null, &default_url, schema_url)?;
+            }
+            _ => schema_value = schema_value_result?,
+        }
+
+        println!("\n\nschema_value {}\n {} \n\n", url, schema_value);
+        let mut processed_fields = Vec::new();
+        let exclude_fields: Vec<String> = vec!["$schema".to_string(), "$id".to_string()];
+
+        match schema_value.as_ref() {
+            Value::Object(schema_map) => {
+                if let Some(properties) = schema_map.get("properties") {
+                    if let Value::Object(properties_map) = properties {
+                        for (field_name, field_schema) in properties_map {
+                            let hai_level = field_schema
+                                .get("hai")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+
+                            match level {
+                                "agent" => {
+                                    if hai_level == "agent" {
+                                        if let Some(field_value) = document.get(field_name) {
+                                            result[field_name] = field_value.clone();
+                                        }
+                                    }
+                                }
+                                "meta" => {
+                                    if hai_level == "agent" || hai_level == "meta" {
+                                        if let Some(field_value) = document.get(field_name) {
+                                            result[field_name] = field_value.clone();
+                                        }
+                                    }
+                                }
+                                "base" => {
+                                    if let Some(field_value) = document.get(field_name) {
+                                        result[field_name] = field_value.clone();
+                                    }
+                                }
+                                _ => {
+                                    if let Some(field_value) = document.get(field_name) {
+                                        result[field_name] = field_value.clone();
+                                    }
+                                }
+                            }
+
+                            processed_fields.push(field_name.clone());
+
+                            if let Some(ref_url) = field_schema.get("$ref") {
+                                if let Some(ref_schema_url) = ref_url.as_str() {
+                                    if let Some(field_value) = document.get(field_name) {
+                                        let child_result = self._extract_hai_fields(
+                                            field_value,
+                                            ref_schema_url,
+                                            level,
+                                        )?;
+                                        if !child_result.is_null() {
+                                            result[field_name] = child_result;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => return Err("Invalid schema format".into()),
+        }
+
+        // Extract fields from the document that are not present in the schema
+        if let Some(document_object) = document.as_object() {
+            for (field_name, field_value) in document_object {
+                if !processed_fields.contains(field_name)
+                    && (!exclude_fields.contains(field_name) || level == "base")
+                {
+                    result[field_name] = field_value.clone();
+                }
+            }
+        }
+
+        Ok(result)
+    }
     pub fn new(
         agentversion: &String,
         headerversion: &String,
