@@ -2,6 +2,8 @@
 
 - tests for task and actions creation
 - handle case of allOf in JSON schema when recursively retrieving "hai" print level
+- add message to task
+
 
 ## 0.2.8
 

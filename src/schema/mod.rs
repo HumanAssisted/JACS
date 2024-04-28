@@ -88,7 +88,7 @@ impl Schema {
         let base_url = Url::parse("https://hai.ai")?;
         let url = base_url.join(schema_url)?;
         let schema_value_result = schema_resolver.resolve(&Value::Null, &url, schema_url);
-        let mut schema_value: Arc<Value>;
+        let schema_value: Arc<Value>;
         match schema_value_result {
             Err(_schema_value_result) => {
                 let default_url =
