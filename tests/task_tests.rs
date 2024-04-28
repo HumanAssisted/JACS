@@ -1,3 +1,4 @@
+use jacs::agent::Agent;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
 
@@ -31,6 +32,45 @@ fn test_hai_fields_custom_schema_and_custom_document() {
 
     let value = document_copy.getvalue();
     println!("found schema {}", value["$schema"]);
+    print_fields(&agent, value.clone())
+}
+
+#[test]
+fn test_create_task_with_actions() {
+    // cargo test   --test task_tests test_create_task_with_actions -- --nocapture
+    let mut agent = load_test_agent_one();
+    let mut agent_two = load_test_agent_two();
+    let mut actions: Vec<Value> = Vec::new();
+    let start_in_a_week = Utc::now() + Duration::weeks(1);
+    let action = create_minimal_action(
+        &"go to mars".to_string(),
+        &" how to go to mars".to_string(),
+        None,
+        None,
+    );
+    actions.push(action);
+    let mut task =
+        create_minimal_task(Some(actions), None, Some(start_in_a_week), None).expect("reason");
+    let action = create_minimal_action(
+        &"terraform mars".to_string(),
+        &" how to terraform mars".to_string(),
+        None,
+        None,
+    );
+    add_action_to_task(&mut task, action).expect("reason");
+    //create jacs task
+    let task_doc = agent
+        .create_document_and_load(&task.to_string(), None, None)
+        .unwrap();
+    let task_doc_key = task_doc.getkey();
+    // add agreement to completionAgreement
+
+    // sign completion argreement
+
+    print_fields(&agent, task_doc.value.clone())
+}
+
+fn print_fields(agent: &Agent, value: Value) {
     let extracted_fields_result = agent.schema.extract_hai_fields(&value, "base");
     match extracted_fields_result {
         Err(error) => {
@@ -69,39 +109,6 @@ fn test_hai_fields_custom_schema_and_custom_document() {
             extracted_fields.to_string()
         ),
     }
-}
-
-#[test]
-fn test_create_task_with_actions() {
-    // cargo test   --test task_tests test_create_task_with_actions -- --nocapture
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
-    let mut actions: Vec<Value> = Vec::new();
-    let start_in_a_week = Utc::now() + Duration::weeks(1);
-    let action = create_minimal_action(
-        &"go to mars".to_string(),
-        &" how to go to mars".to_string(),
-        None,
-        None,
-    );
-    actions.push(action);
-    let mut task =
-        create_minimal_task(Some(actions), None, Some(start_in_a_week), None).expect("reason");
-    let action = create_minimal_action(
-        &"terraform mars".to_string(),
-        &" how to terraform mars".to_string(),
-        None,
-        None,
-    );
-    add_action_to_task(&mut task, action).expect("reason");
-    //create jacs task
-    let task_doc = agent
-        .create_document_and_load(&task.to_string(), None, None)
-        .unwrap();
-    let task_doc_key = task_doc.getkey();
-    // add agreement to completionAgreement
-
-    // sign completion argreement
 }
 
 fn get_field_count(value: &Value) -> usize {
