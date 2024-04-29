@@ -27,6 +27,8 @@ pub trait Agreement {
         &mut self,
         document_key: &String,
         agentids: &Vec<String>,
+        question: Option<&String>,
+        context: Option<&String>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id and a list of agents, return an updated document
     fn add_agents_to_agreement(
@@ -57,6 +59,11 @@ pub trait Agreement {
         &self,
         value: Value,
     ) -> Result<(String, Vec<String>), Box<dyn Error>>;
+
+    fn agreement_get_question_and_context(
+        &self,
+        document_key: &std::string::String,
+    ) -> Result<(String, String), Box<dyn Error>>;
 }
 
 impl Agreement for Agent {
@@ -86,17 +93,30 @@ impl Agreement for Agent {
         &mut self,
         document_key: &std::string::String,
         agentids: &Vec<String>,
+        question: Option<&String>,
+        context: Option<&String>,
     ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
         let document = self.get_document(document_key)?;
         let mut value = document.value;
 
+        let context_string = match context {
+            Some(cstring) => cstring,
+            _ => "",
+        };
+
+        let question_string = match question {
+            Some(qstring) => qstring,
+            _ => "",
+        };
         // todo error if value[AGENT_AGREEMENT_FIELDNAME] exists.validate
         let agreement_hash_value = json!(self.agreement_hash(value.clone())?);
         value[DOCUMENT_AGREEMENT_HASH_FIELDNAME] = agreement_hash_value.clone();
         value[AGENT_AGREEMENT_FIELDNAME] = json!({
             // based on v1
             "signatures": [],
-            "agentIDs": agentids
+            "agentIDs": agentids,
+            "question": question_string,
+            "context": context_string
         });
         let updated_document =
             self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
@@ -267,6 +287,34 @@ impl Agreement for Agent {
         };
 
         Ok(updated_document)
+    }
+
+    /// get human readable fields
+    fn agreement_get_question_and_context(
+        &self,
+        document_key: &std::string::String,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        let document = self.get_document(document_key)?;
+        let error_message = format!("{} missing", DOCUMENT_AGREEMENT_HASH_FIELDNAME);
+        let original_agreement_hash_value = document.value[DOCUMENT_AGREEMENT_HASH_FIELDNAME]
+            .as_str()
+            .expect(&error_message);
+        let calculated_agreement_hash_value = self.agreement_hash(document.value.clone())?;
+        if original_agreement_hash_value != calculated_agreement_hash_value {
+            return Err("check_agreement: agreement hashes don't match".into());
+        }
+
+        if let Some(jacs_agreement) = document.value.get(AGENT_AGREEMENT_FIELDNAME) {
+            let question = jacs_agreement
+                .get_str("question")
+                .expect("agreement_get_question_and_context question field");
+            let context = jacs_agreement
+                .get_str("context")
+                .expect("agreement_get_question_and_context question field");
+
+            return Ok((question.to_string(), context.to_string()));
+        }
+        return Err("check_agreement: document has no agreement".into());
     }
 
     /// checking agreements requires you have the public key of each signatory

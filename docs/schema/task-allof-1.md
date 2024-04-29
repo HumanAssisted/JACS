@@ -181,13 +181,13 @@ When the lock expires
 
 ## jacsTaskActionsDesired
 
-
+list of actions desired, should be a subset of actions in the resources and agents when complete.
 
 `jacsTaskActionsDesired`
 
 *   is optional
 
-*   Type: `object[]` ([Action](action.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -195,17 +195,17 @@ When the lock expires
 
 ### jacsTaskActionsDesired Type
 
-`object[]` ([Action](action.md))
+unknown\[]
 
 ## jacsTaskMessages
 
-
+discussion between agents added to task and includes files
 
 `jacsTaskMessages`
 
 *   is optional
 
-*   Type: `object[]` ([Message](message.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -213,11 +213,11 @@ When the lock expires
 
 ### jacsTaskMessages Type
 
-`object[]` ([Message](message.md))
+unknown\[]
 
 ## jacsTaskSubTaskOf
 
-
+list of task ids this may be a subtask of.
 
 `jacsTaskSubTaskOf`
 
@@ -235,7 +235,7 @@ When the lock expires
 
 ## jacsTaskCopyOf
 
-
+list of task ids this may be a copy of. Can be a partial copy, can be considered a branch.
 
 `jacsTaskCopyOf`
 
@@ -253,7 +253,7 @@ When the lock expires
 
 ## jacsTaskMergedTasks
 
-
+list of task ids that have been folded into this task.
 
 `jacsTaskMergedTasks`
 

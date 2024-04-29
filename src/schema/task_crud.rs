@@ -64,7 +64,7 @@ pub fn create_minimal_task(
 ///
 /// * `Ok(())` - If the action was added successfully.
 /// * `Err(String)` - If an error occurred while adding the action.
-fn add_action_to_task(task: &mut Value, action: Value) -> Result<(), String> {
+pub fn add_action_to_task(task: &mut Value, action: Value) -> Result<(), String> {
     if !task.get("jacsTaskActionsDesired").is_some() {
         task["jacsTaskActionsDesired"] = json!([]);
     }
@@ -87,7 +87,7 @@ fn add_action_to_task(task: &mut Value, action: Value) -> Result<(), String> {
 ///
 /// * `Ok(())` - If the action was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the action.
-fn update_action_in_task(
+pub fn update_action_in_task(
     task: &mut Value,
     old_action: Value,
     new_action: Value,
@@ -116,7 +116,7 @@ fn update_action_in_task(
 ///
 /// * `Ok(())` - If the action was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the action.
-fn remove_action_from_task(task: &mut Value, action: Value) -> Result<(), String> {
+pub fn remove_action_from_task(task: &mut Value, action: Value) -> Result<(), String> {
     let actions = task["jacsTaskActionsDesired"]
         .as_array_mut()
         .ok_or_else(|| "Invalid task format".to_string())?;
@@ -141,7 +141,7 @@ fn remove_action_from_task(task: &mut Value, action: Value) -> Result<(), String
 ///
 /// * `Ok(())` - If the message was added successfully.
 /// * `Err(String)` - If an error occurred while adding the message.
-fn add_message_to_task(task: &mut Value, message: Value) -> Result<(), String> {
+pub fn add_message_to_task(task: &mut Value, message: Value) -> Result<(), String> {
     if !task.get("jacsTaskMessages").is_some() {
         task["jacsTaskMessages"] = json!([]);
     }
@@ -163,7 +163,7 @@ fn add_message_to_task(task: &mut Value, message: Value) -> Result<(), String> {
 ///
 /// * `Ok(())` - If the task state was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the task state.
-fn update_task_state(task: &mut Value, new_state: &str) -> Result<(), String> {
+pub fn update_task_state(task: &mut Value, new_state: &str) -> Result<(), String> {
     let allowed_states = vec!["open", "editlock", "closed"];
     if !allowed_states.contains(&new_state) {
         return Err(format!("Invalid task state: {}", new_state));
@@ -183,7 +183,10 @@ fn update_task_state(task: &mut Value, new_state: &str) -> Result<(), String> {
 ///
 /// * `Ok(())` - If the task start date was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the task start date.
-fn update_task_start_date(task: &mut Value, new_start_date: DateTime<Utc>) -> Result<(), String> {
+pub fn update_task_start_date(
+    task: &mut Value,
+    new_start_date: DateTime<Utc>,
+) -> Result<(), String> {
     task["jacsTaskStartDate"] = json!(new_start_date.to_rfc3339());
     Ok(())
 }
@@ -198,7 +201,7 @@ fn update_task_start_date(task: &mut Value, new_start_date: DateTime<Utc>) -> Re
 ///
 /// * `Ok(())` - If the task start date was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the task start date.
-fn remove_task_start_date(task: &mut Value) -> Result<(), String> {
+pub fn remove_task_start_date(task: &mut Value) -> Result<(), String> {
     task.as_object_mut()
         .ok_or_else(|| "Invalid task format".to_string())?
         .remove("jacsTaskStartDate");
@@ -216,7 +219,7 @@ fn remove_task_start_date(task: &mut Value) -> Result<(), String> {
 ///
 /// * `Ok(())` - If the task complete date was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the task complete date.
-fn update_task_complete_date(
+pub fn update_task_complete_date(
     task: &mut Value,
     new_complete_date: DateTime<Utc>,
 ) -> Result<(), String> {
@@ -234,7 +237,7 @@ fn update_task_complete_date(
 ///
 /// * `Ok(())` - If the task complete date was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the task complete date.
-fn remove_task_complete_date(task: &mut Value) -> Result<(), String> {
+pub fn remove_task_complete_date(task: &mut Value) -> Result<(), String> {
     task.as_object_mut()
         .ok_or_else(|| "Invalid task format".to_string())?
         .remove("jacsTaskCompleteDate");
@@ -252,7 +255,7 @@ fn remove_task_complete_date(task: &mut Value) -> Result<(), String> {
 ///
 /// * `Ok(())` - If the subtask was added successfully.
 /// * `Err(String)` - If an error occurred while adding the subtask.
-fn add_subtask_to_task(task: &mut Value, subtask_id: &str) -> Result<(), String> {
+pub fn add_subtask_to_task(task: &mut Value, subtask_id: &str) -> Result<(), String> {
     if !task.get("jacsTaskSubTaskOf").is_some() {
         task["jacsTaskSubTaskOf"] = json!([]);
     }
@@ -274,7 +277,7 @@ fn add_subtask_to_task(task: &mut Value, subtask_id: &str) -> Result<(), String>
 ///
 /// * `Ok(())` - If the subtask was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the subtask.
-fn remove_subtask_from_task(task: &mut Value, subtask_id: &str) -> Result<(), String> {
+pub fn remove_subtask_from_task(task: &mut Value, subtask_id: &str) -> Result<(), String> {
     let subtasks = task["jacsTaskSubTaskOf"]
         .as_array_mut()
         .ok_or_else(|| "Invalid task format".to_string())?;
@@ -299,7 +302,7 @@ fn remove_subtask_from_task(task: &mut Value, subtask_id: &str) -> Result<(), St
 ///
 /// * `Ok(())` - If the copy task was added successfully.
 /// * `Err(String)` - If an error occurred while adding the copy task.
-fn add_copy_task_to_task(task: &mut Value, copy_task_id: &str) -> Result<(), String> {
+pub fn add_copy_task_to_task(task: &mut Value, copy_task_id: &str) -> Result<(), String> {
     if !task.get("jacsTaskCopyOf").is_some() {
         task["jacsTaskCopyOf"] = json!([]);
     }
@@ -321,7 +324,7 @@ fn add_copy_task_to_task(task: &mut Value, copy_task_id: &str) -> Result<(), Str
 ///
 /// * `Ok(())` - If the copy task was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the copy task.
-fn remove_copy_task_from_task(task: &mut Value, copy_task_id: &str) -> Result<(), String> {
+pub fn remove_copy_task_from_task(task: &mut Value, copy_task_id: &str) -> Result<(), String> {
     let copy_tasks = task["jacsTaskCopyOf"]
         .as_array_mut()
         .ok_or_else(|| "Invalid task format".to_string())?;
@@ -346,7 +349,7 @@ fn remove_copy_task_from_task(task: &mut Value, copy_task_id: &str) -> Result<()
 ///
 /// * `Ok(())` - If the merged task was added successfully.
 /// * `Err(String)` - If an error occurred while adding the merged task.
-fn add_merged_task_to_task(task: &mut Value, merged_task_id: &str) -> Result<(), String> {
+pub fn add_merged_task_to_task(task: &mut Value, merged_task_id: &str) -> Result<(), String> {
     if !task.get("jacsTaskMergedTasks").is_some() {
         task["jacsTaskMergedTasks"] = json!([]);
     }
@@ -368,7 +371,7 @@ fn add_merged_task_to_task(task: &mut Value, merged_task_id: &str) -> Result<(),
 ///
 /// * `Ok(())` - If the merged task was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the merged task.
-fn remove_merged_task_from_task(task: &mut Value, merged_task_id: &str) -> Result<(), String> {
+pub fn remove_merged_task_from_task(task: &mut Value, merged_task_id: &str) -> Result<(), String> {
     let merged_tasks = task["jacsTaskMergedTasks"]
         .as_array_mut()
         .ok_or_else(|| "Invalid task format".to_string())?;

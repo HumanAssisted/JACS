@@ -4,7 +4,7 @@
 https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMessages
 ```
 
-
+discussion between agents added to task and includes files
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                          |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------- |
@@ -12,4 +12,4 @@ https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMess
 
 ## jacsTaskMessages Type
 
-`object[]` ([Message](message.md))
+unknown\[]

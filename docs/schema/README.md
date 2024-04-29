@@ -58,7 +58,7 @@
 
 *   [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
 
-*   [Untitled array in Message](./message-properties-attachments.md) – `https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments`
+*   [Untitled array in Message](./message-properties-attachments.md "list of files") – `https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments`
 
 *   [Untitled array in Service](./service-properties-tools.md "URLs and function definitions of of tools that can be called") – `https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools`
 
@@ -66,15 +66,15 @@
 
 *   [Untitled array in Signature](./signature-properties-fields.md "fields fields from document which were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields`
 
-*   [Untitled array in Task](./task-allof-1-properties-jacstaskactionsdesired.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired`
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskactionsdesired.md "list of actions desired, should be a subset of actions in the resources and agents when complete") – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired`
 
-*   [Untitled array in Task](./task-allof-1-properties-jacstaskmessages.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMessages`
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskmessages.md "discussion between agents added to task and includes files") – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMessages`
 
-*   [Untitled array in Task](./task-allof-1-properties-jacstasksubtaskof.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSubTaskOf`
+*   [Untitled array in Task](./task-allof-1-properties-jacstasksubtaskof.md "list of task ids this may be a subtask of") – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSubTaskOf`
 
-*   [Untitled array in Task](./task-allof-1-properties-jacstaskcopyof.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCopyOf`
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskcopyof.md "list of task ids this may be a copy of") – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCopyOf`
 
-*   [Untitled array in Task](./task-allof-1-properties-jacstaskmergedtasks.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMergedTasks`
+*   [Untitled array in Task](./task-allof-1-properties-jacstaskmergedtasks.md "list of task ids that have been folded into this task") – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMergedTasks`
 
 *   [Untitled array in Tool](./tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum`
 

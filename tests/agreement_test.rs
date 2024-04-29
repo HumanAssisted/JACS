@@ -26,13 +26,13 @@ fn test_create_agreement() {
     let document_key = document.getkey();
     // agent one creates agreement document
     let unsigned_doc = agent
-        .create_agreement(&document_key, &agentids)
+        .create_agreement(&document_key, &agentids, None, None)
         .expect("create_agreement");
 
     println!("{}", unsigned_doc.to_string());
 
     // agent one  tries and fails to creates agreement document
-    let _result = agent.create_agreement(&document_key, &agentids);
+    let _result = agent.create_agreement(&document_key, &agentids, None, None);
 
     // agent two signs document
 
@@ -58,7 +58,7 @@ fn test_add_and_remove_agents() {
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let mut doc_v1 = agent
-        .create_agreement(&document_key, &agents_orig)
+        .create_agreement(&document_key, &agents_orig, None, None)
         .expect("create_agreement");
     let doc_v1_key = doc_v1.getkey();
     println!(
@@ -109,13 +109,13 @@ fn test_sign_agreement() {
     let borrowed_key2 = a2k.expose_secret();
     let key_vec2 = borrowed_key2.use_secret();
 
-    println!(
-        "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
-        String::from_utf8(agent.get_public_key().unwrap()).unwrap(),
-        String::from_utf8(agent_two.get_public_key().unwrap()).unwrap(),
-        String::from_utf8(key_vec).unwrap(),
-        String::from_utf8(key_vec2).unwrap()
-    );
+    // println!(
+    //     "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
+    //     String::from_utf8(agent.get_public_key().unwrap()).unwrap(),
+    //     String::from_utf8(agent_two.get_public_key().unwrap()).unwrap(),
+    //     String::from_utf8(key_vec).unwrap(),
+    //     String::from_utf8(key_vec2).unwrap()
+    // );
 
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));
@@ -126,7 +126,7 @@ fn test_sign_agreement() {
     let document_key = document.getkey();
     // agent one creates agreement document
     let unsigned_doc = agent
-        .create_agreement(&document_key, &agentids)
+        .create_agreement(&document_key, &agentids, None, None)
         .expect("create_agreement");
 
     let unsigned_doc_key = unsigned_doc.getkey();
@@ -180,4 +180,8 @@ fn test_sign_agreement() {
         }
         Ok(_) => assert!(true),
     }
+    let (question, context) = agent
+        .agreement_get_question_and_context(&agent_one_both_signed_document_key)
+        .unwrap();
+    println!(" question {}, context {}", question, context);
 }

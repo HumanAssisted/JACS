@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/completionAgreementRequired
 ```
 
-Do agents need to agree task is completed.
+Do agents need to agree this is completed for task to be.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                           |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------------- |

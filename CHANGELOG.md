@@ -1,3 +1,11 @@
+## 0.2.9
+
+- tests for task and actions creation
+- handle case of allOf in JSON schema when recursively retrieving "hai" print level
+- add message to task
+- fixed issue with type=array/items in JSON schema when recursively retrieving "hai" print level
+
+
 ## 0.2.8
 
  - add question and context to agreement, useful to UIs and prompting

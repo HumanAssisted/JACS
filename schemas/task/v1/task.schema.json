@@ -5,7 +5,7 @@
   "description": "General schema for stateful resources.",
   "allOf": [
     {
-      "$ref": "../../header/v1/header.schema.json"
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
     },
     {
       "type": "object",
@@ -26,7 +26,7 @@
         },
         "jacsTaskAgent": {
           "description": "Agent assigned the task",
-          "$ref": "../../components/signature/v1/signature.schema.json"
+          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
         },
         "jacsTaskState": {
           "description": "Is the document locked from edits",
@@ -56,22 +56,22 @@
         },
         "jacsTaskActionsDesired": {
           "type": "array",
-          "desciption": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
+          "description": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
           "items": {
             "minItems": 1,
-            "$ref": "../../components/action/v1/action.schema.json"
+            "$ref": "https://hai.ai/schemas/components/action/v1/action.schema.json"
           }
         },
         "jacsTaskMessages": {
           "type": "array",
-          "desciption": "discussion between agents added to task and includes files",
+          "description": "discussion between agents added to task and includes files",
           "items": {
-            "$ref": "../../components/message/v1/message.schema.json"
+            "$ref": "https://hai.ai/schemas/components/message/v1/message.schema.json"
           }
         },
         "jacsTaskSubTaskOf": {
           "type": "array",
-          "desciption": "list of task ids this may be a subtask of.",
+          "description": "list of task ids this may be a subtask of.",
           "hai": "meta",
           "items": {
             "type": "string",
@@ -82,7 +82,7 @@
         "jacsTaskCopyOf": {
           "type": "array",
           "hai": "meta",
-          "desciption": "list of task ids this may be a copy of. Can be a partial copy, can be considered a branch.",
+          "description": "list of task ids this may be a copy of. Can be a partial copy, can be considered a branch.",
           "items": {
             "type": "string",
             "description": "taskid",
@@ -92,7 +92,7 @@
         "jacsTaskMergedTasks": {
           "type": "array",
           "hai": "meta",
-          "desciption": "list of task ids that have been folded into this task.",
+          "description": "list of task ids that have been folded into this task.",
           "items": {
             "type": "string",
             "description": "taskid",
