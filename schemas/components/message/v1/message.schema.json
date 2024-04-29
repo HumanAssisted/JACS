@@ -12,7 +12,7 @@
     },
     "signature": {
       "description": "signing of message",
-      "$ref": "../../../../JACS/schemas/components/signature/v1/signature.schema.json"
+      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
     },
     "datetime": {
       "description": "Date of message, unverified",
@@ -27,9 +27,9 @@
     },
     "attachments": {
       "type": "array",
-      "desciption": "list of files  ",
+      "description": "list of files  ",
       "items": {
-        "$ref": "../../files/v1/files.schema.json"
+        "$ref": "https://hai.ai/schemas/files/v1/files.schema.json"
       }
     }
   },

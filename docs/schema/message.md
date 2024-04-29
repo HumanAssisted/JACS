@@ -16,13 +16,13 @@ A signed, immutable message from a user
 
 # Message Properties
 
-| Property                    | Type          | Required | Nullable       | Defined by                                                                                                                              |
-| :-------------------------- | :------------ | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                   | `string`      | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                   |
-| [signature](#signature)     | Not specified | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/signature")     |
-| [datetime](#datetime)       | `string`      | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")       |
-| [content](#content)         | `string`      | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")         |
-| [attachments](#attachments) | `array`       | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments") |
+| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                              |
+| :-------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                   | `string` | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                   |
+| [signature](#signature)     | `object` | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
+| [datetime](#datetime)       | `string` | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")       |
+| [content](#content)         | `string` | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")         |
+| [attachments](#attachments) | `array`  | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments") |
 
 ## id
 
@@ -48,21 +48,21 @@ A signed, immutable message from a user
 
 ## signature
 
-signing of message
+Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
 
 `signature`
 
 *   is optional
 
-*   Type: unknown
+*   Type: `object` ([Signature](message-properties-signature.md))
 
 *   cannot be null
 
-*   defined in: [Message](message-properties-signature.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/signature")
+*   defined in: [Message](message-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
-unknown
+`object` ([Signature](message-properties-signature.md))
 
 ## datetime
 
@@ -106,13 +106,13 @@ body , subject etc
 
 ## attachments
 
-
+list of files
 
 `attachments`
 
 *   is optional
 
-*   Type: `object[]` ([File](files.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -120,4 +120,4 @@ body , subject etc
 
 ### attachments Type
 
-`object[]` ([File](files.md))
+unknown\[]

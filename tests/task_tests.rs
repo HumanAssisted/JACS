@@ -80,7 +80,8 @@ fn test_create_task_with_actions() {
 
     // sign completion argreement
 
-    print_fields(&agent, task_doc.value.clone())
+    print_fields(&agent, task_doc.value.clone());
+    // println!("{:?}", task_doc.value)
 }
 
 fn print_fields(agent: &Agent, value: Value) {

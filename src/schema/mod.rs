@@ -57,6 +57,8 @@ pub struct Schema {
     messageschema: JSONSchema,
 }
 
+static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
+
 impl Schema {
     ///  we extract only fields that the schema identitifies has useful to humans
     /// logs store the complete valid file, but for databases or applications we may want
@@ -98,9 +100,6 @@ impl Schema {
             _ => schema_value = schema_value_result?,
         }
 
-        debug!("\n schema {}\n  \n\n", url);
-
-        let exclude_fields: Vec<String> = vec!["$schema".to_string(), "$id".to_string()];
         match schema_value.as_ref() {
             Value::Object(schema_map) => {
                 if let Some(all_of) = schema_map.get("allOf") {
@@ -124,143 +123,36 @@ impl Schema {
                             }
 
                             if let Some(properties) = item.get("properties") {
-                                if let Value::Object(properties_map) = properties {
-                                    for (field_name, field_schema) in properties_map {
-                                        let hai_level = field_schema
-                                            .get("hai")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("");
-                                        debug!(
-                                            "allOf properties hai_level {} {}",
-                                            hai_level, field_name
-                                        );
-                                        match level {
-                                            "agent" => {
-                                                if hai_level == "agent" {
-                                                    debug!("here bro");
-                                                    if let Some(field_value) =
-                                                        document.get(field_name)
-                                                    {
-                                                        result[field_name] = field_value.clone();
-                                                    }
-                                                }
-                                            }
-                                            "meta" => {
-                                                if hai_level == "agent" || hai_level == "meta" {
-                                                    if let Some(field_value) =
-                                                        document.get(field_name)
-                                                    {
-                                                        result[field_name] = field_value.clone();
-                                                    }
-                                                }
-                                            }
-                                            "base" => {
-                                                if let Some(field_value) = document.get(field_name)
-                                                {
-                                                    result[field_name] = field_value.clone();
-                                                }
-                                            }
-                                            _ => {
-                                                if let Some(field_value) = document.get(field_name)
-                                                {
-                                                    result[field_name] = field_value.clone();
-                                                }
-                                            }
-                                        }
-
-                                        processed_fields.push(field_name.clone());
-
-                                        if let Some(ref_url) = field_schema.get("$ref") {
-                                            if let Some(ref_schema_url) = ref_url.as_str() {
-                                                if let Some(field_value) = document.get(field_name)
-                                                {
-                                                    let mut new_processed_fields = Vec::new();
-                                                    let child_result = self._extract_hai_fields(
-                                                        field_value,
-                                                        ref_schema_url,
-                                                        level,
-                                                        &mut new_processed_fields,
-                                                    )?;
-                                                    if !child_result.is_null() {
-                                                        result[field_name] = child_result;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                self.process_properties(
+                                    level,
+                                    document,
+                                    processed_fields,
+                                    &mut result,
+                                    properties,
+                                )?;
                             }
                         }
                     }
                 } else if let Some(properties) = schema_map.get("properties") {
                     // Handle the case when "properties" is directly under the schema object
-                    if let Value::Object(properties_map) = properties {
-                        for (field_name, field_schema) in properties_map {
-                            let hai_level = field_schema
-                                .get("hai")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            debug!("properties hai_level {} {}", hai_level, field_name);
-                            match level {
-                                "agent" => {
-                                    if hai_level == "agent" {
-                                        debug!("here bro");
-                                        if let Some(field_value) = document.get(field_name) {
-                                            result[field_name] = field_value.clone();
-                                        }
-                                    }
-                                }
-                                "meta" => {
-                                    if hai_level == "agent" || hai_level == "meta" {
-                                        if let Some(field_value) = document.get(field_name) {
-                                            result[field_name] = field_value.clone();
-                                        }
-                                    }
-                                }
-                                "base" => {
-                                    if let Some(field_value) = document.get(field_name) {
-                                        result[field_name] = field_value.clone();
-                                    }
-                                }
-                                _ => {
-                                    debug!("why here bro");
-                                    if let Some(field_value) = document.get(field_name) {
-                                        result[field_name] = field_value.clone();
-                                    }
-                                }
-                            }
-
-                            processed_fields.push(field_name.clone());
-
-                            if let Some(ref_url) = field_schema.get("$ref") {
-                                if let Some(ref_schema_url) = ref_url.as_str() {
-                                    if let Some(field_value) = document.get(field_name) {
-                                        let mut new_processed_fields = Vec::new();
-                                        let child_result = self._extract_hai_fields(
-                                            field_value,
-                                            ref_schema_url,
-                                            level,
-                                            &mut new_processed_fields,
-                                        )?;
-                                        if !child_result.is_null() {
-                                            result[field_name] = child_result;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    self.process_properties(
+                        level,
+                        document,
+                        processed_fields,
+                        &mut result,
+                        properties,
+                    )?;
                 }
             }
             _ => return Err("Invalid schema format".into()),
         }
 
         // Extract fields from the document that are not present in the schema
-        debug!("processed_fields {:?}", processed_fields);
+        //  println!("processed_fields {:?}", processed_fields);
         if let Some(document_object) = document.as_object() {
             for (field_name, field_value) in document_object {
                 if !processed_fields.contains(field_name)
-                    && (!exclude_fields.contains(field_name) || level == "base")
+                    && (!EXCLUDE_FIELDS.contains(&field_name.as_str()) || level == "base")
                 {
                     debug!(" hai_level processed_fields {} {}", level, field_name);
                     result[field_name] = field_value.clone();
@@ -269,6 +161,117 @@ impl Schema {
         }
 
         Ok(result)
+    }
+
+    fn process_properties(
+        &self,
+        level: &str,
+        document: &Value,
+        processed_fields: &mut Vec<String>,
+        result: &mut Value,
+        properties: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        if let Value::Object(properties_map) = properties {
+            for (field_name, field_schema) in properties_map {
+                if field_name == "jacsTaskMessages" || field_name == "attachments" {
+                    println!(
+                        "\n\n attachments field_name  in items {} {:?}\n\n\n\n",
+                        field_name, field_schema
+                    );
+                }
+
+                Self::process_field_value(
+                    level,
+                    result,
+                    &field_name,
+                    field_schema.clone(),
+                    document.clone(),
+                );
+
+                processed_fields.push(field_name.clone());
+
+                if let Some(ref_url) = field_schema.get("$ref") {
+                    if let Some(ref_schema_url) = ref_url.as_str() {
+                        if let Some(field_value) = document.get(field_name.clone()) {
+                            let mut new_processed_fields = Vec::new();
+                            let child_result = self._extract_hai_fields(
+                                field_value,
+                                ref_schema_url,
+                                level,
+                                &mut new_processed_fields,
+                            )?;
+                            if !child_result.is_null() {
+                                result[field_name] = child_result;
+                            }
+                        }
+                    }
+                } else if let Some(items) = field_schema.get("items") {
+                    if let Some(ref_url) = items.get("$ref") {
+                        if let Some(ref_schema_url) = ref_url.as_str() {
+                            if let Some(Value::Array(field_value_array)) = document.get(field_name)
+                            {
+                                let mut items_result = Vec::new();
+                                for item_value in field_value_array {
+                                    let mut new_processed_fields = Vec::new();
+                                    let child_result = self._extract_hai_fields(
+                                        item_value,
+                                        ref_schema_url,
+                                        level,
+                                        &mut new_processed_fields,
+                                    )?;
+                                    items_result.push(child_result);
+                                }
+                                result[field_name] = Value::Array(items_result);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return Ok(());
+        }
+
+        return Err("properies map failed".into());
+    }
+
+    fn process_field_value(
+        level: &str,
+        result: &mut Value,
+        field_name: &str,
+        field_schema: Value,
+        document: Value,
+    ) {
+        let hai_level = field_schema
+            .get("hai")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        debug!("properties hai_level {} {}", hai_level, field_name);
+        match level {
+            "agent" => {
+                if hai_level == "agent" {
+                    if let Some(field_value) = document.get(field_name) {
+                        result[field_name] = field_value.clone();
+                    }
+                }
+            }
+            "meta" => {
+                if hai_level == "agent" || hai_level == "meta" {
+                    if let Some(field_value) = document.get(field_name) {
+                        result[field_name] = field_value.clone();
+                    }
+                }
+            }
+            "base" => {
+                if let Some(field_value) = document.get(field_name) {
+                    result[field_name] = field_value.clone();
+                }
+            }
+            _ => {
+                if let Some(field_value) = document.get(field_name) {
+                    result[field_name] = field_value.clone();
+                }
+            }
+        }
     }
 
     pub fn new(
