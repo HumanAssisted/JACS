@@ -94,6 +94,10 @@ fn test_create_task_with_actions() {
     // agent one  tries and fails to creates agreement document
     // sign completion argreement
     print_fields(&agent, unsigned_doc.value.clone());
+    let (question, context) = agent
+        .agreement_get_question_and_context(&unsigned_doc.getkey())
+        .unwrap();
+    println!(" question {}, context {}", question, context);
 }
 
 fn print_fields(agent: &Agent, value: Value) {

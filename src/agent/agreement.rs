@@ -59,6 +59,11 @@ pub trait Agreement {
         &self,
         value: Value,
     ) -> Result<(String, Vec<String>), Box<dyn Error>>;
+
+    fn agreement_get_question_and_context(
+        &self,
+        document_key: &std::string::String,
+    ) -> Result<(String, String), Box<dyn Error>>;
 }
 
 impl Agreement for Agent {
@@ -282,6 +287,34 @@ impl Agreement for Agent {
         };
 
         Ok(updated_document)
+    }
+
+    /// get human readable fields
+    fn agreement_get_question_and_context(
+        &self,
+        document_key: &std::string::String,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        let document = self.get_document(document_key)?;
+        let error_message = format!("{} missing", DOCUMENT_AGREEMENT_HASH_FIELDNAME);
+        let original_agreement_hash_value = document.value[DOCUMENT_AGREEMENT_HASH_FIELDNAME]
+            .as_str()
+            .expect(&error_message);
+        let calculated_agreement_hash_value = self.agreement_hash(document.value.clone())?;
+        if original_agreement_hash_value != calculated_agreement_hash_value {
+            return Err("check_agreement: agreement hashes don't match".into());
+        }
+
+        if let Some(jacs_agreement) = document.value.get(AGENT_AGREEMENT_FIELDNAME) {
+            let question = jacs_agreement
+                .get_str("question")
+                .expect("agreement_get_question_and_context question field");
+            let context = jacs_agreement
+                .get_str("context")
+                .expect("agreement_get_question_and_context question field");
+
+            return Ok((question.to_string(), context.to_string()));
+        }
+        return Err("check_agreement: document has no agreement".into());
     }
 
     /// checking agreements requires you have the public key of each signatory

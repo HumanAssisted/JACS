@@ -180,4 +180,8 @@ fn test_sign_agreement() {
         }
         Ok(_) => assert!(true),
     }
+    let (question, context) = agent
+        .agreement_get_question_and_context(&agent_one_both_signed_document_key)
+        .unwrap();
+    println!(" question {}, context {}", question, context);
 }
