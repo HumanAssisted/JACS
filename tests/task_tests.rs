@@ -1,3 +1,4 @@
+use jacs::agent::agreement::Agreement;
 use jacs::agent::Agent;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::message_crud::create_minimal_message;
@@ -77,11 +78,17 @@ fn test_create_task_with_actions() {
     let task_doc_key = task_doc.getkey();
 
     // add agreement to completionAgreement
+    let mut agentids: Vec<String> = Vec::new();
+    agentids.push(agent.get_id().expect("REASON"));
+    agentids.push(agent_two.get_id().expect("REASON"));
 
+    let unsigned_doc = agent
+        .create_agreement(&task_doc_key, &agentids)
+        .expect("create_agreement");
+
+    // agent one  tries and fails to creates agreement document
     // sign completion argreement
-
-    print_fields(&agent, task_doc.value.clone());
-    // println!("{:?}", task_doc.value)
+    print_fields(&agent, unsigned_doc.value.clone());
 }
 
 fn print_fields(agent: &Agent, value: Value) {
