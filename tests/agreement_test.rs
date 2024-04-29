@@ -26,13 +26,13 @@ fn test_create_agreement() {
     let document_key = document.getkey();
     // agent one creates agreement document
     let unsigned_doc = agent
-        .create_agreement(&document_key, &agentids)
+        .create_agreement(&document_key, &agentids, None, None)
         .expect("create_agreement");
 
     println!("{}", unsigned_doc.to_string());
 
     // agent one  tries and fails to creates agreement document
-    let _result = agent.create_agreement(&document_key, &agentids);
+    let _result = agent.create_agreement(&document_key, &agentids, None, None);
 
     // agent two signs document
 
@@ -58,7 +58,7 @@ fn test_add_and_remove_agents() {
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let mut doc_v1 = agent
-        .create_agreement(&document_key, &agents_orig)
+        .create_agreement(&document_key, &agents_orig, None, None)
         .expect("create_agreement");
     let doc_v1_key = doc_v1.getkey();
     println!(
@@ -126,7 +126,7 @@ fn test_sign_agreement() {
     let document_key = document.getkey();
     // agent one creates agreement document
     let unsigned_doc = agent
-        .create_agreement(&document_key, &agentids)
+        .create_agreement(&document_key, &agentids, None, None)
         .expect("create_agreement");
 
     let unsigned_doc_key = unsigned_doc.getkey();

@@ -83,7 +83,12 @@ fn test_create_task_with_actions() {
     agentids.push(agent_two.get_id().expect("REASON"));
 
     let unsigned_doc = agent
-        .create_agreement(&task_doc_key, &agentids)
+        .create_agreement(
+            &task_doc_key,
+            &agentids,
+            Some(&"Is this done?".to_string()),
+            Some(&"want to know if this is done".to_string()),
+        )
         .expect("create_agreement");
 
     // agent one  tries and fails to creates agreement document

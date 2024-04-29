@@ -156,6 +156,8 @@ pub fn document_add_agreement(
     agentids: Vec<String>,
     custom_schema: Option<String>,
     save_filename: Option<String>,
+    question: Option<String>,
+    context: Option<String>,
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
     load_only: bool,
@@ -167,7 +169,12 @@ pub fn document_add_agreement(
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();
     // agent one creates agreement document
-    let unsigned_doc = agent.create_agreement(&document_key, &agentids)?;
+    let unsigned_doc = agent.create_agreement(
+        &document_key,
+        &agentids,
+        question.as_ref(),
+        context.as_ref(),
+    )?;
 
     let _unsigned_doc_key = unsigned_doc.getkey();
 

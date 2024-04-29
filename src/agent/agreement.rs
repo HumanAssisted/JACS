@@ -27,6 +27,8 @@ pub trait Agreement {
         &mut self,
         document_key: &String,
         agentids: &Vec<String>,
+        question: Option<&String>,
+        context: Option<&String>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id and a list of agents, return an updated document
     fn add_agents_to_agreement(
@@ -86,17 +88,30 @@ impl Agreement for Agent {
         &mut self,
         document_key: &std::string::String,
         agentids: &Vec<String>,
+        question: Option<&String>,
+        context: Option<&String>,
     ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
         let document = self.get_document(document_key)?;
         let mut value = document.value;
 
+        let context_string = match context {
+            Some(cstring) => cstring,
+            _ => "",
+        };
+
+        let question_string = match question {
+            Some(qstring) => qstring,
+            _ => "",
+        };
         // todo error if value[AGENT_AGREEMENT_FIELDNAME] exists.validate
         let agreement_hash_value = json!(self.agreement_hash(value.clone())?);
         value[DOCUMENT_AGREEMENT_HASH_FIELDNAME] = agreement_hash_value.clone();
         value[AGENT_AGREEMENT_FIELDNAME] = json!({
             // based on v1
             "signatures": [],
-            "agentIDs": agentids
+            "agentIDs": agentids,
+            "question": question_string,
+            "context": context_string
         });
         let updated_document =
             self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
