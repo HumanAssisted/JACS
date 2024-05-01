@@ -513,6 +513,40 @@ impl Schema {
 
     /// basic check this conforms to a schema
     /// validate header does not check hashes or signature
+    pub fn validate_task(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        let instance: serde_json::Value = match serde_json::from_str(json) {
+            Ok(value) => {
+                debug!("validate json {:?}", value);
+                value
+            }
+            Err(e) => {
+                let error_message = format!("Invalid JSON: {}", e);
+                warn!("validate error {:?}", error_message);
+                return Err(error_message.into());
+            }
+        };
+
+        let validation_result = self.taskschema.validate(&instance);
+
+        match validation_result {
+            Ok(_) => Ok(instance.clone()),
+            Err(errors) => {
+                error!("error validating task schema");
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        "Unexpected error during validation: no error messages found".to_string()
+                    })
+                    .into())
+            }
+        }
+    }
+
+    /// basic check this conforms to a schema
+    /// validate header does not check hashes or signature
     pub fn validate_signature(
         &self,
         signature: &Value,
