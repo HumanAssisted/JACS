@@ -801,6 +801,7 @@ fn main() {
                         None,
                         None,
                         no_save,
+                        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
                     )
                     .expect("reason");
                     println!("{}", result);
@@ -857,6 +858,7 @@ fn main() {
                         None,
                         None,
                         no_save,
+                        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
                     )
                     .expect("reason");
                     println!("{}", result);

@@ -82,8 +82,12 @@ fn test_add_and_remove_agents() {
     let doc_v1_key = doc_v1.getkey();
     println!(
         "doc_v1_key agents requested {:?} unsigned {:?}",
-        doc_v1.agreement_requested_agents().unwrap(),
-        doc_v1.agreement_unsigned_agents().unwrap()
+        doc_v1
+            .agreement_requested_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
+            .unwrap(),
+        doc_v1
+            .agreement_unsigned_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
+            .unwrap()
     );
     let mut doc_v2 = agent
         .add_agents_to_agreement(
@@ -95,7 +99,9 @@ fn test_add_and_remove_agents() {
     let doc_v2_key = doc_v2.getkey();
     println!(
         "doc_v2_key agents {:?}",
-        doc_v2.agreement_requested_agents().unwrap()
+        doc_v2
+            .agreement_requested_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
+            .unwrap()
     );
     let mut doc_v3 = agent
         .remove_agents_from_agreement(
@@ -107,7 +113,9 @@ fn test_add_and_remove_agents() {
     let doc_v3_key = doc_v3.getkey();
     println!(
         "doc_v3 agents {:?}",
-        doc_v3.agreement_requested_agents().unwrap()
+        doc_v3
+            .agreement_requested_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
+            .unwrap()
     );
 
     // println!(
@@ -195,9 +203,15 @@ fn test_sign_agreement() {
 
     println!(
         "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
-        both_signed_document.agreement_requested_agents().unwrap(),
-        both_signed_document.agreement_unsigned_agents().unwrap(),
-        both_signed_document.agreement_signed_agents().unwrap()
+        both_signed_document
+            .agreement_requested_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
+            .unwrap(),
+        both_signed_document
+            .agreement_unsigned_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
+            .unwrap(),
+        both_signed_document
+            .agreement_signed_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
+            .unwrap()
     );
 
     let result = agent_two.check_agreement(

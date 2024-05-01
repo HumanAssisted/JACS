@@ -329,7 +329,7 @@ pub fn document_add_agreement(
         &agentids,
         question.as_ref(),
         context.as_ref(),
-        Some(agreement_fieldname),
+        agreement_fieldname,
     )?;
 
     let _unsigned_doc_key = unsigned_doc.getkey();
