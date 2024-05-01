@@ -13,6 +13,7 @@ use chrono::Utc;
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
+use regex::Regex;
 use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -42,6 +43,28 @@ impl JACSDocument {
 
     pub fn getvalue(&self) -> Value {
         self.value.clone()
+    }
+
+    pub fn getschema(&self) -> Result<String, Box<dyn Error>> {
+        let schemafield = "$schema";
+        if let Some(schema) = self.value.get(schemafield) {
+            if let Some(schema_str) = schema.as_str() {
+                return Ok(schema_str.to_string());
+            }
+        }
+        return Err("no schema in doc or schema is not a string".into());
+    }
+
+    pub fn getshortschema(&self) -> Result<String, Box<dyn Error>> {
+        let longschema = self.getschema()?;
+        let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
+
+        if let Some(caps) = re.captures(&longschema) {
+            if let Some(matched) = caps.get(1) {
+                return Ok(matched.as_str().to_string());
+            }
+        }
+        Err("Failed to extract schema name from URL".into())
     }
 
     pub fn agreement_unsigned_agents(

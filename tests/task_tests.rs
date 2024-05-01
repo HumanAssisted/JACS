@@ -129,7 +129,7 @@ fn test_create_task_with_actions() {
         )
         .expect("signed_document ");
 
-    print_fields(&agent, both_signed_document.value.clone());
+    // print_fields(&agent, both_signed_document.value.clone());
 
     let (question, context) = agent_two
         .agreement_get_question_and_context(
@@ -138,7 +138,11 @@ fn test_create_task_with_actions() {
         )
         .unwrap();
     println!(" question {}, context {}", question, context);
-
+    println!(
+        " schema {}, short {}",
+        both_signed_document.getschema().expect("long schema"),
+        both_signed_document.getshortschema().expect("short schema")
+    );
     let result = agent_two.check_agreement(
         &both_signed_document.getkey(),
         Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),

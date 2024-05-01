@@ -3,7 +3,8 @@
 - decouple message from task so they can arrive out of order. can be used to create context for task
 - parameteraize agreement field
 - task start and end agreements functions
-
+- fixed issue with schema path not being found, so list of fields returned incorrect
+-
 
 
 ## 0.2.9
