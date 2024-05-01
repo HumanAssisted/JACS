@@ -1,6 +1,7 @@
 use crate::agent::agreement::Agreement;
 use crate::agent::document::Document;
 use crate::agent::document::JACSDocument;
+use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::Agent;
 use log::debug;
 use log::info;
@@ -93,6 +94,7 @@ pub fn document_load_and_save(
     }
 }
 
+// todo do start and end for task
 pub fn document_check_agreement(
     agent: &mut Agent,
     document_string: &String,
@@ -104,7 +106,7 @@ pub fn document_check_agreement(
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();
-    let result = agent.check_agreement(&document_key);
+    let result = agent.check_agreement(&document_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     match result {
         Err(err) => Err(format!("{}", err).into()),
         Ok(_) => {
@@ -134,7 +136,8 @@ pub fn document_sign_agreement(
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();
 
-    let signed_document = agent.sign_agreement(&document_key)?;
+    let signed_document =
+        agent.sign_agreement(&document_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))?;
     let signed_document_key = signed_document.getkey();
     if !load_only {
         return save_document(
@@ -174,6 +177,7 @@ pub fn document_add_agreement(
         &agentids,
         question.as_ref(),
         context.as_ref(),
+        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     )?;
 
     let _unsigned_doc_key = unsigned_doc.getkey();

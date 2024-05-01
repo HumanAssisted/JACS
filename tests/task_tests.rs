@@ -1,5 +1,6 @@
 use jacs::agent::agreement::Agreement;
 use jacs::agent::Agent;
+use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::message_crud::create_minimal_message;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
@@ -91,6 +92,7 @@ fn test_create_task_with_actions() {
             &agentids,
             Some(&"Is this done?".to_string()),
             Some(&"want to know if this is done".to_string()),
+            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
         )
         .expect("create_agreement");
 
@@ -98,7 +100,10 @@ fn test_create_task_with_actions() {
     // sign completion argreement
     print_fields(&agent, unsigned_doc.value.clone());
     let (question, context) = agent
-        .agreement_get_question_and_context(&unsigned_doc.getkey())
+        .agreement_get_question_and_context(
+            &unsigned_doc.getkey(),
+            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+        )
         .unwrap();
     println!(" question {}, context {}", question, context);
 }
