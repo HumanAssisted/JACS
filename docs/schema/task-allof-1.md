@@ -25,6 +25,8 @@ https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1
 | [jacsTaskState](#jacstaskstate)                   | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskstate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskState")                   |
 | [jacsTaskStartDate](#jacstaskstartdate)           | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskstartdate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskStartDate")           |
 | [jacsTaskCompleteDate](#jacstaskcompletedate)     | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskcompletedate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCompleteDate")     |
+| [jacsStartAgreement](#jacsstartagreement)         | `object` | Optional | cannot be null | [Task](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/allOf/1/properties/jacsStartAgreement")   |
+| [jacsEndAgreement](#jacsendagreement)             | `object` | Optional | cannot be null | [Task](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/allOf/1/properties/jacsEndAgreement")     |
 | [jacsTaskActionsDesired](#jacstaskactionsdesired) | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskactionsdesired.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired") |
 | [jacsTaskSubTaskOf](#jacstasksubtaskof)           | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstasksubtaskof.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSubTaskOf")           |
 | [jacsTaskCopyOf](#jacstaskcopyof)                 | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskcopyof.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCopyOf")                 |
@@ -177,6 +179,42 @@ When the lock expires
 ### jacsTaskCompleteDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+
+## jacsStartAgreement
+
+A set of required signatures signifying an agreement.
+
+`jacsStartAgreement`
+
+*   is optional
+
+*   Type: `object` ([agreement](header-properties-agreement.md))
+
+*   cannot be null
+
+*   defined in: [Task](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/allOf/1/properties/jacsStartAgreement")
+
+### jacsStartAgreement Type
+
+`object` ([agreement](header-properties-agreement.md))
+
+## jacsEndAgreement
+
+A set of required signatures signifying an agreement.
+
+`jacsEndAgreement`
+
+*   is optional
+
+*   Type: `object` ([agreement](header-properties-agreement.md))
+
+*   cannot be null
+
+*   defined in: [Task](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/allOf/1/properties/jacsEndAgreement")
+
+### jacsEndAgreement Type
+
+`object` ([agreement](header-properties-agreement.md))
 
 ## jacsTaskActionsDesired
 

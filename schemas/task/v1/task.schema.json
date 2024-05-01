@@ -54,6 +54,14 @@
           "type": "string",
           "hai": "meta"
         },
+        "jacsStartAgreement": {
+          "description": "Signatures signifying an agreement between agents to start work.",
+          "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+        },
+        "jacsEndAgreement": {
+          "description": "Signatures signifying an agreement between agents work is completed.",
+          "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+        },
         "jacsTaskActionsDesired": {
           "type": "array",
           "description": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
