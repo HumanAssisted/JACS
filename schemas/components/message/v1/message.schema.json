@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/components/message/v1/message-schema.json",
   "title": "Message",
-  "description": "A signed, immutable message from a user",
+  "description": "A signed, immutable message",
   "type": "object",
   "properties": {
     "id": {
@@ -13,6 +13,20 @@
     "signature": {
       "description": "signing of message",
       "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+    },
+    "taskID": {
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "to": {
+      "type": "array",
+      "hai": "meta",
+      "description": "list of addressees, optional  ",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      }
     },
     "datetime": {
       "description": "Date of message, unverified",
@@ -36,6 +50,7 @@
   "required": [
     "id",
     "datetime",
+    "taskID",
     "content"
   ]
 }

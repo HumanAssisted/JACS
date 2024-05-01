@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/message/v1/message-schema.json
 ```
 
-A signed, immutable message from a user
+A signed, immutable message
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                            |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------------- |
@@ -20,6 +20,8 @@ A signed, immutable message from a user
 | :-------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
 | [id](#id)                   | `string` | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                   |
 | [signature](#signature)     | `object` | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
+| [taskID](#taskid)           | `string` | Required | cannot be null | [Message](message-properties-taskid.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/taskID")           |
+| [to](#to)                   | `array`  | Optional | cannot be null | [Message](message-properties-to.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/to")                   |
 | [datetime](#datetime)       | `string` | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")       |
 | [content](#content)         | `string` | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")         |
 | [attachments](#attachments) | `array`  | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments") |
@@ -63,6 +65,46 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 ### signature Type
 
 `object` ([Signature](message-properties-signature.md))
+
+## taskID
+
+
+
+`taskID`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Message](message-properties-taskid.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/taskID")
+
+### taskID Type
+
+`string`
+
+### taskID Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
+
+## to
+
+list of addressees, optional
+
+`to`
+
+*   is optional
+
+*   Type: `string[]`
+
+*   cannot be null
+
+*   defined in: [Message](message-properties-to.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/to")
+
+### to Type
+
+`string[]`
 
 ## datetime
 

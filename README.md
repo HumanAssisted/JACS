@@ -1,10 +1,10 @@
 # JACS
 
-Welcome to JACS, the source of truth document.
+Welcome to JACS, a source of truth document.
 
 JACS is JSON Agent Communication Standard. JACS documents enable more trusted data sharing between AI agents and Human UIs.
 
-** NOTE: Current version 0.2.9 *ALPHA* .
+** NOTE: Current version 0.2.10 *ALPHA* .
 
 JACS is a JSON document format for creating secure, verifiable documents that AI agents, ML pipelines, SaaS services, and UIs can exchange and process. The goal of JACS is to ensure that these documents remain unchanged (immutable), produce the same verification result every time (idempotent), and can be used flexibly by software.
 
@@ -27,9 +27,11 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
 
  - [Usage Docs](https://humanassisted.github.io/JACS/)
  - [API docs](https://docs.rs/jacs/latest/jacs/)
+ - [pypy]( )
+ - [Rust Crate](https://crates.io/crates/jacs)
  - [Schema docs](./schemas)
  - [example files](./examples)
- - [use case examples](https://github.com/HumanAssisted/jacs-examples)
+ - [use case examples (wip)](https://github.com/HumanAssisted/jacs-examples)
  - [presentation on JACS](https://docs.google.com/presentation/d/18mO-tftG-9JnKd7rBtdipcX5t0dm4VfBPReKyWvrmXA/edit#slide=id.p)
  - [changelog](./CHANGELOG.md)
 

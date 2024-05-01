@@ -62,13 +62,6 @@
             "$ref": "https://hai.ai/schemas/components/action/v1/action.schema.json"
           }
         },
-        "jacsTaskMessages": {
-          "type": "array",
-          "description": "discussion between agents added to task and includes files",
-          "items": {
-            "$ref": "https://hai.ai/schemas/components/message/v1/message.schema.json"
-          }
-        },
         "jacsTaskSubTaskOf": {
           "type": "array",
           "description": "list of task ids this may be a subtask of.",

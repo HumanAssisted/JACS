@@ -26,7 +26,6 @@ https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1
 | [jacsTaskStartDate](#jacstaskstartdate)           | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskstartdate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskStartDate")           |
 | [jacsTaskCompleteDate](#jacstaskcompletedate)     | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskcompletedate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCompleteDate")     |
 | [jacsTaskActionsDesired](#jacstaskactionsdesired) | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskactionsdesired.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired") |
-| [jacsTaskMessages](#jacstaskmessages)             | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskmessages.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMessages")             |
 | [jacsTaskSubTaskOf](#jacstasksubtaskof)           | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstasksubtaskof.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSubTaskOf")           |
 | [jacsTaskCopyOf](#jacstaskcopyof)                 | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskcopyof.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCopyOf")                 |
 | [jacsTaskMergedTasks](#jacstaskmergedtasks)       | `array`  | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskmergedtasks.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMergedTasks")       |
@@ -194,24 +193,6 @@ list of actions desired, should be a subset of actions in the resources and agen
 *   defined in: [Task](task-allof-1-properties-jacstaskactionsdesired.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired")
 
 ### jacsTaskActionsDesired Type
-
-unknown\[]
-
-## jacsTaskMessages
-
-discussion between agents added to task and includes files
-
-`jacsTaskMessages`
-
-*   is optional
-
-*   Type: unknown\[]
-
-*   cannot be null
-
-*   defined in: [Task](task-allof-1-properties-jacstaskmessages.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMessages")
-
-### jacsTaskMessages Type
 
 unknown\[]
 

@@ -2,7 +2,6 @@ use jacs::agent::agreement::Agreement;
 use jacs::agent::Agent;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::message_crud::create_minimal_message;
-use jacs::schema::task_crud::add_message_to_task;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
 use serde_json::json;
 
@@ -63,19 +62,23 @@ fn test_create_task_with_actions() {
     );
     add_action_to_task(&mut task, action).expect("reason");
 
-    let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
-    // create a message
-    let content = json!("lets goooo");
-    let message = create_minimal_message(&mut agent, content, Some(attachments), Some(false))
-        .expect("REASON");
-
-    add_message_to_task(&mut task, message).expect("reason");
-
     //create jacs task
     let task_doc = agent
         .create_document_and_load(&task.to_string(), None, None)
         .unwrap();
     let task_doc_key = task_doc.getkey();
+
+    let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
+    // create a message
+    let content = json!("lets goooo");
+    let message = create_minimal_message(
+        &mut agent,
+        content,
+        task_doc.id,
+        Some(attachments),
+        Some(false),
+    )
+    .expect("REASON");
 
     // add agreement to completionAgreement
     let mut agentids: Vec<String> = Vec::new();
