@@ -4,6 +4,7 @@ use clap::{value_parser, Arg, ArgAction, Command};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
 use jacs::agent::Agent;
+use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::config::{set_env_vars, Config};
 use jacs::create_minimal_blank_agent;
 use jacs::create_task;
@@ -817,9 +818,13 @@ fn main() {
 
                 for file in &files {
                     let document_string = fs::read_to_string(file).expect("document file loading ");
-                    let result =
-                        document_check_agreement(&mut agent, &document_string, schema.cloned())
-                            .expect("reason");
+                    let result = document_check_agreement(
+                        &mut agent,
+                        &document_string,
+                        schema.cloned(),
+                        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+                    )
+                    .expect("reason");
                     println!("{}", result);
                 }
             }

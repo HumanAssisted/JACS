@@ -1,6 +1,8 @@
 use jacs::agent::agreement::Agreement;
 use jacs::agent::Agent;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
+use jacs::agent::TASK_END_AGREEMENT_FIELDNAME;
+use jacs::agent::TASK_START_AGREEMENT_FIELDNAME;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::message_crud::create_minimal_message;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
@@ -92,20 +94,66 @@ fn test_create_task_with_actions() {
             &agentids,
             Some(&"Is this done?".to_string()),
             Some(&"want to know if this is done".to_string()),
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+            Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
+        )
+        .expect("create_agreement");
+
+    let unsigned_doc2 = agent
+        .create_agreement(
+            &unsigned_doc.getkey(),
+            &agentids,
+            Some(&"can we start?".to_string()),
+            Some(&"want to know if this is started".to_string()),
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
         )
         .expect("create_agreement");
 
     // agent one  tries and fails to creates agreement document
     // sign completion argreement
-    print_fields(&agent, unsigned_doc.value.clone());
-    let (question, context) = agent
+
+    let signed_document = agent
+        .sign_agreement(
+            &unsigned_doc2.getkey(),
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
+        )
+        .expect("signed_document ");
+    let signed_document_key = signed_document.getkey();
+    let signed_document_string =
+        serde_json::to_string_pretty(&signed_document.value).expect("pretty print");
+
+    let _ = agent_two.load_document(&signed_document_string).unwrap();
+    let both_signed_document = agent_two
+        .sign_agreement(
+            &signed_document_key,
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
+        )
+        .expect("signed_document ");
+
+    print_fields(&agent, both_signed_document.value.clone());
+
+    let (question, context) = agent_two
         .agreement_get_question_and_context(
-            &unsigned_doc.getkey(),
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+            &both_signed_document.getkey(),
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
         )
         .unwrap();
     println!(" question {}, context {}", question, context);
+
+    let result = agent_two.check_agreement(
+        &both_signed_document.getkey(),
+        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
+    );
+
+    match result {
+        Err(err) => {
+            println!(
+                "agent {} check failed {}",
+                TASK_START_AGREEMENT_FIELDNAME, err
+            );
+            assert!(false)
+        }
+        Ok(_) => assert!(true),
+    }
 }
 
 fn print_fields(agent: &Agent, value: Value) {
@@ -118,7 +166,7 @@ fn print_fields(agent: &Agent, value: Value) {
         Ok(extracted_fields) => println!(
             "BASE {}\n {}",
             get_field_count(&extracted_fields),
-            extracted_fields.to_string()
+            serde_json::to_string_pretty(&extracted_fields).unwrap()
         ),
     }
 
@@ -131,7 +179,7 @@ fn print_fields(agent: &Agent, value: Value) {
         Ok(extracted_fields) => println!(
             "meta  {}\n{}",
             get_field_count(&extracted_fields),
-            extracted_fields.to_string()
+            serde_json::to_string_pretty(&extracted_fields).unwrap()
         ),
     }
 
@@ -144,7 +192,7 @@ fn print_fields(agent: &Agent, value: Value) {
         Ok(extracted_fields) => println!(
             "Agent {}\n{}",
             get_field_count(&extracted_fields),
-            extracted_fields.to_string()
+            serde_json::to_string_pretty(&extracted_fields).unwrap()
         ),
     }
 }

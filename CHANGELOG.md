@@ -1,7 +1,8 @@
 ## 0.2.10
 
 - decouple message from task so they can arrive out of order. can be used to create context for task
--
+- parameteraize agreement field
+- task start and end agreements
 
 
 

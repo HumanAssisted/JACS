@@ -99,6 +99,7 @@ pub fn document_check_agreement(
     agent: &mut Agent,
     document_string: &String,
     custom_schema: Option<String>,
+    agreement_fieldname: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
@@ -112,9 +113,15 @@ pub fn document_check_agreement(
         Ok(_) => {
             return Ok(format!(
                 "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
-                docresult.agreement_requested_agents().unwrap(),
-                docresult.agreement_unsigned_agents().unwrap(),
-                docresult.agreement_signed_agents().unwrap()
+                docresult
+                    .agreement_requested_agents(agreement_fieldname.clone())
+                    .unwrap(),
+                docresult
+                    .agreement_unsigned_agents(agreement_fieldname.clone())
+                    .unwrap(),
+                docresult
+                    .agreement_signed_agents(agreement_fieldname)
+                    .unwrap()
             ));
         }
     }

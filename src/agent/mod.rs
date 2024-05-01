@@ -452,7 +452,7 @@ impl Agent {
         debug!("placement_key:\n{}", placement_key);
         let (document_values_string, accepted_fields) =
             Agent::get_values_as_string(&json_value, fields.cloned(), placement_key)?;
-        println!(
+        debug!(
             "signing_procedure document_values_string:\n\n{}\n\n",
             document_values_string
         );

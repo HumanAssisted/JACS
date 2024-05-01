@@ -384,8 +384,8 @@ impl Agreement for Agent {
         document_key: &std::string::String,
         agreement_fieldname: Option<String>,
     ) -> Result<String, Box<(dyn StdError + 'static)>> {
-        let agreement_fieldname_key = match agreement_fieldname {
-            Some(key) => key,
+        let agreement_fieldname_key: String = match agreement_fieldname {
+            Some(ref key) => key.to_string(),
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
         };
 
@@ -401,7 +401,7 @@ impl Agreement for Agent {
             return Err("check_agreement: agreement hashes don't match".into());
         }
 
-        let unsigned = document.agreement_unsigned_agents()?;
+        let unsigned = document.agreement_unsigned_agents(agreement_fieldname.clone())?;
         if unsigned.len() > 0 {
             return Err(format!(
                 "not all agents have signed: {:?} {:?}",
