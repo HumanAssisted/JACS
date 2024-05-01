@@ -4,7 +4,7 @@
 - parameteraize agreement field
 - task start and end agreements functions
 - fixed issue with schema path not being found, so list of fields returned incorrect
--
+- retrieve long and short schema name from docs - mostly for task and agent
 
 
 ## 0.2.9
