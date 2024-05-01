@@ -150,11 +150,15 @@ impl Schema {
         // Extract fields from the document that are not present in the schema
         //  println!("processed_fields {:?}", processed_fields);
         if let Some(document_object) = document.as_object() {
+            print!(
+                "\n hai_level processed_fields  all {:?}  \n",
+                processed_fields
+            );
             for (field_name, field_value) in document_object {
                 if !processed_fields.contains(field_name)
                     && (!EXCLUDE_FIELDS.contains(&field_name.as_str()) || level == "base")
                 {
-                    debug!(" hai_level processed_fields {} {}", level, field_name);
+                    print!("\n hai_level processed_fields {} {}\n", level, field_name);
                     result[field_name] = field_value.clone();
                 }
             }

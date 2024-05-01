@@ -491,7 +491,7 @@ pub fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<S
 }
 
 pub fn subtract_vecs(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
-    println!("subtract_vecs A {:?} {:?} ", vec1, vec2);
+    debug!("subtract_vecs A {:?} {:?} ", vec1, vec2);
 
     let to_remove: HashSet<&String> = vec2.iter().collect();
     let return_vec1 = vec1
@@ -499,6 +499,6 @@ pub fn subtract_vecs(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
         .filter(|item| !to_remove.contains(item))
         .cloned()
         .collect();
-    println!("subtract_vecs B {:?}- {:?} = {:?}", vec1, vec2, return_vec1);
+    debug!("subtract_vecs B {:?}- {:?} = {:?}", vec1, vec2, return_vec1);
     return return_vec1;
 }

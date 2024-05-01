@@ -9,7 +9,7 @@
       "type": "array",
       "description": "Signatures of agents",
       "items": {
-        "$ref": "../../../components/signature/v1/signature.schema.json"
+        "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
       }
     },
     "agentIDs": {

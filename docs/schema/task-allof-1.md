@@ -20,8 +20,8 @@ https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1
 | :------------------------------------------------ | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [jacsTaskName](#jacstaskname)                     | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskname.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskName")                     |
 | [jacsTaskSuccess](#jacstasksuccess)               | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstasksuccess.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSuccess")               |
-| [jacsTaskCustomer](#jacstaskcustomer)             | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskCustomer")                       |
-| [jacsTaskAgent](#jacstaskagent)                   | `object` | Optional | cannot be null | [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskAgent")                          |
+| [jacsTaskCustomer](#jacstaskcustomer)             | `object` | Optional | cannot be null | [Task](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskCustomer")   |
+| [jacsTaskAgent](#jacstaskagent)                   | `object` | Optional | cannot be null | [Task](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskAgent")      |
 | [jacsTaskState](#jacstaskstate)                   | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskstate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskState")                   |
 | [jacsTaskStartDate](#jacstaskstartdate)           | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskstartdate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskStartDate")           |
 | [jacsTaskCompleteDate](#jacstaskcompletedate)     | `string` | Optional | cannot be null | [Task](task-allof-1-properties-jacstaskcompletedate.md "https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCompleteDate")     |
@@ -76,15 +76,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   is optional
 
-*   Type: `object` ([Signature](signature.md))
+*   Type: `object` ([Signature](header-properties-signature-1.md))
 
 *   cannot be null
 
-*   defined in: [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskCustomer")
+*   defined in: [Task](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskCustomer")
 
 ### jacsTaskCustomer Type
 
-`object` ([Signature](signature.md))
+`object` ([Signature](header-properties-signature-1.md))
 
 ## jacsTaskAgent
 
@@ -94,15 +94,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   is optional
 
-*   Type: `object` ([Signature](signature.md))
+*   Type: `object` ([Signature](header-properties-signature-1.md))
 
 *   cannot be null
 
-*   defined in: [Task](signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskAgent")
+*   defined in: [Task](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/jacsTaskAgent")
 
 ### jacsTaskAgent Type
 
-`object` ([Signature](signature.md))
+`object` ([Signature](header-properties-signature-1.md))
 
 ## jacsTaskState
 

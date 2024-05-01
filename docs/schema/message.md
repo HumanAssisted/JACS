@@ -16,15 +16,15 @@ A signed, immutable message
 
 # Message Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                              |
-| :-------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                   | `string` | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                   |
-| [signature](#signature)     | `object` | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
-| [taskID](#taskid)           | `string` | Required | cannot be null | [Message](message-properties-taskid.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/taskID")           |
-| [to](#to)                   | `array`  | Optional | cannot be null | [Message](message-properties-to.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/to")                   |
-| [datetime](#datetime)       | `string` | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")       |
-| [content](#content)         | `string` | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")         |
-| [attachments](#attachments) | `array`  | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments") |
+| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                               |
+| :-------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                   | `string` | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/id")                    |
+| [signature](#signature)     | `object` | Optional | cannot be null | [Message](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
+| [taskID](#taskid)           | `string` | Required | cannot be null | [Message](message-properties-taskid.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/taskID")            |
+| [to](#to)                   | `array`  | Optional | cannot be null | [Message](message-properties-to.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/to")                    |
+| [datetime](#datetime)       | `string` | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/datetime")        |
+| [content](#content)         | `string` | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/content")          |
+| [attachments](#attachments) | `array`  | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/components/message/v1/message-schema.json#/properties/attachments")  |
 
 ## id
 
@@ -56,15 +56,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 *   is optional
 
-*   Type: `object` ([Signature](message-properties-signature.md))
+*   Type: `object` ([Signature](header-properties-signature-1.md))
 
 *   cannot be null
 
-*   defined in: [Message](message-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
+*   defined in: [Message](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
-`object` ([Signature](message-properties-signature.md))
+`object` ([Signature](header-properties-signature-1.md))
 
 ## taskID
 
