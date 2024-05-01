@@ -130,28 +130,6 @@ pub fn remove_action_from_task(task: &mut Value, action: Value) -> Result<(), St
     Ok(())
 }
 
-/// Adds a message to a task.
-///
-/// # Arguments
-///
-/// * `task` - A mutable reference to the task.
-/// * `message` - The message to be added.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the message was added successfully.
-/// * `Err(String)` - If an error occurred while adding the message.
-pub fn add_message_to_task(task: &mut Value, message: Value) -> Result<(), String> {
-    if !task.get("jacsTaskMessages").is_some() {
-        task["jacsTaskMessages"] = json!([]);
-    }
-    task["jacsTaskMessages"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?
-        .push(message);
-    Ok(())
-}
-
 /// Updates the state of a task.
 ///
 /// # Arguments

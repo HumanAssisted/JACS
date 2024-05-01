@@ -1,8 +1,10 @@
 use jacs::agent::agreement::Agreement;
 use jacs::agent::Agent;
+use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
+use jacs::agent::TASK_END_AGREEMENT_FIELDNAME;
+use jacs::agent::TASK_START_AGREEMENT_FIELDNAME;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::message_crud::create_minimal_message;
-use jacs::schema::task_crud::add_message_to_task;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
 use serde_json::json;
 
@@ -63,19 +65,23 @@ fn test_create_task_with_actions() {
     );
     add_action_to_task(&mut task, action).expect("reason");
 
-    let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
-    // create a message
-    let content = json!("lets goooo");
-    let message = create_minimal_message(&mut agent, content, Some(attachments), Some(false))
-        .expect("REASON");
-
-    add_message_to_task(&mut task, message).expect("reason");
-
     //create jacs task
     let task_doc = agent
         .create_document_and_load(&task.to_string(), None, None)
         .unwrap();
     let task_doc_key = task_doc.getkey();
+
+    let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
+    // create a message
+    let content = json!("lets goooo");
+    let message = create_minimal_message(
+        &mut agent,
+        content,
+        task_doc.id,
+        Some(attachments),
+        Some(false),
+    )
+    .expect("REASON");
 
     // add agreement to completionAgreement
     let mut agentids: Vec<String> = Vec::new();
@@ -88,16 +94,70 @@ fn test_create_task_with_actions() {
             &agentids,
             Some(&"Is this done?".to_string()),
             Some(&"want to know if this is done".to_string()),
+            Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
+        )
+        .expect("create_agreement");
+
+    let unsigned_doc2 = agent
+        .create_agreement(
+            &unsigned_doc.getkey(),
+            &agentids,
+            Some(&"can we start?".to_string()),
+            Some(&"want to know if this is started".to_string()),
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
         )
         .expect("create_agreement");
 
     // agent one  tries and fails to creates agreement document
     // sign completion argreement
-    print_fields(&agent, unsigned_doc.value.clone());
-    let (question, context) = agent
-        .agreement_get_question_and_context(&unsigned_doc.getkey())
+
+    let signed_document = agent
+        .sign_agreement(
+            &unsigned_doc2.getkey(),
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
+        )
+        .expect("signed_document ");
+    let signed_document_key = signed_document.getkey();
+    let signed_document_string =
+        serde_json::to_string_pretty(&signed_document.value).expect("pretty print");
+
+    let _ = agent_two.load_document(&signed_document_string).unwrap();
+    let both_signed_document = agent_two
+        .sign_agreement(
+            &signed_document_key,
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
+        )
+        .expect("signed_document ");
+
+    // print_fields(&agent, both_signed_document.value.clone());
+
+    let (question, context) = agent_two
+        .agreement_get_question_and_context(
+            &both_signed_document.getkey(),
+            Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
+        )
         .unwrap();
     println!(" question {}, context {}", question, context);
+    println!(
+        " schema {}, short {}",
+        both_signed_document.getschema().expect("long schema"),
+        both_signed_document.getshortschema().expect("short schema")
+    );
+    let result = agent_two.check_agreement(
+        &both_signed_document.getkey(),
+        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
+    );
+
+    match result {
+        Err(err) => {
+            println!(
+                "agent {} check failed {}",
+                TASK_START_AGREEMENT_FIELDNAME, err
+            );
+            assert!(false)
+        }
+        Ok(_) => assert!(true),
+    }
 }
 
 fn print_fields(agent: &Agent, value: Value) {
@@ -110,7 +170,7 @@ fn print_fields(agent: &Agent, value: Value) {
         Ok(extracted_fields) => println!(
             "BASE {}\n {}",
             get_field_count(&extracted_fields),
-            extracted_fields.to_string()
+            serde_json::to_string_pretty(&extracted_fields).unwrap()
         ),
     }
 
@@ -123,7 +183,7 @@ fn print_fields(agent: &Agent, value: Value) {
         Ok(extracted_fields) => println!(
             "meta  {}\n{}",
             get_field_count(&extracted_fields),
-            extracted_fields.to_string()
+            serde_json::to_string_pretty(&extracted_fields).unwrap()
         ),
     }
 
@@ -136,7 +196,7 @@ fn print_fields(agent: &Agent, value: Value) {
         Ok(extracted_fields) => println!(
             "Agent {}\n{}",
             get_field_count(&extracted_fields),
-            extracted_fields.to_string()
+            serde_json::to_string_pretty(&extracted_fields).unwrap()
         ),
     }
 }

@@ -11,13 +11,16 @@ use uuid::Uuid;
 /// # Arguments
 ///
 /// * `content` - The content of the message.
-///
+/// * task_id - id of the task this is about
+/// * attachments - list of filepaths
 /// # Returns
 ///
 /// A `serde_json::Value` representing the created message.
 pub fn create_minimal_message(
     agent: &mut Agent,
     content: Value,
+    task_id: String,
+    // _to: Option<Vec<String>>,
     attachments: Option<Vec<String>>,
     embed: Option<bool>,
 ) -> Result<Value, Box<dyn Error>> {
@@ -25,6 +28,7 @@ pub fn create_minimal_message(
     let mut message = json!({
         "datetime": datetime.to_rfc3339(),
         "content": content,
+        "taskID": task_id
     });
 
     // optionally add attachements

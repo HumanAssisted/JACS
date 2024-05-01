@@ -150,11 +150,15 @@ impl Schema {
         // Extract fields from the document that are not present in the schema
         //  println!("processed_fields {:?}", processed_fields);
         if let Some(document_object) = document.as_object() {
+            print!(
+                "\n hai_level processed_fields  all {:?}  \n",
+                processed_fields
+            );
             for (field_name, field_value) in document_object {
                 if !processed_fields.contains(field_name)
                     && (!EXCLUDE_FIELDS.contains(&field_name.as_str()) || level == "base")
                 {
-                    debug!(" hai_level processed_fields {} {}", level, field_name);
+                    print!("\n hai_level processed_fields {} {}\n", level, field_name);
                     result[field_name] = field_value.clone();
                 }
             }
@@ -498,6 +502,40 @@ impl Schema {
             Ok(_) => Ok(instance.clone()),
             Err(errors) => {
                 error!("error validating header schema");
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(error_messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        "Unexpected error during validation: no error messages found".to_string()
+                    })
+                    .into())
+            }
+        }
+    }
+
+    /// basic check this conforms to a schema
+    /// validate header does not check hashes or signature
+    pub fn validate_task(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        let instance: serde_json::Value = match serde_json::from_str(json) {
+            Ok(value) => {
+                debug!("validate json {:?}", value);
+                value
+            }
+            Err(e) => {
+                let error_message = format!("Invalid JSON: {}", e);
+                warn!("validate error {:?}", error_message);
+                return Err(error_message.into());
+            }
+        };
+
+        let validation_result = self.taskschema.validate(&instance);
+
+        match validation_result {
+            Ok(_) => Ok(instance.clone()),
+            Err(errors) => {
+                error!("error validating task schema");
                 let error_messages: Vec<String> =
                     errors.into_iter().map(|e| e.to_string()).collect();
                 Err(error_messages

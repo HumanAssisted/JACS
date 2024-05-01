@@ -32,7 +32,7 @@
       "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
     },
     "jacsAgreement": {
-      "description": "Signatures signfying an agreement between agents.",
+      "description": "Signatures signifying an agreement between agents.",
       "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
     },
     "jacsAgreementHash": {

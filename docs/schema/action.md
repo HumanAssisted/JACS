@@ -68,7 +68,7 @@ tools that can be utilized
 
 *   is optional
 
-*   Type: `object[][]` ([Details](tool-items.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -76,7 +76,7 @@ tools that can be utilized
 
 ### tools Type
 
-`object[][]` ([Details](tool-items.md))
+unknown\[]
 
 ## units
 
@@ -86,7 +86,7 @@ units that can be modified
 
 *   is optional
 
-*   Type: `object[]` ([Unit](unit.md))
+*   Type: `object[]` ([Unit](action-properties-units-unit.md))
 
 *   cannot be null
 
@@ -94,7 +94,7 @@ units that can be modified
 
 ### units Type
 
-`object[]` ([Unit](unit.md))
+`object[]` ([Unit](action-properties-units-unit.md))
 
 ## completionAgreementRequired
 

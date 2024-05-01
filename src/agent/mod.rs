@@ -43,11 +43,23 @@ pub const SHA256_FIELDNAME: &str = "jacsSha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const AGENT_REGISTRATION_SIGNATURE_FIELDNAME: &str = "jacsRegistration";
 pub const AGENT_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
+pub const TASK_START_AGREEMENT_FIELDNAME: &str = "jacsStartAgreement";
+pub const TASK_END_AGREEMENT_FIELDNAME: &str = "jacsEndAgreement";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
 pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsLastVersion";
+
+pub const JACS_IGNORE_FIELDS: [&str; 7] = [
+    SHA256_FIELDNAME,
+    AGENT_SIGNATURE_FIELDNAME,
+    DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
+    AGENT_AGREEMENT_FIELDNAME,
+    AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
+    TASK_START_AGREEMENT_FIELDNAME,
+    TASK_END_AGREEMENT_FIELDNAME,
+];
 
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 
@@ -440,7 +452,7 @@ impl Agent {
         debug!("placement_key:\n{}", placement_key);
         let (document_values_string, accepted_fields) =
             Agent::get_values_as_string(&json_value, fields.cloned(), placement_key)?;
-        println!(
+        debug!(
             "signing_procedure document_values_string:\n\n{}\n\n",
             document_values_string
         );
@@ -499,12 +511,7 @@ impl Agent {
                     .unwrap_or(&serde_json::Map::new())
                     .keys()
                     .filter(|&key| {
-                        key != placement_key
-                            && key != SHA256_FIELDNAME
-                            && key != AGENT_SIGNATURE_FIELDNAME
-                            && key != DOCUMENT_AGENT_SIGNATURE_FIELDNAME
-                            && key != AGENT_REGISTRATION_SIGNATURE_FIELDNAME
-                            && key != AGENT_AGREEMENT_FIELDNAME
+                        key != placement_key && !JACS_IGNORE_FIELDS.contains(&key.as_str())
                     })
                     .map(|key| key.to_string())
                     .collect();
@@ -515,22 +522,11 @@ impl Agent {
         for key in &accepted_fields {
             if let Some(value) = json_value.get(&key) {
                 if let Some(str_value) = value.as_str() {
-                    if str_value == placement_key
-                        || str_value == SHA256_FIELDNAME
-                        || str_value == AGENT_SIGNATURE_FIELDNAME
-                        || str_value == DOCUMENT_AGENT_SIGNATURE_FIELDNAME
-                        || str_value == AGENT_REGISTRATION_SIGNATURE_FIELDNAME
-                        || str_value == AGENT_AGREEMENT_FIELDNAME
-                    {
+                    if str_value == placement_key || JACS_IGNORE_FIELDS.contains(&str_value) {
                         let error_message = format!(
                             "Field names for signature must not include itself or hashing
-                              - these are reserved for this signature {}: see {} {} {} {} {}",
-                            placement_key,
-                            SHA256_FIELDNAME,
-                            AGENT_SIGNATURE_FIELDNAME,
-                            DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
-                            AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
-                            AGENT_AGREEMENT_FIELDNAME
+                              - these are reserved for this signature {}: see {:?}",
+                            placement_key, JACS_IGNORE_FIELDS
                         );
                         error!("{}", error_message);
                         return Err(error_message.into());
