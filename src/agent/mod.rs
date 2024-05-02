@@ -618,28 +618,57 @@ impl Agent {
     }
 
     //// accepts local file system path or Urls
-    pub fn load_custom_schemas(&mut self, schema_paths: &[String]) {
-        let mut schemas = self.document_schemas.lock().unwrap();
+    pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), String> {
+        let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
             let schema = if path.starts_with("http://") || path.starts_with("https://") {
                 // Load schema from URL
-                let schema_json = reqwest::blocking::get(path).unwrap().json().unwrap();
-                JSONSchema::options()
-                    .with_draft(Draft::Draft7)
-                    .compile(&schema_json)
-                    .unwrap()
+                match reqwest::blocking::get(path) {
+                    Ok(response) => match response.json() {
+                        Ok(schema_json) => JSONSchema::options()
+                            .with_draft(Draft::Draft7)
+                            .compile(&schema_json)
+                            .map_err(|e| {
+                                format!("Failed to compile schema from URL {}: {}", path, e)
+                            })?,
+                        Err(e) => {
+                            return Err(format!(
+                                "Failed to parse schema JSON from URL {}: {}",
+                                path, e
+                            ))
+                        }
+                    },
+                    Err(e) => {
+                        return Err(format!(
+                            "HTTP request failed for schema URL {}: {}",
+                            path, e
+                        ))
+                    }
+                }
             } else {
                 // Load schema from local file
-                println!("loading custom schema {}", path);
-                let schema_json = std::fs::read_to_string(path).unwrap();
-                let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
-                JSONSchema::options()
-                    .with_draft(Draft::Draft7)
-                    .compile(&schema_value)
-                    .unwrap()
+                let full_path = self.default_directory.join(path);
+                match std::fs::read_to_string(full_path) {
+                    Ok(schema_json) => match serde_json::from_str(&schema_json) {
+                        Ok(schema_value) => JSONSchema::options()
+                            .with_draft(Draft::Draft7)
+                            .compile(&schema_value)
+                            .map_err(|e| {
+                                format!("Failed to compile schema from file {}: {}", path, e)
+                            })?,
+                        Err(e) => {
+                            return Err(format!(
+                                "Failed to parse schema JSON from file {}: {}",
+                                path, e
+                            ))
+                        }
+                    },
+                    Err(e) => return Err(format!("Failed to read schema file {}: {}", path, e)),
+                }
             };
             schemas.insert(path.clone(), schema);
         }
+        Ok(())
     }
 
     pub fn save(&self) -> Result<String, Box<dyn Error>> {

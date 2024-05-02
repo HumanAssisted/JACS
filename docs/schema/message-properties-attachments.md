@@ -12,4 +12,4 @@ list of files
 
 ## attachments Type
 
-`object[]` ([File](header-1-properties-jacsfiles-file.md))
+`object[]` ([File](header-properties-jacsfiles-file.md))

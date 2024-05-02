@@ -1,14 +1,14 @@
 # Untitled object in Tool Schema
 
 ```txt
-schemas/components/tool/v1/tool-schema.json#/items/properties/function
+https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function
 ```
 
 
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                           |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [tool.schema.json\*](../../https:/hai.ai/schemas/=./schemas/tool.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                              |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [tool.schema.json\*](../../https:/hai.ai/schemas/=./schemas/components/tool/v1/tool.schema.json "open original schema") |
 
 ## function Type
 
@@ -16,11 +16,11 @@ schemas/components/tool/v1/tool-schema.json#/items/properties/function
 
 # function Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                                       |
-| :-------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [name](#name)               | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-name.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")               |
-| [description](#description) | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-description.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description") |
-| [parameters](#parameters)   | `object` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")   |
+| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                                                      |
+| :-------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [name](#name)               | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-name.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")               |
+| [description](#description) | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description") |
+| [parameters](#parameters)   | `object` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")   |
 
 ## name
 
@@ -34,7 +34,7 @@ The name of the function
 
 * cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-name.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")
+* defined in: [Tool](tool-items-properties-function-properties-name.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")
 
 ### name Type
 
@@ -52,7 +52,7 @@ A description of what the function does
 
 * cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-description.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description")
+* defined in: [Tool](tool-items-properties-function-properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description")
 
 ### description Type
 
@@ -70,7 +70,7 @@ A description of what the function does
 
 * cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-parameters.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")
+* defined in: [Tool](tool-items-properties-function-properties-parameters.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")
 
 ### parameters Type
 

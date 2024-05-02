@@ -12,4 +12,4 @@ Signatures of agents
 
 ## signatures Type
 
-`object[]` ([Signature](header-1-properties-signature-1.md))
+`object[]` ([Signature](header-properties-signature-1.md))

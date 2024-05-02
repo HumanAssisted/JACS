@@ -1,14 +1,14 @@
 # agreement Schema
 
 ```txt
-schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement
+https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement
 ```
 
 A set of required signatures signifying an agreement.
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                               |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [header.schema.json\*](../../https:/hai.ai/schemas/=./schemas/header.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                         |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [header.schema.json\*](../../https:/hai.ai/schemas/=./schemas/header/v1/header.schema.json "open original schema") |
 
 ## jacsAgreement Type
 
@@ -16,12 +16,12 @@ A set of required signatures signifying an agreement.
 
 # jacsAgreement Properties
 
-| Property                  | Type     | Required | Nullable       | Defined by                                                                                                                     |
-| :------------------------ | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------- |
-| [signatures](#signatures) | `array`  | Optional | cannot be null | [agreement](agreement-properties-signatures.md "schemas/components/agreement/v1/agreement.schema.json#/properties/signatures") |
-| [agentIDs](#agentids)     | `array`  | Required | cannot be null | [agreement](agreement-properties-agentids.md "schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")     |
-| [question](#question)     | `string` | Optional | cannot be null | [agreement](agreement-properties-question.md "schemas/components/agreement/v1/agreement.schema.json#/properties/question")     |
-| [context](#context)       | `string` | Optional | cannot be null | [agreement](agreement-properties-context.md "schemas/components/agreement/v1/agreement.schema.json#/properties/context")       |
+| Property                  | Type     | Required | Nullable       | Defined by                                                                                                                                    |
+| :------------------------ | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| [signatures](#signatures) | `array`  | Optional | cannot be null | [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures") |
+| [agentIDs](#agentids)     | `array`  | Required | cannot be null | [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")     |
+| [question](#question)     | `string` | Optional | cannot be null | [agreement](agreement-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")     |
+| [context](#context)       | `string` | Optional | cannot be null | [agreement](agreement-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")       |
 
 ## signatures
 
@@ -35,7 +35,7 @@ Signatures of agents
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-signatures.md "schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")
+* defined in: [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")
 
 ### signatures Type
 
@@ -53,7 +53,7 @@ The agents which are required in order to sign the document
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-agentids.md "schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")
+* defined in: [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")
 
 ### agentIDs Type
 
@@ -71,7 +71,7 @@ When prompting an agent, what are they agreeing to?
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-question.md "schemas/components/agreement/v1/agreement.schema.json#/properties/question")
+* defined in: [agreement](agreement-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")
 
 ### question Type
 
@@ -89,7 +89,7 @@ Context for the question?
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-context.md "schemas/components/agreement/v1/agreement.schema.json#/properties/context")
+* defined in: [agreement](agreement-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")
 
 ### context Type
 
