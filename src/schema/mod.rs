@@ -324,10 +324,7 @@ impl Schema {
 
         let task_path = format!("schemas/task/{}/task.schema.json", default_version);
 
-        let message_path = format!(
-            "schemas/components/message/{}/message.schema.json",
-            default_version
-        );
+        let message_path = format!("schemas/message/{}/message.schema.json", default_version);
 
         let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
         let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();

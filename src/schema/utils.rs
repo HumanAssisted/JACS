@@ -23,7 +23,7 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/components/service/v1/service.schema.json" => include_str!("../../schemas/components/service/v1/service.schema.json"),
      "schemas/components/contact/v1/contact.schema.json" => include_str!("../../schemas/components/contact/v1/contact.schema.json"),
      "schemas/task/v1/task.schema.json" => include_str!("../../schemas/task/v1/task.schema.json"),
-     "schemas/components/message/v1/message.schema.json" => include_str!("../../schemas/components/message/v1/message.schema.json")
+     "schemas/components/v1/message.schema.json" => include_str!("../../schemas/message/v1/message.schema.json")
      // todo get all files in a schemas directory, dynamically
     // "schemas/jacs.config.schema.json" => include_str!("../../schemas/jacs.config.schema.json"),
 };
