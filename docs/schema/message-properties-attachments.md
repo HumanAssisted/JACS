@@ -1,7 +1,7 @@
 # Untitled array in Message Schema
 
 ```txt
-https://hai.ai/schemas/message/v1/message-schema.json#/properties/attachments
+https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments
 ```
 
 list of files

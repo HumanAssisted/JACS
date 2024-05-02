@@ -1,7 +1,7 @@
 # Untitled undefined type in Message Schema
 
 ```txt
-https://hai.ai/schemas/message/v1/message-schema.json#/properties/attachments/items
+https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments/items
 ```
 
 

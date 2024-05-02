@@ -1,7 +1,7 @@
 # Untitled string in Message Schema
 
 ```txt
-https://hai.ai/schemas/message/v1/message-schema.json#/properties/id
+https://hai.ai/schemas/message/v1/message.schema.json#/properties/id
 ```
 
 
