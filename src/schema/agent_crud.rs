@@ -1,5 +1,4 @@
 use serde_json::{json, Value};
-use uuid::Uuid;
 
 /// Creates a minimal agent with required fields and optional services and contacts.
 ///

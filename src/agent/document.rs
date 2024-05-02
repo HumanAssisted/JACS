@@ -35,14 +35,13 @@ pub struct JACSDocument {
 // extend with functions for types
 impl JACSDocument {
     pub fn getkey(&self) -> String {
-        // return the id and version
-        let id = self.id.clone();
-        let version = self.version.clone();
-        return format!("{}:{}", id, version);
+        // No need to clone, as format! macro does not take ownership
+        format!("{}:{}", &self.id, &self.version)
     }
 
-    pub fn getvalue(&self) -> Value {
-        self.value.clone()
+    pub fn getvalue(&self) -> &Value {
+        // Return a reference to the value
+        &self.value
     }
 
     pub fn getschema(&self) -> Result<String, Box<dyn Error>> {

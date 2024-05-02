@@ -291,7 +291,7 @@ impl Agreement for Agent {
             &vec![signing_agent_id.clone()],
             agreement_fieldname,
         )?;
-        value = agent_complete_document.getvalue();
+        value = agent_complete_document.getvalue().clone();
         let agent_complete_key = agent_complete_document.getkey();
         debug!(
             "agents_signature {}",
