@@ -529,7 +529,9 @@ impl Document for Agent {
 
         if do_export {
             if let Some(jacs_files) = original_document.value["jacsFiles"].as_array() {
-                let _ = check_data_directory();
+                if let Err(e) = check_data_directory() {
+                    error!("Failed to check data directory: {}", e);
+                }
                 for item in jacs_files {
                     if item["embed"].as_bool().unwrap_or(false) {
                         let contents = item["contents"].as_str().ok_or("Contents not found")?;
@@ -542,7 +544,7 @@ impl Document for Agent {
                         let mut inflated_contents = Vec::new();
                         gz_decoder.read_to_end(&mut inflated_contents)?;
 
-                        /// TODO move this portion of code out of document as it's filesystem dependent
+                        // TODO move this portion of code out of document as it's filesystem dependent
                         // Backup the existing file if it exists
                         let file_path = Path::new(path);
                         if file_path.exists() {

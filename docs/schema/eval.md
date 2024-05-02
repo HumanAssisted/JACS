@@ -31,13 +31,13 @@ A signed, immutable message evaluation an agent's performance on a task
 
 `id`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Evaluation](eval-properties-id.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/id")
+* defined in: [Evaluation](eval-properties-id.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/id")
 
 ### id Type
 
@@ -53,13 +53,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `signature`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Evaluation](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
+* defined in: [Evaluation](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
@@ -71,13 +71,13 @@ task being evaluated
 
 `taskID`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Evaluation](eval-properties-taskid.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/taskID")
+* defined in: [Evaluation](eval-properties-taskid.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/taskID")
 
 ### taskID Type
 
@@ -93,13 +93,13 @@ Date of evaluation
 
 `datetime`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Evaluation](eval-properties-datetime.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/datetime")
+* defined in: [Evaluation](eval-properties-datetime.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/datetime")
 
 ### datetime Type
 
@@ -115,13 +115,13 @@ When prompting an agent, is there text provided with the agreement?
 
 `qualityDescription`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Evaluation](eval-properties-qualitydescription.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/qualityDescription")
+* defined in: [Evaluation](eval-properties-qualitydescription.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/qualityDescription")
 
 ### qualityDescription Type
 
@@ -133,13 +133,13 @@ list of evaluation units, informatio labels
 
 `quantifications`
 
-*   is optional
+* is optional
 
-*   Type: `object[]` ([Unit](eval-properties-quantifications-unit.md))
+* Type: `object[]` ([Unit](eval-properties-quantifications-unit.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Evaluation](eval-properties-quantifications.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications")
+* defined in: [Evaluation](eval-properties-quantifications.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications")
 
 ### quantifications Type
 

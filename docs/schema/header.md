@@ -37,13 +37,13 @@ uuid v4 string
 
 `jacsId`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")
+* defined in: [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")
 
 ### jacsId Type
 
@@ -59,13 +59,13 @@ Version id of the object. uuid v4 string
 
 `jacsVersion`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")
+* defined in: [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")
 
 ### jacsVersion Type
 
@@ -81,13 +81,13 @@ Date
 
 `jacsVersionDate`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")
+* defined in: [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")
 
 ### jacsVersionDate Type
 
@@ -103,13 +103,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `jacsSignature`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")
+* defined in: [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")
 
 ### jacsSignature Type
 
@@ -121,13 +121,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `jacsRegistration`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")
+* defined in: [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")
 
 ### jacsRegistration Type
 
@@ -139,13 +139,13 @@ A set of required signatures signifying an agreement.
 
 `jacsAgreement`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([agreement](header-properties-agreement.md))
+* Type: `object` ([agreement](header-properties-agreement.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")
+* defined in: [Header](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")
 
 ### jacsAgreement Type
 
@@ -157,13 +157,13 @@ A hash that must not change for each signature.
 
 `jacsAgreementHash`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")
+* defined in: [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")
 
 ### jacsAgreementHash Type
 
@@ -175,13 +175,13 @@ Previous Version id of the object. If blank, it's claiming to be the first
 
 `jacsPreviousVersion`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")
+* defined in: [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")
 
 ### jacsPreviousVersion Type
 
@@ -197,13 +197,13 @@ Original Version id of the object.
 
 `jacsOriginalVersion`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")
+* defined in: [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")
 
 ### jacsOriginalVersion Type
 
@@ -219,13 +219,13 @@ Original creation date of the document.
 
 `jacsOriginalDate`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")
+* defined in: [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")
 
 ### jacsOriginalDate Type
 
@@ -241,13 +241,13 @@ Hash of every field except this one. During  updates and creation hash is the la
 
 `jacsSha256`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")
+* defined in: [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")
 
 ### jacsSha256 Type
 
@@ -259,13 +259,13 @@ A set of files included with the jacs document
 
 `jacsFiles`
 
-*   is optional
+* is optional
 
-*   Type: `object[]` ([File](header-properties-jacsfiles-file.md))
+* Type: `object[]` ([File](header-properties-jacsfiles-file.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")
+* defined in: [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")
 
 ### jacsFiles Type
 

@@ -28,13 +28,13 @@ The name of the function
 
 `name`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-name.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")
+* defined in: [Tool](tool-items-properties-function-properties-name.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")
 
 ### name Type
 
@@ -46,13 +46,13 @@ A description of what the function does
 
 `description`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description")
+* defined in: [Tool](tool-items-properties-function-properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description")
 
 ### description Type
 
@@ -64,13 +64,13 @@ A description of what the function does
 
 `parameters`
 
-*   is required
+* is required
 
-*   Type: `object` ([Details](tool-items-properties-function-properties-parameters.md))
+* Type: `object` ([Details](tool-items-properties-function-properties-parameters.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-parameters.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")
+* defined in: [Tool](tool-items-properties-function-properties-parameters.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")
 
 ### parameters Type
 

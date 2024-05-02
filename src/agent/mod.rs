@@ -4,7 +4,6 @@ pub mod document;
 pub mod loaders;
 pub mod security;
 
-use crate::agent::agreement::Agreement;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
 use crate::crypt::hash::hash_public_key;
@@ -24,7 +23,6 @@ use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
 use log::{debug, error};
-use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
 use std::env;
@@ -153,7 +151,7 @@ impl Agent {
             value: None,
             document_schemas: document_schemas_map,
             documents: document_map,
-            default_directory: default_directory,
+            default_directory,
             id: None,
             version: None,
             key_algorithm: None,
@@ -193,20 +191,6 @@ impl Agent {
         self.key_algorithm = Some(key_algorithm.to_string());
         Ok(())
     }
-
-    // /// Gets a reference to the private key, if it exists.
-    // /// Since we're dealing with secrets, this function returns an Option<&Secret<PrivateKey>>
-    // /// to ensure the secret is not cloned or moved accidentally.
-    // pub fn get_private_key(&self) -> Option<&Secret<PrivateKey>> {
-    //     self.private_key.as_ref()
-    // }
-
-    // /// Consumes the secret, returning the inner PrivateKey if it exists.
-    // /// This is a more dangerous operation as it moves the secret out of its secure container.
-    // /// Use with caution.
-    // pub fn take_private_key(self) -> Option<PrivateKey> {
-    //     self.private_key.map(|secret| secret.into_inner())
-    // }
 
     // todo keep this as private
     pub fn get_private_key(&self) -> Result<Secret<PrivateKey>, Box<dyn Error>> {
@@ -263,24 +247,6 @@ impl Agent {
 
         return Ok(());
     }
-
-    // // hashing
-    // fn hash_self(&self) -> Result<String, Box<dyn Error>> {
-    //     match &self.value {
-    //         Some(embedded_value) => self.hash_doc(embedded_value),
-    //         None => {
-    //             let error_message = "Value is None";
-    //             error!("{}", error_message);
-    //             Err(error_message.into())
-    //         }
-    //     }
-    // }
-
-    // get docs by prrefix
-    // let user_values: HashMap<&String, &Value> = map
-    //     .iter()
-    //     .filter(|(key, _)| key.starts    _with(prefix))
-    //     .collect();
 
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
         let public_key = self.get_public_key()?;

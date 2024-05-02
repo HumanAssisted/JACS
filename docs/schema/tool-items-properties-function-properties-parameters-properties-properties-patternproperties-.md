@@ -28,13 +28,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 `type`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/type")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/type")
 
 ### type Type
 
@@ -56,13 +56,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 `enum`
 
-*   is optional
+* is optional
 
-*   Type: `string[]`
+* Type: `string[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum")
 
 ### enum Type
 
@@ -74,13 +74,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 `description`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description")
 
 ### description Type
 

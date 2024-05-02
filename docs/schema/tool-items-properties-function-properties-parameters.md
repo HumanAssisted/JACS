@@ -28,13 +28,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 `type`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-parameters-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/type")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/type")
 
 ### type Type
 
@@ -54,13 +54,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 `properties`
 
-*   is required
+* is required
 
-*   Type: `object` ([Details](tool-items-properties-function-properties-parameters-properties-properties.md))
+* Type: `object` ([Details](tool-items-properties-function-properties-parameters-properties-properties.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties")
 
 ### properties Type
 
@@ -72,13 +72,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 `required`
 
-*   is required
+* is required
 
-*   Type: `string[]`
+* Type: `string[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function-properties-parameters-properties-required.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/required")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-required.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/required")
 
 ### required Type
 

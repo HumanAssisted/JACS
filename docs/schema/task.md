@@ -16,6 +16,6 @@ merged type ([Task](task.md))
 
 all of
 
-*   [Header](header.md "check type definition")
+* [Header](header.md "check type definition")
 
-*   [Untitled object in Task](task-allof-1.md "check type definition")
+* [Untitled object in Task](task-allof-1.md "check type definition")
