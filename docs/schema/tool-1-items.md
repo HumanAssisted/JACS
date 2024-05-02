@@ -1,7 +1,7 @@
 # Untitled object in Tool Schema
 
 ```txt
-schemas/components/tool/v1/tool-schema.json#/items
+https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items
 ```
 
 
@@ -16,11 +16,11 @@ schemas/components/tool/v1/tool-schema.json#/items
 
 # items Properties
 
-| Property              | Type     | Required | Nullable       | Defined by                                                                                                           |
-| :-------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------- |
-| [type](#type)         | `string` | Required | cannot be null | [Tool](tool-1-items-properties-type.md "schemas/components/tool/v1/tool-schema.json#/items/properties/type")         |
-| [url](#url)           | `string` | Required | cannot be null | [Tool](tool-1-items-properties-url.md "schemas/components/tool/v1/tool-schema.json#/items/properties/url")           |
-| [function](#function) | `object` | Required | cannot be null | [Tool](tool-1-items-properties-function.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function") |
+| Property              | Type     | Required | Nullable       | Defined by                                                                                                                          |
+| :-------------------- | :------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| [type](#type)         | `string` | Required | cannot be null | [Tool](tool-1-items-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/type")         |
+| [url](#url)           | `string` | Required | cannot be null | [Tool](tool-1-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")           |
+| [function](#function) | `object` | Required | cannot be null | [Tool](tool-1-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function") |
 
 ## type
 
@@ -34,7 +34,7 @@ schemas/components/tool/v1/tool-schema.json#/items
 
 * cannot be null
 
-* defined in: [Tool](tool-1-items-properties-type.md "schemas/components/tool/v1/tool-schema.json#/items/properties/type")
+* defined in: [Tool](tool-1-items-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/type")
 
 ### type Type
 
@@ -60,7 +60,7 @@ endpoint of the tool
 
 * cannot be null
 
-* defined in: [Tool](tool-1-items-properties-url.md "schemas/components/tool/v1/tool-schema.json#/items/properties/url")
+* defined in: [Tool](tool-1-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")
 
 ### url Type
 
@@ -82,7 +82,7 @@ endpoint of the tool
 
 * cannot be null
 
-* defined in: [Tool](tool-1-items-properties-function.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function")
+* defined in: [Tool](tool-1-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function")
 
 ### function Type
 

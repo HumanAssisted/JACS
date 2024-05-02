@@ -16,20 +16,20 @@ The basis for a JACS document
 
 # 0 Properties
 
-| Property                                    | Type     | Required | Nullable       | Defined by                                                                                                                                     |
-| :------------------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
-| [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")                                 |
-| [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")                       |
-| [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")               |
-| [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](header-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")      |
-| [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration") |
-| [jacsAgreement](#jacsagreement)             | `object` | Optional | cannot be null | [Header](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")      |
-| [jacsAgreementHash](#jacsagreementhash)     | `string` | Optional | cannot be null | [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")           |
-| [jacsPreviousVersion](#jacspreviousversion) | `string` | Optional | cannot be null | [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")       |
-| [jacsOriginalVersion](#jacsoriginalversion) | `string` | Required | cannot be null | [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")       |
-| [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")             |
-| [jacsSha256](#jacssha256)                   | `string` | Optional | cannot be null | [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")                         |
-| [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")                           |
+| Property                                    | Type     | Required | Nullable       | Defined by                                                                                                                                       |
+| :------------------------------------------ | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
+| [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-1-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")                                 |
+| [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-1-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")                       |
+| [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-1-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")               |
+| [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](header-1-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")      |
+| [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](header-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration") |
+| [jacsAgreement](#jacsagreement)             | `object` | Optional | cannot be null | [Header](header-1-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")      |
+| [jacsAgreementHash](#jacsagreementhash)     | `string` | Optional | cannot be null | [Header](header-1-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")           |
+| [jacsPreviousVersion](#jacspreviousversion) | `string` | Optional | cannot be null | [Header](header-1-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")       |
+| [jacsOriginalVersion](#jacsoriginalversion) | `string` | Required | cannot be null | [Header](header-1-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")       |
+| [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-1-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")             |
+| [jacsSha256](#jacssha256)                   | `string` | Optional | cannot be null | [Header](header-1-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")                         |
+| [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-1-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")                           |
 
 ## jacsId
 
@@ -43,7 +43,7 @@ uuid v4 string
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")
+* defined in: [Header](header-1-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")
 
 ### jacsId Type
 
@@ -65,7 +65,7 @@ Version id of the object. uuid v4 string
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")
+* defined in: [Header](header-1-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")
 
 ### jacsVersion Type
 
@@ -87,7 +87,7 @@ Date
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")
+* defined in: [Header](header-1-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")
 
 ### jacsVersionDate Type
 
@@ -105,15 +105,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 * is optional
 
-* Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-1-properties-signature-1.md))
 
 * cannot be null
 
-* defined in: [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")
+* defined in: [Header](header-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")
 
 ### jacsSignature Type
 
-`object` ([Signature](header-properties-signature-1.md))
+`object` ([Signature](header-1-properties-signature-1.md))
 
 ## jacsRegistration
 
@@ -123,15 +123,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 * is optional
 
-* Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-1-properties-signature-1.md))
 
 * cannot be null
 
-* defined in: [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")
+* defined in: [Header](header-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")
 
 ### jacsRegistration Type
 
-`object` ([Signature](header-properties-signature-1.md))
+`object` ([Signature](header-1-properties-signature-1.md))
 
 ## jacsAgreement
 
@@ -141,15 +141,15 @@ A set of required signatures signifying an agreement.
 
 * is optional
 
-* Type: `object` ([agreement](header-properties-agreement.md))
+* Type: `object` ([agreement](header-1-properties-agreement.md))
 
 * cannot be null
 
-* defined in: [Header](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")
+* defined in: [Header](header-1-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")
 
 ### jacsAgreement Type
 
-`object` ([agreement](header-properties-agreement.md))
+`object` ([agreement](header-1-properties-agreement.md))
 
 ## jacsAgreementHash
 
@@ -163,7 +163,7 @@ A hash that must not change for each signature.
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")
+* defined in: [Header](header-1-properties-jacsagreementhash.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")
 
 ### jacsAgreementHash Type
 
@@ -181,7 +181,7 @@ Previous Version id of the object. If blank, it's claiming to be the first
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")
+* defined in: [Header](header-1-properties-jacspreviousversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")
 
 ### jacsPreviousVersion Type
 
@@ -203,7 +203,7 @@ Original Version id of the object.
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")
+* defined in: [Header](header-1-properties-jacsoriginalversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")
 
 ### jacsOriginalVersion Type
 
@@ -225,7 +225,7 @@ Original creation date of the document.
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")
+* defined in: [Header](header-1-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")
 
 ### jacsOriginalDate Type
 
@@ -247,7 +247,7 @@ Hash of every field except this one. During  updates and creation hash is the la
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")
+* defined in: [Header](header-1-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")
 
 ### jacsSha256 Type
 
@@ -261,12 +261,12 @@ A set of files included with the jacs document
 
 * is optional
 
-* Type: `object[]` ([File](header-properties-jacsfiles-file.md))
+* Type: `object[]` ([File](header-1-properties-jacsfiles-file.md))
 
 * cannot be null
 
-* defined in: [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")
+* defined in: [Header](header-1-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")
 
 ### jacsFiles Type
 
-`object[]` ([File](header-properties-jacsfiles-file.md))
+`object[]` ([File](header-1-properties-jacsfiles-file.md))

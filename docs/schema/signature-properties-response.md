@@ -1,7 +1,7 @@
 # Untitled string in Signature Schema
 
 ```txt
-schemas/components/signature/v1/signature.schema.json#/properties/response
+https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/response
 ```
 
 When prompting an agent, is there text provided with the agreement?

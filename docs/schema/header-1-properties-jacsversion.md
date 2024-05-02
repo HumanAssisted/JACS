@@ -1,7 +1,7 @@
 # Untitled string in Header Schema
 
 ```txt
-schemas/header/v1/header.schema.json#/properties/jacsVersion
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion
 ```
 
 Version id of the object. uuid v4 string

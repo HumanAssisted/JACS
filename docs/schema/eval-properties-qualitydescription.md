@@ -1,7 +1,7 @@
 # Untitled string in Evaluation Schema
 
 ```txt
-schemas/eval/v1/eval.schema.json#/properties/qualityDescription
+https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/qualityDescription
 ```
 
 When prompting an agent, is there text provided with the agreement?

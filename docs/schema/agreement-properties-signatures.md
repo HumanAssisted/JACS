@@ -1,7 +1,7 @@
 # Untitled array in agreement Schema
 
 ```txt
-schemas/components/agreement/v1/agreement.schema.json#/properties/signatures
+https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures
 ```
 
 Signatures of agents
@@ -12,4 +12,4 @@ Signatures of agents
 
 ## signatures Type
 
-`object[]` ([Signature](header-properties-signature-1.md))
+`object[]` ([Signature](header-1-properties-signature-1.md))

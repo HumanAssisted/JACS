@@ -1,7 +1,7 @@
 # Untitled array in Message Schema
 
 ```txt
-schemas/message/v1/message.schema.json#/properties/attachments
+https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments
 ```
 
 list of files
@@ -12,4 +12,4 @@ list of files
 
 ## attachments Type
 
-`object[]` ([File](header-properties-jacsfiles-file.md))
+`object[]` ([File](header-1-properties-jacsfiles-file.md))

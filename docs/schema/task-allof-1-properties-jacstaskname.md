@@ -1,7 +1,7 @@
 # Untitled string in Task Schema
 
 ```txt
-schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskName
+https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskName
 ```
 
 Name of the agent, unique per registrar

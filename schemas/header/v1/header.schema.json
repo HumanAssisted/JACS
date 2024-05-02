@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "schemas/header/v1/header.schema.json",
+  "$id": "https://hai.ai/schemas/header/v1/header.schema.json",
   "title": "Header",
   "description": "The basis for a JACS document",
   "type": "object",
@@ -25,15 +25,15 @@
     },
     "jacsSignature": {
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
-      "$ref": "schemas/components/signature/v1/signature.schema.json"
+      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
     },
     "jacsRegistration": {
       "description": "Signature by a sigining authority like https://hai.ai.",
-      "$ref": "schemas/components/signature/v1/signature.schema.json"
+      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
     },
     "jacsAgreement": {
       "description": "Signatures signifying an agreement between agents.",
-      "$ref": "schemas/components/agreement/v1/agreement.schema.json"
+      "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
     },
     "jacsAgreementHash": {
       "type": "string",
@@ -67,7 +67,7 @@
       "description": "A set of files included with the jacs document",
       "type": "array",
       "items": {
-        "$ref": "schemas/components/files/v1/files.schema.json"
+        "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
       }
     }
   },

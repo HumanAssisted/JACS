@@ -18,7 +18,6 @@ use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
 use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
-
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;

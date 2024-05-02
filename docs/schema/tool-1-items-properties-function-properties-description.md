@@ -1,7 +1,7 @@
 # Untitled string in Tool Schema
 
 ```txt
-schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description
+https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description
 ```
 
 A description of what the function does

@@ -1,7 +1,7 @@
 # Untitled string in Header Schema
 
 ```txt
-schemas/header/v1/header.schema.json#/properties/jacsAgreementHash
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsAgreementHash
 ```
 
 A hash that must not change for each signature.

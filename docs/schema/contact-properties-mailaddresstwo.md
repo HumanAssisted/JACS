@@ -1,7 +1,7 @@
 # Untitled string in Contact Schema
 
 ```txt
-schemas/contact/v1/contact-schema.json#/properties/mailAddressTwo
+https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailAddressTwo
 ```
 
 Part two mailing address

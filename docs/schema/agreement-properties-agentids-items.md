@@ -1,7 +1,7 @@
 # Untitled string in agreement Schema
 
 ```txt
-schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs/items
+https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs/items
 ```
 
 

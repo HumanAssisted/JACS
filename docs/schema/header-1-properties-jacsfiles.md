@@ -1,7 +1,7 @@
 # Untitled array in Header Schema
 
 ```txt
-schemas/header/v1/header.schema.json#/properties/jacsFiles
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles
 ```
 
 A set of files included with the jacs document
@@ -12,4 +12,4 @@ A set of files included with the jacs document
 
 ## jacsFiles Type
 
-`object[]` ([File](header-properties-jacsfiles-file.md))
+`object[]` ([File](header-1-properties-jacsfiles-file.md))

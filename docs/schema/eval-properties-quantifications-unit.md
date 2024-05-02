@@ -1,7 +1,7 @@
 # Unit Schema
 
 ```txt
-schemas/components/unit/v1/unit.schema.json#/properties/quantifications/items
+https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantifications/items
 ```
 
 Labels and quantitative values.
@@ -16,14 +16,14 @@ Labels and quantitative values.
 
 # items Properties
 
-| Property                    | Type      | Required | Nullable       | Defined by                                                                                                   |
-| :-------------------------- | :-------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------- |
-| [id](#id)                   | `string`  | Required | cannot be null | [Unit](unit-properties-id.md "schemas/components/unit/v1/unit.schema.json#/properties/id")                   |
-| [description](#description) | `string`  | Optional | cannot be null | [Unit](unit-properties-description.md "schemas/components/unit/v1/unit.schema.json#/properties/description") |
-| [generalType](#generaltype) | `string`  | Optional | cannot be null | [Unit](unit-properties-generaltype.md "schemas/components/unit/v1/unit.schema.json#/properties/generalType") |
-| [unitName](#unitname)       | `string`  | Required | cannot be null | [Unit](unit-properties-unitname.md "schemas/components/unit/v1/unit.schema.json#/properties/unitName")       |
-| [quantity](#quantity)       | `integer` | Required | cannot be null | [Unit](unit-properties-quantity.md "schemas/components/unit/v1/unit.schema.json#/properties/quantity")       |
-| [label](#label)             | `string`  | Required | cannot be null | [Unit](unit-properties-label.md "schemas/components/unit/v1/unit.schema.json#/properties/label")             |
+| Property                    | Type      | Required | Nullable       | Defined by                                                                                                                  |
+| :-------------------------- | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                   | `string`  | Required | cannot be null | [Unit](unit-properties-id.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id")                   |
+| [description](#description) | `string`  | Optional | cannot be null | [Unit](unit-properties-description.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/description") |
+| [generalType](#generaltype) | `string`  | Optional | cannot be null | [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generalType") |
+| [unitName](#unitname)       | `string`  | Required | cannot be null | [Unit](unit-properties-unitname.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unitName")       |
+| [quantity](#quantity)       | `integer` | Required | cannot be null | [Unit](unit-properties-quantity.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity")       |
+| [label](#label)             | `string`  | Required | cannot be null | [Unit](unit-properties-label.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/label")             |
 
 ## id
 
@@ -37,7 +37,7 @@ Labels and quantitative values.
 
 * cannot be null
 
-* defined in: [Unit](unit-properties-id.md "schemas/components/unit/v1/unit.schema.json#/properties/id")
+* defined in: [Unit](unit-properties-id.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id")
 
 ### id Type
 
@@ -59,7 +59,7 @@ reason this unit is present
 
 * cannot be null
 
-* defined in: [Unit](unit-properties-description.md "schemas/components/unit/v1/unit.schema.json#/properties/description")
+* defined in: [Unit](unit-properties-description.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/description")
 
 ### description Type
 
@@ -77,7 +77,7 @@ general type of resource
 
 * cannot be null
 
-* defined in: [Unit](unit-properties-generaltype.md "schemas/components/unit/v1/unit.schema.json#/properties/generalType")
+* defined in: [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generalType")
 
 ### generalType Type
 
@@ -107,7 +107,7 @@ pounds, square ft, dollars, hours, etc
 
 * cannot be null
 
-* defined in: [Unit](unit-properties-unitname.md "schemas/components/unit/v1/unit.schema.json#/properties/unitName")
+* defined in: [Unit](unit-properties-unitname.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unitName")
 
 ### unitName Type
 
@@ -125,7 +125,7 @@ the amount
 
 * cannot be null
 
-* defined in: [Unit](unit-properties-quantity.md "schemas/components/unit/v1/unit.schema.json#/properties/quantity")
+* defined in: [Unit](unit-properties-quantity.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity")
 
 ### quantity Type
 
@@ -143,7 +143,7 @@ age, weight, net worth etc
 
 * cannot be null
 
-* defined in: [Unit](unit-properties-label.md "schemas/components/unit/v1/unit.schema.json#/properties/label")
+* defined in: [Unit](unit-properties-label.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/label")
 
 ### label Type
 

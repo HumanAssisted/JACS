@@ -1,7 +1,7 @@
 # Untitled string in Signature Schema
 
 ```txt
-schemas/components/signature/v1/signature.schema.json#/properties/responseType
+https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/responseType
 ```
 
 Optional way to track disagreement, or agreement. Reject means question not understood or considered relevant.

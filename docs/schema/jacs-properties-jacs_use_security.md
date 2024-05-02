@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-schemas/jacs.config.schema.json#/properties/jacs_use_security
+https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_use_security
 ```
 
 use strict security features - false or 0 or 1 as string

@@ -1,7 +1,7 @@
 # Untitled boolean in Service Schema
 
 ```txt
-schemas/service/v1/service-schema.json#/properties/isDev
+https://hai.ai/schemas/service/v1/service-schema.json#/properties/isDev
 ```
 
 Is the test/development version of the service?

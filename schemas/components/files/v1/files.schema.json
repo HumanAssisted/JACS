@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "schemas/components/files/v1/files.schema.json",
+  "$id": "https://hai.ai/schemas/components/files/v1/files.schema.json",
   "title": "File",
   "description": "General data about unstructured content not in JACS",
   "type": "object",

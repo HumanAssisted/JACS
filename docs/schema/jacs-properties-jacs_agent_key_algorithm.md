@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-schemas/jacs.config.schema.json#/properties/jacs_agent_key_algorithm
+https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_key_algorithm
 ```
 
 algorithm to use for creating and using keys

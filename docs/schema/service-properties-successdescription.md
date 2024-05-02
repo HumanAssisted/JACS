@@ -1,7 +1,7 @@
 # Untitled string in Service Schema
 
 ```txt
-schemas/service/v1/service-schema.json#/properties/successDescription
+https://hai.ai/schemas/service/v1/service-schema.json#/properties/successDescription
 ```
 
 Description of successful delivery of service.

@@ -16,20 +16,20 @@ The basis for a JACS document
 
 # Header Properties
 
-| Property                                    | Type     | Required | Nullable       | Defined by                                                                                                                      |
-| :------------------------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-properties-jacsid.md "schemas/header/v1/header.schema.json#/properties/jacsId")                                 |
-| [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-properties-jacsversion.md "schemas/header/v1/header.schema.json#/properties/jacsVersion")                       |
-| [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-properties-jacsversiondate.md "schemas/header/v1/header.schema.json#/properties/jacsVersionDate")               |
-| [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](header-properties-signature.md "schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")      |
-| [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](header-properties-signature-1.md "schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration") |
-| [jacsAgreement](#jacsagreement)             | `object` | Optional | cannot be null | [Header](header-properties-agreement.md "schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")      |
-| [jacsAgreementHash](#jacsagreementhash)     | `string` | Optional | cannot be null | [Header](header-properties-jacsagreementhash.md "schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")           |
-| [jacsPreviousVersion](#jacspreviousversion) | `string` | Optional | cannot be null | [Header](header-properties-jacspreviousversion.md "schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion")       |
-| [jacsOriginalVersion](#jacsoriginalversion) | `string` | Required | cannot be null | [Header](header-properties-jacsoriginalversion.md "schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion")       |
-| [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")             |
-| [jacsSha256](#jacssha256)                   | `string` | Optional | cannot be null | [Header](header-properties-jacssha256.md "schemas/header/v1/header.schema.json#/properties/jacsSha256")                         |
-| [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-properties-jacsfiles.md "schemas/header/v1/header.schema.json#/properties/jacsFiles")                           |
+| Property                                    | Type          | Required | Nullable       | Defined by                                                                                                                |
+| :------------------------------------------ | :------------ | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| [jacsId](#jacsid)                           | `string`      | Required | cannot be null | [Header](header-properties-jacsid.md "schemas/header/v1/header.schema.json#/properties/jacsId")                           |
+| [jacsVersion](#jacsversion)                 | `string`      | Required | cannot be null | [Header](header-properties-jacsversion.md "schemas/header/v1/header.schema.json#/properties/jacsVersion")                 |
+| [jacsVersionDate](#jacsversiondate)         | `string`      | Required | cannot be null | [Header](header-properties-jacsversiondate.md "schemas/header/v1/header.schema.json#/properties/jacsVersionDate")         |
+| [jacsSignature](#jacssignature)             | Not specified | Optional | cannot be null | [Header](header-properties-jacssignature.md "schemas/header/v1/header.schema.json#/properties/jacsSignature")             |
+| [jacsRegistration](#jacsregistration)       | Not specified | Optional | cannot be null | [Header](header-properties-jacsregistration.md "schemas/header/v1/header.schema.json#/properties/jacsRegistration")       |
+| [jacsAgreement](#jacsagreement)             | Not specified | Optional | cannot be null | [Header](header-properties-jacsagreement.md "schemas/header/v1/header.schema.json#/properties/jacsAgreement")             |
+| [jacsAgreementHash](#jacsagreementhash)     | `string`      | Optional | cannot be null | [Header](header-properties-jacsagreementhash.md "schemas/header/v1/header.schema.json#/properties/jacsAgreementHash")     |
+| [jacsPreviousVersion](#jacspreviousversion) | `string`      | Optional | cannot be null | [Header](header-properties-jacspreviousversion.md "schemas/header/v1/header.schema.json#/properties/jacsPreviousVersion") |
+| [jacsOriginalVersion](#jacsoriginalversion) | `string`      | Required | cannot be null | [Header](header-properties-jacsoriginalversion.md "schemas/header/v1/header.schema.json#/properties/jacsOriginalVersion") |
+| [jacsOriginalDate](#jacsoriginaldate)       | `string`      | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")       |
+| [jacsSha256](#jacssha256)                   | `string`      | Optional | cannot be null | [Header](header-properties-jacssha256.md "schemas/header/v1/header.schema.json#/properties/jacsSha256")                   |
+| [jacsFiles](#jacsfiles)                     | `array`       | Optional | cannot be null | [Header](header-properties-jacsfiles.md "schemas/header/v1/header.schema.json#/properties/jacsFiles")                     |
 
 ## jacsId
 
@@ -99,57 +99,57 @@ Date
 
 ## jacsSignature
 
-Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+Signature of of every field except this one and the hashing field by the creating/editing agent.
 
 `jacsSignature`
 
 * is optional
 
-* Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: unknown
 
 * cannot be null
 
-* defined in: [Header](header-properties-signature-1.md "schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")
+* defined in: [Header](header-properties-jacssignature.md "schemas/header/v1/header.schema.json#/properties/jacsSignature")
 
 ### jacsSignature Type
 
-`object` ([Signature](header-properties-signature-1.md))
+unknown
 
 ## jacsRegistration
 
-Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+Signature by a sigining authority like <https://hai.ai>.
 
 `jacsRegistration`
 
 * is optional
 
-* Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: unknown
 
 * cannot be null
 
-* defined in: [Header](header-properties-signature-1.md "schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration")
+* defined in: [Header](header-properties-jacsregistration.md "schemas/header/v1/header.schema.json#/properties/jacsRegistration")
 
 ### jacsRegistration Type
 
-`object` ([Signature](header-properties-signature-1.md))
+unknown
 
 ## jacsAgreement
 
-A set of required signatures signifying an agreement.
+Signatures signifying an agreement between agents.
 
 `jacsAgreement`
 
 * is optional
 
-* Type: `object` ([agreement](header-properties-agreement.md))
+* Type: unknown
 
 * cannot be null
 
-* defined in: [Header](header-properties-agreement.md "schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")
+* defined in: [Header](header-properties-jacsagreement.md "schemas/header/v1/header.schema.json#/properties/jacsAgreement")
 
 ### jacsAgreement Type
 
-`object` ([agreement](header-properties-agreement.md))
+unknown
 
 ## jacsAgreementHash
 
@@ -261,7 +261,7 @@ A set of files included with the jacs document
 
 * is optional
 
-* Type: `object[]` ([File](header-properties-jacsfiles-file.md))
+* Type: unknown\[]
 
 * cannot be null
 
@@ -269,4 +269,4 @@ A set of files included with the jacs document
 
 ### jacsFiles Type
 
-`object[]` ([File](header-properties-jacsfiles-file.md))
+unknown\[]

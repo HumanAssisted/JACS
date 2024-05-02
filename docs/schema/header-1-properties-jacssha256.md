@@ -1,7 +1,7 @@
 # Untitled string in Header Schema
 
 ```txt
-schemas/header/v1/header.schema.json#/properties/jacsSha256
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256
 ```
 
 Hash of every field except this one. During  updates and creation hash is the last thing to occur, as it includes the signature. Not immediatly required, but eventually required.

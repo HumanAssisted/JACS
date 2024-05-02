@@ -1,7 +1,7 @@
 # Untitled undefined type in Task Schema
 
 ```txt
-schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired/items
+https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired/items
 ```
 
 

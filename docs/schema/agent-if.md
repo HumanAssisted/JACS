@@ -1,7 +1,7 @@
 # Untitled undefined type in Agent Schema
 
 ```txt
-schemas/agent/v1/agent.schema.json#/if
+https://hai.ai/schemas/agent/v1/agent.schema.json#/if
 ```
 
 
@@ -16,9 +16,9 @@ unknown
 
 # if Properties
 
-| Property                        | Type     | Required | Nullable       | Defined by                                                                                                      |
-| :------------------------------ | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------- |
-| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-if-properties-jacsagenttype.md "schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType") |
+| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                     |
+| :------------------------------ | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------- |
+| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-if-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType") |
 
 ## jacsAgentType
 
@@ -32,7 +32,7 @@ unknown
 
 * cannot be null
 
-* defined in: [Agent](agent-if-properties-jacsagenttype.md "schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType")
+* defined in: [Agent](agent-if-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType")
 
 ### jacsAgentType Type
 

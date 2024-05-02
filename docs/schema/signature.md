@@ -1,7 +1,7 @@
 # Signature Schema
 
 ```txt
-schemas/components/signature/v1/signature.schema.json
+https://hai.ai/schemas/components/signature/v1/signature.schema.json
 ```
 
 Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
@@ -16,17 +16,17 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 # Signature Properties
 
-| Property                              | Type     | Required | Nullable       | Defined by                                                                                                                                 |
-| :------------------------------------ | :------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------- |
-| [agentID](#agentid)                   | `string` | Required | cannot be null | [Signature](signature-properties-agentid.md "schemas/components/signature/v1/signature.schema.json#/properties/agentID")                   |
-| [agentVersion](#agentversion)         | `string` | Required | cannot be null | [Signature](signature-properties-agentversion.md "schemas/components/signature/v1/signature.schema.json#/properties/agentVersion")         |
-| [date](#date)                         | `string` | Required | cannot be null | [Signature](signature-properties-date.md "schemas/components/signature/v1/signature.schema.json#/properties/date")                         |
-| [signature](#signature)               | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "schemas/components/signature/v1/signature.schema.json#/properties/signature")               |
-| [publicKeyHash](#publickeyhash)       | `string` | Required | cannot be null | [Signature](signature-properties-publickeyhash.md "schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash")       |
-| [signingAlgorithm](#signingalgorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signingalgorithm.md "schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm") |
-| [response](#response)                 | `string` | Optional | cannot be null | [Signature](signature-properties-response.md "schemas/components/signature/v1/signature.schema.json#/properties/response")                 |
-| [responseType](#responsetype)         | `string` | Optional | cannot be null | [Signature](signature-properties-responsetype.md "schemas/components/signature/v1/signature.schema.json#/properties/responseType")         |
-| [fields](#fields)                     | `array`  | Required | cannot be null | [Signature](signature-properties-fields.md "schemas/components/signature/v1/signature.schema.json#/properties/fields")                     |
+| Property                              | Type     | Required | Nullable       | Defined by                                                                                                                                                |
+| :------------------------------------ | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [agentID](#agentid)                   | `string` | Required | cannot be null | [Signature](signature-properties-agentid.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentID")                   |
+| [agentVersion](#agentversion)         | `string` | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentVersion")         |
+| [date](#date)                         | `string` | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/date")                         |
+| [signature](#signature)               | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")               |
+| [publicKeyHash](#publickeyhash)       | `string` | Required | cannot be null | [Signature](signature-properties-publickeyhash.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash")       |
+| [signingAlgorithm](#signingalgorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signingalgorithm.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm") |
+| [response](#response)                 | `string` | Optional | cannot be null | [Signature](signature-properties-response.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/response")                 |
+| [responseType](#responsetype)         | `string` | Optional | cannot be null | [Signature](signature-properties-responsetype.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/responseType")         |
+| [fields](#fields)                     | `array`  | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields")                     |
 
 ## agentID
 
@@ -40,7 +40,7 @@ The id of agent that produced signature
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-agentid.md "schemas/components/signature/v1/signature.schema.json#/properties/agentID")
+* defined in: [Signature](signature-properties-agentid.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentID")
 
 ### agentID Type
 
@@ -62,7 +62,7 @@ Version of the agent
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-agentversion.md "schemas/components/signature/v1/signature.schema.json#/properties/agentVersion")
+* defined in: [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentVersion")
 
 ### agentVersion Type
 
@@ -84,7 +84,7 @@ Date
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-date.md "schemas/components/signature/v1/signature.schema.json#/properties/date")
+* defined in: [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/date")
 
 ### date Type
 
@@ -106,7 +106,7 @@ The actual signature, made from the docid,
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-signature.md "schemas/components/signature/v1/signature.schema.json#/properties/signature")
+* defined in: [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
@@ -124,7 +124,7 @@ Hash of the public key to verify signature with.
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-publickeyhash.md "schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash")
+* defined in: [Signature](signature-properties-publickeyhash.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash")
 
 ### publicKeyHash Type
 
@@ -142,7 +142,7 @@ What signature algorithm was used
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-signingalgorithm.md "schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm")
+* defined in: [Signature](signature-properties-signingalgorithm.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm")
 
 ### signingAlgorithm Type
 
@@ -160,7 +160,7 @@ When prompting an agent, is there text provided with the agreement?
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-response.md "schemas/components/signature/v1/signature.schema.json#/properties/response")
+* defined in: [Signature](signature-properties-response.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/response")
 
 ### response Type
 
@@ -178,7 +178,7 @@ Optional way to track disagreement, or agreement. Reject means question not unde
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-responsetype.md "schemas/components/signature/v1/signature.schema.json#/properties/responseType")
+* defined in: [Signature](signature-properties-responsetype.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/responseType")
 
 ### responseType Type
 
@@ -206,7 +206,7 @@ fields fields from document which were used to generate signature.
 
 * cannot be null
 
-* defined in: [Signature](signature-properties-fields.md "schemas/components/signature/v1/signature.schema.json#/properties/fields")
+* defined in: [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields")
 
 ### fields Type
 

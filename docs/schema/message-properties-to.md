@@ -1,7 +1,7 @@
 # Untitled array in Message Schema
 
 ```txt
-schemas/message/v1/message.schema.json#/properties/to
+https://hai.ai/schemas/message/v1/message.schema.json#/properties/to
 ```
 
 list of addressees, optional

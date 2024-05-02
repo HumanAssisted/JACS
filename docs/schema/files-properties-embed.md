@@ -1,7 +1,7 @@
 # Untitled boolean in File Schema
 
 ```txt
-schemas/components/files/v1/files.schema.json#/properties/embed
+https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/embed
 ```
 
 should JACS embed the file contents?

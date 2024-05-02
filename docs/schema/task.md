@@ -1,7 +1,7 @@
 # Task Schema
 
 ```txt
-schemas/task/v1/task-schema.json
+https://hai.ai/schemas/task/v1/task-schema.json
 ```
 
 General schema for stateful resources.

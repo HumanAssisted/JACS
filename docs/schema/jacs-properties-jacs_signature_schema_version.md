@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version
+https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version
 ```
 
 version number of the schema used to validate signature

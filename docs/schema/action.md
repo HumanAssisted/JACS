@@ -86,7 +86,7 @@ units that can be modified
 
 * is optional
 
-* Type: `object[]` ([Unit](action-properties-units-unit.md))
+* Type: unknown\[]
 
 * cannot be null
 
@@ -94,7 +94,7 @@ units that can be modified
 
 ### units Type
 
-`object[]` ([Unit](action-properties-units-unit.md))
+unknown\[]
 
 ## completionAgreementRequired
 

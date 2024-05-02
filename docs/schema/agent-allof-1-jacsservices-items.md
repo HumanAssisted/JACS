@@ -1,7 +1,7 @@
 # Untitled undefined type in Agent Schema
 
 ```txt
-schemas/agent/v1/agent.schema.json#/allOf/1/jacsServices/items
+https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsServices/items
 ```
 
 

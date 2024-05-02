@@ -1,7 +1,7 @@
 # Untitled string in Task Schema
 
 ```txt
-schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCompleteDate
+https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskCompleteDate
 ```
 
 When the lock expires

@@ -1,7 +1,7 @@
 # Untitled boolean in Contact Schema
 
 ```txt
-schemas/contact/v1/contact-schema.json#/properties/isPrimary
+https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/isPrimary
 ```
 
 Is the primary way to contact agent.

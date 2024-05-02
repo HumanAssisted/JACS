@@ -1,7 +1,7 @@
 # Untitled string in File Schema
 
 ```txt
-schemas/components/files/v1/files.schema.json#/properties/path
+https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/path
 ```
 
 where can the file be found on the filesystem. For now no online. ipfs, https, etc. todo "format": "uri"

@@ -1,7 +1,7 @@
 # Untitled string in File Schema
 
 ```txt
-schemas/components/files/v1/files.schema.json#/properties/mimetype
+https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/mimetype
 ```
 
 Type of file. e.g. <https://www.iana.org/assignments/media-types/application/json>

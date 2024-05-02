@@ -1,7 +1,7 @@
 # Untitled string in Contact Schema
 
 ```txt
-schemas/contact/v1/contact-schema.json#/properties/mailState
+https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailState
 ```
 
 State or province

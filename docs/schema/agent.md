@@ -1,7 +1,7 @@
 # Agent Schema
 
 ```txt
-schemas/agent/v1/agent.schema.json
+https://hai.ai/schemas/agent/v1/agent.schema.json
 ```
 
 General schema for human, hybrid, and AI agents

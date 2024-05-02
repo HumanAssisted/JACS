@@ -1,7 +1,7 @@
 # Untitled array in Action Schema
 
 ```txt
-schemas/components/action/v1/action-schema.json#/properties/tools
+https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools
 ```
 
 tools that can be utilized

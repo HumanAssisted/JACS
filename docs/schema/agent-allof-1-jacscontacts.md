@@ -1,7 +1,7 @@
 # Untitled array in Agent Schema
 
 ```txt
-schemas/agent/v1/agent.schema.json#/allOf/1/jacsContacts
+https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsContacts
 ```
 
 Contact information for the agent

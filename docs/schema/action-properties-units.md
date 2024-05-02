@@ -12,4 +12,4 @@ units that can be modified
 
 ## units Type
 
-`object[]` ([Unit](action-properties-units-unit.md))
+unknown\[]

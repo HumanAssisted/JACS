@@ -1,7 +1,7 @@
 # Untitled string in Unit Schema
 
 ```txt
-schemas/components/unit/v1/unit.schema.json#/properties/label
+https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/label
 ```
 
 age, weight, net worth etc

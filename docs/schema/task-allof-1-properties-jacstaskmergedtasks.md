@@ -1,7 +1,7 @@
 # Untitled array in Task Schema
 
 ```txt
-schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMergedTasks
+https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMergedTasks
 ```
 
 list of task ids that have been folded into this task.

@@ -1,7 +1,7 @@
 # Untitled integer in Unit Schema
 
 ```txt
-schemas/components/unit/v1/unit.schema.json#/properties/quantity
+https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity
 ```
 
 the amount

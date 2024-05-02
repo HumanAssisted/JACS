@@ -1,7 +1,7 @@
 # Evaluation Schema
 
 ```txt
-schemas/eval/v1/eval.schema.json
+https://hai.ai/schemas/eval/v1/eval.schema.json
 ```
 
 A signed, immutable message evaluation an agent's performance on a task
@@ -16,14 +16,14 @@ A signed, immutable message evaluation an agent's performance on a task
 
 # Evaluation Properties
 
-| Property                                  | Type     | Required | Nullable       | Defined by                                                                                                                   |
-| :---------------------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                                 | `string` | Required | cannot be null | [Evaluation](eval-properties-id.md "schemas/eval/v1/eval.schema.json#/properties/id")                                        |
-| [signature](#signature)                   | `object` | Optional | cannot be null | [Evaluation](header-properties-signature-1.md "schemas/components/signature/v1/signature.schema.json#/properties/signature") |
-| [taskID](#taskid)                         | `string` | Required | cannot be null | [Evaluation](eval-properties-taskid.md "schemas/eval/v1/eval.schema.json#/properties/taskID")                                |
-| [datetime](#datetime)                     | `string` | Required | cannot be null | [Evaluation](eval-properties-datetime.md "schemas/eval/v1/eval.schema.json#/properties/datetime")                            |
-| [qualityDescription](#qualitydescription) | `string` | Optional | cannot be null | [Evaluation](eval-properties-qualitydescription.md "schemas/eval/v1/eval.schema.json#/properties/qualityDescription")        |
-| [quantifications](#quantifications)       | `array`  | Optional | cannot be null | [Evaluation](eval-properties-quantifications.md "schemas/eval/v1/eval.schema.json#/properties/quantifications")              |
+| Property                                  | Type     | Required | Nullable       | Defined by                                                                                                                                    |
+| :---------------------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                                 | `string` | Required | cannot be null | [Evaluation](eval-properties-id.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/id")                                          |
+| [signature](#signature)                   | `object` | Optional | cannot be null | [Evaluation](header-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
+| [taskID](#taskid)                         | `string` | Required | cannot be null | [Evaluation](eval-properties-taskid.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/taskID")                                  |
+| [datetime](#datetime)                     | `string` | Required | cannot be null | [Evaluation](eval-properties-datetime.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/datetime")                              |
+| [qualityDescription](#qualitydescription) | `string` | Optional | cannot be null | [Evaluation](eval-properties-qualitydescription.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/qualityDescription")          |
+| [quantifications](#quantifications)       | `array`  | Optional | cannot be null | [Evaluation](eval-properties-quantifications.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications")                |
 
 ## id
 
@@ -37,7 +37,7 @@ A signed, immutable message evaluation an agent's performance on a task
 
 * cannot be null
 
-* defined in: [Evaluation](eval-properties-id.md "schemas/eval/v1/eval.schema.json#/properties/id")
+* defined in: [Evaluation](eval-properties-id.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/id")
 
 ### id Type
 
@@ -55,15 +55,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 * is optional
 
-* Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-1-properties-signature-1.md))
 
 * cannot be null
 
-* defined in: [Evaluation](header-properties-signature-1.md "schemas/components/signature/v1/signature.schema.json#/properties/signature")
+* defined in: [Evaluation](header-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
-`object` ([Signature](header-properties-signature-1.md))
+`object` ([Signature](header-1-properties-signature-1.md))
 
 ## taskID
 
@@ -77,7 +77,7 @@ task being evaluated
 
 * cannot be null
 
-* defined in: [Evaluation](eval-properties-taskid.md "schemas/eval/v1/eval.schema.json#/properties/taskID")
+* defined in: [Evaluation](eval-properties-taskid.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/taskID")
 
 ### taskID Type
 
@@ -99,7 +99,7 @@ Date of evaluation
 
 * cannot be null
 
-* defined in: [Evaluation](eval-properties-datetime.md "schemas/eval/v1/eval.schema.json#/properties/datetime")
+* defined in: [Evaluation](eval-properties-datetime.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/datetime")
 
 ### datetime Type
 
@@ -121,7 +121,7 @@ When prompting an agent, is there text provided with the agreement?
 
 * cannot be null
 
-* defined in: [Evaluation](eval-properties-qualitydescription.md "schemas/eval/v1/eval.schema.json#/properties/qualityDescription")
+* defined in: [Evaluation](eval-properties-qualitydescription.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/qualityDescription")
 
 ### qualityDescription Type
 
@@ -135,12 +135,12 @@ list of evaluation units, informatio labels
 
 * is optional
 
-* Type: `object[]` ([Unit](action-properties-units-unit.md))
+* Type: `object[]` ([Unit](eval-properties-quantifications-unit.md))
 
 * cannot be null
 
-* defined in: [Evaluation](eval-properties-quantifications.md "schemas/eval/v1/eval.schema.json#/properties/quantifications")
+* defined in: [Evaluation](eval-properties-quantifications.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications")
 
 ### quantifications Type
 
-`object[]` ([Unit](action-properties-units-unit.md))
+`object[]` ([Unit](eval-properties-quantifications-unit.md))

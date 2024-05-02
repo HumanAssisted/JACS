@@ -1,7 +1,7 @@
 # Untitled string in Tool Schema
 
 ```txt
-schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name
+https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name
 ```
 
 The name of the function

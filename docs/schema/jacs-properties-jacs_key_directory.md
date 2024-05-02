@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-schemas/jacs.config.schema.json#/properties/jacs_key_directory
+https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_key_directory
 ```
 
 path to store keys

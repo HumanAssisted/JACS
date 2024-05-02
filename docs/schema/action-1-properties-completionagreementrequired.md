@@ -1,7 +1,7 @@
 # Untitled boolean in Action Schema
 
 ```txt
-schemas/components/action/v1/action-schema.json#/properties/completionAgreementRequired
+https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/completionAgreementRequired
 ```
 
 Do agents need to agree this is completed for task to be.

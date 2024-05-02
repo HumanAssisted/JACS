@@ -1,7 +1,7 @@
 # Untitled object in Agent Schema
 
 ```txt
-schemas/agent/v1/agent.schema.json#/allOf/1
+https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1
 ```
 
 
@@ -16,13 +16,13 @@ schemas/agent/v1/agent.schema.json#/allOf/1
 
 # 1 Properties
 
-| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                |
-| :------------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------ |
-| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType") |
+| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                               |
+| :------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType") |
 
 ## jacsAgentType
 
-Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, 'hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence.
+Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence.
 
 `jacsAgentType`
 
@@ -32,7 +32,7 @@ Type of the agent. 'human' indicates a biological entity, 'human-org' indicates 
 
 * cannot be null
 
-* defined in: [Agent](agent-allof-1-properties-jacsagenttype.md "schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType")
+* defined in: [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType")
 
 ### jacsAgentType Type
 

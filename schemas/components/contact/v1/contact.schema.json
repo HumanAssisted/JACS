@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "schemas/contact/v1/contact-schema.json",
+  "$id": "https://hai.ai/schemas/contact/v1/contact-schema.json",
   "title": "Contact",
   "description": "How to contact over human channels.",
   "type": "object",

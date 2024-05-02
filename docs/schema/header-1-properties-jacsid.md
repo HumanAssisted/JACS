@@ -1,7 +1,7 @@
 # Untitled string in Header Schema
 
 ```txt
-schemas/header/v1/header.schema.json#/properties/jacsId
+https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId
 ```
 
 uuid v4 string

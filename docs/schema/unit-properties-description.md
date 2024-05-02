@@ -1,7 +1,7 @@
 # Untitled string in Unit Schema
 
 ```txt
-schemas/components/unit/v1/unit.schema.json#/properties/description
+https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/description
 ```
 
 reason this unit is present

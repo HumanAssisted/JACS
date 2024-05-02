@@ -1,7 +1,7 @@
 # Untitled string in Service Schema
 
 ```txt
-schemas/service/v1/service-schema.json#/properties/copyright
+https://hai.ai/schemas/service/v1/service-schema.json#/properties/copyright
 ```
 
 How can data provided be used

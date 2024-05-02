@@ -1,7 +1,7 @@
 # File Schema
 
 ```txt
-schemas/components/files/v1/files.schema.json
+https://hai.ai/schemas/components/files/v1/files.schema.json
 ```
 
 General data about unstructured content not in JACS
@@ -16,13 +16,13 @@ General data about unstructured content not in JACS
 
 # File Properties
 
-| Property              | Type      | Required | Nullable       | Defined by                                                                                                |
-| :-------------------- | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------- |
-| [mimetype](#mimetype) | `string`  | Required | cannot be null | [File](files-properties-mimetype.md "schemas/components/files/v1/files.schema.json#/properties/mimetype") |
-| [path](#path)         | `string`  | Required | cannot be null | [File](files-properties-path.md "schemas/components/files/v1/files.schema.json#/properties/path")         |
-| [contents](#contents) | `string`  | Optional | cannot be null | [File](files-properties-contents.md "schemas/components/files/v1/files.schema.json#/properties/contents") |
-| [embed](#embed)       | `boolean` | Required | cannot be null | [File](files-properties-embed.md "schemas/components/files/v1/files.schema.json#/properties/embed")       |
-| [sha256](#sha256)     | `string`  | Optional | cannot be null | [File](files-properties-sha256.md "schemas/components/files/v1/files.schema.json#/properties/sha256")     |
+| Property              | Type      | Required | Nullable       | Defined by                                                                                                               |
+| :-------------------- | :-------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------- |
+| [mimetype](#mimetype) | `string`  | Required | cannot be null | [File](files-properties-mimetype.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/mimetype") |
+| [path](#path)         | `string`  | Required | cannot be null | [File](files-properties-path.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/path")         |
+| [contents](#contents) | `string`  | Optional | cannot be null | [File](files-properties-contents.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/contents") |
+| [embed](#embed)       | `boolean` | Required | cannot be null | [File](files-properties-embed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/embed")       |
+| [sha256](#sha256)     | `string`  | Optional | cannot be null | [File](files-properties-sha256.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/sha256")     |
 
 ## mimetype
 
@@ -36,7 +36,7 @@ Type of file. e.g. <https://www.iana.org/assignments/media-types/application/jso
 
 * cannot be null
 
-* defined in: [File](files-properties-mimetype.md "schemas/components/files/v1/files.schema.json#/properties/mimetype")
+* defined in: [File](files-properties-mimetype.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/mimetype")
 
 ### mimetype Type
 
@@ -54,7 +54,7 @@ where can the file be found on the filesystem. For now no online. ipfs, https, e
 
 * cannot be null
 
-* defined in: [File](files-properties-path.md "schemas/components/files/v1/files.schema.json#/properties/path")
+* defined in: [File](files-properties-path.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/path")
 
 ### path Type
 
@@ -72,7 +72,7 @@ base64 encoded contents, possibly compressed
 
 * cannot be null
 
-* defined in: [File](files-properties-contents.md "schemas/components/files/v1/files.schema.json#/properties/contents")
+* defined in: [File](files-properties-contents.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/contents")
 
 ### contents Type
 
@@ -90,7 +90,7 @@ should JACS embed the file contents?
 
 * cannot be null
 
-* defined in: [File](files-properties-embed.md "schemas/components/files/v1/files.schema.json#/properties/embed")
+* defined in: [File](files-properties-embed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/embed")
 
 ### embed Type
 
@@ -108,7 +108,7 @@ content checksum to verify contents on download.
 
 * cannot be null
 
-* defined in: [File](files-properties-sha256.md "schemas/components/files/v1/files.schema.json#/properties/sha256")
+* defined in: [File](files-properties-sha256.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/sha256")
 
 ### sha256 Type
 

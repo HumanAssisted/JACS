@@ -1,7 +1,7 @@
 # Untitled array in Evaluation Schema
 
 ```txt
-schemas/eval/v1/eval.schema.json#/properties/quantifications
+https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications
 ```
 
 list of evaluation units, informatio labels
@@ -12,4 +12,4 @@ list of evaluation units, informatio labels
 
 ## quantifications Type
 
-`object[]` ([Unit](action-properties-units-unit.md))
+`object[]` ([Unit](eval-properties-quantifications-unit.md))
