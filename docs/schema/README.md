@@ -2,7 +2,7 @@
 
 ## Top-level Schemas
 
-* [Action](./action.md "General actions definitions which can comprise a service") – `./action.schema.json`
+* [Action](./action.md "General actions definitions which can comprise a service") – `https://hai.ai/schemas/components/action/v1/action.schema.json`
 
 * [Action](./action-1.md "General actions definitions which can comprise a service") – `schemas/components/action/v1/action-schema.json`
 
@@ -66,9 +66,9 @@
 
 ### Arrays
 
-* [Untitled array in Action](./action-properties-tools.md "tools that can be utilized") – `./action.schema.json#/properties/tools`
+* [Untitled array in Action](./action-properties-tools.md "tools that can be utilized") – `https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/tools`
 
-* [Untitled array in Action](./action-properties-units.md "units that can be modified") – `./action.schema.json#/properties/units`
+* [Untitled array in Action](./action-properties-units.md "units that can be modified") – `https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/units`
 
 * [Untitled array in Action](./action-1-properties-tools.md "tools that can be utilized") – `schemas/components/action/v1/action-schema.json#/properties/tools`
 

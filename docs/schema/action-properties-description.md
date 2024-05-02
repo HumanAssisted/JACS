@@ -1,7 +1,7 @@
 # Untitled string in Action Schema
 
 ```txt
-./action.schema.json#/properties/description
+https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/description
 ```
 
 type of change that can happen

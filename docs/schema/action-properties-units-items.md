@@ -1,7 +1,7 @@
 # Untitled undefined type in Action Schema
 
 ```txt
-./action.schema.json#/properties/units/items
+https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/units/items
 ```
 
 
