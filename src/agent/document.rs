@@ -172,7 +172,11 @@ pub trait Document {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
-
+    fn diff_json_strings(
+        &self,
+        json1: &str,
+        json2: &str,
+    ) -> Result<(String, String), Box<dyn Error>>;
     /// export_embedded if there is embedded files recreate them, default false
     fn save_document(
         &mut self,
@@ -644,6 +648,27 @@ impl Document for Agent {
             }
             None => None,
         }
+    }
+
+    /// Function to diff two JSON strings and print the differences.
+    fn diff_json_strings(
+        &self,
+        json1: &str,
+        json2: &str,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        let changeset = Changeset::new(json1, json2, "\n");
+        let mut same = String::new();
+        let mut diffs = String::new();
+
+        for diff in changeset.diffs {
+            match diff {
+                Difference::Same(ref x) => same.push_str(format!(" {}", x).as_str()),
+                Difference::Add(ref x) => diffs.push_str(format!("+{}", x).as_str()),
+                Difference::Rem(ref x) => diffs.push_str(format!("-{}", x).as_str()),
+            }
+        }
+
+        return Ok((same, diffs));
     }
 
     fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String) {

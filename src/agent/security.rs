@@ -1,5 +1,6 @@
+use crate::error;
 use log::info;
-use log::warn;
+
 use std::env;
 use std::error::Error;
 use std::fs::{self, Permissions};
@@ -103,7 +104,7 @@ fn quarantine_file(file_path: &Path) -> Result<(), Box<dyn Error>> {
         }
     };
     let dest_path = quarantine_dir.join(file_name);
-    warn!(
+    error!(
         "security: moving {:?} to {:?} as it may be executable.",
         file_name, dest_path
     );
