@@ -41,7 +41,7 @@ fn main() {
                     }
                 }
                 None => {
-                    println!("Warning: No suitable directory found in PA TH to install 'jacs'");
+                    println!("Warning: No suitable directory found in PATH to install 'jacs'");
                 }
             }
         }
