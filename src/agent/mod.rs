@@ -632,7 +632,9 @@ impl Agent {
             } else {
                 // Load schema from local file
                 println!("loading custom schema {}", path);
-                let schema_json = std::fs::read_to_string(path).unwrap();
+                let base_path = env::current_dir().unwrap(); // Get the current working directory
+                let schema_path = base_path.join(path); // Create an absolute path from the base path and the relative path
+                let schema_json = std::fs::read_to_string(schema_path).unwrap();
                 let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
                 JSONSchema::options()
                     .with_draft(Draft::Draft7)
