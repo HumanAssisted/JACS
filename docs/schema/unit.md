@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/unit/v1/unit.schema.json
 ```
 
-Labels for quantitative values.
+Labels and quantitative values.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                   |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------- |
@@ -16,28 +16,29 @@ Labels for quantitative values.
 
 # Unit Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                  |
-| :-------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                   | `string` | Required | cannot be null | [Unit](unit-properties-id.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id")                   |
-| [generaltype](#generaltype) | `string` | Optional | cannot be null | [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generaltype") |
-| [unit\_name](#unit_name)    | `string` | Required | cannot be null | [Unit](unit-properties-unit_name.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unit_name")     |
-| [label](#label)             | `string` | Required | cannot be null | [Unit](unit-properties-label.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/label")             |
+| Property                    | Type      | Required | Nullable       | Defined by                                                                                                                  |
+| :-------------------------- | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| [description](#description) | `string`  | Optional | cannot be null | [Unit](unit-properties-description.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/description") |
+| [generaltype](#generaltype) | `string`  | Optional | cannot be null | [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generaltype") |
+| [unit\_name](#unit_name)    | `string`  | Required | cannot be null | [Unit](unit-properties-unit_name.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unit_name")     |
+| [quantity](#quantity)       | `integer` | Optional | cannot be null | [Unit](unit-properties-quantity.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity")       |
+| [label](#label)             | `string`  | Required | cannot be null | [Unit](unit-properties-label.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/label")             |
 
-## id
+## description
 
-Quantification GUID
+reason this unit is present
 
-`id`
+`description`
 
-*   is required
+*   is optional
 
 *   Type: `string`
 
 *   cannot be null
 
-*   defined in: [Unit](unit-properties-id.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id")
+*   defined in: [Unit](unit-properties-description.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/description")
 
-### id Type
+### description Type
 
 `string`
 
@@ -88,6 +89,24 @@ pounds, square ft, dollars, hours, etc
 ### unit\_name Type
 
 `string`
+
+## quantity
+
+the amount
+
+`quantity`
+
+*   is optional
+
+*   Type: `integer`
+
+*   cannot be null
+
+*   defined in: [Unit](unit-properties-quantity.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity")
+
+### quantity Type
+
+`integer`
 
 ## label
 

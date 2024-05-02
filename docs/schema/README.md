@@ -24,7 +24,7 @@
 
 *   [Tool](./tool.md "OpenAI function calling definitions https://platform") – `https://hai.ai/schemas/components/tool/v1/tool-schema.json`
 
-*   [Unit](./unit.md "Labels for quantitative values") – `https://hai.ai/schemas/components/unit/v1/unit.schema.json`
+*   [Unit](./unit.md "Labels and quantitative values") – `https://hai.ai/schemas/components/unit/v1/unit.schema.json`
 
 *   [agreement](./agreement.md "A set of required signatures signifying an agreement") – `https://hai.ai/schemas/components/agreement/v1/agreement.schema.json`
 
@@ -49,8 +49,6 @@
 ### Arrays
 
 *   [Untitled array in Action](./action-properties-tools.md "tools that can be utilized") – `https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools`
-
-*   [Untitled array in Action](./action-properties-units.md "units that can be modified") – `https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units`
 
 *   [Untitled array in Agent](./agent-allof-1-jacsservices.md "Services the agent can perform") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsServices`
 

@@ -1,5 +1,7 @@
 ## 0.2.11
 
+- bringing some documentation up to date
+-
 
 ## 0.2.10
 
