@@ -18,11 +18,34 @@ Labels and quantitative values.
 
 | Property                    | Type      | Required | Nullable       | Defined by                                                                                                                  |
 | :-------------------------- | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                   | `string`  | Required | cannot be null | [Unit](unit-properties-id.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id")                   |
 | [description](#description) | `string`  | Optional | cannot be null | [Unit](unit-properties-description.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/description") |
 | [generalType](#generaltype) | `string`  | Optional | cannot be null | [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generalType") |
-| [unit\_name](#unit_name)    | `string`  | Required | cannot be null | [Unit](unit-properties-unit_name.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unit_name")     |
+| [unitName](#unitname)       | `string`  | Required | cannot be null | [Unit](unit-properties-unitname.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unitName")       |
 | [quantity](#quantity)       | `integer` | Required | cannot be null | [Unit](unit-properties-quantity.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity")       |
 | [label](#label)             | `string`  | Required | cannot be null | [Unit](unit-properties-label.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/label")             |
+
+## id
+
+
+
+`id`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Unit](unit-properties-id.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id")
+
+### id Type
+
+`string`
+
+### id Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
 ## description
 
@@ -72,11 +95,11 @@ general type of resource
 | `"monetary"`    |             |
 | `"information"` |             |
 
-## unit\_name
+## unitName
 
 pounds, square ft, dollars, hours, etc
 
-`unit_name`
+`unitName`
 
 *   is required
 
@@ -84,9 +107,9 @@ pounds, square ft, dollars, hours, etc
 
 *   cannot be null
 
-*   defined in: [Unit](unit-properties-unit_name.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unit_name")
+*   defined in: [Unit](unit-properties-unitname.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unitName")
 
-### unit\_name Type
+### unitName Type
 
 `string`
 

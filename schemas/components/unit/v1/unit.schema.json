@@ -5,6 +5,11 @@
   "description": "Labels and quantitative values.",
   "type": "object",
   "properties": {
+    "id": {
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
     "description": {
       "description": "reason this unit is present",
       "hai": "agent",
@@ -22,7 +27,7 @@
         "information"
       ]
     },
-    "unit_name": {
+    "unitName": {
       "type": "string",
       "hai": "agent",
       "description": "pounds, square ft, dollars, hours, etc"
@@ -40,7 +45,7 @@
   },
   "required": [
     "id",
-    "unit_name",
+    "unitName",
     "label",
     "quantity"
   ],

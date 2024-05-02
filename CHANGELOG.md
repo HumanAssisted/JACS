@@ -3,8 +3,10 @@
 - bringing some documentation up to date
 - adding evaluations schemas
 - adding agree/disagree to signature
-- adding evaluation helpers
-
+- adding evaluation helpers **
+- incremental documentation work **
+- make github repo public **
+- proper cargo categories
 
 ## 0.2.10
 
