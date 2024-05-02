@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 include = [
     "src/**/*",
@@ -33,7 +33,7 @@ license = "Apache-2.0"
 homepage = "https://humanassisted.github.io/JACS"
 repository = "https://github.com/HumanAssisted/JACS"
 keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
-categories = ["cryptography", "ai", "no-std"]
+categories = ["cryptography", "text-processing", "data-structures" ]
 build = "build.rs"
 
 

@@ -1,6 +1,6 @@
 # JSON is all you need! **
 
-As a developer, this is a good place to start, or review the code at [JACS on github](https://github.com/HumanAssisted/JACS)
+As a developer, this is a good place to start, or review the code at [JACS on github](https://github.com/HumanAssisted/JACS), or watch our tutorials on [YouTube](https://www.youtube.com/@HAI_AI)
 
 JACS docs are in a format already widely adopted and enjoyed: JSON. However, JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document. The documents with signatures are always JSON. Therefore, they are independent of network protocols or database formats and can be shared and stand-alone.
 
@@ -23,13 +23,11 @@ If you are working in Rust, add the rust lib to your project
 # Flexible
 
 Flexible for developers - store, index, and search the docouments how you like.
+
+
 Any JSON document can be used as a JACS doc as long as it has the JACS header, which are some required fields about the creator and version.
 Enforcement of schemas relies on [JSON Schema's](https://json-schema.org/) as a basic formalization.
 
 
+For ease of use and safety of sharing documents (tasks) devs building connected Agent Apps will want to use services provided by https://hai.ai
 
-
-
-Most devs building connected Agent Apps will want to use [Sophon](https://github.com/HumanAssistedIntelligence/sophon). [Sophon](https://github.com/HumanAssistedIntelligence/sophon) will make it easy to use, but also imposes a lot of opinions.
-
-JACS started as [OSAP](https://github.com/HumanAssistedIntelligence/OSAP) and stands for - JSON Agent Communication Standard.
