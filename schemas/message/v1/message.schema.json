@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/components/message/v1/message-schema.json",
+  "$id": "https://hai.ai/schemas/message/v1/message.schema.json",
   "title": "Message",
-  "description": "A signed, immutable message",
+  "description": "A signed, immutable message about a task",
   "type": "object",
   "properties": {
     "id": {
@@ -43,7 +43,7 @@
       "type": "array",
       "description": "list of files  ",
       "items": {
-        "$ref": "https://hai.ai/schemas/files/v1/files.schema.json"
+        "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
       }
     }
   },

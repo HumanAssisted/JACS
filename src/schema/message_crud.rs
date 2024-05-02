@@ -6,8 +6,6 @@ use std::error::Error;
 use uuid::Uuid;
 
 /// Creates a minimal message with required fields.
-/// messages are embedded in tasks, this creates a complete message
-/// that can be added to the task
 /// # Arguments
 ///
 /// * `content` - The content of the message.
@@ -25,7 +23,10 @@ pub fn create_minimal_message(
     embed: Option<bool>,
 ) -> Result<Value, Box<dyn Error>> {
     let datetime = Utc::now();
+    let schema = "https://hai.ai/schemas/message/v1/message.schema.json";
+
     let mut message = json!({
+        "$schema": schema,
         "datetime": datetime.to_rfc3339(),
         "content": content,
         "taskID": task_id

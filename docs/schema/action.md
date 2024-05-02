@@ -21,7 +21,8 @@ General actions definitions which can comprise a service. Distinct from function
 | [name](#name)                                               | `string`  | Required | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name")                                               |
 | [description](#description)                                 | `string`  | Required | cannot be null | [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/description")                                 |
 | [tools](#tools)                                             | `array`   | Optional | cannot be null | [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools")                                             |
-| [units](#units)                                             | `array`   | Optional | cannot be null | [Action](action-properties-units.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units")                                             |
+| [cost](#cost)                                               | `object`  | Optional | cannot be null | [Action](eval-properties-quantifications-unit.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/cost")                                     |
+| [duration](#duration)                                       | `object`  | Optional | cannot be null | [Action](eval-properties-quantifications-unit.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/duration")                                 |
 | [completionAgreementRequired](#completionagreementrequired) | `boolean` | Optional | cannot be null | [Action](action-properties-completionagreementrequired.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/completionAgreementRequired") |
 
 ## name
@@ -78,23 +79,41 @@ tools that can be utilized
 
 unknown\[]
 
-## units
+## cost
 
-units that can be modified
+Labels and quantitative values.
 
-`units`
+`cost`
 
 *   is optional
 
-*   Type: `object[]` ([Unit](action-properties-units-unit.md))
+*   Type: `object` ([Unit](eval-properties-quantifications-unit.md))
 
 *   cannot be null
 
-*   defined in: [Action](action-properties-units.md "https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units")
+*   defined in: [Action](eval-properties-quantifications-unit.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/cost")
 
-### units Type
+### cost Type
 
-`object[]` ([Unit](action-properties-units-unit.md))
+`object` ([Unit](eval-properties-quantifications-unit.md))
+
+## duration
+
+Labels and quantitative values.
+
+`duration`
+
+*   is optional
+
+*   Type: `object` ([Unit](eval-properties-quantifications-unit.md))
+
+*   cannot be null
+
+*   defined in: [Action](eval-properties-quantifications-unit.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/duration")
+
+### duration Type
+
+`object` ([Unit](eval-properties-quantifications-unit.md))
 
 ## completionAgreementRequired
 

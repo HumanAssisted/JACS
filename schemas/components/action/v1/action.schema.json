@@ -21,12 +21,13 @@
         "$ref": "https://hai.ai/schemas/components/tool/v1/tool.schema.json"
       }
     },
-    "units": {
-      "type": "array",
-      "description": "units that can be modified",
-      "items": {
-        "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
-      }
+    "cost": {
+      "description": "cost of this component. Willingness to pay or sell.",
+      "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
+    },
+    "duration": {
+      "description": "amount of time action will take",
+      "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
     },
     "completionAgreementRequired": {
       "type": "boolean",

@@ -110,6 +110,7 @@ pub fn create_task(
     }
 }
 
+// todo
 pub fn update_task(previoustask: String) -> Result<String, Box<dyn Error>> {
     // update document
     // validate

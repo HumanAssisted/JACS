@@ -55,6 +55,7 @@ pub struct Schema {
     contactschema: JSONSchema,
     pub taskschema: JSONSchema,
     messageschema: JSONSchema,
+    evalschema: JSONSchema,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
@@ -324,10 +325,8 @@ impl Schema {
 
         let task_path = format!("schemas/task/{}/task.schema.json", default_version);
 
-        let message_path = format!(
-            "schemas/components/message/{}/message.schema.json",
-            default_version
-        );
+        let message_path = format!("schemas/message/{}/message.schema.json", default_version);
+        let eval_path = format!("schemas/eval/{}/eval.schema.json", default_version);
 
         let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
         let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
@@ -340,6 +339,7 @@ impl Schema {
         let contactdata = DEFAULT_SCHEMA_STRINGS.get(&contact_path).unwrap();
         let taskdata = DEFAULT_SCHEMA_STRINGS.get(&task_path).unwrap();
         let messagedata = DEFAULT_SCHEMA_STRINGS.get(&message_path).unwrap();
+        let evaldata = DEFAULT_SCHEMA_STRINGS.get(&eval_path).unwrap();
 
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;
@@ -353,7 +353,7 @@ impl Schema {
         let contactschema_result: Value = serde_json::from_str(&contactdata)?;
         let taskschema_result: Value = serde_json::from_str(&taskdata)?;
         let messageschema_result: Value = serde_json::from_str(&messagedata)?;
-
+        let evalschema_result: Value = serde_json::from_str(&evaldata)?;
         let agentschema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new()) // current_dir.clone()
@@ -426,6 +426,12 @@ impl Schema {
             .compile(&taskschema_result)
             .expect("A valid schema");
 
+        let evalschema = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&evalschema_result)
+            .expect("A valid schema");
+
         Ok(Self {
             headerschema,
             headerversion: headerversion.to_string(),
@@ -440,6 +446,7 @@ impl Schema {
             contactschema,
             taskschema,
             messageschema,
+            evalschema,
         })
     }
 

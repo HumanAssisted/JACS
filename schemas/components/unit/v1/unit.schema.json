@@ -2,15 +2,20 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/components/unit/v1/unit.schema.json",
   "title": "Unit",
-  "description": "Labels for quantitative values.",
+  "description": "Labels and quantitative values.",
   "type": "object",
   "properties": {
     "id": {
-      "description": "Quantification GUID",
-      "hai": "meta",
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "description": {
+      "description": "reason this unit is present",
+      "hai": "agent",
       "type": "string"
     },
-    "generaltype": {
+    "generalType": {
       "type": "string",
       "description": "general type of resource",
       "hai": "meta",
@@ -22,21 +27,27 @@
         "information"
       ]
     },
-    "unit_name": {
+    "unitName": {
       "type": "string",
-      "hai": "meta",
+      "hai": "agent",
       "description": "pounds, square ft, dollars, hours, etc"
+    },
+    "quantity": {
+      "type": "integer",
+      "hai": "agent",
+      "description": "the amount"
     },
     "label": {
       "type": "string",
-      "hai": "meta",
+      "hai": "agent",
       "description": "age, weight, net worth etc"
     }
   },
   "required": [
     "id",
-    "unit_name",
-    "label"
+    "unitName",
+    "label",
+    "quantity"
   ],
   "additionalProperties": false
 }

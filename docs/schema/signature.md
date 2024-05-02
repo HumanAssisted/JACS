@@ -24,6 +24,8 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 | [signature](#signature)               | `string` | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")               |
 | [publicKeyHash](#publickeyhash)       | `string` | Required | cannot be null | [Signature](signature-properties-publickeyhash.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash")       |
 | [signingAlgorithm](#signingalgorithm) | `string` | Optional | cannot be null | [Signature](signature-properties-signingalgorithm.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm") |
+| [response](#response)                 | `string` | Optional | cannot be null | [Signature](signature-properties-response.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/response")                 |
+| [responseType](#responsetype)         | `string` | Optional | cannot be null | [Signature](signature-properties-responsetype.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/responseType")         |
 | [fields](#fields)                     | `array`  | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields")                     |
 
 ## agentID
@@ -145,6 +147,52 @@ What signature algorithm was used
 ### signingAlgorithm Type
 
 `string`
+
+## response
+
+When prompting an agent, is there text provided with the agreement?
+
+`response`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Signature](signature-properties-response.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/response")
+
+### response Type
+
+`string`
+
+## responseType
+
+Optional way to track disagreement, or agreement. Reject means question not understood or considered relevant.
+
+`responseType`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Signature](signature-properties-responsetype.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/responseType")
+
+### responseType Type
+
+`string`
+
+### responseType Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value        | Explanation |
+| :----------- | :---------- |
+| `"agree"`    |             |
+| `"disagree"` |             |
+| `"reject"`   |             |
 
 ## fields
 

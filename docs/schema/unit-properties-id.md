@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id
 ```
 
-Quantification GUID
+
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                     |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
@@ -13,3 +13,7 @@ Quantification GUID
 ## id Type
 
 `string`
+
+## id Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")

@@ -175,10 +175,11 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="json-is-all-you-need-"><a class="header" href="#json-is-all-you-need-">JSON is all you need! **</a></h1>
-<p>As a developer, this is a good place to start, or review the code at <a href="https://github.com/HumanAssisted/JACS">JACS on github</a></p>
+<p>As a developer, this is a good place to start. For deeper dives, review the code at <a href="https://github.com/HumanAssisted/JACS">JACS on github</a>. For misc, watch our tutorials on <a href="https://www.youtube.com/@HAI_AI">YouTube</a></p>
 <p>JACS docs are in a format already widely adopted and enjoyed: JSON. However, JACS can sign any type of document that can be checksummed, and any JSON document can be an embedded JACS document. The documents with signatures are always JSON. Therefore, they are independent of network protocols or database formats and can be shared and stand-alone.</p>
-<p>You will use JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent.</p>
-<p>When those other services have modified the document, you can verifiy the agent, verify the changes, and sign the changes.</p>
+<p>You will use JACS lib and an agent to validate a document. To use, you create JSON documents and then sign them with your agent. Maybe this doesn't seem incredibily important at first.
+When agents start automating and exchanging large amounts of data, quality, consent are only possible with identity. There are good arguments about why identity should be centralized or decentralized. JACS is neutral in that discusssion, except that generating a private key for your agent is a form of decentralization.</p>
+<p>JACS is for general documents, but focuses on the idea of Agents, Tasks and Messages, making it easier to create an audit trail of modifications to tasks, agreements, resoutions, etc.</p>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <p>To install the command line tool for creating and verifying agents and documents</p>
 <pre><code>$ cargo install jacs
@@ -188,11 +189,12 @@ $ jacs --help
 <pre><code>cargo add jacs
 </code></pre>
 <h1 id="flexible"><a class="header" href="#flexible">Flexible</a></h1>
-<p>Flexible for developers - store, index, and search the docouments how you like.
-Any JSON document can be used as a JACS doc as long as it has the JACS header, which are some required fields about the creator and version.
+<p>Flexible for developers - store, index, and search the docouments how you like.</p>
+<p>Any JSON document can be used as a JACS doc as long as it has the JACS header, which are some required fields about the creator and version.
 Enforcement of schemas relies on <a href="https://json-schema.org/">JSON Schema's</a> as a basic formalization.</p>
-<p>Most devs building connected Agent Apps will want to use <a href="https://github.com/HumanAssistedIntelligence/sophon">Sophon</a>. <a href="https://github.com/HumanAssistedIntelligence/sophon">Sophon</a> will make it easy to use, but also imposes a lot of opinions.</p>
-<p>JACS started as <a href="https://github.com/HumanAssistedIntelligence/OSAP">OSAP</a> and stands for - JSON Agent Communication Standard.</p>
+<h1 id="ease-of-use"><a class="header" href="#ease-of-use">Ease of use</a></h1>
+<p>JACS is not meant to be the easiest to use, but it should be useful as is for some specific applicaitons. More importantly it is open source.</p>
+<p>If your focus is building an AI business, or selling data to AI, there's quite a lot of work to do. For ease of use and safety of sharing documents (tasks) devs building connected Agent Apps will want to use services provided by https://hai.ai</p>
 <div style="break-before: page; page-break-before: always;"></div><h2 id="setting-up"><a class="header" href="#setting-up">setting up</a></h2>
 <p>First, configure your configuration which are loaded as environment variables.
 Create a <code>jacs.config.json</code> from <a href="cli/./jacs.config.example.json">the example</a>
