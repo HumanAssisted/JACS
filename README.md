@@ -1,8 +1,8 @@
+
 # JACS
-
-<img src="jacs-logo.png" alt="logo" width="150" height="150" />
-
 Welcome to JACS: *JSON Agent Communication Standard*. JACS documents enable more trusted data sharing between AI agents and Human UIs.
+
+
 
 ** NOTE: Current version 0.2.12 *ALPHA* .
 
@@ -67,5 +67,7 @@ If you are working in Rust, add the rust lib to your project
 
 Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 
+ <img src="jacs-logo.png" alt="logo" width="150" height="150" /> 
+ 
 ------
 2024 https://hai.ai
