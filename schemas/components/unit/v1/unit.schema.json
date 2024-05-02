@@ -10,7 +10,7 @@
       "hai": "agent",
       "type": "string"
     },
-    "generaltype": {
+    "generalType": {
       "type": "string",
       "description": "general type of resource",
       "hai": "meta",
@@ -41,7 +41,8 @@
   "required": [
     "id",
     "unit_name",
-    "label"
+    "label",
+    "quantity"
   ],
   "additionalProperties": false
 }

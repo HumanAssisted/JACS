@@ -19,9 +19,9 @@ Labels and quantitative values.
 | Property                    | Type      | Required | Nullable       | Defined by                                                                                                                  |
 | :-------------------------- | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------- |
 | [description](#description) | `string`  | Optional | cannot be null | [Unit](unit-properties-description.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/description") |
-| [generaltype](#generaltype) | `string`  | Optional | cannot be null | [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generaltype") |
+| [generalType](#generaltype) | `string`  | Optional | cannot be null | [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generalType") |
 | [unit\_name](#unit_name)    | `string`  | Required | cannot be null | [Unit](unit-properties-unit_name.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unit_name")     |
-| [quantity](#quantity)       | `integer` | Optional | cannot be null | [Unit](unit-properties-quantity.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity")       |
+| [quantity](#quantity)       | `integer` | Required | cannot be null | [Unit](unit-properties-quantity.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/quantity")       |
 | [label](#label)             | `string`  | Required | cannot be null | [Unit](unit-properties-label.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/label")             |
 
 ## description
@@ -42,11 +42,11 @@ reason this unit is present
 
 `string`
 
-## generaltype
+## generalType
 
 general type of resource
 
-`generaltype`
+`generalType`
 
 *   is optional
 
@@ -54,13 +54,13 @@ general type of resource
 
 *   cannot be null
 
-*   defined in: [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generaltype")
+*   defined in: [Unit](unit-properties-generaltype.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generalType")
 
-### generaltype Type
+### generalType Type
 
 `string`
 
-### generaltype Constraints
+### generalType Constraints
 
 **enum**: the value of this property must be equal to one of the following values:
 
@@ -96,7 +96,7 @@ the amount
 
 `quantity`
 
-*   is optional
+*   is required
 
 *   Type: `integer`
 

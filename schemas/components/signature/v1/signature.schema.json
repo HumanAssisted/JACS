@@ -38,6 +38,21 @@
       "hai": "base",
       "type": "string"
     },
+    "response": {
+      "type": "string",
+      "description": "When prompting an agent, is there text provided with the agreement?",
+      "hai": "agent"
+    },
+    "responseType": {
+      "type": "string",
+      "description": "Optional way to track disagreement, or agreement. Reject means question not understood or considered relevant. ",
+      "hai": "agent",
+      "enum": [
+        "agree",
+        "disagree",
+        "reject"
+      ]
+    },
     "fields": {
       "type": "array",
       "description": "fields fields from document which were used to generate signature.",

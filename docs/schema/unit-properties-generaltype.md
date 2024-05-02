@@ -1,7 +1,7 @@
 # Untitled string in Unit Schema
 
 ```txt
-https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generaltype
+https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/generalType
 ```
 
 general type of resource
@@ -10,11 +10,11 @@ general type of resource
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [unit.schema.json\*](../../schemas/components/unit/v1/unit.schema.json "open original schema") |
 
-## generaltype Type
+## generalType Type
 
 `string`
 
-## generaltype Constraints
+## generalType Constraints
 
 **enum**: the value of this property must be equal to one of the following values:
 
