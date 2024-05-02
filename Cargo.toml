@@ -15,6 +15,7 @@ include = [
     "schemas/components/tool/v1/tool.schema.json",
     "schemas/components/contact/v1/contact.schema.json",
     "schemas/message/v1/message.schema.json",
+    "schemas/eval/v1/eval.schema.json",
     "schemas/task/v1/task.schema.json",
     "jacs.config.schema.json",
     "examples/*.json",

@@ -12,4 +12,4 @@ list of files
 
 ## attachments Type
 
-unknown\[]
+`object[]` ([File](header-properties-jacsfiles-file.md))

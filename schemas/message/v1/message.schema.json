@@ -43,7 +43,7 @@
       "type": "array",
       "description": "list of files  ",
       "items": {
-        "$ref": "https://hai.ai/schemas/files/v1/files.schema.json"
+        "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
       }
     }
   },

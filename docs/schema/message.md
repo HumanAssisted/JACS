@@ -154,7 +154,7 @@ list of files
 
 *   is optional
 
-*   Type: unknown\[]
+*   Type: `object[]` ([File](header-properties-jacsfiles-file.md))
 
 *   cannot be null
 
@@ -162,4 +162,4 @@ list of files
 
 ### attachments Type
 
-unknown\[]
+`object[]` ([File](header-properties-jacsfiles-file.md))

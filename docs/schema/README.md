@@ -10,6 +10,8 @@
 
 *   [Contact](./contact.md "How to contact over human channels") – `https://hai.ai/schemas/contact/v1/contact-schema.json`
 
+*   [Evaluation](./eval.md "A signed, immutable message evaluation an agent's performance on a task") – `https://hai.ai/schemas/eval/v1/eval.schema.json`
+
 *   [File](./files.md "General data about unstructured content not in JACS") – `https://hai.ai/schemas/components/files/v1/files.schema.json`
 
 *   [Header](./header.md "The basis for a JACS document") – `https://hai.ai/schemas/header/v1/header.schema.json`
@@ -53,6 +55,8 @@
 *   [Untitled array in Agent](./agent-allof-1-jacsservices.md "Services the agent can perform") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsServices`
 
 *   [Untitled array in Agent](./agent-allof-1-jacscontacts.md "Contact information for the agent") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsContacts`
+
+*   [Untitled array in Evaluation](./eval-properties-quantifications.md "list of evaluation units, informatio labels") – `https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications`
 
 *   [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
 

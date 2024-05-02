@@ -1,12 +1,11 @@
 use crate::schema::Url;
-use log::info;
 
 use phf::phf_map;
 
 use jsonschema::SchemaResolver;
 use jsonschema::SchemaResolverError;
 use serde_json::Value;
-use std::{fs, path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use std::error::Error;
 use std::fmt;
@@ -23,7 +22,8 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/components/service/v1/service.schema.json" => include_str!("../../schemas/components/service/v1/service.schema.json"),
      "schemas/components/contact/v1/contact.schema.json" => include_str!("../../schemas/components/contact/v1/contact.schema.json"),
      "schemas/task/v1/task.schema.json" => include_str!("../../schemas/task/v1/task.schema.json"),
-     "schemas/message/v1/message.schema.json" => include_str!("../../schemas/message/v1/message.schema.json")
+     "schemas/message/v1/message.schema.json" => include_str!("../../schemas/message/v1/message.schema.json"),
+     "schemas/eval/v1/eval.schema.json" => include_str!("../../schemas/eval/v1/eval.schema.json")
      // todo get all files in a schemas directory, dynamically
     // "schemas/jacs.config.schema.json" => include_str!("../../schemas/jacs.config.schema.json"),
 };
@@ -78,7 +78,6 @@ impl SchemaResolver for EmbeddedSchemaResolver {
         _original_reference: &str,
     ) -> Result<Arc<Value>, SchemaResolverError> {
         let path = url.path();
-        let relative_path = path.trim_start_matches("https://hai.ai/");
         // Check if the path starts with a slash (root-relative)
         if path.starts_with('/') {
             // Remove the leading slash and use the remaining path as the key
