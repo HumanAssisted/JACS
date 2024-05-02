@@ -1,7 +1,7 @@
 # Untitled string in Agent Schema
 
 ```txt
-https://hai.ai/schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType
+schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType
 ```
 
 

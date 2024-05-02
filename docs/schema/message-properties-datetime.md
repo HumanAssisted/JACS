@@ -1,7 +1,7 @@
 # Untitled string in Message Schema
 
 ```txt
-https://hai.ai/schemas/message/v1/message.schema.json#/properties/datetime
+schemas/message/v1/message.schema.json#/properties/datetime
 ```
 
 Date of message, unverified

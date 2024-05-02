@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "$id": "schemas/agent/v1/agent.schema.json",
   "title": "Agent",
   "description": "General schema for human, hybrid, and AI agents",
   "allOf": [
     {
-      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+      "$ref": "schemas/header/v1/header.schema.json"
     },
     {
       "type": "object",
@@ -19,7 +19,7 @@
             "hybrid",
             "ai"
           ],
-          "description": "Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence."
+          "description": "Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, 'hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence."
         }
       },
       "jacsServices": {
@@ -27,14 +27,14 @@
         "minItems": 1,
         "description": "Services the agent can perform.",
         "items": {
-          "$ref": "https://hai.ai/schemas/components/service/v1/service.schema.json"
+          "$ref": "schemas/components/service/v1/service.schema.json"
         }
       },
       "jacsContacts": {
         "type": "array",
         "description": "Contact information for the agent",
         "items": {
-          "$ref": "https://hai.ai/schemas/components/contact/v1/contact.schema.json"
+          "$ref": "schemas/components/contact/v1/contact.schema.json"
         }
       }
     }

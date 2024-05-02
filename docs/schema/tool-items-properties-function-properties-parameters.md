@@ -1,7 +1,7 @@
 # Untitled object in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters
+schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters
 ```
 
 
@@ -16,11 +16,11 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 # parameters Properties
 
-| Property                  | Type     | Required | Nullable       | Defined by                                                                                                                                                                                                                |
-| :------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [type](#type)             | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/type")             |
-| [properties](#properties) | `object` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-properties.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties") |
-| [required](#required)     | `array`  | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-required.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/required")     |
+| Property                  | Type     | Required | Nullable       | Defined by                                                                                                                                                                                                 |
+| :------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [type](#type)             | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-type.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/type")             |
+| [properties](#properties) | `object` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-properties.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties") |
+| [required](#required)     | `array`  | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-required.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/required")     |
 
 ## type
 
@@ -34,7 +34,7 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 * cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/type")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-type.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/type")
 
 ### type Type
 
@@ -60,7 +60,7 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 * cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties")
 
 ### properties Type
 
@@ -78,7 +78,7 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 * cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-required.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/required")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-required.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/required")
 
 ### required Type
 

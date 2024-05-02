@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_public_key_filename
+schemas/jacs.config.schema.json#/properties/jacs_agent_public_key_filename
 ```
 
 name of public key

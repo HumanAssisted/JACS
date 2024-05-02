@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_use_filesystem
+schemas/jacs.config.schema.json#/properties/jacs_use_filesystem
 ```
 
 write documents to the filesystem - false or 0 or 1 as string

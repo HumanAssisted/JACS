@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_header_schema_version
+schemas/jacs.config.schema.json#/properties/jacs_header_schema_version
 ```
 
 version number of the schema used to validate headers

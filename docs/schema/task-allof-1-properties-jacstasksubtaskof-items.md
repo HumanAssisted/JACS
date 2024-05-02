@@ -1,7 +1,7 @@
 # Untitled string in Task Schema
 
 ```txt
-https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSubTaskOf/items
+schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskSubTaskOf/items
 ```
 
 taskid

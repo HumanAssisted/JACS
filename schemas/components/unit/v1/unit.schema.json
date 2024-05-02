@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/components/unit/v1/unit.schema.json",
+  "$id": "schemas/components/unit/v1/unit.schema.json",
   "title": "Unit",
   "description": "Labels and quantitative values.",
   "type": "object",

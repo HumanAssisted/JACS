@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_private_key_password
+schemas/jacs.config.schema.json#/properties/jacs_private_key_password
 ```
 
 encryption password. Do not use in production and instead only keep in ENV with JACS\_AGENT\_PRIVATE\_KEY\_PASSWORD

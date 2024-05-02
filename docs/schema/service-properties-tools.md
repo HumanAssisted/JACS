@@ -1,7 +1,7 @@
 # Untitled array in Service Schema
 
 ```txt
-https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools
+schemas/service/v1/service-schema.json#/properties/tools
 ```
 
 URLs and function definitions of of tools that can be called

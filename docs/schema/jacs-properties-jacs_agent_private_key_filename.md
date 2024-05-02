@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_private_key_filename
+schemas/jacs.config.schema.json#/properties/jacs_agent_private_key_filename
 ```
 
 name of private key to use. Will include .enc if password is supplied.

@@ -1,7 +1,7 @@
 # Untitled object in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties
+schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties
 ```
 
 
@@ -16,9 +16,9 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 # properties Properties
 
-| Property | Type     | Required | Nullable       | Defined by                                                                                                                                                                                                                                                          |
-| :------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `^.*$`   | `object` | Optional | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$") |
+| Property | Type     | Required | Nullable       | Defined by                                                                                                                                                                                                                                           |
+| :------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `^.*$`   | `object` | Optional | cannot be null | [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$") |
 
 ## Pattern: `^.*$`
 
@@ -32,7 +32,7 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 * cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$")
+* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$")
 
 ### ^.\*$ Type
 

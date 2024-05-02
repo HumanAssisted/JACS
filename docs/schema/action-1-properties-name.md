@@ -1,7 +1,7 @@
 # Untitled string in Action Schema
 
 ```txt
-https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/name
+schemas/components/action/v1/action-schema.json#/properties/name
 ```
 
 

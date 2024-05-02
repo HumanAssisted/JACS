@@ -1,7 +1,7 @@
 # Untitled object in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$
+schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$
 ```
 
 
@@ -16,11 +16,11 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 # ^.\*$ Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                                                                                                                                                                                          |
-| :-------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [type](#type)               | `string` | Required | cannot be null | [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/type")               |
-| [enum](#enum)               | `array`  | Optional | cannot be null | [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum")               |
-| [description](#description) | `string` | Optional | cannot be null | [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description") |
+| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                                                                                                                                                                           |
+| :-------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [type](#type)               | `string` | Required | cannot be null | [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-type.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/type")               |
+| [enum](#enum)               | `array`  | Optional | cannot be null | [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum")               |
+| [description](#description) | `string` | Optional | cannot be null | [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-description.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description") |
 
 ## type
 
@@ -34,7 +34,7 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 * cannot be null
 
-* defined in: [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/type")
+* defined in: [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-type.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/type")
 
 ### type Type
 
@@ -62,7 +62,7 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 * cannot be null
 
-* defined in: [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum")
+* defined in: [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum")
 
 ### enum Type
 
@@ -80,7 +80,7 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 * cannot be null
 
-* defined in: [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description")
+* defined in: [Tool](tool-1-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-description.md "schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description")
 
 ### description Type
 

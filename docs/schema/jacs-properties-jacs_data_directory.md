@@ -1,7 +1,7 @@
 # Untitled string in Config Schema
 
 ```txt
-https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_data_directory
+schemas/jacs.config.schema.json#/properties/jacs_data_directory
 ```
 
 path to store documents and agents

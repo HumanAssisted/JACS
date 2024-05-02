@@ -1,7 +1,7 @@
 # Untitled string in Signature Schema
 
 ```txt
-https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields/items
+schemas/components/signature/v1/signature.schema.json#/properties/fields/items
 ```
 
 

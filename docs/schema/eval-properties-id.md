@@ -1,7 +1,7 @@
 # Untitled string in Evaluation Schema
 
 ```txt
-https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/id
+schemas/eval/v1/eval.schema.json#/properties/id
 ```
 
 

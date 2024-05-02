@@ -1,7 +1,7 @@
 # Untitled string in agreement Schema
 
 ```txt
-https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context
+schemas/components/agreement/v1/agreement.schema.json#/properties/context
 ```
 
 Context for the question?

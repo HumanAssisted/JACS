@@ -1,7 +1,7 @@
 # Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json
+schemas/components/tool/v1/tool-schema.json
 ```
 
 OpenAI function calling definitions <https://platform.openai.com/docs/assistants/tools/function-calling/quickstart>. Has an additional field of URL

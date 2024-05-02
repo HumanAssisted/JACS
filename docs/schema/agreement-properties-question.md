@@ -1,7 +1,7 @@
 # Untitled string in agreement Schema
 
 ```txt
-https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question
+schemas/components/agreement/v1/agreement.schema.json#/properties/question
 ```
 
 When prompting an agent, what are they agreeing to?

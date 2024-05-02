@@ -1,7 +1,7 @@
 # Untitled string in Contact Schema
 
 ```txt
-https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/firstName
+schemas/contact/v1/contact-schema.json#/properties/firstName
 ```
 
 First name of Person

@@ -1,7 +1,7 @@
 # Untitled string in File Schema
 
 ```txt
-https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/contents
+schemas/components/files/v1/files.schema.json#/properties/contents
 ```
 
 base64 encoded contents, possibly compressed

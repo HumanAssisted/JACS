@@ -1,7 +1,7 @@
 # Untitled array in Action Schema
 
 ```txt
-https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/units
+./action.schema.json#/properties/units
 ```
 
 units that can be modified
@@ -12,4 +12,4 @@ units that can be modified
 
 ## units Type
 
-`object[]` ([Unit](action-properties-units-unit.md))
+unknown\[]

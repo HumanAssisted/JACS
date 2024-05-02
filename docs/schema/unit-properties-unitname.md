@@ -1,7 +1,7 @@
 # Untitled string in Unit Schema
 
 ```txt
-https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/unitName
+schemas/components/unit/v1/unit.schema.json#/properties/unitName
 ```
 
 pounds, square ft, dollars, hours, etc

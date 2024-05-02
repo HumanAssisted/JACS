@@ -1,7 +1,7 @@
 # Untitled string in Evaluation Schema
 
 ```txt
-https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/datetime
+schemas/eval/v1/eval.schema.json#/properties/datetime
 ```
 
 Date of evaluation

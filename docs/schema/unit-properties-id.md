@@ -1,7 +1,7 @@
 # Untitled string in Unit Schema
 
 ```txt
-https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/id
+schemas/components/unit/v1/unit.schema.json#/properties/id
 ```
 
 

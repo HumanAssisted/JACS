@@ -1,7 +1,7 @@
 # Untitled string in Header Schema
 
 ```txt
-https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate
+schemas/header/v1/header.schema.json#/properties/jacsOriginalDate
 ```
 
 Original creation date of the document.

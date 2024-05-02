@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/task/v1/task-schema.json",
+  "$id": "schemas/task/v1/task-schema.json",
   "title": "Task",
   "description": "General schema for stateful resources.",
   "allOf": [
     {
-      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+      "$ref": "schemas/header/v1/header.schema.json"
     },
     {
       "type": "object",
@@ -22,11 +22,11 @@
         },
         "jacsTaskCustomer": {
           "description": "customer signature",
-          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+          "$ref": "schemas/components/signature/v1/signature.schema.json"
         },
         "jacsTaskAgent": {
           "description": "Agent assigned the task",
-          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+          "$ref": "schemas/components/signature/v1/signature.schema.json"
         },
         "jacsTaskState": {
           "description": "Is the document locked from edits",
@@ -56,18 +56,18 @@
         },
         "jacsStartAgreement": {
           "description": "Signatures signifying an agreement between agents to start work.",
-          "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+          "$ref": "schemas/components/agreement/v1/agreement.schema.json"
         },
         "jacsEndAgreement": {
           "description": "Signatures signifying an agreement between agents work is completed.",
-          "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+          "$ref": "schemas/components/agreement/v1/agreement.schema.json"
         },
         "jacsTaskActionsDesired": {
           "type": "array",
           "description": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
           "items": {
             "minItems": 1,
-            "$ref": "https://hai.ai/schemas/components/action/v1/action.schema.json"
+            "$ref": "schemas/components/action/v1/action.schema.json"
           }
         },
         "jacsTaskSubTaskOf": {

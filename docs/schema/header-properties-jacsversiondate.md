@@ -1,7 +1,7 @@
 # Untitled string in Header Schema
 
 ```txt
-https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate
+schemas/header/v1/header.schema.json#/properties/jacsVersionDate
 ```
 
 Date

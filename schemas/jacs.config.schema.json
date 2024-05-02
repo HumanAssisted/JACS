@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/jacs.config.schema.json",
+  "$id": "schemas/jacs.config.schema.json",
   "title": "Config",
   "description": "Jacs Configuration File",
   "type": "object",

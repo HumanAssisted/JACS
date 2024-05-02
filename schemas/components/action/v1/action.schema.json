@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/components/action/v1/action-schema.json",
+  "$id": "schemas/components/action/v1/action-schema.json",
   "title": "Action",
   "description": "General actions definitions which can comprise a service. Distinct from function calling.",
   "type": "object",
@@ -18,16 +18,16 @@
       "type": "array",
       "description": "tools that can be utilized",
       "items": {
-        "$ref": "https://hai.ai/schemas/components/tool/v1/tool.schema.json"
+        "$ref": "schemas/components/tool/v1/tool.schema.json"
       }
     },
     "cost": {
       "description": "cost of this component. Willingness to pay or sell.",
-      "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
+      "$ref": "schemas/components/unit/v1/unit.schema.json"
     },
     "duration": {
       "description": "amount of time action will take",
-      "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
+      "$ref": "schemas/components/unit/v1/unit.schema.json"
     },
     "completionAgreementRequired": {
       "type": "boolean",

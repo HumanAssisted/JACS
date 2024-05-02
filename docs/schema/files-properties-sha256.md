@@ -1,7 +1,7 @@
 # Untitled string in File Schema
 
 ```txt
-https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/sha256
+schemas/components/files/v1/files.schema.json#/properties/sha256
 ```
 
 content checksum to verify contents on download.

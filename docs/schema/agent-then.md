@@ -1,7 +1,7 @@
 # Untitled undefined type in Agent Schema
 
 ```txt
-https://hai.ai/schemas/agent/v1/agent.schema.json#/then
+schemas/agent/v1/agent.schema.json#/then
 ```
 
 
@@ -16,9 +16,9 @@ unknown
 
 # then Properties
 
-| Property                      | Type          | Required | Nullable       | Defined by                                                                                                                       |
-| :---------------------------- | :------------ | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| [jacsContacts](#jacscontacts) | Not specified | Required | cannot be null | [Agent](agent-then-properties-jacscontacts.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/then/properties/jacsContacts") |
+| Property                      | Type          | Required | Nullable       | Defined by                                                                                                        |
+| :---------------------------- | :------------ | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------- |
+| [jacsContacts](#jacscontacts) | Not specified | Required | cannot be null | [Agent](agent-then-properties-jacscontacts.md "schemas/agent/v1/agent.schema.json#/then/properties/jacsContacts") |
 
 ## jacsContacts
 
@@ -32,7 +32,7 @@ unknown
 
 * cannot be null
 
-* defined in: [Agent](agent-then-properties-jacscontacts.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/then/properties/jacsContacts")
+* defined in: [Agent](agent-then-properties-jacscontacts.md "schemas/agent/v1/agent.schema.json#/then/properties/jacsContacts")
 
 ### jacsContacts Type
 

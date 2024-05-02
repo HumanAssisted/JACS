@@ -1,7 +1,7 @@
 # Untitled undefined type in Service Schema
 
 ```txt
-https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools/items
+schemas/service/v1/service-schema.json#/properties/tools/items
 ```
 
 

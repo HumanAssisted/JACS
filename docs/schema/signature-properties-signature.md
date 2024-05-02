@@ -1,7 +1,7 @@
 # Untitled string in Signature Schema
 
 ```txt
-https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature
+schemas/components/signature/v1/signature.schema.json#/properties/signature
 ```
 
 The actual signature, made from the docid,

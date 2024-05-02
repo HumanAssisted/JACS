@@ -1,7 +1,7 @@
 # Untitled string in Service Schema
 
 ```txt
-https://hai.ai/schemas/service/v1/service-schema.json#/properties/costDescription
+schemas/service/v1/service-schema.json#/properties/costDescription
 ```
 
 types of costs

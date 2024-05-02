@@ -1,7 +1,7 @@
 # Untitled array in Signature Schema
 
 ```txt
-https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields
+schemas/components/signature/v1/signature.schema.json#/properties/fields
 ```
 
 fields fields from document which were used to generate signature.

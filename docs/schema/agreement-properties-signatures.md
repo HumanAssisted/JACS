@@ -1,7 +1,7 @@
 # Untitled array in agreement Schema
 
 ```txt
-https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures
+schemas/components/agreement/v1/agreement.schema.json#/properties/signatures
 ```
 
 Signatures of agents

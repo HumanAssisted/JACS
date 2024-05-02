@@ -1,7 +1,7 @@
 # Untitled array in Task Schema
 
 ```txt
-https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired
+schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskActionsDesired
 ```
 
 list of actions desired, should be a subset of actions in the resources and agents when complete.
