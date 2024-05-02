@@ -634,8 +634,11 @@ impl Agent {
                 println!("loading custom schema {}", path);
                 let schema_json = std::fs::read_to_string(path).unwrap();
                 let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
+                let base_path = std::fs::canonicalize(path).unwrap();
+                let base_url = url::Url::from_file_path(base_path).unwrap();
                 JSONSchema::options()
                     .with_draft(Draft::Draft7)
+                    .with_base_url(Some(base_url))
                     .compile(&schema_value)
                     .unwrap()
             };
