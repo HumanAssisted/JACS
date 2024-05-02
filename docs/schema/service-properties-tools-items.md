@@ -1,15 +1,15 @@
-# Untitled string in Contact Schema
+# Untitled undefined type in Service Schema
 
 ```txt
-https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/phone
+https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools/items
 ```
 
-Contact phone number.
+
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                                       |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [contact.schema.json\*](../../https:/hai.ai/schemas/=./schemas/components/contact/v1/contact.schema.json "open original schema") |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [service.schema.json\*](../../https:/hai.ai/schemas/=./schemas/components/service/v1/service.schema.json "open original schema") |
 
-## phone Type
+## items Type
 
-`string`
+unknown
