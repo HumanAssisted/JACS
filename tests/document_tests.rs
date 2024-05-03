@@ -82,26 +82,11 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
-    // Create a reqwest client with SSL verification disabled
-    let client = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .expect("Failed to create reqwest client with disabled SSL verification");
-
-    // Use the custom client for schema resolution
-    match agent.load_custom_schemas_with_client(&[SCHEMA.to_string()], &client) {
-        Ok(_) => info!(
-            "Schemas loaded successfully with custom client in test_load_custom_schema_and_custom_invalid_document."
-        ),
+    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+        Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
-            error!(
-                "Error loading schemas with custom client in test_load_custom_schema_and_custom_invalid_document: {}",
-                e
-            );
-            assert!(
-                false,
-                "Failed to load schemas with custom client in test_load_custom_schema_and_custom_invalid_document"
-            );
+            error!("Error loading schemas: {}", e);
+            assert!(false, "Failed to load schemas");
         }
     };
 
@@ -156,26 +141,11 @@ fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
-    // Create a reqwest client with SSL verification disabled
-    let client = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .expect("Failed to create reqwest client with disabled SSL verification");
-
-    // Use the custom client for schema resolution
-    match agent.load_custom_schemas_with_client(&[SCHEMA.to_string()], &client) {
-        Ok(_) => {
-            info!("Schemas loaded successfully with custom client in test_load_custom_schema_and_new_custom_document.")
-        }
+    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+        Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
-            error!(
-                "Error loading schemas with custom client in test_load_custom_schema_and_new_custom_document: {}",
-                e
-            );
-            assert!(
-                false,
-                "Failed to load schemas with custom client in test_load_custom_schema_and_new_custom_document"
-            );
+            error!("Error loading schemas: {}", e);
+            assert!(false, "Failed to load schemas");
         }
     };
 
@@ -219,19 +189,12 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     // cargo test   --test document_tests -- --nocapture test_load_custom_schema_and_new_custom_document_agent_two
     let mut agent = load_test_agent_two();
 
-    // Create a reqwest client with SSL verification disabled
-    let client = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .expect("Failed to create reqwest client with disabled SSL verification");
-
-    // Use the custom client for schema resolution
-    match agent.load_custom_schemas_with_client(&[SCHEMA.to_string()], &client) {
-        Ok(_) => info!("Schemas loaded successfully with custom client in test_load_custom_schema_and_new_custom_document_agent_two."),
+    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+        Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
-            error!("Error loading schemas with custom client in test_load_custom_schema_and_new_custom_document_agent_two: {}", e);
-            assert!(false, "Failed to load schemas with custom client in test_load_custom_schema_and_new_custom_document_agent_two");
-        },
+            error!("Error loading schemas: {}", e);
+            assert!(false, "Failed to load schemas");
+        }
     };
 
     let document_string = match load_local_document(&"examples/raw/favorite-fruit.json".to_string()) {
