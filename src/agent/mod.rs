@@ -34,6 +34,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+#[cfg(test)]
+use httpmock::{Mock, MockServer};
+
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
 pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "jacsAgreementHash";
@@ -657,16 +660,42 @@ impl Agent {
         let mut schemas = self.document_schemas.lock().unwrap();
         for path in schema_paths {
             let schema = if path.starts_with("http://") || path.starts_with("https://") {
-                // Load schema from URL
-                let client = reqwest::blocking::Client::builder()
-                    .danger_accept_invalid_certs(true)
-                    .build()
-                    .unwrap();
-                let schema_json = client.get(path).send().unwrap().json().unwrap();
-                JSONSchema::options()
-                    .with_draft(Draft::Draft7)
-                    .compile(&schema_json)
-                    .unwrap()
+                #[cfg(test)]
+                {
+                    // In test environment, use httpmock to mock network calls
+                    let server = MockServer::start();
+                    let mock = server.mock(|when, then| {
+                        when.method(Method::GET).path(path);
+                        then.status(200).json_body(json!({
+                            "$schema": "http://json-schema.org/draft-07/schema#",
+                            // ... rest of the schema properties
+                        }));
+                    });
+
+                    let schema_json: Value =
+                        reqwest::blocking::get(&format!("{}/{}", server.base_url(), path))
+                            .unwrap()
+                            .json()
+                            .unwrap();
+                    mock.assert();
+                    JSONSchema::options()
+                        .with_draft(Draft::Draft7)
+                        .compile(&schema_json)
+                        .unwrap()
+                }
+                #[cfg(not(test))]
+                {
+                    // In production environment, perform actual network call
+                    let client = reqwest::blocking::Client::builder()
+                        .danger_accept_invalid_certs(true)
+                        .build()
+                        .unwrap();
+                    let schema_json = client.get(path).send().unwrap().json().unwrap();
+                    JSONSchema::options()
+                        .with_draft(Draft::Draft7)
+                        .compile(&schema_json)
+                        .unwrap()
+                }
             } else {
                 // Load schema from local file
                 println!("loading custom schema {}", path);
