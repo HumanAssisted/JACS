@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 
 pub fn create_minimal_action(
-    name: &str,
+    _name: &str,
     description: &str,
     tools: Option<Vec<Value>>,
     units: Option<Vec<Value>>,

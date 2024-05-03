@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-use jacs::agent::loaders::FileLoader;
+
 use jacs::agent::Agent;
 use log::debug;
 
@@ -64,7 +64,7 @@ fn generate_synthetic_data(count: usize) -> Vec<String> {
         let num_keys = rng.gen_range(2..=20);
         let mut document = format!("{{\"id\": {}", i);
 
-        for j in 1..num_keys {
+        for _j in 1..num_keys {
             let key_length = rng.gen_range(5..=20);
             let key: String = rng
                 .clone()

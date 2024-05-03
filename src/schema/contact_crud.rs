@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use validator::Validate;
+
 use validator::ValidateEmail;
 
 /// Creates a minimal contact with optional fields.

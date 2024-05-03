@@ -1,7 +1,6 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-use jacs::agent::loaders::FileLoader;
-use jacs::crypt::KeyManager;
+
 mod utils;
 use utils::DOCTESTFILE;
 
@@ -90,7 +89,7 @@ fn test_load_custom_schema_and_new_custom_document() {
         .unwrap();
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
-    let document_ref = agent.get_document(&document_key).unwrap();
+    let _document_ref = agent.get_document(&document_key).unwrap();
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();
@@ -110,7 +109,7 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
         .unwrap();
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
-    let document_ref = agent.get_document(&document_key).unwrap();
+    let _document_ref = agent.get_document(&document_key).unwrap();
     agent
         .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
         .unwrap();

@@ -1,13 +1,12 @@
 use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-use jacs::agent::loaders::FileLoader;
+
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
-use jacs::crypt::KeyManager;
+
 use secrecy::ExposeSecret;
 mod utils;
 
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 
 static DOCID: &str = "3f2b7816-2200-4b66-b13e-d9522a05ceb8:40a60489-45d9-4e46-9b25-870d0c3ff9a6";
@@ -17,7 +16,7 @@ fn test_create_agreement() {
     let DOCUMENT_PATH = format!("examples/documents/{}.json", DOCID);
     // cargo test   --test agreement_test -- --nocapture test_create_agreement
     let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let agent_two = load_test_agent_two();
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
@@ -70,7 +69,7 @@ fn test_add_and_remove_agents() {
     let document_string = load_local_document(&DOCUMENT_PATH).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
-    let mut doc_v1 = agent
+    let doc_v1 = agent
         .create_agreement(
             &document_key,
             &agents_orig,
@@ -89,7 +88,7 @@ fn test_add_and_remove_agents() {
             .agreement_unsigned_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
             .unwrap()
     );
-    let mut doc_v2 = agent
+    let doc_v2 = agent
         .add_agents_to_agreement(
             &doc_v1_key,
             &agents_to_add,
@@ -103,14 +102,14 @@ fn test_add_and_remove_agents() {
             .agreement_requested_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
             .unwrap()
     );
-    let mut doc_v3 = agent
+    let doc_v3 = agent
         .remove_agents_from_agreement(
             &doc_v2_key,
             &agents_to_remove,
             Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
         )
         .expect("remove_agents_from_agreement");
-    let doc_v3_key = doc_v3.getkey();
+    let _doc_v3_key = doc_v3.getkey();
     println!(
         "doc_v3 agents {:?}",
         doc_v3
@@ -142,10 +141,10 @@ fn test_sign_agreement() {
     let a1k = agent.get_private_key().unwrap();
     let a2k = agent_two.get_private_key().unwrap();
     let borrowed_key = a1k.expose_secret();
-    let key_vec = borrowed_key.use_secret();
+    let _key_vec = borrowed_key.use_secret();
 
     let borrowed_key2 = a2k.expose_secret();
-    let key_vec2 = borrowed_key2.use_secret();
+    let _key_vec2 = borrowed_key2.use_secret();
 
     // println!(
     //     "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",

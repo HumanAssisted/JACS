@@ -5,9 +5,8 @@ use crate::agent::Agent;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;
 use crate::agent::JACS_VERSION_FIELDNAME;
 use crate::agent::{
-    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_IGNORE_FIELDS,
-    JACS_PREVIOUS_VERSION_FIELDNAME, SHA256_FIELDNAME, TASK_END_AGREEMENT_FIELDNAME,
-    TASK_START_AGREEMENT_FIELDNAME,
+    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME,
+    SHA256_FIELDNAME,
 };
 
 use crate::crypt::hash::hash_public_key;
@@ -184,7 +183,7 @@ impl Agreement for Agent {
         };
         let document = self.get_document(document_key)?;
         let mut value = document.value;
-        let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
+        let _binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
 
         if let Some(jacs_agreement) = value.get_mut(agreement_fieldname_key) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
@@ -225,7 +224,7 @@ impl Agreement for Agent {
         };
         let document = self.get_document(document_key)?;
         let mut value = document.value;
-        let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
+        let _binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
 
         if let Some(jacs_agreement) = value.get_mut(agreement_fieldname_key.clone()) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
@@ -460,7 +459,7 @@ impl Agreement for Agent {
                                 local_doc_value.clone(),
                                 &agreement_fieldname_key,
                             )?;
-                        let result = self.signature_verification_procedure(
+                        let _result = self.signature_verification_procedure(
                             &document.value,
                             Some(&fields),
                             &agreement_fieldname_key.to_string(),

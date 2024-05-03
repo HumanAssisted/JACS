@@ -1,6 +1,6 @@
 use jacs::agent::agreement::Agreement;
 use jacs::agent::Agent;
-use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
+
 use jacs::agent::TASK_END_AGREEMENT_FIELDNAME;
 use jacs::agent::TASK_START_AGREEMENT_FIELDNAME;
 use jacs::schema::action_crud::create_minimal_action;
@@ -10,16 +10,15 @@ use serde_json::json;
 
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-use jacs::agent::loaders::FileLoader;
-use jacs::crypt::KeyManager;
+
 use serde_json::Value;
 mod utils;
 use utils::DOCTESTFILE;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
+
 static SCHEMA: &str = "examples/raw/custom.schema.json";
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 
 #[test]
 fn test_hai_fields_custom_schema_and_custom_document() {
@@ -74,7 +73,7 @@ fn test_create_task_with_actions() {
     let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
     // create a message
     let content = json!("lets goooo");
-    let message = create_minimal_message(
+    let _message = create_minimal_message(
         &mut agent,
         content,
         task_doc.id,

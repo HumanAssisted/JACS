@@ -7,7 +7,7 @@ use crate::agent::TASK_START_AGREEMENT_FIELDNAME;
 use crate::Agent;
 use log::debug;
 use log::info;
-use regex::Regex;
+
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -285,7 +285,7 @@ pub fn document_sign_agreement(
     let document_key = docresult.getkey();
 
     let signed_document = agent.sign_agreement(&document_key, Some(agreement_fieldname_key))?;
-    let signed_document_key = signed_document.getkey();
+    let _signed_document_key = signed_document.getkey();
     if !load_only {
         return save_document(
             agent,
@@ -313,7 +313,7 @@ pub fn document_add_agreement(
     load_only: bool,
     agreement_fieldname: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
-    let agreement_fieldname_key = match agreement_fieldname {
+    let _agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
     };

@@ -111,7 +111,7 @@ pub fn create_task(
 }
 
 // todo
-pub fn update_task(previoustask: String) -> Result<String, Box<dyn Error>> {
+pub fn update_task(_previoustask: String) -> Result<String, Box<dyn Error>> {
     // update document
     // validate
     return Ok("".to_string());

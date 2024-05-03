@@ -17,7 +17,7 @@ use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
 use jacs::shared::get_file_list;
-use regex::Regex;
+
 use rpassword::read_password;
 use serde_json::Value;
 use std::env;
@@ -469,7 +469,7 @@ fn main() {
 
     match matches.subcommand() {
         Some(("config", agent_matches)) => match agent_matches.subcommand() {
-            Some(("create", create_matches)) => {
+            Some(("create", _create_matches)) => {
                 println!("Welcome to the JACS Config Generator!");
 
                 println!(
@@ -571,7 +571,7 @@ fn main() {
 
                 println!("jacs.config.json file generated successfully!");
             }
-            Some(("read", verify_matches)) => {
+            Some(("read", _verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");
                 // let _ = load_agent_by_id();
                 let configs = set_env_vars();
@@ -646,7 +646,7 @@ fn main() {
                 let filename = create_matches.get_one::<String>("filename");
                 let outputfilename = create_matches.get_one::<String>("output");
                 let directory = create_matches.get_one::<String>("directory");
-                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
@@ -675,7 +675,7 @@ fn main() {
                     };
                     let path = Path::new(file);
                     let loading_filename = path.file_name().unwrap().to_str().unwrap();
-                    let loading_filename_string = loading_filename.to_string();
+                    let _loading_filename_string = loading_filename.to_string();
 
                     let result = document_create(
                         &mut agent,
@@ -698,7 +698,7 @@ fn main() {
                 let new_filename = create_matches.get_one::<String>("new").unwrap();
                 let original_filename = create_matches.get_one::<String>("filename").unwrap();
                 let outputfilename = create_matches.get_one::<String>("output");
-                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
@@ -868,7 +868,7 @@ fn main() {
             Some(("verify", verify_matches)) => {
                 let filename = verify_matches.get_one::<String>("filename");
                 let directory = verify_matches.get_one::<String>("directory");
-                let verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = verify_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
@@ -894,7 +894,7 @@ fn main() {
             Some(("extract", extract_matches)) => {
                 let filename = extract_matches.get_one::<String>("filename");
                 let directory = extract_matches.get_one::<String>("directory");
-                let verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = extract_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");

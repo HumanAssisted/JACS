@@ -1,13 +1,13 @@
 use base64::{engine::general_purpose, Engine as _};
-use log::{debug, error, warn};
-use rand::rngs::OsRng;
+use log::debug;
+
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::pss::{BlindedSigningKey, Signature, SigningKey, VerifyingKey};
+use rsa::pss::{BlindedSigningKey, Signature, VerifyingKey};
 use rsa::sha2::Sha256;
 use signature::SignatureEncoding;
 
-use rand::{rngs::ThreadRng, thread_rng};
+use rand::thread_rng;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use signature::{RandomizedSigner, Verifier};

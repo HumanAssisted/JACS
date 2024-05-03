@@ -4,7 +4,6 @@ pub mod document;
 pub mod loaders;
 pub mod security;
 
-use crate::agent::agreement::Agreement;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
 use crate::crypt::hash::hash_public_key;
@@ -37,7 +36,7 @@ use uuid::Uuid;
 #[cfg(test)]
 use httpmock::Method;
 #[cfg(test)]
-use httpmock::{Mock, MockServer};
+use httpmock::MockServer;
 
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
