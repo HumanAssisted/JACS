@@ -6,9 +6,9 @@ https://hai.ai/schemas/agent/v1/agent.schema.json#/then
 
 
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                      |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [agent.schema.json\*](../../https:/hai.ai/schemas/=./schemas/agent/v1/agent.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                             |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [agent.schema.json\*](../../schemas/agent/v1/agent.schema.json "open original schema") |
 
 ## then Type
 
@@ -26,13 +26,13 @@ unknown
 
 `jacsContacts`
 
-* is required
+*   is required
 
-* Type: unknown
+*   Type: unknown
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Agent](agent-then-properties-jacscontacts.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/then/properties/jacsContacts")
+*   defined in: [Agent](agent-then-properties-jacscontacts.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/then/properties/jacsContacts")
 
 ### jacsContacts Type
 

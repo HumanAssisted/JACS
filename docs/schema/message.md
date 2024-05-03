@@ -6,9 +6,9 @@ https://hai.ai/schemas/message/v1/message.schema.json
 
 A signed, immutable message about a task
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                          |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------------------ |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [message.schema.json](../../https:/hai.ai/schemas/=./schemas/message/v1/message.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                 |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [message.schema.json](../../schemas/message/v1/message.schema.json "open original schema") |
 
 ## Message Type
 
@@ -32,13 +32,13 @@ A signed, immutable message about a task
 
 `id`
 
-* is required
+*   is required
 
-* Type: `string`
+*   Type: `string`
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Message](message-properties-id.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/id")
+*   defined in: [Message](message-properties-id.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/id")
 
 ### id Type
 
@@ -54,13 +54,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `signature`
 
-* is optional
+*   is optional
 
-* Type: `object` ([Signature](header-properties-signature-1.md))
+*   Type: `object` ([Signature](header-properties-signature-1.md))
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Message](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
+*   defined in: [Message](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
@@ -72,13 +72,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `taskID`
 
-* is required
+*   is required
 
-* Type: `string`
+*   Type: `string`
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Message](message-properties-taskid.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/taskID")
+*   defined in: [Message](message-properties-taskid.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/taskID")
 
 ### taskID Type
 
@@ -94,13 +94,13 @@ list of addressees, optional
 
 `to`
 
-* is optional
+*   is optional
 
-* Type: `string[]`
+*   Type: `string[]`
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Message](message-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/to")
+*   defined in: [Message](message-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/to")
 
 ### to Type
 
@@ -112,13 +112,13 @@ Date of message, unverified
 
 `datetime`
 
-* is required
+*   is required
 
-* Type: `string`
+*   Type: `string`
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Message](message-properties-datetime.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/datetime")
+*   defined in: [Message](message-properties-datetime.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/datetime")
 
 ### datetime Type
 
@@ -134,13 +134,13 @@ body , subject etc
 
 `content`
 
-* is required
+*   is required
 
-* Type: `string`
+*   Type: `string`
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Message](message-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/content")
+*   defined in: [Message](message-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/content")
 
 ### content Type
 
@@ -152,13 +152,13 @@ list of files
 
 `attachments`
 
-* is optional
+*   is optional
 
-* Type: `object[]` ([File](header-properties-jacsfiles-file.md))
+*   Type: `object[]` ([File](header-properties-jacsfiles-file.md))
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Message](message-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments")
+*   defined in: [Message](message-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments")
 
 ### attachments Type
 

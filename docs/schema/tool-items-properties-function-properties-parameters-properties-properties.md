@@ -6,9 +6,9 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 
 
-| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                              |
-| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [tool.schema.json\*](../../https:/hai.ai/schemas/=./schemas/components/tool/v1/tool.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                     |
+| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [tool.schema.json\*](../../schemas/components/tool/v1/tool.schema.json "open original schema") |
 
 ## properties Type
 
@@ -26,13 +26,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 `^.*$`
 
-* is optional
+*   is optional
 
-* Type: `object` ([Details](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md))
+*   Type: `object` ([Details](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md))
 
-* cannot be null
+*   cannot be null
 
-* defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$")
+*   defined in: [Tool](tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$")
 
 ### ^.\*$ Type
 

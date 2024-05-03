@@ -6,9 +6,9 @@ https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/compl
 
 Do agents need to agree this is completed for task to be.
 
-| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                                    |
-| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [action.schema.json\*](../../https:/hai.ai/schemas/=./schemas/components/action/v1/action.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                           |
+| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [action.schema.json\*](../../schemas/components/action/v1/action.schema.json "open original schema") |
 
 ## completionAgreementRequired Type
 
