@@ -8,6 +8,7 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
+use base64::{decode_config, encode_config, STANDARD};
 use chrono::Local;
 use chrono::Utc;
 use difference::{Changeset, Difference};
@@ -535,7 +536,7 @@ impl Document for Agent {
                         let contents = item["contents"].as_str().ok_or("Contents not found")?;
                         let path = item["path"].as_str().ok_or("Path not found")?;
 
-                        let decoded_contents = base64::decode_config(contents, base64::STANDARD)?;
+                        let decoded_contents = decode_config(contents, STANDARD)?;
 
                         // Inflate the gzip-compressed contents
                         let mut gz_decoder = GzDecoder::new(std::io::Cursor::new(decoded_contents));
