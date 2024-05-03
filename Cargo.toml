@@ -110,3 +110,4 @@ harness = false
 [package.metadata.cargo-install]
 bin = ["jacs"]
 
+httpmock = "0.5.8"
