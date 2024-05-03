@@ -6,9 +6,9 @@ https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_key_algori
 
 algorithm to use for creating and using keys
 
-| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                         |
-| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [jacs.config.schema.json\*](../../https:/hai.ai/schemas/=./schemas/jacs.config.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                            |
+| :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------ |
+| Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [jacs.config.schema.json\*](../../out/jacs.config.schema.json "open original schema") |
 
 ## jacs\_agent\_key\_algorithm Type
 

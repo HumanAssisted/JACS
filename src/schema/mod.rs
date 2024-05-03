@@ -722,3 +722,6 @@ impl EmbeddedSchemaResolver {
         Ok(Arc::new(schema_value))
     }
 }
+
+pub use crate::schema::utils::SchemaResolverErrorWrapper;
+use jsonschema::SchemaResolverError;

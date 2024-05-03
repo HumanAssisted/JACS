@@ -6,7 +6,10 @@ use utils::DOCTESTFILE;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
+use httpmock::{Method, MockServer};
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
+use reqwest::blocking::Client;
+
 static SCHEMA: &str = "examples/raw/custom.schema.json";
 
 static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
@@ -15,8 +18,22 @@ static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f
 fn test_load_custom_schema_and_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-    let schemas = [SCHEMA.to_string()];
+
+    // Start a local mock server
+    let server = MockServer::start();
+
+    // Create a mock on the server for the custom schema
+    let schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/custom.schema.json");
+        then.status(200)
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+    });
+
+    // Replace the actual schema URL with the mock server's URL
+    let schemas = [server.url("/custom.schema.json").to_string()];
     agent.load_custom_schemas(&schemas);
+
     let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
@@ -31,8 +48,22 @@ fn test_load_custom_schema_and_custom_document() {
 fn test_load_custom_schema_and_custom_invalid_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-    let schemas = [SCHEMA.to_string()];
+
+    // Start a local mock server
+    let server = MockServer::start();
+
+    // Create a mock on the server for the custom schema
+    let schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/custom.schema.json");
+        then.status(200)
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+    });
+
+    // Replace the actual schema URL with the mock server's URL
+    let schemas = [server.url("/custom.schema.json").to_string()];
     agent.load_custom_schemas(&schemas);
+
     let document_string = load_local_document(&"examples/raw/not-fruit.json".to_string()).unwrap();
     let document = agent
         .create_document_and_load(&document_string, None, None)
@@ -80,8 +111,22 @@ fn test_create_attachments_no_save() {
 fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-    let schemas = [SCHEMA.to_string()];
+
+    // Start a local mock server
+    let server = MockServer::start();
+
+    // Create a mock on the server for the custom schema
+    let schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/custom.schema.json");
+        then.status(200)
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+    });
+
+    // Replace the actual schema URL with the mock server's URL
+    let schemas = [server.url("/custom.schema.json").to_string()];
     agent.load_custom_schemas(&schemas);
+
     let document_string =
         load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
     let document = agent
