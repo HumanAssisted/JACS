@@ -4,7 +4,6 @@ pub mod document;
 pub mod loaders;
 pub mod security;
 
-use crate::agent::agreement::Agreement;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{Document, JACSDocument};
 use crate::crypt::hash::hash_public_key;
@@ -17,9 +16,8 @@ use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::KeyManager;
 use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
-use crate::schema::utils::ValueExt;
+use crate::schema::utils::{resolve_schema, EmbeddedSchemaResolver, ValueExt};
 use crate::schema::Schema;
-
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
@@ -32,6 +30,7 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use url::Url;
 use uuid::Uuid;
 
 /// this field is only ignored by itself, but other
@@ -153,7 +152,7 @@ impl Agent {
             value: None,
             document_schemas: document_schemas_map,
             documents: document_map,
-            default_directory: default_directory,
+            default_directory,
             id: None,
             version: None,
             key_algorithm: None,
@@ -193,20 +192,6 @@ impl Agent {
         self.key_algorithm = Some(key_algorithm.to_string());
         Ok(())
     }
-
-    // /// Gets a reference to the private key, if it exists.
-    // /// Since we're dealing with secrets, this function returns an Option<&Secret<PrivateKey>>
-    // /// to ensure the secret is not cloned or moved accidentally.
-    // pub fn get_private_key(&self) -> Option<&Secret<PrivateKey>> {
-    //     self.private_key.as_ref()
-    // }
-
-    // /// Consumes the secret, returning the inner PrivateKey if it exists.
-    // /// This is a more dangerous operation as it moves the secret out of its secure container.
-    // /// Use with caution.
-    // pub fn take_private_key(self) -> Option<PrivateKey> {
-    //     self.private_key.map(|secret| secret.into_inner())
-    // }
 
     // todo keep this as private
     pub fn get_private_key(&self) -> Result<Secret<PrivateKey>, Box<dyn Error>> {
@@ -263,24 +248,6 @@ impl Agent {
 
         return Ok(());
     }
-
-    // // hashing
-    // fn hash_self(&self) -> Result<String, Box<dyn Error>> {
-    //     match &self.value {
-    //         Some(embedded_value) => self.hash_doc(embedded_value),
-    //         None => {
-    //             let error_message = "Value is None";
-    //             error!("{}", error_message);
-    //             Err(error_message.into())
-    //         }
-    //     }
-    // }
-
-    // get docs by prrefix
-    // let user_values: HashMap<&String, &Value> = map
-    //     .iter()
-    //     .filter(|(key, _)| key.starts    _with(prefix))
-    //     .collect();
 
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
         let public_key = self.get_public_key()?;
@@ -653,28 +620,17 @@ impl Agent {
     }
 
     //// accepts local file system path or Urls
-    pub fn load_custom_schemas(&mut self, schema_paths: &[String]) {
-        let mut schemas = self.document_schemas.lock().unwrap();
+    pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), String> {
+        let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
-            let schema = if path.starts_with("http://") || path.starts_with("https://") {
-                // Load schema from URL
-                let schema_json = reqwest::blocking::get(path).unwrap().json().unwrap();
-                JSONSchema::options()
-                    .with_draft(Draft::Draft7)
-                    .compile(&schema_json)
-                    .unwrap()
-            } else {
-                // Load schema from local file
-                println!("loading custom schema {}", path);
-                let schema_json = std::fs::read_to_string(path).unwrap();
-                let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
-                JSONSchema::options()
-                    .with_draft(Draft::Draft7)
-                    .compile(&schema_value)
-                    .unwrap()
-            };
+            let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
+            let schema = JSONSchema::options()
+                .with_draft(Draft::Draft7)
+                .compile(&schema_value)
+                .map_err(|e| e.to_string())?;
             schemas.insert(path.clone(), schema);
         }
+        Ok(())
     }
 
     pub fn save(&self) -> Result<String, Box<dyn Error>> {

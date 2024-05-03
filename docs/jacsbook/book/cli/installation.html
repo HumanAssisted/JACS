@@ -180,22 +180,35 @@ For an explanation see <a href="./schemas/jacs.config.schema.json">the schema fo
 <p>To create a config file, you can run</p>
 <pre><code>jacs config create
 </code></pre>
-<p>Which will give you this dialog.</p>
+<p>Which will give you this dialog:</p>
+<pre><code>Please enter the data directory path:
+Please enter the key directory path:
+Please enter the agent private key filename:
+Please enter the agent public key filename:
+Please enter the agent key algorithm:
+Please enter the agent schema version:
+Please enter the header schema version:
+Please enter the signature schema version:
+Please enter the private key password:
+Please enter the agent ID and version:
+</code></pre>
 <p>You can use <code>jacs config read</code> to check the configs.</p>
-<p>Note: Do not use <code>jacs_private_key_password</code> in production. Use the environment variable <code>JACS_PRIVATE_KEY_PASSWORD</code> in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.</p>
+<p>Note: Do not use <code>jacs_private_key_password</code> in production. Instead, use the environment variable <code>JACS_PRIVATE_KEY_PASSWORD</code> in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.</p>
 <h2 id="developing"><a class="header" href="#developing">developing</a></h2>
 <p>The pre-commit hook requires some libraries</p>
 <p>See pre-commit</p>
 <ul>
-<li>install <code>jq</code> e.g. <code>brew install jq</code></li>
+<li>install <code>jq</code> e.g. <code>brew install jq</code> or use your package manager (e.g., <code>apt install jq</code> for Debian/Ubuntu)</li>
 <li>for documentation    <code>npm install -g @adobe/jsonschema2md</code></li>
 <li>cargo install mdbook</li>
 </ul>
-<p>Otherwise it's a standard Rust project.</p>
+<p>Otherwise, it's a standard Rust project.</p>
 <ul>
 <li>install Rust and your favorite editor</li>
 <li>see tests, examples, and benches</li>
 </ul>
+<p>For a complete guide on setting up a Rust development environment, refer to the <a href="https://www.rust-lang.org/tools/install">official Rust installation guide</a>.</p>
+<p>After setting up your environment, you can proceed to the next steps in the documentation to begin working with JACS.</p>
 
                     </main>
 

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/examples/documents/custom.schema.json",
+  "$id": "https://example.com/schemas/examples/raw/custom.schema.json",
   "title": "Agent",
   "description": "General schema for human, hybrid, and AI agents",
   "allOf": [

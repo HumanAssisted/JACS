@@ -5,7 +5,7 @@
   "description": "General schema for human, hybrid, and AI agents",
   "allOf": [
     {
-      "$ref": "../../header/v1/header.schema.json"
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
     },
     {
       "type": "object",
@@ -27,14 +27,14 @@
         "minItems": 1,
         "description": "Services the agent can perform.",
         "items": {
-          "$ref": "../../../components/service/v1/service.schema.json"
+          "$ref": "https://hai.ai/schemas/components/service/v1/service.schema.json"
         }
       },
       "jacsContacts": {
         "type": "array",
         "description": "Contact information for the agent",
         "items": {
-          "$ref": "../../components/contact/v1/contact.schema.json"
+          "$ref": "https://hai.ai/schemas/components/contact/v1/contact.schema.json"
         }
       }
     }

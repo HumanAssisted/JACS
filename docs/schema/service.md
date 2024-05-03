@@ -219,7 +219,7 @@ URLs and function definitions of of tools that can be called
 
 *   is optional
 
-*   Type: `object[][]` ([Details](tool-items.md))
+*   Type: unknown\[]
 
 *   cannot be null
 
@@ -227,7 +227,7 @@ URLs and function definitions of of tools that can be called
 
 ### tools Type
 
-`object[][]` ([Details](tool-items.md))
+unknown\[]
 
 ## piiDesired
 

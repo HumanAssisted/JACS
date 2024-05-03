@@ -5,9 +5,8 @@ use crate::agent::Agent;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;
 use crate::agent::JACS_VERSION_FIELDNAME;
 use crate::agent::{
-    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_IGNORE_FIELDS,
-    JACS_PREVIOUS_VERSION_FIELDNAME, SHA256_FIELDNAME, TASK_END_AGREEMENT_FIELDNAME,
-    TASK_START_AGREEMENT_FIELDNAME,
+    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME,
+    SHA256_FIELDNAME,
 };
 
 use crate::crypt::hash::hash_public_key;
@@ -292,7 +291,7 @@ impl Agreement for Agent {
             &vec![signing_agent_id.clone()],
             agreement_fieldname,
         )?;
-        value = agent_complete_document.getvalue();
+        value = agent_complete_document.getvalue().clone();
         let agent_complete_key = agent_complete_document.getkey();
         debug!(
             "agents_signature {}",

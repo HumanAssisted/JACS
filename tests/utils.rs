@@ -115,19 +115,25 @@ pub fn load_test_agent_two() -> Agent {
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
 
+    debug!("load_test_agent_two: function called");
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
+    debug!("load_test_agent_two: agent instantiated");
+
     let _ = agent.fs_preload_keys(
         &"agent-two.private.pem".to_string(),
         &"agent-two.public.pem".to_string(),
         Some("RSA-PSS".to_string()),
     );
+    debug!("load_test_agent_two: keys preloaded");
+
     let result = agent.load_by_id(
         Some(
             "9f62bc98-b871-4c26-a5c9-29457e291448:15da36cb-a131-41cc-b1df-3afeec6acc74".to_string(),
         ),
         None,
     );
+    debug!("load_test_agent_two: load_by_id called");
     match result {
         Ok(_) => {
             debug!(
