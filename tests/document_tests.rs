@@ -12,8 +12,8 @@ use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 extern crate env_logger;
 use log::{error, info};
 
-// Define the correct path for the custom schema
-static SCHEMA: &str = "/home/ubuntu/JACS/examples/raw/custom.schema.json";
+// Define the correct relative path for the custom schema
+static SCHEMA: &str = "raw/custom.schema.json";
 
 static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
 //color_eyre::install().unwrap();
@@ -82,18 +82,25 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+    // Create a reqwest client with SSL verification disabled
+    let client = reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Failed to create reqwest client with disabled SSL verification");
+
+    // Use the custom client for schema resolution
+    match agent.load_custom_schemas_with_client(&[SCHEMA.to_string()], &client) {
         Ok(_) => info!(
-            "Schemas loaded successfully in test_load_custom_schema_and_custom_invalid_document."
+            "Schemas loaded successfully with custom client in test_load_custom_schema_and_custom_invalid_document."
         ),
         Err(e) => {
             error!(
-                "Error in test_load_custom_schema_and_custom_invalid_document loading schemas: {}",
+                "Error loading schemas with custom client in test_load_custom_schema_and_custom_invalid_document: {}",
                 e
             );
             assert!(
                 false,
-                "Failed to load schemas in test_load_custom_schema_and_custom_invalid_document"
+                "Failed to load schemas with custom client in test_load_custom_schema_and_custom_invalid_document"
             );
         }
     };
@@ -149,18 +156,25 @@ fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+    // Create a reqwest client with SSL verification disabled
+    let client = reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Failed to create reqwest client with disabled SSL verification");
+
+    // Use the custom client for schema resolution
+    match agent.load_custom_schemas_with_client(&[SCHEMA.to_string()], &client) {
         Ok(_) => {
-            info!("Schemas loaded successfully in test_load_custom_schema_and_new_custom_document.")
+            info!("Schemas loaded successfully with custom client in test_load_custom_schema_and_new_custom_document.")
         }
         Err(e) => {
             error!(
-                "Error in test_load_custom_schema_and_new_custom_document loading schemas: {}",
+                "Error loading schemas with custom client in test_load_custom_schema_and_new_custom_document: {}",
                 e
             );
             assert!(
                 false,
-                "Failed to load schemas in test_load_custom_schema_and_new_custom_document"
+                "Failed to load schemas with custom client in test_load_custom_schema_and_new_custom_document"
             );
         }
     };
@@ -205,11 +219,18 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     // cargo test   --test document_tests -- --nocapture test_load_custom_schema_and_new_custom_document_agent_two
     let mut agent = load_test_agent_two();
 
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
-        Ok(_) => info!("Schemas loaded successfully in test_load_custom_schema_and_new_custom_document_agent_two."),
+    // Create a reqwest client with SSL verification disabled
+    let client = reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Failed to create reqwest client with disabled SSL verification");
+
+    // Use the custom client for schema resolution
+    match agent.load_custom_schemas_with_client(&[SCHEMA.to_string()], &client) {
+        Ok(_) => info!("Schemas loaded successfully with custom client in test_load_custom_schema_and_new_custom_document_agent_two."),
         Err(e) => {
-            error!("Error in test_load_custom_schema_and_new_custom_document_agent_two loading schemas: {}", e);
-            assert!(false, "Failed to load schemas in test_load_custom_schema_and_new_custom_document_agent_two");
+            error!("Error loading schemas with custom client in test_load_custom_schema_and_new_custom_document_agent_two: {}", e);
+            assert!(false, "Failed to load schemas with custom client in test_load_custom_schema_and_new_custom_document_agent_two");
         },
     };
 

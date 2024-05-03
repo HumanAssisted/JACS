@@ -637,7 +637,11 @@ impl Agent {
                         .map_err(|e| e.to_string())?
                 }
             } else {
-                let full_path = self.default_directory.join(path);
+                let full_path = if path.starts_with("./") {
+                    PathBuf::from(path)
+                } else {
+                    self.default_directory.join(path)
+                };
                 if !full_path.exists() {
                     return Err(format!(
                         "Schema file does not exist at path: {:?}",

@@ -92,6 +92,45 @@ impl SchemaResolver for EmbeddedSchemaResolver {
 
 // todo handle case for url retrieval
 pub fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolverError> {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        // Create a reqwest client with SSL verification disabled
+        let client = reqwest::blocking::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .map_err(|err| {
+                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                    "Failed to create reqwest client: {}",
+                    err
+                )))
+            })?;
+
+        // Fetch the schema using the reqwest client
+        let schema_response = client.get(path).send().map_err(|err| {
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "Failed to fetch schema from URL {}: {}",
+                path, err
+            )))
+        })?;
+
+        if schema_response.status().is_success() {
+            let schema_value: Value = schema_response.json().map_err(|err| {
+                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                    "Failed to parse schema from URL {}: {}",
+                    path, err
+                )))
+            })?;
+            return Ok(Arc::new(schema_value));
+        } else {
+            return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
+                format!(
+                    "Failed to fetch schema from URL {}: HTTP status {}",
+                    path,
+                    schema_response.status()
+                ),
+            )));
+        }
+    }
+
     let relative_path = path.trim_start_matches("https://hai.ai/");
     let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
         SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
