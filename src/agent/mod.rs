@@ -35,6 +35,8 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 #[cfg(test)]
+use httpmock::Method;
+#[cfg(test)]
 use httpmock::{Mock, MockServer};
 
 /// this field is only ignored by itself, but other
