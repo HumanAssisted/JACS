@@ -673,11 +673,12 @@ impl Agent {
                         }));
                     });
 
-                    let schema_json: Value =
-                        reqwest::blocking::get(&format!("{}/{}", server.base_url(), path))
-                            .unwrap()
-                            .json()
-                            .unwrap();
+                    let schema_json: Value = reqwest::blocking::Client::new()
+                        .get(&server.url(path))
+                        .send()
+                        .unwrap()
+                        .json()
+                        .unwrap();
                     mock.assert();
                     JSONSchema::options()
                         .with_draft(Draft::Draft7)

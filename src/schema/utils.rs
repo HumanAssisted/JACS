@@ -30,7 +30,8 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
 
 pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
 
-pub struct SchemaResolverErrorWrapper(String);
+#[derive(Debug)]
+pub struct SchemaResolverErrorWrapper(pub String);
 
 impl fmt::Display for SchemaResolverErrorWrapper {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

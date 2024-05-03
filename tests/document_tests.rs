@@ -145,8 +145,22 @@ fn test_load_custom_schema_and_new_custom_document() {
 fn test_load_custom_schema_and_new_custom_document_agent_two() {
     // cargo test   --test document_tests -- --nocapture test_load_custom_schema_and_new_custom_document_agent_two
     let mut agent = load_test_agent_two();
-    let schemas = [SCHEMA.to_string()];
+
+    // Start a local mock server
+    let server = MockServer::start();
+
+    // Create a mock on the server for the custom schema
+    let schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/custom.schema.json");
+        then.status(200)
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+    });
+
+    // Replace the actual schema URL with the mock server's URL
+    let schemas = [server.url("/custom.schema.json").to_string()];
     agent.load_custom_schemas(&schemas);
+
     let document_string =
         load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
     let document = agent
@@ -165,8 +179,22 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
 fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-    let schemas = [SCHEMA.to_string()];
+
+    // Start a local mock server
+    let server = MockServer::start();
+
+    // Create a mock on the server for the custom schema
+    let schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/custom.schema.json");
+        then.status(200)
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+    });
+
+    // Replace the actual schema URL with the mock server's URL
+    let schemas = [server.url("/custom.schema.json").to_string()];
     agent.load_custom_schemas(&schemas);
+
     let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
