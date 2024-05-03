@@ -4,7 +4,6 @@
 - Fixed an issue with the schema resolver to handle more cases in tests.
 
 
-
 ## 0.2.11
 
 - bringing some documentation up to date
