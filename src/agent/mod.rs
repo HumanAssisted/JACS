@@ -21,7 +21,7 @@ use crate::schema::Schema;
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
-use log::{debug, error};
+use log::{debug, error, info};
 use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
@@ -621,43 +621,41 @@ impl Agent {
 
     //// accepts local file system path or Urls
     pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), String> {
+        info!("Entering load_custom_schemas function");
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
+        let base_url = Url::parse(&format!(
+            "file://{}",
+            self.default_directory.to_string_lossy()
+        ))
+        .map_err(|e| e.to_string())?;
+
         for path in schema_paths {
-            let schema_value: Value = if path.starts_with("http://") || path.starts_with("https://")
-            {
-                if path.starts_with("https://hai.ai") {
-                    let arc_value =
-                        resolve_schema(path, &Url::parse(path).map_err(|e| e.to_string())?)
-                            .map_err(|e| e.to_string())?;
-                    (*arc_value).clone()
-                } else {
-                    reqwest::blocking::get(path)
-                        .map_err(|e| e.to_string())?
-                        .json::<Value>()
-                        .map_err(|e| e.to_string())?
-                }
+            info!("Processing schema path: {}", path);
+            let full_path = if path.starts_with("http://") || path.starts_with("https://") {
+                path.clone()
             } else {
-                let full_path = if path.starts_with("./") {
-                    PathBuf::from(path)
-                } else {
-                    self.default_directory.join(path)
-                };
-                if !full_path.exists() {
-                    return Err(format!(
-                        "Schema file does not exist at path: {:?}",
-                        full_path
-                    ));
-                }
-                let schema_json = std::fs::read_to_string(&full_path).map_err(|e| e.to_string())?;
-                serde_json::from_str(&schema_json).map_err(|e| e.to_string())?
+                // Resolve relative paths against the base URL
+                let resolved_path = base_url.join(path).map_err(|e| e.to_string())?;
+                resolved_path.to_string()
+            };
+
+            let schema_value: Value = {
+                let arc_value = resolve_schema(
+                    &full_path,
+                    &Url::parse(&full_path).map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+                (*arc_value).clone()
             };
 
             let schema = JSONSchema::options()
                 .with_draft(Draft::Draft7)
                 .compile(&schema_value)
                 .map_err(|e| e.to_string())?;
-            schemas.insert(path.clone(), schema);
+            schemas.insert(full_path, schema);
+            info!("Schema resolved successfully: {}", path);
         }
+        info!("Exiting load_custom_schemas function");
         Ok(())
     }
 

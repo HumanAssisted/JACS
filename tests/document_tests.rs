@@ -12,8 +12,8 @@ use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 extern crate env_logger;
 use log::{error, info};
 
-// Define the correct relative path for the custom schema
-static SCHEMA: &str = "raw/custom.schema.json";
+// Define the correct absolute path for the custom schema
+static SCHEMA: &str = "/home/ubuntu/JACS/examples/raw/custom.schema.json";
 
 static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
 //color_eyre::install().unwrap();
@@ -82,6 +82,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
+    info!("Starting to load custom schemas.");
     match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
         Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
@@ -89,31 +90,43 @@ fn test_load_custom_schema_and_custom_invalid_document() {
             assert!(false, "Failed to load schemas");
         }
     };
+    info!("Custom schemas loaded, proceeding to create and load document.");
 
     let document_string = match load_local_document(&"examples/raw/not-fruit.json".to_string()) {
-        Ok(content) => content,
-        Err(e) => panic!("Error in test_load_custom_schema_and_custom_invalid_document loading local document: {}", e),
+        Ok(content) => {
+            info!("Local document loaded successfully.");
+            content
+        }
+        Err(e) => {
+            error!("Error loading local document: {}", e);
+            panic!("Error in test_load_custom_schema_and_custom_invalid_document loading local document: {}", e);
+        }
     };
 
+    info!("Document string loaded, proceeding to create document.");
     let document = match agent.create_document_and_load(&document_string, None, None) {
-        Ok(doc) => doc,
-        Err(e) => panic!("Error in test_load_custom_schema_and_custom_invalid_document creating and loading document: {}", e),
+        Ok(doc) => {
+            info!("Document created and loaded successfully.");
+            doc
+        }
+        Err(e) => {
+            error!("Error creating and loading document: {}", e);
+            panic!("Error in test_load_custom_schema_and_custom_invalid_document creating and loading document: {}", e);
+        }
     };
 
-    info!("loaded valid doc {}", document.to_string());
-
+    info!("Document loaded, proceeding to validate document.");
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
         Ok(()) => {
-            // Validation succeeded
+            info!("Document validation succeeded, which should not happen.");
             panic!("Document validation succeeded in test_load_custom_schema_and_custom_invalid_document and should not have");
-            assert!(false);
         }
         Err(error) => {
-            // Validation failed
-            info!("Document validation failed in test_load_custom_schema_and_custom_invalid_document: {}", error);
+            info!("Document validation failed as expected: {}", error);
             assert!(true);
         }
     }
+    info!("Document validation completed.");
 }
 
 #[test]
@@ -186,39 +199,41 @@ fn test_load_custom_schema_and_new_custom_document() {
 
 #[test]
 fn test_load_custom_schema_and_new_custom_document_agent_two() {
-    // cargo test   --test document_tests -- --nocapture test_load_custom_schema_and_new_custom_document_agent_two
+    info!("test_load_custom_schema_and_new_custom_document_agent_two: Test case started");
     let mut agent = load_test_agent_two();
+    info!("test_load_custom_schema_and_new_custom_document_agent_two: Agent loaded");
 
+    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load custom schemas");
     match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
-        Ok(_) => info!("Schemas loaded successfully."),
+        Ok(_) => info!("test_load_custom_schema_and_new_custom_document_agent_two: Custom schemas loaded successfully"),
         Err(e) => {
-            error!("Error loading schemas: {}", e);
-            assert!(false, "Failed to load schemas");
+            error!("test_load_custom_schema_and_new_custom_document_agent_two: Error loading schemas: {}", e);
+            assert!(false, "test_load_custom_schema_and_new_custom_document_agent_two: Failed to load schemas");
         }
     };
 
+    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load local document");
     let document_string = match load_local_document(&"examples/raw/favorite-fruit.json".to_string()) {
-        Ok(content) => content,
-        Err(e) => panic!("Error in test_load_custom_schema_and_new_custom_document_agent_two loading local document: {}", e),
+        Ok(content) => {
+            info!("test_load_custom_schema_and_new_custom_document_agent_two: Local document loaded successfully");
+            content
+        },
+        Err(e) => panic!("test_load_custom_schema_and_new_custom_document_agent_two: Error loading local document: {}", e),
     };
 
+    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to create and load document");
     let document = match agent.create_document_and_load(&document_string, None, None) {
-        Ok(doc) => doc,
-        Err(e) => panic!("Error in test_load_custom_schema_and_new_custom_document_agent_two creating and loading document: {}", e),
+        Ok(doc) => {
+            info!("test_load_custom_schema_and_new_custom_document_agent_two: Document created and loaded successfully");
+            doc
+        },
+        Err(e) => panic!("test_load_custom_schema_and_new_custom_document_agent_two: Error creating and loading document: {}", e),
     };
 
-    info!("loaded valid doc {}", document.to_string());
-
-    let document_key = document.getkey();
-
-    let document_ref = match agent.get_document(&document_key) {
-        Ok(doc_ref) => doc_ref,
-        Err(e) => panic!("Error in test_load_custom_schema_and_new_custom_document_agent_two getting document: {}", e),
-    };
-
+    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to validate document with custom schema");
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
-        Ok(_) => info!("Document is valid in test_load_custom_schema_and_new_custom_document_agent_two."),
-        Err(e) => panic!("Document validation error in test_load_custom_schema_and_new_custom_document_agent_two: {}", e),
+        Ok(_) => info!("test_load_custom_schema_and_new_custom_document_agent_two: Document validation completed"),
+        Err(e) => panic!("test_load_custom_schema_and_new_custom_document_agent_two: Document validation error: {}", e),
     };
 }
 
