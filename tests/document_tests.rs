@@ -10,8 +10,6 @@ use httpmock::{Method, MockServer};
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use reqwest::blocking::Client;
 
-static SCHEMA: &str = "http://localhost:5000/custom.schema.json";
-
 static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
 //color_eyre::install().unwrap();
 #[test]
@@ -39,8 +37,9 @@ fn test_load_custom_schema_and_custom_document() {
     let document_key = document.getkey();
     println!("loaded valid {}", document_key);
     let document_copy = agent.get_document(&document_key).unwrap();
+    let schema_url = server.url("/custom.schema.json").to_string();
     agent
-        .validate_document_with_custom_schema(&SCHEMA, &document_copy.getvalue())
+        .validate_document_with_custom_schema(&schema_url, &document_copy.getvalue())
         .unwrap();
 }
 
@@ -73,7 +72,8 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     let _document_ref = agent.get_document(&document_key).unwrap();
 
     // let _ = agent.save_document(&document_key, None, None);
-    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
+    let schema_url = server.url("/custom.schema.json").to_string();
+    match agent.validate_document_with_custom_schema(&schema_url, &document.getvalue()) {
         Ok(()) => {
             // Validation succeeded
             println!("Document validation succeeded and should not have");
@@ -135,8 +135,9 @@ fn test_load_custom_schema_and_new_custom_document() {
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
     let _document_ref = agent.get_document(&document_key).unwrap();
+    let schema_url = server.url("/custom.schema.json").to_string();
     agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .validate_document_with_custom_schema(&schema_url, &document.getvalue())
         .unwrap();
     // let _ = agent.save_document(&document_key, None, None);
 }
@@ -169,8 +170,9 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     println!("loaded valid doc {}", document.to_string());
     let document_key = document.getkey();
     let _document_ref = agent.get_document(&document_key).unwrap();
+    let schema_url = server.url("/custom.schema.json").to_string();
     agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .validate_document_with_custom_schema(&schema_url, &document.getvalue())
         .unwrap();
     //let _ = agent.save_document(&document_key, None, None, None);
 }
@@ -207,8 +209,9 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let new_document_key = new_document.getkey();
 
     let new_document_ref = agent.get_document(&new_document_key).unwrap();
+    let schema_url = server.url("/custom.schema.json").to_string();
     agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
+        .validate_document_with_custom_schema(&schema_url, &document.getvalue())
         .unwrap();
 
     println!("updated {} {}", new_document_key, new_document_ref);
