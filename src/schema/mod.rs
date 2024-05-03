@@ -695,3 +695,30 @@ impl Schema {
     //     Ok()
     // }
 }
+
+// Corrected URL handling logic
+impl EmbeddedSchemaResolver {
+    fn resolve(
+        &self,
+        _root_schema: &Value,
+        url: &Url,
+        _original_reference: &str,
+    ) -> Result<Arc<Value>, SchemaResolverError> {
+        // Ensure the path is treated as a web URL and not as a filesystem path
+        let schema_json = DEFAULT_SCHEMA_STRINGS.get(url.as_str()).ok_or_else(|| {
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "Schema not found for URL: {}",
+                url
+            )))
+        })?;
+
+        let schema_value: Value = serde_json::from_str(schema_json).map_err(|serde_err| {
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "Error parsing schema JSON for URL: {} - {:?}",
+                url, serde_err
+            )))
+        })?;
+
+        Ok(Arc::new(schema_value))
+    }
+}
