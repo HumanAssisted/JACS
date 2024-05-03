@@ -33,11 +33,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-#[cfg(test)]
-use httpmock::Method;
-#[cfg(test)]
-use httpmock::MockServer;
-
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
 pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "jacsAgreementHash";
@@ -113,7 +108,7 @@ pub struct Agent {
     value: Option<Value>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
-    document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
+    document_schemas: Arc<Mutex<HashMap<String, Arc<JSONSchema>>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     default_directory: PathBuf,
     /// everything needed for the agent to sign things
@@ -657,59 +652,26 @@ impl Agent {
     }
 
     //// accepts local file system path or Urls
-    pub fn load_custom_schemas(&mut self, schema_paths: &[String]) {
+    pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), Box<dyn Error>> {
         let mut schemas = self.document_schemas.lock().unwrap();
         for path in schema_paths {
-            let schema = if path.starts_with("http://") || path.starts_with("https://") {
-                #[cfg(test)]
-                {
-                    // In test environment, use httpmock to mock network calls
-                    let server = MockServer::start();
-                    let mock = server.mock(|when, then| {
-                        when.method(Method::GET).path(path);
-                        then.status(200).json_body(json!({
-                            "$schema": "http://json-schema.org/draft-07/schema#",
-                            // ... rest of the schema properties
-                        }));
-                    });
-
-                    let schema_json: Value = reqwest::blocking::Client::new()
-                        .get(&server.url(path))
-                        .send()
-                        .unwrap()
-                        .json()
-                        .unwrap();
-                    mock.assert();
-                    JSONSchema::options()
-                        .with_draft(Draft::Draft7)
-                        .compile(&schema_json)
-                        .unwrap()
-                }
-                #[cfg(not(test))]
-                {
-                    // In production environment, perform actual network call
-                    let client = reqwest::blocking::Client::builder()
-                        .danger_accept_invalid_certs(true)
-                        .build()
-                        .unwrap();
-                    let schema_json = client.get(path).send().unwrap().json().unwrap();
-                    JSONSchema::options()
-                        .with_draft(Draft::Draft7)
-                        .compile(&schema_json)
-                        .unwrap()
-                }
+            let schema_json_str = if path.starts_with("http://") || path.starts_with("https://") {
+                let client = reqwest::blocking::Client::builder()
+                    .danger_accept_invalid_certs(true)
+                    .build()?;
+                client.get(path).send()?.text()?
             } else {
-                // Load schema from local file
-                println!("loading custom schema {}", path);
-                let schema_json = std::fs::read_to_string(path).unwrap();
-                let schema_value: Value = serde_json::from_str(&schema_json).unwrap();
-                JSONSchema::options()
-                    .with_draft(Draft::Draft7)
-                    .compile(&schema_value)
-                    .unwrap()
+                std::fs::read_to_string(path)?
             };
-            schemas.insert(path.clone(), schema);
+            let compiled_schema = JSONSchema::options()
+                .with_draft(Draft::Draft7)
+                .compile(&serde_json::from_str(&schema_json_str)?)
+                .map_err(|e| format!("Failed to compile schema: {}", e))?;
+            let owned_schema = Arc::new(compiled_schema);
+            schemas.insert(path.clone(), owned_schema);
         }
+
+        Ok(())
     }
 
     pub fn save(&self) -> Result<String, Box<dyn Error>> {

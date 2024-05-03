@@ -535,7 +535,7 @@ impl Document for Agent {
                         let contents = item["contents"].as_str().ok_or("Contents not found")?;
                         let path = item["path"].as_str().ok_or("Path not found")?;
 
-                        let decoded_contents = base64::decode(contents)?;
+                        let decoded_contents = base64::decode_config(contents, base64::STANDARD)?;
 
                         // Inflate the gzip-compressed contents
                         let mut gz_decoder = GzDecoder::new(std::io::Cursor::new(decoded_contents));

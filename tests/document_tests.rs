@@ -8,7 +8,6 @@ use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 use httpmock::{Method, MockServer};
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-use reqwest::blocking::Client;
 
 static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
 //color_eyre::install().unwrap();
@@ -20,12 +19,20 @@ fn test_load_custom_schema_and_custom_document() {
     // Start a local mock server
     let server = MockServer::start();
 
+    // Mock the external schema URL
+    let _header_schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/schemas/header/v1/header.schema.json");
+        then.status(200)
+            .body(r#"{"$id": "https://hai.ai/schemas/header/v1/header.schema.json","type": "object","properties": {"jacsId": {"type": "string"},"jacsVersion": {"type": "string"},"jacsVersionDate": {"type": "string"},"jacsOriginalDate": {"type": "string"},"jacsOriginalVersion": {"type": "string"},"jacsSha256": {"type": "string"},"jacsSignature": {"type": "object","properties": {"agentID": {"type": "string"},"agentVersion": {"type": "string"},"date": {"type": "string"},"fields": {"type": "array","items": {"type": "string"}},"publicKeyHash": {"type": "string"},"signature": {"type": "string"},"signingAlgorithm": {"type": "string"}},"required": ["agentID","agentVersion","date","fields","publicKeyHash","signature","signingAlgorithm"]}},"required": ["jacsId","jacsVersion","jacsVersionDate","jacsOriginalDate","jacsOriginalVersion","jacsSha256","jacsSignature"]}"#);
+    });
+
     // Create a mock on the server for the custom schema
-    let schema_mock = server.mock(|when, then| {
+    let _schema_mock = server.mock(|when, then| {
         when.method(Method::GET)
             .path("/custom.schema.json");
         then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
     });
 
     // Replace the actual schema URL with the mock server's URL
@@ -51,12 +58,20 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     // Start a local mock server
     let server = MockServer::start();
 
+    // Mock the external schema URL
+    let _header_schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/schemas/header/v1/header.schema.json");
+        then.status(200)
+            .body(r#"{"$id": "https://hai.ai/schemas/header/v1/header.schema.json","type": "object","properties": {"jacsId": {"type": "string"},"jacsVersion": {"type": "string"},"jacsVersionDate": {"type": "string"},"jacsOriginalDate": {"type": "string"},"jacsOriginalVersion": {"type": "string"},"jacsSha256": {"type": "string"},"jacsSignature": {"type": "object","properties": {"agentID": {"type": "string"},"agentVersion": {"type": "string"},"date": {"type": "string"},"fields": {"type": "array","items": {"type": "string"}},"publicKeyHash": {"type": "string"},"signature": {"type": "string"},"signingAlgorithm": {"type": "string"}},"required": ["agentID","agentVersion","date","fields","publicKeyHash","signature","signingAlgorithm"]}},"required": ["jacsId","jacsVersion","jacsVersionDate","jacsOriginalDate","jacsOriginalVersion","jacsSha256","jacsSignature"]}"#);
+    });
+
     // Create a mock on the server for the custom schema
-    let schema_mock = server.mock(|when, then| {
+    let _schema_mock = server.mock(|when, then| {
         when.method(Method::GET)
             .path("/custom.schema.json");
         then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
     });
 
     // Replace the actual schema URL with the mock server's URL
@@ -115,12 +130,20 @@ fn test_load_custom_schema_and_new_custom_document() {
     // Start a local mock server
     let server = MockServer::start();
 
+    // Mock the external schema URL
+    let _header_schema_mock = server.mock(|when, then| {
+        when.method(Method::GET)
+            .path("/schemas/header/v1/header.schema.json");
+        then.status(200)
+            .body(r#"{"$id": "https://hai.ai/schemas/header/v1/header.schema.json","type": "object","properties": {"jacsId": {"type": "string"},"jacsVersion": {"type": "string"},"jacsVersionDate": {"type": "string"},"jacsOriginalDate": {"type": "string"},"jacsOriginalVersion": {"type": "string"},"jacsSha256": {"type": "string"},"jacsSignature": {"type": "object","properties": {"agentID": {"type": "string"},"agentVersion": {"type": "string"},"date": {"type": "string"},"fields": {"type": "array","items": {"type": "string"}},"publicKeyHash": {"type": "string"},"signature": {"type": "string"},"signingAlgorithm": {"type": "string"}},"required": ["agentID","agentVersion","date","fields","publicKeyHash","signature","signingAlgorithm"]}},"required": ["jacsId","jacsVersion","jacsVersionDate","jacsOriginalDate","jacsOriginalVersion","jacsSha256","jacsSignature"]}"#);
+    });
+
     // Create a mock on the server for the custom schema
-    let schema_mock = server.mock(|when, then| {
+    let _schema_mock = server.mock(|when, then| {
         when.method(Method::GET)
             .path("/custom.schema.json");
         then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
     });
 
     // Replace the actual schema URL with the mock server's URL
@@ -151,11 +174,11 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     let server = MockServer::start();
 
     // Create a mock on the server for the custom schema
-    let schema_mock = server.mock(|when, then| {
+    let _schema_mock = server.mock(|when, then| {
         when.method(Method::GET)
             .path("/custom.schema.json");
         then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
     });
 
     // Replace the actual schema URL with the mock server's URL
@@ -186,11 +209,11 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     let server = MockServer::start();
 
     // Create a mock on the server for the custom schema
-    let schema_mock = server.mock(|when, then| {
+    let _schema_mock = server.mock(|when, then| {
         when.method(Method::GET)
             .path("/custom.schema.json");
         then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": "https://hai.ai/schemas/header/v1/header.schema.json"},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
+            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
     });
 
     // Replace the actual schema URL with the mock server's URL
