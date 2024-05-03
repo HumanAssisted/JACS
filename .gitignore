@@ -17,3 +17,6 @@ grant.md
 scratch.md
 jacs.config.json
 .DS_Store
+
+# Directory for generated schema files during documentation process
+out/
