@@ -16,12 +16,13 @@ use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::KeyManager;
 use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
-use crate::schema::utils::ValueExt;
+use crate::schema::utils::{resolve_schema, EmbeddedSchemaResolver, ValueExt};
 use crate::schema::Schema;
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
 use log::{debug, error};
+use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
 use std::env;
@@ -29,6 +30,7 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use url::Url;
 use uuid::Uuid;
 
 /// this field is only ignored by itself, but other
@@ -621,30 +623,36 @@ impl Agent {
     pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), String> {
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
-            let full_path = self.default_directory.join(path);
-            debug!("Loading schema from local file: {:?}", full_path);
-            if !full_path.exists() {
-                return Err(format!(
-                    "Schema file does not exist at path: {:?}",
-                    full_path
-                ));
-            }
-            let schema_json = std::fs::read_to_string(&full_path).map_err(|e| {
-                format!(
-                    "Failed to read schema file {}: {}",
-                    full_path.to_string_lossy(),
-                    e
-                )
-            })?;
+            let schema_value: Value = if path.starts_with("http://") || path.starts_with("https://")
+            {
+                if path.starts_with("https://hai.ai") {
+                    let arc_value =
+                        resolve_schema(path, &Url::parse(path).map_err(|e| e.to_string())?)
+                            .map_err(|e| e.to_string())?;
+                    (*arc_value).clone()
+                } else {
+                    reqwest::blocking::get(path)
+                        .map_err(|e| e.to_string())?
+                        .json::<Value>()
+                        .map_err(|e| e.to_string())?
+                }
+            } else {
+                let full_path = self.default_directory.join(path);
+                if !full_path.exists() {
+                    return Err(format!(
+                        "Schema file does not exist at path: {:?}",
+                        full_path
+                    ));
+                }
+                let schema_json = std::fs::read_to_string(&full_path).map_err(|e| e.to_string())?;
+                serde_json::from_str(&schema_json).map_err(|e| e.to_string())?
+            };
 
-            let schema_value: Value = serde_json::from_str(&schema_json)
-                .map_err(|e| format!("Failed to parse schema JSON from {}: {}", path, e))?;
-            let compiled_schema = JSONSchema::options()
+            let schema = JSONSchema::options()
                 .with_draft(Draft::Draft7)
                 .compile(&schema_value)
-                .map_err(|e| format!("Failed to compile schema from {}: {}", path, e))?;
-            schemas.insert(path.clone(), compiled_schema);
-            debug!("Schema loaded and compiled from: {}", path);
+                .map_err(|e| e.to_string())?;
+            schemas.insert(path.clone(), schema);
         }
         Ok(())
     }

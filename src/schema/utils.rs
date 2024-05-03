@@ -91,7 +91,7 @@ impl SchemaResolver for EmbeddedSchemaResolver {
 }
 
 // todo handle case for url retrieval
-fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolverError> {
+pub fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolverError> {
     let relative_path = path.trim_start_matches("https://hai.ai/");
     let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
         SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
