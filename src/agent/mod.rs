@@ -658,7 +658,11 @@ impl Agent {
         for path in schema_paths {
             let schema = if path.starts_with("http://") || path.starts_with("https://") {
                 // Load schema from URL
-                let schema_json = reqwest::blocking::get(path).unwrap().json().unwrap();
+                let client = reqwest::blocking::Client::builder()
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                    .unwrap();
+                let schema_json = client.get(path).send().unwrap().json().unwrap();
                 JSONSchema::options()
                     .with_draft(Draft::Draft7)
                     .compile(&schema_json)

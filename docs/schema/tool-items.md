@@ -6,9 +6,9 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items
 
 
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                     |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [tool.schema.json\*](../../schemas/components/tool/v1/tool.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                              |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [tool.schema.json\*](../../https:/hai.ai/schemas/=./schemas/components/tool/v1/tool.schema.json "open original schema") |
 
 ## items Type
 
@@ -28,13 +28,13 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items
 
 `type`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/type")
+* defined in: [Tool](tool-items-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/type")
 
 ### type Type
 
@@ -54,13 +54,13 @@ endpoint of the tool
 
 `url`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")
+* defined in: [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")
 
 ### url Type
 
@@ -76,13 +76,13 @@ endpoint of the tool
 
 `function`
 
-*   is required
+* is required
 
-*   Type: `object` ([Details](tool-items-properties-function.md))
+* Type: `object` ([Details](tool-items-properties-function.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function")
+* defined in: [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function")
 
 ### function Type
 
