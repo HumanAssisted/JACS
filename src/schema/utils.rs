@@ -92,12 +92,16 @@ impl SchemaResolver for EmbeddedSchemaResolver {
 
 // todo handle case for url retrieval
 pub fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolverError> {
+    println!("Entering resolve_schema function with path: {}", path);
+
     if path.starts_with("http://") || path.starts_with("https://") {
+        println!("Attempting to fetch schema from URL: {}", path);
         // Create a reqwest client with SSL verification disabled
         let client = reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(true)
             .build()
             .map_err(|err| {
+                println!("Error fetching schema from URL: {}, error: {}", path, err);
                 SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
                     "Failed to create reqwest client: {}",
                     err
@@ -106,6 +110,7 @@ pub fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolve
 
         // Fetch the schema using the reqwest client
         let schema_response = client.get(path).send().map_err(|err| {
+            println!("Error fetching schema from URL: {}, error: {}", path, err);
             SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
                 "Failed to fetch schema from URL {}: {}",
                 path, err
@@ -114,11 +119,14 @@ pub fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolve
 
         if schema_response.status().is_success() {
             let schema_value: Value = schema_response.json().map_err(|err| {
+                println!("Error parsing schema from URL: {}, error: {}", path, err);
                 SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
                     "Failed to parse schema from URL {}: {}",
                     path, err
                 )))
             })?;
+            println!("Schema fetched successfully from URL: {}", path);
+            println!("Returning fetched schema for URL: {}", path);
             return Ok(Arc::new(schema_value));
         } else {
             return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
@@ -133,6 +141,7 @@ pub fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolve
 
     let relative_path = path.trim_start_matches("https://hai.ai/");
     let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
+        println!("Error: Schema not found for URL: {}", url);
         SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
             "Schema not found: {}",
             url.clone()
@@ -140,6 +149,10 @@ pub fn resolve_schema(path: &str, url: &Url) -> Result<Arc<Value>, SchemaResolve
     })?;
 
     let schema_value: Value = serde_json::from_str(schema_json).map_err(|serde_err| {
+        println!(
+            "Error: Failed to parse schema JSON for URL: {}, error: {}",
+            url, serde_err
+        );
         SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
             "JACS SchemaResolverError {:?} {}",
             serde_err,
