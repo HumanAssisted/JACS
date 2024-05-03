@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "./custom.schema.json",
+  "$id": "/home/ubuntu/JACS/examples/raw/custom.schema.json",
   "title": "Agent",
   "description": "General schema for human, hybrid, and AI agents",
   "allOf": [
     {
-      "$ref": "./header.schema.json"
+      "$ref": "/home/ubuntu/JACS/examples/raw/header.schema.json"
     },
     {
       "favorite-snack": {
