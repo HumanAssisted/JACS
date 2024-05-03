@@ -19,7 +19,7 @@ done
 rm temp.json
 
 # create json schema docs
-jsonschema2md -d schemas -i schemas -o docs/schema -x -
+jsonschema2md -d schemas -r "https://hai.ai/=schemas/"  -o docs/schema -x -
 
 mdbook build docs/jacsbook
 
