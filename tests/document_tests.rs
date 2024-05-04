@@ -116,70 +116,22 @@ fn test_load_custom_schema_and_new_custom_document() {
         then.status(200).json_body(json!({}));
     });
 
-    // let mut agent = load_test_agent_one();
-    // let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
-    //     Ok(content) => content,
-    //     Err(e) => panic!(
-    //         "Error in test_load_custom_schema_and_custom_document loading local document: {}",
-    //         e
-    //     ),
-    // };
-    // let document = match agent.load_document(&document_string) {
-    //     Ok(doc) => doc,
-    //     Err(e) => panic!(
-    //         "Error in test_load_custom_schema_and_custom_document loading document: {}", e
-    //     ),
-    // };
-    // info!("loaded valid {}", document.getkey());
-
-    // The SCHEMA variable is no longer used, so the following lines are commented out or modified to not use SCHEMA.
-    // match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
-    //     Ok(_) => info!("Document is valid in test_load_custom_schema_and_custom_document."),
-    //     Err(e) => panic!(
-    //         "Document validation error in test_load_custom_schema_and_custom_document: {}",
-    //         e
-    //     ),
-    // }
+    let mut agent = utils::mock_test_agent().expect("Failed to create mock agent");
+    let schemas = vec![json!({ /* schema content here */ })]; // Example schema content
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
 }
-
-// Duplicate function definitions removed
 
 #[test]
 fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Test case started");
-    // let mut agent = load_test_agent_two();
-    info!("test_load_custom_schema_and_new_custom_document_agent_two: Agent loaded");
-
-    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load custom schemas");
-    let schemas = vec![]; // SCHEMA variable removed
-                          // Handle the Result from loading custom schemas
-                          // agent
-                          //     .load_custom_schemas(&schemas)
-                          //     .expect("Failed to load custom schemas");
+    let mut agent = utils::mock_test_agent().expect("Failed to create mock agent");
+    let schemas = vec![json!({ /* schema content here */ })]; // Example schema content
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Custom schemas loaded successfully");
-
-    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load local document");
-    // let document_string = match load_local_document(&"examples/raw/favorite-fruit.json".to_string()) {
-    //     Ok(content) => {
-    //         info!("test_load_custom_schema_and_new_custom_document_agent_two: Local document loaded successfully");
-    //         content
-    //     },
-    //     Err(e) => panic!("test_load_custom_schema_and_new_custom_document_agent_two: Error loading local document: {}", e),
-    // };
-
-    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to create and load document");
-    // let document = match agent.create_document_and_load(&document_string, None, None) {
-    //     Ok(doc) => {
-    //         info!("test_load_custom_schema_and_new_custom_document_agent_two: Document created and loaded successfully");
-    //         doc
-    //     },
-    //     Err(e) => panic!("test_load_custom_schema_and_new_custom_document_agent_two: Error creating and loading document: {}", e),
-    // };
-
-    info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to validate document with custom schema");
-    info!(
-        "test_load_custom_schema_and_new_custom_document_agent_two: Document validation completed"
-    );
 }
 
 #[test]
