@@ -13,7 +13,7 @@ static DOCID: &str = "3f2b7816-2200-4b66-b13e-d9522a05ceb8:40a60489-45d9-4e46-9b
 
 #[test]
 fn test_create_agreement() {
-    let DOCUMENT_PATH = format!("examples/documents/{}.json", DOCID);
+    let document_path = format!("examples/documents/{}.json", DOCID);
     // cargo test   --test agreement_test -- --nocapture test_create_agreement
     let mut agent = load_test_agent_one();
     let agent_two = load_test_agent_two();
@@ -21,7 +21,7 @@ fn test_create_agreement() {
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCUMENT_PATH).unwrap();
+    let document_string = load_local_document(&document_path).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document
@@ -59,14 +59,14 @@ fn test_create_agreement() {
 
 #[test]
 fn test_add_and_remove_agents() {
-    let DOCUMENT_PATH = format!("examples/documents/{}.json", DOCID);
+    let document_path = format!("examples/documents/{}.json", DOCID);
     // cargo test   --test agreement_test -- --nocapture test_add_and_remove_agents
     let mut agent = load_test_agent_one();
     let agents_orig: Vec<String> = vec!["mariko".to_string(), "takeda".to_string()];
     let agents_to_add: Vec<String> = vec!["gaijin".to_string()];
     let agents_to_remove: Vec<String> = vec!["mariko".to_string()];
 
-    let document_string = load_local_document(&DOCUMENT_PATH).unwrap();
+    let document_string = load_local_document(&document_path).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let doc_v1 = agent
@@ -133,7 +133,7 @@ fn test_add_and_remove_agents() {
 
 #[test]
 fn test_sign_agreement() {
-    let DOCUMENT_PATH = format!("examples/documents/{}.json", DOCID);
+    let document_path = format!("examples/documents/{}.json", DOCID);
     // cargo test   --test agreement_test -- --nocapture test_sign_agreement
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
@@ -158,7 +158,7 @@ fn test_sign_agreement() {
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCUMENT_PATH).unwrap();
+    let document_string = load_local_document(&document_path).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document

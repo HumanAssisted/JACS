@@ -19,7 +19,7 @@ fn set_enc_to_ring() {
 
 #[test]
 #[ignore]
-fn test_ring_Ed25519_create() {
+fn test_ring_ed25519_create() {
     set_enc_to_ring();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -34,7 +34,7 @@ fn test_ring_Ed25519_create() {
 }
 
 #[test]
-fn test_ring_Ed25519_create_and_verify_signature() {
+fn test_ring_ed25519_create_and_verify_signature() {
     set_enc_to_ring();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();

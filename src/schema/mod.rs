@@ -43,16 +43,26 @@ pub struct Schema {
     pub headerschema: JSONSchema,
     /// used to validate any JACS agent
     pub agentschema: JSONSchema,
+    #[allow(dead_code)]
     signatureschema: JSONSchema,
+    #[allow(dead_code)]
     jacsconfigschema: JSONSchema,
+    #[allow(dead_code)]
     agreementschema: JSONSchema,
+    #[allow(dead_code)]
     serviceschema: JSONSchema,
+    #[allow(dead_code)]
     unitschema: JSONSchema,
+    #[allow(dead_code)]
     actionschema: JSONSchema,
+    #[allow(dead_code)]
     toolschema: JSONSchema,
+    #[allow(dead_code)]
     contactschema: JSONSchema,
     pub taskschema: JSONSchema,
+    #[allow(dead_code)]
     messageschema: JSONSchema,
+    #[allow(dead_code)]
     evalschema: JSONSchema,
 }
 

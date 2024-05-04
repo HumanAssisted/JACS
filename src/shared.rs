@@ -42,7 +42,7 @@ pub fn document_create(
     let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
 
     // let loading_filename_string = loading_filename.to_string();
@@ -79,7 +79,7 @@ pub fn document_load_and_save(
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
     let docresult = agent.load_document(&document_string);
     if !load_only {
@@ -162,7 +162,7 @@ fn agree_task_start(
     extract_only: Option<bool>,
     load_only: bool,
 ) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
+    let _ = agent.schema.validate_task(document_string);
     return document_sign_agreement(
         agent,
         document_string,
@@ -184,7 +184,7 @@ fn agree_task_complete(
     extract_only: Option<bool>,
     load_only: bool,
 ) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
+    let _ = agent.schema.validate_task(document_string);
     return document_sign_agreement(
         agent,
         document_string,
@@ -234,7 +234,7 @@ pub fn document_check_agreement(
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
     let agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
@@ -279,7 +279,7 @@ pub fn document_sign_agreement(
     };
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();
@@ -319,7 +319,7 @@ pub fn document_add_agreement(
     };
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();

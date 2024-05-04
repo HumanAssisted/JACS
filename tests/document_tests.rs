@@ -1,16 +1,15 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-use jacs::agent::loaders::FileLoader;
-use jacs::crypt::KeyManager;
-use jsonschema::{CompilationOptions, Draft, JSONSchema};
+use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
+extern crate env_logger;
+use log::{error, info};
+
+use jacs::custom_resolver::MyCustomResolver;
+
 mod utils;
 use utils::DOCTESTFILE;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
-use httpmock::{Method, MockServer};
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-extern crate env_logger;
-use log::{error, info};
 
 // Define the correct absolute path for the custom schema
 static SCHEMA: &str = "examples/raw/custom.schema.json";
@@ -32,68 +31,6 @@ mod tests {
 fn test_load_custom_schema_and_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-<<<<<<< HEAD
-
-    // Start a local mock server
-    let server = MockServer::start();
-
-    // Mock the external schema URL
-    let _header_schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/schemas/header/v1/header.schema.json");
-        then.status(200)
-            .body(r#"{"$id": "https://hai.ai/schemas/header/v1/header.schema.json","type": "object","properties": {"jacsId": {"type": "string"},"jacsVersion": {"type": "string"},"jacsVersionDate": {"type": "string"},"jacsOriginalDate": {"type": "string"},"jacsOriginalVersion": {"type": "string"},"jacsSha256": {"type": "string"},"jacsSignature": {"type": "object","properties": {"agentID": {"type": "string"},"agentVersion": {"type": "string"},"date": {"type": "string"},"fields": {"type": "array","items": {"type": "string"}},"publicKeyHash": {"type": "string"},"signature": {"type": "string"},"signingAlgorithm": {"type": "string"}},"required": ["agentID","agentVersion","date","fields","publicKeyHash","signature","signingAlgorithm"]}},"required": ["jacsId","jacsVersion","jacsVersionDate","jacsOriginalDate","jacsOriginalVersion","jacsSha256","jacsSignature"]}"#);
-    });
-
-    // Create a mock on the server for the custom schema
-    let _schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/custom.schema.json");
-        then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
-    });
-
-    // Replace the actual schema URL with the mock server's URL
-    let schemas = [server.url("/custom.schema.json").to_string()];
-    agent.load_custom_schemas(&schemas);
-
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
-    println!("loaded valid {}", document_key);
-    let document_copy = agent.get_document(&document_key).unwrap();
-    let schema_url = server.url("/custom.schema.json").to_string();
-    agent
-        .validate_document_with_custom_schema(&schema_url, &document_copy.getvalue())
-        .unwrap();
-||||||| dbb9e9d
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
-    println!("loaded valid {}", document_key);
-    let document_copy = agent.get_document(&document_key).unwrap();
-    agent
-        .validate_document_with_custom_schema(&SCHEMA, &document_copy.getvalue())
-        .unwrap();
-=======
-
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
-        Ok(_) => {
-            info!("Schemas loaded successfully in test_load_custom_schema_and_custom_document.")
-        }
-        Err(e) => {
-            error!(
-                "Error in test_load_custom_schema_and_custom_document loading schemas: {}",
-                e
-            );
-            assert!(
-                false,
-                "Failed to load schemas in test_load_custom_schema_and_custom_document"
-            );
-        }
-    }
 
     let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
         Ok(content) => content,
@@ -120,74 +57,19 @@ fn test_load_custom_schema_and_custom_document() {
             e
         ),
     }
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
 }
 
 #[test]
 fn test_load_custom_schema_and_custom_invalid_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-<<<<<<< HEAD
 
-    // Start a local mock server
-    let server = MockServer::start();
-
-    // Mock the external schema URL
-    let _header_schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/schemas/header/v1/header.schema.json");
-        then.status(200)
-            .body(r#"{"$id": "https://hai.ai/schemas/header/v1/header.schema.json","type": "object","properties": {"jacsId": {"type": "string"},"jacsVersion": {"type": "string"},"jacsVersionDate": {"type": "string"},"jacsOriginalDate": {"type": "string"},"jacsOriginalVersion": {"type": "string"},"jacsSha256": {"type": "string"},"jacsSignature": {"type": "object","properties": {"agentID": {"type": "string"},"agentVersion": {"type": "string"},"date": {"type": "string"},"fields": {"type": "array","items": {"type": "string"}},"publicKeyHash": {"type": "string"},"signature": {"type": "string"},"signingAlgorithm": {"type": "string"}},"required": ["agentID","agentVersion","date","fields","publicKeyHash","signature","signingAlgorithm"]}},"required": ["jacsId","jacsVersion","jacsVersionDate","jacsOriginalDate","jacsOriginalVersion","jacsSha256","jacsSignature"]}"#);
-    });
-
-    // Create a mock on the server for the custom schema
-    let _schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/custom.schema.json");
-        then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
-    });
-
-    // Replace the actual schema URL with the mock server's URL
-    let schemas = [server.url("/custom.schema.json").to_string()];
-    agent.load_custom_schemas(&schemas);
-
-    let document_string = load_local_document(&"examples/raw/not-fruit.json".to_string()).unwrap();
-    let document = agent
-        .create_document_and_load(&document_string, None, None)
-        .unwrap();
-    println!("loaded valid doc {}", document.to_string());
-    let document_key = document.getkey();
-    let _document_ref = agent.get_document(&document_key).unwrap();
-||||||| dbb9e9d
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    let document_string = load_local_document(&"examples/raw/not-fruit.json".to_string()).unwrap();
-    let document = agent
-        .create_document_and_load(&document_string, None, None)
-        .unwrap();
-    println!("loaded valid doc {}", document.to_string());
-    let document_key = document.getkey();
-    let _document_ref = agent.get_document(&document_key).unwrap();
-=======
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
-
-<<<<<<< HEAD
-    // let _ = agent.save_document(&document_key, None, None);
-    let schema_url = server.url("/custom.schema.json").to_string();
-    match agent.validate_document_with_custom_schema(&schema_url, &document.getvalue()) {
-||||||| dbb9e9d
-    // let _ = agent.save_document(&document_key, None, None);
-    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
-=======
     info!("Starting to load custom schemas.");
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
-        Ok(_) => info!("Schemas loaded successfully."),
-        Err(e) => {
-            error!("Error loading schemas: {}", e);
-            assert!(false, "Failed to load schemas");
-        }
-    };
+    let schemas = vec![SCHEMA.to_string()];
+    // Handle the Result from loading custom schemas
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
     info!("Custom schemas loaded, proceeding to create and load document.");
 
     let document_string = match load_local_document(&"examples/raw/not-fruit.json".to_string()) {
@@ -215,7 +97,6 @@ fn test_load_custom_schema_and_custom_invalid_document() {
 
     info!("Document loaded, proceeding to validate document.");
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
         Ok(()) => {
             info!("Document validation succeeded, which should not happen.");
             panic!("Document validation succeeded in test_load_custom_schema_and_custom_invalid_document and should not have");
@@ -252,167 +133,49 @@ fn test_create_attachments_no_save() {
 fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-<<<<<<< HEAD
 
-    // Start a local mock server
-    let server = MockServer::start();
-
-    // Mock the external schema URL
-    let _header_schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/schemas/header/v1/header.schema.json");
-        then.status(200)
-            .body(r#"{"$id": "https://hai.ai/schemas/header/v1/header.schema.json","type": "object","properties": {"jacsId": {"type": "string"},"jacsVersion": {"type": "string"},"jacsVersionDate": {"type": "string"},"jacsOriginalDate": {"type": "string"},"jacsOriginalVersion": {"type": "string"},"jacsSha256": {"type": "string"},"jacsSignature": {"type": "object","properties": {"agentID": {"type": "string"},"agentVersion": {"type": "string"},"date": {"type": "string"},"fields": {"type": "array","items": {"type": "string"}},"publicKeyHash": {"type": "string"},"signature": {"type": "string"},"signingAlgorithm": {"type": "string"}},"required": ["agentID","agentVersion","date","fields","publicKeyHash","signature","signingAlgorithm"]}},"required": ["jacsId","jacsVersion","jacsVersionDate","jacsOriginalDate","jacsOriginalVersion","jacsSha256","jacsSignature"]}"#);
-    });
-
-    // Create a mock on the server for the custom schema
-    let _schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/custom.schema.json");
-        then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
-    });
-
-    // Replace the actual schema URL with the mock server's URL
-    let schemas = [server.url("/custom.schema.json").to_string()];
-    agent.load_custom_schemas(&schemas);
-
-    let document_string =
-        load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
-    let document = agent
-        .create_document_and_load(&document_string, None, None)
-        .unwrap();
-    println!("loaded valid doc {}", document.to_string());
-||||||| dbb9e9d
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    let document_string =
-        load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
-    let document = agent
-        .create_document_and_load(&document_string, None, None)
-        .unwrap();
-    println!("loaded valid doc {}", document.to_string());
-=======
-
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
-        Ok(_) => info!("Schemas loaded successfully."),
-        Err(e) => {
-            error!("Error loading schemas: {}", e);
-            assert!(false, "Failed to load schemas");
-        }
-    };
-
-    let document_string = match load_local_document(&"examples/raw/favorite-fruit.json".to_string())
-    {
+    let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
         Ok(content) => content,
         Err(e) => panic!(
-            "Error in test_load_custom_schema_and_new_custom_document loading local document: {}",
+            "Error in test_load_custom_schema_and_custom_document loading local document: {}",
             e
         ),
     };
 
-    let document = match agent.create_document_and_load(&document_string, None, None) {
+    let document = match agent.load_document(&document_string) {
         Ok(doc) => doc,
-        Err(e) => panic!("Error in test_load_custom_schema_and_new_custom_document creating and loading document: {}", e),
-    };
-
-    info!("loaded valid doc {}", document.to_string());
-
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
-    let document_key = document.getkey();
-<<<<<<< HEAD
-    let _document_ref = agent.get_document(&document_key).unwrap();
-    let schema_url = server.url("/custom.schema.json").to_string();
-    agent
-        .validate_document_with_custom_schema(&schema_url, &document.getvalue())
-        .unwrap();
-    // let _ = agent.save_document(&document_key, None, None);
-||||||| dbb9e9d
-    let document_ref = agent.get_document(&document_key).unwrap();
-    agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
-        .unwrap();
-    // let _ = agent.save_document(&document_key, None, None);
-=======
-
-    let document_ref = match agent.get_document(&document_key) {
-        Ok(doc_ref) => doc_ref,
         Err(e) => panic!(
-            "Error in test_load_custom_schema_and_new_custom_document getting document: {}",
+            "Error in test_load_custom_schema_and_custom_document loading document: {}",
             e
         ),
     };
+
+    info!("loaded valid {}", document.getkey());
 
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
-        Ok(_) => info!("Document is valid in test_load_custom_schema_and_new_custom_document."),
+        Ok(_) => info!("Document is valid in test_load_custom_schema_and_custom_document."),
         Err(e) => panic!(
-            "Document validation error in test_load_custom_schema_and_new_custom_document: {}",
+            "Document validation error in test_load_custom_schema_and_custom_document: {}",
             e
         ),
-    };
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
+    }
 }
+
+// Duplicate function definitions removed
 
 #[test]
 fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Test case started");
     let mut agent = load_test_agent_two();
-<<<<<<< HEAD
-
-    // Start a local mock server
-    let server = MockServer::start();
-
-    // Create a mock on the server for the custom schema
-    let _schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/custom.schema.json");
-        then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
-    });
-
-    // Replace the actual schema URL with the mock server's URL
-    let schemas = [server.url("/custom.schema.json").to_string()];
-    agent.load_custom_schemas(&schemas);
-
-    let document_string =
-        load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
-    let document = agent
-        .create_document_and_load(&document_string, None, None)
-        .unwrap();
-    println!("loaded valid doc {}", document.to_string());
-    let document_key = document.getkey();
-    let _document_ref = agent.get_document(&document_key).unwrap();
-    let schema_url = server.url("/custom.schema.json").to_string();
-    agent
-        .validate_document_with_custom_schema(&schema_url, &document.getvalue())
-        .unwrap();
-    //let _ = agent.save_document(&document_key, None, None, None);
-||||||| dbb9e9d
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    let document_string =
-        load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
-    let document = agent
-        .create_document_and_load(&document_string, None, None)
-        .unwrap();
-    println!("loaded valid doc {}", document.to_string());
-    let document_key = document.getkey();
-    let document_ref = agent.get_document(&document_key).unwrap();
-    agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
-        .unwrap();
-    //let _ = agent.save_document(&document_key, None, None, None);
-=======
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Agent loaded");
 
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load custom schemas");
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
-        Ok(_) => info!("test_load_custom_schema_and_new_custom_document_agent_two: Custom schemas loaded successfully"),
-        Err(e) => {
-            error!("test_load_custom_schema_and_new_custom_document_agent_two: Error loading schemas: {}", e);
-            assert!(false, "test_load_custom_schema_and_new_custom_document_agent_two: Failed to load schemas");
-        }
-    };
+    let schemas = vec![SCHEMA.to_string()];
+    // Handle the Result from loading custom schemas
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
+    info!("test_load_custom_schema_and_new_custom_document_agent_two: Custom schemas loaded successfully");
 
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load local document");
     let document_string = match load_local_document(&"examples/raw/favorite-fruit.json".to_string()) {
@@ -437,51 +200,19 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
         Ok(_) => info!("test_load_custom_schema_and_new_custom_document_agent_two: Document validation completed"),
         Err(e) => panic!("test_load_custom_schema_and_new_custom_document_agent_two: Document validation error: {}", e),
     };
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
 }
 
 #[test]
 fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
-<<<<<<< HEAD
 
-    // Start a local mock server
-    let server = MockServer::start();
-
-    // Create a mock on the server for the custom schema
-    let _schema_mock = server.mock(|when, then| {
-        when.method(Method::GET)
-            .path("/custom.schema.json");
-        then.status(200)
-            .body(r#"{"$schema": "http://json-schema.org/draft-07/schema#","$id": "https://hai.ai/examples/documents/custom.schema.json","title": "Agent","description": "General schema for human, hybrid, and AI agents","allOf": [{"$ref": ""#.to_owned() + &server.url("/schemas/header/v1/header.schema.json").to_string() + r#""},{"favorite-snack": {"description": "name that snack ","type": "string"}}],"required": ["favorite-snack"]}"#);
-    });
-
-    // Replace the actual schema URL with the mock server's URL
-    let schemas = [server.url("/custom.schema.json").to_string()];
-    agent.load_custom_schemas(&schemas);
-
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
-    let modified_document_string = load_local_document(&TESTFILE_MODIFIED.to_string()).unwrap();
-||||||| dbb9e9d
-    let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
-    let modified_document_string = load_local_document(&TESTFILE_MODIFIED.to_string()).unwrap();
-=======
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
-
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
-        Ok(_) => info!("Schemas loaded successfully in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."),
-        Err(e) => {
-            error!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading schemas: {}", e);
-            assert!(false, "Failed to load schemas in test_load_custom_schema_and_custom_document_and_update_and_verify_signature");
-        },
-    };
+    let schemas = vec![SCHEMA.to_string()];
+    // Handle the Result from loading custom schemas
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
+    info!("Schemas loaded successfully in test_load_custom_schema_and_custom_document_and_update_and_verify_signature.");
 
     let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
         Ok(content) => content,
@@ -506,23 +237,10 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
 
     let new_document_key = new_document.getkey();
 
-<<<<<<< HEAD
-    let new_document_ref = agent.get_document(&new_document_key).unwrap();
-    let schema_url = server.url("/custom.schema.json").to_string();
-    agent
-        .validate_document_with_custom_schema(&schema_url, &document.getvalue())
-        .unwrap();
-||||||| dbb9e9d
-    let new_document_ref = agent.get_document(&new_document_key).unwrap();
-    agent
-        .validate_document_with_custom_schema(&SCHEMA, &document.getvalue())
-        .unwrap();
-=======
     let new_document_ref = match agent.get_document(&new_document_key) {
         Ok(doc_ref) => doc_ref,
         Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature getting new document: {}", e),
     };
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
 
     match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
         Ok(_) => info!("Document is valid in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."),

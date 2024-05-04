@@ -16,8 +16,9 @@ use std::fs;
 pub mod agent;
 pub mod config;
 pub mod crypt;
+pub mod custom_resolver;
 pub mod schema;
-pub mod shared;
+pub mod shared; // Added public declaration for custom_resolver module
 
 pub fn get_empty_agent() -> Agent {
     Agent::new(

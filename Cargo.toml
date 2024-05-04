@@ -66,6 +66,8 @@ rpassword = "7.3.1"
 validator = "0.18.1"
 uuid = { version = "1.7.0", features = ["v4", "v7", "js"] }
 env_logger = "0.9.0"
+base64ct = "1.6.0"
+anyhow = "1.0.51" # Added anyhow dependency
 
 [dev-dependencies]
 rusqlite = "0.31.0"

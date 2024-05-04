@@ -16,13 +16,12 @@ use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::KeyManager;
 use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 
-use crate::schema::utils::{resolve_schema, EmbeddedSchemaResolver, ValueExt};
+use crate::schema::utils::{resolve_schema, ValueExt};
 use crate::schema::Schema;
 use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
 use log::{debug, error};
-use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
 use std::env;
@@ -30,7 +29,6 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use url::Url;
 use uuid::Uuid;
 
 /// this field is only ignored by itself, but other
@@ -271,12 +269,6 @@ impl Agent {
                 Err(error_message.into())
             }
         }
-    }
-
-    fn unset_self(&mut self) {
-        self.id = None;
-        self.version = None;
-        self.value = None;
     }
 
     pub fn get_agent_for_doc(
@@ -624,10 +616,12 @@ impl Agent {
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
             let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
-            let schema = JSONSchema::options()
-                .with_draft(Draft::Draft7)
-                .compile(&schema_value)
-                .map_err(|e| e.to_string())?;
+            let schema = Arc::new(
+                JSONSchema::options()
+                    .with_draft(Draft::Draft7)
+                    .compile(&schema_value)
+                    .map_err(|e| e.to_string())?,
+            );
             schemas.insert(path.clone(), schema);
         }
         Ok(())
