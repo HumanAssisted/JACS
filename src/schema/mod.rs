@@ -352,83 +352,147 @@ impl Schema {
         let taskschema_result: Value = serde_json::from_str(&taskdata)?;
         let messageschema_result: Value = serde_json::from_str(&messagedata)?;
         let evalschema_result: Value = serde_json::from_str(&evaldata)?;
-        let agentschema = JSONSchema::options()
+
+        let agentschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new()) // current_dir.clone()
             .compile(&agentschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!("Failed to compile agentschema: {}", &agentversion_path).into())
+            }
+        };
 
-        let headerschema = JSONSchema::options()
+        let headerschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&headerchema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!("Failed to compile headerschema: {}", &header_path).into())
+            }
+        };
 
-        let signatureschema = JSONSchema::options()
+        let signatureschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&signatureschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!(
+                    "Failed to compile signatureschema: {}",
+                    &signatureversion_path
+                )
+                .into())
+            }
+        };
 
-        let agreementschema = JSONSchema::options()
+        let agreementschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&agreementschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!(
+                    "Failed to compile agreementschema: {}",
+                    &agreementversion_path
+                )
+                .into())
+            }
+        };
 
-        let serviceschema = JSONSchema::options()
+        let serviceschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&serviceschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!("Failed to compile serviceschema: {}", &service_path).into())
+            }
+        };
 
-        let unitschema = JSONSchema::options()
+        let unitschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&unitschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => return Err(format!("Failed to compile unitschema: {}", &unit_path).into()),
+        };
 
-        let actionschema = JSONSchema::options()
+        let actionschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&actionschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!("Failed to compile actionschema: {}", &action_path).into())
+            }
+        };
 
-        let toolschema = JSONSchema::options()
+        let toolschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&toolschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => return Err(format!("Failed to compile toolschema: {}", &tool_path).into()),
+        };
 
-        let jacsconfigschema = JSONSchema::options()
+        let jacsconfigschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&jacsconfigschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => return Err("Failed to compile jacsconfigschema".into()),
+        };
 
-        let contactschema = JSONSchema::options()
+        let contactschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&contactschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!("Failed to compile contactschema: {}", &contact_path).into())
+            }
+        };
 
-        let messageschema = JSONSchema::options()
+        let messageschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&messageschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!("Failed to compile messageschema: {}", &message_path).into())
+            }
+        };
 
-        let taskschema = JSONSchema::options()
+        let taskschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&taskschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => return Err(format!("Failed to compile taskschema: {}", &task_path).into()),
+        };
 
-        let evalschema = JSONSchema::options()
+        let evalschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
             .with_resolver(EmbeddedSchemaResolver::new())
             .compile(&evalschema_result)
-            .expect("A valid schema");
+        {
+            Ok(schema) => schema,
+            Err(_) => return Err(format!("Failed to compile evalschema: {}", &eval_path).into()),
+        };
 
         Ok(Self {
             headerschema,

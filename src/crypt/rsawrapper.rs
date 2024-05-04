@@ -1,16 +1,12 @@
-use base64::{engine::general_purpose, Engine as _};
+use base64::{decode, encode};
 use log::debug;
-
-use rsa::pkcs8::DecodePrivateKey;
-use rsa::pkcs8::DecodePublicKey;
+use rand::rngs::OsRng;
+use rand::thread_rng;
+use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
 use rsa::pss::{BlindedSigningKey, Signature, VerifyingKey};
 use rsa::sha2::Sha256;
-use signature::SignatureEncoding;
-
-use rand::thread_rng;
-use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use rsa::{RsaPrivateKey, RsaPublicKey};
-use signature::{RandomizedSigner, Verifier};
+use signature::{RandomizedSigner, SignatureEncoding, Verifier};
 
 /// best for pure Rust, least secure
 
@@ -20,7 +16,7 @@ static BITSOFBITS: usize = 2048;
 
 /// returns public, public_filepath, private, private_filepath
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
-    let mut rng = rand::thread_rng();
+    let mut rng = OsRng;
     let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS).expect("failed to generate a key");
     let public_key = RsaPublicKey::from(&private_key);
 
@@ -44,7 +40,7 @@ pub fn sign_string(
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut rng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
-    let signature_base64 = general_purpose::STANDARD.encode(signature_bytes);
+    let signature_base64 = encode(&signature_bytes);
     // TODO
     // assert_ne!(signature.to_bytes().as_ref(), data);
     debug!(
@@ -71,7 +67,8 @@ pub fn verify_string(
 
     debug!("public_key_content_converted pem {:?}", public_key);
 
-    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+    // Updated instantiation of VerifyingKey
+    let verifying_key = VerifyingKey::<Sha256>::from(public_key);
     debug!("verifying_key pem {:?}", verifying_key);
 
     debug!(
@@ -79,7 +76,7 @@ pub fn verify_string(
         signature_base64, data
     );
 
-    let signature_bytes = general_purpose::STANDARD.decode(signature_base64)?;
+    let signature_bytes = decode(signature_base64)?;
     debug!("Decoded signature bytes: {:?}", signature_bytes);
 
     let signature = Signature::try_from(signature_bytes.as_slice())?;

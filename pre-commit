@@ -19,6 +19,7 @@ done
 rm temp.json
 
 # create json schema docs
+# todo -r "https://hai.ai/schemas/=schemas/"  or -i schemas fails because of resolving version of json schema
 jsonschema2md -d schemas  -o docs/schema -x -
 
 mdbook build docs/jacsbook

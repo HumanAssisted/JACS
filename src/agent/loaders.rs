@@ -50,9 +50,9 @@ pub trait FileLoader {
     // init
     fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Box<dyn Error>>;
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>>;
-    fn fs_agent_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
-    fn fs_document_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
-    fn fs_document_load(&self, document_id: &String) -> Result<String, Box<dyn Error>>;
+    // fn fs_agent_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
+    // fn fs_document_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
+    // fn fs_document_load(&self, document_id: &String) -> Result<String, Box<dyn Error>>;
     fn fs_preload_keys(
         &mut self,
         private_key_filename: &String,
@@ -63,7 +63,7 @@ pub trait FileLoader {
     fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>>;
 
     // save
-    fn fs_docs_save_all(&mut self) -> Result<Vec<String>, Box<dyn Error>>;
+    // fn fs_docs_save_all(&mut self) -> Result<Vec<String>, Box<dyn Error>>;
     fn fs_agent_save(
         &self,
         agentid: &String,
@@ -205,22 +205,17 @@ impl FileLoader for Agent {
         }
     }
 
-    fn fs_agent_new(&self, _filename: &String) -> Result<String, Box<dyn Error>> {
-        Err(not_implemented_error())
-    }
+    // fn fs_agent_new(&self, _filename: &String) -> Result<String, Box<dyn Error>> {
+    //     Err(not_implemented_error())
+    // }
 
-    fn fs_document_new(&self, _filename: &String) -> Result<String, Box<dyn Error>> {
-        Err(not_implemented_error())
-    }
+    // fn fs_document_new(&self, _filename: &String) -> Result<String, Box<dyn Error>> {
+    //     Err(not_implemented_error())
+    // }
 
-    fn fs_document_load(&self, _document_id: &String) -> Result<String, Box<dyn Error>> {
-        Err(not_implemented_error())
-    }
-
-    // save
-    fn fs_docs_save_all(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
-        Err(not_implemented_error())
-    }
+    // fn fs_document_load(&self, _document_id: &String) -> Result<String, Box<dyn Error>> {
+    //     Err(not_implemented_error())
+    // }
 
     fn fs_agent_save(
         &self,
@@ -237,7 +232,9 @@ impl FileLoader for Agent {
         document_string: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
-        check_data_directory();
+        if let Err(e) = check_data_directory() {
+            error!("Failed to check data directory: {}", e);
+        }
         let documentoutput_filename = match output_filename {
             Some(filname) => {
                 // optional add jacs

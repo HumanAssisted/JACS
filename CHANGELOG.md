@@ -1,3 +1,9 @@
+## 0.2.12
+
+- Let Devin.ai have a go at looking for issues with missing documentation, unsafe calles, and uncessary copies of data, updated some libs
+- Fixed an issue with the schema resolver to handle more cases in tests.
+
+
 ## 0.2.11
 
 - bringing some documentation up to date
