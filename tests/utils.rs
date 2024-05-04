@@ -80,3 +80,16 @@ impl ExposeSecret for PrivateKeyPlaceholder {
         self
     }
 }
+
+use secrecy::{ExposeSecret, Secret};
+
+/// A placeholder for `PrivateKey` used in tests.
+pub struct PrivateKeyPlaceholder;
+
+impl ExposeSecret<String> for PrivateKeyPlaceholder {
+    fn expose_secret(&self) -> &String {
+        // Since this is a placeholder, we return a reference to an empty string.
+        // In a real scenario, this would return a reference to the secret data.
+        &"".to_string()
+    }
+}
