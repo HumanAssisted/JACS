@@ -613,14 +613,6 @@ impl Schema {
         }
     }
 
-    // TODO get from member var  self.headerschema.to_string())
-    pub fn get_header_schema_url(&self) -> String {
-        format!(
-            "https://hai.ai/schemas/header/{}/header.schema.json",
-            self.headerversion
-        )
-    }
-
     /// load a document that has data but no id or version
     /// an id and version is assigned
     /// header is validated
@@ -661,7 +653,9 @@ impl Schema {
 
         // if no schema is present insert standard header version
         if !instance.get_str("$schema").is_some() {
-            instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));
+            instance["$schema"] = json!(format!(
+                "https://hai.ai/schemas/header/v1/header.schema.json"
+            ));
         }
 
         let validation_result = self.headerschema.validate(&instance);
