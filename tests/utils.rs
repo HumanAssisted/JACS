@@ -1,7 +1,6 @@
 use jacs::agent::Agent;
 use jacs::schema::Schema;
-use secrecy::zeroize::Zeroize;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, Zeroize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
@@ -18,72 +17,52 @@ pub fn mock_test_agent() -> Result<Agent, Box<dyn Error>> {
     // Create a new Schema with mock parameters
     let schema = Schema::new(&agent_version, &header_version, &signature_version)?;
 
-    let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
-    let document_map = Arc::new(Mutex::new(HashMap::new()));
+    let document_schemas_map = Arc::new(Mutex::new(HashMap::<String, Schema>::new()));
+    let document_map = Arc::new(Mutex::new(HashMap::<String, Value>::new()));
     let default_directory = PathBuf::new(); // Assuming tests do not rely on a specific path
 
     // Mock values for Agent fields
-    let value = Some(Value::default()); // Assuming Value::default() gives a valid default JSON value
-    let id = Some("mock_id".to_string());
-    let version = Some("mock_version".to_string());
-    let public_key = Some(vec![0u8; 32]); // Mock public key
+    let public_key = vec![0u8; 32]; // Mock public key
+    let private_key = vec![0u8; 32]; // Mock private key
+    let key_algorithm = "mock_algorithm".to_string();
 
-    // Placeholder for PrivateKey wrapped in Secret
-    // The correct instantiation of PrivateKey should be obtained from the jacs library
-    // For now, we use a placeholder value to allow the code to compile
-    let private_key_placeholder = PrivateKeyPlaceholder::default(); // Using a mock PrivateKey type
-    let private_key_secret = Secret::new(private_key_placeholder);
-    let private_key = Some(private_key_secret);
+    // Use the Agent's constructor to create a new instance
+    let mut agent = Agent::new(&agent_version, &header_version, &signature_version)?;
 
-    let key_algorithm = Some("mock_algorithm".to_string());
+    // Set the keys using the Agent's set_keys method
+    agent.set_keys(private_key, public_key, &key_algorithm)?;
 
-    Ok(Agent {
-        schema,
-        value,
-        document_schemas: document_schemas_map,
-        documents: document_map,
-        default_directory,
-        id,
-        version,
-        public_key,
-        private_key,
-        key_algorithm,
-    })
+    Ok(agent)
 }
 
-// Helper function to encrypt private key bytes for testing purposes
-fn encrypt_private_key(key_bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
-    // This is a mock encryption function for testing purposes
-    // In a real scenario, you would use actual encryption logic
-    Ok(key_bytes.to_vec()) // Simply return the same bytes for now
-}
-
-/// A placeholder for `PrivateKey` used in tests.
-pub struct PrivateKeyPlaceholder {
+/// A mock PrivateKey struct for testing purposes.
+pub struct MockPrivateKey {
     // This struct can contain mock fields if necessary
     dummy_field: u8, // Dummy field to satisfy Zeroize trait
 }
 
-impl Default for PrivateKeyPlaceholder {
+impl Default for MockPrivateKey {
     fn default() -> Self {
-        PrivateKeyPlaceholder {
+        MockPrivateKey {
             // Initialize with default values
             dummy_field: 0, // Default value for the dummy field
         }
     }
 }
 
-impl Zeroize for PrivateKeyPlaceholder {
+impl Zeroize for MockPrivateKey {
     fn zeroize(&mut self) {
         // Zeroize the dummy field
         self.dummy_field = 0;
     }
 }
 
-impl ExposeSecret<String> for PrivateKeyPlaceholder {
+impl ExposeSecret<String> for MockPrivateKey {
     fn expose_secret(&self) -> &String {
-        // Since this is a placeholder, we return a reference to an empty string.
-        // In a real scenario, this would return a reference to the secret data.
-        &"".to_string()
+        // This is a placeholder to satisfy the trait.
+        // In a real scenario, you would return a reference to the secret data.
+        // For this mock, we'll just return a reference to a dummy string.
+        static DUMMY_SECRET: String = String::new();
+        &DUMMY_SECRET
     }
 }

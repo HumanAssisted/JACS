@@ -336,18 +336,80 @@ impl Schema {
         let message_path = format!("schemas/message/{}/message.schema.json", default_version);
         let eval_path = format!("schemas/eval/{}/eval.schema.json", default_version);
 
-        let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
-        let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
-        let agreementdata = DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path).unwrap();
-        let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion_path).unwrap();
-        let servicedata = DEFAULT_SCHEMA_STRINGS.get(&service_path).unwrap();
-        let unitdata = DEFAULT_SCHEMA_STRINGS.get(&unit_path).unwrap();
-        let actiondata = DEFAULT_SCHEMA_STRINGS.get(&action_path).unwrap();
-        let tooldata = DEFAULT_SCHEMA_STRINGS.get(&tool_path).unwrap();
-        let contactdata = DEFAULT_SCHEMA_STRINGS.get(&contact_path).unwrap();
-        let taskdata = DEFAULT_SCHEMA_STRINGS.get(&task_path).unwrap();
-        let messagedata = DEFAULT_SCHEMA_STRINGS.get(&message_path).unwrap();
-        let evaldata = DEFAULT_SCHEMA_STRINGS.get(&eval_path).unwrap();
+        let headerdata = match DEFAULT_SCHEMA_STRINGS.get(&header_path) {
+            Some(data) => data,
+            None => {
+                return Err(format!("Header schema not found for path: {}", &header_path).into())
+            }
+        };
+        let agentdata = match DEFAULT_SCHEMA_STRINGS.get(&agentversion_path) {
+            Some(data) => data,
+            None => {
+                return Err(
+                    format!("Agent schema not found for path: {}", &agentversion_path).into(),
+                )
+            }
+        };
+        let agreementdata = match DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path) {
+            Some(data) => data,
+            None => {
+                return Err(format!(
+                    "Agreement schema not found for path: {}",
+                    &agreementversion_path
+                )
+                .into())
+            }
+        };
+        let signaturedata = match DEFAULT_SCHEMA_STRINGS.get(&signatureversion_path) {
+            Some(data) => data,
+            None => {
+                return Err(format!(
+                    "Signature schema not found for path: {}",
+                    &signatureversion_path
+                )
+                .into())
+            }
+        };
+        let servicedata = match DEFAULT_SCHEMA_STRINGS.get(&service_path) {
+            Some(data) => data,
+            None => {
+                return Err(format!("Service schema not found for path: {}", &service_path).into())
+            }
+        };
+        let unitdata = match DEFAULT_SCHEMA_STRINGS.get(&unit_path) {
+            Some(data) => data,
+            None => return Err(format!("Unit schema not found for path: {}", &unit_path).into()),
+        };
+        let actiondata = match DEFAULT_SCHEMA_STRINGS.get(&action_path) {
+            Some(data) => data,
+            None => {
+                return Err(format!("Action schema not found for path: {}", &action_path).into())
+            }
+        };
+        let tooldata = match DEFAULT_SCHEMA_STRINGS.get(&tool_path) {
+            Some(data) => data,
+            None => return Err(format!("Tool schema not found for path: {}", &tool_path).into()),
+        };
+        let contactdata = match DEFAULT_SCHEMA_STRINGS.get(&contact_path) {
+            Some(data) => data,
+            None => {
+                return Err(format!("Contact schema not found for path: {}", &contact_path).into())
+            }
+        };
+        let taskdata = match DEFAULT_SCHEMA_STRINGS.get(&task_path) {
+            Some(data) => data,
+            None => return Err(format!("Task schema not found for path: {}", &task_path).into()),
+        };
+        let messagedata = match DEFAULT_SCHEMA_STRINGS.get(&message_path) {
+            Some(data) => data,
+            None => {
+                return Err(format!("Message schema not found for path: {}", &message_path).into())
+            }
+        };
+        let evaldata = match DEFAULT_SCHEMA_STRINGS.get(&eval_path) {
+            Some(data) => data,
+            None => return Err(format!("Eval schema not found for path: {}", &eval_path).into()),
+        };
 
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;

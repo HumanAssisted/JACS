@@ -1,5 +1,6 @@
 mod utils;
 
+use jacs::agent::document::Document;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
 use serde_json::json;
