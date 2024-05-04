@@ -1,8 +1,3 @@
-// The following functions were removed as they were not used in the tests
-// pub fn load_test_agent_one() -> Agent { ... }
-// pub fn load_test_agent_two() -> Agent { ... }
-// pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> { ... }
-
 use jacs::agent::Agent;
 use jacs::schema::Schema;
 use secrecy::{ExposeSecret, Secret};
@@ -11,6 +6,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use zeroize::Zeroize; // Import the Zeroize trait
 
 /// Mock function to create a test Agent with default values
 pub fn mock_test_agent() -> Result<Agent, Box<dyn Error>> {
@@ -65,13 +61,22 @@ fn encrypt_private_key(key_bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
 /// A placeholder for `PrivateKey` used in tests.
 pub struct PrivateKeyPlaceholder {
     // This struct can contain mock fields if necessary
+    dummy_field: u8, // Dummy field to satisfy Zeroize trait
 }
 
 impl Default for PrivateKeyPlaceholder {
     fn default() -> Self {
         PrivateKeyPlaceholder {
             // Initialize with default values
+            dummy_field: 0, // Default value for the dummy field
         }
+    }
+}
+
+impl Zeroize for PrivateKeyPlaceholder {
+    fn zeroize(&mut self) {
+        // Zeroize the dummy field
+        self.dummy_field = 0;
     }
 }
 
