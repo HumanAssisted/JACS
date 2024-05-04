@@ -1,12 +1,12 @@
 use jacs::agent::Agent;
 use jacs::schema::Schema;
+use secrecy::zeroize::Zeroize;
 use secrecy::{ExposeSecret, Secret};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use zeroize::Zeroize; // Import the Zeroize trait
 
 /// Mock function to create a test Agent with default values
 pub fn mock_test_agent() -> Result<Agent, Box<dyn Error>> {
