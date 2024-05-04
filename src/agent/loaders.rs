@@ -3,6 +3,7 @@ use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
+use base64::prelude::*;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use regex::Regex;
@@ -282,7 +283,7 @@ impl FileLoader for Agent {
         let compressed_contents = gz_encoder.finish()?;
 
         // Encode the compressed contents using base64
-        let base64_contents = base64::encode(&compressed_contents);
+        let base64_contents = BASE64_STANDARD.encode(&compressed_contents);
 
         Ok(base64_contents)
     }

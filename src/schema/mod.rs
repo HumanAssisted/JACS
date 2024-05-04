@@ -1,7 +1,6 @@
 use crate::schema::utils::ValueExt;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use chrono::prelude::*;
-use jsonschema::SchemaResolver;
 use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
 use serde_json::json;
@@ -42,7 +41,6 @@ impl Error for ValidationError {}
 pub struct Schema {
     /// used to validate any JACS document
     pub headerschema: JSONSchema,
-    headerversion: String,
     /// used to validate any JACS agent
     pub agentschema: JSONSchema,
     signatureschema: JSONSchema,
@@ -434,7 +432,6 @@ impl Schema {
 
         Ok(Self {
             headerschema,
-            headerversion: headerversion.to_string(),
             agentschema,
             signatureschema,
             jacsconfigschema,

@@ -8,7 +8,7 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
-use base64::{decode_config, encode_config, STANDARD};
+use base64::prelude::*;
 use chrono::Local;
 use chrono::Utc;
 use difference::{Changeset, Difference};
@@ -21,8 +21,7 @@ use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
 use std::fs::{self, File};
-use std::io::Read;
-use std::io::Write;
+use std::io::{Read, Write}; // Importing the Read and Write traits
 use std::path::Path;
 use uuid::Uuid;
 
@@ -536,14 +535,14 @@ impl Document for Agent {
                         let contents = item["contents"].as_str().ok_or("Contents not found")?;
                         let path = item["path"].as_str().ok_or("Path not found")?;
 
-                        let decoded_contents = decode_config(contents, STANDARD)?;
+                        let decoded_contents = BASE64_STANDARD.decode(contents.as_bytes())?;
 
                         // Inflate the gzip-compressed contents
                         let mut gz_decoder = GzDecoder::new(std::io::Cursor::new(decoded_contents));
                         let mut inflated_contents = Vec::new();
                         gz_decoder.read_to_end(&mut inflated_contents)?;
 
-                        /// TODO move this portion of code out of document as it's filesystem dependent
+                        // TODO move this portion of code out of document as it's filesystem dependent
                         // Backup the existing file if it exists
                         let file_path = Path::new(path);
                         if file_path.exists() {
