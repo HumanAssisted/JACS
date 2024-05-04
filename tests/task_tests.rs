@@ -12,9 +12,9 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
 
 use serde_json::Value;
-mod utils;
-use utils::DOCTESTFILE;
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
+// mod utils;
+// use utils::DOCTESTFILE;
+// use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 
 use httpmock::{Method, MockServer};
