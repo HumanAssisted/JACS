@@ -1,35 +1,21 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-<<<<<<< HEAD
-
-||||||| dbb9e9d
-use jacs::agent::loaders::FileLoader;
-use jacs::crypt::KeyManager;
-=======
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use jsonschema::{CompilationOptions, Draft, JSONSchema};
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
 mod utils;
 use utils::DOCTESTFILE;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
-// use color_eyre::eyre::Result;
 use httpmock::{Method, MockServer};
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-<<<<<<< HEAD
-||||||| dbb9e9d
-static SCHEMA: &str = "examples/raw/custom.schema.json";
-=======
 extern crate env_logger;
 use log::{error, info};
 
 // Define the correct absolute path for the custom schema
 static SCHEMA: &str = "examples/raw/custom.schema.json";
->>>>>>> c20bfb6f9d8ee2ee21acdac7e7d32b36b11b0c9b
 
 static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
-//color_eyre::install().unwrap();
 
 #[cfg(test)]
 mod tests {
