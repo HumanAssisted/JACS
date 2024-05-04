@@ -4,12 +4,7 @@ use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 extern crate env_logger;
 use log::{error, info};
 
-use jacs::custom_resolver::MyCustomResolver;
-
 mod utils;
-use utils::DOCTESTFILE;
-
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 
 // Define the correct absolute path for the custom schema
 static SCHEMA: &str = "examples/raw/custom.schema.json";

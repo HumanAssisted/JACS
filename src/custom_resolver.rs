@@ -22,7 +22,7 @@ pub struct MyCustomResolver;
 impl jsonschema::SchemaResolver for MyCustomResolver {
     fn resolve(
         &self,
-        root_schema: &Value,
+        _root_schema: &Value,
         url: &Url,
         _original_reference: &str,
     ) -> Result<Arc<Value>, SchemaResolverError> {
