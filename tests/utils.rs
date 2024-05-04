@@ -3,7 +3,7 @@
 // pub fn load_test_agent_two() -> Agent { ... }
 // pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> { ... }
 
-use jacs::agent::{Agent, PrivateKey};
+use jacs::agent::Agent;
 use jacs::schema::Schema;
 use secrecy::{ExposeSecret, Secret};
 use serde_json::Value;
@@ -62,8 +62,8 @@ fn encrypt_private_key(key_bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(key_bytes.to_vec()) // Simply return the same bytes for now
 }
 
-// Mock PrivateKey type for testing purposes
-struct PrivateKeyPlaceholder {
+/// A placeholder for `PrivateKey` used in tests.
+pub struct PrivateKeyPlaceholder {
     // This struct can contain mock fields if necessary
 }
 
@@ -74,17 +74,6 @@ impl Default for PrivateKeyPlaceholder {
         }
     }
 }
-
-impl ExposeSecret for PrivateKeyPlaceholder {
-    fn expose_secret(&self) -> &Self {
-        self
-    }
-}
-
-use secrecy::{ExposeSecret, Secret};
-
-/// A placeholder for `PrivateKey` used in tests.
-pub struct PrivateKeyPlaceholder;
 
 impl ExposeSecret<String> for PrivateKeyPlaceholder {
     fn expose_secret(&self) -> &String {
