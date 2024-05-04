@@ -714,7 +714,13 @@ fn main() {
                     fs::read_to_string(schema_file).expect("Failed to load schema file");
 
                     let schemas = [schema_file.clone()];
-                    agent.load_custom_schemas(&schemas);
+                    match agent.load_custom_schemas(&schemas) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Failed to load custom schemas: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
                 }
 
                 let new_document_string =
