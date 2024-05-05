@@ -221,6 +221,7 @@ impl Agent {
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
+        println!("Entering Agent::load function");
         println!("Agent::load - Received JSON string: {}", agent_string);
         println!("Agent string before parsing: {}", agent_string);
         let agent_value: Value = serde_json::from_str(agent_string)?;
@@ -271,7 +272,7 @@ impl Agent {
 
             self.verify_self_signature()?;
         }
-
+        println!("Exiting Agent::load function");
         Ok(())
     }
 
