@@ -83,8 +83,13 @@ impl Schema {
         _header_schema_url: &str,
         _document_schema_url: &str,
     ) -> Result<Self, Box<dyn Error>> {
+        println!("Compiling header schema from URL: {}", _header_schema_url);
         let headerschema_compiled = JSONSchema::compile(HEADERSCHEMA_VALUE_ARC.as_ref())?;
+        println!("Header schema compiled successfully.");
+
+        println!("Compiling agent schema from URL: {}", _document_schema_url);
         let agentschema_compiled = JSONSchema::compile(AGENTSCHEMA_VALUE_ARC.as_ref())?;
+        println!("Agent schema compiled successfully.");
 
         let schema = Self {
             headerschema: headerschema_compiled,
