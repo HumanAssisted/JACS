@@ -182,6 +182,7 @@ impl Agent {
 
         println!("Loading agent with ID: {}", lookup_id);
         let agent_string = self.fs_agent_load(&lookup_id)?;
+        println!("Loaded agent string: {}", agent_string); // Added print statement
         println!("Agent string to be loaded: {}", agent_string);
         return self.load(&agent_string);
     }
@@ -220,9 +221,10 @@ impl Agent {
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
-        println!("Attempting to load agent string: {}", agent_string);
+        println!("Agent string before validation: {}", agent_string); // Added print statement
         match self.schema.validate_agent(agent_string) {
             Ok(value) => {
+                println!("Validation result: {:?}", value); // Added print statement
                 println!("Agent string validated successfully: {:?}", value);
                 self.value = Some(value);
                 if let Some(ref value) = self.value {
