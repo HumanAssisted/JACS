@@ -1,4 +1,3 @@
-use jacs::agent::document::Document;
 extern crate env_logger;
 extern crate httpmock;
 use httpmock::Method::GET;
@@ -33,7 +32,7 @@ fn test_load_custom_schema_and_custom_document() {
         base_url
     );
 
-    let mut agent = utils::load_test_agent_one(&header_schema_url, &document_schema_url)
+    let _agent = utils::load_test_agent_one(&header_schema_url, &document_schema_url)
         .expect("Failed to create test agent");
 }
 
@@ -41,7 +40,7 @@ fn test_load_custom_schema_and_custom_document() {
 fn test_load_custom_schema_and_custom_invalid_document() {
     let mock_server = MockServer::start();
 
-    let schema_mock = mock_server.mock(|when, then| {
+    let _schema_mock = mock_server.mock(|when, then| {
         when.method(GET).path("/path/to/external/schema");
         then.status(200).json_body(json!({}));
     });
@@ -94,7 +93,7 @@ fn test_create_attachments_no_save() {}
 fn test_load_custom_schema_and_new_custom_document() {
     let mock_server = MockServer::start();
 
-    let schema_mock = mock_server.mock(|when, then| {
+    let _schema_mock = mock_server.mock(|when, then| {
         when.method(GET).path("/path/to/external/schema");
         then.status(200).json_body(json!({}));
     });
@@ -153,7 +152,7 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
 fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     let mock_server = MockServer::start();
 
-    let schema_mock = mock_server.mock(|when, then| {
+    let _schema_mock = mock_server.mock(|when, then| {
         when.method(GET).path("/path/to/external/schema");
         then.status(200).json_body(json!({}));
     });

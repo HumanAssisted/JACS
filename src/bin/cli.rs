@@ -591,24 +591,25 @@ fn main() {
                     _ => create_minimal_blank_agent("ai".to_string()).unwrap(),
                 };
 
-                let mut agent = get_empty_agent();
+                let mut agent = get_empty_agent().expect("Failed to get empty agent");
                 let configs = set_env_vars();
                 println!("creating agent with config {}", configs);
                 if create_keys {
                     println!("creating keys");
-                    agent.generate_keys().expect("Reason");
+                    agent.generate_keys().expect("Failed to generate keys");
                     println!(
                         "keys created in {}",
-                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
+                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY not set")
                     )
                 }
-
                 agent
                     .create_agent_and_load(&agentstring, false, None)
-                    .expect("agent creation failed");
-                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
-
-                let _ = agent.save();
+                    .expect("Failed to create and load agent");
+                println!(
+                    "Agent {} created!",
+                    agent.get_lookup_id().expect("Failed to get lookup ID")
+                );
+                let _ = agent.save().expect("Failed to save agent");
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");

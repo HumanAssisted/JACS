@@ -332,11 +332,8 @@ impl Document for Agent {
         }
 
         // sign document
-        instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &instance,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
+        self.signing_procedure()?;
+
         // hash document
         let document_hash = self.hash_doc(&instance)?;
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
@@ -344,8 +341,10 @@ impl Document for Agent {
     }
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>> {
-        match &self.validate_header(&document_string) {
+        // Assuming `self.schema` is a valid `Schema` instance
+        match self.schema.validate_header(&document_string) {
             Ok(value) => {
+                // Store the document after successful validation
                 return self.store_jacs_document(&value);
             }
             Err(e) => {
@@ -467,11 +466,7 @@ impl Document for Agent {
         new_document["jacsVersion"] = json!(format!("{}", new_version));
         new_document["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // get all fields but reserved
-        new_document[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &new_document,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
+        self.signing_procedure()?;
 
         // hash new version
         let document_hash = self.hash_doc(&new_document)?;
@@ -491,11 +486,7 @@ impl Document for Agent {
         value["jacsVersion"] = json!(format!("{}", new_version));
         value["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // sign new version
-        value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &value,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
+        self.signing_procedure()?;
         // hash new version
         let document_hash = self.hash_doc(&value)?;
         value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
@@ -597,24 +588,8 @@ impl Document for Agent {
             None => binding,
         };
 
-        let result = self.signature_verification_procedure(
-            &document_value,
-            fields,
-            signature_key_from_final,
-            used_public_key,
-            public_key_enc_type,
-            None,
-            None,
-        );
-        match result {
-            Ok(_) => Ok(()),
-            Err(err) => {
-                let error_message =
-                    format!("Signatures not verifiable {} {:?}! ", document_key, err);
-                error!("{}", error_message);
-                return Err(error_message.into());
-            }
-        }
+        self.signature_verification_procedure()?;
+        Ok(())
     }
 
     fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>> {

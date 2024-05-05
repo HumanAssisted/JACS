@@ -35,9 +35,9 @@ fn load_test_agent_one() -> Agent {
     let signature_version = "v1".to_string();
 
     let mut agent = jacs::agent::Agent::new(
-        agent_version,
-        header_version,
-        signature_version,
+        &agent_version,
+        &header_version,
+        &signature_version,
         "mock_document_schema_url".to_string(),
     )
     .expect("Agent schema should have instantiated");

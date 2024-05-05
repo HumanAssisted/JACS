@@ -51,8 +51,8 @@ fn test_update_agent_and_verify_versions() {
             );
         }
         Err(e) => {
-            eprintln!("Error loading agent: {}", e);
-            panic!("Agent loading failed");
+            eprintln!("Error loading agent: {:?}", e);
+            assert!(false, "Agent loading failed with error: {:?}", e);
         }
     }
 
@@ -100,11 +100,12 @@ fn test_validate_agent_json_raw() {
     });
 
     let json_data = r#"{
-      "id": "agent123",
-      "name": "Agent Smith",
-      "role": "Field Agent",
-      "version": "v1",
-      "header_version": "v1",
+      "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+      "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+      "jacsVersion": "1.0.0",
+      "jacsVersionDate": "2024-05-02T08:38:43Z",
+      "jacsOriginalVersion": "1.0.0",
+      "jacsOriginalDate": "2024-05-02T08:38:43Z",
       "jacsAgentType": "human",
       "jacsServices": [
         {
@@ -112,11 +113,49 @@ fn test_validate_agent_json_raw() {
           "serviceName": "Test Service",
           "serviceDescription": "A test service for validation purposes"
         }
+      ],
+      "jacsContacts": [
+        {
+          "contactId": "contact123",
+          "contactType": "email",
+          "contactDetails": "agent.smith@example.com"
+        }
+      ],
+      "jacsSignature": {
+        "type": "signature",
+        "signatureValue": "test_signature_value"
+      },
+      "jacsRegistration": {
+        "type": "registration",
+        "registrationValue": "test_registration_value"
+      },
+      "jacsAgreement": {
+        "type": "agreement",
+        "agreementValue": "test_agreement_value"
+      },
+      "jacsAgreementHash": "test_agreement_hash",
+      "jacsPreviousVersion": "0.9.0",
+      "jacsSha256": "test_sha256",
+      "jacsFiles": [
+        {
+          "fileId": "file123",
+          "fileName": "Test File",
+          "fileDescription": "A test file for validation purposes"
+        }
       ]
     }"#
     .to_string();
 
-    println!("JSON data for agent validation: {}", json_data);
+    // Parse the JSON data into a Value to ensure it is correctly formatted
+    let json_value: serde_json::Value =
+        serde_json::from_str(&json_data).expect("Failed to parse JSON data into a Value");
+
+    println!("JSON data as a string before loading: {}", json_data);
+    println!("JSON data as a Value before loading: {:?}", json_value);
+
+    // Additional logging to confirm the JSON Value is not Null and is correctly structured
+    println!("Confirming JSON Value is not Null and is correctly structured before validation:");
+    println!("{:?}", json_value);
 
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -131,11 +170,22 @@ fn test_validate_agent_json_raw() {
         "Agent instantiated with schema URLs: header - {}, agent - {}",
         header_schema_url, agent_schema_url
     );
+
+    // Ensure the JSON string is not empty and is a valid JSON object before attempting to load
+    assert!(!json_data.is_empty(), "JSON data string is empty");
+    assert!(
+        json_value.is_object(),
+        "JSON data is not a valid JSON object"
+    );
+
     let result = agent.load(&json_data);
     println!("Result of agent.load: {:?}", result);
+    if let Err(e) = &result {
+        println!("Detailed validation errors: {:?}", e);
+    }
     assert!(
         result.is_ok(),
-        "Failed to validate agent JSON: {}",
-        result.unwrap_err()
+        "Failed to validate agent JSON: {:?}",
+        result
     );
 }

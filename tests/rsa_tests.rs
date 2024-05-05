@@ -41,7 +41,7 @@ fn test_rsa_create_and_verify_signature() {
     let document_schema_url = "mock_document_schema_url";
     let agent = load_test_agent_one(header_schema_url, document_schema_url)
         .expect("Failed to load test agent");
-    let private_key = agent.get_private_key().expect("Failed to get private key");
+    let _private_key = agent.get_private_key().expect("Failed to get private key");
     let public_key = agent.get_public_key().expect("Failed to get public key");
 
     let binding = agent

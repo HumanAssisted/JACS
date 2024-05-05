@@ -109,8 +109,8 @@ impl Agreement for Agent {
             return obj.remove(JACS_VERSION_DATE_FIELDNAME);
         });
 
-        let (values_as_string, fields) =
-            Agent::get_values_as_string(&new_obj, None, &agreement_fieldname)?;
+        let (values_as_string, fields) = self.get_values_as_string()?;
+
         return Ok((values_as_string, fields));
     }
 
@@ -279,11 +279,7 @@ impl Agreement for Agent {
         //  generate signature object
         let (_values_as_string, fields) =
             self.trim_fields_for_hashing_and_signing(value.clone(), &agreement_fieldname_key)?;
-        let agents_signature: Value = self.signing_procedure(
-            &value.clone(),
-            Some(&fields),
-            &agreement_fieldname_key.to_string(),
-        )?;
+        self.signing_procedure()?;
 
         // redundant but make sure agent is listed as a signatory
         let agent_complete_document = self.add_agents_to_agreement(
@@ -293,27 +289,28 @@ impl Agreement for Agent {
         )?;
         value = agent_complete_document.getvalue().clone();
         let agent_complete_key = agent_complete_document.getkey();
-        debug!(
-            "agents_signature {}",
-            serde_json::to_string_pretty(&agents_signature).expect("agents_signature print")
-        );
 
-        if let Some(jacs_agreement) = value.get_mut(&agreement_fieldname_key) {
-            if let Some(signatures) = jacs_agreement.get_mut("signatures") {
-                if let Some(signatures_array) = signatures.as_array_mut() {
-                    signatures_array.push(agents_signature);
-                } else {
-                    *signatures = json!([agents_signature]);
-                }
-            } else {
-                jacs_agreement["signatures"] = json!([agents_signature]);
-            }
-        } else {
-            value[agreement_fieldname_key.clone()] = json!({
-                "agentIDs": [signing_agent_id],
-                "signatures": [agents_signature]
-            });
-        }
+        // debug!(
+        //     "agents_signature {}",
+        //     serde_json::to_string_pretty(&agents_signature).expect("agents_signature print")
+        // );
+
+        // if let Some(jacs_agreement) = value.get_mut(&agreement_fieldname_key) {
+        //     if let Some(signatures) = jacs_agreement.get_mut("signatures") {
+        //         if let Some(signatures_array) = signatures.as_array_mut() {
+        //             signatures_array.push(agents_signature);
+        //         } else {
+        //             *signatures = json!([agents_signature]);
+        //         }
+        //     } else {
+        //         jacs_agreement["signatures"] = json!([agents_signature]);
+        //     }
+        // } else {
+        //     value[agreement_fieldname_key.clone()] = json!({
+        //         "agentIDs": [signing_agent_id],
+        //         "signatures": [agents_signature]
+        //     });
+        // }
         // add to doc
         let updated_document = self.update_document(
             &agent_complete_key,
@@ -459,15 +456,7 @@ impl Agreement for Agent {
                                 local_doc_value.clone(),
                                 &agreement_fieldname_key,
                             )?;
-                        let _result = self.signature_verification_procedure(
-                            &document.value,
-                            Some(&fields),
-                            &agreement_fieldname_key.to_string(),
-                            agents_public_key,
-                            Some(public_key_enc_type.clone()),
-                            Some(noted_hash.clone()),
-                            Some(agents_signature),
-                        )?;
+                        self.signature_verification_procedure()?;
                     }
                     return Ok("All signatures passed".to_string());
                 }

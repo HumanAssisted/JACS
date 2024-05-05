@@ -181,10 +181,11 @@ impl Schema {
 
     pub fn validate_agent(&self, json: &str) -> Result<Value, Box<dyn Error>> {
         println!("Entering validate_agent method with JSON: {}", json);
+        println!("JSON data as a string before parsing: {}", json);
         let agent: Value = serde_json::from_str(json)?;
-        let agent_clone = agent.clone(); // Clone agent to avoid borrow checker issues
-        println!("Parsed JSON Value before validation: {:?}", agent_clone);
-        let validation_result = self.agentschema.validate(&agent_clone);
+        println!("Parsed JSON Value: {:?}", agent); // Confirm the parsed JSON structure
+        println!("Value before validation: {:?}", agent); // Output the value right before validation
+        let validation_result = self.agentschema.validate(&agent);
 
         let validation_errors: Vec<ValidationError> = validation_result
             .err()
@@ -193,12 +194,13 @@ impl Schema {
             .map(|err| ValidationError(format!("Validation error: {:?}", err)))
             .collect();
         if !validation_errors.is_empty() {
-            println!("Validation errors encountered: {:?}", validation_errors);
+            println!("Validation errors encountered: {:?}", validation_errors); // Log detailed validation errors
             Err(Box::new(ValidationError(format!(
                 "Validation errors: {:?}",
                 validation_errors
             ))))
         } else {
+            println!("Validation successful for agent JSON."); // Log successful validation
             Ok(agent)
         }
     }
@@ -216,31 +218,137 @@ lazy_static! {
                 "title": "Mock Header Schema",
                 "type": "object",
                 "properties": {
-                    "version": {
+                    "jacsId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "jacsVersion": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "jacsVersionDate": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "jacsSignature": {
+                        "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+                    },
+                    "jacsRegistration": {
+                        "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+                    },
+                    "jacsAgreement": {
+                        "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+                    },
+                    "jacsAgreementHash": {
                         "type": "string"
                     },
-                    "identifier": {
+                    "jacsPreviousVersion": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "jacsOriginalVersion": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "jacsOriginalDate": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "jacsSha256": {
                         "type": "string"
+                    },
+                    "jacsFiles": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
+                        }
                     }
                 },
-                "required": ["version", "identifier"]
+                "required": [
+                    "jacsId",
+                    "jacsVersion",
+                    "jacsVersionDate",
+                    "jacsOriginalVersion",
+                    "jacsOriginalDate",
+                    "$schema"
+                ]
             }"#,
         );
         m.insert(
             "http://127.0.0.1:12345/schemas/document/mock_version/document.schema.json".to_string(),
             r#"{
                 "$schema": "http://json-schema.org/draft-07/schema#",
-                "title": "Mock Document Schema",
+                "title": "Agent",
                 "type": "object",
                 "properties": {
-                    "title": {
+                    "jacsId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "jacsVersion": {
                         "type": "string"
                     },
-                    "content": {
+                    "jacsVersionDate": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "jacsOriginalVersion": {
                         "type": "string"
+                    },
+                    "jacsOriginalDate": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "jacsAgentType": {
+                        "type": "string"
+                    },
+                    "jacsServices": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "serviceId": {
+                                    "type": "string"
+                                },
+                                "serviceName": {
+                                    "type": "string"
+                                },
+                                "serviceDescription": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["serviceId", "serviceName", "serviceDescription"]
+                        }
+                    },
+                    "jacsContacts": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "contactId": {
+                                    "type": "string"
+                                },
+                                "contactType": {
+                                    "type": "string"
+                                },
+                                "contactDetails": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["contactId", "contactType", "contactDetails"]
+                        }
                     }
                 },
-                "required": ["title", "content"]
+                "required": [
+                    "jacsId",
+                    "jacsVersion",
+                    "jacsVersionDate",
+                    "jacsOriginalVersion",
+                    "jacsOriginalDate",
+                    "jacsAgentType",
+                    "jacsServices",
+                    "jacsContacts"
+                ]
             }"#,
         );
         m
