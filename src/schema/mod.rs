@@ -180,12 +180,16 @@ impl Schema {
     }
 
     pub fn validate_agent(&self, json: &str) -> Result<Value, Box<dyn Error>> {
+        println!("Validating agent JSON: {}", json);
         let agent: Value = serde_json::from_str(json)?;
         let errors: Vec<ValidationError> = self
             .agentschema
             .validate(&agent)
             .into_iter()
-            .filter_map(|e| Some(ValidationError(format!("Validation error: {:?}", e))))
+            .filter_map(|e| {
+                println!("Validation error encountered: {:?}", e);
+                Some(ValidationError(format!("Validation error: {:?}", e)))
+            })
             .collect();
         if !errors.is_empty() {
             return Err(Box::new(ValidationError(format!(
