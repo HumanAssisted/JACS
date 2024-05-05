@@ -143,6 +143,8 @@ impl Agent {
         document_schema_url: String,
     ) -> Result<Self, Box<dyn Error>> {
         set_env_vars();
+        println!("Header schema URL: {}", header_schema_url);
+        println!("Document schema URL: {}", document_schema_url);
         let schema = Schema::new(&header_schema_url, &document_schema_url)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
