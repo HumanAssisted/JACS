@@ -229,7 +229,9 @@ impl Agent {
         for (key, value) in agent_value.as_object().unwrap().iter() {
             println!("Key: {:?}, Value: {:?}", key, value);
         }
+        println!("Agent string before validation: {}", agent_string);
         let validation_result = self.schema.validate_agent(agent_string);
+        println!("Validation result: {:?}", validation_result);
         if let Err(e) = &validation_result {
             if let Some(validation_errors) = e.downcast_ref::<jsonschema::ValidationError>() {
                 println!("Validation error: {:?}", validation_errors);
