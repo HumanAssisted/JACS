@@ -225,6 +225,12 @@ impl Agent {
         println!("Agent::load - Received JSON string: {}", agent_string);
         println!("Agent string before parsing: {}", agent_string);
         let agent_value: Value = serde_json::from_str(agent_string)?;
+        if agent_value.is_null() {
+            let error_message =
+                "Parsed JSON Value is Null, which is not valid for agent schema validation.";
+            error!("{}", error_message);
+            return Err(error_message.into());
+        }
         println!("Parsed JSON Value before validation: {:?}", agent_value);
         println!("Agent::load - Parsed JSON Value: {:?}", agent_value);
         for (key, value) in agent_value.as_object().unwrap().iter() {
