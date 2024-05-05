@@ -127,6 +127,10 @@ fn test_validate_agent_json_raw() {
         agent_schema_url.to_string(),
     )
     .expect("Agent schema should have instantiated");
+    println!(
+        "Agent instantiated with schema URLs: header - {}, agent - {}",
+        header_schema_url, agent_schema_url
+    );
     let result = agent.load(&json_data);
     println!("Result of agent.load: {:?}", result);
     assert!(
