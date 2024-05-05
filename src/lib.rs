@@ -1,13 +1,12 @@
 use crate::agent::document::Document;
 use crate::shared::save_document;
-use log::error;
+use log::{debug, error};
 
 use crate::agent::Agent;
 use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
-use log::debug;
 use serde_json::Value;
 use std::env;
 use std::error::Error;
@@ -21,10 +20,17 @@ pub mod schema;
 pub mod shared; // Added public declaration for custom_resolver module
 
 pub fn get_empty_agent() -> Agent {
+    let header_schema_url = env::var("JACS_HEADER_SCHEMA_URL")
+        .unwrap_or_else(|_| "http://localhost/schemas/header/v1/header.schema.json".to_string());
+    let document_schema_url = env::var("JACS_DOCUMENT_SCHEMA_URL").unwrap_or_else(|_| {
+        "http://localhost/schemas/document/v1/document.schema.json".to_string()
+    });
+
     Agent::new(
         &env::var("JACS_AGENT_SCHEMA_VERSION").unwrap(),
         &env::var("JACS_HEADER_SCHEMA_VERSION").unwrap(),
-        &env::var("JACS_SIGNATURE_SCHEMA_VERSION").unwrap(),
+        header_schema_url,
+        document_schema_url,
     )
     .expect("Failed to init Agent")
 }
@@ -35,7 +41,7 @@ pub fn load_agent_by_id() -> Agent {
     agent
 }
 
-/// TODO exlcude or modfiy for wasm context
+// TODO exclude or modify for wasm context
 fn load_path_agent(filepath: String) -> Agent {
     let mut agent = get_empty_agent();
     let agentstring = fs::read_to_string(filepath.clone()).expect("agent file loading");

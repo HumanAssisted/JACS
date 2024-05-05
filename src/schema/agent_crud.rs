@@ -45,6 +45,7 @@ pub fn create_minimal_agent(
     Ok(agent)
 }
 
+#[allow(dead_code)]
 /// Adds a service to an agent.
 ///
 /// # Arguments
@@ -64,6 +65,7 @@ fn add_service_to_agent(agent: &mut Value, service: Value) -> Result<(), String>
     Ok(())
 }
 
+#[allow(dead_code)]
 /// Updates a service in an agent.
 ///
 /// # Arguments
@@ -94,6 +96,7 @@ fn update_service_in_agent(
     Ok(())
 }
 
+#[allow(dead_code)]
 /// Removes a service from an agent.
 ///
 /// # Arguments
@@ -119,6 +122,7 @@ fn remove_service_from_agent(agent: &mut Value, service: Value) -> Result<(), St
     Ok(())
 }
 
+#[allow(dead_code)]
 /// Adds a contact to an agent.
 ///
 /// # Arguments
@@ -141,6 +145,7 @@ fn add_contact_to_agent(agent: &mut Value, contact: Value) -> Result<(), String>
     Ok(())
 }
 
+#[allow(dead_code)]
 /// Updates a contact in an agent.
 ///
 /// # Arguments
@@ -171,6 +176,7 @@ fn update_contact_in_agent(
     Ok(())
 }
 
+#[allow(dead_code)]
 /// Removes a contact from an agent.
 ///
 /// # Arguments

@@ -191,32 +191,13 @@ fn remove_contact_phone(contact: &mut Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Updates the address name of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_address_name` - The new address name for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact address name was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact address name.
+#[allow(dead_code)]
 fn update_contact_address_name(contact: &mut Value, new_address_name: &str) -> Result<(), String> {
     contact["addressName"] = json!(new_address_name);
     Ok(())
 }
 
-/// Removes the address name from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact address name was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact address name.
+#[allow(dead_code)]
 fn remove_contact_address_name(contact: &mut Value) -> Result<(), String> {
     contact
         .as_object_mut()
@@ -295,33 +276,13 @@ fn remove_contact_mail_address_two(contact: &mut Value) -> Result<(), String> {
         .remove("mailAddressTwo");
     Ok(())
 }
-
-/// Updates the mail state of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_mail_state` - The new mail state for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail state was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact mail state.
+#[allow(dead_code)]
 fn update_contact_mail_state(contact: &mut Value, new_mail_state: &str) -> Result<(), String> {
     contact["mailState"] = json!(new_mail_state);
     Ok(())
 }
 
-/// Removes the mail state from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail state was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact mail state.
+#[allow(dead_code)]
 fn remove_contact_mail_state(contact: &mut Value) -> Result<(), String> {
     contact
         .as_object_mut()
@@ -364,32 +325,13 @@ fn remove_contact_mail_zip(contact: &mut Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Updates the mail country of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_mail_country` - The new mail country for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail country was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact mail country.
+#[allow(dead_code)]
 fn update_contact_mail_country(contact: &mut Value, new_mail_country: &str) -> Result<(), String> {
     contact["mailCountry"] = json!(new_mail_country);
     Ok(())
 }
 
-/// Removes the mail country from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail country was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact mail country.
+#[allow(dead_code)]
 fn remove_contact_mail_country(contact: &mut Value) -> Result<(), String> {
     contact
         .as_object_mut()

@@ -30,7 +30,18 @@ fn test_hai_fields_custom_schema_and_custom_document() {
             .body(include_str!("../schemas/header/v1/header.schema.json"));
     });
 
-    let mut agent = match mock_test_agent() {
+    let mock_server = MockServer::start();
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let agent = match mock_test_agent(&header_schema_url, &document_schema_url) {
         Ok(agent) => agent,
         Err(e) => {
             eprintln!("Failed to create mock agent: {}", e);
@@ -75,6 +86,25 @@ fn test_create_task_with_actions() {
         None,
     );
     add_action_to_task(&mut task, action).expect("reason");
+
+    let mock_server = MockServer::start();
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let _agent = match mock_test_agent(&header_schema_url, &document_schema_url) {
+        Ok(agent) => agent,
+        Err(e) => {
+            eprintln!("Failed to create mock agent: {}", e);
+            return;
+        }
+    };
 
     //create jacs task
     // let task_doc = agent

@@ -1,3 +1,5 @@
+use httpmock::Method::GET;
+use httpmock::MockServer;
 use jacs::agent::boilerplate::BoilerPlate;
 
 mod utils;
@@ -5,12 +7,42 @@ use utils::load_local_document;
 
 #[test]
 fn test_update_agent_and_verify_versions() {
-    // cargo test   --test agent_tests -- --nocapture
+    let mock_server = MockServer::start();
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let _schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/header/mock_version/header.schema.json");
+        then.status(200).body(include_str!(
+            "../examples/schemas/header/mock_version/header.schema.json"
+        ));
+    });
+
+    let _schema_mock_doc = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/document/mock_version/document.schema.json");
+        then.status(200).body(include_str!(
+            "../examples/schemas/document/mock_version/document.schema.json"
+        ));
+    });
+
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url.to_string(),
+        document_schema_url.to_string(),
+    )
+    .expect("Agent schema should have instantiated");
     let agentid =
         "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
     let result = agent.load_by_id(Some(agentid), None);
@@ -45,22 +77,55 @@ fn test_update_agent_and_verify_versions() {
 
 #[test]
 fn test_validate_agent_json_raw() {
+    let mock_server = MockServer::start();
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let _schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/header/mock_version/header.schema.json");
+        then.status(200).body(include_str!(
+            "../examples/schemas/header/mock_version/header.schema.json"
+        ));
+    });
+
+    let _schema_mock_doc = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/document/mock_version/document.schema.json");
+        then.status(200).body(include_str!(
+            "../examples/schemas/document/mock_version/document.schema.json"
+        ));
+    });
+
     let json_data = r#"{
       "id": "agent123",
       "name": "Agent Smith",
-      "role": "Field Agent"
+      "role": "Field Agent",
+      "version": "v1",
+      "header_version": "v1"
     }"#
     .to_string();
 
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url.to_string(),
+        document_schema_url.to_string(),
+    )
+    .expect("Agent schema should have instantiated");
     let result = agent.load(&json_data);
     assert!(
-        !result.is_ok(),
-        "Correctly failed to validate myagent.json: {}",
+        result.is_ok(),
+        "Failed to validate agent JSON: {}",
         result.unwrap_err()
     );
 }

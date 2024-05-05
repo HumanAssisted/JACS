@@ -4,33 +4,37 @@ use secrecy::{ExposeSecret, Zeroize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 /// Mock function to create a test Agent with default values
-pub fn mock_test_agent() -> Result<Agent, Box<dyn Error>> {
-    // Mock parameters for Schema::new
-    let agent_version = "mock_version".to_string();
-    let header_version = "mock_version".to_string();
-    let signature_version = "mock_version".to_string();
-
+pub fn mock_test_agent(
+    header_schema_url: &str,
+    document_schema_url: &str,
+) -> Result<Agent, Box<dyn Error>> {
     // Create a new Schema with mock parameters
-    let schema = Schema::new(&agent_version, &header_version, &signature_version)?;
+    let _schema = Schema::new(header_schema_url, document_schema_url)?;
 
-    let document_schemas_map = Arc::new(Mutex::new(HashMap::<String, Schema>::new()));
-    let document_map = Arc::new(Mutex::new(HashMap::<String, Value>::new()));
-    let default_directory = PathBuf::new(); // Assuming tests do not rely on a specific path
+    let _document_schemas_map = Arc::new(Mutex::new(HashMap::<String, Schema>::new()));
+    let _document_map = Arc::new(Mutex::new(HashMap::<String, Value>::new()));
+    let _default_directory = PathBuf::new(); // Assuming tests do not rely on a specific path
 
     // Mock values for Agent fields
-    let public_key = vec![0u8; 32]; // Mock public key
-    let private_key = vec![0u8; 32]; // Mock private key
-    let key_algorithm = "mock_algorithm".to_string();
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
 
     // Use the Agent's constructor to create a new instance
-    let mut agent = Agent::new(&agent_version, &header_version, &signature_version)?;
+    let mut agent = Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url.to_string(),
+        document_schema_url.to_string(),
+    )?;
 
-    // Set the keys using the Agent's set_keys method
-    agent.set_keys(private_key, public_key, &key_algorithm)?;
+    // Set the header and document schema URLs
+    agent.set_header_schema_url(header_schema_url.to_string());
+    agent.set_document_schema_url(document_schema_url.to_string());
 
     Ok(agent)
 }
@@ -65,4 +69,31 @@ impl ExposeSecret<String> for MockPrivateKey {
         static DUMMY_SECRET: String = String::new();
         &DUMMY_SECRET
     }
+}
+
+/// Function to load a local document from a given path
+pub fn load_local_document(path: &str) -> Result<String, Box<dyn Error>> {
+    let content = fs::read_to_string(path)?;
+    Ok(content)
+}
+
+/// Mock function to create a test Agent with default values for agent one
+pub fn load_test_agent_one(
+    header_schema_url: &str,
+    document_schema_url: &str,
+) -> Result<Agent, Box<dyn Error>> {
+    // This function should create and return a mock Agent object
+    // For simplicity, we can use the `mock_test_agent` function
+    mock_test_agent(header_schema_url, document_schema_url)
+}
+
+/// Mock function to create a test Agent with default values for agent two
+pub fn load_test_agent_two(
+    header_schema_url: &str,
+    document_schema_url: &str,
+) -> Result<Agent, Box<dyn Error>> {
+    // This function should create and return a different mock Agent object
+    // For simplicity, we can use the `mock_test_agent` function
+    // In a real scenario, this function would return an Agent with different properties
+    mock_test_agent(header_schema_url, document_schema_url)
 }

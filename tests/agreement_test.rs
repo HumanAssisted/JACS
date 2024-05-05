@@ -4,13 +4,73 @@ use jacs::agent::document::Document;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use secrecy::ExposeSecret;
 mod utils;
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
+use crate::utils::{load_local_document, load_test_agent_one, load_test_agent_two};
+use httpmock::Method::GET;
+use httpmock::MockServer;
+use serde_json::json;
 
 #[test]
 fn test_create_agreement() {
+    let mock_server = MockServer::start();
+
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/{}/header.schema.json",
+        base_url, "mock_version"
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/{}/document.schema.json",
+        base_url, "mock_version"
+    );
+
+    println!("Mock server base URL: {}", base_url);
+    println!("Header schema mock URL: {}", header_schema_url);
+    println!("Document schema mock URL: {}", document_schema_url);
+
+    let _header_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/header/mock_version/header.schema.json");
+        then.status(200).json_body(json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Mock Header Schema",
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "string"
+                },
+                "identifier": {
+                    "type": "string"
+                }
+            },
+            "required": ["version", "identifier"]
+        }));
+    });
+
+    let _document_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/document/mock_version/document.schema.json");
+        then.status(200).json_body(json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Mock Document Schema",
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                }
+            },
+            "required": ["title", "content"]
+        }));
+    });
+
+    const DOCID: &str = "test_document";
     let document_path = format!("examples/documents/{}.json", DOCID);
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to load agent one");
+    let agent_two = load_test_agent_two(&header_schema_url, &document_schema_url)
+        .expect("Failed to load agent two");
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
@@ -41,8 +101,64 @@ fn test_create_agreement() {
 
 #[test]
 fn test_add_and_remove_agents() {
+    let mock_server = MockServer::start();
+
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    println!("Mock server base URL: {}", base_url);
+    println!("Header schema mock URL: {}", header_schema_url);
+    println!("Document schema mock URL: {}", document_schema_url);
+
+    let _header_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/header/mock_version/header.schema.json");
+        then.status(200).json_body(json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Mock Header Schema",
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "string"
+                },
+                "identifier": {
+                    "type": "string"
+                }
+            },
+            "required": ["version", "identifier"]
+        }));
+    });
+
+    let _document_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/document/mock_version/document.schema.json");
+        then.status(200).json_body(json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Mock Document Schema",
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                }
+            },
+            "required": ["title", "content"]
+        }));
+    });
+
+    const DOCID: &str = "test_document";
     let document_path = format!("examples/documents/{}.json", DOCID);
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to load agent one");
     let agents_orig: Vec<String> = vec!["mariko".to_string(), "takeda".to_string()];
     let agents_to_add: Vec<String> = vec!["gaijin".to_string()];
     let agents_to_remove: Vec<String> = vec!["mariko".to_string()];
@@ -114,9 +230,62 @@ fn test_add_and_remove_agents() {
 
 #[test]
 fn test_sign_agreement() {
+    let mock_server = MockServer::start();
+
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let _header_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/header/mock_version/header.schema.json");
+        then.status(200).json_body(json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Mock Header Schema",
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "string"
+                },
+                "identifier": {
+                    "type": "string"
+                }
+            },
+            "required": ["version", "identifier"]
+        }));
+    });
+
+    let _document_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/document/mock_version/document.schema.json");
+        then.status(200).json_body(json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Mock Document Schema",
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                }
+            },
+            "required": ["title", "content"]
+        }));
+    });
+
+    const DOCID: &str = "test_document";
     let document_path = format!("examples/documents/{}.json", DOCID);
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to load agent one");
+    let mut agent_two = load_test_agent_two(&header_schema_url, &document_schema_url)
+        .expect("Failed to load agent two");
 
     let a1k = agent.get_private_key().unwrap();
     let a2k = agent_two.get_private_key().unwrap();

@@ -115,6 +115,12 @@ pub struct Agent {
     public_key: Option<Vec<u8>>,
     private_key: Option<SecretPrivateKey>,
     key_algorithm: Option<String>,
+
+    /// URL for the header schema used for validation.
+    header_schema_url: Option<String>,
+
+    /// URL for the document schema used for validation.
+    document_schema_url: Option<String>,
 }
 
 impl fmt::Display for Agent {
@@ -131,12 +137,13 @@ impl fmt::Display for Agent {
 
 impl Agent {
     pub fn new(
-        agentversion: &String,
-        headerversion: &String,
-        signature_version: &String,
+        _agentversion: &String,
+        _headerversion: &String,
+        header_schema_url: String,
+        document_schema_url: String,
     ) -> Result<Self, Box<dyn Error>> {
         set_env_vars();
-        let schema = Schema::new(agentversion, headerversion, signature_version)?;
+        let schema = Schema::new(&header_schema_url, &document_schema_url)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
 
@@ -156,6 +163,8 @@ impl Agent {
             key_algorithm: None,
             public_key: None,
             private_key: None,
+            header_schema_url: Some(header_schema_url),
+            document_schema_url: Some(document_schema_url),
         })
     }
 
@@ -211,29 +220,27 @@ impl Agent {
         // then load
         // then load keys
         // then validate signatures
-        match &self.validate_agent(&agent_string) {
+        match self.schema.validate_agent(agent_string) {
             Ok(value) => {
-                self.value = Some(value.clone());
+                self.value = Some(value);
                 if let Some(ref value) = self.value {
-                    self.id = value.get_str("jacsId");
-                    self.version = value.get_str("jacsVersion");
+                    self.id = value.get_str("id");
+                    self.version = value.get_str("version");
                 }
 
-                if !Uuid::parse_str(&self.id.clone().expect("string expected").to_string()).is_ok()
-                    || !Uuid::parse_str(&self.version.clone().expect("string expected").to_string())
-                        .is_ok()
+                if !Uuid::parse_str(&self.id.clone().unwrap_or_default()).is_ok()
+                    || !Uuid::parse_str(&self.version.clone().unwrap_or_default()).is_ok()
                 {
                     println!("ID and Version must be UUID");
                 }
             }
             Err(e) => {
                 error!("ERROR document ERROR {}", e);
-                return Err(e.to_string().into());
+                return Err(e.into());
             }
         }
 
         if self.id.is_some() {
-            let _id_string = self.id.clone().expect("string expected").to_string();
             // check if keys are already loaded
             if self.public_key.is_none() || self.private_key.is_none() {
                 self.fs_load_keys()?;
@@ -244,7 +251,7 @@ impl Agent {
             self.verify_self_signature()?;
         }
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
@@ -445,7 +452,8 @@ impl Agent {
         });
         // TODO add sha256 of public key
         // validate signature schema
-        let _ = self.schema.validate_signature(&signature_document)?;
+        let signature_document_json = serde_json::to_string(&signature_document)?;
+        let _ = self.schema.validate_signature(&signature_document_json)?;
 
         return Ok(signature_document);
     }
@@ -665,23 +673,14 @@ impl Agent {
         self.verify_self_signature()?;
         return Ok(instance);
     }
+
+    /// Sets the header schema URL for the agent.
+    pub fn set_header_schema_url(&mut self, url: String) {
+        self.header_schema_url = Some(url);
+    }
+
+    /// Sets the document schema URL for the agent.
+    pub fn set_document_schema_url(&mut self, url: String) {
+        self.document_schema_url = Some(url);
+    }
 }
-
-/*
-
-todo
- - load actor and sign and act on other things
- - which requires a private key
- - also a verifier
- - remote public key or embeeded?
-
-
-EVERY resource(actor) and task has
-
-1. hash/checksum based on
-  - previous hash, id, version
-2. signature based on hash
-
-
-
-*/

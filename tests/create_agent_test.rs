@@ -5,11 +5,18 @@ mod utils;
 #[test]
 fn test_validate_agent_creation() {
     // RUST_BACKTRACE=1 cargo test create_agent_tests -- --test test_validate_agent_creation
+    let header_schema_url = "http://localhost/schemas/header/v1/header.schema.json".to_string();
+    let document_schema_url =
+        "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url,
+        document_schema_url,
+    )
+    .unwrap();
     let json_data = fs::read_to_string("examples/raw/myagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
@@ -46,11 +53,18 @@ fn test_validate_agent_creation() {
 
 #[test]
 fn test_temp_validate_agent_creation() {
+    let header_schema_url = "http://localhost/schemas/header/v1/header.schema.json".to_string();
+    let document_schema_url =
+        "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url,
+        document_schema_url,
+    )
+    .unwrap();
     let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
@@ -67,11 +81,18 @@ fn test_temp_validate_agent_creation() {
 
 #[test]
 fn test_temp_validate_agent_creation_save_and_load() {
+    let header_schema_url = "http://localhost/schemas/header/v1/header.schema.json".to_string();
+    let document_schema_url =
+        "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url,
+        document_schema_url,
+    )
+    .unwrap();
     let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
 

@@ -1,11 +1,9 @@
-use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 extern crate env_logger;
 extern crate httpmock;
 use httpmock::Method::GET;
 use httpmock::MockServer;
-use log::{error, info};
+use log::info;
 use serde_json::json;
 
 mod utils;
@@ -25,29 +23,18 @@ mod tests {
 fn test_load_custom_schema_and_custom_document() {
     let mock_server = MockServer::start();
 
-    let schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/path/to/external/schema");
-        then.status(200).json_body(json!({
-            // JSON schema content here
-        }));
-    });
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
 
-    // let mut agent = load_test_agent_one();
-    // let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
-    //     Ok(content) => content,
-    //     Err(e) => panic!(
-    //         "Error in test_load_custom_schema_and_custom_document loading local document: {}",
-    //         e
-    //     ),
-    // };
-    // let document = match agent.load_document(&document_string) {
-    //     Ok(doc) => doc,
-    //     Err(e) => panic!(
-    //         "Error in test_load_custom_schema_and_custom_document loading document: {}",
-    //         e
-    //     ),
-    // };
-    // info!("loaded valid {}", document.getkey());
+    let mut agent = utils::load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to create test agent");
 }
 
 #[test]
@@ -59,38 +46,34 @@ fn test_load_custom_schema_and_custom_invalid_document() {
         then.status(200).json_body(json!({}));
     });
 
-    // let mut agent = load_test_agent_one();
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let mut agent = utils::load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to create test agent");
 
     info!("Starting to load custom schemas.");
-    let schemas = vec![]; // SCHEMA variable removed
-                          // Handle the Result from loading custom schemas
-                          // agent
-                          //     .load_custom_schemas(&schemas)
-                          //     .expect("Failed to load custom schemas");
+    let schemas: Vec<String> = vec![
+        "/path/to/external/schema1.json".to_string(),
+        "/path/to/external/schema2.json".to_string(),
+        // Add more schema paths as needed
+    ];
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
     info!("Custom schemas loaded, proceeding to create and load document.");
 
-    // let document_string = match load_local_document(&"examples/raw/not-fruit.json".to_string()) {
-    //     Ok(content) => {
-    //         info!("Local document loaded successfully.");
-    //         content
-    //     }
-    //     Err(e) => {
-    //         error!("Error loading local document: {}", e);
-    //         panic!("Error in test_load_custom_schema_and_custom_invalid_document loading local document: {}", e);
-    //     }
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
     info!("Document string loaded, proceeding to create document.");
-    // let document = match agent.create_document_and_load(&document_string, None, None) {
-    //     Ok(doc) => {
-    //         info!("Document created and loaded successfully.");
-    //         doc
-    //     }
-    //     Err(e) => {
-    //         error!("Error creating and loading document: {}", e);
-    //         panic!("Error in test_load_custom_schema_and_custom_invalid_document creating and loading document: {}", e);
-    //     }
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
     info!("Document loaded, proceeding to validate document.");
     info!("Document validation completed.");
@@ -116,8 +99,23 @@ fn test_load_custom_schema_and_new_custom_document() {
         then.status(200).json_body(json!({}));
     });
 
-    let mut agent = utils::mock_test_agent().expect("Failed to create mock agent");
-    let schemas = vec![json!({ /* schema content here */ })]; // Example schema content
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let mut agent = utils::load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to create mock agent");
+    let schemas: Vec<String> = vec![
+        "/path/to/external/schema1.json".to_string(),
+        "/path/to/external/schema2.json".to_string(),
+        // Add more schema paths as needed
+    ];
     agent
         .load_custom_schemas(&schemas)
         .expect("Failed to load custom schemas");
@@ -126,8 +124,25 @@ fn test_load_custom_schema_and_new_custom_document() {
 #[test]
 fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Test case started");
-    let mut agent = utils::mock_test_agent().expect("Failed to create mock agent");
-    let schemas = vec![json!({ /* schema content here */ })]; // Example schema content
+    let mock_server = MockServer::start();
+
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
+
+    let mut agent = utils::load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to create mock agent");
+    let schemas: Vec<String> = vec![
+        "/path/to/external/schema1.json".to_string(),
+        "/path/to/external/schema2.json".to_string(),
+        // Add more schema paths as needed
+    ];
     agent
         .load_custom_schemas(&schemas)
         .expect("Failed to load custom schemas");
@@ -143,79 +158,48 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         then.status(200).json_body(json!({}));
     });
 
-    // let mut agent = load_test_agent_one();
+    let base_url = mock_server.url("");
+    let header_schema_url = format!(
+        "{}/schemas/header/mock_version/header.schema.json",
+        base_url
+    );
+    let document_schema_url = format!(
+        "{}/schemas/document/mock_version/document.schema.json",
+        base_url
+    );
 
-    let schemas = vec![]; // SCHEMA variable removed
-                          // Handle the Result from loading custom schemas
-                          // agent
-                          //     .load_custom_schemas(&schemas)
-                          //     .expect("Failed to load custom schemas");
+    let mut agent = utils::load_test_agent_one(&header_schema_url, &document_schema_url)
+        .expect("Failed to create test agent");
+
+    let schemas: Vec<String> = vec![
+        "/path/to/external/schema1.json".to_string(),
+        "/path/to/external/schema2.json".to_string(),
+        // Add more schema paths as needed
+    ];
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
     info!("Schemas loaded successfully in test_load_custom_schema_and_custom_document_and_update_and_verify_signature.");
 
-    // let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
-    //     Ok(content) => content,
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading local document: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let document = match agent.load_document(&document_string) {
-    //     Ok(doc) => doc,
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading document: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let document_key = document.getkey();
-    // let modified_document_string = match load_local_document(&TESTFILE_MODIFIED.to_string()) {
-    //     Ok(content) => content,
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading modified document: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let new_document = match agent.update_document(&document_key, &modified_document_string, None, None) {
-    //     Ok(doc) => doc,
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature updating document: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let new_document_key = new_document.getkey();
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let new_document_ref = match agent.get_document(&new_document_key) {
-    //     Ok(doc_ref) => doc_ref,
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature getting new document: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // info!("updated {} {}", new_document_key, new_document_ref);
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // match agent.verify_document_signature(
-    //     &new_document_key,
-    //     Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
-    //     None,
-    //     None,
-    //     None,
-    // ) {
-    //     Ok(_) => info!("Document signature verified in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."),
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature verifying document signature: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let agent_one_public_key = match agent.get_public_key() {
-    //     Ok(key) => key,
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature getting agent one public key: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let mut agent2 = load_test_agent_two();
-    // let new_document_string = new_document_ref.to_string();
-    // let copy_newdocument = match agent2.load_document(&new_document_string) {
-    //     Ok(doc) => doc,
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading document copy: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 
-    // let copy_newdocument_key = copy_newdocument.getkey();
-    // info!("new document with sig: /n {}", new_document_string);
-
-    // match agent.verify_document_signature(
-    //     &copy_newdocument_key,
-    //     Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
-    //     None,
-    //     Some(agent_one_public_key),
-    //     None,
-    // ) {
-    //     Ok(_) => info!("Document signature verified in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."),
-    //     Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature verifying document signature: {}", e),
-    // };
+    // Removed commented-out code blocks that are not contributing to the tests.
 }

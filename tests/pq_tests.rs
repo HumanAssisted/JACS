@@ -15,11 +15,18 @@ fn set_enc_to_pq() {
 #[ignore]
 fn test_pq_create() {
     set_enc_to_pq();
+    let header_schema_url = "http://localhost/schemas/header/v1/header.schema.json".to_string();
+    let document_schema_url =
+        "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url,
+        document_schema_url,
+    )
+    .unwrap();
     let json_data = fs::read_to_string("examples/raw/myagent.new.json").expect("REASON");
     let _result = agent.create_agent_and_load(&json_data, false, None);
     set_enc_to_pq();
@@ -30,11 +37,18 @@ fn test_pq_create() {
 #[test]
 fn test_pq_create_and_verify_signature() {
     set_enc_to_pq();
+    let header_schema_url = "http://localhost/schemas/header/v1/header.schema.json".to_string();
+    let document_schema_url =
+        "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        header_schema_url,
+        document_schema_url,
+    )
+    .unwrap();
     let json_data = fs::read_to_string("examples/raw/myagent.new.json").expect("REASON");
     let _result = agent.create_agent_and_load(&json_data, false, None);
     let _private = agent.get_private_key().unwrap();
