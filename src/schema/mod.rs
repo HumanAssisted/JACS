@@ -180,24 +180,27 @@ impl Schema {
     }
 
     pub fn validate_agent(&self, json: &str) -> Result<Value, Box<dyn Error>> {
-        println!("Validating agent JSON: {}", json);
+        println!("Entering validate_agent method with JSON: {}", json);
         let agent: Value = serde_json::from_str(json)?;
-        let errors: Vec<ValidationError> = self
-            .agentschema
-            .validate(&agent)
+        let agent_clone = agent.clone(); // Clone agent to avoid borrow checker issues
+        println!("Parsed JSON Value before validation: {:?}", agent_clone);
+        let validation_result = self.agentschema.validate(&agent_clone);
+
+        let validation_errors: Vec<ValidationError> = validation_result
+            .err()
             .into_iter()
-            .filter_map(|e| {
-                println!("Validation error encountered: {:?}", e);
-                Some(ValidationError(format!("Validation error: {:?}", e)))
-            })
+            .flat_map(|iter| iter)
+            .map(|err| ValidationError(format!("Validation error: {:?}", err)))
             .collect();
-        if !errors.is_empty() {
-            return Err(Box::new(ValidationError(format!(
+        if !validation_errors.is_empty() {
+            println!("Validation errors encountered: {:?}", validation_errors);
+            Err(Box::new(ValidationError(format!(
                 "Validation errors: {:?}",
-                errors
-            ))));
+                validation_errors
+            ))))
+        } else {
+            Ok(agent)
         }
-        Ok(agent)
     }
 }
 

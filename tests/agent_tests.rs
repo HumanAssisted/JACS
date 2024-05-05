@@ -130,6 +130,7 @@ fn test_validate_agent_json_raw() {
     )
     .expect("Agent schema should have instantiated");
     let result = agent.load(&json_data);
+    println!("Result of agent.load: {:?}", result);
     assert!(
         result.is_ok(),
         "Failed to validate agent JSON: {}",
