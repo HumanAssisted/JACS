@@ -220,13 +220,10 @@ impl Agent {
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
-        println!("Loading agent with string: {}", agent_string);
-        // validate schema
-        // then load
-        // then load keys
-        // then validate signatures
+        println!("Attempting to load agent string: {}", agent_string);
         match self.schema.validate_agent(agent_string) {
             Ok(value) => {
+                println!("Agent string validated successfully: {:?}", value);
                 self.value = Some(value);
                 if let Some(ref value) = self.value {
                     self.id = value.get_str("id");
