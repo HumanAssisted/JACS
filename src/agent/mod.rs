@@ -178,7 +178,9 @@ impl Agent {
             .or_else(|| env::var("JACS_AGENT_ID_AND_VERSION").ok())
             .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
 
+        println!("Loading agent with ID: {}", lookup_id);
         let agent_string = self.fs_agent_load(&lookup_id)?;
+        println!("Agent string to be loaded: {}", agent_string);
         return self.load(&agent_string);
     }
 
@@ -216,6 +218,7 @@ impl Agent {
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
+        println!("Loading agent with string: {}", agent_string);
         // validate schema
         // then load
         // then load keys
@@ -235,6 +238,7 @@ impl Agent {
                 }
             }
             Err(e) => {
+                println!("Validation error: {}", e);
                 error!("ERROR document ERROR {}", e);
                 return Err(e.into());
             }
