@@ -86,37 +86,15 @@ pub fn create_minimal_contact(
     Ok(contact)
 }
 
-/// Updates the first name of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_first_name` - The new first name for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact first name was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact first name.
-fn update_contact_first_name(contact: &mut Value, new_first_name: &str) -> Result<(), String> {
-    contact["firstName"] = json!(new_first_name);
-    Ok(())
-}
+// fn update_contact_first_name(contact: &mut Value, new_first_name: &str) -> Result<(), String> {
+//     contact["firstName"] = json!(new_first_name);
+//     Ok(())
+// }
 
-/// Updates the last name of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_last_name` - The new last name for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact last name was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact last name.
-fn update_contact_last_name(contact: &mut Value, new_last_name: &str) -> Result<(), String> {
-    contact["lastName"] = json!(new_last_name);
-    Ok(())
-}
+// fn update_contact_last_name(contact: &mut Value, new_last_name: &str) -> Result<(), String> {
+//     contact["lastName"] = json!(new_last_name);
+//     Ok(())
+// }
 
 /// Updates the email of a contact.
 ///
@@ -157,39 +135,18 @@ fn remove_contact_email(contact: &mut Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Updates the phone of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_phone` - The new phone for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact phone was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact phone.
-fn update_contact_phone(contact: &mut Value, new_phone: &str) -> Result<(), String> {
-    contact["phone"] = json!(new_phone);
-    Ok(())
-}
+// fn update_contact_phone(contact: &mut Value, new_phone: &str) -> Result<(), String> {
+//     contact["phone"] = json!(new_phone);
+//     Ok(())
+// }
 
-/// Removes the phone from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact phone was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact phone.
-fn remove_contact_phone(contact: &mut Value) -> Result<(), String> {
-    contact
-        .as_object_mut()
-        .ok_or_else(|| "Invalid contact format".to_string())?
-        .remove("phone");
-    Ok(())
-}
+// fn remove_contact_phone(contact: &mut Value) -> Result<(), String> {
+//     contact
+//         .as_object_mut()
+//         .ok_or_else(|| "Invalid contact format".to_string())?
+//         .remove("phone");
+//     Ok(())
+// }
 
 #[allow(dead_code)]
 fn update_contact_address_name(contact: &mut Value, new_address_name: &str) -> Result<(), String> {
@@ -206,76 +163,35 @@ fn remove_contact_address_name(contact: &mut Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Updates the mail address of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_mail_address` - The new mail address for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail address was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact mail address.
-fn update_contact_mail_address(contact: &mut Value, new_mail_address: &str) -> Result<(), String> {
-    contact["mailAddress"] = json!(new_mail_address);
-    Ok(())
-}
+// fn update_contact_mail_address(contact: &mut Value, new_mail_address: &str) -> Result<(), String> {
+//     contact["mailAddress"] = json!(new_mail_address);
+//     Ok(())
+// }
 
-/// Removes the mail address from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail address was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact mail address.
-fn remove_contact_mail_address(contact: &mut Value) -> Result<(), String> {
-    contact
-        .as_object_mut()
-        .ok_or_else(|| "Invalid contact format".to_string())?
-        .remove("mailAddress");
-    Ok(())
-}
+// fn remove_contact_mail_address(contact: &mut Value) -> Result<(), String> {
+//     contact
+//         .as_object_mut()
+//         .ok_or_else(|| "Invalid contact format".to_string())?
+//         .remove("mailAddress");
+//     Ok(())
+// }
 
-/// Updates the mail address two of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_mail_address_two` - The new mail address two for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail address two was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact mail address two.
-fn update_contact_mail_address_two(
-    contact: &mut Value,
-    new_mail_address_two: &str,
-) -> Result<(), String> {
-    contact["mailAddressTwo"] = json!(new_mail_address_two);
-    Ok(())
-}
+// fn update_contact_mail_address_two(
+//     contact: &mut Value,
+//     new_mail_address_two: &str,
+// ) -> Result<(), String> {
+//     contact["mailAddressTwo"] = json!(new_mail_address_two);
+//     Ok(())
+// }
 
-/// Removes the mail address two from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail address two was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact mail address two.
-fn remove_contact_mail_address_two(contact: &mut Value) -> Result<(), String> {
-    contact
-        .as_object_mut()
-        .ok_or_else(|| "Invalid contact format".to_string())?
-        .remove("mailAddressTwo");
-    Ok(())
-}
+// fn remove_contact_mail_address_two(contact: &mut Value) -> Result<(), String> {
+//     contact
+//         .as_object_mut()
+//         .ok_or_else(|| "Invalid contact format".to_string())?
+//         .remove("mailAddressTwo");
+//     Ok(())
+// }
+
 #[allow(dead_code)]
 fn update_contact_mail_state(contact: &mut Value, new_mail_state: &str) -> Result<(), String> {
     contact["mailState"] = json!(new_mail_state);
@@ -291,39 +207,18 @@ fn remove_contact_mail_state(contact: &mut Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Updates the mail zip of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `new_mail_zip` - The new mail zip for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail zip was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact mail zip.
-fn update_contact_mail_zip(contact: &mut Value, new_mail_zip: &str) -> Result<(), String> {
-    contact["mailZip"] = json!(new_mail_zip);
-    Ok(())
-}
+// fn update_contact_mail_zip(contact: &mut Value, new_mail_zip: &str) -> Result<(), String> {
+//     contact["mailZip"] = json!(new_mail_zip);
+//     Ok(())
+// }
 
-/// Removes the mail zip from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact mail zip was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact mail zip.
-fn remove_contact_mail_zip(contact: &mut Value) -> Result<(), String> {
-    contact
-        .as_object_mut()
-        .ok_or_else(|| "Invalid contact format".to_string())?
-        .remove("mailZip");
-    Ok(())
-}
+// fn remove_contact_mail_zip(contact: &mut Value) -> Result<(), String> {
+//     contact
+//         .as_object_mut()
+//         .ok_or_else(|| "Invalid contact format".to_string())?
+//         .remove("mailZip");
+//     Ok(())
+// }
 
 #[allow(dead_code)]
 fn update_contact_mail_country(contact: &mut Value, new_mail_country: &str) -> Result<(), String> {
@@ -340,36 +235,15 @@ fn remove_contact_mail_country(contact: &mut Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Updates the primary status of a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-/// * `is_primary` - The new primary status for the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact primary status was updated successfully.
-/// * `Err(String)` - If an error occurred while updating the contact primary status.
-fn update_contact_is_primary(contact: &mut Value, is_primary: bool) -> Result<(), String> {
-    contact["isPrimary"] = json!(is_primary);
-    Ok(())
-}
+// fn update_contact_is_primary(contact: &mut Value, is_primary: bool) -> Result<(), String> {
+//     contact["isPrimary"] = json!(is_primary);
+//     Ok(())
+// }
 
-/// Removes the primary status from a contact.
-///
-/// # Arguments
-///
-/// * `contact` - A mutable reference to the contact.
-///
-/// # Returns
-///
-/// * `Ok(())` - If the contact primary status was removed successfully.
-/// * `Err(String)` - If an error occurred while removing the contact primary status.
-fn remove_contact_is_primary(contact: &mut Value) -> Result<(), String> {
-    contact
-        .as_object_mut()
-        .ok_or_else(|| "Invalid contact format".to_string())?
-        .remove("isPrimary");
-    Ok(())
-}
+// fn remove_contact_is_primary(contact: &mut Value) -> Result<(), String> {
+//     contact
+//         .as_object_mut()
+//         .ok_or_else(|| "Invalid contact format".to_string())?
+//         .remove("isPrimary");
+//     Ok(())
+// }

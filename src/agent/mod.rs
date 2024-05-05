@@ -221,9 +221,14 @@ impl Agent {
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
+        println!("Agent::load - Received JSON string: {}", agent_string);
         println!("Agent string before parsing: {}", agent_string);
         let agent_value: Value = serde_json::from_str(agent_string)?;
         println!("Parsed JSON Value before validation: {:?}", agent_value);
+        println!("Agent::load - Parsed JSON Value: {:?}", agent_value);
+        for (key, value) in agent_value.as_object().unwrap().iter() {
+            println!("Key: {:?}, Value: {:?}", key, value);
+        }
         let validation_result = self.schema.validate_agent(agent_string);
         if let Err(e) = &validation_result {
             if let Some(validation_errors) = e.downcast_ref::<jsonschema::ValidationError>() {

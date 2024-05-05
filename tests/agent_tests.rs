@@ -13,25 +13,20 @@ fn test_update_agent_and_verify_versions() {
         "{}/schemas/header/mock_version/header.schema.json",
         base_url
     );
-    let document_schema_url = format!(
-        "{}/schemas/document/mock_version/document.schema.json",
-        base_url
-    );
+    let agent_schema_url = format!("{}/schemas/agent/mock_version/agent.schema.json", base_url);
 
     let _schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/header/mock_version/header.schema.json");
-        then.status(200).body(include_str!(
-            "../examples/schemas/header/mock_version/header.schema.json"
-        ));
+        then.status(200)
+            .body(include_str!("../schemas/header/v1/header.schema.json"));
     });
 
-    let _schema_mock_doc = mock_server.mock(|when, then| {
+    let _schema_mock_agent = mock_server.mock(|when, then| {
         when.method(GET)
-            .path("/schemas/document/mock_version/document.schema.json");
-        then.status(200).body(include_str!(
-            "../examples/schemas/document/mock_version/document.schema.json"
-        ));
+            .path("/schemas/agent/mock_version/agent.schema.json");
+        then.status(200)
+            .body(include_str!("../schemas/agent/v1/agent.schema.json"));
     });
 
     let agent_version = "v1".to_string();
@@ -40,7 +35,7 @@ fn test_update_agent_and_verify_versions() {
         &agent_version,
         &header_version,
         header_schema_url.to_string(),
-        document_schema_url.to_string(),
+        agent_schema_url.to_string(),
     )
     .expect("Agent schema should have instantiated");
     let agentid =
@@ -88,25 +83,20 @@ fn test_validate_agent_json_raw() {
         "{}/schemas/header/mock_version/header.schema.json",
         base_url
     );
-    let document_schema_url = format!(
-        "{}/schemas/document/mock_version/document.schema.json",
-        base_url
-    );
+    let agent_schema_url = format!("{}/schemas/agent/mock_version/agent.schema.json", base_url);
 
     let _schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/header/mock_version/header.schema.json");
-        then.status(200).body(include_str!(
-            "../examples/schemas/header/mock_version/header.schema.json"
-        ));
+        then.status(200)
+            .body(include_str!("../schemas/header/v1/header.schema.json"));
     });
 
-    let _schema_mock_doc = mock_server.mock(|when, then| {
+    let _schema_mock_agent = mock_server.mock(|when, then| {
         when.method(GET)
-            .path("/schemas/document/mock_version/document.schema.json");
-        then.status(200).body(include_str!(
-            "../examples/schemas/document/mock_version/document.schema.json"
-        ));
+            .path("/schemas/agent/mock_version/agent.schema.json");
+        then.status(200)
+            .body(include_str!("../schemas/agent/v1/agent.schema.json"));
     });
 
     let json_data = r#"{
@@ -114,7 +104,15 @@ fn test_validate_agent_json_raw() {
       "name": "Agent Smith",
       "role": "Field Agent",
       "version": "v1",
-      "header_version": "v1"
+      "header_version": "v1",
+      "jacsAgentType": "human",
+      "jacsServices": [
+        {
+          "serviceId": "service123",
+          "serviceName": "Test Service",
+          "serviceDescription": "A test service for validation purposes"
+        }
+      ]
     }"#
     .to_string();
 
@@ -126,7 +124,7 @@ fn test_validate_agent_json_raw() {
         &agent_version,
         &header_version,
         header_schema_url.to_string(),
-        document_schema_url.to_string(),
+        agent_schema_url.to_string(),
     )
     .expect("Agent schema should have instantiated");
     let result = agent.load(&json_data);
