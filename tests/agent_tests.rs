@@ -64,6 +64,11 @@ fn test_update_agent_and_verify_versions() {
     let modified_agent_string =
         load_local_document(&"examples/raw/modified-agent-for-updating.json".to_string()).unwrap();
 
+    println!(
+        "Modified agent string for update: {}",
+        modified_agent_string
+    );
+
     match agent.update_self(&modified_agent_string) {
         Ok(_) => assert!(true),
         _ => {
@@ -112,6 +117,8 @@ fn test_validate_agent_json_raw() {
       "header_version": "v1"
     }"#
     .to_string();
+
+    println!("JSON data for agent validation: {}", json_data);
 
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
