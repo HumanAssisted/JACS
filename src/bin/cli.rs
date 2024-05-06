@@ -596,11 +596,14 @@ fn main() {
                 let document_schema_url =
                     "http://localhost/schemas/document/v1/document.schema.json".to_string();
 
+                let placeholder = "placeholder".to_string();
+                let version = "v1".to_string();
+
                 Agent::create_agent_and_load(
                     &agentstring,
                     &header_schema_url,
-                    "placeholder".to_string(),
-                    "v1".to_string(),
+                    &placeholder,
+                    &version,
                     &document_schema_url,
                 )
                 .expect("Failed to create and load agent");

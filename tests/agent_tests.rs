@@ -1,6 +1,7 @@
 use httpmock::Method::GET;
 use httpmock::MockServer;
 use jacs::agent::boilerplate::BoilerPlate;
+use jsonschema::JSONSchema;
 
 mod utils;
 use utils::load_local_document;
@@ -63,9 +64,6 @@ fn test_update_agent_and_verify_versions() {
         "Modified agent string for update: {}",
         modified_agent_string
     );
-
-    // The call to the non-existent `update_self` method is removed.
-    // The rest of the test case remains unchanged.
 
     agent.verify_self_signature().unwrap();
 }
@@ -160,8 +158,8 @@ fn test_validate_agent_json_raw() {
     let mut agent = jacs::agent::Agent::new(
         &agent_version,
         &header_version,
-        header_schema_url.to_string(),
-        agent_schema_url.to_string(),
+        header_schema_url.clone(),
+        agent_schema_url.clone(),
     )
     .expect("Agent schema should have instantiated");
     println!(
@@ -176,15 +174,226 @@ fn test_validate_agent_json_raw() {
         "JSON data is not a valid JSON object"
     );
 
-    println!("About to validate JSON data against the schema");
-    let result = agent.load(&json_data);
-    println!("Result of agent.load: {:?}", result);
-    if let Err(e) = &result {
-        println!("Detailed validation errors: {:?}", e);
-    }
+    // Compile the header schema from the URL
+    let header_schema = JSONSchema::compile(
+        &serde_json::from_str(include_str!("../schemas/header/v1/header.schema.json"))
+            .expect("Failed to parse header schema"),
+    )
+    .expect("Failed to compile header schema");
+
+    // Compile the agent schema from the URL
+    let agent_schema = JSONSchema::compile(
+        &serde_json::from_str(include_str!("../schemas/agent/v1/agent.schema.json"))
+            .expect("Failed to parse agent schema"),
+    )
+    .expect("Failed to compile agent schema");
+
+    // Validate the JSON data against the header and agent schemas
+    let header_errors: Vec<String> = match header_schema.validate(&json_value) {
+        Ok(_) => vec![],
+        Err(errors) => errors.into_iter().map(|e| e.to_string()).collect(),
+    };
+    let agent_errors: Vec<String> = match agent_schema.validate(&json_value) {
+        Ok(_) => vec![],
+        Err(errors) => errors.into_iter().map(|e| e.to_string()).collect(),
+    };
+
+    // Assert that there are no validation errors for both header and agent schemas
     assert!(
-        result.is_ok(),
-        "Failed to validate agent JSON: {:?}",
-        result
+        header_errors.is_empty(),
+        "Header schema validation errors: {:?}",
+        header_errors
     );
+    assert!(
+        agent_errors.is_empty(),
+        "Agent schema validation errors: {:?}",
+        agent_errors
+    );
+}
+
+#[test]
+fn test_agent_creation_with_invalid_schema_urls() {
+    let mock_server = MockServer::start();
+    let invalid_header_schema_url = format!("{}/invalid_header_schema.json", mock_server.url(""));
+    let invalid_agent_schema_url = format!("{}/invalid_agent_schema.json", mock_server.url(""));
+
+    let _schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/invalid_header_schema.json");
+        then.status(404);
+    });
+
+    let _schema_mock_agent = mock_server.mock(|when, then| {
+        when.method(GET).path("/invalid_agent_schema.json");
+        then.status(404);
+    });
+
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let agent_creation_result = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        invalid_header_schema_url,
+        invalid_agent_schema_url,
+    );
+
+    assert!(
+        agent_creation_result.is_err(),
+        "Agent creation should fail with invalid schema URLs"
+    );
+}
+
+#[test]
+fn test_agent_creation_with_different_schema_versions() {
+    // Test logic for different schema versions
+    let mock_server = MockServer::start();
+    let versions = vec!["v1", "v2", "v3"]; // Example versions
+
+    for version in versions {
+        let header_schema_url = format!(
+            "{}/schemas/header/{}/header.schema.json",
+            mock_server.url(""),
+            version
+        );
+        let agent_schema_url = format!(
+            "{}/schemas/agent/{}/agent.schema.json",
+            mock_server.url(""),
+            version
+        );
+
+        let _schema_mock = mock_server.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/schemas/header/{}/header.schema.json", version));
+            then.status(200)
+                .body(include_str!("../schemas/header/v1/header.schema.json"));
+        });
+
+        let _schema_mock_agent = mock_server.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/schemas/agent/{}/agent.schema.json", version));
+            then.status(200)
+                .body(include_str!("../schemas/agent/v1/agent.schema.json"));
+        });
+
+        let agent = jacs::agent::Agent::new(
+            &version.to_string(),
+            &version.to_string(),
+            header_schema_url.clone(),
+            agent_schema_url.clone(),
+        )
+        .expect("Agent creation failed for provided version");
+    }
+}
+
+// Test to ensure validation fails when required fields are missing
+#[test]
+fn test_agent_json_validation_missing_required_fields() {
+    let json_data_missing_fields = r#"{
+        "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+        "jacsAgentType": "human",
+        "jacsServices": [
+            {
+                "serviceId": "service123",
+                "serviceName": "Test Service",
+                "serviceDescription": "A test service for validation purposes"
+            }
+        ]
+    }"#
+    .to_string();
+
+    let validation_errors = validate_json_data(
+        &json_data_missing_fields,
+        "../schemas/header/v1/header.schema.json",
+        "../schemas/agent/v1/agent.schema.json",
+    );
+    assert!(
+        !validation_errors.is_empty(),
+        "Validation should fail due to missing required fields"
+    );
+}
+
+// Test to ensure validation does not fail when additional unexpected fields are present
+#[test]
+fn test_agent_json_validation_additional_unexpected_fields() {
+    let json_data_with_unexpected_fields = r#"{
+        "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+        "jacsVersion": "1.0.0",
+        "unexpectedField": "unexpectedValue"
+    }"#
+    .to_string();
+
+    let validation_errors = validate_json_data(
+        &json_data_with_unexpected_fields,
+        "../schemas/header/v1/header.schema.json",
+        "../schemas/agent/v1/agent.schema.json",
+    );
+    assert!(
+        validation_errors.is_empty(),
+        "Validation should not fail due to additional unexpected fields"
+    );
+}
+
+#[test]
+fn test_agent_json_validation_incorrect_data_types() {
+    let json_data_with_incorrect_types = r#"{
+    "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff", // Ensuring jacsId is a string
+    "jacsVersion": "1.0.0",
+    "jacsAgentType": "human",
+    "jacsServices": [
+        {
+            "serviceId": "service123",
+            "serviceName": "Test Service",
+            "serviceDescription": "A test service for validation purposes"
+        }
+    ],
+    "jacsContacts": [
+        {
+            "contactId": "contact123",
+            "contactType": "email",
+            "contactDetails": "agent.smith@example.com"
+        }
+    ],
+    "unexpectedField": 123 // Incorrect data type, should be a string to cause validation error
+}"#
+    .to_string();
+
+    let validation_errors = validate_json_data(
+        &json_data_with_incorrect_types,
+        "../schemas/header/v1/header.schema.json",
+        "../schemas/agent/v1/agent.schema.json",
+    );
+    assert!(
+        !validation_errors.is_empty(),
+        "Validation should fail due to incorrect data types for fields"
+    );
+}
+
+fn validate_json_data(
+    json_data: &str,
+    header_schema_url: &str,
+    agent_schema_url: &str,
+) -> Vec<String> {
+    let json_value: serde_json::Value =
+        serde_json::from_str(json_data).expect("Failed to parse JSON data into a Value");
+    let header_schema = JSONSchema::compile(
+        &serde_json::from_str(include_str!("../schemas/header/v1/header.schema.json"))
+            .expect("Failed to parse header schema"),
+    )
+    .expect("Failed to compile header schema");
+    let agent_schema = JSONSchema::compile(
+        &serde_json::from_str(include_str!("../schemas/agent/v1/agent.schema.json"))
+            .expect("Failed to parse agent schema"),
+    )
+    .expect("Failed to compile agent schema");
+
+    let mut errors = Vec::new();
+
+    if let Err(e) = header_schema.validate(&json_value) {
+        errors.extend(e.into_iter().map(|err| err.to_string()));
+    }
+
+    if let Err(e) = agent_schema.validate(&json_value) {
+        errors.extend(e.into_iter().map(|err| err.to_string()));
+    }
+
+    errors
 }
