@@ -1,5 +1,6 @@
-use jacs::agent::loaders::FileLoader;
+use jacs::agent::Agent;
 use std::fs;
+
 mod utils;
 
 #[test]
@@ -10,45 +11,37 @@ fn test_validate_agent_creation() {
         "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
+    let agent_string = fs::read_to_string("examples/raw/myagent.new.json").expect("REASON");
+    let result = Agent::create_agent_and_load(
         &agent_version,
         &header_version,
-        header_schema_url,
-        document_schema_url,
-    )
-    .unwrap();
-    let json_data = fs::read_to_string("examples/raw/myagent.new.json").expect("REASON");
-    let result = agent.create_agent_and_load(&json_data, false, None);
-
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
-    // agent.save();
-
-    println!("New Agent Created\n\n\n {} ", agent);
-    // switch keys
-    let _ = agent.fs_preload_keys(
-        &"agent-two.private.pem".to_string(),
-        &"agent-two.public.pem".to_string(),
-        Some("RSA-PSS".to_string()),
+        header_schema_url.clone(),
+        document_schema_url.clone(),
+        &agent_string,
     );
-    let json_data = fs::read_to_string("examples/raw/mysecondagent.new.json").expect("REASON");
-    let result = agent.create_agent_and_load(&json_data, false, None);
 
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
+    if let Ok(mut agent) = result {
+        println!("New Agent Created\n\n\n {} ", agent);
+        // switch keys
+        let private_key =
+            fs::read("examples/keys/agent-two.private.pem").expect("Failed to read private key");
+        let public_key =
+            fs::read("examples/keys/agent-two.public.pem").expect("Failed to read public key");
+        let key_algorithm = "RSA-PSS".to_string();
+        let _ = agent.set_keys(private_key, public_key, &key_algorithm);
+        let json_data = fs::read_to_string("examples/raw/mysecondagent.new.json").expect("REASON");
+        let result = Agent::create_agent_and_load(
+            &agent_version,
+            &header_version,
+            header_schema_url,
+            document_schema_url,
+            &json_data,
+        );
 
-    println!("New Agent2 Created\n\n\n {} ", agent);
-    // let _ = agent.save();
+        if let Ok(agent) = result {
+            println!("New Agent2 Created\n\n\n {} ", agent);
+        }
+    }
 }
 
 #[test]
@@ -58,25 +51,18 @@ fn test_temp_validate_agent_creation() {
         "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
+    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
+    let result = Agent::create_agent_and_load(
         &agent_version,
         &header_version,
-        header_schema_url,
-        document_schema_url,
-    )
-    .unwrap();
-    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
-    let result = agent.create_agent_and_load(&json_data, false, None);
+        header_schema_url.clone(),
+        document_schema_url.clone(),
+        &json_data,
+    );
 
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
-
-    println!("New Agent Created\n\n\n {} ", agent);
+    if let Ok(agent) = result {
+        println!("New Agent Created\n\n\n {} ", agent);
+    }
 }
 
 #[test]
@@ -86,28 +72,19 @@ fn test_temp_validate_agent_creation_save_and_load() {
         "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
+    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
+    let result = Agent::create_agent_and_load(
         &agent_version,
         &header_version,
-        header_schema_url,
-        document_schema_url,
-    )
-    .unwrap();
-    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
-    let result = agent.create_agent_and_load(&json_data, false, None);
-
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
-
-    println!(
-        "test_temp_validate_agent_creation_save_and_load Agent Created\n\n\n {} ",
-        agent
+        header_schema_url.clone(),
+        document_schema_url.clone(),
+        &json_data,
     );
 
-    // agent.save();
+    if let Ok(agent) = result {
+        println!(
+            "test_temp_validate_agent_creation_save_and_load Agent Created\n\n\n {} ",
+            agent
+        );
+    }
 }

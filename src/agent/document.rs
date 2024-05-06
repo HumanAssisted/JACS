@@ -147,9 +147,9 @@ pub trait Document {
         &mut self,
         document_key: &String,
         signature_key_from: Option<&String>,
-        fields: Option<&Vec<String>>,
+        _fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
-        public_key_enc_type: Option<String>,
+        _public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>>;
 
     fn validate_document_with_custom_schema(
@@ -213,8 +213,6 @@ impl Document for Agent {
         let validator = schemas
             .get(schema_path)
             .ok_or_else(|| format!("Validator not found for path: {}", schema_path))?;
-        //.map(|schema| Arc::new(schema))
-        //.expect("REASON");
 
         let x = match validator.validate(json) {
             Ok(()) => Ok(()),
@@ -566,9 +564,9 @@ impl Document for Agent {
         &mut self,
         document_key: &String,
         signature_key_from: Option<&String>,
-        fields: Option<&Vec<String>>,
+        _fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
-        public_key_enc_type: Option<String>,
+        _public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
         let document = self.get_document(document_key).expect("Reason");
@@ -577,13 +575,13 @@ impl Document for Agent {
             .verify_document_files(&document_value)
             .expect("file verification");
         // this is innefficient since I generate a whole document
-        let used_public_key = match public_key {
+        let _used_public_key = match public_key {
             Some(public_key) => public_key,
             None => self.get_public_key()?,
         };
 
         let binding = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
-        let signature_key_from_final = match signature_key_from {
+        let _signature_key_from_final = match signature_key_from {
             Some(signature_key_from) => signature_key_from,
             None => binding,
         };

@@ -586,30 +586,25 @@ fn main() {
 
                 let agentstring = match filename {
                     Some(filename) => {
-                        fs::read_to_string(filename.clone()).expect("agent file loading")
+                        fs::read_to_string(filename).expect("Failed to read agent file")
                     }
                     _ => create_minimal_blank_agent("ai".to_string()).unwrap(),
                 };
 
-                let mut agent = get_empty_agent().expect("Failed to get empty agent");
-                let configs = set_env_vars();
-                println!("creating agent with config {}", configs);
-                if create_keys {
-                    println!("creating keys");
-                    agent.generate_keys().expect("Failed to generate keys");
-                    println!(
-                        "keys created in {}",
-                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY not set")
-                    )
-                }
-                agent
-                    .create_agent_and_load(&agentstring, false, None)
-                    .expect("Failed to create and load agent");
-                println!(
-                    "Agent {} created!",
-                    agent.get_lookup_id().expect("Failed to get lookup ID")
-                );
-                let _ = agent.save().expect("Failed to save agent");
+                let header_schema_url =
+                    "http://localhost/schemas/header/v1/header.schema.json".to_string();
+                let document_schema_url =
+                    "http://localhost/schemas/document/v1/document.schema.json".to_string();
+
+                Agent::create_agent_and_load(
+                    &agentstring,
+                    &header_schema_url,
+                    "placeholder".to_string(),
+                    "v1".to_string(),
+                    &document_schema_url,
+                )
+                .expect("Failed to create and load agent");
+                println!("Agent created!");
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
@@ -715,7 +710,7 @@ fn main() {
                     fs::read_to_string(schema_file).expect("Failed to load schema file");
 
                     let schemas = [schema_file.clone()];
-                    match agent.load_custom_schemas(&schemas) {
+                    match agent.load_custom_schemas() {
                         Ok(_) => (),
                         Err(e) => {
                             eprintln!("Failed to load custom schemas: {}", e);

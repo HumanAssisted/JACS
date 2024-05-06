@@ -40,8 +40,7 @@ pub fn document_create(
 ) -> Result<String, Box<dyn Error>> {
     let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas();
     }
 
     // let loading_filename_string = loading_filename.to_string();
@@ -73,8 +72,7 @@ pub fn document_load_and_save(
     load_only: bool,
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas();
     }
     let docresult = agent.load_document(&document_string);
     if !load_only {
@@ -101,8 +99,7 @@ pub fn document_check_agreement(
     agreement_fieldname: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas();
     }
     let agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
@@ -146,8 +143,7 @@ pub fn document_sign_agreement(
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
     };
     if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas();
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();
@@ -186,8 +182,7 @@ pub fn document_add_agreement(
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
     };
     if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas();
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();

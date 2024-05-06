@@ -4,29 +4,20 @@ pub mod document;
 pub mod loaders;
 pub mod security;
 
-use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{Document, JACSDocument};
-use crate::crypt::hash::hash_public_key;
-use std::fs;
-
+use crate::agent::document::JACSDocument;
 use crate::config::{get_default_dir, set_env_vars};
-
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
-
-use crate::crypt::KeyManager;
-use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
-
-use crate::schema::utils::{resolve_schema, ValueExt};
+use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
-use chrono::prelude::*;
-use jsonschema::{Draft, JSONSchema};
+use jsonschema::JSONSchema;
 use loaders::FileLoader;
-use log::{debug, error};
-use serde_json::{json, to_value, Value};
+use log::error;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fmt;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -170,6 +161,23 @@ impl Agent {
         })
     }
 
+    pub fn create_agent_and_load(
+        agent_version: &String,
+        headerversion: &String,
+        header_schema_url: String,
+        document_schema_url: String,
+        agent_string: &String,
+    ) -> Result<Self, Box<dyn Error>> {
+        let mut agent = Agent::new(
+            agent_version,
+            headerversion,
+            header_schema_url,
+            document_schema_url,
+        )?;
+        agent.load(agent_string)?;
+        Ok(agent)
+    }
+
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
         println!("Agent::load - Received JSON string: {}", agent_string);
         println!(
@@ -277,9 +285,9 @@ impl Agent {
     }
 
     // Placeholder method for getting values as a string
-    pub fn get_values_as_string(&self) -> Result<String, Box<dyn Error>> {
+    pub fn get_values_as_string(&self) -> Result<(String, Vec<String>), Box<dyn Error>> {
         // TODO: Implement the actual logic
-        Ok("".to_string())
+        Ok(("".to_string(), Vec::new()))
     }
 
     // Placeholder method for the signing procedure
@@ -300,9 +308,42 @@ impl Agent {
         Ok(())
     }
 
-    // Placeholder method for loading custom schemas
-    pub fn load_custom_schemas(&self) -> Result<(), Box<dyn Error>> {
-        // TODO: Implement the actual logic
+    pub fn load_custom_schemas(&mut self) -> Result<(), Box<dyn Error>> {
+        let schemas_dir = self.default_directory.join("schemas");
+        let schema_files = fs::read_dir(schemas_dir)?;
+
+        for entry in schema_files {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let schema_json = fs::read_to_string(path)?;
+                let schema_value_owned: serde_json::Value = serde_json::from_str(&schema_json)?;
+                let compiled_schema =
+                    JSONSchema::compile(&schema_value_owned).expect("A valid schema");
+                let schema_arc = Arc::new(compiled_schema);
+                let schema_key = entry.file_name().to_string_lossy().into_owned();
+                self.document_schemas
+                    .lock()
+                    .unwrap()
+                    .insert(schema_key, schema_arc);
+            }
+        }
+
         Ok(())
+    }
+
+    pub fn validate_document(&self, document: &Value) -> Result<(), Box<dyn Error>> {
+        let schema_key = "default"; // This should be determined based on the document
+        let schemas_lock = self.document_schemas.lock().unwrap();
+        let schema = schemas_lock.get(schema_key).ok_or("Schema not found")?;
+        let validation_result = schema.validate(document);
+        match validation_result {
+            Ok(_) => Ok(()),
+            Err(errors) => {
+                let error_messages: Vec<String> =
+                    errors.into_iter().map(|e| e.to_string()).collect();
+                Err(format!("Document validation errors: {:?}", error_messages).into())
+            }
+        }
     }
 }
