@@ -15,6 +15,18 @@ fn test_update_agent_and_verify_versions() {
         base_url
     );
     let agent_schema_url = format!("{}/schemas/agent/mock_version/agent.schema.json", base_url);
+    let agreement_schema_url = format!(
+        "{}/schemas/components/agreement/mock_version/agreement.schema.json",
+        base_url
+    );
+    let files_schema_url = format!(
+        "{}/schemas/components/files/mock_version/files.schema.json",
+        base_url
+    );
+    let signature_schema_url = format!(
+        "{}/schemas/components/signature/mock_version/signature.schema.json",
+        base_url
+    );
 
     let _schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
@@ -57,9 +69,23 @@ fn test_update_agent_and_verify_versions() {
         }
     }
 
-    let modified_agent_string =
-        load_local_document(&"examples/raw/modified-agent-for-updating.json".to_string()).unwrap();
-
+    let modified_agent_string = include_str!("../examples/raw/modified-agent-for-updating.json")
+        .replace(
+            "https://hai.ai/schemas/agent/v1/agent-schema.json",
+            &agent_schema_url,
+        )
+        .replace(
+            "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json",
+            &agreement_schema_url,
+        )
+        .replace(
+            "https://hai.ai/schemas/components/files/v1/files.schema.json",
+            &files_schema_url,
+        )
+        .replace(
+            "https://hai.ai/schemas/components/signature/v1/signature.schema.json",
+            &signature_schema_url,
+        );
     println!(
         "Modified agent string for update: {}",
         modified_agent_string
@@ -92,52 +118,67 @@ fn test_validate_agent_json_raw() {
             .body(include_str!("../schemas/agent/v1/agent.schema.json"));
     });
 
+    let _schema_mock_agreement = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/agreement/mock_version/agreement.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/agreement/v1/agreement.schema.json"
+        ));
+    });
+
+    let _schema_mock_files = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/files/mock_version/files.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/files/v1/files.schema.json"
+        ));
+    });
+
+    let _schema_mock_signature = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/signature/mock_version/signature.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/signature/v1/signature.schema.json"
+        ));
+    });
+
     let json_data = r#"{
-      "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
-      "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
-      "jacsVersion": "1.0.0",
-      "jacsVersionDate": "2024-05-02T08:38:43Z",
-      "jacsOriginalVersion": "1.0.0",
-      "jacsOriginalDate": "2024-05-02T08:38:43Z",
-      "jacsAgentType": "human",
-      "jacsServices": [
-        {
-          "serviceId": "service123",
-          "serviceName": "Test Service",
-          "serviceDescription": "A test service for validation purposes"
-        }
-      ],
-      "jacsContacts": [
-        {
-          "contactId": "contact123",
-          "contactType": "email",
-          "contactDetails": "agent.smith@example.com"
-        }
-      ],
-      "jacsSignature": {
-        "type": "signature",
-        "signatureValue": "test_signature_value"
-      },
-      "jacsRegistration": {
-        "type": "registration",
-        "registrationValue": "test_registration_value"
-      },
-      "jacsAgreement": {
-        "type": "agreement",
-        "agreementValue": "test_agreement_value"
-      },
-      "jacsAgreementHash": "test_agreement_hash",
-      "jacsPreviousVersion": "0.9.0",
-      "jacsSha256": "test_sha256",
-      "jacsFiles": [
-        {
-          "fileId": "file123",
-          "fileName": "Test File",
-          "fileDescription": "A test file for validation purposes"
-        }
-      ]
-    }"#
-    .to_string();
+  "$schema": "http://localhost/schemas/agent/mock_version/agent.schema.json",
+  "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+  "jacsVersion": "1.0.0",
+  "jacsVersionDate": "2024-05-02T08:38:43Z",
+  "jacsOriginalVersion": "1.0.0",
+  "jacsOriginalDate": "2024-05-02T08:38:43Z",
+  "jacsAgentType": "human",
+  "jacsServices": [],
+  "jacsContacts": [],
+  "jacsSignature": {
+    "$schema": "http://localhost/schemas/components/signature/mock_version/signature.schema.json",
+    "type": "signature",
+    "signatureValue": "test_signature_value"
+  },
+  "jacsRegistration": {
+    "$schema": "http://localhost/schemas/components/registration/mock_version/registration.schema.json",
+    "type": "registration",
+    "registrationValue": "test_registration_value"
+  },
+  "jacsAgreement": {
+    "$schema": "http://localhost/schemas/components/agreement/mock_version/agreement.schema.json",
+    "type": "agreement",
+    "agreementValue": "test_agreement_value"
+  },
+  "jacsAgreementHash": "test_agreement_hash",
+  "jacsPreviousVersion": "0.9.0",
+  "jacsSha256": "test_sha256",
+  "jacsFiles": [
+    {
+      "$schema": "http://localhost/schemas/components/files/mock_version/files.schema.json",
+      "fileId": "file123",
+      "fileName": "Test File",
+      "fileDescription": "A test file for validation purposes"
+    }
+  ]
+}"#.to_string();
 
     // Parse the JSON data into a Value to ensure it is correctly formatted
     let json_value: serde_json::Value =
@@ -146,27 +187,6 @@ fn test_validate_agent_json_raw() {
     println!("JSON data as a string before loading: {}", json_data);
     println!("JSON data as a Value before loading: {:?}", json_value);
 
-    // Additional logging to confirm the JSON Value is not Null and is correctly structured
-    println!("Confirming JSON Value is not Null and is correctly structured before validation:");
-    println!("{:?}", json_value);
-
-    println!("Parsed JSON data as serde_json::Value: {:?}", json_value);
-    assert!(!json_value.is_null(), "Parsed JSON data is null");
-
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
-        &agent_version,
-        &header_version,
-        header_schema_url.clone(),
-        agent_schema_url.clone(),
-    )
-    .expect("Agent schema should have instantiated");
-    println!(
-        "Agent instantiated with schema URLs: header - {}, agent - {}",
-        header_schema_url, agent_schema_url
-    );
-
     // Ensure the JSON string is not empty and is a valid JSON object before attempting to load
     assert!(!json_data.is_empty(), "JSON data string is empty");
     assert!(
@@ -174,28 +194,56 @@ fn test_validate_agent_json_raw() {
         "JSON data is not a valid JSON object"
     );
 
-    // Compile the header schema from the URL
-    let header_schema = JSONSchema::compile(
-        &serde_json::from_str(include_str!("../schemas/header/v1/header.schema.json"))
-            .expect("Failed to parse header schema"),
-    )
-    .expect("Failed to compile header schema");
+    // Additional logging to confirm the JSON Value is not Null and is correctly structured
+    println!("Confirming JSON Value is not Null and is correctly structured before validation:");
+    println!("{:?}", json_value);
 
-    // Compile the agent schema from the URL
-    let agent_schema = JSONSchema::compile(
-        &serde_json::from_str(include_str!("../schemas/agent/v1/agent.schema.json"))
-            .expect("Failed to parse agent schema"),
-    )
-    .expect("Failed to compile agent schema");
+    // Compile the header schema from the mock server URL
+    let header_schema_content = include_str!("../schemas/header/v1/header.schema.json");
+    let header_schema_json: serde_json::Value = serde_json::from_str(header_schema_content)
+        .expect("Failed to parse header schema content into JSON");
+    let header_schema = JSONSchema::compile(&header_schema_json)
+        .expect("Failed to compile header schema from content");
+
+    // Compile the agent schema from the mock server URL
+    let agent_schema_content = include_str!("../schemas/agent/v1/agent.schema.json");
+    let agent_schema_json: serde_json::Value = serde_json::from_str(agent_schema_content)
+        .expect("Failed to parse agent schema content into JSON");
+    let agent_schema = JSONSchema::compile(&agent_schema_json)
+        .expect("Failed to compile agent schema from content");
 
     // Validate the JSON data against the header and agent schemas
     let header_errors: Vec<String> = match header_schema.validate(&json_value) {
         Ok(_) => vec![],
-        Err(errors) => errors.into_iter().map(|e| e.to_string()).collect(),
+        Err(errors) => errors
+            .into_iter()
+            .map(|e| {
+                let error_message = format!(
+                    "Error: {}, Instance: {}, Schema path: {}",
+                    e.to_string(),
+                    e.instance_path,
+                    e.schema_path
+                );
+                println!("{}", error_message);
+                error_message
+            })
+            .collect(),
     };
     let agent_errors: Vec<String> = match agent_schema.validate(&json_value) {
         Ok(_) => vec![],
-        Err(errors) => errors.into_iter().map(|e| e.to_string()).collect(),
+        Err(errors) => errors
+            .into_iter()
+            .map(|e| {
+                let error_message = format!(
+                    "Error: {}, Instance: {}, Schema path: {}",
+                    e.to_string(),
+                    e.instance_path,
+                    e.schema_path
+                );
+                println!("{}", error_message);
+                error_message
+            })
+            .collect(),
     };
 
     // Assert that there are no validation errors for both header and agent schemas
@@ -335,7 +383,7 @@ fn test_agent_json_validation_additional_unexpected_fields() {
 #[test]
 fn test_agent_json_validation_incorrect_data_types() {
     let json_data_with_incorrect_types = r#"{
-    "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff", // Ensuring jacsId is a string
+    "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
     "jacsVersion": "1.0.0",
     "jacsAgentType": "human",
     "jacsServices": [
@@ -352,7 +400,7 @@ fn test_agent_json_validation_incorrect_data_types() {
             "contactDetails": "agent.smith@example.com"
         }
     ],
-    "unexpectedField": 123 // Incorrect data type, should be a string to cause validation error
+    "unexpectedField": 123
 }"#
     .to_string();
 
