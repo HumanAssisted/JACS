@@ -1,10 +1,11 @@
 use httpmock::Method::GET;
 use httpmock::MockServer;
 use jacs::agent::boilerplate::BoilerPlate;
-use jsonschema::JSONSchema;
+use jacs::schema::utils::EmbeddedSchemaResolver;
+use jsonschema::{JSONSchema, SchemaResolver};
+use url::Url;
 
 mod utils;
-use utils::load_local_document;
 
 #[test]
 fn test_update_agent_and_verify_versions() {
@@ -28,18 +29,45 @@ fn test_update_agent_and_verify_versions() {
         base_url
     );
 
-    let _schema_mock = mock_server.mock(|when, then| {
+    // Instantiate the EmbeddedSchemaResolver
+    let resolver = EmbeddedSchemaResolver::new();
+
+    let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/header/mock_version/header.schema.json");
         then.status(200)
             .body(include_str!("../schemas/header/v1/header.schema.json"));
     });
 
-    let _schema_mock_agent = mock_server.mock(|when, then| {
+    let _agent_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/agent/mock_version/agent.schema.json");
         then.status(200)
             .body(include_str!("../schemas/agent/v1/agent.schema.json"));
+    });
+
+    let _agreement_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/agreement/mock_version/agreement.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/agreement/v1/agreement.schema.json"
+        ));
+    });
+
+    let _files_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/files/mock_version/files.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/files/v1/files.schema.json"
+        ));
+    });
+
+    let _signature_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/signature/mock_version/signature.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/signature/v1/signature.schema.json"
+        ));
     });
 
     let agent_version = "v1".to_string();
@@ -71,19 +99,19 @@ fn test_update_agent_and_verify_versions() {
 
     let modified_agent_string = include_str!("../examples/raw/modified-agent-for-updating.json")
         .replace(
-            "https://hai.ai/schemas/agent/v1/agent-schema.json",
+            "http://localhost/schemas/agent/mock_version/agent.schema.json",
             &agent_schema_url,
         )
         .replace(
-            "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json",
+            "http://localhost/schemas/components/agreement/mock_version/agreement.schema.json",
             &agreement_schema_url,
         )
         .replace(
-            "https://hai.ai/schemas/components/files/v1/files.schema.json",
+            "http://localhost/schemas/components/files/mock_version/files.schema.json",
             &files_schema_url,
         )
         .replace(
-            "https://hai.ai/schemas/components/signature/v1/signature.schema.json",
+            "http://localhost/schemas/components/signature/mock_version/signature.schema.json",
             &signature_schema_url,
         );
     println!(
@@ -104,42 +132,21 @@ fn test_validate_agent_json_raw() {
     );
     let agent_schema_url = format!("{}/schemas/agent/mock_version/agent.schema.json", base_url);
 
-    let _schema_mock = mock_server.mock(|when, then| {
+    // Instantiate the EmbeddedSchemaResolver
+    let resolver = EmbeddedSchemaResolver::new();
+
+    let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/header/mock_version/header.schema.json");
         then.status(200)
             .body(include_str!("../schemas/header/v1/header.schema.json"));
     });
 
-    let _schema_mock_agent = mock_server.mock(|when, then| {
+    let _agent_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/agent/mock_version/agent.schema.json");
         then.status(200)
             .body(include_str!("../schemas/agent/v1/agent.schema.json"));
-    });
-
-    let _schema_mock_agreement = mock_server.mock(|when, then| {
-        when.method(GET)
-            .path("/schemas/components/agreement/mock_version/agreement.schema.json");
-        then.status(200).body(include_str!(
-            "../schemas/components/agreement/v1/agreement.schema.json"
-        ));
-    });
-
-    let _schema_mock_files = mock_server.mock(|when, then| {
-        when.method(GET)
-            .path("/schemas/components/files/mock_version/files.schema.json");
-        then.status(200).body(include_str!(
-            "../schemas/components/files/v1/files.schema.json"
-        ));
-    });
-
-    let _schema_mock_signature = mock_server.mock(|when, then| {
-        when.method(GET)
-            .path("/schemas/components/signature/mock_version/signature.schema.json");
-        then.status(200).body(include_str!(
-            "../schemas/components/signature/v1/signature.schema.json"
-        ));
     });
 
     let json_data = r#"{
@@ -335,6 +342,11 @@ fn test_agent_creation_with_different_schema_versions() {
 // Test to ensure validation fails when required fields are missing
 #[test]
 fn test_agent_json_validation_missing_required_fields() {
+    let header_schema_url =
+        "http://localhost/schemas/header/mock_version/header.schema.json".to_string();
+    let agent_schema_url =
+        "http://localhost/schemas/agent/mock_version/agent.schema.json".to_string();
+
     let json_data_missing_fields = r#"{
         "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
         "jacsAgentType": "human",
@@ -350,8 +362,8 @@ fn test_agent_json_validation_missing_required_fields() {
 
     let validation_errors = validate_json_data(
         &json_data_missing_fields,
-        "../schemas/header/v1/header.schema.json",
-        "../schemas/agent/v1/agent.schema.json",
+        &header_schema_url,
+        &agent_schema_url,
     );
     assert!(
         !validation_errors.is_empty(),
@@ -362,6 +374,11 @@ fn test_agent_json_validation_missing_required_fields() {
 // Test to ensure validation does not fail when additional unexpected fields are present
 #[test]
 fn test_agent_json_validation_additional_unexpected_fields() {
+    let header_schema_url =
+        "http://localhost/schemas/header/mock_version/header.schema.json".to_string();
+    let agent_schema_url =
+        "http://localhost/schemas/agent/mock_version/agent.schema.json".to_string();
+
     let json_data_with_unexpected_fields = r#"{
         "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
         "jacsVersion": "1.0.0",
@@ -371,8 +388,8 @@ fn test_agent_json_validation_additional_unexpected_fields() {
 
     let validation_errors = validate_json_data(
         &json_data_with_unexpected_fields,
-        "../schemas/header/v1/header.schema.json",
-        "../schemas/agent/v1/agent.schema.json",
+        &header_schema_url,
+        &agent_schema_url,
     );
     assert!(
         validation_errors.is_empty(),
@@ -382,6 +399,11 @@ fn test_agent_json_validation_additional_unexpected_fields() {
 
 #[test]
 fn test_agent_json_validation_incorrect_data_types() {
+    let header_schema_url =
+        "http://localhost/schemas/header/mock_version/header.schema.json".to_string();
+    let agent_schema_url =
+        "http://localhost/schemas/agent/mock_version/agent.schema.json".to_string();
+
     let json_data_with_incorrect_types = r#"{
     "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
     "jacsVersion": "1.0.0",
@@ -406,8 +428,8 @@ fn test_agent_json_validation_incorrect_data_types() {
 
     let validation_errors = validate_json_data(
         &json_data_with_incorrect_types,
-        "../schemas/header/v1/header.schema.json",
-        "../schemas/agent/v1/agent.schema.json",
+        &header_schema_url,
+        &agent_schema_url,
     );
     assert!(
         !validation_errors.is_empty(),
