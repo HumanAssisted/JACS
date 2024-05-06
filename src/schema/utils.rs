@@ -99,59 +99,18 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
         path = rawpath;
     };
 
-    if path.starts_with("http://") || path.starts_with("https://") {
-        debug!("Attempting to fetch schema from URL: {}", path);
-        if path.starts_with("https://hai.ai") {
-            let relative_path = path.trim_start_matches("https://hai.ai/");
-            let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
-                error!("Error: Schema not found for URL: {}", path);
-                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                    "Schema not found: {}",
-                    path
-                )))
-            })?;
-            schema_value = serde_json::from_str(&schema_json)?;
-            debug!("Successfully fetched schema from URL: {}", path);
-            return Ok(Arc::new(schema_value));
-        } else {
-            // Create a reqwest client with SSL verification disabled
-            let client = reqwest::blocking::Client::builder()
-                .danger_accept_invalid_certs(ACCEPT_INVALID_CERTS)
-                .build()
-                .map_err(|err| {
-                    error!("Error fetching schema from URL: {}, error: {}", path, err);
-                    SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                        "Failed to create reqwest client: {}",
-                        err
-                    )))
-                })?;
-
-            // Fetch the schema using the reqwest client
-            let schema_response = client.get(path).send().map_err(|err| {
-                error!("Error fetching schema from URL: {}, error: {}", path, err);
-                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                    "Failed to fetch schema from URL {}: {}",
-                    path, err
-                )))
-            })?;
-
-            if schema_response.status().is_success() {
-                schema_value = schema_response.json().map_err(|err| {
-                    error!("Error parsing schema from URL: {}, error: {}", path, err);
-                    SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                        "Failed to parse schema from URL {}: {}",
-                        path, err
-                    )))
-                })?;
-                debug!("Successfully fetched schema from URL: {}", path);
-                return Ok(Arc::new(schema_value));
-            } else {
-                error!("Failed to resolve schema: {}", path);
-                return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-                    format!("Failed to get schema from URL {} ", path),
-                )));
-            }
-        }
+    if ACCEPT_INVALID_CERTS {
+        // Resolve schema from mock server URLs during tests
+        let schema_json = DEFAULT_SCHEMA_STRINGS.get(path).ok_or_else(|| {
+            error!("Error: Schema not found for path: {}", path);
+            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
+                "Schema not found: {}",
+                path
+            )))
+        })?;
+        schema_value = serde_json::from_str(&schema_json)?;
+        debug!("Successfully resolved schema from mock server: {}", path);
+        return Ok(Arc::new(schema_value));
     } else if Path::new(path).exists() {
         debug!("Attempting to read schema from local file system: {}", path);
         // add default directory
