@@ -111,6 +111,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
                 )))
             })?;
             schema_value = serde_json::from_str(&schema_json)?;
+            debug!("Successfully fetched schema from URL: {}", path);
             return Ok(Arc::new(schema_value));
         } else {
             // Create a reqwest client with SSL verification disabled
@@ -142,21 +143,27 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
                         path, err
                     )))
                 })?;
+                debug!("Successfully fetched schema from URL: {}", path);
                 return Ok(Arc::new(schema_value));
             } else {
-                Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
+                error!("Failed to resolve schema: {}", path);
+                return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
                     format!("Failed to get schema from URL {} ", path),
-                )))
+                )));
             }
         }
     } else if Path::new(path).exists() {
+        debug!("Attempting to read schema from local file system: {}", path);
         // add default directory
         // todo secure with let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
         println!("loading custom local schema {}", path);
         let schema_json = std::fs::read_to_string(path)?;
         let schema_value: Value = serde_json::from_str(&schema_json)?;
+        debug!("Successfully read schema from local file system: {}", path);
+        debug!("Successfully resolved schema: {}", path);
         return Ok(Arc::new(schema_value));
     } else {
+        error!("Failed to resolve schema: {}", path);
         return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
             format!("Failed to fetch schema from URL {} ", path,),
         )));

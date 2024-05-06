@@ -152,6 +152,9 @@ fn test_validate_agent_json_raw() {
     println!("Confirming JSON Value is not Null and is correctly structured before validation:");
     println!("{:?}", json_value);
 
+    println!("Parsed JSON data as serde_json::Value: {:?}", json_value);
+    assert!(!json_value.is_null(), "Parsed JSON data is null");
+
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(

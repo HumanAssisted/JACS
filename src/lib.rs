@@ -88,10 +88,10 @@ pub fn create_task(
     actions.push(action);
     let mut task = create_minimal_task(Some(actions), None, None, None)?;
     // Adjusted the following line to handle the () return type from signing_procedure
-    let signing_result = agent.signing_procedure()?;
+    let _signing_result = agent.signing_procedure()?;
     task["jacsTaskCustomer"] = Value::Null; // Placeholder value, assuming signing_procedure does not alter the task
 
-    let embed: Option<Value> = None;
+    let _embed: Option<Value> = None;
     // Commented out the following line due to missing method
     // let docresult = agent.create_document_and_load(&task.to_string(), None, embed);
 
