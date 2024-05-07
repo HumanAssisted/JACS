@@ -329,7 +329,7 @@ fn test_agent_creation_with_different_schema_versions() {
                 .body_from_file(format!("schemas/agent/{}/agent.schema.json", version));
         });
 
-        let agent = jacs::agent::Agent::new(
+        let _agent = jacs::agent::Agent::new(
             &version.to_string(),
             &version.to_string(),
             header_schema_url.clone(),
@@ -385,7 +385,7 @@ fn test_agent_json_validation_additional_unexpected_fields() {
     let header_schema_url = format!("{}/schemas/header/v1/header.schema.json", base_url);
     let agent_schema_url = format!("{}/schemas/agent/v1/agent.schema.json", base_url);
 
-    let resolver = EmbeddedSchemaResolver::new();
+    let _resolver = EmbeddedSchemaResolver::new();
 
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
@@ -422,9 +422,9 @@ fn test_agent_json_validation_additional_unexpected_fields() {
     )
     .expect("Failed to parse agent schema into Value");
 
-    let header_schema =
+    let _header_schema =
         JSONSchema::compile(&header_schema_value).expect("Failed to compile header schema");
-    let agent_schema =
+    let _agent_schema =
         JSONSchema::compile(&agent_schema_value).expect("Failed to compile agent schema");
 
     let json_data = r#"{
