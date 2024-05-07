@@ -97,12 +97,11 @@ fn test_update_agent_and_verify_versions() {
         );
     });
 
-    // Prefix unused variables with an underscore to suppress the warnings
-    let _agent_version = "v1".to_string();
-    let _header_version = "v1".to_string();
-    let _agent = jacs::agent::Agent::new(
-        &_agent_version,
-        &_header_version,
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
         header_schema_url.to_string(),
         agent_schema_url.to_string(),
     )
