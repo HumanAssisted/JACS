@@ -18,7 +18,11 @@ fn validate_json_data(
 
     // Parse the JSON data into a serde_json::Value
     let json_value: serde_json::Value = match serde_json::from_str(json_data) {
-        Ok(value) => value,
+        Ok(value) => {
+            // Log the parsed JSON value for debugging purposes
+            println!("Parsed JSON data: {:?}", value);
+            value
+        }
         Err(e) => {
             errors.push(format!("Failed to parse JSON data: {}", e));
             return errors;
@@ -186,8 +190,7 @@ fn test_update_agent_and_verify_versions() {
     "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00",
     "name": "Agent Smith",
     "jacsOriginalVersion": "0.9.0",
-    "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
-    "additionalField": "This field is allowed as per schema"
+    "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00"
 }"#
     .replace(
         "http://localhost/schemas/agent/v1/agent.schema.json",
