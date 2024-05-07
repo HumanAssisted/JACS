@@ -98,12 +98,18 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
         path = rawpath;
     };
 
-    // Check if ACCEPT_INVALID_CERTS is set to true and resolve schema from mock server URLs during tests
+    debug!("Attempting to resolve schema for path: {}", path);
+    // Check if ACCEPT_INVALID_CERTS is set to true and resolve schema from memory
     if std::env::var("ACCEPT_INVALID_CERTS").unwrap_or_else(|_| "false".to_string()) == "true" {
         if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
             schema_value = serde_json::from_str(&schema_json)?;
-            debug!("Successfully resolved schema from mock server: {}", path);
+            debug!("Successfully resolved schema from memory: {}", path);
             return Ok(Arc::new(schema_value));
+        } else {
+            debug!("Failed to resolve schema from memory for path: {}", path);
+            return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
+                format!("Failed to fetch schema from memory for path: {}", path),
+            )));
         }
     }
 

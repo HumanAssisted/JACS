@@ -48,7 +48,7 @@ fn test_pq_create_and_verify_signature() {
         "http://localhost/schemas/document/v1/document.schema.json".to_string();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
+    let agent = jacs::agent::Agent::new(
         &agent_version,
         &header_version,
         header_schema_url.clone(),

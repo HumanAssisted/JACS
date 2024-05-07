@@ -62,7 +62,7 @@ fn test_ring_ed25519_create_and_verify_signature() {
         document_schema_url.clone(),
         &json_data,
     );
-    let mut agent = jacs::agent::Agent::new(
+    let agent = jacs::agent::Agent::new(
         &agent_version,
         &header_version,
         header_schema_url,
