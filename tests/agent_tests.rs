@@ -106,10 +106,10 @@ fn test_update_agent_and_verify_versions() {
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(
-        &agent_version,
-        &header_version,
-        &header_schema_url,
-        &agent_schema_url,
+        agent_version,
+        header_version,
+        header_schema_url.to_string(),
+        agent_schema_url.to_string(),
     )
     .expect("Agent instantiation failed");
 
@@ -293,8 +293,8 @@ fn test_validate_agent_json_raw() {
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(
-        agent_version.to_string(),
-        header_version.to_string(),
+        agent_version,
+        header_version,
         header_schema_url.to_string(),
         agent_schema_url.to_string(),
     )
