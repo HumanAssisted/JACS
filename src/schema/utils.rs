@@ -1,7 +1,6 @@
 use crate::schema::Url;
 use log::debug;
 use log::error;
-use std::path::Path;
 
 use phf::phf_map;
 
@@ -99,32 +98,17 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
         path = rawpath;
     };
 
-    if ACCEPT_INVALID_CERTS {
-        // Resolve schema from mock server URLs during tests
-        let schema_json = DEFAULT_SCHEMA_STRINGS.get(path).ok_or_else(|| {
-            error!("Error: Schema not found for path: {}", path);
-            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "Schema not found: {}",
-                path
-            )))
-        })?;
-        schema_value = serde_json::from_str(&schema_json)?;
-        debug!("Successfully resolved schema from mock server: {}", path);
-        return Ok(Arc::new(schema_value));
-    } else if Path::new(path).exists() {
-        debug!("Attempting to read schema from local file system: {}", path);
-        // add default directory
-        // todo secure with let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
-        println!("loading custom local schema {}", path);
-        let schema_json = std::fs::read_to_string(path)?;
-        let schema_value: Value = serde_json::from_str(&schema_json)?;
-        debug!("Successfully read schema from local file system: {}", path);
-        debug!("Successfully resolved schema: {}", path);
-        return Ok(Arc::new(schema_value));
-    } else {
-        error!("Failed to resolve schema: {}", path);
-        return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-            format!("Failed to fetch schema from URL {} ", path,),
-        )));
+    // Check if ACCEPT_INVALID_CERTS is set to true and resolve schema from mock server URLs during tests
+    if std::env::var("ACCEPT_INVALID_CERTS").unwrap_or_else(|_| "false".to_string()) == "true" {
+        if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+            schema_value = serde_json::from_str(&schema_json)?;
+            debug!("Successfully resolved schema from mock server: {}", path);
+            return Ok(Arc::new(schema_value));
+        }
     }
+
+    error!("Failed to resolve schema: {}", path);
+    Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
+        format!("Failed to fetch schema from URL {} ", path,),
+    )))
 }

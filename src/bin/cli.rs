@@ -8,8 +8,6 @@ use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::config::{set_env_vars, Config};
 use jacs::create_minimal_blank_agent;
 use jacs::create_task;
-use jacs::crypt::KeyManager;
-use jacs::get_empty_agent;
 use jacs::load_agent;
 use jacs::shared::document_add_agreement;
 use jacs::shared::document_check_agreement;
@@ -20,7 +18,6 @@ use jacs::shared::get_file_list;
 
 use rpassword::read_password;
 use serde_json::Value;
-use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -582,7 +579,7 @@ fn main() {
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
-                let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
+                let _create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
 
                 let agentstring = match filename {
                     Some(filename) => {
@@ -608,7 +605,7 @@ fn main() {
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
 
                 agent
                     .verify_self_signature()
@@ -709,7 +706,7 @@ fn main() {
                     // schemastring =
                     fs::read_to_string(schema_file).expect("Failed to load schema file");
 
-                    let schemas = [schema_file.clone()];
+                    let _schemas = [schema_file.clone()];
                     match agent.load_custom_schemas() {
                         Ok(_) => (),
                         Err(e) => {
