@@ -248,7 +248,58 @@ fn test_validate_agent_json_raw() {
     });
 
     let json_data = r#"{
-        "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff"
+        "$schema": "http://localhost/schemas/agent/v1/agent.schema.json",
+        "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+        "jacsVersion": "1.0.0",
+        "jacsAgentType": "ai",
+        "jacsServices": [
+            {
+                "serviceId": "service123",
+                "serviceName": "Test Service",
+                "serviceDescription": "A test service for validation purposes",
+                "tools": [
+                    {
+                        "function": {
+                            "name": "ExampleFunction",
+                            "parameters": {
+                                "param1": "A string parameter",
+                                "param2": 42
+                            }
+                        },
+                        "type": "function",
+                        "url": "https://api.example.com/tool"
+                    }
+                ]
+            }
+        ],
+        "jacsContacts": [
+            {
+                "contactId": "contact123",
+                "contactType": "email",
+                "contactDetails": "agent.smith@example.com"
+            }
+        ],
+        "jacsSha256": "a1c87ea81a8c557b7f6be29834bd6da2650de57078da4335b2ee2612c694a18d",
+        "jacsSignature": {
+            "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+            "agentVersion": "12ccba24-8997-47b1-9e6f-d699d7ab0e41",
+            "date": "2024-04-25T05:46:34.660457+00:00",
+            "fields": [
+                "$schema",
+                "jacsId",
+                "jacsAgentType",
+                "jacsServices",
+                "jacsContacts"
+            ],
+            "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+            "signature": "signatureValue",
+            "signingAlgorithm": "RSA-PSS"
+        },
+        "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00",
+        "name": "Agent Smith",
+        "jacsOriginalVersion": "0.9.0",
+        "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
+        "additionalField": "This field is allowed as per schema"
     }"#;
 
     // Validate the JSON data against the schemas using the EmbeddedSchemaResolver
