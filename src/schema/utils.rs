@@ -73,6 +73,12 @@ impl EmbeddedSchemaResolver {
     }
 }
 
+impl Default for EmbeddedSchemaResolver {
+    fn default() -> Self {
+        EmbeddedSchemaResolver {}
+    }
+}
+
 impl SchemaResolver for EmbeddedSchemaResolver {
     fn resolve(
         &self,
