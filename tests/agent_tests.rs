@@ -99,7 +99,7 @@ fn test_update_agent_and_verify_versions() {
 
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let agent = jacs::agent::Agent::new(
+    let mut agent = jacs::agent::Agent::new(
         &agent_version,
         &header_version,
         header_schema_url.to_string(),
