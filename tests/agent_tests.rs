@@ -69,10 +69,9 @@ fn test_update_agent_and_verify_versions() {
     std::env::set_var("ACCEPT_INVALID_CERTS", "true");
 
     let mock_server = MockServer::start();
-    let base_url = mock_server.url("");
 
-    let header_schema_url = format!("{}/schemas/header/v1/header.schema.json", base_url);
-    let agent_schema_url = format!("{}/schemas/agent/v1/agent.schema.json", base_url);
+    let header_schema_url = "schemas/header/v1/header.schema.json";
+    let agent_schema_url = "schemas/agent/v1/agent.schema.json";
 
     let _resolver = EmbeddedSchemaResolver::new();
 
@@ -221,11 +220,8 @@ fn test_validate_agent_json_raw() {
     let mock_server = MockServer::start();
 
     // Define schema URLs using the mock server base URL
-    let header_schema_url = format!(
-        "{}/schemas/header/v1/header.schema.json",
-        mock_server.url("")
-    );
-    let agent_schema_url = format!("{}/schemas/agent/v1/agent.schema.json", mock_server.url(""));
+    let header_schema_url = "schemas/header/v1/header.schema.json";
+    let agent_schema_url = "schemas/agent/v1/agent.schema.json";
 
     // Instantiate the EmbeddedSchemaResolver
     let _resolver = EmbeddedSchemaResolver::new();
