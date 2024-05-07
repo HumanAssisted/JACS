@@ -235,9 +235,9 @@ fn test_validate_agent_json_raw() {
         when.method(GET)
             .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
-            *DEFAULT_SCHEMA_STRINGS
-                .get("/schemas/header/v1/header.schema.json")
-                .unwrap_or(&"Header schema not found"),
+            DEFAULT_SCHEMA_STRINGS
+                .get("schemas/header/v1/header.schema.json")
+                .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
 
@@ -245,9 +245,9 @@ fn test_validate_agent_json_raw() {
     let _agent_schema_mock = mock_server.mock(|when, then| {
         when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
-            *DEFAULT_SCHEMA_STRINGS
-                .get("/schemas/agent/v1/agent.schema.json")
-                .unwrap_or(&"Agent schema not found"),
+            DEFAULT_SCHEMA_STRINGS
+                .get("schemas/agent/v1/agent.schema.json")
+                .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
 
