@@ -76,13 +76,17 @@ fn test_update_agent_and_verify_versions() {
 
     let _resolver = EmbeddedSchemaResolver::new();
 
+    // Corrected keys for accessing the DEFAULT_SCHEMA_STRINGS map
+    let header_schema_key = "schemas/header/v1/header.schema.json";
+    let agent_schema_key = "schemas/agent/v1/agent.schema.json";
+
     // Mock the header schema to resolve from memory
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
+                .get(header_schema_key)
                 .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
@@ -92,7 +96,7 @@ fn test_update_agent_and_verify_versions() {
         when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
+                .get(agent_schema_key)
                 .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
