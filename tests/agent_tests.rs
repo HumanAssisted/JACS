@@ -83,21 +83,15 @@ fn test_update_agent_and_verify_versions() {
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
             .path("/schemas/header/v1/header.schema.json");
-        then.status(200).body(
-            DEFAULT_SCHEMA_STRINGS
-                .get(header_schema_key)
-                .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
-        );
+        then.status(200)
+            .body_str(DEFAULT_SCHEMA_STRINGS.get(header_schema_key).unwrap());
     });
 
     // Mock the agent schema to resolve from memory
     let _agent_schema_mock = mock_server.mock(|when, then| {
         when.method(GET).path("/schemas/agent/v1/agent.schema.json");
-        then.status(200).body(
-            DEFAULT_SCHEMA_STRINGS
-                .get(agent_schema_key)
-                .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
-        );
+        then.status(200)
+            .body_str(DEFAULT_SCHEMA_STRINGS.get(agent_schema_key).unwrap());
     });
 
     let agent_version = "v1".to_string();
