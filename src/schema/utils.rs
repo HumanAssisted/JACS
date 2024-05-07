@@ -92,30 +92,23 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
     let path = rawpath.trim_start_matches('/'); // Always remove the leading slash if present
 
     debug!("Attempting to resolve schema for path: {}", path);
-    // Check if ACCEPT_INVALID_CERTS is set to true and resolve schema from memory
-    if std::env::var("ACCEPT_INVALID_CERTS").unwrap_or_else(|_| "false".to_string()) == "true" {
-        if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
-            schema_value = serde_json::from_str(&schema_json)?;
-            debug!("Successfully resolved schema from memory: {}", path);
-            return Ok(Arc::new(schema_value));
-        } else {
-            let available_keys: Vec<&str> = DEFAULT_SCHEMA_STRINGS.keys().cloned().collect();
-            debug!(
-                "Available keys in DEFAULT_SCHEMA_STRINGS: {:?}",
-                available_keys
-            );
-            debug!("Failed to resolve schema from memory for path: {}", path);
-            return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-                format!(
-                    "Failed to fetch schema from memory for path: {}. Available keys: {:?}",
-                    path, available_keys
-                ),
-            )));
-        }
+    // Always resolve schema from memory, bypassing the need for SSL certificate verification
+    if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+        schema_value = serde_json::from_str(&schema_json)?;
+        debug!("Successfully resolved schema from memory: {}", path);
+        return Ok(Arc::new(schema_value));
+    } else {
+        let available_keys: Vec<&str> = DEFAULT_SCHEMA_STRINGS.keys().cloned().collect();
+        debug!(
+            "Available keys in DEFAULT_SCHEMA_STRINGS: {:?}",
+            available_keys
+        );
+        debug!("Failed to resolve schema from memory for path: {}", path);
+        return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
+            format!(
+                "Failed to fetch schema from memory for path: {}. Available keys: {:?}",
+                path, available_keys
+            ),
+        )));
     }
-
-    error!("Failed to resolve schema: {}", path);
-    Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-        format!("Failed to fetch schema from URL {} ", path,),
-    )))
 }
