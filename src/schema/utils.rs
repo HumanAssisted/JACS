@@ -1,6 +1,5 @@
 use crate::schema::Url;
 use log::debug;
-use log::error;
 
 use phf::phf_map;
 

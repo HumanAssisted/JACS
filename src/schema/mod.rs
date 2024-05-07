@@ -14,7 +14,6 @@ pub mod tools_crud;
 pub mod utils;
 
 use lazy_static::lazy_static;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -31,47 +30,22 @@ impl fmt::Display for ValidationError {
 
 impl Error for ValidationError {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct Schema {
-    #[serde(skip_deserializing)]
     pub headerschema: JSONSchema,
-    #[serde(skip_deserializing)]
     pub agentschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     signatureschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     jacsconfigschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     agreementschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     serviceschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     unitschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     actionschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     toolschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     contactschema: JSONSchema,
-    #[serde(skip_deserializing)]
     pub taskschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     messageschema: JSONSchema,
-    #[serde(skip_deserializing)]
-    #[allow(dead_code)]
     evalschema: JSONSchema,
 }
-
-// static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
 
 lazy_static! {
     static ref HEADERSCHEMA_VALUE_ARC: Arc<Value> = Arc::new(

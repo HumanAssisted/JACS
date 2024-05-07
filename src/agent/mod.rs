@@ -11,6 +11,7 @@ use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 use jsonschema::JSONSchema;
 use loaders::FileLoader;
+use log::error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -88,7 +89,7 @@ impl PrivateKey {
 /// Use this alias when storing secret values
 pub type SecretPrivateKey = Secret<PrivateKey>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct Agent {
     /// the JSONSchema used
     #[serde(skip)]
