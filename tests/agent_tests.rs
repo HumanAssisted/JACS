@@ -4,9 +4,6 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::schema::utils::EmbeddedSchemaResolver;
 use jacs::schema::utils::DEFAULT_SCHEMA_STRINGS;
 use jsonschema::JSONSchema;
-use jsonschema::SchemaResolver;
-
-use url::Url;
 
 mod utils;
 
@@ -411,7 +408,7 @@ fn test_agent_json_validation_additional_unexpected_fields() {
     let agent_schema =
         JSONSchema::compile(&agent_schema_value).expect("Failed to compile agent schema");
 
-    let json_data_with_unexpected_fields = r#"{
+    let json_data = r#"{
         "$schema": "http://localhost/schemas/header/v1/header.schema.json",
         "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
         "jacsVersion": "1.0.0",
@@ -431,7 +428,15 @@ fn test_agent_json_validation_additional_unexpected_fields() {
             }
         ],
         "additionalField": "This field is allowed as per schema"
-    }"#;
+    }"#
+    .replace(
+        "http://localhost/schemas/header/v1/header.schema.json",
+        &header_schema_url,
+    )
+    .replace(
+        "http://localhost/schemas/agent/v1/agent.schema.json",
+        &agent_schema_url,
+    );
 
     // Validate the JSON data against the schemas using the EmbeddedSchemaResolver
     let validation_errors = validate_json_data(&json_data, &header_schema_url, &agent_schema_url);
@@ -445,3 +450,60 @@ fn test_agent_json_validation_additional_unexpected_fields() {
 }
 
 // Remaining tests unchanged...
+
+/// Validates JSON data against the provided schemas.
+/// Returns a list of validation errors, if any.
+fn validate_json_data(
+    json_data: &str,
+    header_schema_url: &str,
+    agent_schema_url: &str,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    // Parse the JSON data into a serde_json::Value
+    let json_value: serde_json::Value = match serde_json::from_str(json_data) {
+        Ok(value) => value,
+        Err(e) => {
+            errors.push(format!("Failed to parse JSON data: {}", e));
+            return errors;
+        }
+    };
+
+    // Compile the header schema
+    let header_schema_value = serde_json::from_str::<serde_json::Value>(
+        DEFAULT_SCHEMA_STRINGS
+            .get(header_schema_url)
+            .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
+    )
+    .expect("Failed to parse header schema into Value");
+
+    let header_schema =
+        JSONSchema::compile(&header_schema_value).expect("Failed to compile header schema");
+
+    // Compile the agent schema
+    let agent_schema_value = serde_json::from_str::<serde_json::Value>(
+        DEFAULT_SCHEMA_STRINGS
+            .get(agent_schema_url)
+            .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
+    )
+    .expect("Failed to parse agent schema into Value");
+
+    let agent_schema =
+        JSONSchema::compile(&agent_schema_value).expect("Failed to compile agent schema");
+
+    // Validate the JSON data against the header schema
+    if let Err(validation_errors) = header_schema.validate(&json_value) {
+        for error in validation_errors {
+            errors.push(format!("Header schema validation error: {}", error));
+        }
+    }
+
+    // Validate the JSON data against the agent schema
+    if let Err(validation_errors) = agent_schema.validate(&json_value) {
+        for error in validation_errors {
+            errors.push(format!("Agent schema validation error: {}", error));
+        }
+    }
+
+    errors
+}
