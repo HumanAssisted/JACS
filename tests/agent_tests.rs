@@ -221,20 +221,20 @@ fn test_validate_agent_json_raw() {
     // Mock the header schema to resolve from memory
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
-            .path("schemas/header/v1/header.schema.json");
+            .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
+                .get("/schemas/header/v1/header.schema.json")
                 .unwrap_or(&"Header schema not found"),
         );
     });
 
     // Mock the agent schema to resolve from memory
     let _agent_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("schemas/agent/v1/agent.schema.json");
+        when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
+                .get("/schemas/agent/v1/agent.schema.json")
                 .unwrap_or(&"Agent schema not found"),
         );
     });
@@ -317,14 +317,14 @@ fn test_agent_creation_with_different_schema_versions() {
 
         let _schema_mock = mock_server.mock(|when, then| {
             when.method(GET)
-                .path(format!("schemas/header/{}/header.schema.json", version));
+                .path(format!("/schemas/header/{}/header.schema.json", version));
             then.status(200)
                 .body_from_file(format!("schemas/header/{}/header.schema.json", version));
         });
 
         let _schema_mock_agent = mock_server.mock(|when, then| {
             when.method(GET)
-                .path(format!("schemas/agent/{}/agent.schema.json", version));
+                .path(format!("/schemas/agent/{}/agent.schema.json", version));
             then.status(200)
                 .body_from_file(format!("schemas/agent/{}/agent.schema.json", version));
         });
@@ -389,20 +389,20 @@ fn test_agent_json_validation_additional_unexpected_fields() {
 
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
-            .path("schemas/header/v1/header.schema.json");
+            .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
+                .get("/schemas/header/v1/header.schema.json")
                 .unwrap_or(&"Header schema not found"),
         );
     });
 
     // Mock the agent schema to resolve from memory
     let _agent_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("schemas/agent/v1/agent.schema.json");
+        when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
+                .get("/schemas/agent/v1/agent.schema.json")
                 .unwrap_or(&"Agent schema not found"),
         );
     });
@@ -410,14 +410,14 @@ fn test_agent_json_validation_additional_unexpected_fields() {
     // Use the EmbeddedSchemaResolver to resolve the schema from memory
     let header_schema_value: serde_json::Value = serde_json::from_str(
         DEFAULT_SCHEMA_STRINGS
-            .get("schemas/header/v1/header.schema.json")
+            .get("/schemas/header/v1/header.schema.json")
             .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
     )
     .expect("Failed to parse header schema into Value");
 
     let agent_schema_value: serde_json::Value = serde_json::from_str(
         DEFAULT_SCHEMA_STRINGS
-            .get("schemas/agent/v1/agent.schema.json")
+            .get("/schemas/agent/v1/agent.schema.json")
             .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
     )
     .expect("Failed to parse agent schema into Value");
