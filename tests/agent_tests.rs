@@ -1,5 +1,6 @@
 use httpmock::Method::GET;
 use httpmock::MockServer;
+use jacs::agent::boilerplate::BoilerPlate;
 use jacs::schema::utils::EmbeddedSchemaResolver;
 use jacs::schema::utils::DEFAULT_SCHEMA_STRINGS;
 use jsonschema::JSONSchema;

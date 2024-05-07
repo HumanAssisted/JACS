@@ -1,9 +1,5 @@
 use httpmock::Method::GET;
 use httpmock::MockServer;
-use jacs::agent::agreement::Agreement;
-use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
-use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use serde_json::json;
 
 #[test]
