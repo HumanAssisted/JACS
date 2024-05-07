@@ -32,27 +32,40 @@ impl Error for ValidationError {}
 
 #[derive(Debug)]
 pub struct Schema {
+    #[serde(skip)]
     pub headerschema: JSONSchema,
+    #[serde(skip)]
     pub agentschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     signatureschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     jacsconfigschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     agreementschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     serviceschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     unitschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     actionschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     toolschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     contactschema: JSONSchema,
+    #[serde(skip)]
     pub taskschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     messageschema: JSONSchema,
+    #[serde(skip)]
     #[allow(dead_code)]
     evalschema: JSONSchema,
 }
@@ -202,6 +215,26 @@ impl Schema {
         } else {
             println!("Validation successful for agent JSON."); // Log successful validation
             Ok(agent)
+        }
+    }
+}
+
+impl Default for Schema {
+    fn default() -> Self {
+        Schema {
+            headerschema: JSONSchema::compile(&Value::Null).unwrap(),
+            agentschema: JSONSchema::compile(&Value::Null).unwrap(),
+            signatureschema: JSONSchema::compile(&Value::Null).unwrap(),
+            jacsconfigschema: JSONSchema::compile(&Value::Null).unwrap(),
+            agreementschema: JSONSchema::compile(&Value::Null).unwrap(),
+            serviceschema: JSONSchema::compile(&Value::Null).unwrap(),
+            unitschema: JSONSchema::compile(&Value::Null).unwrap(),
+            actionschema: JSONSchema::compile(&Value::Null).unwrap(),
+            toolschema: JSONSchema::compile(&Value::Null).unwrap(),
+            contactschema: JSONSchema::compile(&Value::Null).unwrap(),
+            taskschema: JSONSchema::compile(&Value::Null).unwrap(),
+            messageschema: JSONSchema::compile(&Value::Null).unwrap(),
+            evalschema: JSONSchema::compile(&Value::Null).unwrap(),
         }
     }
 }

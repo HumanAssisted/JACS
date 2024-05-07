@@ -12,6 +12,7 @@ use crate::schema::Schema;
 use jsonschema::JSONSchema;
 use loaders::FileLoader;
 use log::error;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
@@ -88,22 +89,26 @@ impl PrivateKey {
 /// Use this alias when storing secret values
 pub type SecretPrivateKey = Secret<PrivateKey>;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Agent {
+    #[serde(skip_serializing, skip_deserializing)]
     /// the JSONSchema used
     pub schema: Schema,
     /// the agent JSON Struct
     /// TODO make this threadsafe
     value: Option<Value>,
+    #[serde(skip_serializing, skip_deserializing)]
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, Arc<JSONSchema>>>>,
+    #[serde(skip_serializing, skip_deserializing)]
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     default_directory: PathBuf,
     /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
     public_key: Option<Vec<u8>>,
+    #[serde(skip_serializing, skip_deserializing)]
     private_key: Option<SecretPrivateKey>,
     key_algorithm: Option<String>,
 
