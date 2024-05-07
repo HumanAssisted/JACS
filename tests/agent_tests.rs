@@ -82,7 +82,7 @@ fn test_update_agent_and_verify_versions() {
             .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
-                .get("/schemas/header/v1/header.schema.json")
+                .get("schemas/header/v1/header.schema.json")
                 .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
@@ -92,7 +92,7 @@ fn test_update_agent_and_verify_versions() {
         when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
-                .get("/schemas/agent/v1/agent.schema.json")
+                .get("schemas/agent/v1/agent.schema.json")
                 .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
