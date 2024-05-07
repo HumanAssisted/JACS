@@ -108,8 +108,8 @@ fn test_update_agent_and_verify_versions() {
     let mut agent = jacs::agent::Agent::new(
         &agent_version,
         &header_version,
-        header_schema_url.to_string(),
-        agent_schema_url.to_string(),
+        &header_schema_url.to_string(),
+        &agent_schema_url.to_string(),
     )
     .expect("Agent instantiation failed");
 
@@ -290,11 +290,13 @@ fn test_validate_agent_json_raw() {
 
     let agentid =
         "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(
-        "v1",
-        "v1",
-        header_schema_url.to_string(),
-        agent_schema_url.to_string(),
+        &agent_version,
+        &header_version,
+        &header_schema_url.to_string(),
+        &agent_schema_url.to_string(),
     )
     .expect("Agent instantiation failed");
     let result = agent.load_by_id(Some(agentid), None);
