@@ -79,29 +79,30 @@ fn test_update_agent_and_verify_versions() {
     // Mock the header schema to resolve from memory
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
-            .path("schemas/header/v1/header.schema.json");
+            .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
-                .unwrap_or(&"Header schema not found"),
+                .get("/schemas/header/v1/header.schema.json")
+                .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
 
     // Mock the agent schema to resolve from memory
     let _agent_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("schemas/agent/v1/agent.schema.json");
+        when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
-                .unwrap_or(&"Agent schema not found"),
+                .get("/schemas/agent/v1/agent.schema.json")
+                .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
 
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
-        &agent_version,
-        &header_version,
+    // Prefix unused variables with an underscore to suppress the warnings
+    let _agent_version = "v1".to_string();
+    let _header_version = "v1".to_string();
+    let _agent = jacs::agent::Agent::new(
+        &_agent_version,
+        &_header_version,
         header_schema_url.to_string(),
         agent_schema_url.to_string(),
     )
