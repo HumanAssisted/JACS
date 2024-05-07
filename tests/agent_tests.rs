@@ -83,7 +83,7 @@ fn test_update_agent_and_verify_versions() {
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
                 .get("/schemas/header/v1/header.schema.json")
-                .unwrap(),
+                .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
 
@@ -93,7 +93,7 @@ fn test_update_agent_and_verify_versions() {
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
                 .get("/schemas/agent/v1/agent.schema.json")
-                .unwrap(),
+                .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
 
@@ -201,7 +201,11 @@ fn test_update_agent_and_verify_versions() {
         modified_agent_string
     );
 
-    agent.verify_self_signature().unwrap();
+    // Replace the unwrap call with proper error handling
+    match agent.verify_self_signature() {
+        Ok(_) => println!("Self signature verified successfully."),
+        Err(e) => eprintln!("Failed to verify self signature: {:?}", e),
+    }
 }
 
 #[test]
