@@ -79,21 +79,21 @@ fn test_update_agent_and_verify_versions() {
     // Mock the header schema to resolve from memory
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
-            .path("schemas/header/v1/header.schema.json");
+            .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
-            *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
-                .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
+            DEFAULT_SCHEMA_STRINGS
+                .get("/schemas/header/v1/header.schema.json")
+                .unwrap(),
         );
     });
 
     // Mock the agent schema to resolve from memory
     let _agent_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("schemas/agent/v1/agent.schema.json");
+        when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
-            *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
-                .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
+            DEFAULT_SCHEMA_STRINGS
+                .get("/schemas/agent/v1/agent.schema.json")
+                .unwrap(),
         );
     });
 
@@ -225,20 +225,20 @@ fn test_validate_agent_json_raw() {
     // Mock the header schema to resolve from memory
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
-            .path("schemas/header/v1/header.schema.json");
+            .path("/schemas/header/v1/header.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
+                .get("/schemas/header/v1/header.schema.json")
                 .unwrap_or(&"Header schema not found"),
         );
     });
 
     // Mock the agent schema to resolve from memory
     let _agent_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("schemas/agent/v1/agent.schema.json");
+        when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200).body(
             *DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
+                .get("/schemas/agent/v1/agent.schema.json")
                 .unwrap_or(&"Agent schema not found"),
         );
     });
