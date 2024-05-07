@@ -11,7 +11,6 @@ use crate::schema::utils::ValueExt;
 use crate::schema::Schema;
 use jsonschema::JSONSchema;
 use loaders::FileLoader;
-use log::error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -92,19 +91,23 @@ pub type SecretPrivateKey = Secret<PrivateKey>;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Agent {
     /// the JSONSchema used
+    #[serde(skip)]
     pub schema: Schema,
     /// the agent JSON Struct
     /// TODO make this threadsafe
     value: Option<Value>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might have trouble TEST
+    #[serde(skip)]
     document_schemas: Arc<Mutex<HashMap<String, Arc<JSONSchema>>>>,
+    #[serde(skip)]
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     default_directory: PathBuf,
     /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
     public_key: Option<Vec<u8>>,
+    #[serde(skip)]
     private_key: Option<SecretPrivateKey>,
     key_algorithm: Option<String>,
 
