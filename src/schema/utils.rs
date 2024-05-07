@@ -87,16 +87,9 @@ impl SchemaResolver for EmbeddedSchemaResolver {
 
 // todo handle case for url retrieval
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> {
-    debug!("Entering resolve_schema function with path: {}", rawpath);
+    debug!("Attempting to resolve schema for path: {}", rawpath);
     let schema_value: Value;
-    let path: &str;
-    if rawpath.starts_with('/') {
-        // Remove the leading slash and use the remaining path as the key
-        path = &rawpath[1..];
-    } else {
-        // Use the full path as the key (relative or URI)
-        path = rawpath;
-    };
+    let path = rawpath.trim_start_matches('/'); // Always remove the leading slash if present
 
     debug!("Attempting to resolve schema for path: {}", path);
     // Check if ACCEPT_INVALID_CERTS is set to true and resolve schema from memory
@@ -106,9 +99,17 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
             debug!("Successfully resolved schema from memory: {}", path);
             return Ok(Arc::new(schema_value));
         } else {
+            let available_keys: Vec<&str> = DEFAULT_SCHEMA_STRINGS.keys().cloned().collect();
+            debug!(
+                "Available keys in DEFAULT_SCHEMA_STRINGS: {:?}",
+                available_keys
+            );
             debug!("Failed to resolve schema from memory for path: {}", path);
             return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-                format!("Failed to fetch schema from memory for path: {}", path),
+                format!(
+                    "Failed to fetch schema from memory for path: {}. Available keys: {:?}",
+                    path, available_keys
+                ),
             )));
         }
     }
