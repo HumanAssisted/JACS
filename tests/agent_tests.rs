@@ -389,7 +389,7 @@ fn test_agent_creation_with_different_schema_versions() {
             );
         });
 
-        let _agent = jacs::agent::Agent::new(
+        let agent = jacs::agent::Agent::new(
             &version.to_string(),
             &version.to_string(),
             header_schema_url.clone(),
@@ -448,26 +448,29 @@ fn test_agent_json_validation_additional_unexpected_fields() {
     let agent_schema_url = format!("{}/schemas/agent/v1/agent.schema.json", base_url);
 
     let json_data_with_unexpected_fields = r#"{
-        "$schema": "http://localhost/schemas/header/v1/header.schema.json",
-        "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
-        "jacsVersion": "1.0.0",
-        "jacsAgentType": "human",
-        "jacsServices": [
-            {
-                "serviceId": "service123",
-                "serviceName": "Test Service",
-                "serviceDescription": "A test service for validation purposes"
-            }
-        ],
-        "jacsContacts": [
-            {
-                "contactId": "contact123",
-                "contactType": "email",
-                "contactDetails": "agent.smith@example.com"
-            }
-        ],
-        "unexpectedField": "unexpectedValue"
-    }"#
+    "$schema": "http://localhost/schemas/header/v1/header.schema.json",
+    "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+    "jacsVersion": "1.0.0",
+    "jacsAgentType": "human",
+    "jacsServices": [
+        {
+            "serviceId": "service123",
+            "serviceName": "Test Service",
+            "serviceDescription": "A test service for validation purposes"
+        }
+    ],
+    "jacsContacts": [
+        {
+            "contactId": "contact123",
+            "contactType": "email",
+            "contactDetails": "agent.smith@example.com"
+        }
+    ],
+    "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00",
+    "jacsOriginalVersion": "0.9.0",
+    "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
+    "unexpectedField": "unexpectedValue"
+}"#
     .replace("http://localhost", &base_url);
 
     let validation_errors = validate_json_data(
