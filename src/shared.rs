@@ -44,30 +44,23 @@ pub fn document_create<'a>(
     }
 
     let doc_to_save_result =
-        agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
+        agent.create_document_and_load(&document_string, attachment_links.clone(), embed)?;
+    let doc_id = doc_to_save_result.id;
+    drop(doc_to_save_result); // Explicitly drop to release the mutable borrow
 
-    let doc_id;
-    if !no_save {
-        // Temporarily take ownership of the document to avoid multiple mutable borrows
-        let doc_to_save = doc_to_save_result?;
-        doc_id = doc_to_save.id.clone();
-        // Save the document and update `doc_id` with the result
-        {
-            let save_result = save_document(
-                agent,
-                Ok(doc_to_save),
-                custom_schema,
-                outputfilename,
-                None,
-                None,
-            )?;
-            return Ok(save_result);
-        }
+    let save_result = if !no_save {
+        save_document(
+            agent,
+            doc_id.clone(),
+            custom_schema,
+            outputfilename,
+            None,
+            None,
+        )?
     } else {
-        // If not saving, just return the document ID
-        doc_id = doc_to_save_result?.id.clone();
-        Ok(doc_id)
-    }
+        doc_id
+    };
+    Ok(save_result)
 }
 
 pub fn document_load_and_save(
@@ -86,7 +79,7 @@ pub fn document_load_and_save(
     if !load_only {
         return save_document(
             agent,
-            docresult,
+            docresult?.getkey(),
             custom_schema,
             save_filename,
             export_embedded,
@@ -161,7 +154,7 @@ pub fn document_sign_agreement(
     if !load_only {
         return save_document(
             agent,
-            Ok(signed_document),
+            signed_document.getkey(),
             custom_schema,
             save_filename,
             export_embedded,
@@ -208,7 +201,7 @@ pub fn document_add_agreement(
     if !load_only {
         return save_document(
             agent,
-            Ok(unsigned_doc),
+            unsigned_doc.getkey(),
             custom_schema,
             save_filename,
             export_embedded,
@@ -223,43 +216,34 @@ pub fn document_add_agreement(
 /// helper function
 pub fn save_document(
     agent: &mut Agent,
-    docresult: Result<JACSDocument, Box<dyn Error>>,
+    doc_id: String,
     custom_schema: Option<String>,
     save_filename: Option<String>,
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
 ) -> Result<String, Box<dyn Error>> {
-    match docresult {
-        Ok(ref document) => {
-            let document_key = document.getkey();
-            debug!("document {} validated", document_key);
+    let document = agent.get_document(&doc_id)?;
+    debug!("document {} validated", doc_id);
 
-            if let Some(schema_file) = custom_schema {
-                // todo don't unwrap but warn instead
-                let document_key = document.getkey();
-                let result =
-                    agent.validate_document_with_custom_schema(&schema_file, &document.getvalue());
-                match result {
-                    Ok(_) => {
-                        info!("document specialised schema {} validated", document_key);
-                    }
-                    Err(e) => {
-                        return Err(format!(
-                            "document specialised schema {} validation failed {}",
-                            document_key, e
-                        )
-                        .into());
-                    }
-                }
+    if let Some(schema_file) = custom_schema {
+        // todo don't unwrap but warn instead
+        let result = agent.validate_document_with_custom_schema(&schema_file, &document.getvalue());
+        match result {
+            Ok(_) => {
+                info!("document specialised schema {} validated", doc_id);
             }
-            //after validation do export of contents
-            agent.save_document(&document_key, save_filename, export_embedded, extract_only)?;
-            return Ok(format!("saved  {}", document_key));
-        }
-        Err(ref e) => {
-            return Err(format!("document  validation failed {}", e).into());
+            Err(e) => {
+                return Err(format!(
+                    "document specialised schema {} validation failed {}",
+                    doc_id, e
+                )
+                .into());
+            }
         }
     }
+    //after validation do export of contents
+    agent.save_document(&doc_id, save_filename, export_embedded, extract_only)?;
+    return Ok(format!("saved  {}", doc_id));
 }
 
 fn path_is_dir<P: AsRef<Path>>(path: P) -> Result<bool, Box<dyn Error>> {
