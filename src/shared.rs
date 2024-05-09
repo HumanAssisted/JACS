@@ -43,10 +43,11 @@ pub fn document_create<'a>(
         let _ = agent.load_custom_schemas();
     }
 
-    let doc_to_save_result =
-        agent.create_document_and_load(&document_string, attachment_links.clone(), embed)?;
-    let doc_id = doc_to_save_result.id;
-    drop(doc_to_save_result); // Explicitly drop to release the mutable borrow
+    let doc_id = {
+        let doc_to_save_result =
+            agent.create_document_and_load(&document_string, attachment_links.clone(), embed)?;
+        doc_to_save_result.id // This ends the borrow of `agent`
+    };
 
     let save_result = if !no_save {
         save_document(
