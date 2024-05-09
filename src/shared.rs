@@ -43,28 +43,31 @@ pub fn document_create<'a>(
         let _ = agent.load_custom_schemas();
     }
 
-    let doc_creation_result =
+    let doc_to_save_result =
         agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
-    let doc_to_save;
 
-    if let Ok(doc) = doc_creation_result {
-        doc_to_save = Some(doc); // Temporarily store the document to save
-    } else {
-        return Err(doc_creation_result.unwrap_err());
-    }
-
-    let mut doc_id = String::new();
-    if let Some(doc) = doc_to_save {
-        doc_id = doc.id.clone(); // Clone `doc.id` to avoid partial move
-        if !no_save {
-            // Save the document and update `doc_id` with the result
-            let save_result =
-                save_document(agent, Ok(doc), custom_schema, outputfilename, None, None)?;
-            doc_id = save_result;
+    let doc_id;
+    if !no_save {
+        // Temporarily take ownership of the document to avoid multiple mutable borrows
+        let doc_to_save = doc_to_save_result?;
+        doc_id = doc_to_save.id.clone();
+        // Save the document and update `doc_id` with the result
+        {
+            let save_result = save_document(
+                agent,
+                Ok(doc_to_save),
+                custom_schema,
+                outputfilename,
+                None,
+                None,
+            )?;
+            return Ok(save_result);
         }
+    } else {
+        // If not saving, just return the document ID
+        doc_id = doc_to_save_result?.id.clone();
+        Ok(doc_id)
     }
-
-    Ok(doc_id) // Return the document ID as a string
 }
 
 pub fn document_load_and_save(
