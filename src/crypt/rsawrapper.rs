@@ -14,8 +14,8 @@ use signature::{RandomizedSigner, SignatureEncoding, Verifier}; // Correctly imp
 /// best for pure Rust, least secure
 
 // todo option for more secure
-//static BITSOFBITS: usize = 4096;
-static BITSOFBITS: usize = 2048;
+static BITSOFBITS: usize = 4096;
+//static BITSOFBITS: usize = 2048;
 
 /// returns public, public_filepath, private, private_filepath
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
