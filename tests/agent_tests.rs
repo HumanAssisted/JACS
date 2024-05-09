@@ -1,7 +1,6 @@
 use httpmock::Method::GET;
 use httpmock::MockServer;
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::schema::utils::EmbeddedSchemaResolver;
 use jacs::schema::utils::DEFAULT_SCHEMA_STRINGS;
 use jsonschema::JSONSchema;
 
@@ -80,8 +79,14 @@ fn test_update_agent_and_verify_versions() {
 
     let mock_server = MockServer::start();
 
-    let header_schema_url = "schemas/header/v1/header.schema.json";
-    let agent_schema_url = "schemas/agent/v1/agent.schema.json";
+    let header_schema_url = format!(
+        "{}/schemas/header/v1/header.schema.json",
+        mock_server.base_url()
+    );
+    let agent_schema_url = format!(
+        "{}/schemas/agent/v1/agent.schema.json",
+        mock_server.base_url()
+    );
 
     let _header_schema_mock = mock_server.mock(|when, then| {
         when.method(GET)
@@ -105,17 +110,10 @@ fn test_update_agent_and_verify_versions() {
     // Instantiate the Agent object with the correct parameters
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
-        &agent_version,
-        &header_version,
-        header_schema_url.to_string(),
-        agent_schema_url.to_string(),
-    )
-    .expect("Agent instantiation failed");
 
-    // Validate the JSON data against the schemas using the resolver
+    // Serialize the agent_data to a JSON string and ensure it is not 'null'
     let agent_data = serde_json::json!({
-        "$schema": format!("{}/schemas/agent/v1/agent.schema.json", mock_server.base_url()),
+        "$schema": agent_schema_url,
         "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
         "jacsVersion": "1.0.0",
         "jacsAgentType": "ai",
@@ -123,135 +121,13 @@ fn test_update_agent_and_verify_versions() {
             {
                 "serviceId": "service-123",
                 "serviceName": "Example Service",
-                "serviceType": "Example Type",
-                "serviceDescription": "This is an example service."
-            }
-        ],
-        "jacsContacts": [],
-        "jacsSha256": "a1c87ea81a8c557b7f6be29834bd6da2650de57078da4335b2ee2612c694a18d",
-        "jacsSignature": {
-            "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
-            "agentVersion": "12ccba24-8997-47b1-9e6f-d699d7ab0e41",
-            "date": "2024-04-25T05:46:34.660457+00:00",
-            "fields": [
-                "$schema",
-                "jacsId",
-                "jacsAgentType",
-                "jacsServices",
-                "jacsContacts"
-            ],
-            "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
-            "signature": "signatureValue",
-            "signingAlgorithm": "RSA-PSS"
-        },
-        "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00",
-        "name": "Agent Smith",
-        "jacsOriginalVersion": "0.9.0",
-        "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00"
-    });
-    let agent_json_string = serde_json::to_string(&agent_data)
-        .expect("Failed to serialize agent object to JSON string");
-    let validation_errors =
-        validate_json_data(&agent_json_string, &header_schema_url, &agent_schema_url);
-
-    // Assert that there are no validation errors
-    assert!(
-        validation_errors.is_empty(),
-        "Validation failed with errors: {:?}",
-        validation_errors
-    );
-
-    let agentid =
-        "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
-    let result = agent.load_by_id(Some(agentid), None);
-
-    match result {
-        Ok(_) => {
-            match agent.get_id() {
-                Ok(id) => println!("AGENT LOADED {} ", id),
-                Err(e) => {
-                    eprintln!("Error: Agent ID is missing: {:?}", e);
-                    assert!(false, "Agent ID should not be missing: {:?}", e);
-                }
-            }
-
-            match agent.get_version() {
-                Ok(version) => println!("AGENT VERSION {} ", version),
-                Err(e) => {
-                    eprintln!("Error: Agent version is missing: {:?}", e);
-                    assert!(false, "Agent version should not be missing: {:?}", e);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error loading agent: {:?}", e);
-            assert!(false, "Agent loading failed with error: {:?}", e);
-        }
-    }
-
-    // Replace the unwrap call with proper error handling
-    match agent.verify_self_signature() {
-        Ok(_) => println!("Self signature verified successfully."),
-        Err(e) => eprintln!("Failed to verify self signature: {:?}", e),
-    }
-}
-
-#[test]
-fn test_validate_agent_json_raw() {
-    // Set the environment variable to accept invalid certificates
-    std::env::set_var("ACCEPT_INVALID_CERTS", "true");
-
-    // Start the mock server and set the base URL
-    let mock_server = MockServer::start();
-
-    // Define schema URLs using the mock server base URL
-    let header_schema_url = "schemas/header/v1/header.schema.json";
-    let agent_schema_url = "schemas/agent/v1/agent.schema.json";
-
-    // Instantiate the EmbeddedSchemaResolver
-    let _resolver = EmbeddedSchemaResolver::new();
-
-    // Mock the header schema to resolve from memory
-    let _header_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET)
-            .path("/schemas/header/v1/header.schema.json");
-        then.status(200).body(
-            DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
-                .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
-        );
-    });
-
-    // Mock the agent schema to resolve from memory
-    let _agent_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/schemas/agent/v1/agent.schema.json");
-        then.status(200).body(
-            DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
-                .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
-        );
-    });
-
-    let agent_data = serde_json::json!({
-        "$schema": "http://localhost/schemas/agent/v1/agent.schema.json",
-        "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
-        "jacsVersion": "1.0.0",
-        "jacsAgentType": "ai",
-        "jacsServices": [
-            // Example service data structure
-            {
-                "serviceId": "service-123",
-                "serviceName": "Example Service",
-                "serviceType": "Example Type",
                 "serviceDescription": "This is an example service."
             }
         ],
         "jacsContacts": [
-            // Example contact data structure
             {
                 "contactId": "contact-123",
-                "contactName": "John Doe",
-                "contactType": "Example Type",
+                "contactType": "Example Contact Type",
                 "contactDetails": "This is an example contact."
             }
         ],
@@ -278,56 +154,47 @@ fn test_validate_agent_json_raw() {
     });
     let agent_json_string = serde_json::to_string(&agent_data)
         .expect("Failed to serialize agent object to JSON string");
-    let validation_errors =
-        validate_json_data(&agent_json_string, &header_schema_url, &agent_schema_url);
 
-    // Assert that there are no validation errors
-    assert!(
-        validation_errors.is_empty(),
-        "Validation failed with errors: {:?}",
-        validation_errors
+    // Ensure the JSON string is not 'null' or empty
+    assert!(!agent_json_string.is_empty(), "The JSON string is empty.");
+    assert_ne!(agent_json_string, "null", "The JSON string is 'null'.");
+
+    // Log the JSON string to be loaded
+    println!("JSON string to be loaded: {}", agent_json_string);
+
+    // Attempt to create and load the agent with the non-'null' JSON string
+    let agent_result = jacs::agent::Agent::create_agent_and_load(
+        &agent_version,
+        &header_version,
+        header_schema_url.clone(),
+        agent_schema_url.clone(),
+        &agent_json_string,
     );
+
+    assert!(
+        agent_result.is_ok(),
+        "Failed to create and load agent with non-'null' JSON string: {:?}",
+        agent_result.err().unwrap()
+    );
+
+    let mut agent = agent_result.unwrap();
 
     let agentid =
         "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(
-        &agent_version,
-        &header_version,
-        header_schema_url.to_string(),
-        agent_schema_url.to_string(),
-    )
-    .expect("Agent instantiation failed");
-    let result = agent.load_by_id(Some(agentid), None);
+    let result = agent
+        .load_by_id(Some(agentid), None)
+        .expect("Failed to load agent by ID");
 
-    match result {
-        Ok(_) => {
-            match agent.get_id() {
-                Ok(id) => println!("AGENT LOADED {} ", id),
-                Err(e) => {
-                    eprintln!("Error: Agent ID is missing: {:?}", e);
-                    assert!(false, "Agent ID should not be missing: {:?}", e);
-                }
-            }
+    println!(
+        "AGENT LOADED {}",
+        agent.get_id().expect("Failed to get agent ID")
+    );
+    println!(
+        "AGENT VERSION {}",
+        agent.get_version().expect("Failed to get agent version")
+    );
 
-            match agent.get_version() {
-                Ok(version) => println!("AGENT VERSION {} ", version),
-                Err(e) => {
-                    eprintln!("Error: Agent version is missing: {:?}", e);
-                    assert!(false, "Agent version should not be missing: {:?}", e);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error loading agent: {:?}", e);
-            assert!(false, "Agent loading failed with error: {:?}", e);
-        }
-    }
-
-    // Replace the unwrap call with proper error handling
-    match agent.verify_self_signature() {
-        Ok(_) => println!("Self signature verified successfully."),
-        Err(e) => eprintln!("Failed to verify self signature: {:?}", e),
-    }
+    agent
+        .verify_self_signature()
+        .expect("Failed to verify self signature");
 }

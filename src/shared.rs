@@ -29,37 +29,42 @@ pub fn get_file_list(filepath: String) -> Result<Vec<String>, Box<dyn Error>> {
     return Ok(files);
 }
 
-pub fn document_create(
-    agent: &mut Agent,
-    document_string: &String,
+pub fn document_create<'a>(
+    agent: &'a mut Agent,
+    document_string: &'a String,
     custom_schema: Option<String>,
     outputfilename: Option<String>,
     no_save: bool,
-    attachments: Option<&String>,
+    attachments: Option<&'a String>,
     embed: Option<bool>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, Box<dyn Error + 'a>> {
     let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref _schema_file) = custom_schema {
         let _ = agent.load_custom_schemas();
     }
 
-    // let loading_filename_string = loading_filename.to_string();
-    let export_embedded = None;
-    let extract_only = None;
-    let docresult =
+    let doc_creation_result =
         agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
-    if !no_save {
-        return save_document(
-            agent,
-            docresult,
-            custom_schema,
-            outputfilename,
-            export_embedded,
-            extract_only,
-        );
+    let doc_to_save;
+
+    if let Ok(doc) = doc_creation_result {
+        doc_to_save = Some(doc); // Temporarily store the document to save
     } else {
-        return Ok(docresult?.value.to_string());
+        return Err(doc_creation_result.unwrap_err());
     }
+
+    let mut doc_id = String::new();
+    if let Some(doc) = doc_to_save {
+        doc_id = doc.id.clone(); // Clone `doc.id` to avoid partial move
+        if !no_save {
+            // Save the document and update `doc_id` with the result
+            let save_result =
+                save_document(agent, Ok(doc), custom_schema, outputfilename, None, None)?;
+            doc_id = save_result;
+        }
+    }
+
+    Ok(doc_id) // Return the document ID as a string
 }
 
 pub fn document_load_and_save(

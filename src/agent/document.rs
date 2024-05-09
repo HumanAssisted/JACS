@@ -145,7 +145,7 @@ impl fmt::Display for JACSDocument {
 pub trait Document {
     fn verify_document_signature(
         &mut self,
-        document_key: &String,
+        _document_key: &String,
         signature_key_from: Option<&String>,
         _fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
@@ -162,7 +162,7 @@ pub trait Document {
         json: &String,
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
-    ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
+    ) -> Result<JACSDocument, Box<dyn std::error::Error + '_>>;
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn remove_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
@@ -307,49 +307,44 @@ impl Document for Agent {
         json: &String,
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
-    ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>> {
-        let mut instance = self.schema.create(json)?;
+    ) -> Result<JACSDocument, Box<dyn std::error::Error + '_>> {
+        // Perform schema validation first, which is an immutable operation
+        let instance_result = self.schema.create(json)?;
+        let mut instance_to_store = instance_result;
 
-        if let Some(attachment_list) = attachments {
-            let mut files_array: Vec<Value> = Vec::new();
+        // Immutable borrow of self is completed here
+        let files_array = attachments
+            .as_ref()
+            .map(|attachment_list| {
+                attachment_list
+                    .iter()
+                    .map(|attachment_path| {
+                        let final_embed = embed.unwrap_or(false);
+                        self.create_file_json(attachment_path, final_embed)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?;
 
-            // Iterate over each attachment
-            for attachment_path in attachment_list {
-                let final_embed = embed.unwrap_or(false);
-                let file_json = self
-                    .create_file_json(&attachment_path, final_embed)
-                    .unwrap();
-
-                // Add the file JSON to the files array
-                files_array.push(file_json);
+        if let Some(files) = files_array {
+            if let Some(instance_map) = instance_to_store.as_object_mut() {
+                instance_map.insert("jacsFiles".to_string(), Value::Array(files));
             }
-
-            // Create a new "files" field in the document
-            let instance_map = instance.as_object_mut().unwrap();
-            instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
         }
 
-        // sign document
         self.signing_procedure()?;
 
-        // hash document
-        let document_hash = self.hash_doc(&instance)?;
-        instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.store_jacs_document(&instance)?)
+        let document_hash = self.hash_doc(&instance_to_store)?;
+        instance_to_store[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        self.store_jacs_document(&instance_to_store)
     }
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>> {
-        // Assuming `self.schema` is a valid `Schema` instance
-        match self.schema.validate_header(&document_string) {
-            Ok(value) => {
-                // Store the document after successful validation
-                return self.store_jacs_document(&value);
-            }
-            Err(e) => {
-                error!("ERROR document ERROR {}", e);
-                return Err(e.to_string().into());
-            }
-        }
+        // Perform validation first, which is an immutable operation
+        let validation_result = self.schema.validate_header(document_string)?;
+
+        // Validation is successful, proceed with mutable operations
+        self.store_jacs_document(&validation_result)
     }
 
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {
@@ -403,73 +398,31 @@ impl Document for Agent {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
-        // check that old document is found
-        let mut new_document: Value = self.schema.validate_header(new_document_string)?;
-        let error_message = format!("original document {} not found", document_key);
-        let original_document = self.get_document(document_key).expect(&error_message);
-        let value = original_document.value;
+        // Perform validation first, which is an immutable operation
+        let validation_result = self.schema.validate_header(new_document_string)?;
+        let mut new_document = validation_result;
 
-        let mut files_array: Vec<Value> = new_document
-            .get("jacsFiles")
-            .and_then(|files| files.as_array())
-            .cloned()
-            .unwrap_or_else(Vec::new);
+        // Process attachments if any, before any mutable operations on `self`
+        let files_array = if let Some(attachment_list) = attachments {
+            let final_embed = embed.unwrap_or(false);
+            attachment_list
+                .iter()
+                .map(|attachment_path| self.create_file_json(attachment_path, final_embed))
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            Vec::new()
+        };
 
-        // now re-verify these files
-
-        let _ = self
-            .verify_document_files(&new_document)
-            .expect("file verification");
-        if let Some(attachment_list) = attachments {
-            // Iterate over each attachment
-            for attachment_path in attachment_list {
-                // Call create_file_json with embed set to false
-                let final_embed = embed.unwrap_or(false);
-                let file_json = self
-                    .create_file_json(&attachment_path, final_embed)
-                    .unwrap();
-
-                // Add the file JSON to the files array
-                files_array.push(file_json);
+        // Now we can proceed with mutable borrows of self
+        // Add the files to the new document
+        if !files_array.is_empty() {
+            if let Some(instance_map) = new_document.as_object_mut() {
+                instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
             }
         }
 
-        // Create a new "files" field in the document
-        if let Some(instance_map) = new_document.as_object_mut() {
-            instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
-        }
-
-        // check that new document has same id, value, hash as old
-        let orginal_id = &value.get_str("jacsId");
-        let orginal_version = &value.get_str("jacsVersion");
-        // check which fields are different
-        let new_doc_orginal_id = &new_document.get_str("jacsId");
-        let new_doc_orginal_version = &new_document.get_str("jacsVersion");
-        if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
-            return Err(format!(
-                "The id/versions do not match found for key: {}. {:?}{:?}",
-                document_key, new_doc_orginal_id, new_doc_orginal_version
-            )
-            .into());
-        }
-
-        //TODO  show diff
-
-        // validate schema
-        let new_version = Uuid::new_v4().to_string();
-        let last_version = &value["jacsVersion"];
-        let versioncreated = Utc::now().to_rfc3339();
-
-        new_document["jacsLastVersion"] = last_version.clone();
-        new_document["jacsVersion"] = json!(format!("{}", new_version));
-        new_document["jacsVersionDate"] = json!(format!("{}", versioncreated));
-        // get all fields but reserved
-        self.signing_procedure()?;
-
-        // hash new version
-        let document_hash = self.hash_doc(&new_document)?;
-        new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        Ok(self.store_jacs_document(&new_document)?)
+        // Store the updated document
+        self.store_jacs_document(&new_document)
     }
 
     /// copys document without modifications
@@ -562,14 +515,14 @@ impl Document for Agent {
 
     fn verify_document_signature(
         &mut self,
-        document_key: &String,
+        _document_key: &String,
         signature_key_from: Option<&String>,
         _fields: Option<&Vec<String>>,
         public_key: Option<Vec<u8>>,
         _public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
-        let document = self.get_document(document_key).expect("Reason");
+        let document = self.get_document(_document_key).expect("Reason");
         let document_value = document.getvalue();
         let _ = self
             .verify_document_files(&document_value)

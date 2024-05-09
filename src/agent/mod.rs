@@ -12,7 +12,7 @@ use crate::schema::Schema;
 use jsonschema::JSONSchema;
 use loaders::FileLoader;
 use log::error;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
@@ -139,9 +139,16 @@ impl Agent {
         document_schema_url: String,
     ) -> Result<Self, Box<dyn Error>> {
         set_env_vars();
-        println!("Header schema URL: {}", header_schema_url);
-        println!("Document schema URL: {}", document_schema_url);
+        println!(
+            "Initializing schema with header schema URL: {}",
+            header_schema_url
+        );
+        println!(
+            "Initializing schema with document schema URL: {}",
+            document_schema_url
+        );
         let schema = Schema::new(&header_schema_url, &document_schema_url)?;
+        println!("Schema initialized successfully.");
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
 
@@ -173,12 +180,49 @@ impl Agent {
         document_schema_url: String,
         agent_string: &String,
     ) -> Result<Self, Box<dyn Error>> {
+        println!("Validating agent string: {}", agent_string);
+        // Parse the JSON data from the string
+        let agent_data: Value = serde_json::from_str(agent_string)?;
+        println!("Parsed JSON Value: {:?}", agent_data); // Confirm the parsed JSON structure
+        if agent_data == Value::Null {
+            println!("Error: Parsed JSON Value is Null");
+        } else {
+            println!("Parsed JSON Value is not Null and ready for validation");
+        }
+        println!("Value before validation: {:?}", agent_data); // Output the value right before validation
+
+        // Validate the JSON data against the agent schema
+        let schema = Schema::new(&header_schema_url, &document_schema_url)?;
+        println!("Validating JSON data against the agent schema.");
+        let validation_result = schema.agentschema.validate(&agent_data);
+
+        // Handle validation errors
+        if let Err(errors) = validation_result {
+            let error_messages: Vec<String> = errors
+                .into_iter()
+                .map(|e| {
+                    format!(
+                        "Validation error: {} at path: {} with schema path: {}",
+                        e, e.instance_path, e.schema_path
+                    )
+                })
+                .collect();
+            let error_string = error_messages.join(", ");
+            error!("Validation failed with errors: {}", error_string);
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                error_string,
+            )));
+        }
+
+        println!("Validation successful, proceeding to create and load the agent.");
         let mut agent = Agent::new(
             agent_version,
             headerversion,
-            header_schema_url,
-            document_schema_url,
+            header_schema_url.clone(),
+            document_schema_url.clone(),
         )?;
+
         agent.load(agent_string)?;
         Ok(agent)
     }
@@ -186,16 +230,14 @@ impl Agent {
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
         println!("Agent::load - Received JSON string: {}", agent_string);
         println!(
-            "Agent::load - About to validate JSON string: {:?}",
+            "Agent::load - Before validation, JSON string: {}",
             agent_string
         );
-        if agent_string.is_empty() {
-            println!("Agent::load - Error: JSON string is empty");
-        } else {
-            println!("Agent::load - JSON string is not empty");
-        }
         let validation_result = self.schema.validate_agent(agent_string);
-        println!("Agent::load - Validation result: {:?}", validation_result);
+        println!(
+            "Agent::load - After validation, result: {:?}",
+            validation_result
+        );
         match validation_result {
             Ok(value) => {
                 println!("Agent::load - Validation successful. Value: {:?}", value);
@@ -204,7 +246,6 @@ impl Agent {
                     self.id = value.get_str("id");
                     self.version = value.get_str("version");
                 }
-
                 if !Uuid::parse_str(&self.id.clone().unwrap_or_default()).is_ok()
                     || !Uuid::parse_str(&self.version.clone().unwrap_or_default()).is_ok()
                 {

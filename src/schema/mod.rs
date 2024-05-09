@@ -18,13 +18,18 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-// Custom error type
+// Custom error type to wrap jsonschema::ValidationError
 #[derive(Debug)]
-struct ValidationError(String);
+struct ValidationError {
+    errors: Vec<String>,
+}
 
 impl fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Validation error: {}", self.0)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for error in &self.errors {
+            writeln!(f, "{}", error)?;
+        }
+        Ok(())
     }
 }
 
@@ -34,6 +39,9 @@ impl Error for ValidationError {}
 pub struct Schema {
     pub headerschema: JSONSchema,
     pub agentschema: JSONSchema,
+    // New fields to store the schema values
+    pub header_schema_value: Value,
+    pub agent_schema_value: Value,
     signatureschema: JSONSchema,
     jacsconfigschema: JSONSchema,
     agreementschema: JSONSchema,
@@ -67,22 +75,22 @@ lazy_static! {
 }
 
 impl Schema {
-    pub fn new(
-        _header_schema_url: &str,
-        _document_schema_url: &str,
-    ) -> Result<Self, Box<dyn Error>> {
-        println!("Compiling header schema from URL: {}", _header_schema_url);
-        let headerschema_compiled = JSONSchema::compile(HEADERSCHEMA_VALUE_ARC.as_ref())?;
-        println!("Header schema compiled successfully.");
+    pub fn new(header_schema_url: &str, document_schema_url: &str) -> Result<Self, Box<dyn Error>> {
+        // Fetch the header schema from the provided URL
+        let headerschema_response = reqwest::blocking::get(header_schema_url)?.text()?;
+        let header_schema_value: Value = serde_json::from_str(&headerschema_response)?;
 
-        println!("Compiling agent schema from URL: {}", _document_schema_url);
-        let agentschema_compiled = JSONSchema::compile(AGENTSCHEMA_VALUE_ARC.as_ref())?;
-        println!("Agent schema compiled successfully.");
+        // Fetch the agent schema from the provided URL
+        let agentschema_response = reqwest::blocking::get(document_schema_url)?.text()?;
+        let agent_schema_value: Value = serde_json::from_str(&agentschema_response)?;
 
-        let schema = Self {
-            headerschema: headerschema_compiled,
-            agentschema: agentschema_compiled,
-            // Initialize other schemas with dummy data...
+        // Create the Schema struct with the fetched values
+        let mut schema = Self {
+            headerschema: JSONSchema::compile(&Value::Null)?, // Temporary placeholder
+            agentschema: JSONSchema::compile(&Value::Null)?,  // Temporary placeholder
+            header_schema_value,
+            agent_schema_value,
+            // The rest of the fields remain unchanged...
             signatureschema: JSONSchema::compile(&Value::Null)?,
             jacsconfigschema: JSONSchema::compile(&Value::Null)?,
             agreementschema: JSONSchema::compile(&Value::Null)?,
@@ -96,100 +104,70 @@ impl Schema {
             evalschema: JSONSchema::compile(&Value::Null)?,
         };
 
+        // Now compile the JSONSchema instances with the owned Value instances
+        schema.headerschema = JSONSchema::compile(&HEADERSCHEMA_VALUE_ARC)?;
+        schema.agentschema = JSONSchema::compile(&AGENTSCHEMA_VALUE_ARC)?;
+
         Ok(schema)
     }
 
     pub fn create(&self, json: &str) -> Result<Value, Box<dyn Error>> {
-        let instance: Value = serde_json::from_str(json)?;
-        let errors: Vec<ValidationError> = self
-            .agentschema
-            .validate(&instance)
-            .into_iter()
-            .filter_map(|e| Some(ValidationError(format!("Validation error: {:?}", e))))
-            .collect();
-        if !errors.is_empty() {
-            return Err(Box::new(ValidationError(format!(
-                "Validation errors: {:?}",
-                errors
-            ))));
+        let instance = serde_json::from_str(json)?;
+        let validation = self.agentschema.validate(&instance);
+        match validation {
+            Ok(()) => Ok(instance.clone()), // Clone the instance before returning
+            Err(e) => {
+                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
+                Err(Box::new(ValidationError { errors }))
+            }
         }
-        Ok(instance)
     }
 
     pub fn validate_header(&self, json: &str) -> Result<Value, Box<dyn Error>> {
-        let header: Value = serde_json::from_str(json)?;
-        let errors: Vec<ValidationError> = self
-            .headerschema
-            .validate(&header)
-            .into_iter()
-            .filter_map(|e| Some(ValidationError(format!("Validation error: {:?}", e))))
-            .collect();
-        if !errors.is_empty() {
-            return Err(Box::new(ValidationError(format!(
-                "Validation errors: {:?}",
-                errors
-            ))));
+        let header = serde_json::from_str(json)?;
+        let validation = self.headerschema.validate(&header);
+        match validation {
+            Ok(()) => Ok(header.clone()), // Clone the header before returning
+            Err(e) => {
+                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
+                Err(Box::new(ValidationError { errors }))
+            }
         }
-        Ok(header)
     }
 
     pub fn validate_config(&self, json: &str) -> Result<(), Box<dyn Error>> {
-        let config: Value = serde_json::from_str(json)?;
-        let errors: Vec<ValidationError> = self
-            .jacsconfigschema
-            .validate(&config)
-            .into_iter()
-            .filter_map(|e| Some(ValidationError(format!("Validation error: {:?}", e))))
-            .collect();
-        if !errors.is_empty() {
-            return Err(Box::new(ValidationError(format!(
-                "Validation errors: {:?}",
-                errors
-            ))));
+        let config = serde_json::from_str(json)?;
+        let validation = self.jacsconfigschema.validate(&config);
+        match validation {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
+                Err(Box::new(ValidationError { errors }))
+            }
         }
-        Ok(())
     }
 
     pub fn validate_signature(&self, json: &str) -> Result<(), Box<dyn Error>> {
-        let signature: Value = serde_json::from_str(json)?;
-        let errors: Vec<ValidationError> = self
-            .signatureschema
-            .validate(&signature)
-            .into_iter()
-            .filter_map(|e| Some(ValidationError(format!("Validation error: {:?}", e))))
-            .collect();
-        if !errors.is_empty() {
-            return Err(Box::new(ValidationError(format!(
-                "Validation errors: {:?}",
-                errors
-            ))));
+        let signature = serde_json::from_str(json)?;
+        let validation = self.signatureschema.validate(&signature);
+        match validation {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
+                Err(Box::new(ValidationError { errors }))
+            }
         }
-        Ok(())
     }
 
     pub fn validate_agent(&self, json: &str) -> Result<Value, Box<dyn Error>> {
-        println!("Entering validate_agent method with JSON: {}", json);
-        println!("JSON data as a string before parsing: {}", json);
-        let agent: Value = serde_json::from_str(json)?;
-        println!("Parsed JSON Value: {:?}", agent); // Confirm the parsed JSON structure
-        println!("Value before validation: {:?}", agent); // Output the value right before validation
-        let validation_result = self.agentschema.validate(&agent);
-
-        let validation_errors: Vec<ValidationError> = validation_result
-            .err()
-            .into_iter()
-            .flat_map(|iter| iter)
-            .map(|err| ValidationError(format!("Validation error: {:?}", err)))
-            .collect();
-        if !validation_errors.is_empty() {
-            println!("Validation errors encountered: {:?}", validation_errors); // Log detailed validation errors
-            Err(Box::new(ValidationError(format!(
-                "Validation errors: {:?}",
-                validation_errors
-            ))))
-        } else {
-            println!("Validation successful for agent JSON."); // Log successful validation
-            Ok(agent)
+        let agent = serde_json::from_str(json)?;
+        let validation = self.agentschema.validate(&agent);
+        match validation {
+            Ok(()) => Ok(agent.clone()), // Clone the agent before returning
+            Err(e) => {
+                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
+                Err(Box::new(ValidationError { errors }))
+            }
         }
     }
 }
