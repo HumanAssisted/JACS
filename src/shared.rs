@@ -45,13 +45,23 @@ pub fn document_create<'a>(
     let doc_id = {
         let doc =
             agent.create_document_and_load(&document_string, attachment_links.clone(), embed)?;
-        doc.id.clone()
-    };
+        doc.id
+    }; // End of scope for the first mutable borrow of `agent`
+
     let save_result = if !no_save {
-        save_document(agent, doc_id, custom_schema, outputfilename, None, None)?
+        // `agent` can be mutably borrowed again as the previous borrow has ended
+        save_document(
+            agent,
+            doc_id.clone(),
+            custom_schema,
+            outputfilename,
+            None,
+            None,
+        )?
     } else {
         doc_id
     };
+
     Ok(save_result)
 }
 
