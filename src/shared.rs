@@ -1,6 +1,7 @@
 use crate::agent::agreement::Agreement;
 use crate::agent::document::Document;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
+use crate::custom_error::CustomError;
 
 use crate::Agent;
 use log::debug;
@@ -28,41 +29,54 @@ pub fn get_file_list(filepath: String) -> Result<Vec<String>, Box<dyn Error>> {
     return Ok(files);
 }
 
-pub fn document_create<'a>(
-    agent: &'a mut Agent,
-    document_string: &'a String,
+pub fn document_create(
+    agent: &mut Agent,
+    document_string: &String,
     custom_schema: Option<String>,
     outputfilename: Option<String>,
     no_save: bool,
-    attachments: Option<&'a String>,
+    attachments: Option<&String>,
     embed: Option<bool>,
-) -> Result<String, Box<dyn Error + 'a>> {
+) -> Result<String, Box<dyn Error>> {
     let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref _schema_file) = custom_schema {
         let _ = agent.load_custom_schemas();
     }
 
-    let doc_id = {
-        let doc =
-            agent.create_document_and_load(&document_string, attachment_links.clone(), embed)?;
-        doc.id
-    }; // End of scope for the first mutable borrow of `agent`
+    // Initialize variables outside the new scope to be accessible later
+    let mut doc_id = String::new(); // Default empty string, to be assigned in the scope below
 
-    let save_result = if !no_save {
-        // `agent` can be mutably borrowed again as the previous borrow has ended
-        save_document(
-            agent,
-            doc_id.clone(),
-            custom_schema,
-            outputfilename,
-            None,
-            None,
-        )?
+    {
+        // Scope to limit the mutable borrow of `agent` within the `create_document_and_load` call
+        let create_result =
+            agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
+
+        // Handle the result of document creation
+        doc_id = match create_result {
+            Ok(doc) => doc.id, // Assign the actual ID if successful
+            Err(e) => {
+                // Convert the error into a CustomError to avoid lifetime issues with the borrow of `agent`
+                return Err(CustomError::from(e.to_string()).into());
+            }
+        };
+    } // End of the scope for mutable borrow of `agent`
+
+    // Ensure `doc_id` is not empty before attempting to save the document
+    if doc_id.is_empty() {
+        return Err(CustomError::from(
+            "Document ID is empty, indicating an error occurred during document creation.",
+        )
+        .into());
+    }
+
+    // Check if the document needs to be saved
+    if !no_save {
+        // Since `agent` is no longer borrowed, it's safe to call `save_document`
+        save_document(agent, doc_id, custom_schema, outputfilename, None, None)
     } else {
-        doc_id
-    };
-
-    Ok(save_result)
+        // If no save is needed, return the document ID
+        Ok(doc_id)
+    }
 }
 
 pub fn document_load_and_save(

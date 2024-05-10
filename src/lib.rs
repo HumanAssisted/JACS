@@ -12,9 +12,10 @@ use std::fs;
 pub mod agent;
 pub mod config;
 pub mod crypt;
+pub mod custom_error;
 pub mod custom_resolver;
 pub mod schema;
-pub mod shared; // Added public declaration for custom_resolver module
+pub mod shared; // Added public declaration for custom_resolver module // Added public declaration for custom_error module
 
 pub fn get_empty_agent() -> Result<Agent, Box<dyn Error>> {
     let header_schema_url = env::var("JACS_HEADER_SCHEMA_URL")
