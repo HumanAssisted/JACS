@@ -1,6 +1,5 @@
 use crate::agent::agreement::Agreement;
 use crate::agent::document::Document;
-use crate::agent::document::JACSDocument;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 
 use crate::Agent;
@@ -44,20 +43,12 @@ pub fn document_create<'a>(
     }
 
     let doc_id = {
-        let doc_to_save_result =
+        let doc =
             agent.create_document_and_load(&document_string, attachment_links.clone(), embed)?;
-        doc_to_save_result.id // This ends the borrow of `agent`
+        doc.id.clone()
     };
-
     let save_result = if !no_save {
-        save_document(
-            agent,
-            doc_id.clone(),
-            custom_schema,
-            outputfilename,
-            None,
-            None,
-        )?
+        save_document(agent, doc_id, custom_schema, outputfilename, None, None)?
     } else {
         doc_id
     };
