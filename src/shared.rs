@@ -43,7 +43,8 @@ pub fn document_create(
         let _ = agent.load_custom_schemas();
     }
 
-    // Removed redundant initial assignment of doc_id
+    // Initialize `doc_id` before the scope to make it accessible throughout the function
+    let mut doc_id = String::new();
 
     {
         // Scope to limit the mutable borrow of `agent` within the `create_document_and_load` call
@@ -51,7 +52,7 @@ pub fn document_create(
             agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
 
         // Handle the result of document creation
-        let doc_id = match create_result {
+        doc_id = match create_result {
             Ok(doc) => doc.id, // Assign the actual ID if successful
             Err(e) => {
                 // Convert the error into a CustomError to avoid lifetime issues with the borrow of `agent`
