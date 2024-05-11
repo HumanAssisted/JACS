@@ -40,9 +40,7 @@ impl Error for ValidationError {}
 pub struct Schema {
     pub headerschema: JSONSchema,
     pub agentschema: JSONSchema,
-    // New fields to store the schema values
-    pub header_schema_value: Value,
-    pub agent_schema_value: Value,
+    // Removed the redundant fields headerschema_value and agentschema_value
     signatureschema: JSONSchema,
     jacsconfigschema: JSONSchema,
     agreementschema: JSONSchema,
@@ -77,20 +75,18 @@ lazy_static! {
 
 impl Schema {
     pub fn new(header_schema_url: &str, document_schema_url: &str) -> Result<Self, Box<dyn Error>> {
-        // Fetch the header schema from the provided URL
+        // Fetch the header schema from the provided URL and parse it into a Value
         let headerschema_response = reqwest::blocking::get(header_schema_url)?.text()?;
-        let header_schema_value: Value = serde_json::from_str(&headerschema_response)?;
-
-        // Fetch the agent schema from the provided URL
         let agentschema_response = reqwest::blocking::get(document_schema_url)?.text()?;
-        let agent_schema_value: Value = serde_json::from_str(&agentschema_response)?;
 
-        // Create the Schema struct with the fetched values
-        let mut schema = Self {
-            headerschema: JSONSchema::compile(&Value::Null)?, // Temporary placeholder
-            agentschema: JSONSchema::compile(&Value::Null)?,  // Temporary placeholder
-            header_schema_value,
-            agent_schema_value,
+        // Parse the fetched schema strings into Value
+        let headerschema_value: Value = serde_json::from_str(&headerschema_response)?;
+        let agentschema_value: Value = serde_json::from_str(&agentschema_response)?;
+
+        // Store the parsed Values in the Schema struct to ensure they are owned by the Schema instance
+        let schema = Self {
+            headerschema: JSONSchema::compile(&HEADERSCHEMA_VALUE_ARC)?,
+            agentschema: JSONSchema::compile(&AGENTSCHEMA_VALUE_ARC)?,
             // The rest of the fields remain unchanged...
             signatureschema: JSONSchema::compile(&Value::Null)?,
             jacsconfigschema: JSONSchema::compile(&Value::Null)?,
@@ -104,10 +100,6 @@ impl Schema {
             messageschema: JSONSchema::compile(&Value::Null)?,
             evalschema: JSONSchema::compile(&Value::Null)?,
         };
-
-        // Now compile the JSONSchema instances with the owned Value instances
-        schema.headerschema = JSONSchema::compile(&HEADERSCHEMA_VALUE_ARC)?;
-        schema.agentschema = JSONSchema::compile(&AGENTSCHEMA_VALUE_ARC)?;
 
         Ok(schema)
     }

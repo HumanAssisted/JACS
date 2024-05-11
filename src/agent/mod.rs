@@ -193,14 +193,21 @@ impl Agent {
 
         // Validate the JSON data against the agent schema
         let schema = Schema::new(&header_schema_url, &document_schema_url)?;
-        println!("Validating JSON data against the agent schema.");
+        println!("Schema created for validation.");
+
+        println!("Starting validation of JSON data against the agent schema.");
         let validation_result = schema.agentschema.validate(&agent_data);
+        println!("Validation completed.");
 
         // Handle validation errors
         if let Err(errors) = validation_result {
             let error_messages: Vec<String> = errors
                 .into_iter()
                 .map(|e| {
+                    println!(
+                        "Validation error: {} at path: {} with schema path: {}",
+                        e, e.instance_path, e.schema_path
+                    );
                     format!(
                         "Validation error: {} at path: {} with schema path: {}",
                         e, e.instance_path, e.schema_path
@@ -208,6 +215,7 @@ impl Agent {
                 })
                 .collect();
             let error_string = error_messages.join(", ");
+            println!("Validation failed with errors: {}", error_string);
             error!("Validation failed with errors: {}", error_string);
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -215,7 +223,7 @@ impl Agent {
             )));
         }
 
-        println!("Validation successful, proceeding to create and load the agent.");
+        println!("No validation errors found, proceeding to create and load the agent.");
         let mut agent = Agent::new(
             agent_version,
             headerversion,
