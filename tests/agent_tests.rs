@@ -6,27 +6,21 @@ use jsonschema::{JSONSchema, ValidationError};
 mod utils;
 
 /// Validates JSON data against the provided header and agent schemas.
-/// Returns a list of validation errors, if any.
+/// Returns a Result with a list of validation errors if any, or an error message if validation cannot be performed.
 fn validate_json_data_with_schemas(
     json_data: &str,
     header_schema_string: &str,
     agent_schema_string: &str,
-) -> Vec<String> {
+) -> Result<Vec<String>, String> {
     let mut errors = Vec::new();
 
     // Parse the JSON data into a serde_json::Value
-    let json_value: serde_json::Value = match serde_json::from_str(json_data) {
-        Ok(value) => value,
-        Err(e) => {
-            errors.push(format!("Failed to parse JSON data: {}", e));
-            return errors;
-        }
-    };
+    let json_value: serde_json::Value =
+        serde_json::from_str(json_data).map_err(|e| format!("Failed to parse JSON data: {}", e))?;
 
     // Ensure the JSON value is not null
     if json_value.is_null() {
-        errors.push("JSON data is null".to_string());
-        return errors;
+        return Err("JSON data is null".to_string());
     }
 
     // Parse the header schema string into a serde_json::Value
@@ -34,7 +28,7 @@ fn validate_json_data_with_schemas(
         Ok(value) => value,
         Err(e) => {
             errors.push(format!("Failed to parse header schema: {}", e));
-            return errors;
+            return Ok(errors);
         }
     };
 
@@ -43,7 +37,7 @@ fn validate_json_data_with_schemas(
         Ok(value) => value,
         Err(e) => {
             errors.push(format!("Failed to parse agent schema: {}", e));
-            return errors;
+            return Ok(errors);
         }
     };
 
@@ -52,7 +46,7 @@ fn validate_json_data_with_schemas(
         Ok(schema) => schema,
         Err(e) => {
             errors.push(format!("Failed to compile header schema: {}", e));
-            return errors;
+            return Ok(errors);
         }
     };
 
@@ -61,7 +55,7 @@ fn validate_json_data_with_schemas(
         Ok(schema) => schema,
         Err(e) => {
             errors.push(format!("Failed to compile agent schema: {}", e));
-            return errors;
+            return Ok(errors);
         }
     };
 
@@ -79,7 +73,7 @@ fn validate_json_data_with_schemas(
         }
     }
 
-    errors
+    Ok(errors)
 }
 
 // Removed old validate_json_data function as it is no longer used.
@@ -115,14 +109,20 @@ fn test_update_agent_and_verify_versions() {
             {
                 "serviceId": "service-123",
                 "serviceName": "Example Service",
-                "serviceDescription": "This is an example service."
+                "serviceDescription": "This is an example service.",
+                // Additional required fields for service as per the schema
+                "serviceType": "Example Service Type",
+                "serviceUrl": "http://example.com/service"
             }
         ],
         "jacsContacts": [
             {
                 "contactId": "contact-123",
                 "contactType": "Example Contact Type",
-                "contactDetails": "This is an example contact."
+                "contactDetails": "This is an example contact.",
+                // Additional required fields for contact as per the schema
+                "contactMethod": "email",
+                "contactValue": "contact@example.com"
             }
         ],
         "jacsSha256": "a1c87ea81a8c557b7f6be29834bd6da2650de57078da4335b2ee2612c694a18d",
@@ -148,6 +148,8 @@ fn test_update_agent_and_verify_versions() {
         // Added missing fields as per the schema requirements
         "header_version": header_version,
         "document_version": agent_version,
+        // Ensure all required fields as per the schema are included
+        // Add any missing fields here
     });
     let agent_json_string = serde_json::to_string(&agent_data)
         .expect("Failed to serialize agent object to JSON string");
@@ -160,8 +162,9 @@ fn test_update_agent_and_verify_versions() {
     println!("JSON string to be loaded: {}", agent_json_string);
 
     println!("Serialized agent JSON data: {}", agent_json_string);
-
-    // Removed print statements for header_schema_url and agent_schema_url as they are no longer defined
+    // Fetch the header and agent schema strings using the mock server
+    let header_schema_string = include_str!("../schemas/header/v1/header.schema.json").to_string();
+    let agent_schema_string = include_str!("../schemas/agent/v1/agent.schema.json").to_string();
 
     // Attempt to create and load the agent with the non-'null' JSON string
     let agent_result = jacs::agent::Agent::create_agent_and_load(
@@ -176,24 +179,46 @@ fn test_update_agent_and_verify_versions() {
             mock_server.base_url()
         ),
         &agent_json_string,
-    );
+    ); // Closing parenthesis added to complete the function call
 
-    // Log the result of the create_agent_and_load function
+    // Handle the result of the create_agent_and_load function
     match &agent_result {
-        Ok(agent) => println!("Agent created and loaded successfully: {:?}", agent),
+        Ok(agent) => {
+            println!("Agent created and loaded successfully: {:?}", agent);
+            // Validate the JSON string against the fetched schemas
+            let validation_result = validate_json_data_with_schemas(
+                &agent_json_string,
+                &header_schema_string,
+                &agent_schema_string,
+            );
+
+            // Handle the result of validation
+            match validation_result {
+                Ok(validation_errors) => {
+                    // Assert that there are no validation errors
+                    assert!(
+                        validation_errors.is_empty(),
+                        "Validation errors found: {:?}",
+                        validation_errors
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Validation failed with error: {}", e);
+                    assert!(false, "Test failed due to validation errors.");
+                }
+            }
+        }
         Err(e) => {
             eprintln!("Failed to create and load agent. Error: {:?}", e);
             if let Some(validation_error) = e.downcast_ref::<ValidationError>() {
                 eprintln!("Detailed validation error: {:?}", validation_error);
             }
+            assert!(
+                false,
+                "Test failed due to an error in creating and loading the agent."
+            );
         }
     }
-
-    // Assert that the agent creation and loading did not result in an error
-    assert!(
-        agent_result.is_ok(),
-        "Test failed due to validation errors."
-    );
 
     let mut agent =
         agent_result.expect("Failed to create and load agent despite previous assertion.");
@@ -277,19 +302,24 @@ async fn test_create_agent_with_example_structure() {
         .expect("Failed to get agent schema text");
 
     // Validate the JSON string against the fetched schemas
-    let validation_errors = validate_json_data_with_schemas(
+    let validation_result = validate_json_data_with_schemas(
         &agent_json_string,
         &header_schema_string,
         &agent_schema_string,
     );
 
-    // Assert that there are no validation errors
-    assert!(
-        validation_errors.is_empty(),
-        "Validation errors found: {:?}",
-        validation_errors
-    );
-
-    // Log the successful validation
-    println!("Example agent validated successfully against schemas.");
+    // Handle the result of validation
+    match validation_result {
+        Ok(validation_errors) => {
+            // Assert that there are no validation errors
+            assert!(
+                validation_errors.is_empty(),
+                "Validation errors found: {:?}",
+                validation_errors
+            );
+            // Log the successful validation
+            println!("Example agent validated successfully against schemas.");
+        }
+        Err(e) => panic!("Validation failed with error: {}", e),
+    }
 }
