@@ -2,7 +2,7 @@ use httpmock::Method::GET;
 use httpmock::MockServer;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::schema::utils::DEFAULT_SCHEMA_STRINGS;
-use jsonschema::JSONSchema;
+use jsonschema::{JSONSchema, ValidationError};
 
 mod utils;
 
@@ -94,7 +94,7 @@ fn test_update_agent_and_verify_versions() {
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
                 .get("schemas/header/v1/header.schema.json")
-                .unwrap(),
+                .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
 
@@ -103,9 +103,27 @@ fn test_update_agent_and_verify_versions() {
         then.status(200).body(
             DEFAULT_SCHEMA_STRINGS
                 .get("schemas/agent/v1/agent.schema.json")
-                .unwrap(),
+                .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS"),
         );
     });
+
+    // Print the header schema string in smaller parts to avoid truncation
+    let header_schema_string = DEFAULT_SCHEMA_STRINGS
+        .get("schemas/header/v1/header.schema.json")
+        .expect("Header schema string not found in DEFAULT_SCHEMA_STRINGS");
+    for i in (0..header_schema_string.len()).step_by(500) {
+        let end = std::cmp::min(i + 500, header_schema_string.len());
+        println!("Header schema part: {}", &header_schema_string[i..end]);
+    }
+
+    // Print the agent schema string in smaller parts to avoid truncation
+    let agent_schema_string = DEFAULT_SCHEMA_STRINGS
+        .get("schemas/agent/v1/agent.schema.json")
+        .expect("Agent schema string not found in DEFAULT_SCHEMA_STRINGS");
+    for i in (0..agent_schema_string.len()).step_by(500) {
+        let end = std::cmp::min(i + 500, agent_schema_string.len());
+        println!("Agent schema part: {}", &agent_schema_string[i..end]);
+    }
 
     // Instantiate the Agent object with the correct parameters
     let agent_version = "v1".to_string();
@@ -162,22 +180,38 @@ fn test_update_agent_and_verify_versions() {
     // Log the JSON string to be loaded
     println!("JSON string to be loaded: {}", agent_json_string);
 
+    // Log the schemas being used for validation
+    println!("Header schema URL: {}", header_schema_url);
+    println!("Agent schema URL: {}", agent_schema_url);
+
     // Attempt to create and load the agent with the non-'null' JSON string
     let agent_result = jacs::agent::Agent::create_agent_and_load(
         &agent_version,
         &header_version,
-        header_schema_url.clone(),
-        agent_schema_url.clone(),
+        header_schema_url,
+        agent_schema_url,
         &agent_json_string,
     );
 
+    // Log the result of the create_agent_and_load function
+    match &agent_result {
+        Ok(agent) => println!("Agent created and loaded successfully: {:?}", agent),
+        Err(e) => {
+            eprintln!("Failed to create and load agent. Error: {:?}", e);
+            if let Some(validation_error) = e.downcast_ref::<ValidationError>() {
+                eprintln!("Detailed validation error: {:?}", validation_error);
+            }
+        }
+    }
+
+    // Assert that the agent creation and loading did not result in an error
     assert!(
         agent_result.is_ok(),
-        "Failed to create and load agent with non-'null' JSON string: {:?}",
-        agent_result.err().unwrap()
+        "Test failed due to validation errors."
     );
 
-    let mut agent = agent_result.unwrap();
+    let mut agent =
+        agent_result.expect("Failed to create and load agent despite previous assertion.");
 
     let agentid =
         "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
