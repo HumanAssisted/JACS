@@ -75,18 +75,14 @@ lazy_static! {
 
 impl Schema {
     pub fn new(header_schema_url: &str, document_schema_url: &str) -> Result<Self, Box<dyn Error>> {
-        // Fetch the header schema from the provided URL and parse it into a Value
-        let headerschema_response = reqwest::blocking::get(header_schema_url)?.text()?;
-        let agentschema_response = reqwest::blocking::get(document_schema_url)?.text()?;
+        // Use the pre-parsed schema values from the lazy_static block
+        let headerschema = JSONSchema::compile(&HEADERSCHEMA_VALUE_ARC)?;
+        let agentschema = JSONSchema::compile(&AGENTSCHEMA_VALUE_ARC)?;
 
-        // Parse the fetched schema strings into Value
-        let _headerschema_value: Value = serde_json::from_str(&headerschema_response)?;
-        let _agentschema_value: Value = serde_json::from_str(&agentschema_response)?;
-
-        // Store the parsed Values in the Schema struct to ensure they are owned by the Schema instance
+        // Store the compiled JSONSchemas in the Schema struct
         let schema = Self {
-            headerschema: JSONSchema::compile(&HEADERSCHEMA_VALUE_ARC)?,
-            agentschema: JSONSchema::compile(&AGENTSCHEMA_VALUE_ARC)?,
+            headerschema,
+            agentschema,
             // The rest of the fields remain unchanged...
             signatureschema: JSONSchema::compile(&Value::Null)?,
             jacsconfigschema: JSONSchema::compile(&Value::Null)?,
