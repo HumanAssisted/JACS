@@ -59,16 +59,38 @@ fn validate_json_data_with_schemas(
         }
     };
 
+    // Log the JSON data and header schema just before validation
+    println!(
+        "Validating JSON data against the header schema: {:?}",
+        json_value
+    );
+    println!(
+        "Header schema being used for validation: {:?}",
+        header_schema_value
+    );
+
     // Validate the JSON data against the header schema
     if let Err(validation_errors) = header_schema.validate(&json_value) {
         for error in validation_errors {
+            println!("Header schema validation error: {:?}", error);
             errors.push(format!("Header schema validation error: {}", error));
         }
     }
 
+    // Log the JSON data and agent schema just before validation
+    println!(
+        "Validating JSON data against the agent schema: {:?}",
+        json_value
+    );
+    println!(
+        "Agent schema being used for validation: {:?}",
+        agent_schema_value
+    );
+
     // Validate the JSON data against the agent schema
     if let Err(validation_errors) = agent_schema.validate(&json_value) {
         for error in validation_errors {
+            println!("Agent schema validation error: {:?}", error);
             errors.push(format!("Agent schema validation error: {}", error));
         }
     }
@@ -185,6 +207,13 @@ fn test_update_agent_and_verify_versions() {
     match &agent_result {
         Ok(agent) => {
             println!("Agent created and loaded successfully: {:?}", agent);
+
+            println!("Validating agent string: {}", agent_json_string);
+            let parsed_json_value: serde_json::Value = serde_json::from_str(&agent_json_string)
+                .expect("Failed to parse agent JSON string");
+            println!("Parsed JSON Value: {:?}", parsed_json_value);
+            println!("Parsed JSON Value is not Null and ready for validation");
+
             // Validate the JSON string against the fetched schemas
             let validation_result = validate_json_data_with_schemas(
                 &agent_json_string,
@@ -195,12 +224,16 @@ fn test_update_agent_and_verify_versions() {
             // Handle the result of validation
             match validation_result {
                 Ok(validation_errors) => {
+                    if !validation_errors.is_empty() {
+                        println!("Validation errors: {:?}", validation_errors);
+                    }
                     // Assert that there are no validation errors
                     assert!(
                         validation_errors.is_empty(),
                         "Validation errors found: {:?}",
                         validation_errors
                     );
+                    println!("No validation errors found, agent JSON is valid.");
                 }
                 Err(e) => {
                     eprintln!("Validation failed with error: {}", e);
@@ -247,79 +280,98 @@ fn test_update_agent_and_verify_versions() {
 async fn test_create_agent_with_example_structure() {
     let mock_server = MockServer::start();
 
-    // Configure the client to bypass SSL verification for local testing
-    let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .expect("Failed to create HTTP client");
+    // The mock server must remain in scope for the entire duration of the test
+    // to prevent the Tokio runtime from being dropped prematurely.
+    // We use a closure to create an async block where all operations that depend
+    // on the mock server are performed.
+    let test_result = tokio::spawn(async move {
+        // Configure the client to bypass SSL verification for local testing
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .expect("Failed to create HTTP client");
 
-    // Mock responses for the schema endpoints
-    let _header_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET)
-            .path("/schemas/header/v1/header.schema.json");
-        then.status(200)
-            .body(include_str!("../schemas/header/v1/header.schema.json"));
-    });
+        // Mock responses for the schema endpoints
+        let _header_schema_mock = mock_server.mock(|when, then| {
+            when.method(GET)
+                .path("/schemas/header/v1/header.schema.json");
+            then.status(200)
+                .body(include_str!("../schemas/header/v1/header.schema.json"));
+        });
 
-    let _agent_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/schemas/agent/v1/agent.schema.json");
-        then.status(200)
-            .body(include_str!("../schemas/agent/v1/agent.schema.json"));
-    });
+        let _agent_schema_mock = mock_server.mock(|when, then| {
+            when.method(GET).path("/schemas/agent/v1/agent.schema.json");
+            then.status(200)
+                .body(include_str!("../schemas/agent/v1/agent.schema.json"));
+        });
 
-    // Define the example agent structure based on the example JSON file
-    let example_agent = serde_json::json!({
-        // ... (rest of the JSON structure remains unchanged)
-    });
+        // Define the example agent structure based on the example JSON file
+        let example_agent = serde_json::json!({
+            "$schema": format!("{}/schemas/header/v1/header.schema.json", mock_server.base_url()),
+            "jacsId": "example-id",
+            "jacsVersion": "1.0.0",
+            "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00",
+            "jacsOriginalVersion": "0.9.0",
+            "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
+            // ... (rest of the JSON structure remains unchanged)
+        });
 
-    // Serialize the example agent to a JSON string
-    let agent_json_string = serde_json::to_string(&example_agent)
-        .expect("Failed to serialize example agent to JSON string");
+        // Serialize the example agent to a JSON string
+        let agent_json_string = serde_json::to_string(&example_agent)
+            .expect("Failed to serialize example agent to JSON string");
 
-    // Use the reqwest client to fetch the schemas and bypass SSL verification
-    let header_schema_string = client
-        .get(format!(
-            "{}/schemas/header/v1/header.schema.json",
-            mock_server.base_url()
-        ))
-        .send()
-        .await
-        .expect("Failed to fetch header schema")
-        .text()
-        .await
-        .expect("Failed to get header schema text");
+        // Use the reqwest client to fetch the schemas and bypass SSL verification
+        let header_schema_string = client
+            .get(format!(
+                "{}/schemas/header/v1/header.schema.json",
+                mock_server.base_url()
+            ))
+            .send()
+            .await
+            .expect("Failed to fetch header schema")
+            .text()
+            .await
+            .expect("Failed to get header schema text");
 
-    let agent_schema_string = client
-        .get(format!(
-            "{}/schemas/agent/v1/agent.schema.json",
-            mock_server.base_url()
-        ))
-        .send()
-        .await
-        .expect("Failed to fetch agent schema")
-        .text()
-        .await
-        .expect("Failed to get agent schema text");
+        let agent_schema_string = client
+            .get(format!(
+                "{}/schemas/agent/v1/agent.schema.json",
+                mock_server.base_url()
+            ))
+            .send()
+            .await
+            .expect("Failed to fetch agent schema")
+            .text()
+            .await
+            .expect("Failed to get agent schema text");
 
-    // Validate the JSON string against the fetched schemas
-    let validation_result = validate_json_data_with_schemas(
-        &agent_json_string,
-        &header_schema_string,
-        &agent_schema_string,
-    );
+        // Validate the JSON string against the fetched schemas
+        let validation_result = validate_json_data_with_schemas(
+            &agent_json_string,
+            &header_schema_string,
+            &agent_schema_string,
+        ); // The validation function is not async, so it should not be awaited
 
-    // Handle the result of validation
-    match validation_result {
-        Ok(validation_errors) => {
-            // Assert that there are no validation errors
-            assert!(
-                validation_errors.is_empty(),
-                "Validation errors found: {:?}",
-                validation_errors
-            );
-            // Log the successful validation
-            println!("Example agent validated successfully against schemas.");
+        // Handle the result of validation
+        match validation_result {
+            Ok(validation_errors) => {
+                // Assert that there are no validation errors
+                assert!(
+                    validation_errors.is_empty(),
+                    "Validation errors found: {:?}",
+                    validation_errors
+                );
+                // Log the successful validation
+                println!("Example agent validated successfully against schemas.");
+            }
+            Err(e) => panic!("Validation failed with error: {}", e),
         }
-        Err(e) => panic!("Validation failed with error: {}", e),
-    }
+    })
+    .await;
+
+    // Assert that the test result is successful
+    assert!(
+        matches!(test_result, Ok(_)),
+        "Test did not complete successfully."
+    );
 }
