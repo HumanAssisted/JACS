@@ -35,6 +35,7 @@ impl fmt::Display for ValidationError {
 
 impl Error for ValidationError {}
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Schema {
     pub headerschema: JSONSchema,
