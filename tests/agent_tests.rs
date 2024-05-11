@@ -1,7 +1,8 @@
 use httpmock::Method::GET;
 use httpmock::MockServer;
 use jacs::agent::boilerplate::BoilerPlate;
-use jsonschema::{JSONSchema, ValidationError};
+use jacs::agent::Agent;
+use jsonschema::JSONSchema;
 
 mod utils;
 
@@ -17,6 +18,7 @@ fn validate_json_data_with_schemas(
     // Parse the JSON data into a serde_json::Value
     let json_value: serde_json::Value =
         serde_json::from_str(json_data).map_err(|e| format!("Failed to parse JSON data: {}", e))?;
+    println!("Parsed JSON value for validation: {:?}", json_value);
 
     // Ensure the JSON value is not null
     if json_value.is_null() {
@@ -101,9 +103,9 @@ fn validate_json_data_with_schemas(
 }
 
 /// Performs test operations for creating an agent with an example structure.
-/// This function takes a reference to a MockServer and performs all the operations
+/// This function takes a MockServer and performs all the operations
 /// required for the test, including fetching schemas and validating JSON data.
-async fn perform_test_operations(mock_server: &MockServer) -> Result<(), String> {
+async fn perform_test_operations(mock_server: MockServer) -> Result<(), String> {
     // Configure the client to bypass SSL verification for local testing
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
@@ -149,6 +151,8 @@ async fn perform_test_operations(mock_server: &MockServer) -> Result<(), String>
     let agent_json_string = serde_json::to_string(&example_agent)
         .expect("Failed to serialize example agent to JSON string");
 
+    println!("Serialized JSON data: {}", agent_json_string);
+
     // Use the reqwest client to fetch the schemas and bypass SSL verification
     let header_schema_string = client
         .get(format!(
@@ -183,8 +187,8 @@ async fn perform_test_operations(mock_server: &MockServer) -> Result<(), String>
     .map_err(|e| format!("Validation failed: {}", e))
 }
 
-#[test]
-fn test_update_agent_and_verify_versions() {
+#[tokio::test]
+async fn test_update_agent_and_verify_versions() {
     let mock_server = MockServer::start();
 
     let _header_schema_mock = mock_server.mock(|when, then| {
@@ -200,156 +204,23 @@ fn test_update_agent_and_verify_versions() {
             .body(include_str!("../schemas/agent/v1/agent.schema.json"));
     });
 
-    // Instantiate the Agent object with the correct parameters
+    // Define the agent and header versions
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
 
-    // Serialize the agent_data to a JSON string and ensure it is not 'null'
-    let agent_data = serde_json::json!({
-        "$schema": format!("{}/schemas/agent/v1/agent.schema.json", mock_server.base_url()),
-        "jacsId": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
-        "jacsVersion": "1.0.0",
-        "jacsAgentType": "ai",
-        "jacsServices": [
-            {
-                "serviceId": "service-123",
-                "serviceName": "Example Service",
-                "serviceDescription": "This is an example service.",
-                // Additional required fields for service as per the schema
-                "serviceType": "Example Service Type",
-                "serviceUrl": "http://example.com/service"
-            }
-        ],
-        "jacsContacts": [
-            {
-                "contactId": "contact-123",
-                "contactType": "Example Contact Type",
-                "contactDetails": "This is an example contact.",
-                // Additional required fields for contact as per the schema
-                "contactMethod": "email",
-                "contactValue": "contact@example.com"
-            }
-        ],
-        "jacsSha256": "a1c87ea81a8c557b7f6be29834bd6da2650de57078da4335b2ee2612c694a18d",
-        "jacsSignature": {
-            "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
-            "agentVersion": "12ccba24-8997-47b1-9e6f-d699d7ab0e41",
-            "date": "2024-04-25T05:46:34.660457+00:00",
-            "fields": [
-                "$schema",
-                "jacsId",
-                "jacsAgentType",
-                "jacsServices",
-                "jacsContacts"
-            ],
-            "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
-            "signature": "signatureValue",
-            "signingAlgorithm": "RSA-PSS"
-        },
-        "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00",
-        "name": "Agent Smith",
-        "jacsOriginalVersion": "0.9.0",
-        "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
-        // Added missing fields as per the schema requirements
-        "header_version": header_version,
-        "document_version": agent_version,
-        // Ensure all required fields as per the schema are included
-        // Add any missing fields here
-    });
-    let agent_json_string = serde_json::to_string(&agent_data)
-        .expect("Failed to serialize agent object to JSON string");
-
-    // Ensure the JSON string is not 'null' or empty
-    assert!(!agent_json_string.is_empty(), "The JSON string is empty.");
-    assert_ne!(agent_json_string, "null", "The JSON string is 'null'.");
-
-    // Log the JSON string to be loaded
-    println!("JSON string to be loaded: {}", agent_json_string);
-
-    println!("Serialized agent JSON data: {}", agent_json_string);
-    // Fetch the header and agent schema strings using the mock server
-    let header_schema_string = include_str!("../schemas/header/v1/header.schema.json").to_string();
-    let agent_schema_string = include_str!("../schemas/agent/v1/agent.schema.json").to_string();
-
-    // Attempt to create and load the agent with the non-'null' JSON string
-    let agent_result = jacs::agent::Agent::create_agent_and_load(
+    // Instantiate the Agent object with the correct parameters
+    let mut agent = Agent::new(
         &agent_version,
         &header_version,
-        format!(
-            "{}/schemas/header/v1/header.schema.json",
-            mock_server.base_url()
-        ),
-        format!(
-            "{}/schemas/agent/v1/agent.schema.json",
-            mock_server.base_url()
-        ),
-        &agent_json_string,
-    ); // Closing parenthesis added to complete the function call
+        mock_server.base_url().to_string() + "/schemas/header/v1/header.schema.json",
+        mock_server.base_url().to_string() + "/schemas/agent/v1/agent.schema.json",
+    )
+    .expect("Failed to create Agent instance");
 
-    // Handle the result of the create_agent_and_load function
-    match &agent_result {
-        Ok(agent) => {
-            println!("Agent created and loaded successfully: {:?}", agent);
-
-            println!(
-                "Before validation: JSON string to be validated: {}",
-                agent_json_string
-            );
-            println!(
-                "Before validation: Header schema string: {}",
-                header_schema_string
-            );
-            println!(
-                "Before validation: Agent schema string: {}",
-                agent_schema_string
-            );
-
-            // Validate the JSON string against the fetched schemas
-            let validation_result = validate_json_data_with_schemas(
-                &agent_json_string,
-                &header_schema_string,
-                &agent_schema_string,
-            );
-
-            println!("After validation: Result: {:?}", validation_result);
-
-            // Handle the result of validation
-            match validation_result {
-                Ok(validation_errors) => {
-                    // Since the validation_errors is now a unit type `()`, we remove the is_empty checks
-                    // and directly assert that the validation result is an Ok(())
-                    assert!(
-                        validation_result.is_ok(),
-                        "Validation errors found: {:?}",
-                        validation_result.err()
-                    );
-                    println!("No validation errors found, agent JSON is valid.");
-                }
-                Err(e) => {
-                    eprintln!("Validation failed with error: {}", e);
-                    assert!(false, "Test failed due to validation errors.");
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to create and load agent. Error: {:?}", e);
-            if let Some(validation_error) = e.downcast_ref::<ValidationError>() {
-                eprintln!("Detailed validation error: {:?}", validation_error);
-            }
-            assert!(
-                false,
-                "Test failed due to an error in creating and loading the agent."
-            );
-        }
-    }
-
-    let mut agent =
-        agent_result.expect("Failed to create and load agent despite previous assertion.");
-
-    let agentid =
-        "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
-    let result = agent
-        .load_by_id(Some(agentid), None)
+    // Load the agent by ID
+    let agent_id = "48d074ec-84e2-4d26-adc5-0b2253f1e8ff".to_string();
+    agent
+        .load_by_id(Some(agent_id), None)
         .expect("Failed to load agent by ID");
 
     println!(
@@ -366,15 +237,12 @@ fn test_update_agent_and_verify_versions() {
         .expect("Failed to verify self signature");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_create_agent_with_example_structure() {
     let mock_server = MockServer::start();
-
-    // Wrap the test operations in a tokio::spawn block to ensure proper async execution
-    let test_future = tokio::spawn(async move { perform_test_operations(&mock_server).await });
-
-    // Await the result of the test future to ensure the MockServer remains in scope
-    let test_result = test_future.await.expect("Test future panicked");
+    println!("MockServer started, about to perform test operations");
+    let test_result = perform_test_operations(mock_server.clone()).await;
+    println!("Test operations completed, test result: {:?}", test_result);
 
     // Assert that the test result is successful
     assert!(

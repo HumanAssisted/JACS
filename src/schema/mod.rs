@@ -74,7 +74,10 @@ lazy_static! {
 }
 
 impl Schema {
-    pub fn new(header_schema_url: &str, document_schema_url: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        _header_schema_url: &str,
+        _document_schema_url: &str,
+    ) -> Result<Self, Box<dyn Error>> {
         // Use the pre-parsed schema values from the lazy_static block
         let headerschema = JSONSchema::compile(&HEADERSCHEMA_VALUE_ARC)?;
         let agentschema = JSONSchema::compile(&AGENTSCHEMA_VALUE_ARC)?;

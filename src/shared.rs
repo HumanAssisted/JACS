@@ -44,7 +44,7 @@ pub fn document_create(
     }
 
     // Initialize `doc_id` before the scope to make it accessible throughout the function
-    let mut doc_id = String::new();
+    let doc_id: String;
 
     {
         // Scope to limit the mutable borrow of `agent` within the `create_document_and_load` call
