@@ -432,7 +432,7 @@ impl Document for Agent {
     /// TODO validate that the new document is owned by editor
     fn update_document(
         &mut self,
-        document_key: &String,
+        _document_key: &String,
         new_document_string: &String,
         attachments: Option<Vec<String>>,
         embed: Option<bool>,

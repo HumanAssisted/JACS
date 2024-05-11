@@ -80,8 +80,8 @@ impl Schema {
         let agentschema_response = reqwest::blocking::get(document_schema_url)?.text()?;
 
         // Parse the fetched schema strings into Value
-        let headerschema_value: Value = serde_json::from_str(&headerschema_response)?;
-        let agentschema_value: Value = serde_json::from_str(&agentschema_response)?;
+        let _headerschema_value: Value = serde_json::from_str(&headerschema_response)?;
+        let _agentschema_value: Value = serde_json::from_str(&agentschema_response)?;
 
         // Store the parsed Values in the Schema struct to ensure they are owned by the Schema instance
         let schema = Self {
