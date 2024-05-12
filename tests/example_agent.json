@@ -1,5 +1,5 @@
 {
-  "$schema": "http://127.0.0.1:38989/schemas/header/v1/header.schema.json",
+  "$schema": "http://127.0.0.1:43541/schemas/agent/v1/agent.schema.json",
   "jacsAgentType": "ai",
   "jacsAgreement": {
     "agreementDate": "2024-04-25T05:46:34.271322+00:00",
@@ -18,12 +18,26 @@
     ]
   },
   "jacsAgreementHash": "dummy-hash-value",
-  "jacsContacts": [],
+  "jacsContacts": [
+    {
+      "contactType": "email",
+      "contactValue": "example@example.com"
+    }
+  ],
   "jacsFiles": [
     {
-      "mimetype": "application/example",
+      "contents": "dummy base64 encoded content",
       "embed": true,
-      "path": "example/path/to/file"
+      "mimetype": "application/json",
+      "path": "dummy/path/example.json",
+      "sha256": "dummy-sha256-checksum"
+    },
+    {
+      "contents": "dummy base64 encoded content for pdf",
+      "embed": false,
+      "mimetype": "application/pdf",
+      "path": "dummy/path/example.pdf",
+      "sha256": "dummy-sha256-checksum-for-pdf"
     }
   ],
   "jacsId": "example-id",

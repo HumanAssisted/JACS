@@ -24,7 +24,7 @@ https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1
 
 ## jacsAgentType
 
-Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence.
+Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, 'hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence.
 
 `jacsAgentType`
 

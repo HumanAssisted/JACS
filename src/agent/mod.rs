@@ -270,8 +270,23 @@ impl Agent {
                 }
             }
             Err(e) => {
-                error!("ERROR document ERROR {}", e);
-                return Err(e.into());
+                if let Some(validation_error) = e.downcast_ref::<jsonschema::ValidationError>() {
+                    let error_message = format!(
+                        "Validation error: {:?} at path: {:?} with schema path: {:?}",
+                        validation_error,
+                        validation_error.instance_path,
+                        validation_error.schema_path
+                    );
+                    error!("Validation failed with error: {:?}", error_message);
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        error_message,
+                    )));
+                } else {
+                    let error_message = format!("Validation failed with error: {:?}", e);
+                    error!("{}", error_message);
+                    return Err(e);
+                }
             }
         }
 

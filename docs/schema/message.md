@@ -16,15 +16,15 @@ A signed, immutable message about a task
 
 # Message Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                     |
-| :-------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
-| [id](#id)                   | `string` | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/id")                                     |
-| [signature](#signature)     | `object` | Optional | cannot be null | [Message](task-allof-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
-| [taskID](#taskid)           | `string` | Required | cannot be null | [Message](message-properties-taskid.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/taskID")                             |
-| [to](#to)                   | `array`  | Optional | cannot be null | [Message](message-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/to")                                     |
-| [datetime](#datetime)       | `string` | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/datetime")                         |
-| [content](#content)         | `string` | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/content")                           |
-| [attachments](#attachments) | `array`  | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments")                   |
+| Property                    | Type          | Required | Nullable       | Defined by                                                                                                                   |
+| :-------------------------- | :------------ | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------- |
+| [id](#id)                   | `string`      | Required | cannot be null | [Message](message-properties-id.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/id")                   |
+| [signature](#signature)     | Not specified | Optional | cannot be null | [Message](message-properties-signature.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/signature")     |
+| [taskID](#taskid)           | `string`      | Required | cannot be null | [Message](message-properties-taskid.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/taskID")           |
+| [to](#to)                   | `array`       | Optional | cannot be null | [Message](message-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/to")                   |
+| [datetime](#datetime)       | `string`      | Required | cannot be null | [Message](message-properties-datetime.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/datetime")       |
+| [content](#content)         | `string`      | Required | cannot be null | [Message](message-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/content")         |
+| [attachments](#attachments) | `array`       | Optional | cannot be null | [Message](message-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments") |
 
 ## id
 
@@ -50,21 +50,21 @@ A signed, immutable message about a task
 
 ## signature
 
-Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+signing of message
 
 `signature`
 
 * is optional
 
-* Type: `object` ([Signature](task-allof-1-properties-signature-1.md))
+* Type: unknown
 
 * cannot be null
 
-* defined in: [Message](task-allof-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
+* defined in: [Message](message-properties-signature.md "https://hai.ai/schemas/message/v1/message.schema.json#/properties/signature")
 
 ### signature Type
 
-`object` ([Signature](task-allof-1-properties-signature-1.md))
+unknown
 
 ## taskID
 
@@ -154,7 +154,7 @@ list of files
 
 * is optional
 
-* Type: `object[]` ([File](message-properties-attachments-file.md))
+* Type: unknown\[]
 
 * cannot be null
 
@@ -162,4 +162,4 @@ list of files
 
 ### attachments Type
 
-`object[]` ([File](message-properties-attachments-file.md))
+unknown\[]

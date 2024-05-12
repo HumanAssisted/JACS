@@ -76,7 +76,6 @@
     "jacsVersion",
     "jacsVersionDate",
     "jacsOriginalVersion",
-    "jacsOriginalDate",
-    "$schema"
+    "jacsOriginalDate"
   ]
 }

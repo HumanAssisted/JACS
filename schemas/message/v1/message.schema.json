@@ -12,7 +12,7 @@
     },
     "signature": {
       "description": "signing of message",
-      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+      "$ref": "signature.schema.json"
     },
     "taskID": {
       "type": "string",
@@ -43,7 +43,7 @@
       "type": "array",
       "description": "list of files  ",
       "items": {
-        "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
+        "$ref": "files.schema.json"
       }
     }
   },

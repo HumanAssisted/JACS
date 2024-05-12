@@ -12,7 +12,7 @@
     },
     "signature": {
       "description": "signing of evaluation by agent evaluating",
-      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+      "$ref": "signature.schema.json"
     },
     "taskID": {
       "type": "string",
@@ -35,7 +35,7 @@
       "type": "array",
       "description": "list of evaluation units, informatio labels",
       "items": {
-        "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
+        "$ref": "unit.schema.json"
       }
     }
   },

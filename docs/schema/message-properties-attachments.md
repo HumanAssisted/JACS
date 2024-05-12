@@ -12,4 +12,4 @@ list of files
 
 ## attachments Type
 
-`object[]` ([File](message-properties-attachments-file.md))
+unknown\[]

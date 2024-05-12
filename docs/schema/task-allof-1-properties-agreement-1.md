@@ -31,7 +31,7 @@ Signatures of agents
 
 * is optional
 
-* Type: `object[]` ([Signature](task-allof-1-properties-signature-1.md))
+* Type: unknown\[]
 
 * cannot be null
 
@@ -39,7 +39,7 @@ Signatures of agents
 
 ### signatures Type
 
-`object[]` ([Signature](task-allof-1-properties-signature-1.md))
+unknown\[]
 
 ## agentIDs
 
