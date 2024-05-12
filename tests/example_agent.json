@@ -1,5 +1,5 @@
 {
-  "$schema": "http://127.0.0.1:33309/schemas/header/v1/header.schema.json",
+  "$schema": "http://127.0.0.1:38989/schemas/header/v1/header.schema.json",
   "jacsAgentType": "ai",
   "jacsAgreement": {
     "agreementDate": "2024-04-25T05:46:34.271322+00:00",
@@ -19,7 +19,13 @@
   },
   "jacsAgreementHash": "dummy-hash-value",
   "jacsContacts": [],
-  "jacsFiles": [],
+  "jacsFiles": [
+    {
+      "mimetype": "application/example",
+      "embed": true,
+      "path": "example/path/to/file"
+    }
+  ],
   "jacsId": "example-id",
   "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
   "jacsOriginalVersion": "0.9.0",

@@ -25,15 +25,15 @@
     },
     "jacsSignature": {
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
-      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+      "$ref": "signature.schema.json"
     },
     "jacsRegistration": {
       "description": "Signature by a sigining authority like https://hai.ai.",
-      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+      "$ref": "signature.schema.json"
     },
     "jacsAgreement": {
       "description": "Signatures signifying an agreement between agents.",
-      "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+      "$ref": "agreement.schema.json"
     },
     "jacsAgreementHash": {
       "type": "string",
@@ -67,7 +67,7 @@
       "description": "A set of files included with the jacs document",
       "type": "array",
       "items": {
-        "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
+        "$ref": "files.schema.json"
       }
     }
   },

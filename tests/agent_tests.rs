@@ -373,14 +373,19 @@ async fn test_create_agent_with_example_structure() {
     let mock_server = MockServer::start();
     println!("MockServer started at URL: {}", mock_server.base_url());
 
-    // Perform test operations, passing the MockServer by reference to avoid premature drop
-    let test_result = perform_test_operations(&mock_server).await;
-    println!("Test operations completed, test result: {:?}", test_result);
+    // Wrap the test operations in a block to control the lifetime of the MockServer
+    {
+        // Perform test operations, passing the MockServer by reference to avoid premature drop
+        let test_result = perform_test_operations(&mock_server).await;
+        println!("Test operations completed, test result: {:?}", test_result);
 
-    // Assert that the test operations completed successfully
-    assert!(
-        test_result.is_ok(),
-        "Test did not complete successfully: {:?}",
-        test_result.err()
-    );
+        // Assert that the test operations completed successfully
+        assert!(
+            test_result.is_ok(),
+            "Test did not complete successfully: {:?}",
+            test_result.err()
+        );
+    } // The MockServer goes out of scope here, after all async operations are complete
+
+    // Additional assertions or cleanup code can be added here if necessary
 }
