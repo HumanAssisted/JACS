@@ -74,19 +74,15 @@ lazy_static! {
 }
 
 impl Schema {
-    pub fn new(
-        _header_schema_url: &str,
-        _document_schema_url: &str,
-    ) -> Result<Self, Box<dyn Error>> {
-        // Use the pre-parsed schema values from the lazy_static block
-        let headerschema = JSONSchema::compile(&HEADERSCHEMA_VALUE_ARC)?;
-        let agentschema = JSONSchema::compile(&AGENTSCHEMA_VALUE_ARC)?;
+    pub fn new() -> Result<Self, Box<dyn Error>> {
+        let headerschema = JSONSchema::compile(HEADERSCHEMA_VALUE_ARC.as_ref())?;
+        let agentschema = JSONSchema::compile(AGENTSCHEMA_VALUE_ARC.as_ref())?;
 
-        // Store the compiled JSONSchemas in the Schema struct
+        // The rest of the fields remain unchanged...
         let schema = Self {
             headerschema,
             agentschema,
-            // The rest of the fields remain unchanged...
+            // The rest of the fields are initialized with Value::Null for now
             signatureschema: JSONSchema::compile(&Value::Null)?,
             jacsconfigschema: JSONSchema::compile(&Value::Null)?,
             agreementschema: JSONSchema::compile(&Value::Null)?,

@@ -1,0 +1,64 @@
+{
+  "$schema": "http://127.0.0.1:39255/schemas/header/v1/header.schema.json",
+  "jacsAgentType": "ai",
+  "jacsAgreement": {
+    "agreementDate": "2024-04-25T05:46:34.271322+00:00",
+    "agreementId": "dummy-agreement-id",
+    "agreementParty1": "http://example.com/agents/1",
+    "agreementParty2": "http://example.com/agents/2",
+    "agreementType": "ExampleType",
+    "signatures": [
+      {
+        "created": "2024-04-25T05:46:34.271322+00:00",
+        "creator": "http://example.com/key/3",
+        "signatureValue": "Base64Encoded==",
+        "type": "ECDSA"
+      }
+    ]
+  },
+  "jacsAgreementHash": "dummy-hash",
+  "jacsContacts": [
+    {
+      "addressName": "John's Home",
+      "email": "john.doe@example.com",
+      "firstName": "John",
+      "isPrimary": true,
+      "lastName": "Doe",
+      "mailAddress": "123 Example Street",
+      "mailAddressTwo": "Apt 4",
+      "mailCountry": "ExampleCountry",
+      "mailName": "John Doe",
+      "mailState": "ExampleState",
+      "mailZip": "12345",
+      "phone": "123-456-7890"
+    }
+  ],
+  "jacsFiles": [],
+  "jacsId": "example-id",
+  "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
+  "jacsOriginalVersion": "0.9.0",
+  "jacsRegistration": {
+    "created": "2024-04-25T05:46:34.271322+00:00",
+    "creator": "http://example.com/key/2",
+    "signatureValue": "Base64Encoded==",
+    "type": "ECDSA"
+  },
+  "jacsServices": [
+    {
+      "serviceDescription": "This is an example service.",
+      "serviceId": "service-123",
+      "serviceName": "Example Service",
+      "serviceType": "Example Service Type",
+      "serviceUrl": "http://example.com/service"
+    }
+  ],
+  "jacsSha256": "dummy-sha256",
+  "jacsSignature": {
+    "created": "2024-04-25T05:46:34.271322+00:00",
+    "creator": "http://example.com/key/1",
+    "signatureValue": "Base64Encoded==",
+    "type": "ECDSA"
+  },
+  "jacsVersion": "1.0.0",
+  "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00"
+}

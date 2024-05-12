@@ -52,9 +52,9 @@
 
 * [Untitled array in Action](./action-properties-tools.md "tools that can be utilized") – `https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools`
 
-* [Untitled array in Agent](./agent-allof-1-jacsservices.md "Services the agent can perform") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsServices`
+* [Untitled array in Agent](./agent-allof-1-properties-jacsservices.md "Services the agent can perform") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsServices`
 
-* [Untitled array in Agent](./agent-allof-1-jacscontacts.md "Contact information for the agent") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsContacts`
+* [Untitled array in Agent](./agent-allof-1-properties-jacscontacts.md "Contact information for the agent") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsContacts`
 
 * [Untitled array in Evaluation](./eval-properties-quantifications.md "list of evaluation units, informatio labels") – `https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications`
 

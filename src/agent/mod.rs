@@ -147,7 +147,16 @@ impl Agent {
             "Initializing schema with document schema URL: {}",
             document_schema_url
         );
-        let schema = Schema::new(&header_schema_url, &document_schema_url)?;
+        let schema = match Schema::new() {
+            Ok(s) => {
+                println!("Schema compiled successfully.");
+                s
+            }
+            Err(e) => {
+                println!("Failed to compile schema: {}", e);
+                return Err(e.into());
+            }
+        };
         println!("Schema initialized successfully.");
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
@@ -192,7 +201,7 @@ impl Agent {
         println!("Value before validation: {:?}", agent_data); // Output the value right before validation
 
         // Validate the JSON data against the agent schema
-        let schema = Schema::new(&header_schema_url, &document_schema_url)?;
+        let schema = Schema::new()?;
         println!("Schema created for validation.");
 
         println!("Starting validation of JSON data against the agent schema.");

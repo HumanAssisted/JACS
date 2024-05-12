@@ -18,7 +18,9 @@ https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1
 
 | Property                        | Type     | Required | Nullable       | Defined by                                                                                                                               |
 | :------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
-| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType") |
+| [jacsAgentType](#jacsagenttype) | `string` | Required | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType") |
+| [jacsServices](#jacsservices)   | `array`  | Required | cannot be null | [Agent](agent-allof-1-properties-jacsservices.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsServices")   |
+| [jacsContacts](#jacscontacts)   | `array`  | Optional | cannot be null | [Agent](agent-allof-1-properties-jacscontacts.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsContacts")   |
 
 ## jacsAgentType
 
@@ -26,7 +28,7 @@ Type of the agent. 'human' indicates a biological entity, 'human-org' indicates 
 
 `jacsAgentType`
 
-* is optional
+* is required
 
 * Type: `string`
 
@@ -48,3 +50,43 @@ Type of the agent. 'human' indicates a biological entity, 'human-org' indicates 
 | `"human-org"` |             |
 | `"hybrid"`    |             |
 | `"ai"`        |             |
+
+## jacsServices
+
+Services the agent can perform.
+
+`jacsServices`
+
+* is required
+
+* Type: unknown\[]
+
+* cannot be null
+
+* defined in: [Agent](agent-allof-1-properties-jacsservices.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsServices")
+
+### jacsServices Type
+
+unknown\[]
+
+### jacsServices Constraints
+
+**minimum number of items**: the minimum number of items for this array is: `1`
+
+## jacsContacts
+
+Contact information for the agent
+
+`jacsContacts`
+
+* is optional
+
+* Type: unknown\[]
+
+* cannot be null
+
+* defined in: [Agent](agent-allof-1-properties-jacscontacts.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsContacts")
+
+### jacsContacts Type
+
+unknown\[]
