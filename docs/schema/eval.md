@@ -16,14 +16,14 @@ A signed, immutable message evaluation an agent's performance on a task
 
 # Evaluation Properties
 
-| Property                                  | Type     | Required | Nullable       | Defined by                                                                                                                                  |
-| :---------------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
-| [id](#id)                                 | `string` | Required | cannot be null | [Evaluation](eval-properties-id.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/id")                                        |
-| [signature](#signature)                   | `object` | Optional | cannot be null | [Evaluation](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
-| [taskID](#taskid)                         | `string` | Required | cannot be null | [Evaluation](eval-properties-taskid.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/taskID")                                |
-| [datetime](#datetime)                     | `string` | Required | cannot be null | [Evaluation](eval-properties-datetime.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/datetime")                            |
-| [qualityDescription](#qualitydescription) | `string` | Optional | cannot be null | [Evaluation](eval-properties-qualitydescription.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/qualityDescription")        |
-| [quantifications](#quantifications)       | `array`  | Optional | cannot be null | [Evaluation](eval-properties-quantifications.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications")              |
+| Property                                  | Type     | Required | Nullable       | Defined by                                                                                                                                        |
+| :---------------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [id](#id)                                 | `string` | Required | cannot be null | [Evaluation](eval-properties-id.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/id")                                              |
+| [signature](#signature)                   | `object` | Optional | cannot be null | [Evaluation](task-allof-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature") |
+| [taskID](#taskid)                         | `string` | Required | cannot be null | [Evaluation](eval-properties-taskid.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/taskID")                                      |
+| [datetime](#datetime)                     | `string` | Required | cannot be null | [Evaluation](eval-properties-datetime.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/datetime")                                  |
+| [qualityDescription](#qualitydescription) | `string` | Optional | cannot be null | [Evaluation](eval-properties-qualitydescription.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/qualityDescription")              |
+| [quantifications](#quantifications)       | `array`  | Optional | cannot be null | [Evaluation](eval-properties-quantifications.md "https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications")                    |
 
 ## id
 
@@ -55,15 +55,15 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 * is optional
 
-* Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](task-allof-1-properties-signature-1.md))
 
 * cannot be null
 
-* defined in: [Evaluation](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
+* defined in: [Evaluation](task-allof-1-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
-`object` ([Signature](header-properties-signature-1.md))
+`object` ([Signature](task-allof-1-properties-signature-1.md))
 
 ## taskID
 

@@ -1,5 +1,5 @@
 {
-  "$schema": "http://127.0.0.1:34445/schemas/header/v1/header.schema.json",
+  "$schema": "http://127.0.0.1:33309/schemas/header/v1/header.schema.json",
   "jacsAgentType": "ai",
   "jacsAgreement": {
     "agreementDate": "2024-04-25T05:46:34.271322+00:00",
@@ -18,22 +18,7 @@
     ]
   },
   "jacsAgreementHash": "dummy-hash-value",
-  "jacsContacts": [
-    {
-      "addressName": "John's Home",
-      "email": "john.doe@example.com",
-      "firstName": "John",
-      "isPrimary": true,
-      "lastName": "Doe",
-      "mailAddress": "123 Example Street",
-      "mailAddressTwo": "Apt 4",
-      "mailCountry": "ExampleCountry",
-      "mailName": "John Doe",
-      "mailState": "ExampleState",
-      "mailZip": "12345",
-      "phone": "123-456-7890"
-    }
-  ],
+  "jacsContacts": [],
   "jacsFiles": [],
   "jacsId": "example-id",
   "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",

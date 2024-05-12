@@ -1,20 +1,20 @@
 # agreement Schema
 
 ```txt
-https://hai.ai/schemas/components/agreement/v1/agreement.schema.json
+https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/allOf/1/properties/jacsStartAgreement
 ```
 
 A set of required signatures signifying an agreement.
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                              |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------ |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [agreement.schema.json](../../out/components/agreement/v1/agreement.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                      |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------ |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [task.schema.json\*](../../out/task/v1/task.schema.json "open original schema") |
 
-## agreement Type
+## jacsStartAgreement Type
 
-`object` ([agreement](agreement.md))
+`object` ([agreement](task-allof-1-properties-agreement-1.md))
 
-# agreement Properties
+# jacsStartAgreement Properties
 
 | Property                  | Type     | Required | Nullable       | Defined by                                                                                                                                    |
 | :------------------------ | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
