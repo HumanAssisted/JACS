@@ -158,22 +158,7 @@ async fn perform_test_operations(mock_server: &MockServer) -> Result<(), String>
                 "serviceUrl": "http://example.com/service"
             }
         ],
-        "jacsContacts": [ // Ensuring this required field is present even if empty for 'ai' agent type
-            {
-                "firstName": "John",
-                "lastName": "Doe",
-                "addressName": "John's Home",
-                "phone": "123-456-7890",
-                "email": "john.doe@example.com",
-                "mailName": "John Doe",
-                "mailAddress": "123 Example Street",
-                "mailAddressTwo": "Apt 4",
-                "mailState": "ExampleState",
-                "mailZip": "12345",
-                "mailCountry": "ExampleCountry",
-                "isPrimary": true
-            }
-        ],
+        "jacsContacts": [], // For 'ai' agent type, 'jacsContacts' should be an empty array
         // Adding required fields from the header schema with valid dummy data for testing
         "jacsSignature": {
             "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",

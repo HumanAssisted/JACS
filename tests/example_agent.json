@@ -1,11 +1,12 @@
 {
-  "$schema": "http://127.0.0.1:39255/schemas/header/v1/header.schema.json",
+  "$schema": "http://127.0.0.1:34445/schemas/header/v1/header.schema.json",
   "jacsAgentType": "ai",
   "jacsAgreement": {
     "agreementDate": "2024-04-25T05:46:34.271322+00:00",
     "agreementId": "dummy-agreement-id",
     "agreementParty1": "http://example.com/agents/1",
     "agreementParty2": "http://example.com/agents/2",
+    "agreementTerms": "ExampleTerms",
     "agreementType": "ExampleType",
     "signatures": [
       {
@@ -16,7 +17,7 @@
       }
     ]
   },
-  "jacsAgreementHash": "dummy-hash",
+  "jacsAgreementHash": "dummy-hash-value",
   "jacsContacts": [
     {
       "addressName": "John's Home",
@@ -38,10 +39,15 @@
   "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
   "jacsOriginalVersion": "0.9.0",
   "jacsRegistration": {
-    "created": "2024-04-25T05:46:34.271322+00:00",
-    "creator": "http://example.com/key/2",
-    "signatureValue": "Base64Encoded==",
-    "type": "ECDSA"
+    "registrant": "http://example.com/agents/1",
+    "registrationDate": "2024-04-25T05:46:34.271322+00:00",
+    "registrationId": "dummy-registration-id",
+    "signature": {
+      "created": "2024-04-25T05:46:34.271322+00:00",
+      "creator": "http://example.com/key/2",
+      "signatureValue": "Base64Encoded==",
+      "type": "ECDSA"
+    }
   },
   "jacsServices": [
     {
@@ -52,12 +58,21 @@
       "serviceUrl": "http://example.com/service"
     }
   ],
-  "jacsSha256": "dummy-sha256",
+  "jacsSha256": "dummy-sha256-value",
   "jacsSignature": {
-    "created": "2024-04-25T05:46:34.271322+00:00",
-    "creator": "http://example.com/key/1",
-    "signatureValue": "Base64Encoded==",
-    "type": "ECDSA"
+    "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+    "agentVersion": "1.0.0",
+    "date": "2024-04-25T05:46:34.271322+00:00",
+    "fields": [
+      "jacsId",
+      "jacsVersion",
+      "jacsVersionDate",
+      "jacsOriginalVersion",
+      "jacsOriginalDate"
+    ],
+    "publicKeyHash": "PublicKeyHashValue==",
+    "signature": "Base64EncodedSignature==",
+    "signingAlgorithm": "ECDSA"
   },
   "jacsVersion": "1.0.0",
   "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00"
