@@ -1,3 +1,8 @@
+## 0.2.13
+- save public key to local fs
+
+
+
 ## 0.2.12
 
 - Let Devin.ai have a go at looking for issues with missing documentation, unsafe calles, and uncessary copies of data, updated some libs
