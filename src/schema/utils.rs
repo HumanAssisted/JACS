@@ -1,5 +1,5 @@
-use crate::schema::Url;
 use log::debug;
+use url::Url;
 
 use phf::phf_map;
 

@@ -124,20 +124,50 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
             .path("/schemas/header/v1/header.schema.json");
         then.status(200)
             .body(include_str!("../schemas/header/v1/header.schema.json"));
-        println!(
-            "Header schema content served by MockServer: {}",
-            include_str!("../schemas/header/v1/header.schema.json")
-        );
     });
     let agent_schema_mock = mock_server.mock(|when, then| {
         when.method(GET).path("/schemas/agent/v1/agent.schema.json");
         then.status(200)
             .body(include_str!("../schemas/agent/v1/agent.schema.json"));
-        println!(
-            "Agent schema content served by MockServer: {}",
-            include_str!("../schemas/agent/v1/agent.schema.json")
-        );
     });
+    // Mock additional schema files referenced by the agent schema
+    let service_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/service/v1/service.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/service/v1/service.schema.json"
+        ));
+    });
+    let contact_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/contact/v1/contact.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/contact/v1/contact.schema.json"
+        ));
+    });
+    let signature_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/signature/v1/signature.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/signature/v1/signature.schema.json"
+        ));
+    });
+    let agreement_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/agreement/v1/agreement.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/agreement/v1/agreement.schema.json"
+        ));
+    });
+    let files_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET)
+            .path("/schemas/components/files/v1/files.schema.json");
+        then.status(200).body(include_str!(
+            "../schemas/components/files/v1/files.schema.json"
+        ));
+    });
+    // Add more mocks for other referenced schema files as needed
+    // ...
 
     // Define the agent and header versions
     let agent_version = "v1".to_string();
@@ -173,6 +203,26 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
         )
     );
 
+    // Load the example agent JSON data from the file
+    let example_agent_json = std::fs::read_to_string("/home/ubuntu/JACS/tests/example_agent.json")
+        .map_err(|e| format!("Failed to read example agent JSON data from file: {}", e))?;
+    println!("Raw example agent JSON data: {}", example_agent_json);
+
+    // Replace the {{SCHEMA_URL}} placeholder with the actual MockServer URL
+    let example_agent_json = example_agent_json.replace("{{SCHEMA_URL}}", &mock_server.base_url());
+    println!(
+        "Example agent JSON data after placeholder replacement: {}",
+        example_agent_json
+    );
+
+    // Parse the modified JSON data into a serde_json::Value
+    let example_agent: serde_json::Value = serde_json::from_str(&example_agent_json)
+        .map_err(|e| format!("Failed to parse example agent JSON data: {}", e))?;
+    println!(
+        "Parsed example agent JSON data for validation: {:?}",
+        example_agent
+    );
+
     // Instantiate the Agent object with the correct parameters
     let _agent = Agent::new(
         &agent_version,
@@ -187,11 +237,6 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
         ),
     )
     .map_err(|e| format!("Failed to create Agent instance: {}", e))?;
-
-    // The example agent JSON data is defined within the scope of this function
-    let example_agent = serde_json::json!({
-        // JSON structure as previously defined
-    });
 
     println!(
         "Example agent JSON data being validated: {}",
@@ -208,14 +253,40 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
     .map_err(|e| format!("Failed to write example agent JSON data to file: {}", e))?;
     println!("MockServer: Example agent JSON data written to file for external validation");
 
+    // Serialize the example agent JSON data to a string for validation
+    let example_agent_json = serde_json::to_string(&example_agent)
+        .expect("Failed to serialize example agent data to JSON string");
+    println!(
+        "Serialized example agent JSON data for validation: {}",
+        example_agent_json
+    );
+
+    // Read the header and agent schema content from files
+    let header_schema_content = include_str!("../schemas/header/v1/header.schema.json");
+    let agent_schema_content = include_str!("../schemas/agent/v1/agent.schema.json");
+    println!(
+        "Header schema content for validation: {}",
+        header_schema_content
+    );
+    println!(
+        "Agent schema content for validation: {}",
+        agent_schema_content
+    );
+
     // Validate the JSON string against the fetched schemas
+    println!(
+        "Validating JSON data against schemas. Data to validate: {:?}",
+        example_agent
+    );
     validate_json_data_with_schemas(
-        &serde_json::to_string(&example_agent)
-            .expect("Failed to serialize example agent data to JSON string"),
-        &include_str!("../schemas/header/v1/header.schema.json"),
-        &include_str!("../schemas/agent/v1/agent.schema.json"),
+        &example_agent_json,
+        header_schema_content,
+        agent_schema_content,
     )
-    .map_err(|e| format!("Validation failed: {}", e))?;
+    .map_err(|e| {
+        println!("Validation failed with error: {}", e);
+        e
+    })?;
     println!("JSON data validated successfully against header and agent schemas.");
 
     // Explicitly keep the MockServer and its mocks in scope until all async operations are complete
@@ -223,6 +294,11 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
     // This ensures that the Tokio runtime is not dropped prematurely.
     let _ = header_schema_mock;
     let _ = agent_schema_mock;
+    let _ = service_schema_mock;
+    let _ = contact_schema_mock;
+    let _ = signature_schema_mock;
+    let _ = agreement_schema_mock;
+    let _ = files_schema_mock;
     let _ = mock_server;
 
     Ok(())

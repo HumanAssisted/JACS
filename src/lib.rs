@@ -53,7 +53,7 @@ fn load_path_agent(filepath: String) -> Result<Agent, Box<dyn Error>> {
     Ok(agent)
 }
 
-pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Error>> {
+pub fn load_agent(agentfile: Option<String>) -> Result<Agent, Box<dyn Error>> {
     debug!("load_agent agentfile = {:?}", agentfile);
     if let Some(file) = agentfile {
         load_path_agent(file.to_string())

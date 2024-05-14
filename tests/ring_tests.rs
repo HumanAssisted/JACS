@@ -27,22 +27,16 @@ fn test_ring_ed25519_create() {
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let json_data = fs::read_to_string("examples/raw/myagent.new.json").expect("REASON");
-    let _result = jacs::agent::Agent::create_agent_and_load(
+    let mut agent = jacs::agent::Agent::new(
         &agent_version,
         &header_version,
         header_schema_url.clone(),
         document_schema_url.clone(),
-        &json_data,
-    );
-    set_enc_to_ring();
-    // does this modify the agent sig?
-    let mut agent = jacs::agent::Agent::new(
-        &agent_version,
-        &header_version,
-        header_schema_url,
-        document_schema_url,
     )
     .unwrap();
+    let _result = agent.create_agent_and_load(&json_data);
+    set_enc_to_ring();
+    // does this modify the agent sig?
     agent.generate_keys().expect("Reason");
 }
 
@@ -55,20 +49,14 @@ fn test_ring_ed25519_create_and_verify_signature() {
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let json_data = fs::read_to_string("examples/raw/myagent.new.json").expect("REASON");
-    let _result = jacs::agent::Agent::create_agent_and_load(
-        &agent_version,
-        &header_version,
-        header_schema_url.clone(),
-        document_schema_url.clone(),
-        &json_data,
-    );
-    let agent = jacs::agent::Agent::new(
+    let mut agent = jacs::agent::Agent::new(
         &agent_version,
         &header_version,
         header_schema_url,
         document_schema_url,
     )
     .unwrap();
+    let _result = agent.create_agent_and_load(&json_data);
     let _private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
 

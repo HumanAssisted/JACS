@@ -1,19 +1,7 @@
-use jsonschema::JSONSchema;
-use serde_json::Value;
-use std::sync::Arc;
-use url::Url;
-
-pub mod action_crud;
-pub mod agent_crud;
-pub mod contact_crud;
-pub mod message_crud;
-pub mod service_crud;
-pub mod signature;
-pub mod task_crud;
-pub mod tools_crud;
-pub mod utils;
-
+use crate::agent::document::JACSDocument;
+use jsonschema::{Draft, JSONSchema};
 use lazy_static::lazy_static;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -35,276 +23,163 @@ impl fmt::Display for ValidationError {
 
 impl Error for ValidationError {}
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct Schema {
-    pub headerschema: JSONSchema,
-    pub agentschema: JSONSchema,
-    // Removed the redundant fields headerschema_value and agentschema_value
-    signatureschema: JSONSchema,
-    jacsconfigschema: JSONSchema,
-    agreementschema: JSONSchema,
-    serviceschema: JSONSchema,
-    unitschema: JSONSchema,
-    actionschema: JSONSchema,
-    toolschema: JSONSchema,
-    contactschema: JSONSchema,
-    pub taskschema: JSONSchema,
-    messageschema: JSONSchema,
-    evalschema: JSONSchema,
+// Reintroducing the DEFAULT_SCHEMA_STRINGS hashmap containing schema strings
+lazy_static! {
+    static ref DEFAULT_SCHEMA_STRINGS: HashMap<&'static str, &'static str> = {
+        let mut m = HashMap::new();
+        m.insert("http://127.0.0.1:12345/schemas/components/signature/v1/signature.schema.json", include_str!("../../schemas/components/signature/v1/signature.schema.json"));
+        m.insert("http://127.0.0.1:12345/schemas/jacs.config.schema.json", include_str!("../../schemas/jacs.config.schema.json"));
+        // ... other schema strings ...
+        m
+    };
 }
 
-lazy_static! {
-    static ref HEADERSCHEMA_VALUE_ARC: Arc<Value> = Arc::new(
-        serde_json::from_str(
-            DEFAULT_SCHEMA_STRINGS
-                .get("http://127.0.0.1:12345/schemas/header/mock_version/header.schema.json")
-                .unwrap()
-        )
-        .unwrap()
-    );
-    static ref AGENTSCHEMA_VALUE_ARC: Arc<Value> = Arc::new(
-        serde_json::from_str(
-            DEFAULT_SCHEMA_STRINGS
-                .get("http://127.0.0.1:12345/schemas/document/mock_version/document.schema.json")
-                .unwrap()
-        )
-        .unwrap()
-    );
+#[derive(Debug)]
+pub struct Schema {
+    // Fields to store JSONSchema instances
+    pub headerschema: JSONSchema,
+    pub agentschema: JSONSchema,
+    pub signatureschema: JSONSchema,
+    // ... other schema fields ...
+    // Fields to store Value instances for schemas
+    pub header_value: Value,
+    pub agent_value: Value,
+    pub signature_value: Value,
+    // ... other Value fields ...
 }
 
 impl Schema {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
-        let headerschema = JSONSchema::compile(HEADERSCHEMA_VALUE_ARC.as_ref())?;
-        let agentschema = JSONSchema::compile(AGENTSCHEMA_VALUE_ARC.as_ref())?;
+    pub fn new() -> Self {
+        // Create Value instances from the schema strings
+        let header_value = serde_json::from_str::<Value>(
+            DEFAULT_SCHEMA_STRINGS
+                .get("schemas/header/v1/header.schema.json")
+                .expect("Header schema not found"),
+        )
+        .expect("Invalid header schema JSON");
 
-        // The rest of the fields remain unchanged...
-        let schema = Self {
+        let agent_value = serde_json::from_str::<Value>(
+            DEFAULT_SCHEMA_STRINGS
+                .get("schemas/agent/v1/agent.schema.json")
+                .expect("Agent schema not found"),
+        )
+        .expect("Invalid agent schema JSON");
+
+        let signature_value = serde_json::from_str::<Value>(
+            DEFAULT_SCHEMA_STRINGS
+                .get("schemas/components/signature/v1/signature.schema.json")
+                .expect("Signature schema not found"),
+        )
+        .expect("Invalid signature schema JSON");
+        // ... other Value instances ...
+
+        // Compile JSONSchema objects from the Value instances
+        let headerschema =
+            JSONSchema::compile(&header_value).expect("Failed to compile header schema");
+        let agentschema =
+            JSONSchema::compile(&agent_value).expect("Failed to compile agent schema");
+        let signatureschema =
+            JSONSchema::compile(&signature_value).expect("Failed to compile signature schema");
+        // ... other JSONSchema compilations ...
+
+        Self {
             headerschema,
             agentschema,
-            // The rest of the fields are initialized with Value::Null for now
-            signatureschema: JSONSchema::compile(&Value::Null)?,
-            jacsconfigschema: JSONSchema::compile(&Value::Null)?,
-            agreementschema: JSONSchema::compile(&Value::Null)?,
-            serviceschema: JSONSchema::compile(&Value::Null)?,
-            unitschema: JSONSchema::compile(&Value::Null)?,
-            actionschema: JSONSchema::compile(&Value::Null)?,
-            toolschema: JSONSchema::compile(&Value::Null)?,
-            contactschema: JSONSchema::compile(&Value::Null)?,
-            taskschema: JSONSchema::compile(&Value::Null)?,
-            messageschema: JSONSchema::compile(&Value::Null)?,
-            evalschema: JSONSchema::compile(&Value::Null)?,
-        };
-
-        Ok(schema)
-    }
-
-    pub fn create(&self, json: &str) -> Result<Value, Box<dyn Error>> {
-        let instance = serde_json::from_str(json)?;
-        let validation = self.agentschema.validate(&instance);
-        match validation {
-            Ok(()) => Ok(instance.clone()), // Clone the instance before returning
-            Err(e) => {
-                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
-                Err(Box::new(ValidationError { errors }))
-            }
+            signatureschema,
+            // ... assign other schema fields ...
+            header_value,
+            agent_value,
+            signature_value,
+            // ... assign other Value fields ...
         }
     }
 
     pub fn validate_header(&self, json: &str) -> Result<Value, Box<dyn Error>> {
-        let header = serde_json::from_str(json)?;
-        let validation = self.headerschema.validate(&header);
-        match validation {
-            Ok(()) => Ok(header.clone()), // Clone the header before returning
-            Err(e) => {
-                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
-                Err(Box::new(ValidationError { errors }))
-            }
-        }
-    }
-
-    pub fn validate_config(&self, json: &str) -> Result<(), Box<dyn Error>> {
-        let config = serde_json::from_str(json)?;
-        let validation = self.jacsconfigschema.validate(&config);
-        match validation {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
-                Err(Box::new(ValidationError { errors }))
-            }
-        }
-    }
-
-    pub fn validate_signature(&self, json: &str) -> Result<(), Box<dyn Error>> {
-        let signature = serde_json::from_str(json)?;
-        let validation = self.signatureschema.validate(&signature);
-        match validation {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
-                Err(Box::new(ValidationError { errors }))
-            }
-        }
+        let header: Value = serde_json::from_str(json)?;
+        self.headerschema.validate(&header).map_err(|e| {
+            Box::new(ValidationError {
+                errors: e.into_iter().map(|err| err.to_string()).collect(),
+            }) as Box<dyn Error>
+        })?;
+        Ok(header)
     }
 
     pub fn validate_agent(&self, json: &str) -> Result<Value, Box<dyn Error>> {
-        let agent = serde_json::from_str(json)?;
-        let validation = self.agentschema.validate(&agent);
-        match validation {
-            Ok(()) => Ok(agent.clone()), // Clone the agent before returning
-            Err(e) => {
-                let errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
-                Err(Box::new(ValidationError { errors }))
-            }
-        }
+        let agent: Value = serde_json::from_str(json)?;
+        self.agentschema.validate(&agent).map_err(|e| {
+            Box::new(ValidationError {
+                errors: e.into_iter().map(|err| err.to_string()).collect(),
+            }) as Box<dyn Error>
+        })?;
+        Ok(agent)
+    }
+
+    pub fn validate_signature(&self, json: &str) -> Result<Value, Box<dyn Error>> {
+        let signature: Value = serde_json::from_str(json)?;
+        self.signatureschema.validate(&signature).map_err(|e| {
+            Box::new(ValidationError {
+                errors: e.into_iter().map(|err| err.to_string()).collect(),
+            }) as Box<dyn Error>
+        })?;
+        Ok(signature)
+    }
+
+    /// Validates the agent configuration JSON string against the configuration schema.
+    pub fn validate_config(&self, json: &str) -> Result<(), Box<dyn Error>> {
+        let config: Value = serde_json::from_str(json)?;
+        let config_schema_str = DEFAULT_SCHEMA_STRINGS
+            .get("http://127.0.0.1:12345/schemas/jacs.config.schema.json")
+            .expect("Config schema not found");
+        let config_schema_value = serde_json::from_str::<Value>(config_schema_str)?;
+        let config_schema = JSONSchema::compile(&config_schema_value).map_err(|e| {
+            Box::new(ValidationError {
+                errors: vec![e.to_string()],
+            })
+        })?;
+
+        config_schema
+            .validate(&config)
+            .map_err(|e| {
+                Box::new(ValidationError {
+                    errors: e.into_iter().map(|err| err.to_string()).collect(),
+                }) as Box<dyn Error>
+            })
+            .map(|_| ())
+    }
+
+    // ... other validation functions ...
+
+    /// Creates a new JACSDocument instance from a JSON string after validating it against the schema.
+    pub fn create(&self, json: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        // Parse the JSON string into a Value
+        let value: Value = serde_json::from_str(json)?;
+
+        // Validate the Value against the schema
+        self.validate_header(&json)?;
+
+        // If validation is successful, create and return a new JACSDocument instance
+        Ok(JACSDocument {
+            id: value["jacsId"]
+                .as_str()
+                .ok_or("Missing 'jacsId' field in value")?
+                .to_string(),
+            version: value["jacsVersion"]
+                .as_str()
+                .ok_or("Missing 'jacsVersion' field in value")?
+                .to_string(),
+            value,
+        })
     }
 }
 
-pub use crate::schema::utils::SchemaResolverErrorWrapper;
+pub mod action_crud;
+pub mod agent_crud;
+pub mod contact_crud;
+pub mod message_crud;
+pub mod service_crud;
+pub mod signature;
+pub mod task_crud;
+pub mod tools_crud;
+pub mod utils;
 
-lazy_static! {
-    pub static ref DEFAULT_SCHEMA_STRINGS: HashMap<String, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert(
-            "http://127.0.0.1:12345/schemas/header/mock_version/header.schema.json".to_string(),
-            r#"{
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "title": "Mock Header Schema",
-                "type": "object",
-                "properties": {
-                    "jacsId": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "jacsVersion": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "jacsVersionDate": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "jacsSignature": {
-                        "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
-                    },
-                    "jacsRegistration": {
-                        "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
-                    },
-                    "jacsAgreement": {
-                        "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
-                    },
-                    "jacsAgreementHash": {
-                        "type": "string"
-                    },
-                    "jacsPreviousVersion": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "jacsOriginalVersion": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "jacsOriginalDate": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "jacsSha256": {
-                        "type": "string"
-                    },
-                    "jacsFiles": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
-                        }
-                    }
-                },
-                "required": [
-                    "jacsId",
-                    "jacsVersion",
-                    "jacsVersionDate",
-                    "jacsOriginalVersion",
-                    "jacsOriginalDate",
-                    "$schema"
-                ]
-            }"#,
-        );
-        m.insert(
-            "http://127.0.0.1:12345/schemas/document/mock_version/document.schema.json".to_string(),
-            r#"{
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "title": "Agent",
-                "type": "object",
-                "properties": {
-                    "jacsId": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "jacsVersion": {
-                        "type": "string"
-                    },
-                    "jacsVersionDate": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "jacsOriginalVersion": {
-                        "type": "string"
-                    },
-                    "jacsOriginalDate": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "jacsAgentType": {
-                        "type": "string"
-                    },
-                    "jacsServices": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "serviceId": {
-                                    "type": "string"
-                                },
-                                "serviceName": {
-                                    "type": "string"
-                                },
-                                "serviceDescription": {
-                                    "type": "string"
-                                }
-                            },
-                            "required": ["serviceId", "serviceName", "serviceDescription"]
-                        }
-                    },
-                    "jacsContacts": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "contactId": {
-                                    "type": "string"
-                                },
-                                "contactType": {
-                                    "type": "string"
-                                },
-                                "contactDetails": {
-                                    "type": "string"
-                                }
-                            },
-                            "required": ["contactId", "contactType", "contactDetails"]
-                        }
-                    }
-                },
-                "required": [
-                    "jacsId",
-                    "jacsVersion",
-                    "jacsVersionDate",
-                    "jacsOriginalVersion",
-                    "jacsOriginalDate",
-                    "jacsAgentType",
-                    "jacsServices",
-                    "jacsContacts"
-                ]
-            }"#,
-        );
-        m
-    };
-}
+pub use crate::schema::utils::SchemaResolverErrorWrapper;

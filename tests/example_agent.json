@@ -1,5 +1,5 @@
 {
-  "$schema": "http://127.0.0.1:43541/schemas/agent/v1/agent.schema.json",
+  "$schema": "{{SCHEMA_URL}}/schemas/agent/v1/agent.schema.json",
   "jacsAgentType": "ai",
   "jacsAgreement": {
     "agreementDate": "2024-04-25T05:46:34.271322+00:00",

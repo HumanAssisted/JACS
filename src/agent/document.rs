@@ -353,16 +353,16 @@ impl Document for Agent {
             .transpose()?;
 
         if let Some(files) = files_array {
-            if let Some(instance_map) = instance_to_store.as_object_mut() {
+            if let Some(instance_map) = instance_to_store.value.as_object_mut() {
                 instance_map.insert("jacsFiles".to_string(), Value::Array(files));
             }
         }
 
         self.signing_procedure()?;
 
-        let document_hash = self.hash_doc(&instance_to_store)?;
-        instance_to_store[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
-        self.store_jacs_document(&instance_to_store)
+        let document_hash = self.hash_doc(&instance_to_store.value)?;
+        instance_to_store.value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        self.store_jacs_document(&instance_to_store.value)
     }
 
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>> {
