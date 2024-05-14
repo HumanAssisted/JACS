@@ -20,26 +20,27 @@ fn test_validate_agent_creation() {
         document_schema_url.clone(),
     )
     .unwrap();
+    dbg!("Agent instance created", &agent); // Added debug statement to confirm agent instance
     let result = agent.create_agent_and_load(&agent_string);
+    dbg!("Result of create_agent_and_load", &result); // Added debug statement to inspect result
 
-    if let Ok(mut agent) = result {
-        dbg!("New Agent Created", &agent);
-        // switch keys
-        let private_key =
-            fs::read("examples/keys/agent-two.private.pem").expect("Failed to read private key");
-        let public_key =
-            fs::read("examples/keys/agent-two.public.pem").expect("Failed to read public key");
-        let key_algorithm = "RSA-PSS".to_string();
-        agent
-            .set_keys(private_key, public_key, &key_algorithm)
-            .expect("Failed to set keys for agent");
-        let json_data = fs::read_to_string("examples/raw/mysecondagent.new.json")
-            .expect("Failed to read second agent JSON data");
-        agent
-            .create_agent_and_load(&json_data)
-            .expect("Failed to create and load second agent");
-        dbg!("New Agent2 Created", &agent);
-    }
+    assert!(result.is_ok(), "Failed to create and load agent");
+
+    // switch keys
+    let private_key =
+        fs::read("examples/keys/agent-two.private.pem").expect("Failed to read private key");
+    let public_key =
+        fs::read("examples/keys/agent-two.public.pem").expect("Failed to read public key");
+    let key_algorithm = "RSA-PSS".to_string();
+    agent
+        .set_keys(private_key, public_key, &key_algorithm)
+        .expect("Failed to set keys for agent");
+    let json_data = fs::read_to_string("examples/raw/mysecondagent.new.json")
+        .expect("Failed to read second agent JSON data");
+    agent
+        .create_agent_and_load(&json_data)
+        .expect("Failed to create and load second agent");
+    dbg!("New Agent2 Created", &agent);
 }
 
 #[test]
