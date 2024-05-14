@@ -128,7 +128,47 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
     let mock_server = MockServer::start();
 
     // Setup schema mocks
-    // ... (mock setup code remains unchanged)
+    let header_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/header.schema.json");
+        then.status(200)
+            .body_from_file("schemas/header/v1/header.schema.json");
+    });
+
+    let service_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/service.schema.json");
+        then.status(200)
+            .body_from_file("schemas/components/service/v1/service.schema.json");
+    });
+
+    let contact_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/contact.schema.json");
+        then.status(200)
+            .body_from_file("schemas/components/contact/v1/contact.schema.json");
+    });
+
+    let signature_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/signature.schema.json");
+        then.status(200)
+            .body_from_file("schemas/components/signature/v1/signature.schema.json");
+    });
+
+    let unit_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/unit.schema.json");
+        then.status(200)
+            .body_from_file("schemas/components/unit/v1/unit.schema.json");
+    });
+
+    let agreement_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/agreement.schema.json");
+        then.status(200)
+            .body_from_file("schemas/components/agreement/v1/agreement.schema.json");
+    });
+
+    let task_state_schema_mock = mock_server.mock(|when, then| {
+        when.method(GET).path("/task_state.schema.json");
+        then.status(200)
+            .body_from_file("schemas/components/task_state/v1/task_state.schema.json");
+    });
 
     // Load and prepare the example agent JSON data
     // ... (loading and preparation code remains unchanged)
