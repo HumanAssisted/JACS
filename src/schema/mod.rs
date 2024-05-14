@@ -1,10 +1,11 @@
 use crate::agent::document::JACSDocument;
 use jsonschema::{Draft, JSONSchema};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::sync::Mutex;
 
 // Custom error type to wrap jsonschema::ValidationError
 #[derive(Debug)]
@@ -24,15 +25,8 @@ impl fmt::Display for ValidationError {
 impl Error for ValidationError {}
 
 // Reintroducing the DEFAULT_SCHEMA_STRINGS hashmap containing schema strings
-lazy_static! {
-    static ref DEFAULT_SCHEMA_STRINGS: HashMap<&'static str, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert("http://127.0.0.1:12345/schemas/components/signature/v1/signature.schema.json", include_str!("../../schemas/components/signature/v1/signature.schema.json"));
-        m.insert("http://127.0.0.1:12345/schemas/jacs.config.schema.json", include_str!("../../schemas/jacs.config.schema.json"));
-        // ... other schema strings ...
-        m
-    };
-}
+static DEFAULT_SCHEMA_STRINGS: Lazy<Mutex<HashMap<String, &'static str>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug)]
 pub struct Schema {
@@ -49,25 +43,59 @@ pub struct Schema {
 }
 
 impl Schema {
-    pub fn new() -> Self {
-        // Create Value instances from the schema strings
+    pub fn new(base_url: &str) -> Self {
+        let mut schema_strings = DEFAULT_SCHEMA_STRINGS.lock().unwrap();
+        if schema_strings.is_empty() {
+            // Populate the hashmap with schema strings
+            schema_strings.insert(
+                format!("{}/schemas/header/v1/header.schema.json", base_url),
+                include_str!("../../schemas/header/v1/header.schema.json"),
+            );
+            schema_strings.insert(
+                format!("{}/schemas/agent/v1/agent.schema.json", base_url),
+                include_str!("../../schemas/agent/v1/agent.schema.json"),
+            );
+            schema_strings.insert(
+                format!(
+                    "{}/schemas/components/signature/v1/signature.schema.json",
+                    base_url
+                ),
+                include_str!("../../schemas/components/signature/v1/signature.schema.json"),
+            );
+            // ... insert additional schema strings as needed ...
+        }
+        drop(schema_strings); // Release the lock
+
+        // Proceed to create Value instances from the schema strings as before
         let header_value = serde_json::from_str::<Value>(
             DEFAULT_SCHEMA_STRINGS
-                .get("schemas/header/v1/header.schema.json")
+                .lock()
+                .unwrap()
+                .get(&format!(
+                    "{}/schemas/header/v1/header.schema.json",
+                    base_url
+                ))
                 .expect("Header schema not found"),
         )
         .expect("Invalid header schema JSON");
 
         let agent_value = serde_json::from_str::<Value>(
             DEFAULT_SCHEMA_STRINGS
-                .get("schemas/agent/v1/agent.schema.json")
+                .lock()
+                .unwrap()
+                .get(&format!("{}/schemas/agent/v1/agent.schema.json", base_url))
                 .expect("Agent schema not found"),
         )
         .expect("Invalid agent schema JSON");
 
         let signature_value = serde_json::from_str::<Value>(
             DEFAULT_SCHEMA_STRINGS
-                .get("schemas/components/signature/v1/signature.schema.json")
+                .lock()
+                .unwrap()
+                .get(&format!(
+                    "{}/schemas/components/signature/v1/signature.schema.json",
+                    base_url
+                ))
                 .expect("Signature schema not found"),
         )
         .expect("Invalid signature schema JSON");
@@ -127,7 +155,8 @@ impl Schema {
     /// Validates the agent configuration JSON string against the configuration schema.
     pub fn validate_config(&self, json: &str) -> Result<(), Box<dyn Error>> {
         let config: Value = serde_json::from_str(json)?;
-        let config_schema_str = DEFAULT_SCHEMA_STRINGS
+        let config_schema_lock = DEFAULT_SCHEMA_STRINGS.lock().unwrap();
+        let config_schema_str = config_schema_lock
             .get("http://127.0.0.1:12345/schemas/jacs.config.schema.json")
             .expect("Config schema not found");
         let config_schema_value = serde_json::from_str::<Value>(config_schema_str)?;

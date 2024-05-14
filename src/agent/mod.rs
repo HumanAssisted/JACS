@@ -148,7 +148,7 @@ impl Agent {
             "Initializing schema with document schema URL: {}",
             document_schema_url
         );
-        let schema = Schema::new();
+        let schema = Schema::new(header_schema_url.as_str());
         println!("Schema initialized successfully.");
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
