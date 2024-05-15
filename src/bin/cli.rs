@@ -588,11 +588,15 @@ fn main() {
                     _ => create_minimal_blank_agent("ai".to_string()).unwrap(),
                 };
 
+                let header_schema_url =
+                    "https://hai.ai/schemas/header/v1/header.schema.json".to_string();
+                let agent_schema_url =
+                    "https://hai.ai/schemas/agent/v1/agent.schema.json".to_string();
                 let mut agent = Agent::new(
                     "v1".to_string(),
                     "v1".to_string(),
-                    "https://hai.ai/schemas/header/v1/header.schema.json".to_string(),
-                    "https://hai.ai/schemas/agent/v1/agent.schema.json".to_string(),
+                    header_schema_url,
+                    agent_schema_url,
                 )
                 .expect("Failed to create agent");
                 agent
