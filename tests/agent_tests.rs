@@ -4,7 +4,7 @@ use jacs::schema::Schema; // Importing the Schema struct
 use jacs::schema::ValidationError; // Importing the custom ValidationError struct
 use jsonschema::JSONSchema; // Importing the JSONSchema struct
 use reqwest;
-use serde_json::{json, Value}; // Importing the json! macro and Value
+use serde_json::json; // Importing the json! macro and Value
 
 mod utils;
 
@@ -119,7 +119,7 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
     let mock_server = MockServer::start();
 
     // Configure the reqwest client to bypass SSL verification for local testing
-    let client = reqwest::Client::builder()
+    let _client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
         .expect("Failed to create reqwest client");

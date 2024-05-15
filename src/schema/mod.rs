@@ -1,5 +1,5 @@
 use crate::agent::document::JACSDocument;
-use jsonschema::{Draft, JSONSchema};
+use jsonschema::JSONSchema;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;

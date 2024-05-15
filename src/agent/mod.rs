@@ -402,10 +402,10 @@ impl Agent {
 impl Agreement for Agent {
     fn create_agreement(
         &mut self,
-        document_key: &String,
-        agentids: &Vec<String>,
-        question: Option<&String>,
-        context: Option<&String>,
+        _document_key: &String,
+        _agentids: &Vec<String>,
+        _question: Option<&String>,
+        _context: Option<&String>,
         _agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         Err("create_agreement not implemented yet".into())
@@ -413,8 +413,8 @@ impl Agreement for Agent {
 
     fn add_agents_to_agreement(
         &mut self,
-        document_key: &String,
-        agentids: &Vec<String>,
+        _document_key: &String,
+        _agentids: &Vec<String>,
         _agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         Err("add_agents_to_agreement not implemented yet".into())
@@ -422,8 +422,8 @@ impl Agreement for Agent {
 
     fn remove_agents_from_agreement(
         &mut self,
-        document_key: &String,
-        agentids: &Vec<String>,
+        _document_key: &String,
+        _agentids: &Vec<String>,
         _agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         Err("remove_agents_from_agreement not implemented yet".into())
@@ -431,7 +431,7 @@ impl Agreement for Agent {
 
     fn sign_agreement(
         &mut self,
-        document_key: &String,
+        _document_key: &String,
         _agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         Err("sign_agreement not implemented yet".into())
@@ -439,7 +439,7 @@ impl Agreement for Agent {
 
     fn check_agreement(
         &self,
-        document_key: &String,
+        _document_key: &String,
         _agreement_fieldname: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
         Err("check_agreement not implemented yet".into())
@@ -447,7 +447,7 @@ impl Agreement for Agent {
 
     fn agreement_hash(
         &self,
-        value: Value,
+        _value: Value,
         _agreement_fieldname: &String,
     ) -> Result<String, Box<dyn Error>> {
         Err("agreement_hash not implemented yet".into())
@@ -455,7 +455,7 @@ impl Agreement for Agent {
 
     fn trim_fields_for_hashing_and_signing(
         &self,
-        value: Value,
+        _value: Value,
         _agreement_fieldname: &String,
     ) -> Result<(String, Vec<String>), Box<dyn Error>> {
         Err("trim_fields_for_hashing_and_signing not implemented yet".into())
@@ -463,7 +463,7 @@ impl Agreement for Agent {
 
     fn agreement_get_question_and_context(
         &self,
-        document_key: &String,
+        _document_key: &String,
         _agreement_fieldname: Option<String>,
     ) -> Result<(String, String), Box<dyn Error>> {
         Err("agreement_get_question_and_context not implemented yet".into())
