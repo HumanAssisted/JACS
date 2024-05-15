@@ -1,21 +1,18 @@
-use httpmock::Method::GET;
+use httpmock::Method::GET; // Importing the GET method from httpmock
 use httpmock::MockServer;
-use jacs::agent::Agent;
-use jacs::schema::utils::DEFAULT_SCHEMA_STRINGS;
 use jacs::schema::Schema; // Importing the Schema struct
-use jsonschema::{JSONSchema, ValidationError}; // Importing the Agent struct
+use jacs::schema::ValidationError; // Importing the custom ValidationError struct
+use jsonschema::JSONSchema; // Importing the JSONSchema struct
 use reqwest;
 use serde_json::{json, Value}; // Importing the json! macro and Value
-use std::collections::HashMap;
-use tokio::fs::{read_to_string, write}; // Importing the reqwest crate for making asynchronous HTTP requests
 
 mod utils;
 
 // Helper function to extract and format error messages from ValidationError instances
-fn format_validation_errors(errors: Vec<ValidationError>) -> String {
+fn format_validation_errors(errors: Vec<String>) -> String {
     errors
         .iter()
-        .map(|e| format!("Error at {}: {:?}", e.instance_path, e.kind))
+        .map(|err| format!("Error: {}", err))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -91,11 +88,8 @@ fn validate_json_data_with_schemas(
     match header_schema.validate(&json_value) {
         Ok(_) => println!("JSON data validated successfully against header schema."),
         Err(e) => {
-            let header_errors: Vec<ValidationError> = e.into_iter().collect();
-            for error in &header_errors {
-                println!("Header schema validation error: {:?}", error);
-            }
-            let formatted_errors = format_validation_errors(header_errors);
+            let header_errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
+            let formatted_errors = format_validation_errors(header_errors.clone());
             println!("Header schema validation errors: {}", formatted_errors);
             return Err(formatted_errors);
         }
@@ -109,11 +103,8 @@ fn validate_json_data_with_schemas(
     match agent_schema.validate(&json_value) {
         Ok(_) => println!("JSON data validated successfully against agent schema."),
         Err(e) => {
-            let agent_errors: Vec<ValidationError> = e.into_iter().collect();
-            for error in &agent_errors {
-                println!("Agent schema validation error: {:?}", error);
-            }
-            let formatted_errors = format_validation_errors(agent_errors);
+            let agent_errors: Vec<String> = e.into_iter().map(|err| err.to_string()).collect();
+            let formatted_errors = format_validation_errors(agent_errors.clone());
             println!("Agent schema validation errors: {}", formatted_errors);
             return Err(formatted_errors);
         }
@@ -127,60 +118,27 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
     // Start the mock server to serve the schema files
     let mock_server = MockServer::start();
 
+    // Configure the reqwest client to bypass SSL verification for local testing
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Failed to create reqwest client");
+
     // Setup schema mocks
-    let header_schema_mock = mock_server.mock(|when, then| {
+    mock_server.mock(|when, then| {
         when.method(GET).path("/header.schema.json");
         then.status(200)
-            .body_from_file("schemas/header/v1/header.schema.json");
+            .body_from_file("examples/schemas/header.schema.json");
     });
 
-    let service_schema_mock = mock_server.mock(|when, then| {
+    mock_server.mock(|when, then| {
         when.method(GET).path("/service.schema.json");
         then.status(200)
-            .body_from_file("schemas/components/service/v1/service.schema.json");
-    });
-
-    let contact_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/contact.schema.json");
-        then.status(200)
-            .body_from_file("schemas/components/contact/v1/contact.schema.json");
-    });
-
-    let signature_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/signature.schema.json");
-        then.status(200)
-            .body_from_file("schemas/components/signature/v1/signature.schema.json");
-    });
-
-    let unit_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/unit.schema.json");
-        then.status(200)
-            .body_from_file("schemas/components/unit/v1/unit.schema.json");
-    });
-
-    let agreement_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/agreement.schema.json");
-        then.status(200)
-            .body_from_file("schemas/components/agreement/v1/agreement.schema.json");
-    });
-
-    let task_state_schema_mock = mock_server.mock(|when, then| {
-        when.method(GET).path("/task_state.schema.json");
-        then.status(200)
-            .body_from_file("schemas/components/task_state/v1/task_state.schema.json");
+            .body_from_file("examples/schemas/service.schema.json");
     });
 
     // Load and prepare the example agent JSON data
     // ... (loading and preparation code remains unchanged)
-
-    // Replace the {{SCHEMA_URL}} placeholder with the actual MockServer URL
-    // ... (placeholder replacement code remains unchanged)
-
-    // Parse the modified JSON data into a serde_json::Value
-    // ... (parsing code remains unchanged)
-
-    // Serialize the example agent JSON data to a string for validation
-    // ... (serialization code remains unchanged)
 
     // Define a valid example agent JSON structure
     let example_agent = json!({
@@ -198,14 +156,49 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
     });
 
     // Serialize the example agent JSON data to a string for validation
-    let example_agent_json = serde_json::to_string(&example_agent)
+    let mut example_agent_json = serde_json::to_string(&example_agent)
         .expect("Failed to serialize example agent data to JSON string");
+
+    // Replace the placeholder URLs with the actual MockServer URLs for schema validation
+    example_agent_json = example_agent_json
+        .replace(
+            "https://hai.ai/schemas/agent/v1/header.schema.json",
+            &mock_server.url("/header.schema.json"),
+        )
+        .replace(
+            "https://hai.ai/schemas/agent/v1/service.schema.json",
+            &mock_server.url("/service.schema.json"),
+        )
+        .replace(
+            "https://hai.ai/schemas/agent/v1/contact.schema.json",
+            &mock_server.url("/contact.schema.json"),
+        )
+        .replace(
+            "https://hai.ai/schemas/agent/v1/signature.schema.json",
+            &mock_server.url("/signature.schema.json"),
+        )
+        .replace(
+            "https://hai.ai/schemas/agent/v1/unit.schema.json",
+            &mock_server.url("/unit.schema.json"),
+        )
+        .replace(
+            "https://hai.ai/schemas/agent/v1/agreement.schema.json",
+            &mock_server.url("/agreement.schema.json"),
+        );
 
     // Instantiate the Schema object with the MockServer base URL for dynamic schema URL construction
     let schema = Schema::new(&mock_server.base_url());
 
-    // Perform validation
-    let validation_result = schema.validate_agent(&example_agent_json);
+    // Perform validation using a blocking task to avoid Tokio runtime issues
+    let validation_result = tokio::task::spawn_blocking(move || {
+        schema.validate_agent(&example_agent_json).map_err(|e| {
+            Box::new(ValidationError {
+                errors: vec![e.to_string()],
+            })
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?;
 
     // Handle the validation result
     match validation_result {
@@ -217,19 +210,6 @@ async fn test_update_agent_and_verify_versions() -> Result<(), String> {
             ))
         }
     }
-
-    // Clone the base URL to be used within the async block
-    let base_url = mock_server.base_url().clone();
-    tokio::join!(async {
-        // Asynchronously fetch and validate the agent JSON data
-        let schema_url = format!("{}/agent.schema.json", &base_url);
-        let schema_response = reqwest::get(&schema_url).await.map_err(|e| e.to_string())?;
-        let schema_data = schema_response.text().await.map_err(|e| e.to_string())?;
-        let schema_value: Value = serde_json::from_str(&schema_data).map_err(|e| e.to_string())?;
-        // Perform additional validation on the fetched schema data if necessary
-        // ...
-        Ok::<(), String>(()) // Ensure the async block returns a Result type
-    });
 
     Ok(())
 }

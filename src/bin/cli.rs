@@ -589,10 +589,10 @@ fn main() {
                 };
 
                 let mut agent = Agent::new(
-                    &"v1".to_string(),
-                    &"v1".to_string(),
-                    "header_schema_url_placeholder".to_string(),
-                    "document_schema_url_placeholder".to_string(),
+                    "v1".to_string(),
+                    "v1".to_string(),
+                    "https://hai.ai/schemas/header/v1/header.schema.json".to_string(),
+                    "https://hai.ai/schemas/agent/v1/agent.schema.json".to_string(),
                 )
                 .expect("Failed to create agent");
                 agent

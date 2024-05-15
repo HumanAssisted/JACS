@@ -9,8 +9,8 @@ use std::sync::Mutex;
 
 // Custom error type to wrap jsonschema::ValidationError
 #[derive(Debug)]
-struct ValidationError {
-    errors: Vec<String>,
+pub struct ValidationError {
+    pub errors: Vec<String>,
 }
 
 impl fmt::Display for ValidationError {
