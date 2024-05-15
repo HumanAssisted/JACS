@@ -592,8 +592,14 @@ fn main() {
                     "https://hai.ai/schemas/header/v1/header.schema.json".to_string();
                 let agent_schema_url =
                     "https://hai.ai/schemas/agent/v1/agent.schema.json".to_string();
-                let mut agent = Agent::new("v1", "v1", header_schema_url, agent_schema_url)
-                    .expect("Failed to create agent");
+                let version = "v1".to_string();
+                let mut agent = Agent::new(
+                    &header_schema_url,
+                    &agent_schema_url,
+                    version.clone(),
+                    version.clone(),
+                )
+                .expect("Failed to create agent");
                 agent
                     .create_agent_and_load(&agentstring)
                     .expect("Failed to create and load agent from provided JSON data");

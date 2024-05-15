@@ -139,24 +139,26 @@ impl Agent {
         header_schema_url: String,
         document_schema_url: String,
     ) -> Result<Self, Box<dyn Error>> {
+        println!("Agent::new - Setting environment variables.");
         set_env_vars();
-        println!(
-            "Initializing schema with header schema URL: {}",
-            header_schema_url
-        );
-        println!(
-            "Initializing schema with document schema URL: {}",
-            document_schema_url
-        );
-        let schema = Schema::new(header_schema_url.as_str());
-        println!("Schema initialized successfully.");
+        println!("Agent::new - Environment variables set.");
+
+        println!("Agent::new - Initializing schema.");
+        let schema = Schema::new();
+        println!("Agent::new - Schema initialized.");
+
+        println!("Agent::new - Reading configuration file.");
+        let config = fs::read_to_string("jacs.config.json").expect("config file missing");
+        println!("Agent::new - Configuration file read.");
+
+        println!("Agent::new - Validating configuration.");
+        schema.validate_config(&config).expect("config validation");
+        println!("Agent::new - Configuration validated.");
+
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
 
         let default_directory = get_default_dir();
-
-        let config = fs::read_to_string("jacs.config.json").expect("config file missing");
-        schema.validate_config(&config).expect("config validation");
 
         Ok(Self {
             schema,
