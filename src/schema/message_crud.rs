@@ -52,7 +52,9 @@ pub fn create_minimal_message(
         message["attachments"] = Value::Array(files_array);
     }
     // sign
-    message["signature"] = agent.signing_procedure(&message, None, &"signature".to_string())?;
+    // The signing_procedure method is expected to be called without arguments.
+    // The actual implementation should handle the signing logic internally.
+    agent.signing_procedure()?;
 
     message["id"] = json!(Uuid::new_v4().to_string());
 

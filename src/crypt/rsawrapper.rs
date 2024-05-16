@@ -1,15 +1,13 @@
-use base64::{decode, encode};
+use base64::prelude::*;
+use base64ct::LineEnding;
 use log::debug;
 use rand::rngs::OsRng;
 use rand::thread_rng;
-use rsa::pkcs8::DecodePrivateKey;
-use rsa::pkcs8::DecodePublicKey;
-use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
-use rsa::pss::VerifyingKey;
-use rsa::pss::{BlindedSigningKey, Signature};
+use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey};
+use rsa::pss::{BlindedSigningKey, Signature, VerifyingKey};
 use rsa::sha2::Sha256;
 use rsa::{RsaPrivateKey, RsaPublicKey};
-use signature::{RandomizedSigner, SignatureEncoding, Verifier}; // Correctly import VerifyingKey
+use signature::{RandomizedSigner, SignatureEncoding, Verifier};
 
 /// best for pure Rust, least secure
 
@@ -23,8 +21,8 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
     let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS).expect("failed to generate a key");
     let public_key = RsaPublicKey::from(&private_key);
 
-    let private_key_pem = private_key.to_pkcs8_pem(LineEnding::CRLF)?;
-    let public_key_pem = public_key.to_public_key_pem(LineEnding::CRLF)?;
+    let private_key_pem = private_key.to_pkcs8_pem(LineEnding::LF)?;
+    let public_key_pem = public_key.to_public_key_pem(LineEnding::LF)?;
 
     Ok((
         private_key_pem.as_bytes().to_vec(),
@@ -43,7 +41,7 @@ pub fn sign_string(
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut rng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
-    let signature_base64 = encode(&signature_bytes);
+    let signature_base64 = BASE64_STANDARD.encode(&signature_bytes);
     // TODO
     // assert_ne!(signature.to_bytes().as_ref(), data);
     debug!(
@@ -79,7 +77,7 @@ pub fn verify_string(
         signature_base64, data
     );
 
-    let signature_bytes = decode(signature_base64)?;
+    let signature_bytes = BASE64_STANDARD.decode(signature_base64.as_bytes())?;
     debug!("Decoded signature bytes: {:?}", signature_bytes);
 
     let signature = Signature::try_from(signature_bytes.as_slice())?;

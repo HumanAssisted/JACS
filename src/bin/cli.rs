@@ -8,8 +8,6 @@ use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::config::{set_env_vars, Config};
 use jacs::create_minimal_blank_agent;
 use jacs::create_task;
-use jacs::crypt::KeyManager;
-use jacs::get_empty_agent;
 use jacs::load_agent;
 use jacs::shared::document_add_agreement;
 use jacs::shared::document_check_agreement;
@@ -17,10 +15,9 @@ use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
 use jacs::shared::get_file_list;
-use regex::Regex;
+
 use rpassword::read_password;
 use serde_json::Value;
-use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -469,7 +466,7 @@ fn main() {
 
     match matches.subcommand() {
         Some(("config", agent_matches)) => match agent_matches.subcommand() {
-            Some(("create", create_matches)) => {
+            Some(("create", _create_matches)) => {
                 println!("Welcome to the JACS Config Generator!");
 
                 println!(
@@ -571,7 +568,7 @@ fn main() {
 
                 println!("jacs.config.json file generated successfully!");
             }
-            Some(("read", verify_matches)) => {
+            Some(("read", _verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");
                 // let _ = load_agent_by_id();
                 let configs = set_env_vars();
@@ -582,44 +579,44 @@ fn main() {
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
-                let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
+                let _create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
 
                 let agentstring = match filename {
                     Some(filename) => {
-                        fs::read_to_string(filename.clone()).expect("agent file loading")
+                        fs::read_to_string(filename).expect("Failed to read agent file")
                     }
                     _ => create_minimal_blank_agent("ai".to_string()).unwrap(),
                 };
 
-                let mut agent = get_empty_agent();
-                let configs = set_env_vars();
-                println!("creating agent with config {}", configs);
-                if create_keys {
-                    println!("creating keys");
-                    agent.generate_keys().expect("Reason");
-                    println!(
-                        "keys created in {}",
-                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
-                    )
-                }
-
+                let header_schema_url =
+                    "https://hai.ai/schemas/header/v1/header.schema.json".to_string();
+                let agent_schema_url =
+                    "https://hai.ai/schemas/agent/v1/agent.schema.json".to_string();
+                let version = "v1".to_string();
+                let mut agent = Agent::new(
+                    &header_schema_url,
+                    &agent_schema_url,
+                    version.clone(),
+                    version.clone(),
+                )
+                .expect("Failed to create agent");
                 agent
-                    .create_agent_and_load(&agentstring, false, None)
-                    .expect("agent creation failed");
-                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
-
-                let _ = agent.save();
+                    .create_agent_and_load(&agentstring)
+                    .expect("Failed to create and load agent from provided JSON data");
+                println!("Agent created!");
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let agent: Agent = load_agent(agentfile.cloned()).expect("Failed to load agent");
 
                 agent
                     .verify_self_signature()
-                    .expect("signature verification");
+                    .expect("Failed to verify agent signature");
                 println!(
                     "Agent {} signature verified OK.",
-                    agent.get_lookup_id().expect("jacsId")
+                    agent
+                        .get_lookup_id()
+                        .expect("Failed to get agent lookup ID")
                 );
             }
             _ => println!("please enter subcommand see jacs agent --help"),
@@ -628,11 +625,14 @@ fn main() {
         Some(("task", task_matches)) => match task_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
-                let name = create_matches.get_one::<String>("name").expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
+                let name = create_matches
+                    .get_one::<String>("name")
+                    .expect("Task name required");
                 let description = create_matches
                     .get_one::<String>("description")
-                    .expect("REASON");
+                    .expect("Task description required");
                 println!(
                     "{}",
                     create_task(&mut agent, name.to_string(), description.to_string()).unwrap()
@@ -646,14 +646,15 @@ fn main() {
                 let filename = create_matches.get_one::<String>("filename");
                 let outputfilename = create_matches.get_one::<String>("output");
                 let directory = create_matches.get_one::<String>("directory");
-                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
                 let attachments = create_matches.get_one::<String>("attach");
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
 
                 // let attachment_links = agent.parse_attachement_arg(attachments);
 
@@ -675,7 +676,7 @@ fn main() {
                     };
                     let path = Path::new(file);
                     let loading_filename = path.file_name().unwrap().to_str().unwrap();
-                    let loading_filename_string = loading_filename.to_string();
+                    let _loading_filename_string = loading_filename.to_string();
 
                     let result = document_create(
                         &mut agent,
@@ -686,7 +687,7 @@ fn main() {
                         attachments,
                         embed,
                     )
-                    .expect("document_create");
+                    .expect("Failed to create document");
                     if no_save {
                         println!("{}", result);
                     }
@@ -698,14 +699,15 @@ fn main() {
                 let new_filename = create_matches.get_one::<String>("new").unwrap();
                 let original_filename = create_matches.get_one::<String>("filename").unwrap();
                 let outputfilename = create_matches.get_one::<String>("output");
-                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
                 let attachments = create_matches.get_one::<String>("attach");
                 let embed = create_matches.get_one::<bool>("embed");
 
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
 
@@ -713,8 +715,14 @@ fn main() {
                     // schemastring =
                     fs::read_to_string(schema_file).expect("Failed to load schema file");
 
-                    let schemas = [schema_file.clone()];
-                    agent.load_custom_schemas(&schemas);
+                    let _schemas = [schema_file.clone()];
+                    match agent.load_custom_schemas() {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Failed to load custom schemas: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
                 }
 
                 let new_document_string =
@@ -785,7 +793,8 @@ fn main() {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
                 let schema = create_matches.get_one::<String>("schema");
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
@@ -803,7 +812,7 @@ fn main() {
                         no_save,
                         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
                     )
-                    .expect("reason");
+                    .expect("Failed to sign agreement");
                     println!("{}", result);
                 }
             }
@@ -812,7 +821,8 @@ fn main() {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
                 let schema = create_matches.get_one::<String>("schema");
 
                 let files: Vec<String> = set_file_list(filename, directory, None);
@@ -825,7 +835,7 @@ fn main() {
                         schema.cloned(),
                         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
                     )
-                    .expect("reason");
+                    .expect("Failed to check agreement");
                     println!("{}", result);
                 }
             }
@@ -834,7 +844,8 @@ fn main() {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
                 let schema = create_matches.get_one::<String>("schema");
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentids: Vec<String> = matches
@@ -860,7 +871,7 @@ fn main() {
                         no_save,
                         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
                     )
-                    .expect("reason");
+                    .expect("Failed to create agreement");
                     println!("{}", result);
                 }
             }
@@ -868,9 +879,10 @@ fn main() {
             Some(("verify", verify_matches)) => {
                 let filename = verify_matches.get_one::<String>("filename");
                 let directory = verify_matches.get_one::<String>("directory");
-                let verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
                 let schema = verify_matches.get_one::<String>("schema");
                 let files: Vec<String> = set_file_list(filename, directory, None);
 
@@ -886,7 +898,7 @@ fn main() {
                         None,
                         load_only,
                     )
-                    .expect("reason");
+                    .expect("Failed to verify document");
                     println!("{}", result);
                 }
             }
@@ -894,9 +906,10 @@ fn main() {
             Some(("extract", extract_matches)) => {
                 let filename = extract_matches.get_one::<String>("filename");
                 let directory = extract_matches.get_one::<String>("directory");
-                let verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = extract_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+                let mut agent: Agent =
+                    load_agent(agentfile.cloned()).expect("Failed to load agent");
                 let schema = extract_matches.get_one::<String>("schema");
                 let files: Vec<String> = set_file_list(filename, directory, None);
                 // let mut schemastring: String = "".to_string();
@@ -913,7 +926,7 @@ fn main() {
                         Some(true),
                         load_only,
                     )
-                    .expect("reason");
+                    .expect("Failed to extract document");
                     println!("{}", result);
                 }
             }
@@ -938,10 +951,10 @@ fn set_file_list(
     } else if filename.is_none() && directory.is_none() {
         files.push("no filepath given".to_string()); // hack to get the iterator to open
     } else if let Some(file) = filename {
-        files = get_file_list(file.to_string()).expect("REASON");
+        files = get_file_list(file.to_string()).expect("Failed to get file list");
     } else if let Some(dir) = directory {
         // Traverse the directory and store filenames ending with .json
-        files = get_file_list(dir.to_string()).expect("REASON");
+        files = get_file_list(dir.to_string()).expect("Failed to get file list from directory");
     }
     return files;
 }

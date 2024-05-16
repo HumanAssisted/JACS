@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::Document;
-use jacs::agent::loaders::FileLoader;
+
 use jacs::agent::Agent;
 use log::debug;
 
@@ -34,8 +34,13 @@ fn load_test_agent_one() -> Agent {
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
 
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
+    let mut agent = jacs::agent::Agent::new(
+        &agent_version,
+        &header_version,
+        signature_version,
+        "mock_document_schema_url".to_string(),
+    )
+    .expect("Agent schema should have instantiated");
     let agentid =
         "37e6b2e0-5100-4eb7-b042-2630beaa8531:c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3".to_string();
     let result = agent.load_by_id(Some(agentid), None);
@@ -64,7 +69,7 @@ fn generate_synthetic_data(count: usize) -> Vec<String> {
         let num_keys = rng.gen_range(2..=20);
         let mut document = format!("{{\"id\": {}", i);
 
-        for j in 1..num_keys {
+        for _j in 1..num_keys {
             let key_length = rng.gen_range(5..=20);
             let key: String = rng
                 .clone()

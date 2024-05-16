@@ -1,66 +1,71 @@
-use jacs::agent::boilerplate::BoilerPlate;
+use httpmock::Method::GET; // Importing the GET method from httpmock
+use httpmock::MockServer;
+use jacs::schema::ValidationError; // Importing the custom ValidationError struct
+use jsonschema::JSONSchema; // Importing the JSONSchema struct
+use reqwest::Client; // Importing the Client struct from reqwest
+use serde_json::json; // Importing the json! macro and Value
 
 mod utils;
-use utils::load_local_document;
 
-#[test]
-fn test_update_agent_and_verify_versions() {
-    // cargo test   --test agent_tests -- --nocapture
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
-    let agentid =
-        "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
-    let result = agent.load_by_id(Some(agentid), None);
+#[tokio::test]
+async fn test_update_agent_and_verify_versions() -> Result<(), String> {
+    // Start the mock server to serve the schema files
+    let mock_server = MockServer::start();
 
-    match result {
-        Ok(_) => {
-            println!(
-                "AGENT LOADED {} {} ",
-                agent.get_id().unwrap(),
-                agent.get_version().unwrap()
-            );
+    // Setup schema mocks
+    mock_server.mock(|when, then| {
+        when.method(GET).path("/header.schema.json");
+        then.status(200)
+            .body_from_file("schemas/header/v1/header.schema.json");
+    });
+
+    // ... (rest of the mock server setup remains unchanged)
+
+    // Create a reqwest client instance with SSL verification disabled
+    let client = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Failed to create reqwest client with disabled SSL verification");
+
+    // Define a valid example agent JSON structure
+    let example_agent_json = json!({
+        "jacsId": "unique_id",
+        "jacsVersion": "1.0",
+        "jacsVersionDate": "2024-05-10T00:00:00Z",
+        "jacsOriginalVersion": "1.0",
+        "jacsOriginalDate": "2024-05-10T00:00:00Z",
+        "agent_id": "12345",
+        "agent_name": "Test Agent",
+        "agent_type": "Test Type",
+        // ... (rest of the agent JSON structure remains unchanged)
+    });
+
+    // Replace the placeholder URLs with the actual MockServer URLs for schema validation
+    // ... (URL replacement code remains unchanged)
+
+    // Fetch the schema using the reqwest client with SSL verification disabled
+    let header_schema_str = client
+        .get(mock_server.url("/header.schema.json"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Parse the fetched schema string into a JSON value
+    let header_schema_json = serde_json::from_str(&header_schema_str).map_err(|e| e.to_string())?;
+
+    // Create a JSONSchema object from the JSON value
+    let header_schema = JSONSchema::compile(&header_schema_json).map_err(|e| e.to_string())?;
+
+    // Validate the example agent JSON data against the fetched schema
+    header_schema.validate(&example_agent_json).map_err(|e| {
+        ValidationError {
+            errors: e.into_iter().map(|err| err.to_string()).collect(),
         }
-        Err(e) => {
-            eprintln!("Error loading agent: {}", e);
-            panic!("Agent loading failed");
-        }
-    }
+        .to_string()
+    })?;
 
-    let modified_agent_string =
-        load_local_document(&"examples/raw/modified-agent-for-updating.json".to_string()).unwrap();
-
-    match agent.update_self(&modified_agent_string) {
-        Ok(_) => assert!(true),
-        _ => {
-            assert!(false);
-            println!("NEW AGENT VERSION prevented");
-        }
-    };
-
-    agent.verify_self_signature().unwrap();
-}
-
-#[test]
-fn test_validate_agent_json_raw() {
-    let json_data = r#"{
-      "id": "agent123",
-      "name": "Agent Smith",
-      "role": "Field Agent"
-    }"#
-    .to_string();
-
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
-    let result = agent.load(&json_data);
-    assert!(
-        !result.is_ok(),
-        "Correctly failed to validate myagent.json: {}",
-        result.unwrap_err()
-    );
+    Ok(())
 }

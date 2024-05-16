@@ -37,7 +37,6 @@ keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
 categories = ["cryptography", "text-processing", "data-structures" ]
 build = "build.rs"
 
-
 [dependencies]
 base64 = "0.22.0"
 chrono = "0.4.35"
@@ -66,20 +65,23 @@ rpassword = "7.3.1"
 validator = "0.18.1"
 uuid = { version = "1.7.0", features = ["v4", "v7", "js"] }
 env_logger = "0.9.0"
+base64ct = "1.6.0"
+anyhow = "1.0.51" # Added anyhow dependency
+lazy_static = "1.4.0"
+tokio = { version = "1.0", features = ["full"] } # Added tokio dependency
+once_cell = "1.10.0" # Added once_cell dependency
 
 [dev-dependencies]
 rusqlite = "0.31.0"
 color-eyre = "0.6"
 criterion = "0.3"
 mdbook = "0.4.37"
-
-
-[lib]
-crate-type = ["cdylib", "rlib"]
+httpmock = "0.7.0"
+wiremock = "0.5.22" # Added wiremock dependency
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pqcrypto = "0.17.0"
-pqcrypto-dilithium = {version = "0.5.0", features=["serialization"] }
+pqcrypto-dilithium = {version = "0.5.0", features=["serialization", "avx2"] }
 pqcrypto-traits = "0.3.5"
 ring = "0.17.8"
 reqwest = {  version ="0.11.26", features = ["blocking", "json"] }
@@ -95,3 +97,6 @@ harness = false
 
 [package.metadata.cargo-install]
 bin = ["jacs"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]

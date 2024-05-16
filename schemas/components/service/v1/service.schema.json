@@ -59,7 +59,7 @@
       "type": "array",
       "description": "URLs and function definitions of of tools that can be called",
       "items": {
-        "$ref": "https://hai.ai/schemas/components/tool/v1/tool.schema.json"
+        "$ref": "tool.schema.json"
       }
     },
     "piiDesired": {

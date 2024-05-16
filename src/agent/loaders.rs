@@ -3,6 +3,7 @@ use crate::agent::security::check_data_directory;
 use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
+use base64::prelude::*;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use regex::Regex;
@@ -279,7 +280,7 @@ impl FileLoader for Agent {
         let compressed_contents = gz_encoder.finish()?;
 
         // Encode the compressed contents using base64
-        let base64_contents = base64::encode(&compressed_contents);
+        let base64_contents = BASE64_STANDARD.encode(&compressed_contents);
 
         Ok(base64_contents)
     }
@@ -334,7 +335,7 @@ fn save_private_key(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_private_key(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
+pub fn load_private_key(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
     let loaded_key = load_key_file(file_path, filename)?;
     if filename.ends_with(".enc") {
         decrypt_private_key(&loaded_key).map_err(|e| {
@@ -349,7 +350,7 @@ fn load_private_key(file_path: &String, filename: &String) -> std::io::Result<Ve
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
+pub fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u8>> {
     if let Some(parent) = Path::new(file_path).parent() {
         fs::create_dir_all(parent)?;
     }

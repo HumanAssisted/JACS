@@ -1,0 +1,84 @@
+{
+  "$schema": "http://127.0.0.1:38493/schemas/agent/v1/agent.schema.json",
+  "jacsAgentType": "ai",
+  "jacsAgreement": {
+    "agreementDate": "2024-04-25T05:46:34.271322+00:00",
+    "agreementId": "dummy-agreement-id",
+    "agreementParty1": "http://example.com/agents/1",
+    "agreementParty2": "http://example.com/agents/2",
+    "agreementTerms": "ExampleTerms",
+    "agreementType": "ExampleType",
+    "signatures": [
+      {
+        "created": "2024-04-25T05:46:34.271322+00:00",
+        "creator": "http://example.com/key/3",
+        "signatureValue": "Base64Encoded==",
+        "type": "ECDSA"
+      }
+    ]
+  },
+  "jacsAgreementHash": "dummy-hash-value",
+  "jacsContacts": [
+    {
+      "contactType": "email",
+      "contactValue": "example@example.com"
+    }
+  ],
+  "jacsFiles": [
+    {
+      "contents": "dummy base64 encoded content",
+      "embed": true,
+      "mimetype": "application/json",
+      "path": "dummy/path/example.json",
+      "sha256": "dummy-sha256-checksum"
+    },
+    {
+      "contents": "dummy base64 encoded content for pdf",
+      "embed": false,
+      "mimetype": "application/pdf",
+      "path": "dummy/path/example.pdf",
+      "sha256": "dummy-sha256-checksum-for-pdf"
+    }
+  ],
+  "jacsId": "example-id",
+  "jacsOriginalDate": "2024-04-20T05:46:34.271322+00:00",
+  "jacsOriginalVersion": "0.9.0",
+  "jacsRegistration": {
+    "registrant": "http://example.com/agents/1",
+    "registrationDate": "2024-04-25T05:46:34.271322+00:00",
+    "registrationId": "dummy-registration-id",
+    "signature": {
+      "created": "2024-04-25T05:46:34.271322+00:00",
+      "creator": "http://example.com/key/2",
+      "signatureValue": "Base64Encoded==",
+      "type": "ECDSA"
+    }
+  },
+  "jacsServices": [
+    {
+      "serviceDescription": "This is an example service.",
+      "serviceId": "service-123",
+      "serviceName": "Example Service",
+      "serviceType": "Example Service Type",
+      "serviceUrl": "http://example.com/service"
+    }
+  ],
+  "jacsSha256": "dummy-sha256-value",
+  "jacsSignature": {
+    "agentID": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff",
+    "agentVersion": "1.0.0",
+    "date": "2024-04-25T05:46:34.271322+00:00",
+    "fields": [
+      "jacsId",
+      "jacsVersion",
+      "jacsVersionDate",
+      "jacsOriginalVersion",
+      "jacsOriginalDate"
+    ],
+    "publicKeyHash": "PublicKeyHashValue==",
+    "signature": "Base64EncodedSignature==",
+    "signingAlgorithm": "ECDSA"
+  },
+  "jacsVersion": "1.0.0",
+  "jacsVersionDate": "2024-04-25T05:46:34.271322+00:00"
+}

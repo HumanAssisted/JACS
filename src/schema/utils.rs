@@ -1,8 +1,5 @@
-use crate::schema::Url;
 use log::debug;
-use log::error;
-use log::info;
-use std::path::Path;
+use url::Url;
 
 use phf::phf_map;
 
@@ -36,7 +33,7 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
 pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
 
 #[derive(Debug)]
-struct SchemaResolverErrorWrapper(String);
+pub struct SchemaResolverErrorWrapper(pub String);
 
 impl fmt::Display for SchemaResolverErrorWrapper {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -75,6 +72,12 @@ impl EmbeddedSchemaResolver {
     }
 }
 
+impl Default for EmbeddedSchemaResolver {
+    fn default() -> Self {
+        EmbeddedSchemaResolver {}
+    }
+}
+
 impl SchemaResolver for EmbeddedSchemaResolver {
     fn resolve(
         &self,
@@ -89,77 +92,28 @@ impl SchemaResolver for EmbeddedSchemaResolver {
 
 // todo handle case for url retrieval
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> {
-    debug!("Entering resolve_schema function with path: {}", rawpath);
+    debug!("Attempting to resolve schema for path: {}", rawpath);
     let schema_value: Value;
-    let path: &str;
-    if rawpath.starts_with('/') {
-        // Remove the leading slash and use the remaining path as the key
-        path = &rawpath[1..];
-    } else {
-        // Use the full path as the key (relative or URI)
-        path = rawpath;
-    };
+    let path = rawpath.trim_start_matches('/'); // Always remove the leading slash if present
 
-    if path.starts_with("http://") || path.starts_with("https://") {
-        debug!("Attempting to fetch schema from URL: {}", path);
-        if path.starts_with("https://hai.ai") {
-            let relative_path = path.trim_start_matches("https://hai.ai/");
-            let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
-                error!("Error: Schema not found for URL: {}", path);
-                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                    "Schema not found: {}",
-                    path
-                )))
-            })?;
-            schema_value = serde_json::from_str(&schema_json)?;
-            return Ok(Arc::new(schema_value));
-        } else {
-            // Create a reqwest client with SSL verification disabled
-            let client = reqwest::blocking::Client::builder()
-                .danger_accept_invalid_certs(ACCEPT_INVALID_CERTS)
-                .build()
-                .map_err(|err| {
-                    error!("Error fetching schema from URL: {}, error: {}", path, err);
-                    SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                        "Failed to create reqwest client: {}",
-                        err
-                    )))
-                })?;
-
-            // Fetch the schema using the reqwest client
-            let schema_response = client.get(path).send().map_err(|err| {
-                error!("Error fetching schema from URL: {}, error: {}", path, err);
-                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                    "Failed to fetch schema from URL {}: {}",
-                    path, err
-                )))
-            })?;
-
-            if schema_response.status().is_success() {
-                schema_value = schema_response.json().map_err(|err| {
-                    error!("Error parsing schema from URL: {}, error: {}", path, err);
-                    SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                        "Failed to parse schema from URL {}: {}",
-                        path, err
-                    )))
-                })?;
-                return Ok(Arc::new(schema_value));
-            } else {
-                Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-                    format!("Failed to get schema from URL {} ", path),
-                )))
-            }
-        }
-    } else if Path::new(path).exists() {
-        // add default directory
-        // todo secure with let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
-        println!("loading custom local schema {}", path);
-        let schema_json = std::fs::read_to_string(path)?;
-        let schema_value: Value = serde_json::from_str(&schema_json)?;
+    debug!("Attempting to resolve schema for path: {}", path);
+    // Always resolve schema from memory, bypassing the need for SSL certificate verification
+    if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+        schema_value = serde_json::from_str(&schema_json)?;
+        debug!("Successfully resolved schema from memory: {}", path);
         return Ok(Arc::new(schema_value));
     } else {
+        let available_keys: Vec<&str> = DEFAULT_SCHEMA_STRINGS.keys().cloned().collect();
+        debug!(
+            "Available keys in DEFAULT_SCHEMA_STRINGS: {:?}",
+            available_keys
+        );
+        debug!("Failed to resolve schema from memory for path: {}", path);
         return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-            format!("Failed to fetch schema from URL {} ", path,),
+            format!(
+                "Failed to fetch schema from memory for path: {}. Available keys: {:?}",
+                path, available_keys
+            ),
         )));
     }
 }

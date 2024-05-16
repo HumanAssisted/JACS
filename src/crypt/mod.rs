@@ -25,7 +25,7 @@ enum CryptoSigningAlgorithm {
 }
 
 pub const JACS_KEY_DIRECTORY: &str = "JACS_KEY_DIRECTORY";
-const JACS_AGENT_PRIVATE_KEY_PASSWORD: &str = "JACS_AGENT_PRIVATE_KEY_PASSWORD";
+// Removed unused constant JACS_AGENT_PRIVATE_KEY_PASSWORD
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
 pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
 pub const JACS_AGENT_KEY_ALGORITHM: &str = "JACS_AGENT_KEY_ALGORITHM";
@@ -46,8 +46,8 @@ impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
-        let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        let (private_key, public_key);
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
                 (private_key, public_key) =
@@ -59,11 +59,6 @@ impl KeyManager for Agent {
             }
             CryptoSigningAlgorithm::PqDilithium => {
                 (private_key, public_key) = pq::generate_keys().map_err(|e| e.to_string())?;
-            }
-            _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
             }
         }
 
@@ -97,11 +92,6 @@ impl KeyManager for Agent {
                 let key_vec = borrowed_key.use_secret();
                 return pq::sign_string(key_vec.to_vec(), data);
             }
-            _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
-            }
         }
     }
     fn verify_string(
@@ -127,12 +117,6 @@ impl KeyManager for Agent {
             CryptoSigningAlgorithm::PqDilithium => {
                 return pq::verify_string(public_key, data, signature_base64)
             }
-            _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
-            }
         }
-        Ok(())
     }
 }

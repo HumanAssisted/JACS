@@ -1,13 +1,12 @@
 use crate::agent::agreement::Agreement;
 use crate::agent::document::Document;
-use crate::agent::document::JACSDocument;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
-use crate::agent::TASK_END_AGREEMENT_FIELDNAME;
-use crate::agent::TASK_START_AGREEMENT_FIELDNAME;
+use crate::custom_error::CustomError;
+
 use crate::Agent;
 use log::debug;
 use log::info;
-use regex::Regex;
+
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -40,33 +39,45 @@ pub fn document_create(
     embed: Option<bool>,
 ) -> Result<String, Box<dyn Error>> {
     let attachment_links = agent.parse_attachement_arg(attachments);
-    if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+    if let Some(ref _schema_file) = custom_schema {
+        let _ = agent.load_custom_schemas();
     }
 
-    // let loading_filename_string = loading_filename.to_string();
-    let export_embedded = None;
-    let extract_only = None;
-    let docresult =
-        agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
+    // Initialize `doc_id` before the scope to make it accessible throughout the function
+    let doc_id: String;
+
+    {
+        // Scope to limit the mutable borrow of `agent` within the `create_document_and_load` call
+        let create_result =
+            agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
+
+        // Handle the result of document creation
+        doc_id = match create_result {
+            Ok(doc) => doc.id, // Assign the actual ID if successful
+            Err(e) => {
+                // Convert the error into a CustomError to avoid lifetime issues with the borrow of `agent`
+                return Err(CustomError::from(e.to_string()).into());
+            }
+        };
+    } // End of the scope for mutable borrow of `agent`
+
+    // Ensure `doc_id` is not empty before attempting to save the document
+    if doc_id.is_empty() {
+        return Err(CustomError::from(
+            "Document ID is empty, indicating an error occurred during document creation.",
+        )
+        .into());
+    }
+
+    // Check if the document needs to be saved
     if !no_save {
-        return save_document(
-            agent,
-            docresult,
-            custom_schema,
-            outputfilename,
-            export_embedded,
-            extract_only,
-        );
+        // Since `agent` is no longer borrowed, it's safe to call `save_document`
+        save_document(agent, doc_id, custom_schema, outputfilename, None, None)
     } else {
-        return Ok(docresult?.value.to_string());
+        // If no save is needed, return the document ID
+        Ok(doc_id)
     }
 }
-
-// pub fn validate_document_with_custom_schema
-
-// pub fn save_document
 
 pub fn document_load_and_save(
     agent: &mut Agent,
@@ -77,15 +88,14 @@ pub fn document_load_and_save(
     extract_only: Option<bool>,
     load_only: bool,
 ) -> Result<String, Box<dyn Error>> {
-    if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+    if let Some(ref _schema_file) = custom_schema {
+        let _ = agent.load_custom_schemas();
     }
     let docresult = agent.load_document(&document_string);
     if !load_only {
         return save_document(
             agent,
-            docresult,
+            docresult?.getkey(),
             custom_schema,
             save_filename,
             export_embedded,
@@ -96,134 +106,7 @@ pub fn document_load_and_save(
     }
 }
 
-fn create_task_start(
-    agent: &mut Agent,
-    document_string: &String,
-    agentids: Vec<String>,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    question: Option<String>,
-    context: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
-
-    return document_add_agreement(
-        agent,
-        document_string,
-        agentids,
-        custom_schema,
-        save_filename,
-        question,
-        context,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    );
-}
-
-fn create_task_complete(
-    agent: &mut Agent,
-    document_string: &String,
-    agentids: Vec<String>,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    question: Option<String>,
-    context: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
-    return document_add_agreement(
-        agent,
-        document_string,
-        agentids,
-        custom_schema,
-        save_filename,
-        question,
-        context,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    );
-}
-
-fn agree_task_start(
-    agent: &mut Agent,
-    document_string: &String,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
-    return document_sign_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        save_filename,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    );
-}
-
-fn agree_task_complete(
-    agent: &mut Agent,
-    document_string: &String,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
-    return document_sign_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        save_filename,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    );
-}
-
-fn check_task_complete(
-    agent: &mut Agent,
-    document_string: &String,
-    custom_schema: Option<String>,
-) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
-    return document_check_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    );
-}
-
-fn check_task_start(
-    agent: &mut Agent,
-    document_string: &String,
-    custom_schema: Option<String>,
-) -> Result<String, Box<dyn Error>> {
-    let _ = agent.schema.validate_task(document_string)?;
-    return document_check_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    );
-}
+// Functions removed to clean up the codebase and address compiler warnings
 
 // todo do start and end for task
 pub fn document_check_agreement(
@@ -232,9 +115,8 @@ pub fn document_check_agreement(
     custom_schema: Option<String>,
     agreement_fieldname: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
-    if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+    if let Some(ref _schema_file) = custom_schema {
+        let _ = agent.load_custom_schemas();
     }
     let agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
@@ -277,19 +159,18 @@ pub fn document_sign_agreement(
         Some(ref key) => key.to_string(),
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
     };
-    if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+    if let Some(ref _schema_file) = custom_schema {
+        let _ = agent.load_custom_schemas();
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();
 
     let signed_document = agent.sign_agreement(&document_key, Some(agreement_fieldname_key))?;
-    let signed_document_key = signed_document.getkey();
+    let _signed_document_key = signed_document.getkey();
     if !load_only {
         return save_document(
             agent,
-            Ok(signed_document),
+            signed_document.getkey(),
             custom_schema,
             save_filename,
             export_embedded,
@@ -313,13 +194,12 @@ pub fn document_add_agreement(
     load_only: bool,
     agreement_fieldname: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
-    let agreement_fieldname_key = match agreement_fieldname {
+    let _agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
     };
-    if let Some(ref schema_file) = custom_schema {
-        let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+    if let Some(ref _schema_file) = custom_schema {
+        let _ = agent.load_custom_schemas();
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();
@@ -337,7 +217,7 @@ pub fn document_add_agreement(
     if !load_only {
         return save_document(
             agent,
-            Ok(unsigned_doc),
+            unsigned_doc.getkey(),
             custom_schema,
             save_filename,
             export_embedded,
@@ -352,43 +232,34 @@ pub fn document_add_agreement(
 /// helper function
 pub fn save_document(
     agent: &mut Agent,
-    docresult: Result<JACSDocument, Box<dyn Error>>,
+    doc_id: String,
     custom_schema: Option<String>,
     save_filename: Option<String>,
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
 ) -> Result<String, Box<dyn Error>> {
-    match docresult {
-        Ok(ref document) => {
-            let document_key = document.getkey();
-            debug!("document {} validated", document_key);
+    let document = agent.get_document(&doc_id)?;
+    debug!("document {} validated", doc_id);
 
-            if let Some(schema_file) = custom_schema {
-                // todo don't unwrap but warn instead
-                let document_key = document.getkey();
-                let result =
-                    agent.validate_document_with_custom_schema(&schema_file, &document.getvalue());
-                match result {
-                    Ok(_) => {
-                        info!("document specialised schema {} validated", document_key);
-                    }
-                    Err(e) => {
-                        return Err(format!(
-                            "document specialised schema {} validation failed {}",
-                            document_key, e
-                        )
-                        .into());
-                    }
-                }
+    if let Some(schema_file) = custom_schema {
+        // todo don't unwrap but warn instead
+        let result = agent.validate_document_with_custom_schema(&schema_file, &document.getvalue());
+        match result {
+            Ok(_) => {
+                info!("document specialised schema {} validated", doc_id);
             }
-            //after validation do export of contents
-            agent.save_document(&document_key, save_filename, export_embedded, extract_only)?;
-            return Ok(format!("saved  {}", document_key));
-        }
-        Err(ref e) => {
-            return Err(format!("document  validation failed {}", e).into());
+            Err(e) => {
+                return Err(format!(
+                    "document specialised schema {} validation failed {}",
+                    doc_id, e
+                )
+                .into());
+            }
         }
     }
+    //after validation do export of contents
+    agent.save_document(&doc_id, save_filename, export_embedded, extract_only)?;
+    return Ok(format!("saved  {}", doc_id));
 }
 
 fn path_is_dir<P: AsRef<Path>>(path: P) -> Result<bool, Box<dyn Error>> {
