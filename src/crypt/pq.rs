@@ -8,9 +8,17 @@ use pqcrypto_traits::sign::SignedMessage as SignedMessageTrait;
 
 use base64::prelude::*;
 use std::error::Error;
+use std::time::{Duration, Instant};
 
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
+    println!("generate_keys - Starting keypair generation.");
+    let start = Instant::now();
     let (pk, sk) = keypair();
+    let duration = start.elapsed();
+    println!(
+        "generate_keys - Keypair generation completed in {:?}",
+        duration
+    );
     Ok((sk.as_bytes().to_vec(), pk.as_bytes().to_vec()))
 }
 
