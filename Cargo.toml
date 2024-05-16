@@ -81,7 +81,7 @@ wiremock = "0.5.22" # Added wiremock dependency
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pqcrypto = "0.17.0"
-pqcrypto-dilithium = {version = "0.5.0", features=["serialization"] }
+pqcrypto-dilithium = {version = "0.5.0", features=["serialization", "avx2"] }
 pqcrypto-traits = "0.3.5"
 ring = "0.17.8"
 reqwest = {  version ="0.11.26", features = ["blocking", "json"] }
