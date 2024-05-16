@@ -210,23 +210,10 @@ impl Agent {
             self.version = Some(value["version"].as_str().unwrap_or_default().to_string());
         }
 
-        // After validation, check if the agent ID is present and keys are not already loaded
-        if self.id.is_some() {
-            // If the public or private key is not set, attempt to load the keys from the file system
-            if self.public_key.is_none() || self.private_key.is_none() {
-                println!("Agent::create_agent_and_load - Loading keys from file system.");
-                self.fs_load_keys()?;
-            } else {
-                println!("Agent::create_agent_and_load - Keys are already loaded for agent.");
-            }
+        if self.id.is_some() && (self.public_key.is_none() || self.private_key.is_none()) {
+            self.fs_load_keys()?;
         } else {
-            // If the agent ID is not present, generate new keys
-            println!("Agent::create_agent_and_load - Generating new keys for agent.");
-            if let Ok((secret_key, public_key)) = crate::crypt::pq::generate_keys() {
-                self.set_keys(secret_key, public_key, &"dilithium5".to_string())?;
-            } else {
-                return Err("Failed to generate keys".into());
-            }
+            println!("keys already loaded for agent");
         }
         Ok(())
     }
