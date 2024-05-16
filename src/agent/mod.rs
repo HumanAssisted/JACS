@@ -222,7 +222,11 @@ impl Agent {
         } else {
             // If the agent ID is not present, generate new keys
             println!("Agent::create_agent_and_load - Generating new keys for agent.");
-            self.generate_keys()?;
+            if let Ok((secret_key, public_key)) = crate::crypt::pq::generate_keys() {
+                self.set_keys(secret_key, public_key, &"dilithium5".to_string())?;
+            } else {
+                return Err("Failed to generate keys".into());
+            }
         }
         Ok(())
     }
@@ -500,6 +504,8 @@ impl Document for Agent {
 
 pub trait KeyManager {
     // ... existing methods remain unchanged ...
+    /// Generates a new key pair for the agent.
+    fn generate_keys(&mut self) -> Result<(), Box<dyn Error>>;
 }
 
 impl KeyManager for Agent {
