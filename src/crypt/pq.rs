@@ -13,12 +13,17 @@ use std::time::{Duration, Instant};
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     println!("generate_keys - Starting keypair generation.");
     let start = Instant::now();
+    // Start detailed logging for keypair generation
+    println!("generate_keys - Calling keypair() to generate keys.");
     let (pk, sk) = keypair();
+    // End detailed logging for keypair generation
+    println!("generate_keys - keypair() call completed.");
     let duration = start.elapsed();
     println!(
         "generate_keys - Keypair generation completed in {:?}",
         duration
     );
+
     Ok((sk.as_bytes().to_vec(), pk.as_bytes().to_vec()))
 }
 
