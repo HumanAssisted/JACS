@@ -36,7 +36,12 @@
     "signingAlgorithm": {
       "description": "What signature algorithm was used",
       "hai": "base",
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "RSA-PSS",
+        "ring-Ed25519",
+        "pq-dilithium"
+      ]
     },
     "response": {
       "type": "string",

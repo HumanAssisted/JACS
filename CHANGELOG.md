@@ -1,7 +1,11 @@
 ## 0.2.13
 - save public key to local fs
+- restricted signingAlgorithm in schema
 
-
+PLANNED
+- schema for program, program node/consent/action/tool
+- gzip local files
+- update libs based on devin work
 
 ## 0.2.12
 

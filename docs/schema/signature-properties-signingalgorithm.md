@@ -13,3 +13,13 @@ What signature algorithm was used
 ## signingAlgorithm Type
 
 `string`
+
+## signingAlgorithm Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value            | Explanation |
+| :--------------- | :---------- |
+| `"RSA-PSS"`      |             |
+| `"ring-Ed25519"` |             |
+| `"pq-dilithium"` |             |
