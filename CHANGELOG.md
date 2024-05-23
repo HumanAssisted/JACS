@@ -6,6 +6,7 @@ PLANNED
 - schema for program, program node/consent/action/tool
 - gzip local files
 - update libs based on devin work
+- store files by type (eval, program, node, task, actor, message)
 
 ## 0.2.12
 
