@@ -1,48 +1,58 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/eval/v1/eval.schema.json",
+  "$id": "https://hai.ai/schemas/program/v1/eval.program.json",
   "title": "Evaluation",
   "description": "A signed, immutable message evaluation an agent's performance on a task",
   "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "hai": "base",
-      "format": "uuid"
+  "allOf": [
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
     },
-    "signature": {
-      "description": "signing of evaluation by agent evaluating",
-      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
-    },
-    "taskID": {
-      "type": "string",
-      "hai": "meta",
-      "description": "task being evaluated",
-      "format": "uuid"
-    },
-    "datetime": {
-      "description": "Date of evaluation",
-      "format": "date-time",
-      "hai": "agent",
-      "type": "string"
-    },
-    "qualityDescription": {
-      "type": "string",
-      "description": "When prompting an agent, is there text provided with the agreement?",
-      "hai": "agent"
-    },
-    "quantifications": {
-      "type": "array",
-      "description": "list of evaluation units, informatio labels",
-      "items": {
-        "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
-      }
+    {
+      "properties": {
+        "planningSignature": {
+          "description": "Signature of the planning agent. Who choses",
+          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+        },
+        "safetySignature": {
+          "description": "Signature of the safety agent",
+          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+        },
+        "evaluationSignature": {
+          "description": "signing of evaluation by agent evaluating",
+          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+        },
+        "taskID": {
+          "type": "string",
+          "hai": "meta",
+          "description": "task being processed, a description can be found there.",
+          "format": "uuid"
+        },
+        "datetime": {
+          "description": "Date of evaluation",
+          "format": "date-time",
+          "hai": "agent",
+          "type": "string"
+        },
+        "qualityDescription": {
+          "type": "string",
+          "description": "When prompting an agent, is there text provided with the agreement?",
+          "hai": "agent"
+        },
+        "nodes": {
+          "type": "array",
+          "description": "list of evaluation units, informatio labels",
+          "items": {
+            "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "taskID",
+        "nodes"
+      ],
+      "additionalProperties": false
     }
-  },
-  "required": [
-    "id",
-    "datetime",
-    "taskID"
-  ],
-  "additionalProperties": false
+  ]
 }

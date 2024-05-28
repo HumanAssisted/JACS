@@ -16,15 +16,17 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/fun
 
 # function Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                                                      |
-| :-------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [name](#name)               | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-name.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")               |
-| [description](#description) | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description") |
-| [parameters](#parameters)   | `object` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")   |
+| Property                                  | Type     | Required | Nullable       | Defined by                                                                                                                                                                                    |
+| :---------------------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [name](#name)                             | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-name.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name")                             |
+| [description](#description)               | `string` | Required | cannot be null | [Tool](tool-items-properties-function-properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description")               |
+| [descriptionDontUse](#descriptiondontuse) | `string` | Optional | cannot be null | [Tool](tool-items-properties-function-properties-descriptiondontuse.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/descriptionDontUse") |
+| [descriptionDoUse](#descriptiondouse)     | `string` | Optional | cannot be null | [Tool](tool-items-properties-function-properties-descriptiondouse.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/descriptionDoUse")     |
+| [parameters](#parameters)                 | `object` | Required | cannot be null | [Tool](tool-items-properties-function-properties-parameters.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters")                 |
 
 ## name
 
-The name of the function
+The name of the function which will be used to call it.
 
 `name`
 
@@ -42,7 +44,7 @@ The name of the function
 
 ## description
 
-A description of what the function does
+A description of what the function does.
 
 `description`
 
@@ -55,6 +57,42 @@ A description of what the function does
 *   defined in: [Tool](tool-items-properties-function-properties-description.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description")
 
 ### description Type
+
+`string`
+
+## descriptionDontUse
+
+A description  when the function should not be used.
+
+`descriptionDontUse`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Tool](tool-items-properties-function-properties-descriptiondontuse.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/descriptionDontUse")
+
+### descriptionDontUse Type
+
+`string`
+
+## descriptionDoUse
+
+A description for when the function should be used
+
+`descriptionDoUse`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Tool](tool-items-properties-function-properties-descriptiondouse.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/descriptionDoUse")
+
+### descriptionDoUse Type
 
 `string`
 

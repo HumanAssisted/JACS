@@ -10,7 +10,7 @@
 
 *   [Contact](./contact.md "How to contact over human channels") – `https://hai.ai/schemas/contact/v1/contact-schema.json`
 
-*   [Evaluation](./program.md "A signed, immutable message evaluation an agent's performance on a task") – `https://hai.ai/schemas/eval/v1/eval.schema.json`
+*   [Evaluation](./program.md "A signed, immutable message evaluation an agent's performance on a task") – `https://hai.ai/schemas/program/v1/eval.program.json`
 
 *   [Evaluation](./eval.md "A signed, immutable message evaluation an agent's performance on a task") – `https://hai.ai/schemas/eval/v1/eval.schema.json`
 
@@ -20,7 +20,7 @@
 
 *   [Message](./message.md "A signed, immutable message about a task") – `https://hai.ai/schemas/message/v1/message.schema.json`
 
-*   [Node](./node.md "A plan for a node in a finite state machine") – `https://hai.ai/schemas/node/v1/node.schema.json`
+*   [Node](./node.md "A a node in a finite state machine") – `https://hai.ai/schemas/node/v1/node.schema.json`
 
 *   [Service](./service.md "Services that an Agent claims to provide") – `https://hai.ai/schemas/service/v1/service-schema.json`
 
@@ -60,7 +60,7 @@
 
 *   [Untitled array in Agent](./agent-allof-1-jacscontacts.md "Contact information for the agent") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsContacts`
 
-*   [Untitled array in Evaluation](./program-properties-quantifications.md "list of evaluation units, informatio labels") – `https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications`
+*   [Untitled array in Evaluation](./program-allof-1-properties-nodes.md "list of evaluation units, informatio labels") – `https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes`
 
 *   [Untitled array in Evaluation](./eval-properties-quantifications.md "list of evaluation units, informatio labels") – `https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications`
 
@@ -69,8 +69,6 @@
 *   [Untitled array in Message](./message-properties-to.md "list of addressees, optional") – `https://hai.ai/schemas/message/v1/message.schema.json#/properties/to`
 
 *   [Untitled array in Message](./message-properties-attachments.md "list of files") – `https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments`
-
-*   [Untitled array in Node](./node-properties-quantifications.md "list of evaluation units, informatio labels") – `https://hai.ai/schemas/node/v1/node.schema.json#/properties/quantifications`
 
 *   [Untitled array in Service](./service-properties-tools.md "URLs and function definitions of of tools that can be called") – `https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools`
 

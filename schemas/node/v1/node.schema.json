@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/node/v1/node.schema.json",
   "title": "Node",
-  "description": "A plan for a node in a finite state machine. Stateless, a class to be used to instantiate a node.",
+  "description": "A a node in a finite state machine. Stateless, a class to be used to instantiate a node.",
   "type": "object",
   "properties": {
     "id": {
@@ -10,33 +10,43 @@
       "hai": "base",
       "format": "uuid"
     },
+    "programID": {
+      "description": "what program it belongs to",
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "programVersion": {
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
     "signature": {
-      "description": "signing of evaluation by agent evaluating",
+      "description": "signature of planning agent",
       "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
     },
-    "taskID": {
+    "responsibleAgent": {
+      "description": "agent responsible for executing, implies tools and services",
       "type": "string",
       "hai": "meta",
-      "description": "task being evaluated",
       "format": "uuid"
+    },
+    "evaluatingAgent": {
+      "type": "string",
+      "hai": "meta",
+      "description": "Agent doing the evaluation, implies tools and services",
+      "format": "uuid"
+    },
+    "LLMType": {
+      "type": "string",
+      "description": "Which LLM to use when loaded prompts are provided.",
+      "hai": "base"
     },
     "datetime": {
       "description": "Date of evaluation",
       "format": "date-time",
       "hai": "agent",
       "type": "string"
-    },
-    "qualityDescription": {
-      "type": "string",
-      "description": "When prompting an agent, is there text provided with the agreement?",
-      "hai": "agent"
-    },
-    "quantifications": {
-      "type": "array",
-      "description": "list of evaluation units, informatio labels",
-      "items": {
-        "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
-      }
     }
   },
   "required": [

@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/name
 ```
 
-The name of the function
+The name of the function which will be used to call it.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                     |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |

@@ -16,37 +16,14 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items
 
 # items Properties
 
-| Property              | Type     | Required | Nullable       | Defined by                                                                                                                        |
-| :-------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
-| [type](#type)         | `string` | Required | cannot be null | [Tool](tool-items-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/type")         |
-| [url](#url)           | `string` | Required | cannot be null | [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")           |
-| [function](#function) | `object` | Required | cannot be null | [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function") |
-
-## type
-
-
-
-`type`
-
-*   is required
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Tool](tool-items-properties-type.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/type")
-
-### type Type
-
-`string`
-
-### type Constraints
-
-**enum**: the value of this property must be equal to one of the following values:
-
-| Value        | Explanation |
-| :----------- | :---------- |
-| `"function"` |             |
+| Property                                  | Type      | Required | Nullable       | Defined by                                                                                                                                            |
+| :---------------------------------------- | :-------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [url](#url)                               | `string`  | Required | cannot be null | [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")                               |
+| [responseRequired](#responserequired)     | `boolean` | Optional | cannot be null | [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/responseRequired")     |
+| [reseponseTimeout](#reseponsetimeout)     | `integer` | Optional | cannot be null | [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/reseponseTimeout")     |
+| [retryTimes](#retrytimes)                 | `integer` | Optional | cannot be null | [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/retryTimes")                 |
+| [pricingDescription](#pricingdescription) | `integer` | Optional | cannot be null | [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/pricingDescription") |
+| [function](#function)                     | `object`  | Required | cannot be null | [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function")                     |
 
 ## url
 
@@ -69,6 +46,78 @@ endpoint of the tool
 ### url Constraints
 
 **URI**: the string must be a URI, according to [RFC 3986](https://tools.ietf.org/html/rfc3986 "check the specification")
+
+## responseRequired
+
+Will the tool require waiting for a response. Default true.
+
+`responseRequired`
+
+*   is optional
+
+*   Type: `boolean`
+
+*   cannot be null
+
+*   defined in: [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/responseRequired")
+
+### responseRequired Type
+
+`boolean`
+
+## reseponseTimeout
+
+How long to wait for a response.
+
+`reseponseTimeout`
+
+*   is optional
+
+*   Type: `integer`
+
+*   cannot be null
+
+*   defined in: [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/reseponseTimeout")
+
+### reseponseTimeout Type
+
+`integer`
+
+## retryTimes
+
+How many times to retry on failure.
+
+`retryTimes`
+
+*   is optional
+
+*   Type: `integer`
+
+*   cannot be null
+
+*   defined in: [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/retryTimes")
+
+### retryTimes Type
+
+`integer`
+
+## pricingDescription
+
+Is the function expensive, not expensive?
+
+`pricingDescription`
+
+*   is optional
+
+*   Type: `integer`
+
+*   cannot be null
+
+*   defined in: [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/pricingDescription")
+
+### pricingDescription Type
+
+`integer`
 
 ## function
 
