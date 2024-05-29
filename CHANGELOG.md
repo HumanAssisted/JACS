@@ -1,3 +1,17 @@
+PLANNED
+
+- refine schema usage
+- more getters and setters for documents recognized by schemas
+- gzip local files
+- update libs based on devin work
+- store files by type (eval, program, node, task, actor, message)
+- WASM option
+
+## 0.2.13
+- save public key to local fs
+- restricted signingAlgorithm in schema
+- refresh schema for program, program node/consent/action/tool
+
 ## 0.2.12
 
 - Let Devin.ai have a go at looking for issues with missing documentation, unsafe calles, and uncessary copies of data, updated some libs

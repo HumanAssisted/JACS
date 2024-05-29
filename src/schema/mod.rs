@@ -56,6 +56,8 @@ pub struct Schema {
     pub taskschema: JSONSchema,
     messageschema: JSONSchema,
     evalschema: JSONSchema,
+    nodeschema: JSONSchema,
+    programschema: JSONSchema,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
@@ -324,6 +326,8 @@ impl Schema {
         );
 
         let task_path = format!("schemas/task/{}/task.schema.json", default_version);
+        let node_path = format!("schemas/node/{}/node.schema.json", default_version);
+        let program_path = format!("schemas/program/{}/program.schema.json", default_version);
 
         let message_path = format!("schemas/message/{}/message.schema.json", default_version);
         let eval_path = format!("schemas/eval/{}/eval.schema.json", default_version);
@@ -340,6 +344,8 @@ impl Schema {
         let taskdata = DEFAULT_SCHEMA_STRINGS.get(&task_path).unwrap();
         let messagedata = DEFAULT_SCHEMA_STRINGS.get(&message_path).unwrap();
         let evaldata = DEFAULT_SCHEMA_STRINGS.get(&eval_path).unwrap();
+        let programdata = DEFAULT_SCHEMA_STRINGS.get(&program_path).unwrap();
+        let nodedata = DEFAULT_SCHEMA_STRINGS.get(&node_path).unwrap();
 
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;
@@ -354,6 +360,8 @@ impl Schema {
         let taskschema_result: Value = serde_json::from_str(&taskdata)?;
         let messageschema_result: Value = serde_json::from_str(&messagedata)?;
         let evalschema_result: Value = serde_json::from_str(&evaldata)?;
+        let nodeschema_result: Value = serde_json::from_str(&nodedata)?;
+        let programschema_result: Value = serde_json::from_str(&programdata)?;
 
         let agentschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
@@ -375,6 +383,26 @@ impl Schema {
             Err(_) => {
                 return Err(format!("Failed to compile headerschema: {}", &header_path).into())
             }
+        };
+
+        let programschema = match JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&programschema_result)
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(format!("Failed to compile headerschema: {}", &program_path).into())
+            }
+        };
+
+        let nodeschema = match JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&nodeschema_result)
+        {
+            Ok(schema) => schema,
+            Err(_) => return Err(format!("Failed to compile headerschema: {}", &node_path).into()),
         };
 
         let signatureschema = match JSONSchema::options()
@@ -511,6 +539,8 @@ impl Schema {
             taskschema,
             messageschema,
             evalschema,
+            nodeschema,
+            programschema,
         })
     }
 

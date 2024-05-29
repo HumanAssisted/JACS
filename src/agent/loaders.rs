@@ -78,6 +78,12 @@ pub trait FileLoader {
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
     fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn fs_save_remote_public_key(
+        &self,
+        agent_id_and_version: &String,
+        public_key: &[u8],
+        public_key_enc_type: &[u8],
+    ) -> Result<(), Box<dyn Error>>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -157,7 +163,29 @@ impl FileLoader for Agent {
         let mut default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
         default_dir = format!("{}/public_keys/", default_dir);
         let public_key_filename = format!("{}.pem", agent_id_and_version);
+        // todo
+        let public_key_type_filename = format!("{}.enc_type", agent_id_and_version);
         return Ok(load_key_file(&default_dir, &public_key_filename)?);
+    }
+
+    /// in JACS the public keys need to be added manually
+    fn fs_save_remote_public_key(
+        &self,
+        agent_id_and_version: &String,
+        public_key: &[u8],
+        public_key_enc_type: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        let mut default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        default_dir = format!("{}/public_keys/", default_dir);
+        let public_key_filename = format!("{}.pem", agent_id_and_version);
+        let public_key_type_filename = format!("{}.enc_type", agent_id_and_version);
+        let _ = save_file(&Path::new(&default_dir), &public_key_filename, public_key);
+        let _ = save_file(
+            &Path::new(&default_dir),
+            &public_key_type_filename,
+            public_key_enc_type,
+        );
+        Ok(())
     }
 
     /// a way to load keys that aren't default

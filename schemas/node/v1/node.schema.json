@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/node/v1/node.schema.json",
+  "title": "Node",
+  "description": "A a node in a finite state machine. Stateless, a class to be used to instantiate a node.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "programID": {
+      "description": "what program it belongs to",
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "programVersion": {
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "signature": {
+      "description": "signature of planning agent",
+      "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+    },
+    "responsibleAgent": {
+      "description": "agent responsible for executing, implies tools and services",
+      "type": "string",
+      "hai": "meta",
+      "format": "uuid"
+    },
+    "evaluatingAgent": {
+      "type": "string",
+      "hai": "meta",
+      "description": "Agent doing the evaluation, implies tools and services",
+      "format": "uuid"
+    },
+    "LLMType": {
+      "type": "string",
+      "description": "Which LLM to use when loaded prompts are provided.",
+      "hai": "base"
+    },
+    "datetime": {
+      "description": "Date of evaluation",
+      "format": "date-time",
+      "hai": "agent",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "datetime",
+    "taskID"
+  ],
+  "additionalProperties": false
+}

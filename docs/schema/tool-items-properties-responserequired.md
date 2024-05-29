@@ -1,15 +1,15 @@
-# Untitled string in Tool Schema
+# Untitled boolean in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/description
+https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/responseRequired
 ```
 
-A description of what the function does.
+Will the tool require waiting for a response. Default true.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                     |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [tool.schema.json\*](../../schemas/components/tool/v1/tool.schema.json "open original schema") |
 
-## description Type
+## responseRequired Type
 
-`string`
+`boolean`

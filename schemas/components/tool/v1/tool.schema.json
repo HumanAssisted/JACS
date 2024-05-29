@@ -8,27 +8,45 @@
   "items": {
     "type": "object",
     "properties": {
-      "type": {
-        "type": "string",
-        "enum": [
-          "function"
-        ]
-      },
       "url": {
         "type": "string",
         "description": " endpoint of the tool",
         "format": "uri"
+      },
+      "responseRequired": {
+        "type": "boolean",
+        "description": "Will the tool require waiting for a response. Default true."
+      },
+      "reseponseTimeout": {
+        "type": "integer",
+        "description": "How long to wait for a response."
+      },
+      "retryTimes": {
+        "type": "integer",
+        "description": "How many times to retry on failure."
+      },
+      "pricingDescription": {
+        "type": "integer",
+        "description": "Is the function expensive, not expensive?"
       },
       "function": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "The name of the function"
+            "description": "The name of the function which will be used to call it. "
           },
           "description": {
             "type": "string",
-            "description": "A description of what the function does"
+            "description": "A description of what the function does."
+          },
+          "descriptionDontUse": {
+            "type": "string",
+            "description": "A description  when the function should not be used."
+          },
+          "descriptionDoUse": {
+            "type": "string",
+            "description": "A description for when the function should be used"
           },
           "parameters": {
             "type": "object",
@@ -91,7 +109,6 @@
       }
     },
     "required": [
-      "type",
       "function",
       "url"
     ]

@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.2.12"
+version = "0.2.13"
 edition = "2021"
 include = [
     "src/**/*",
@@ -15,6 +15,8 @@ include = [
     "schemas/components/tool/v1/tool.schema.json",
     "schemas/components/contact/v1/contact.schema.json",
     "schemas/message/v1/message.schema.json",
+    "schemas/node/v1/node.schema.json",
+    "schemas/program/v1/program.schema.json",
     "schemas/eval/v1/eval.schema.json",
     "schemas/task/v1/task.schema.json",
     "jacs.config.schema.json",
@@ -29,7 +31,7 @@ include = [
 ]
 description = "JACS JSON AI Communication Standard"
 readme = "README.md"
-authors = ["Jonathan Hendler <engineering@hai.io>"]
+authors = ["HAI.AI <engineering@hai.io>"]
 license = "Apache-2.0"
 homepage = "https://humanassisted.github.io/JACS"
 repository = "https://github.com/HumanAssisted/JACS"

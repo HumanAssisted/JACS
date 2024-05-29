@@ -28,9 +28,10 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
      "schemas/components/contact/v1/contact.schema.json" => include_str!("../../schemas/components/contact/v1/contact.schema.json"),
      "schemas/task/v1/task.schema.json" => include_str!("../../schemas/task/v1/task.schema.json"),
      "schemas/message/v1/message.schema.json" => include_str!("../../schemas/message/v1/message.schema.json"),
-     "schemas/eval/v1/eval.schema.json" => include_str!("../../schemas/eval/v1/eval.schema.json")
+     "schemas/eval/v1/eval.schema.json" => include_str!("../../schemas/eval/v1/eval.schema.json"),
+     "schemas/program/v1/program.schema.json" => include_str!("../../schemas/program/v1/program.schema.json"),
+     "schemas/node/v1/node.schema.json" => include_str!("../../schemas/node/v1/node.schema.json")
      // todo get all files in a schemas directory, dynamically
-    // "schemas/jacs.config.schema.json" => include_str!("../../schemas/jacs.config.schema.json"),
 };
 
 pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
@@ -100,6 +101,16 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
         path = rawpath;
     };
 
+    // in case the path is cached
+    let schema_json_result = DEFAULT_SCHEMA_STRINGS.get(path);
+    match schema_json_result {
+        Some(schema_json) => {
+            schema_value = serde_json::from_str(schema_json)?;
+            return Ok(Arc::new(schema_value));
+        }
+        _ => {}
+    }
+
     if path.starts_with("http://") || path.starts_with("https://") {
         debug!("Attempting to fetch schema from URL: {}", path);
         if path.starts_with("https://hai.ai") {
@@ -130,7 +141,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
             let schema_response = client.get(path).send().map_err(|err| {
                 error!("Error fetching schema from URL: {}, error: {}", path, err);
                 SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                    "Failed to fetch schema from URL {}: {}",
+                    "Failed to fetch schema from given URL {}: {}",
                     path, err
                 )))
             })?;
@@ -146,7 +157,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
                 return Ok(Arc::new(schema_value));
             } else {
                 Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-                    format!("Failed to get schema from URL {} ", path),
+                    format!("Failed to get schema from URL {} rawpath {}", path, rawpath),
                 )))
             }
         }
@@ -159,7 +170,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
         return Ok(Arc::new(schema_value));
     } else {
         return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-            format!("Failed to fetch schema from URL {} ", path,),
+            format!("Failed all attempts to retrieve schema {} ", path,),
         )));
     }
 }

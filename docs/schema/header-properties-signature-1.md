@@ -148,6 +148,16 @@ What signature algorithm was used
 
 `string`
 
+### signingAlgorithm Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value            | Explanation |
+| :--------------- | :---------- |
+| `"RSA-PSS"`      |             |
+| `"ring-Ed25519"` |             |
+| `"pq-dilithium"` |             |
+
 ## response
 
 When prompting an agent, is there text provided with the agreement?
