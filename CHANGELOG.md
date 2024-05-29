@@ -7,6 +7,9 @@ PLANNED
 - store files by type (eval, program, node, task, actor, message)
 - WASM option
 
+
+## 0.3.0
+
 ## 0.2.13
 - save public key to local fs
 - restricted signingAlgorithm in schema
