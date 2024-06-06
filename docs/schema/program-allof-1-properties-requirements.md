@@ -1,4 +1,4 @@
-# Untitled array in Evaluation Schema
+# Untitled string in Evaluation Schema
 
 ```txt
 https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements
@@ -12,4 +12,4 @@ What are the goals for the program
 
 ## requirements Type
 
-`string[]`
+`string`

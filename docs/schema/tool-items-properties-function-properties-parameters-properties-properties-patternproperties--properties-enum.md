@@ -1,7 +1,7 @@
 # Untitled array in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum
+https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum
 ```
 
 

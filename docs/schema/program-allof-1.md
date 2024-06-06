@@ -24,7 +24,7 @@ unknown
 | [taskID](#taskid)                           | `string` | Required | cannot be null | [Evaluation](program-allof-1-properties-taskid.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/taskID")                           |
 | [activeNodeIDs](#activenodeids)             | `array`  | Optional | cannot be null | [Evaluation](program-allof-1-properties-activenodeids.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs")             |
 | [datetime](#datetime)                       | `string` | Optional | cannot be null | [Evaluation](program-allof-1-properties-datetime.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/datetime")                       |
-| [requirements](#requirements)               | `array`  | Optional | cannot be null | [Evaluation](program-allof-1-properties-requirements.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements")               |
+| [requirements](#requirements)               | `string` | Required | cannot be null | [Evaluation](program-allof-1-properties-requirements.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements")               |
 | [changes](#changes)                         | `array`  | Optional | cannot be null | [Evaluation](program-allof-1-properties-changes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/changes")                         |
 | [nodes](#nodes)                             | `array`  | Required | cannot be null | [Evaluation](program-allof-1-properties-nodes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes")                             |
 
@@ -150,9 +150,9 @@ What are the goals for the program
 
 `requirements`
 
-*   is optional
+*   is required
 
-*   Type: `string[]`
+*   Type: `string`
 
 *   cannot be null
 
@@ -160,7 +160,7 @@ What are the goals for the program
 
 ### requirements Type
 
-`string[]`
+`string`
 
 ## changes
 

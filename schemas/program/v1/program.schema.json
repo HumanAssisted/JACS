@@ -44,12 +44,9 @@
           "type": "string"
         },
         "requirements": {
-          "type": "array",
+          "type": "string",
           "description": "What are the goals for the program",
-          "hai": "agent",
-          "items": {
-            "type": "string"
-          }
+          "hai": "agent"
         },
         "changes": {
           "type": "array",
@@ -70,7 +67,8 @@
       "required": [
         "id",
         "taskID",
-        "nodes"
+        "nodes",
+        "requirements"
       ],
       "additionalProperties": false
     }

@@ -1,7 +1,7 @@
 # Service Schema
 
 ```txt
-https://hai.ai/schemas/service/v1/service-schema.json
+https://hai.ai/schemas/service/v1/service.schema.json
 ```
 
 Services that an Agent claims to provide.
@@ -18,19 +18,19 @@ Services that an Agent claims to provide.
 
 | Property                                              | Type      | Required | Nullable       | Defined by                                                                                                                                             |
 | :---------------------------------------------------- | :-------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [name](#name)                                         | `string`  | Optional | cannot be null | [Service](service-properties-name.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/name")                                         |
-| [serviceDescription](#servicedescription)             | `string`  | Required | cannot be null | [Service](service-properties-servicedescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/serviceDescription")             |
-| [successDescription](#successdescription)             | `string`  | Required | cannot be null | [Service](service-properties-successdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/successDescription")             |
-| [failureDescription](#failuredescription)             | `string`  | Required | cannot be null | [Service](service-properties-failuredescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/failureDescription")             |
-| [costDescription](#costdescription)                   | `string`  | Optional | cannot be null | [Service](service-properties-costdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/costDescription")                   |
-| [idealCustomerDescription](#idealcustomerdescription) | `string`  | Optional | cannot be null | [Service](service-properties-idealcustomerdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/idealCustomerDescription") |
-| [termsOfService](#termsofservice)                     | `string`  | Optional | cannot be null | [Service](service-properties-termsofservice.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/termsOfService")                     |
-| [privacyPolicy](#privacypolicy)                       | `string`  | Optional | cannot be null | [Service](service-properties-privacypolicy.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/privacyPolicy")                       |
-| [copyright](#copyright)                               | `string`  | Optional | cannot be null | [Service](service-properties-copyright.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/copyright")                               |
-| [eula](#eula)                                         | `string`  | Optional | cannot be null | [Service](service-properties-eula.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/eula")                                         |
-| [isDev](#isdev)                                       | `boolean` | Optional | cannot be null | [Service](service-properties-isdev.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/isDev")                                       |
-| [tools](#tools)                                       | `array`   | Optional | cannot be null | [Service](service-properties-tools.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools")                                       |
-| [piiDesired](#piidesired)                             | `array`   | Optional | cannot be null | [Service](service-properties-piidesired.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/piiDesired")                             |
+| [name](#name)                                         | `string`  | Optional | cannot be null | [Service](service-properties-name.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/name")                                         |
+| [serviceDescription](#servicedescription)             | `string`  | Required | cannot be null | [Service](service-properties-servicedescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/serviceDescription")             |
+| [successDescription](#successdescription)             | `string`  | Required | cannot be null | [Service](service-properties-successdescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/successDescription")             |
+| [failureDescription](#failuredescription)             | `string`  | Required | cannot be null | [Service](service-properties-failuredescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/failureDescription")             |
+| [costDescription](#costdescription)                   | `string`  | Optional | cannot be null | [Service](service-properties-costdescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/costDescription")                   |
+| [idealCustomerDescription](#idealcustomerdescription) | `string`  | Optional | cannot be null | [Service](service-properties-idealcustomerdescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/idealCustomerDescription") |
+| [termsOfService](#termsofservice)                     | `string`  | Optional | cannot be null | [Service](service-properties-termsofservice.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/termsOfService")                     |
+| [privacyPolicy](#privacypolicy)                       | `string`  | Optional | cannot be null | [Service](service-properties-privacypolicy.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/privacyPolicy")                       |
+| [copyright](#copyright)                               | `string`  | Optional | cannot be null | [Service](service-properties-copyright.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/copyright")                               |
+| [eula](#eula)                                         | `string`  | Optional | cannot be null | [Service](service-properties-eula.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/eula")                                         |
+| [isDev](#isdev)                                       | `boolean` | Optional | cannot be null | [Service](service-properties-isdev.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/isDev")                                       |
+| [tools](#tools)                                       | `array`   | Optional | cannot be null | [Service](service-properties-tools.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/tools")                                       |
+| [piiDesired](#piidesired)                             | `array`   | Optional | cannot be null | [Service](service-properties-piidesired.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/piiDesired")                             |
 
 ## name
 
@@ -44,7 +44,7 @@ Name of service
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-name.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/name")
+*   defined in: [Service](service-properties-name.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/name")
 
 ### name Type
 
@@ -62,7 +62,7 @@ Description of basic service provided.
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-servicedescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/serviceDescription")
+*   defined in: [Service](service-properties-servicedescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/serviceDescription")
 
 ### serviceDescription Type
 
@@ -80,7 +80,7 @@ Description of successful delivery of service.
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-successdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/successDescription")
+*   defined in: [Service](service-properties-successdescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/successDescription")
 
 ### successDescription Type
 
@@ -98,7 +98,7 @@ Description of failure of delivery of service.
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-failuredescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/failureDescription")
+*   defined in: [Service](service-properties-failuredescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/failureDescription")
 
 ### failureDescription Type
 
@@ -116,7 +116,7 @@ types of costs
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-costdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/costDescription")
+*   defined in: [Service](service-properties-costdescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/costDescription")
 
 ### costDescription Type
 
@@ -134,7 +134,7 @@ Description of ideal customer
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-idealcustomerdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/idealCustomerDescription")
+*   defined in: [Service](service-properties-idealcustomerdescription.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/idealCustomerDescription")
 
 ### idealCustomerDescription Type
 
@@ -152,7 +152,7 @@ Legal TOS
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-termsofservice.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/termsOfService")
+*   defined in: [Service](service-properties-termsofservice.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/termsOfService")
 
 ### termsOfService Type
 
@@ -170,7 +170,7 @@ How data will be used
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-privacypolicy.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/privacyPolicy")
+*   defined in: [Service](service-properties-privacypolicy.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/privacyPolicy")
 
 ### privacyPolicy Type
 
@@ -188,7 +188,7 @@ How can data provided be used
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-copyright.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/copyright")
+*   defined in: [Service](service-properties-copyright.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/copyright")
 
 ### copyright Type
 
@@ -206,7 +206,7 @@ End user license agreement
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-eula.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/eula")
+*   defined in: [Service](service-properties-eula.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/eula")
 
 ### eula Type
 
@@ -224,7 +224,7 @@ Is the test/development version of the service?
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-isdev.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/isDev")
+*   defined in: [Service](service-properties-isdev.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/isDev")
 
 ### isDev Type
 
@@ -238,15 +238,15 @@ URLs and function definitions of of tools that can be called
 
 *   is optional
 
-*   Type: unknown\[]
+*   Type: `object[][]` ([Details](tool-items.md))
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-tools.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools")
+*   defined in: [Service](service-properties-tools.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/tools")
 
 ### tools Type
 
-unknown\[]
+`object[][]` ([Details](tool-items.md))
 
 ## piiDesired
 
@@ -260,7 +260,7 @@ Sensitive data desired.
 
 *   cannot be null
 
-*   defined in: [Service](service-properties-piidesired.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/piiDesired")
+*   defined in: [Service](service-properties-piidesired.md "https://hai.ai/schemas/service/v1/service.schema.json#/properties/piiDesired")
 
 ### piiDesired Type
 

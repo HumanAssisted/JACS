@@ -1,7 +1,7 @@
 # Untitled string in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description
+https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/description
 ```
 
 

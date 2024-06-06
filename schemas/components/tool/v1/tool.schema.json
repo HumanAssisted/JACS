@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/components/tool/v1/tool-schema.json",
+  "$id": "https://hai.ai/schemas/components/tool/v1/tool.schema.json",
   "title": "Tool",
   "TODO": "file attachments",
   "description": "OpenAI function calling definitions https://platform.openai.com/docs/assistants/tools/function-calling/quickstart. Has an additional field of URL",

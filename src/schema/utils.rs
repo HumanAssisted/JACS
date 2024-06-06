@@ -34,6 +34,24 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
      // todo get all files in a schemas directory, dynamically
 };
 
+pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
+
+    "https://hai.ai/schemas/agent/v1/agent.schema.json" => "agent" ,
+    "https://hai.ai/schemas/components/action/v1/action-schema.json" => "action" ,
+    "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json" => "agreement" ,
+    "https://hai.ai/schemas/contact/v1/contact.schema.json" => "contact" ,
+    "https://hai.ai/schemas/components/files/v1/files.schema.json" => "files" ,
+    "https://hai.ai/schemas/service/v1/service.schema.json" => "agent" ,
+    "https://hai.ai/schemas/components/signature/v1/signature.schema.json" => "signature" ,
+    "https://hai.ai/schemas/components/tool/v1/tool-schema.json" => "tool" ,
+    "https://hai.ai/schemas/components/unit/v1/unit.schema.json" => "unit" ,
+    "https://hai.ai/schemas/eval/v1/eval.schema.json" => "eval" ,
+    "https://hai.ai/schemas/header/v1/header.schema.json" => "header" ,
+    "https://hai.ai/schemas/message/v1/message.schema.json" => "message" ,
+    "https://hai.ai/schemas/node/v1/node.schema.json" => "node" ,
+    "https://hai.ai/schemas/task/v1/task-schema.json" => "task" ,
+};
+
 pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
 
 #[derive(Debug)]

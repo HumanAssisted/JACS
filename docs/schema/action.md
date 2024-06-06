@@ -69,7 +69,7 @@ tools that can be utilized
 
 *   is optional
 
-*   Type: unknown\[]
+*   Type: `object[][]` ([Details](tool-items.md))
 
 *   cannot be null
 
@@ -77,7 +77,7 @@ tools that can be utilized
 
 ### tools Type
 
-unknown\[]
+`object[][]` ([Details](tool-items.md))
 
 ## cost
 

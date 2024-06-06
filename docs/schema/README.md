@@ -8,7 +8,7 @@
 
 *   [Config](./jacs.md "Jacs Configuration File") – `https://hai.ai/schemas/jacs.config.schema.json`
 
-*   [Contact](./contact.md "How to contact over human channels") – `https://hai.ai/schemas/contact/v1/contact-schema.json`
+*   [Contact](./contact.md "How to contact over human channels") – `https://hai.ai/schemas/contact/v1/contact.schema.json`
 
 *   [Evaluation](./program.md "A signed, immutable message evaluation an agent's performance on a task") – `https://hai.ai/schemas/program/v1/eval.program.json`
 
@@ -22,13 +22,13 @@
 
 *   [Node](./node.md "A a node in a finite state machine") – `https://hai.ai/schemas/node/v1/node.schema.json`
 
-*   [Service](./service.md "Services that an Agent claims to provide") – `https://hai.ai/schemas/service/v1/service-schema.json`
+*   [Service](./service.md "Services that an Agent claims to provide") – `https://hai.ai/schemas/service/v1/service.schema.json`
 
 *   [Signature](./signature.md "Cryptographic signature to be embedded in other documents") – `https://hai.ai/schemas/components/signature/v1/signature.schema.json`
 
 *   [Task](./task.md "General schema for stateful resources") – `https://hai.ai/schemas/task/v1/task-schema.json`
 
-*   [Tool](./tool.md "OpenAI function calling definitions https://platform") – `https://hai.ai/schemas/components/tool/v1/tool-schema.json`
+*   [Tool](./tool.md "OpenAI function calling definitions https://platform") – `https://hai.ai/schemas/components/tool/v1/tool.schema.json`
 
 *   [Unit](./unit.md "Labels and quantitative values") – `https://hai.ai/schemas/components/unit/v1/unit.schema.json`
 
@@ -42,15 +42,15 @@
 
 *   [Untitled object in Task](./task-allof-1.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1`
 
-*   [Untitled object in Tool](./tool-items.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items`
+*   [Untitled object in Tool](./tool-items.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items`
 
-*   [Untitled object in Tool](./tool-items-properties-function.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function`
+*   [Untitled object in Tool](./tool-items-properties-function.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function`
 
-*   [Untitled object in Tool](./tool-items-properties-function-properties-parameters.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters`
+*   [Untitled object in Tool](./tool-items-properties-function-properties-parameters.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function/properties/parameters`
 
-*   [Untitled object in Tool](./tool-items-properties-function-properties-parameters-properties-properties.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties`
+*   [Untitled object in Tool](./tool-items-properties-function-properties-parameters-properties-properties.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function/properties/parameters/properties/properties`
 
-*   [Untitled object in Tool](./tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$`
+*   [Untitled object in Tool](./tool-items-properties-function-properties-parameters-properties-properties-patternproperties-.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$`
 
 ### Arrays
 
@@ -61,8 +61,6 @@
 *   [Untitled array in Agent](./agent-allof-1-jacscontacts.md "Contact information for the agent") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsContacts`
 
 *   [Untitled array in Evaluation](./program-allof-1-properties-activenodeids.md "task being processed, a description can be found there") – `https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs`
-
-*   [Untitled array in Evaluation](./program-allof-1-properties-requirements.md "What are the goals for the program") – `https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements`
 
 *   [Untitled array in Evaluation](./program-allof-1-properties-changes.md "What changes were made to the plan along the way and why") – `https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/changes`
 
@@ -76,9 +74,9 @@
 
 *   [Untitled array in Message](./message-properties-attachments.md "list of files") – `https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments`
 
-*   [Untitled array in Service](./service-properties-tools.md "URLs and function definitions of of tools that can be called") – `https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools`
+*   [Untitled array in Service](./service-properties-tools.md "URLs and function definitions of of tools that can be called") – `https://hai.ai/schemas/service/v1/service.schema.json#/properties/tools`
 
-*   [Untitled array in Service](./service-properties-piidesired.md "Sensitive data desired") – `https://hai.ai/schemas/service/v1/service-schema.json#/properties/piiDesired`
+*   [Untitled array in Service](./service-properties-piidesired.md "Sensitive data desired") – `https://hai.ai/schemas/service/v1/service.schema.json#/properties/piiDesired`
 
 *   [Untitled array in Signature](./signature-properties-fields.md "fields fields from document which were used to generate signature") – `https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields`
 
@@ -90,9 +88,9 @@
 
 *   [Untitled array in Task](./task-allof-1-properties-jacstaskmergedtasks.md "list of task ids that have been folded into this task") – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1/properties/jacsTaskMergedTasks`
 
-*   [Untitled array in Tool](./tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum`
+*   [Untitled array in Tool](./tool-items-properties-function-properties-parameters-properties-properties-patternproperties--properties-enum.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function/properties/parameters/properties/properties/patternProperties/^.*$/properties/enum`
 
-*   [Untitled array in Tool](./tool-items-properties-function-properties-parameters-properties-required.md) – `https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function/properties/parameters/properties/required`
+*   [Untitled array in Tool](./tool-items-properties-function-properties-parameters-properties-required.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function/properties/parameters/properties/required`
 
 *   [Untitled array in agreement](./agreement-properties-signatures.md "Signatures of agents") – `https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures`
 

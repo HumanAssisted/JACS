@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/service/v1/service-schema.json",
+  "$id": "https://hai.ai/schemas/service/v1/service.schema.json",
   "title": "Service",
   "description": "Services that an Agent claims to provide.",
   "type": "object",

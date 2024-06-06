@@ -12,4 +12,4 @@ tools that can be utilized
 
 ## tools Type
 
-unknown\[]
+`object[][]` ([Details](tool-items.md))

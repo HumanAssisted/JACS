@@ -1,7 +1,7 @@
 # Untitled string in Contact Schema
 
 ```txt
-https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailName
+https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailName
 ```
 
 Name to reach at address

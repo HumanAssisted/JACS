@@ -1,7 +1,7 @@
 # Contact Schema
 
 ```txt
-https://hai.ai/schemas/contact/v1/contact-schema.json
+https://hai.ai/schemas/contact/v1/contact.schema.json
 ```
 
 How to contact over human channels.
@@ -18,18 +18,18 @@ How to contact over human channels.
 
 | Property                          | Type      | Required | Nullable       | Defined by                                                                                                                         |
 | :-------------------------------- | :-------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
-| [firstName](#firstname)           | `string`  | Optional | cannot be null | [Contact](contact-properties-firstname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/firstName")           |
-| [lastName](#lastname)             | `string`  | Optional | cannot be null | [Contact](contact-properties-lastname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/lastName")             |
-| [addressName](#addressname)       | `string`  | Optional | cannot be null | [Contact](contact-properties-addressname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/addressName")       |
-| [phone](#phone)                   | `string`  | Optional | cannot be null | [Contact](contact-properties-phone.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/phone")                   |
-| [email](#email)                   | `string`  | Optional | cannot be null | [Contact](contact-properties-email.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/email")                   |
-| [mailName](#mailname)             | `string`  | Optional | cannot be null | [Contact](contact-properties-mailname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailName")             |
-| [mailAddress](#mailaddress)       | `string`  | Optional | cannot be null | [Contact](contact-properties-mailaddress.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailAddress")       |
-| [mailAddressTwo](#mailaddresstwo) | `string`  | Optional | cannot be null | [Contact](contact-properties-mailaddresstwo.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailAddressTwo") |
-| [mailState](#mailstate)           | `string`  | Optional | cannot be null | [Contact](contact-properties-mailstate.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailState")           |
-| [mailZip](#mailzip)               | `string`  | Optional | cannot be null | [Contact](contact-properties-mailzip.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailZip")               |
-| [mailCountry](#mailcountry)       | `string`  | Optional | cannot be null | [Contact](contact-properties-mailcountry.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailCountry")       |
-| [isPrimary](#isprimary)           | `boolean` | Optional | cannot be null | [Contact](contact-properties-isprimary.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/isPrimary")           |
+| [firstName](#firstname)           | `string`  | Optional | cannot be null | [Contact](contact-properties-firstname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/firstName")           |
+| [lastName](#lastname)             | `string`  | Optional | cannot be null | [Contact](contact-properties-lastname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/lastName")             |
+| [addressName](#addressname)       | `string`  | Optional | cannot be null | [Contact](contact-properties-addressname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/addressName")       |
+| [phone](#phone)                   | `string`  | Optional | cannot be null | [Contact](contact-properties-phone.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/phone")                   |
+| [email](#email)                   | `string`  | Optional | cannot be null | [Contact](contact-properties-email.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/email")                   |
+| [mailName](#mailname)             | `string`  | Optional | cannot be null | [Contact](contact-properties-mailname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailName")             |
+| [mailAddress](#mailaddress)       | `string`  | Optional | cannot be null | [Contact](contact-properties-mailaddress.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailAddress")       |
+| [mailAddressTwo](#mailaddresstwo) | `string`  | Optional | cannot be null | [Contact](contact-properties-mailaddresstwo.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailAddressTwo") |
+| [mailState](#mailstate)           | `string`  | Optional | cannot be null | [Contact](contact-properties-mailstate.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailState")           |
+| [mailZip](#mailzip)               | `string`  | Optional | cannot be null | [Contact](contact-properties-mailzip.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailZip")               |
+| [mailCountry](#mailcountry)       | `string`  | Optional | cannot be null | [Contact](contact-properties-mailcountry.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailCountry")       |
+| [isPrimary](#isprimary)           | `boolean` | Optional | cannot be null | [Contact](contact-properties-isprimary.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/isPrimary")           |
 
 ## firstName
 
@@ -43,7 +43,7 @@ First name of Person
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-firstname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/firstName")
+*   defined in: [Contact](contact-properties-firstname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/firstName")
 
 ### firstName Type
 
@@ -61,7 +61,7 @@ Last name of person
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-lastname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/lastName")
+*   defined in: [Contact](contact-properties-lastname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/lastName")
 
 ### lastName Type
 
@@ -79,7 +79,7 @@ Location name of address
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-addressname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/addressName")
+*   defined in: [Contact](contact-properties-addressname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/addressName")
 
 ### addressName Type
 
@@ -97,7 +97,7 @@ Contact phone number.
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-phone.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/phone")
+*   defined in: [Contact](contact-properties-phone.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/phone")
 
 ### phone Type
 
@@ -115,7 +115,7 @@ Description of successful delivery of service.
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-email.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/email")
+*   defined in: [Contact](contact-properties-email.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/email")
 
 ### email Type
 
@@ -137,7 +137,7 @@ Name to reach at address
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-mailname.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailName")
+*   defined in: [Contact](contact-properties-mailname.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailName")
 
 ### mailName Type
 
@@ -155,7 +155,7 @@ Street and Street Address
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-mailaddress.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailAddress")
+*   defined in: [Contact](contact-properties-mailaddress.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailAddress")
 
 ### mailAddress Type
 
@@ -173,7 +173,7 @@ Part two mailing address
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-mailaddresstwo.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailAddressTwo")
+*   defined in: [Contact](contact-properties-mailaddresstwo.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailAddressTwo")
 
 ### mailAddressTwo Type
 
@@ -191,7 +191,7 @@ State or province
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-mailstate.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailState")
+*   defined in: [Contact](contact-properties-mailstate.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailState")
 
 ### mailState Type
 
@@ -209,7 +209,7 @@ Zipcode
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-mailzip.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailZip")
+*   defined in: [Contact](contact-properties-mailzip.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailZip")
 
 ### mailZip Type
 
@@ -227,7 +227,7 @@ Country
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-mailcountry.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/mailCountry")
+*   defined in: [Contact](contact-properties-mailcountry.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/mailCountry")
 
 ### mailCountry Type
 
@@ -245,7 +245,7 @@ Is the primary way to contact agent.
 
 *   cannot be null
 
-*   defined in: [Contact](contact-properties-isprimary.md "https://hai.ai/schemas/contact/v1/contact-schema.json#/properties/isPrimary")
+*   defined in: [Contact](contact-properties-isprimary.md "https://hai.ai/schemas/contact/v1/contact.schema.json#/properties/isPrimary")
 
 ### isPrimary Type
 

@@ -1,7 +1,7 @@
 # Untitled array in Service Schema
 
 ```txt
-https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools
+https://hai.ai/schemas/service/v1/service.schema.json#/properties/tools
 ```
 
 URLs and function definitions of of tools that can be called
@@ -12,4 +12,4 @@ URLs and function definitions of of tools that can be called
 
 ## tools Type
 
-unknown\[]
+`object[][]` ([Details](tool-items.md))
