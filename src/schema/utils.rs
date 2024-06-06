@@ -41,7 +41,7 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json" => "agreement" ,
     "https://hai.ai/schemas/contact/v1/contact.schema.json" => "contact" ,
     "https://hai.ai/schemas/components/files/v1/files.schema.json" => "files" ,
-    "https://hai.ai/schemas/service/v1/service.schema.json" => "agent" ,
+    "https://hai.ai/schemas/service/v1/service.schema.json" => "service" ,
     "https://hai.ai/schemas/components/signature/v1/signature.schema.json" => "signature" ,
     "https://hai.ai/schemas/components/tool/v1/tool-schema.json" => "tool" ,
     "https://hai.ai/schemas/components/unit/v1/unit.schema.json" => "unit" ,
@@ -50,7 +50,18 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "https://hai.ai/schemas/message/v1/message.schema.json" => "message" ,
     "https://hai.ai/schemas/node/v1/node.schema.json" => "node" ,
     "https://hai.ai/schemas/task/v1/task-schema.json" => "task" ,
+    "document" => "document" ,
 };
+
+pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {
+    let id: String = jacs_document
+        .get_str("$id")
+        .unwrap_or((&"document").to_string());
+    return Ok(SCHEMA_SHORT_NAME
+        .get(&id)
+        .unwrap_or(&"document")
+        .to_string());
+}
 
 pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
 

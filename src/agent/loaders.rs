@@ -72,6 +72,7 @@ pub trait FileLoader {
         &self,
         document_id: &String,
         document_string: &String,
+        document_directory: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
 
@@ -257,6 +258,7 @@ impl FileLoader for Agent {
         &self,
         document_id: &String,
         document_string: &String,
+        document_directory: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
         if let Err(e) = check_data_directory() {
@@ -277,8 +279,7 @@ impl FileLoader for Agent {
             _ => document_id.to_string(),
         };
 
-        let document_path =
-            self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
+        let document_path = self.build_filepath(document_directory, &documentoutput_filename)?;
         info!("saving {:?} ", document_path);
         Ok(save_to_filepath(
             &document_path,

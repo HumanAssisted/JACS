@@ -65,6 +65,9 @@ If you are working in Rust, add the rust lib to your project
 
     cargo add jacs
 
+For development you may want    `cargo install cargo-outdated` and `cargo install cargo-edit`
+
+
 Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 
 ------

@@ -7,6 +7,7 @@ use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
+use crate::schema::utils::get_short_name;
 use crate::schema::utils::ValueExt;
 use chrono::Local;
 use chrono::Utc;
@@ -510,6 +511,7 @@ impl Document for Agent {
         extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
+        let document_directory: String = "documents".to_string(); // get_short_name(&original_document.value)?;
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
 
         let is_extract_only = match extract_only {
@@ -518,7 +520,12 @@ impl Document for Agent {
         };
 
         if !is_extract_only {
-            let _ = self.fs_document_save(&document_key, &document_string, output_filename)?;
+            let _ = self.fs_document_save(
+                &document_key,
+                &document_string,
+                &document_directory,
+                output_filename,
+            )?;
         }
 
         let do_export = match export_embedded {
