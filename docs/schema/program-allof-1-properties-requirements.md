@@ -1,15 +1,15 @@
 # Untitled array in Evaluation Schema
 
 ```txt
-https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes
+https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements
 ```
 
-list of evaluation units, informatio labels
+What are the goals for the program
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                   |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [program.schema.json\*](../../schemas/program/v1/program.schema.json "open original schema") |
 
-## nodes Type
+## requirements Type
 
-`object[]` ([Node](program-allof-1-properties-nodes-node.md))
+`string[]`

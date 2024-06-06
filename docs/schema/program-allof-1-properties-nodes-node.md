@@ -1,20 +1,20 @@
 # Node Schema
 
 ```txt
-https://hai.ai/schemas/node/v1/node.schema.json
+https://hai.ai/schemas/node/v1/node.schema.json#/allOf/1/properties/nodes/items
 ```
 
 A a node in a finite state machine. Stateless, a class to be used to instantiate a node.
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                        |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :-------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [node.schema.json](../../schemas/node/v1/node.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                   |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Forbidden             | none                | [program.schema.json\*](../../schemas/program/v1/program.schema.json "open original schema") |
 
-## Node Type
+## items Type
 
-`object` ([Node](node.md))
+`object` ([Node](program-allof-1-properties-nodes-node.md))
 
-# Node Properties
+# items Properties
 
 | Property                              | Type     | Required | Nullable       | Defined by                                                                                                                            |
 | :------------------------------------ | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------ |

@@ -18,6 +18,7 @@ Services that an Agent claims to provide.
 
 | Property                                              | Type      | Required | Nullable       | Defined by                                                                                                                                             |
 | :---------------------------------------------------- | :-------- | :------- | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [name](#name)                                         | `string`  | Optional | cannot be null | [Service](service-properties-name.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/name")                                         |
 | [serviceDescription](#servicedescription)             | `string`  | Required | cannot be null | [Service](service-properties-servicedescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/serviceDescription")             |
 | [successDescription](#successdescription)             | `string`  | Required | cannot be null | [Service](service-properties-successdescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/successDescription")             |
 | [failureDescription](#failuredescription)             | `string`  | Required | cannot be null | [Service](service-properties-failuredescription.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/failureDescription")             |
@@ -30,6 +31,24 @@ Services that an Agent claims to provide.
 | [isDev](#isdev)                                       | `boolean` | Optional | cannot be null | [Service](service-properties-isdev.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/isDev")                                       |
 | [tools](#tools)                                       | `array`   | Optional | cannot be null | [Service](service-properties-tools.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/tools")                                       |
 | [piiDesired](#piidesired)                             | `array`   | Optional | cannot be null | [Service](service-properties-piidesired.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/piiDesired")                             |
+
+## name
+
+Name of service
+
+`name`
+
+*   is optional
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Service](service-properties-name.md "https://hai.ai/schemas/service/v1/service-schema.json#/properties/name")
+
+### name Type
+
+`string`
 
 ## serviceDescription
 

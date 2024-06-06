@@ -5,6 +5,11 @@
   "description": "Services that an Agent claims to provide.",
   "type": "object",
   "properties": {
+    "name": {
+      "type": "string",
+      "hai": "agent",
+      "description": "Name of service"
+    },
     "serviceDescription": {
       "type": "string",
       "hai": "agent",

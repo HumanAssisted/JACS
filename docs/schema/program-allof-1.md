@@ -22,8 +22,10 @@ unknown
 | [safetySignature](#safetysignature)         | `object` | Optional | cannot be null | [Evaluation](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/safetySignature")     |
 | [evaluationSignature](#evaluationsignature) | `object` | Optional | cannot be null | [Evaluation](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/evaluationSignature") |
 | [taskID](#taskid)                           | `string` | Required | cannot be null | [Evaluation](program-allof-1-properties-taskid.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/taskID")                           |
+| [activeNodeIDs](#activenodeids)             | `array`  | Optional | cannot be null | [Evaluation](program-allof-1-properties-activenodeids.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs")             |
 | [datetime](#datetime)                       | `string` | Optional | cannot be null | [Evaluation](program-allof-1-properties-datetime.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/datetime")                       |
-| [qualityDescription](#qualitydescription)   | `string` | Optional | cannot be null | [Evaluation](program-allof-1-properties-qualitydescription.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/qualityDescription")   |
+| [requirements](#requirements)               | `array`  | Optional | cannot be null | [Evaluation](program-allof-1-properties-requirements.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements")               |
+| [changes](#changes)                         | `array`  | Optional | cannot be null | [Evaluation](program-allof-1-properties-changes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/changes")                         |
 | [nodes](#nodes)                             | `array`  | Required | cannot be null | [Evaluation](program-allof-1-properties-nodes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes")                             |
 
 ## planningSignature
@@ -102,6 +104,24 @@ task being processed, a description can be found there.
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
+## activeNodeIDs
+
+task being processed, a description can be found there.
+
+`activeNodeIDs`
+
+*   is optional
+
+*   Type: `string[]`
+
+*   cannot be null
+
+*   defined in: [Evaluation](program-allof-1-properties-activenodeids.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs")
+
+### activeNodeIDs Type
+
+`string[]`
+
 ## datetime
 
 Date of evaluation
@@ -124,23 +144,41 @@ Date of evaluation
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
-## qualityDescription
+## requirements
 
-When prompting an agent, is there text provided with the agreement?
+What are the goals for the program
 
-`qualityDescription`
+`requirements`
 
 *   is optional
 
-*   Type: `string`
+*   Type: `string[]`
 
 *   cannot be null
 
-*   defined in: [Evaluation](program-allof-1-properties-qualitydescription.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/qualityDescription")
+*   defined in: [Evaluation](program-allof-1-properties-requirements.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements")
 
-### qualityDescription Type
+### requirements Type
 
-`string`
+`string[]`
+
+## changes
+
+What changes were made to the plan along the way and why.
+
+`changes`
+
+*   is optional
+
+*   Type: `string[]`
+
+*   cannot be null
+
+*   defined in: [Evaluation](program-allof-1-properties-changes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/changes")
+
+### changes Type
+
+`string[]`
 
 ## nodes
 
@@ -150,7 +188,7 @@ list of evaluation units, informatio labels
 
 *   is required
 
-*   Type: `object[]` ([Unit](program-allof-1-properties-nodes-unit.md))
+*   Type: `object[]` ([Node](program-allof-1-properties-nodes-node.md))
 
 *   cannot be null
 
@@ -158,4 +196,4 @@ list of evaluation units, informatio labels
 
 ### nodes Type
 
-`object[]` ([Unit](program-allof-1-properties-nodes-unit.md))
+`object[]` ([Node](program-allof-1-properties-nodes-node.md))

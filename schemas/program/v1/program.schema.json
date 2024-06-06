@@ -28,22 +28,42 @@
           "description": "task being processed, a description can be found there.",
           "format": "uuid"
         },
+        "activeNodeIDs": {
+          "type": "array",
+          "hai": "meta",
+          "description": "task being processed, a description can be found there.",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
         "datetime": {
           "description": "Date of evaluation",
           "format": "date-time",
           "hai": "agent",
           "type": "string"
         },
-        "qualityDescription": {
-          "type": "string",
-          "description": "When prompting an agent, is there text provided with the agreement?",
-          "hai": "agent"
+        "requirements": {
+          "type": "array",
+          "description": "What are the goals for the program",
+          "hai": "agent",
+          "items": {
+            "type": "string"
+          }
+        },
+        "changes": {
+          "type": "array",
+          "description": "What changes were made to the plan along the way and why.",
+          "hai": "agent",
+          "items": {
+            "type": "string"
+          }
         },
         "nodes": {
           "type": "array",
           "description": "list of evaluation units, informatio labels",
           "items": {
-            "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
+            "$ref": "https://hai.ai/schemas/node/v1/node.schema.json"
           }
         }
       },

@@ -135,7 +135,7 @@ list of evaluation units, informatio labels
 
 *   is optional
 
-*   Type: `object[]` ([Unit](program-allof-1-properties-nodes-unit.md))
+*   Type: `object[]` ([Unit](eval-properties-quantifications-unit.md))
 
 *   cannot be null
 
@@ -143,4 +143,4 @@ list of evaluation units, informatio labels
 
 ### quantifications Type
 
-`object[]` ([Unit](program-allof-1-properties-nodes-unit.md))
+`object[]` ([Unit](eval-properties-quantifications-unit.md))

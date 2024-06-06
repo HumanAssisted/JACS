@@ -5,7 +5,7 @@
   "description": "A a node in a finite state machine. Stateless, a class to be used to instantiate a node.",
   "type": "object",
   "properties": {
-    "id": {
+    "nodeID": {
       "type": "string",
       "hai": "base",
       "format": "uuid"
@@ -25,13 +25,13 @@
       "description": "signature of planning agent",
       "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
     },
-    "responsibleAgent": {
+    "executingAgent": {
       "description": "agent responsible for executing, implies tools and services",
       "type": "string",
       "hai": "meta",
       "format": "uuid"
     },
-    "evaluatingAgent": {
+    "responsibleAgent": {
       "type": "string",
       "hai": "meta",
       "description": "Agent doing the evaluation, implies tools and services",
