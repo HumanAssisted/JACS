@@ -1,4 +1,4 @@
-# Untitled array in Evaluation Schema
+# Untitled array in Program Schema
 
 ```txt
 https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes

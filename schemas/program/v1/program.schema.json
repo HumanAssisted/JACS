@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/program/v1/eval.program.json",
-  "title": "Evaluation",
+  "title": "Program",
   "description": "A signed, immutable message evaluation an agent's performance on a task",
   "type": "object",
   "allOf": [
