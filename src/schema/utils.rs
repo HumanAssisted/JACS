@@ -80,9 +80,14 @@ pub trait ValueExt {
     fn get_str(&self, field: &str) -> Option<String>;
     fn get_i64(&self, key: &str) -> Option<i64>;
     fn get_bool(&self, key: &str) -> Option<bool>;
+    fn as_string(&self) -> String;
 }
 
 impl ValueExt for Value {
+    fn as_string(&self) -> String {
+        serde_json::to_string_pretty(self).expect("error")
+    }
+
     fn get_str(&self, field: &str) -> Option<String> {
         self.get(field)?.as_str().map(String::from)
     }
