@@ -1,4 +1,4 @@
-{
+ {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/node/v1/node.schema.json",
   "title": "Node",
@@ -17,9 +17,96 @@
       "format": "uuid"
     },
     "programVersion": {
+      "description": "what program version created",
       "type": "string",
       "hai": "base",
       "format": "uuid"
+    },
+    "serviceID": {
+      "description": "what service is being used",
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "serviceVersion": {
+      "description": "what service version was  first used",
+      "type": "string",
+      "hai": "base",
+      "format": "uuid"
+    },
+    "completed": {
+      "description": "is the task completed",
+      "type": "boolean",
+      "hai": "base",
+    },
+    "completedAt": {
+      "description": "datetime of completion",
+      "format": "date-time",
+      "hai": "agent",
+      "type": "string"
+    },
+    "tool": {
+      "description": "The chosen tool",
+       "$ref": "https://hai.ai/schemas/components/tool/v1/tool.schema.json"
+    },
+    "preToolPrompt": {
+      "description": "prompt to run before tool is run",
+      "hai": "agent",
+      "type": "string"
+    },
+    "postToolPrompt": {
+      "description": "prompt to run after tool is run",
+      "hai": "agent",
+      "type": "string"
+    },
+    "estimatedCost": {
+      "description": "estimated cost in dollars ",
+      "hai": "agent",
+      "type": "integer"
+    },
+    "estimatedTime": {
+      "description": "estimated time in seconds",
+      "hai": "agent",
+      "type": "integer"
+    },
+    "cost": {
+      "description": "actual cost in dollars ",
+      "hai": "agent",
+      "type": "integer"
+    },
+    "time": {
+      "description": "actual time in seconds",
+      "hai": "agent",
+      "type": "integer"
+    },
+    "runAt": {
+      "description": "Run in the future - job queue",
+      "format": "date-time",
+      "hai": "agent",
+      "type": "string"
+    },
+
+    "humanEvaluatorRequired": {
+      "description": "Human Evaluator is required ",
+      "hai": "meta",
+      "type": "bool"
+    },
+
+    "completedSuccess": {
+      "description": "A binary represenation of if the task completed successfully according to evaluation ",
+      "hai": "meta",
+      "type": "bool"
+    },
+
+    "completedEvaluation": {
+      "description": "A floating scale evaluation of level of success",
+      "hai": "meta",
+      "type": "integer"
+    },
+    "completedEvaluationDescription": {
+      "description": "A qualitative description of the evaluation.",
+      "hai": "meta",
+      "type": "string"
     },
     "signature": {
       "description": "signature of planning agent",
@@ -56,3 +143,5 @@
   ],
   "additionalProperties": false
 }
+
+
