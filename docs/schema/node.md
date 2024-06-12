@@ -33,8 +33,8 @@ A a node in a finite state machine. Stateless, a class to be used to instantiate
 | [cost](#cost)                                                     | `integer` | Optional | cannot be null | [Node](node-properties-cost.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/cost")                                                     |
 | [time](#time)                                                     | `integer` | Optional | cannot be null | [Node](node-properties-time.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/time")                                                     |
 | [runAt](#runat)                                                   | `string`  | Optional | cannot be null | [Node](node-properties-runat.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/runAt")                                                   |
-| [humanEvaluatorRequired](#humanevaluatorrequired)                 | `bool`    | Optional | cannot be null | [Node](node-properties-humanevaluatorrequired.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/humanEvaluatorRequired")                 |
-| [completedSuccess](#completedsuccess)                             | `bool`    | Optional | cannot be null | [Node](node-properties-completedsuccess.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedSuccess")                             |
+| [humanEvaluatorRequired](#humanevaluatorrequired)                 | `boolean` | Optional | cannot be null | [Node](node-properties-humanevaluatorrequired.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/humanEvaluatorRequired")                 |
+| [completedSuccess](#completedsuccess)                             | `boolean` | Optional | cannot be null | [Node](node-properties-completedsuccess.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedSuccess")                             |
 | [completedEvaluation](#completedevaluation)                       | `integer` | Optional | cannot be null | [Node](node-properties-completedevaluation.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedEvaluation")                       |
 | [completedEvaluationDescription](#completedevaluationdescription) | `string`  | Optional | cannot be null | [Node](node-properties-completedevaluationdescription.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedEvaluationDescription") |
 | [signature](#signature)                                           | `object`  | Optional | cannot be null | [Node](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")                  |
@@ -349,7 +349,7 @@ Human Evaluator is required
 
 *   is optional
 
-*   Type: `bool`
+*   Type: `boolean`
 
 *   cannot be null
 
@@ -357,7 +357,7 @@ Human Evaluator is required
 
 ### humanEvaluatorRequired Type
 
-`bool`
+`boolean`
 
 ## completedSuccess
 
@@ -367,7 +367,7 @@ A binary represenation of if the task completed successfully according to evalua
 
 *   is optional
 
-*   Type: `bool`
+*   Type: `boolean`
 
 *   cannot be null
 
@@ -375,7 +375,7 @@ A binary represenation of if the task completed successfully according to evalua
 
 ### completedSuccess Type
 
-`bool`
+`boolean`
 
 ## completedEvaluation
 

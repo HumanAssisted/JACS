@@ -88,12 +88,12 @@
     "humanEvaluatorRequired": {
       "description": "Human Evaluator is required ",
       "hai": "meta",
-      "type": "bool"
+      "type": "boolean"
     },
     "completedSuccess": {
       "description": "A binary represenation of if the task completed successfully according to evaluation ",
       "hai": "meta",
-      "type": "bool"
+      "type": "boolean"
     },
     "completedEvaluation": {
       "description": "A floating scale evaluation of level of success",

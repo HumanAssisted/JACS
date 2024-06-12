@@ -1,4 +1,4 @@
-# Untitled bool in Node Schema
+# Untitled boolean in Node Schema
 
 ```txt
 https://hai.ai/schemas/node/v1/node.schema.json#/properties/humanEvaluatorRequired
@@ -12,4 +12,4 @@ Human Evaluator is required
 
 ## humanEvaluatorRequired Type
 
-`bool`
+`boolean`
