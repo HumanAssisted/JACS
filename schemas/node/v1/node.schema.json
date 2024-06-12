@@ -1,4 +1,4 @@
- {
+{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/node/v1/node.schema.json",
   "title": "Node",
@@ -37,7 +37,7 @@
     "completed": {
       "description": "is the task completed",
       "type": "boolean",
-      "hai": "base",
+      "hai": "base"
     },
     "completedAt": {
       "description": "datetime of completion",
@@ -47,7 +47,7 @@
     },
     "tool": {
       "description": "The chosen tool",
-       "$ref": "https://hai.ai/schemas/components/tool/v1/tool.schema.json"
+      "$ref": "https://hai.ai/schemas/components/tool/v1/tool.schema.json"
     },
     "preToolPrompt": {
       "description": "prompt to run before tool is run",
@@ -85,19 +85,16 @@
       "hai": "agent",
       "type": "string"
     },
-
     "humanEvaluatorRequired": {
       "description": "Human Evaluator is required ",
       "hai": "meta",
       "type": "bool"
     },
-
     "completedSuccess": {
       "description": "A binary represenation of if the task completed successfully according to evaluation ",
       "hai": "meta",
       "type": "bool"
     },
-
     "completedEvaluation": {
       "description": "A floating scale evaluation of level of success",
       "hai": "meta",
@@ -143,5 +140,3 @@
   ],
   "additionalProperties": false
 }
-
-
