@@ -22,7 +22,6 @@ use chrono::prelude::*;
 use jsonschema::{Draft, JSONSchema};
 use loaders::FileLoader;
 use log::{debug, error};
-use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
 use std::env;

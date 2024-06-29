@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Installation - JACS Usage Documentation</title>
+        <title>building - JACS Usage Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../cli/installation.html" class="active"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../cli/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../cli/documents.html"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="../cli/agreements.html"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded "><a href="../wasm/building.html"><strong aria-hidden="true">5.</strong> building</a></li><li class="chapter-item expanded affix "><li class="part-title">Design</li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">7.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">8.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../cli/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../cli/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../cli/documents.html"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="../cli/agreements.html"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded "><a href="../wasm/building.html" class="active"><strong aria-hidden="true">5.</strong> building</a></li><li class="chapter-item expanded affix "><li class="part-title">Design</li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="../design/security.html"><strong aria-hidden="true">7.</strong> Security</a></li><li class="chapter-item expanded "><a href="../design/schemas.html"><strong aria-hidden="true">8.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -173,52 +173,17 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h2 id="setting-up"><a class="header" href="#setting-up">setting up</a></h2>
-<p>First, configure your configuration which are loaded as environment variables.
-Create a <code>jacs.config.json</code> from <a href="./jacs.config.example.json">the example</a>
-For an explanation see <a href="./schemas/jacs.config.schema.json">the schema for the config.</a></p>
-<p>To create a config file, you can run</p>
-<pre><code>jacs config create
-</code></pre>
-<p>Which will give you this dialog:</p>
-<pre><code>Please enter the data directory path:
-Please enter the key directory path:
-Please enter the agent private key filename:
-Please enter the agent public key filename:
-Please enter the agent key algorithm:
-Please enter the agent schema version:
-Please enter the header schema version:
-Please enter the signature schema version:
-Please enter the private key password:
-Please enter the agent ID and version:
-</code></pre>
-<p>You can use <code>jacs config read</code> to check the configs.</p>
-<p>Note: Do not use <code>jacs_private_key_password</code> in production. Instead, use the environment variable <code>JACS_PRIVATE_KEY_PASSWORD</code> in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.</p>
-<h2 id="developing"><a class="header" href="#developing">developing</a></h2>
-<p>The pre-commit hook requires some libraries</p>
-<p>See pre-commit</p>
-<ul>
-<li>install <code>jq</code> e.g. <code>brew install jq</code> or use your package manager (e.g., <code>apt install jq</code> for Debian/Ubuntu)</li>
-<li>for documentation    <code>npm install -g @adobe/jsonschema2md</code></li>
-<li>cargo install mdbook</li>
-</ul>
-<p>Otherwise, it's a standard Rust project.</p>
-<ul>
-<li>install Rust and your favorite editor</li>
-<li>see tests, examples, and benches</li>
-</ul>
-<p>For a complete guide on setting up a Rust development environment, refer to the <a href="https://www.rust-lang.org/tools/install">official Rust installation guide</a>.</p>
-<p>After setting up your environment, you can proceed to the next steps in the documentation to begin working with JACS.</p>
+                        <p>rustup target add wasm32-unknown-unknown</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../cli/agreements.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../cli/agent.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../design/schemas.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -228,11 +193,11 @@ Please enter the agent ID and version:
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../cli/agreements.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../cli/agent.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../design/schemas.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

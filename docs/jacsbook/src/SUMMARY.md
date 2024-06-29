@@ -11,6 +11,10 @@
 - [Working with documents](cli/documents.md)
 - [Creating and using agreements](cli/agreements.md)
 
+## wasm
+
+- [building](wasm/building.md)
+
 # Design
 
 - [JSON schemas](design/schemas.md)
