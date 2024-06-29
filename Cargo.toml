@@ -44,6 +44,7 @@ build = "build.rs"
 base64 = "0.22.0"
 chrono = "0.4.35"
 jsonschema = "0.17.1"
+# jsonschema = "0.18.0"
 log = "0.4.21"
 pem = "3.0.3"
 rand = "0.8.5"
@@ -54,8 +55,8 @@ signature = "2.2.0"
 url = "2.5.0"
 sha2 = "0.10.6"
 phf = { version = "0.11.1", features = ["macros"] }
-strum = "0.24.1"
-strum_macros = "0.24.3"
+strum = "0.26.3"
+strum_macros = "0.26.4"
 secrecy = "0.8.0"
 aes-gcm = "0.10.3"
 clap = "4.5.4"
@@ -67,12 +68,12 @@ difference = "2.0.0"
 rpassword = "7.3.1"
 validator = "0.18.1"
 uuid = { version = "1.7.0", features = ["v4", "v7", "js"] }
-env_logger = "0.9.0"
+env_logger = "0.11.3"
 
 [dev-dependencies]
 rusqlite = "0.31.0"
 color-eyre = "0.6"
-criterion = "0.3"
+criterion = "0.5.1"
 mdbook = "0.4.37"
 
 

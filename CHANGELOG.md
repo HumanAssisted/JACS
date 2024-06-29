@@ -9,6 +9,8 @@ PLANNED
 
 
 ## 0.3.0
+- update jsonschema library
+- updated strum, criterion
 
 ## 0.2.13
 - save public key to local fs
