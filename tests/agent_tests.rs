@@ -1,7 +1,8 @@
 use jacs::agent::boilerplate::BoilerPlate;
 
 mod utils;
-use utils::load_local_document;
+use serde_json::error;
+use utils::{load_local_document, AGENTONE};
 
 #[test]
 fn test_update_agent_and_verify_versions() {
@@ -11,8 +12,7 @@ fn test_update_agent_and_verify_versions() {
     let signature_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    let agentid =
-        "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
+    let agentid = AGENTONE.to_string();
     let result = agent.load_by_id(Some(agentid), None);
 
     match result {
@@ -34,7 +34,8 @@ fn test_update_agent_and_verify_versions() {
 
     match agent.update_self(&modified_agent_string) {
         Ok(_) => assert!(true),
-        _ => {
+        Err(error) => {
+            println!("{}", error);
             assert!(false);
             println!("NEW AGENT VERSION prevented");
         }

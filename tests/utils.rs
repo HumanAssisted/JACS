@@ -11,9 +11,9 @@ use std::env;
 
 pub static DOCTESTFILE: &str = "examples/documents/9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
 pub static AGENTONE: &str =
-    "9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
+    "8be91198-fcff-4a54-92da-cb163c2159a8:ef4e558f-7b0b-4ab9-b8c1-21265c34f813";
 pub static AGENTTWO: &str =
-    "9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
+    "0ea9b672-9fae-4073-a3d8-875d29f779a1:cbdc7cee-313b-4583-903d-bcb6b5e2fa1d";
 
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {

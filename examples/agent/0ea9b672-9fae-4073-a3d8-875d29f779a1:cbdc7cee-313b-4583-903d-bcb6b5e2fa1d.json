@@ -1,0 +1,119 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "capabilities": [
+    {
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "name": "withdraw",
+      "operation": "deduct",
+      "units": [
+        {
+          "generaltype": "monetary",
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "label": "net worth",
+          "unit_name": "dollars"
+        }
+      ]
+    }
+  ],
+  "description": "Guy with a bank account",
+  "jacsAgentType": "human",
+  "jacsContacts": [
+    {
+      "email": "smith@example.com",
+      "isPrimary": true,
+      "mailAddress": "123 Example St.",
+      "mailAddressTwo": "Suite 101",
+      "mailCountry": "ExampleCountry",
+      "mailName": "Smith",
+      "mailState": "ExampleState",
+      "mailZip": "12345",
+      "name": "Frodo Baggins",
+      "phone": "123-456-7890"
+    }
+  ],
+  "jacsId": "0ea9b672-9fae-4073-a3d8-875d29f779a1",
+  "jacsOriginalDate": "2024-06-30T08:12:23.392785+00:00",
+  "jacsOriginalVersion": "cbdc7cee-313b-4583-903d-bcb6b5e2fa1d",
+  "jacsServices": [
+    {
+      "costDescription": "monthly fee",
+      "failureDescription": "Not everything is under control",
+      "idealCustomerDescription": "wealthy",
+      "isDev": true,
+      "piiDesired": [
+        "email",
+        "phone"
+      ],
+      "serviceDescription": "Bank account manager",
+      "successDescription": "Everything is under control",
+      "tools": [
+        {
+          "function": {
+            "description": "An example function provided by the tool.",
+            "name": "ExampleFunction",
+            "parameters": {
+              "properties": {
+                "param1": {
+                  "description": "A string parameter.",
+                  "type": "string"
+                },
+                "param2": {
+                  "description": "An integer parameter.",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "param1"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function",
+          "url": "https://api.example.com/tool"
+        }
+      ]
+    }
+  ],
+  "jacsSha256": "4f1bf5b47616dc7424b618a9f71700e6bde4300eef030a4c5443cffc9fec8250",
+  "jacsSignature": {
+    "agentID": "0ea9b672-9fae-4073-a3d8-875d29f779a1",
+    "agentVersion": "cbdc7cee-313b-4583-903d-bcb6b5e2fa1d",
+    "date": "2024-06-30T08:12:23.456537+00:00",
+    "fields": [
+      "$schema",
+      "capabilities",
+      "description",
+      "jacsAgentType",
+      "jacsContacts",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsServices",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "modifications",
+      "name",
+      "quantifications"
+    ],
+    "publicKeyHash": "bf5df6ed03f9ab3876aa4c3cbc27bac24d907631f4f04d90474387ce90cf5529",
+    "signature": "Gq54jtBlZ4eQSnkTVTcGrkPKGgdLdaadMa0+vqw6bpvDdL3CrFuJUn1spDmzTYNvDEyc+uKOnRjXPQcbWs5uzxyGLJve1VBEyeiB9e432esMSr+ne8Asvref2vFdqvxYcInM5BfO1ZOsPSRWlmis9DxVa1deTNHkdPgHAS0OGGI3IMMG27Hcz84f9ylBmGh58645f5VUoqHav4UmPHG/kETOr85WjKZH5ZX4AssB4OLbRAgTkeDgz3Ao0yrcJuRwsSYKM7jw1CZYQZCWYvjHM53PQMNhJ9wdRGdoI8ctE5LsR0wyPt/vdurhhou2phqTmKrz/tYVI68/CDzSD5iX+A==",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "agent",
+  "jacsVersion": "cbdc7cee-313b-4583-903d-bcb6b5e2fa1d",
+  "jacsVersionDate": "2024-06-30T08:12:23.392785+00:00",
+  "modifications": [],
+  "name": "Ralph",
+  "quantifications": [
+    [
+      120000,
+      {
+        "generaltype": "monetary",
+        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+        "label": "net worth",
+        "unit_name": "dollars"
+      }
+    ]
+  ]
+}
