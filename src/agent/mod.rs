@@ -658,6 +658,8 @@ impl Agent {
         if self.public_key.is_none() || self.private_key.is_none() {
             let _ = self.fs_load_keys()?;
         }
+        // schema.create will call this "document" otherwise
+        instance["jacsType"] = json!("agent");
         instance["$schema"] = json!("https://hai.ai/schemas/agent/v1/agent.schema.json");
         instance[AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&instance, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;

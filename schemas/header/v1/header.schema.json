@@ -23,6 +23,11 @@
       "type": "string",
       "hai": "meta"
     },
+    "jacsType": {
+      "description": "Type of the document",
+      "type": "string",
+      "hai": "agent"
+    },
     "jacsSignature": {
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
@@ -73,6 +78,7 @@
   },
   "required": [
     "jacsId",
+    "jacsType",
     "jacsVersion",
     "jacsVersionDate",
     "jacsOriginalVersion",

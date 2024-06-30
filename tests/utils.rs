@@ -10,6 +10,10 @@ use std::path::PathBuf;
 use std::env;
 
 pub static DOCTESTFILE: &str = "examples/documents/9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
+pub static AGENTONE: &str =
+    "9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
+pub static AGENTTWO: &str =
+    "9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
 
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
@@ -90,8 +94,7 @@ pub fn load_test_agent_one() -> Agent {
 
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    let agentid =
-        "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
+    let agentid = AGENTONE.to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -127,12 +130,7 @@ pub fn load_test_agent_two() -> Agent {
     );
     debug!("load_test_agent_two: keys preloaded");
 
-    let result = agent.load_by_id(
-        Some(
-            "9f62bc98-b871-4c26-a5c9-29457e291448:15da36cb-a131-41cc-b1df-3afeec6acc74".to_string(),
-        ),
-        None,
-    );
+    let result = agent.load_by_id(Some(AGENTTWO.to_string()), None);
     debug!("load_test_agent_two: load_by_id called");
     match result {
         Ok(_) => {

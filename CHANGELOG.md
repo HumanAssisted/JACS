@@ -9,7 +9,8 @@ PLANNED
 
 
 ## 0.3.0
-- update jsonschema library
+- added jacsType - free naming, but required field for doc type
+- TODO update jsonschema library
 - updated strum, criterion
 
 ## 0.2.13

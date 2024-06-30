@@ -4,10 +4,11 @@ use chrono::prelude::*;
 use jsonschema::SchemaResolver;
 use jsonschema::{Draft, JSONSchema};
 use log::{debug, error, warn};
+
+use regex::Regex;
 use serde_json::json;
 use serde_json::Value;
 use std::sync::Arc;
-
 use url::Url;
 use uuid::Uuid;
 
@@ -718,6 +719,29 @@ impl Schema {
         )
     }
 
+    pub fn getschema(&self, value: Value) -> Result<String, Box<dyn Error>> {
+        let schemafield = "$schema";
+        if let Some(schema) = value.get(schemafield) {
+            if let Some(schema_str) = schema.as_str() {
+                return Ok(schema_str.to_string());
+            }
+        }
+        return Err("no schema in doc or schema is not a string".into());
+    }
+
+    /// use this to get the name of the
+    pub fn getshortschema(&self, value: Value) -> Result<String, Box<dyn Error>> {
+        let longschema = self.getschema(value)?;
+        let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
+
+        if let Some(caps) = re.captures(&longschema) {
+            if let Some(matched) = caps.get(1) {
+                return Ok(matched.as_str().to_string());
+            }
+        }
+        Err("Failed to extract schema name from URL".into())
+    }
+
     /// load a document that has data but no id or version
     /// an id and version is assigned
     /// header is validated
@@ -759,6 +783,15 @@ impl Schema {
         // if no schema is present insert standard header version
         if !instance.get_str("$schema").is_some() {
             instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));
+        }
+
+        // if no type is present look for $schema and extract the name
+        if !instance.get_str("jacsType").is_some() {
+            let cloned_instance = instance.clone();
+            instance["jacsType"] = match self.getshortschema(cloned_instance) {
+                Ok(schema) => json!(schema),
+                Err(_) => json!("document"),
+            };
         }
 
         let validation_result = self.headerschema.validate(&instance);

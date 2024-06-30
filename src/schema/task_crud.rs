@@ -50,6 +50,7 @@ pub fn create_minimal_task(
     }
 
     task["id"] = json!(Uuid::new_v4().to_string());
+    task["jacsType"] = json!("task");
     Ok(task)
 }
 

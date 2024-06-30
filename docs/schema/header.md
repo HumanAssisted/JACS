@@ -21,6 +21,7 @@ The basis for a JACS document
 | [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")                                 |
 | [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")                       |
 | [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")               |
+| [jacsType](#jacstype)                       | `string` | Required | cannot be null | [Header](header-properties-jacstype.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsType")                             |
 | [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")    |
 | [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration") |
 | [jacsAgreement](#jacsagreement)             | `object` | Optional | cannot be null | [Header](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")      |
@@ -96,6 +97,24 @@ Date
 ### jacsVersionDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+
+## jacsType
+
+Type of the document
+
+`jacsType`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacstype.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsType")
+
+### jacsType Type
+
+`string`
 
 ## jacsSignature
 

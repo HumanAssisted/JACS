@@ -7,7 +7,7 @@ use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
-use crate::schema::utils::get_short_name;
+// use crate::schema::utils::get_short_name;
 use crate::schema::utils::ValueExt;
 use chrono::Local;
 use chrono::Utc;
@@ -15,6 +15,7 @@ use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -26,7 +27,7 @@ use std::io::Write;
 use std::path::Path;
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JACSDocument {
     pub id: String,
     pub version: String,
@@ -55,6 +56,7 @@ impl JACSDocument {
         return Err("no schema in doc or schema is not a string".into());
     }
 
+    /// use this to get the name of the
     pub fn getshortschema(&self) -> Result<String, Box<dyn Error>> {
         let longschema = self.getschema()?;
         let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
