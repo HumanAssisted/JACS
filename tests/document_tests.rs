@@ -5,6 +5,7 @@ use jacs::crypt::KeyManager;
 use jsonschema::{CompilationOptions, Draft, JSONSchema};
 mod utils;
 use utils::DOCTESTFILE;
+use utils::TESTFILE_MODIFIED;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
@@ -14,9 +15,6 @@ use log::{error, info};
 
 // Define the correct absolute path for the custom schema
 static SCHEMA: &str = "examples/raw/custom.schema.json";
-
-static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
-//color_eyre::install().unwrap();
 
 #[cfg(test)]
 mod tests {
@@ -139,7 +137,7 @@ fn test_create() {
 #[test]
 #[ignore]
 fn test_create_attachments() {
-    // RUST_BACKTRACE=1 cargo test --test document_tests test_create_attachments  --
+    // RUST_BACKTRACE=1 cargo test --test document_tests test_create_attachments  -- --nocapture
     utils::generate_new_docs_with_attachments(true);
 }
 
