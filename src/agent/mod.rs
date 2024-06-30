@@ -624,6 +624,7 @@ impl Agent {
         for path in schema_paths {
             let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
             let schema = JSONSchema::options()
+                .with_resolver(EmbeddedSchemaResolver::new())
                 .with_draft(Draft::Draft7)
                 .compile(&schema_value)
                 .map_err(|e| e.to_string())?;

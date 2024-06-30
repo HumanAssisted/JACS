@@ -144,10 +144,11 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
         }
         _ => {}
     }
-
+    println!("aaa to fetch schema from URL: {}", path);
     if path.starts_with("http://") || path.starts_with("https://") {
         debug!("Attempting to fetch schema from URL: {}", path);
         if path.starts_with("https://hai.ai") {
+            println!("loading default schema from {}", path);
             let relative_path = path.trim_start_matches("https://hai.ai/");
             let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
                 error!("Error: Schema not found for URL: {}", path);
@@ -159,6 +160,8 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> 
             schema_value = serde_json::from_str(&schema_json)?;
             return Ok(Arc::new(schema_value));
         } else {
+            /// TODO turn this off for security and wasm
+            println!("loading custom schema from {}", path);
             // Create a reqwest client with SSL verification disabled
             let client = reqwest::blocking::Client::builder()
                 .danger_accept_invalid_certs(ACCEPT_INVALID_CERTS)

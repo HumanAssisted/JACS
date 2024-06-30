@@ -86,7 +86,7 @@ pqcrypto = "0.17.0"
 pqcrypto-dilithium = {version = "0.5.0", features=["serialization"] }
 pqcrypto-traits = "0.3.5"
 ring = "0.17.8"
-reqwest = {  version ="0.11.26", features = ["blocking", "json"] }
+reqwest = {  version ="0.12.5", features = ["blocking", "json"] }
 walkdir = "2.5.0"
 
  [target.'cfg(target_arch = "wasm32")'.dependencies]
