@@ -166,7 +166,7 @@ pub trait Document {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
-
+    fn load_all(&mut self, store: bool) -> Result<Vec<Value>, Vec<Box<dyn Error>>>;
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn remove_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
@@ -356,6 +356,29 @@ impl Document for Agent {
                 return Err(e.to_string().into());
             }
         }
+    }
+
+    fn load_all(&mut self, store: bool) -> Result<Vec<Value>, Vec<Box<dyn Error>>> {
+        let doc_strings = self.fs_docs_load_all()?;
+        let mut errors: Vec<Box<dyn Error>> = Vec::new();
+        let mut documents: Vec<Value> = Vec::new();
+        for doc_string in doc_strings {
+            match self.validate_header(&doc_string) {
+                Ok(doc) => {
+                    if store {
+                        let _ = self.store_jacs_document(&doc);
+                    }
+                    documents.push(doc.clone());
+                }
+                Err(e) => {
+                    errors.push(e.into());
+                }
+            }
+        }
+        if errors.len() > 0 {
+            error!("errors loading documents {:?}", errors);
+        }
+        Ok(documents)
     }
 
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {

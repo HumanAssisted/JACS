@@ -12,6 +12,7 @@
 - updated strum, criterion
 - updated reqwest library
 - fixed bug EmbeddedSchemaResolver not used for custom schemas
+- added load_all() for booting up and 
 
 ## 0.2.13
 - save public key to local fs

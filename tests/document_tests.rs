@@ -28,6 +28,15 @@ mod tests {
 }
 
 #[test]
+fn test_load_all() {
+    // cargo test   --test document_tests -- --nocapture test_load_all
+    let mut agent = load_test_agent_one();
+    let save_docs = true;
+    let all_docs = agent.load_all(save_docs).expect("load_all");
+    println!("all_docs {}  ", all_docs.len());
+}
+
+#[test]
 fn test_load_custom_schema_and_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
