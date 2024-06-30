@@ -10,6 +10,8 @@
 - added jacsType - free naming, but required field for end-user naming of file type, with defaults to "document"
 - TODO update jsonschema library
 - updated strum, criterion
+- updated reqwest library
+- fixed bug EmbeddedSchemaResolver not used for custom schemas
 
 ## 0.2.13
 - save public key to local fs

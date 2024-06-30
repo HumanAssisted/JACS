@@ -43,7 +43,7 @@ build = "build.rs"
 [dependencies]
 base64 = "0.22.0"
 chrono = "0.4.35"
-jsonschema = "0.17.1"
+jsonschema = "0.18.0"
 # jsonschema = "0.18.0"
 log = "0.4.21"
 pem = "3.0.3"
