@@ -9,7 +9,7 @@ use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
 use serde_json::json;
 
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use serde_json::Value;

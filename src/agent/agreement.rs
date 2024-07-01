@@ -1,5 +1,5 @@
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{Document, JACSDocument};
+use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;

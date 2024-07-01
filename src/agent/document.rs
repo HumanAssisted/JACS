@@ -145,7 +145,7 @@ impl fmt::Display for JACSDocument {
     }
 }
 
-pub trait Document {
+pub trait DocumentTraits {
     fn verify_document_signature(
         &mut self,
         document_key: &String,
@@ -205,7 +205,7 @@ pub trait Document {
     fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String);
 }
 
-impl Document for Agent {
+impl DocumentTraits for Agent {
     // todo change this to use stored documents only
     fn validate_document_with_custom_schema(
         &self,

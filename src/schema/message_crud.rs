@@ -1,4 +1,4 @@
-use crate::agent::document::Document;
+use crate::agent::document::DocumentTraits;
 use crate::Agent;
 use chrono::Utc;
 use serde_json::{json, Value};

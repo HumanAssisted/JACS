@@ -5,7 +5,7 @@ pub mod loaders;
 pub mod security;
 
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{Document, JACSDocument};
+use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::crypt::hash::hash_public_key;
 use std::fs;
 

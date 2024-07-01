@@ -1,4 +1,4 @@
-use crate::agent::document::Document;
+use crate::agent::document::DocumentTraits;
 use crate::shared::save_document;
 use log::error;
 

@@ -1,5 +1,5 @@
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use jsonschema::{CompilationOptions, Draft, JSONSchema};

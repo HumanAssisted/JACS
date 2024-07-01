@@ -2,7 +2,7 @@ use chrono::DateTime;
 use chrono::Local;
 use clap::{value_parser, Arg, ArgAction, Command};
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::Agent;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::config::{set_env_vars, Config};
