@@ -166,7 +166,7 @@ pub trait DocumentTraits {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
-    fn load_all(&mut self, store: bool) -> Result<Vec<Value>, Vec<Box<dyn Error>>>;
+    fn load_all(&mut self, store: bool) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>>;
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn remove_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
@@ -358,17 +358,24 @@ impl DocumentTraits for Agent {
         }
     }
 
-    fn load_all(&mut self, store: bool) -> Result<Vec<Value>, Vec<Box<dyn Error>>> {
+    fn load_all(&mut self, store: bool) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
         let doc_strings = self.fs_docs_load_all()?;
         let mut errors: Vec<Box<dyn Error>> = Vec::new();
-        let mut documents: Vec<Value> = Vec::new();
+        let mut documents: Vec<JACSDocument> = Vec::new();
         for doc_string in doc_strings {
             match self.validate_header(&doc_string) {
                 Ok(doc) => {
-                    if store {
-                        let _ = self.store_jacs_document(&doc);
+                    let document = self.store_jacs_document(&doc);
+                    match document {
+                        Ok(document) => {
+                            if store {
+                                documents.push(document);
+                            }
+                        }
+                        Err(e) => {
+                            errors.push(e.into());
+                        }
                     }
-                    documents.push(doc.clone());
                 }
                 Err(e) => {
                     errors.push(e.into());
@@ -489,7 +496,7 @@ impl DocumentTraits for Agent {
         let last_version = &value["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        new_document["jacsLastVersion"] = last_version.clone();
+        new_document["jacsPreviousVersion"] = last_version.clone();
         new_document["jacsVersion"] = json!(format!("{}", new_version));
         new_document["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // get all fields but reserved
@@ -513,7 +520,7 @@ impl DocumentTraits for Agent {
         let last_version = &value["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        value["jacsLastVersion"] = last_version.clone();
+        value["jacsPreviousVersion"] = last_version.clone();
         value["jacsVersion"] = json!(format!("{}", new_version));
         value["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // sign new version

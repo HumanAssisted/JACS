@@ -47,7 +47,7 @@ pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
-pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsLastVersion";
+pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsPreviousVersion";
 
 pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     SHA256_FIELDNAME,
@@ -572,7 +572,7 @@ impl Agent {
         let last_version = &original_self["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        new_self["jacsLastVersion"] = last_version.clone();
+        new_self["jacsPreviousVersion"] = last_version.clone();
         new_self["jacsVersion"] = json!(format!("{}", new_version));
         new_self["jacsVersionDate"] = json!(format!("{}", versioncreated));
 
