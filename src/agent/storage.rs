@@ -104,8 +104,9 @@ impl MultiStorage {
     pub async fn save_file(&self, path: &str, contents: &[u8]) -> Result<(), ObjectStoreError> {
         let object_path = Path::from(path);
         let mut errors = Vec::new();
-        // Ensure contents is cloned into an owned type if not already
-        let contents_payload: PutPayload = PutPayload::from_static(contents.clone());
+        // Create an owned Vec<u8> from the contents slice
+        let contents_vec = contents.to_vec();
+        let contents_payload = PutPayload::from(contents_vec);
         for storage in &self.storages {
             if let Err(e) = storage.put(&object_path, contents_payload.clone()).await {
                 errors.push(e);
