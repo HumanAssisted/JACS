@@ -112,6 +112,18 @@ impl JACSDocument {
         return Err("no agreement or signatures in agreement".into());
     }
 
+    pub fn signing_agent_str(&self) -> Result<&str, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
+            return Ok(jacs_signature
+                .get("agentID")
+                .expect("REASON")
+                .as_str()
+                .unwrap());
+        }
+        return Err("no agreement or signatures in agreement".into());
+    }
+
     pub fn agreement_signed_agents(
         &self,
         agreement_fieldname: Option<String>,

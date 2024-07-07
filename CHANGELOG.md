@@ -12,7 +12,9 @@
 - updated strum, criterion
 - updated reqwest library
 - fixed bug EmbeddedSchemaResolver not used for custom schemas
-- added load_all() for booting up and 
+- added load_all() for booting up  
+- WIP move all fileio to object_store 
+- WIP way to mark documents as not active - separate folder, or just reference them from other docs
 
 ## 0.2.13
 - save public key to local fs

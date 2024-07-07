@@ -7,7 +7,6 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use regex::Regex;
 use secrecy::ExposeSecret;
-use serde_json::Value;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;

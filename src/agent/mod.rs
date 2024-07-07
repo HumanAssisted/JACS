@@ -3,6 +3,7 @@ pub mod boilerplate;
 pub mod document;
 pub mod loaders;
 pub mod security;
+pub mod storage;
 
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
