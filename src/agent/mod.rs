@@ -170,7 +170,6 @@ impl Agent {
         let lookup_id = id
             .or_else(|| env::var("JACS_AGENT_ID_AND_VERSION").ok())
             .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
-
         let agent_string = self.fs_agent_load(&lookup_id)?;
         return self.load(&agent_string);
     }

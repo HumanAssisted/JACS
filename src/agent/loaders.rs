@@ -137,14 +137,15 @@ impl FileLoader for Agent {
 
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
         let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
-        let default_dir = Path::new(pathstring);
+        let current_dir = env::current_dir()?;
+        let path = current_dir.join(pathstring);
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
         let key_vec = borrowed_key.use_secret();
-        let _ = save_private_key(&default_dir, &private_key_filename, &key_vec)?;
+        let _ = save_private_key(&path, &private_key_filename, &key_vec)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
-        let _ = save_file(&default_dir, &public_key_filename, &self.get_public_key()?);
+        let _ = save_file(&path, &public_key_filename, &self.get_public_key()?);
         Ok(())
     }
 
@@ -152,11 +153,14 @@ impl FileLoader for Agent {
         //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
         //todo use filepath builder
         let default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        let current_dir = env::current_dir()?;
+        let path = current_dir.join(default_dir).to_str().unwrap().to_string();
+        debug!("loading keys from: {:?}", path);
 
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
-        let private_key = load_private_key(&default_dir, &private_key_filename)?;
+        let private_key = load_private_key(&path, &private_key_filename)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
-        let public_key = load_key_file(&default_dir, &public_key_filename)?;
+        let public_key = load_key_file(&path, &public_key_filename)?;
 
         let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
         self.set_keys(private_key, public_key, &key_algorithm)
@@ -256,6 +260,7 @@ impl FileLoader for Agent {
                 Ok(data.to_string())
             }
             Err(e) => {
+                error!("agentpath {:?} error {:?}", agentpath, e);
                 panic!(
                     "Failed to find agent: agentid {} \nat agentpath {:?} \n{} ",
                     agentid, agentpath, e
@@ -325,7 +330,7 @@ impl FileLoader for Agent {
 
         // Check if the file path is a local filesystem path
         if !Path::new(&document_filepath).is_file() {
-            println!("document_filepath ? {}", document_filepath);
+            error!("document_filepath ? {}", document_filepath);
             return Err("File not found, only local filesystem paths are supported.".into());
         }
 
@@ -414,6 +419,7 @@ fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u
         fs::create_dir_all(parent)?;
     }
     let full_path = Path::new(file_path).join(filename);
+    debug!("load_key_file path {:?}", full_path);
     return std::fs::read(full_path);
 }
 
