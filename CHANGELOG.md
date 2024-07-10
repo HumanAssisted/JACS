@@ -15,6 +15,7 @@
 - added load_all() for booting up  
 - WIP move all fileio to object_store 
 - WIP way to mark documents as not active - separate folder, or just reference them from other docs
+- fixed issue with filepaths for agents and keys
 
 ## 0.2.13
 - save public key to local fs
