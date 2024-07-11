@@ -32,6 +32,7 @@ pub struct JACSDocument {
     pub id: String,
     pub version: String,
     pub value: Value,
+    pub jacs_type: String,
 }
 
 // extend with functions for types
@@ -415,6 +416,7 @@ impl DocumentTraits for Agent {
             id: value.get_str("jacsId").expect("REASON").to_string(),
             version: value.get_str("jacsVersion").expect("REASON").to_string(),
             value: Some(value.clone()).into(),
+            jacs_type: value.get_str("jacsType").expect("REASON").to_string(),
         };
         let key = doc.getkey();
         documents.insert(key.clone(), doc.clone());
