@@ -48,7 +48,20 @@ fn test_load_only_recent() {
     let all_docs = agent
         .load_all(save_docs, load_only_recent)
         .expect("load_all");
-    println!("only recent {}  ", all_docs.len());
+
+    // most recent version
+    // 85175625-e190-40a8-8e58-06451e281809:4223ba44-1a68-48d6-b0ed-de70006eb3e1
+    for doc in all_docs {
+        let id = doc.id.clone();
+        let version = doc.version.clone();
+        let key = doc.getkey();
+        if id == "85175625-e190-40a8-8e58-06451e281809"
+            && version != "4223ba44-1a68-48d6-b0ed-de70006eb3e1"
+        {
+            assert!(false, "test_load_only_recent failed");
+            println!("doc {}  ", key);
+        }
+    }
 }
 
 #[test]

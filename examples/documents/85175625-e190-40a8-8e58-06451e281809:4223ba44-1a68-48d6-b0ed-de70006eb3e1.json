@@ -1,0 +1,35 @@
+{
+  "$schema": "https://hai.ai/examples/documents/custom.schema.json",
+  "favorite-snack": "durian has been rejected by Jack",
+  "jacksType": "favoritesnackdocument",
+  "jacsFiles": [],
+  "jacsId": "85175625-e190-40a8-8e58-06451e281809",
+  "jacsOriginalDate": "2024-06-30T08:26:52.276128+00:00",
+  "jacsOriginalVersion": "bc884da1-30c3-4f96-8560-55f723c6fa98",
+  "jacsPreviousVersion": "bc884da1-30c3-4f96-8560-55f723c6fa98",
+  "jacsSha256": "a4c5f60356df6331a6c79138f85ec4f10e366807204d1cf0ce1e6547d870c6df",
+  "jacsSignature": {
+    "agentID": "8be91198-fcff-4a54-92da-cb163c2159a8",
+    "agentVersion": "ef4e558f-7b0b-4ab9-b8c1-21265c34f813",
+    "date": "2024-07-12T10:34:53.909413+00:00",
+    "fields": [
+      "$schema",
+      "favorite-snack",
+      "jacksType",
+      "jacsFiles",
+      "jacsId",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsPreviousVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "O0EvUcDZDD8KdBMRTN9ejCt3CcywTKkTB4JvbTZ6G57VH5IryCf1aOs54Jad59JmMbGKYdE7UcGLctnmrn2drWBa5gvDVR7FRli026Fv5ERqxJw8SjmPGH3nph/1wCtJuoahOtG07z8qKK0tz5z3BBN5UgLPGkIt8rxA6b8zlAMzCLg9NnCf5KBLs+/igY6vn2ipQzd7wognQiORWJUon1u7x+RcIRcgcdIFwqS7Zkt0j/FicnWYPd1Z2FyJtEJ1vijUGI2bCOz9GallASwKU6FfV9S/vlHxqiDWnnHu6efGtMdfsgs/dfAsGwD27Y/GOe8o4PaCHMpQfwuRAnmeahQXWiILLjZ4igVuqegeUimOo47SaQjlWwlHHzwgkGEDSCZaw7dvRlV56PbfUBUylH4FMRJtnfQZbqgNY6/qn/n4DHzDHQagW6hXeD4v8mTjiaJNBKusfMqKAkN+lsyunh0DksgExRl3EWZIe2b8B8Ttw80F63lDiLmLlbx2y3tWj9WSCDHcJcYRgptU54yjUnI4xvqec7EfnhU3usDSw3C6gKCzAGjcpCrhQ2ViSbJmDNsHkvdBhGgcjI9Qcq9PtizCao51htKq0Fhym77gJWRlA19JScx93zLO1oQM7BgujvnwNgZ5CioBEFNvRtlkuU+KOuMXlQqqaniXa/ML1XI=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "custom",
+  "jacsVersion": "4223ba44-1a68-48d6-b0ed-de70006eb3e1",
+  "jacsVersionDate": "2024-07-12T10:34:53.895268+00:00"
+}
