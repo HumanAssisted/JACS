@@ -12,6 +12,7 @@
     },
     "vector": {
       "type": "array",
+      "hai": "base",
       "description": "the vector, does not indicate datatype or width (e.g. f32 764)",
       "items": {
         "type": "number"

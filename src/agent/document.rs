@@ -7,10 +7,10 @@ use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
+use std::collections::HashMap;
 // use crate::schema::utils::get_short_name;
 use crate::schema::utils::ValueExt;
-use chrono::Local;
-use chrono::Utc;
+use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
@@ -182,7 +182,11 @@ pub trait DocumentTraits {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
-    fn load_all(&mut self, store: bool) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>>;
+    fn load_all(
+        &mut self,
+        store: bool,
+        load_only_recent: bool,
+    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>>;
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn remove_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
@@ -374,10 +378,50 @@ impl DocumentTraits for Agent {
         }
     }
 
-    fn load_all(&mut self, store: bool) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
-        let doc_strings = self.fs_docs_load_all()?;
+    fn load_all(
+        &mut self,
+        store: bool,
+        load_only_recent: bool,
+    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
         let mut errors: Vec<Box<dyn Error>> = Vec::new();
         let mut documents: Vec<JACSDocument> = Vec::new();
+        let mut doc_strings = self.fs_docs_load_all()?;
+        let mut most_recent_docs = HashMap::new();
+        // iterate over doc_strings,
+        // convert to Json Value and extract the jacsId, jacsVersion, and jacsVersionDate keys.
+        // create a data structure that only keeps the max jacsVersionDate (which needs to be converted to int64 from datetime string)
+        // for each jacsId check if it is the most recent version
+        // keep only the most recent version  this in a create a new docstrings vector of strings
+        if load_only_recent {
+            for doc_string in &doc_strings {
+                if let Ok(doc) = serde_json::from_str::<Value>(&doc_string) {
+                    if let (Some(jacs_id), Some(jacs_version_date)) =
+                        (doc["jacsId"].as_str(), doc["jacsVersionDate"].as_str())
+                    {
+                        // Convert jacsVersionDate to timestamp (i64)
+                        let timestamp = match DateTime::parse_from_rfc3339(jacs_version_date) {
+                            Ok(dt) => dt.with_timezone(&Utc).timestamp(),
+                            Err(e) => {
+                                println!("Failed to parse timestamp: {}", e);
+                                Utc::now().timestamp()
+                            }
+                        };
+
+                        let entry = most_recent_docs
+                            .entry(jacs_id.to_string())
+                            .or_insert_with(|| (timestamp, doc_string));
+                        if timestamp > entry.0 {
+                            *entry = (timestamp, doc_string);
+                        }
+                    }
+                }
+            }
+            doc_strings = most_recent_docs
+                .values()
+                .map(|&(_, doc)| doc.clone())
+                .collect();
+        }
+
         for doc_string in doc_strings {
             match self.validate_header(&doc_string) {
                 Ok(doc) => {
@@ -531,10 +575,10 @@ impl DocumentTraits for Agent {
         new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
 
         // archive old version
-        let result = self.archive_old_version(&original_document);
-        if let Err(e) = result {
-            println!("Failed to archive old version: {}", e);
-        }
+        // let result = self.archive_old_version(&original_document);
+        // if let Err(e) = result {
+        //     println!("Failed to archive old version: {}", e);
+        // }
 
         Ok(self.store_jacs_document(&new_document)?)
     }

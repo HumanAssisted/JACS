@@ -19,6 +19,8 @@
 - added jacsType to to jacs document as required
 - added archive old version, to move older versions of docs to different folder
 - added jacsEmbedding to headers, which allow persistance of vector embeddings iwth jacs docs. 
+- default to only loading most recent version of document in load_all
+- fixed bug with naming file on update
 
 ## 0.2.13
 - save public key to local fs

@@ -312,17 +312,20 @@ impl FileLoader for Agent {
             error!("Failed to check data directory: {}", e);
         }
         let documentoutput_filename = match output_filename {
-            Some(filname) => {
-                // optional add jacs
-                let re = Regex::new(r"(\.[^.]+)$").unwrap();
-                let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
-                let signed_filename = if already_signed.is_match(&filname) {
-                    filname.to_string() // Do not modify if '.jacs' is already there
-                } else {
-                    re.replace(&filname, ".jacs$1").to_string() // Append '.jacs' before the extension
-                };
-                signed_filename
-            }
+            Some(filename) => filename,
+
+            // {
+            //     // optional add jacs
+            //     let re = Regex::new(r"(\.[^.]+)$").unwrap();
+            //     let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
+            //     let signed_filename = if already_signed.is_match(&filename) {
+            //         filname.to_string() // Do not modify if '.jacs' is already there
+            //     } else {
+            //         re.replace(&filname, ".jacs$1").to_string() // Append '.jacs' before the extension
+            //     };
+            //     signed_filename
+            // }
+            // fix this
             _ => document_id.to_string(),
         };
 

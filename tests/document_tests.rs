@@ -32,8 +32,23 @@ fn test_load_all() {
     // cargo test   --test document_tests -- --nocapture test_load_all
     let mut agent = load_test_agent_one();
     let save_docs = true;
-    let all_docs = agent.load_all(save_docs).expect("load_all");
+    let load_only_recent = true;
+    let all_docs = agent
+        .load_all(save_docs, load_only_recent)
+        .expect("load_all");
     println!("all_docs {}  ", all_docs.len());
+}
+
+#[test]
+fn test_load_only_recent() {
+    // cargo test   --test document_tests -- --nocapture test_load_only_recent
+    let mut agent = load_test_agent_one();
+    let save_docs = true;
+    let load_only_recent = true;
+    let all_docs = agent
+        .load_all(save_docs, load_only_recent)
+        .expect("load_all");
+    println!("only recent {}  ", all_docs.len());
 }
 
 #[test]
