@@ -76,6 +76,8 @@ pub trait FileLoader {
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
 
+    fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn std::error::Error>>;
+
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
     fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>>;
@@ -288,6 +290,15 @@ impl FileLoader for Agent {
     ) -> Result<String, Box<dyn Error>> {
         let agentpath = self.build_filepath(&"agent".to_string(), agentid)?;
         Ok(save_to_filepath(&agentpath, agent_string.as_bytes())?)
+    }
+
+    fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn std::error::Error>> {
+        let document_filename = format!("{}.json", lookup_key).to_string();
+        let old_path = self.build_filepath(&"documents".to_string(), &document_filename)?;
+        let new_path = self.build_filepath(&"documents/archive".to_string(), &document_filename)?;
+
+        println!("old_path: {:?} new_path {:?}", old_path, new_path);
+        return Ok(fs::rename(old_path, new_path)?);
     }
 
     fn fs_document_save(

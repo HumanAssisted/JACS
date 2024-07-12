@@ -167,7 +167,10 @@ pub trait DocumentTraits {
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>>;
-
+    fn archive_old_version(
+        &mut self,
+        original_document: &JACSDocument,
+    ) -> Result<(), Box<dyn Error>>;
     fn validate_document_with_custom_schema(
         &self,
         schema_path: &str,
@@ -439,12 +442,15 @@ impl DocumentTraits for Agent {
         }
     }
 
+    // used to see if key is already in index
     fn get_document_keys(&mut self) -> Vec<String> {
         let documents = self.documents.lock().expect("documents lock");
         return documents.keys().map(|k| k.to_string()).collect();
     }
 
     /// pass in modified doc
+    /// the original document needs to be marked as obsolete
+    /// but this means not a deletion, but a move of the file
     /// TODO validate that the new document is owned by editor
     fn update_document(
         &mut self,
@@ -457,7 +463,7 @@ impl DocumentTraits for Agent {
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let error_message = format!("original document {} not found", document_key);
         let original_document = self.get_document(document_key).expect(&error_message);
-        let value = original_document.value;
+        let value = original_document.value.clone();
 
         let mut files_array: Vec<Value> = new_document
             .get("jacsFiles")
@@ -523,7 +529,27 @@ impl DocumentTraits for Agent {
         // hash new version
         let document_hash = self.hash_doc(&new_document)?;
         new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+
+        // archive old version
+        let result = self.archive_old_version(&original_document);
+        if let Err(e) = result {
+            println!("Failed to archive old version: {}", e);
+        }
+
         Ok(self.store_jacs_document(&new_document)?)
+    }
+
+    fn archive_old_version(
+        &mut self,
+        original_document: &JACSDocument,
+    ) -> Result<(), Box<dyn Error>> {
+        let lookup_key = original_document.getkey();
+        // remove from hashmap
+        let mut documents = self.documents.lock().expect("JACSDocument lock");
+        documents.remove(&lookup_key);
+        // move file to archive
+        let _ = self.fs_document_archive(&lookup_key)?;
+        Ok(())
     }
 
     /// copys document without modifications

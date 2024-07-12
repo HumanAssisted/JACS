@@ -16,7 +16,9 @@
 - WIP move all fileio to object_store 
 - WIP way to mark documents as not active - separate folder, or just reference them from other docs
 - fixed issue with filepaths for agents and keys
-- added jacsType to to jacs document
+- added jacsType to to jacs document as required
+- added archive old version, to move older versions of docs to different folder
+
 
 ## 0.2.13
 - save public key to local fs
