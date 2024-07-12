@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json",
+  "title": "Embedding",
+  "description": "Precomputed embedding of content of a document",
+  "type": "object",
+  "properties": {
+    "llm": {
+      "type": "string",
+      "description": "Language model used to generate the embedding",
+      "hai": "agent"
+    },
+    "vector": {
+      "type": "array",
+      "description": "the vector, does not indicate datatype or width (e.g. f32 764)",
+      "items": {
+        "type": "number"
+      }
+    }
+  },
+  "required": [
+    "llm",
+    "vector"
+  ],
+  "additionalProperties": false
+}

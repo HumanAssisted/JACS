@@ -31,6 +31,7 @@ The basis for a JACS document
 | [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")             |
 | [jacsSha256](#jacssha256)                   | `string` | Optional | cannot be null | [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")                         |
 | [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")                           |
+| [jacsEmbedding](#jacsembedding)             | `array`  | Optional | cannot be null | [Header](header-properties-jacsembedding.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding")                   |
 
 ## jacsId
 
@@ -289,3 +290,21 @@ A set of files included with the jacs document
 ### jacsFiles Type
 
 `object[]` ([File](header-properties-jacsfiles-file.md))
+
+## jacsEmbedding
+
+A set of precalculated vector embeddings
+
+`jacsEmbedding`
+
+*   is optional
+
+*   Type: `object[]` ([Embedding](header-properties-jacsembedding-embedding.md))
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacsembedding.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding")
+
+### jacsEmbedding Type
+
+`object[]` ([Embedding](header-properties-jacsembedding-embedding.md))

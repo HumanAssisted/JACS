@@ -135,7 +135,7 @@ list of evaluation units, informatio labels
 
 *   is optional
 
-*   Type: `object[]` ([Unit](eval-properties-quantifications-unit.md))
+*   Type: `object[]` ([Unit](action-properties-unit-1.md))
 
 *   cannot be null
 
@@ -143,4 +143,4 @@ list of evaluation units, informatio labels
 
 ### quantifications Type
 
-`object[]` ([Unit](eval-properties-quantifications-unit.md))
+`object[]` ([Unit](action-properties-unit-1.md))

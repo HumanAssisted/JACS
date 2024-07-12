@@ -2,13 +2,15 @@
 
 ## Top-level Schemas
 
-*   [Action](./action.md "General actions definitions which can comprise a service") – `https://hai.ai/schemas/components/action/v1/action-schema.json`
+*   [Action](./action.md "General actions definitions which can comprise a service") – `https://hai.ai/schemas/components/action/v1/action.schema.json`
 
 *   [Agent](./agent.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/agent/v1/agent.schema.json`
 
 *   [Config](./jacs.md "Jacs Configuration File") – `https://hai.ai/schemas/jacs.config.schema.json`
 
 *   [Contact](./contact.md "How to contact over human channels") – `https://hai.ai/schemas/contact/v1/contact.schema.json`
+
+*   [Embedding](./embedding.md "Precomputed embedding of content of a document") – `https://hai.ai/schemas/components/embedding/v1/embedding.schema.json`
 
 *   [Evaluation](./eval.md "A signed, immutable message evaluation an agent's performance on a task") – `https://hai.ai/schemas/eval/v1/eval.schema.json`
 
@@ -54,15 +56,19 @@
 
 ### Arrays
 
-*   [Untitled array in Action](./action-properties-tools.md "tools that can be utilized") – `https://hai.ai/schemas/components/action/v1/action-schema.json#/properties/tools`
+*   [Untitled array in Action](./action-properties-tools.md "tools that can be utilized") – `https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/tools`
 
 *   [Untitled array in Agent](./agent-allof-1-jacsservices.md "Services the agent can perform") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsServices`
 
 *   [Untitled array in Agent](./agent-allof-1-jacscontacts.md "Contact information for the agent") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/jacsContacts`
 
+*   [Untitled array in Embedding](./embedding-properties-vector.md "the vector, does not indicate datatype or width (e") – `https://hai.ai/schemas/components/embedding/v1/embedding.schema.json#/properties/vector`
+
 *   [Untitled array in Evaluation](./eval-properties-quantifications.md "list of evaluation units, informatio labels") – `https://hai.ai/schemas/eval/v1/eval.schema.json#/properties/quantifications`
 
 *   [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
+
+*   [Untitled array in Header](./header-properties-jacsembedding.md "A set of precalculated vector embeddings") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding`
 
 *   [Untitled array in Message](./message-properties-to.md "list of addressees, optional") – `https://hai.ai/schemas/message/v1/message.schema.json#/properties/to`
 

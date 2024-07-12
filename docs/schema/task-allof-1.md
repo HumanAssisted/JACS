@@ -224,7 +224,7 @@ list of actions desired, should be a subset of actions in the resources and agen
 
 *   is optional
 
-*   Type: unknown\[]
+*   Type: `object[]` ([Action](task-allof-1-properties-jacstaskactionsdesired-action.md))
 
 *   cannot be null
 
@@ -232,7 +232,7 @@ list of actions desired, should be a subset of actions in the resources and agen
 
 ### jacsTaskActionsDesired Type
 
-unknown\[]
+`object[]` ([Action](task-allof-1-properties-jacstaskactionsdesired-action.md))
 
 ## jacsTaskSubTaskOf
 

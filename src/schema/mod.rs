@@ -59,6 +59,7 @@ pub struct Schema {
     evalschema: JSONSchema,
     nodeschema: JSONSchema,
     programschema: JSONSchema,
+    embeddingschema: JSONSchema,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
@@ -327,6 +328,10 @@ impl Schema {
 
         let message_path = format!("schemas/message/{}/message.schema.json", default_version);
         let eval_path = format!("schemas/eval/{}/eval.schema.json", default_version);
+        let embedding_path = format!(
+            "schemas/components/embedding/{}/embedding.schema.json",
+            default_version
+        );
 
         let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
         let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
@@ -342,6 +347,7 @@ impl Schema {
         let evaldata = DEFAULT_SCHEMA_STRINGS.get(&eval_path).unwrap();
         let programdata = DEFAULT_SCHEMA_STRINGS.get(&program_path).unwrap();
         let nodedata = DEFAULT_SCHEMA_STRINGS.get(&node_path).unwrap();
+        let embeddingdata = DEFAULT_SCHEMA_STRINGS.get(&embedding_path).unwrap();
 
         let agentschema_result: Value = serde_json::from_str(&agentdata)?;
         let headerchema_result: Value = serde_json::from_str(&headerdata)?;
@@ -358,6 +364,7 @@ impl Schema {
         let evalschema_result: Value = serde_json::from_str(&evaldata)?;
         let nodeschema_result: Value = serde_json::from_str(&nodedata)?;
         let programschema_result: Value = serde_json::from_str(&programdata)?;
+        let embeddingschema_result: Value = serde_json::from_str(&embeddingdata)?;
 
         let agentschema = match JSONSchema::options()
             .with_draft(Draft::Draft7)
@@ -520,6 +527,19 @@ impl Schema {
             Err(_) => return Err(format!("Failed to compile evalschema: {}", &eval_path).into()),
         };
 
+        let embeddingschema = match JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .with_resolver(EmbeddedSchemaResolver::new())
+            .compile(&embeddingschema_result)
+        {
+            Ok(schema) => schema,
+            Err(_) => {
+                return Err(
+                    format!("Failed to compile embeddingschema: {}", &embedding_path).into(),
+                )
+            }
+        };
+
         Ok(Self {
             headerschema,
             headerversion: headerversion.to_string(),
@@ -537,6 +557,7 @@ impl Schema {
             evalschema,
             nodeschema,
             programschema,
+            embeddingschema,
         })
     }
 

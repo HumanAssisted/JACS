@@ -30,8 +30,8 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
      "schemas/message/v1/message.schema.json" => include_str!("../../schemas/message/v1/message.schema.json"),
      "schemas/eval/v1/eval.schema.json" => include_str!("../../schemas/eval/v1/eval.schema.json"),
      "schemas/program/v1/program.schema.json" => include_str!("../../schemas/program/v1/program.schema.json"),
-     "schemas/node/v1/node.schema.json" => include_str!("../../schemas/node/v1/node.schema.json")
-     // todo get all files in a schemas directory, dynamically
+     "schemas/node/v1/node.schema.json" => include_str!("../../schemas/node/v1/node.schema.json"),
+     "schemas/components/embedding/v1/embedding.schema.json" => include_str!("../../schemas/components/embedding/v1/embedding.schema.json")     // todo get all files in a schemas directory, dynamically
 };
 
 pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {

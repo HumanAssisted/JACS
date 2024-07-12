@@ -1,27 +1,31 @@
 # Action Schema
 
 ```txt
-https://hai.ai/schemas/components/action/v1/action.schema.json
+https://hai.ai/schemas/components/action/v1/action.schema.json#/allOf/1/properties/jacsTaskActionsDesired/items
 ```
 
 General actions definitions which can comprise a service. Distinct from function calling.
 
-| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
-| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
-| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [action.schema.json](../../schemas/components/action/v1/action.schema.json "open original schema") |
+| Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                          |
+| :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------- |
+| Can be instantiated | No         | Unknown status | No           | Forbidden         | Allowed               | none                | [task.schema.json\*](../../schemas/task/v1/task.schema.json "open original schema") |
 
-## Action Type
+## items Type
 
-`object` ([Action](action.md))
+`object` ([Action](task-allof-1-properties-jacstaskactionsdesired-action.md))
 
-# Action Properties
+## items Constraints
+
+**minimum number of items**: the minimum number of items for this array is: `1`
+
+# items Properties
 
 | Property                                                    | Type      | Required | Nullable       | Defined by                                                                                                                                                          |
 | :---------------------------------------------------------- | :-------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [name](#name)                                               | `string`  | Required | cannot be null | [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/name")                                               |
 | [description](#description)                                 | `string`  | Required | cannot be null | [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/description")                                 |
 | [tools](#tools)                                             | `array`   | Optional | cannot be null | [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/tools")                                             |
-| [cost](#cost)                                               | `object`  | Optional | cannot be null | [Action](action-properties-unit-1.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/cost")                                                 |
+| [cost](#cost)                                               | `object`  | Optional | cannot be null | [Action](action-properties-unit.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/cost")                                                   |
 | [duration](#duration)                                       | `object`  | Optional | cannot be null | [Action](action-properties-unit-1.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/duration")                                             |
 | [completionAgreementRequired](#completionagreementrequired) | `boolean` | Optional | cannot be null | [Action](action-properties-completionagreementrequired.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/completionAgreementRequired") |
 

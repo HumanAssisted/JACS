@@ -18,7 +18,7 @@
 - fixed issue with filepaths for agents and keys
 - added jacsType to to jacs document as required
 - added archive old version, to move older versions of docs to different folder
-
+- added jacsEmbedding to headers, which allow persistance of vector embeddings iwth jacs docs. 
 
 ## 0.2.13
 - save public key to local fs

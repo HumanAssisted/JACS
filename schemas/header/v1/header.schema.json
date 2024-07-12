@@ -74,6 +74,13 @@
       "items": {
         "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
       }
+    },
+    "jacsEmbedding": {
+      "description": "A set of precalculated vector embeddings ",
+      "type": "array",
+      "items": {
+        "$ref": "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json"
+      }
     }
   },
   "required": [

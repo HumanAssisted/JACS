@@ -14,6 +14,7 @@ include = [
     "schemas/components/service/v1/service.schema.json",
     "schemas/components/tool/v1/tool.schema.json",
     "schemas/components/contact/v1/contact.schema.json",
+    "schemas/components/component/v1/component.schema.json",
     "schemas/message/v1/message.schema.json",
     "schemas/node/v1/node.schema.json",
     "schemas/program/v1/program.schema.json",

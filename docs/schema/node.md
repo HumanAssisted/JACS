@@ -25,7 +25,7 @@ A a node in a finite state machine. Stateless, a class to be used to instantiate
 | [serviceVersion](#serviceversion)                                 | `string`  | Optional | cannot be null | [Node](node-properties-serviceversion.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/serviceVersion")                                 |
 | [completed](#completed)                                           | `boolean` | Optional | cannot be null | [Node](node-properties-completed.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completed")                                           |
 | [completedAt](#completedat)                                       | `string`  | Optional | cannot be null | [Node](node-properties-completedat.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedAt")                                       |
-| [tool](#tool)                                                     | `array`   | Optional | cannot be null | [Node](node-properties-tool.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/properties/tool")                                          |
+| [tool](#tool)                                                     | `array`   | Optional | cannot be null | [Node](action-properties-tools-tool.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/properties/tool")                                  |
 | [preToolPrompt](#pretoolprompt)                                   | `string`  | Optional | cannot be null | [Node](node-properties-pretoolprompt.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/preToolPrompt")                                   |
 | [postToolPrompt](#posttoolprompt)                                 | `string`  | Optional | cannot be null | [Node](node-properties-posttoolprompt.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/postToolPrompt")                                 |
 | [estimatedCost](#estimatedcost)                                   | `integer` | Optional | cannot be null | [Node](node-properties-estimatedcost.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/estimatedCost")                                   |
@@ -205,7 +205,7 @@ OpenAI function calling definitions <https://platform.openai.com/docs/assistants
 
 *   cannot be null
 
-*   defined in: [Node](node-properties-tool.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/properties/tool")
+*   defined in: [Node](action-properties-tools-tool.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/properties/tool")
 
 ### tool Type
 
