@@ -7,7 +7,8 @@
     {
       "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
     },
-    { "type": "object",
+    {
+      "type": "object",
       "properties": {
         "threadID": {
           "type": "string",
@@ -18,7 +19,7 @@
           "hai": "agent",
           "description": "list of addressees, optional  ",
           "items": {
-            "type": "string",
+            "type": "string"
           }
         },
         "from": {
@@ -26,8 +27,7 @@
           "hai": "agent",
           "description": "list of addressees, optional  ",
           "items": {
-            "type": "string",
-          
+            "type": "string"
           }
         },
         "datetime": {
@@ -48,10 +48,9 @@
             "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
           }
         }
-        
       }
     }
-],
+  ],
   "required": [
     "to",
     "from",

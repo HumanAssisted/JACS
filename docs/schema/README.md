@@ -42,6 +42,10 @@
 
 *   [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1`
 
+*   [Untitled object in Message](./message-allof-1.md) – `https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1`
+
+*   [Untitled object in Message](./message-allof-1-properties-content.md "body , subject etc") – `https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/content`
+
 *   [Untitled object in Task](./task-allof-1.md) – `https://hai.ai/schemas/task/v1/task-schema.json#/allOf/1`
 
 *   [Untitled object in Tool](./tool-items.md) – `https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items`
@@ -70,9 +74,11 @@
 
 *   [Untitled array in Header](./header-properties-jacsembedding.md "A set of precalculated vector embeddings") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding`
 
-*   [Untitled array in Message](./message-properties-to.md "list of addressees, optional") – `https://hai.ai/schemas/message/v1/message.schema.json#/properties/to`
+*   [Untitled array in Message](./message-allof-1-properties-to.md "list of addressees, optional") – `https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/to`
 
-*   [Untitled array in Message](./message-properties-attachments.md "list of files") – `https://hai.ai/schemas/message/v1/message.schema.json#/properties/attachments`
+*   [Untitled array in Message](./message-allof-1-properties-from.md "list of addressees, optional") – `https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/from`
+
+*   [Untitled array in Message](./message-allof-1-properties-attachments.md "list of files") – `https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/attachments`
 
 *   [Untitled array in Program](./program-allof-1-properties-activenodeids.md "task being processed, a description can be found there") – `https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs`
 
