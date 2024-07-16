@@ -30,12 +30,6 @@
             "type": "string"
           }
         },
-        "datetime": {
-          "description": "Date of message, unverified",
-          "format": "date-time",
-          "hai": "agent",
-          "type": "string"
-        },
         "content": {
           "description": "body , subject etc",
           "hai": "agent",
@@ -54,7 +48,6 @@
   "required": [
     "to",
     "from",
-    "content",
-    "datetime"
+    "content"
   ]
 }

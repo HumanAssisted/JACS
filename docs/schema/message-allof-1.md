@@ -21,7 +21,6 @@ https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1
 | [threadID](#threadid)       | `string` | Optional | cannot be null | [Message](message-allof-1-properties-threadid.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/threadID")       |
 | [to](#to)                   | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/to")                   |
 | [from](#from)               | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-from.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/from")               |
-| [datetime](#datetime)       | `string` | Optional | cannot be null | [Message](message-allof-1-properties-datetime.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/datetime")       |
 | [content](#content)         | `object` | Optional | cannot be null | [Message](message-allof-1-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/content")         |
 | [attachments](#attachments) | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/attachments") |
 
@@ -78,28 +77,6 @@ list of addressees, optional
 ### from Type
 
 `string[]`
-
-## datetime
-
-Date of message, unverified
-
-`datetime`
-
-*   is optional
-
-*   Type: `string`
-
-*   cannot be null
-
-*   defined in: [Message](message-allof-1-properties-datetime.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/datetime")
-
-### datetime Type
-
-`string`
-
-### datetime Constraints
-
-**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
 ## content
 
