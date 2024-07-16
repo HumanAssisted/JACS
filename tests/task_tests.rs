@@ -83,6 +83,7 @@ fn test_create_task_with_actions() {
         content,
         to,
         from,
+        Some(false),
         Some(attachments),
         Some(false),
     )

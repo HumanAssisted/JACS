@@ -13,7 +13,7 @@ pub fn create_message(
     content: Value,
     to: Vec<String>,
     from: Vec<String>,
-    // todo add optional taskid/thread context
+    outbound: Option<bool>,
     attachments: Option<Vec<String>>,
     embed: Option<bool>,
 ) -> Result<JACSDocument, Box<dyn Error>> {
@@ -25,7 +25,8 @@ pub fn create_message(
         "datetime": datetime.to_rfc3339(),
         "content": content,
         "to": to,
-        "from": from
+        "from": from,
+        "outbound": outbound.unwrap_or(false),
     });
     // convert to json string
     let message_str = serde_json::to_string(&message)?;
