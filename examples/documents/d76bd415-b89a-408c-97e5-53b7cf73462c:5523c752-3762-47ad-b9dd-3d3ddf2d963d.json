@@ -1,0 +1,144 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "ecosystem": {
+    "creatures": [
+      {
+        "abilities": [
+          "Flight",
+          "Invisibility"
+        ],
+        "name": "Fairy",
+        "preferredRegion": "Mystic Meadows",
+        "type": "Magical"
+      },
+      {
+        "abilities": [
+          "Healing",
+          "Teleportation"
+        ],
+        "name": "Unicorn",
+        "preferredRegion": "Mystic Meadows",
+        "type": "Mythical"
+      },
+      {
+        "abilities": [
+          "Shadow meld",
+          "Enhanced senses"
+        ],
+        "name": "Shadow wolf",
+        "preferredRegion": "Shadowed Woods",
+        "type": "Supernatural"
+      },
+      {
+        "abilities": [
+          "Silent flight",
+          "Intangibility"
+        ],
+        "name": "Ghost owl",
+        "preferredRegion": "Shadowed Woods",
+        "type": "Spectral"
+      }
+    ],
+    "jacsLevel": "config",
+    "name": "Enchanted Forest",
+    "plants": [
+      {
+        "foundIn": "Mystic Meadows",
+        "name": "Silverleaf",
+        "properties": [
+          "Healing",
+          "Magic enhancement"
+        ],
+        "type": "Herb"
+      },
+      {
+        "foundIn": "Mystic Meadows",
+        "name": "Moonflower",
+        "properties": [
+          "Luminescence",
+          "Sleep inducement"
+        ],
+        "type": "Flower"
+      },
+      {
+        "foundIn": "Shadowed Woods",
+        "name": "Nightshade",
+        "properties": [
+          "Toxic",
+          "Use in dark magic"
+        ],
+        "type": "Poisonous plant"
+      },
+      {
+        "foundIn": "Shadowed Woods",
+        "name": "Fogcap mushroom",
+        "properties": [
+          "Hallucinogenic",
+          "Camouflage"
+        ],
+        "type": "Fungus"
+      }
+    ],
+    "regions": [
+      {
+        "climate": "Temperate",
+        "creatures": [
+          "Fairy",
+          "Unicorn"
+        ],
+        "features": [
+          "Flowering fields",
+          "Crystal lakes"
+        ],
+        "name": "Mystic Meadows",
+        "plants": [
+          "Silverleaf",
+          "Moonflower"
+        ]
+      },
+      {
+        "climate": "Dense fog",
+        "creatures": [
+          "Shadow wolf",
+          "Ghost owl"
+        ],
+        "features": [
+          "Ancient trees",
+          "Fog-covered paths"
+        ],
+        "name": "Shadowed Woods",
+        "plants": [
+          "Nightshade",
+          "Fogcap mushroom"
+        ]
+      }
+    ]
+  },
+  "jacsId": "d76bd415-b89a-408c-97e5-53b7cf73462c",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2024-07-31T16:05:19.305189+00:00",
+  "jacsOriginalVersion": "5523c752-3762-47ad-b9dd-3d3ddf2d963d",
+  "jacsSha256": "280f327a13127d88395a6d914d25a7d828d9dac9652a2238dfc40d52963fd788",
+  "jacsSignature": {
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2024-07-31T16:05:19.725073+00:00",
+    "fields": [
+      "$schema",
+      "ecosystem",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "jW3WZrof7Ivo3JYWYCW9rD/8KPgrLTzbtNeeW9ThRFyzMbWpYx0UEa0aUsLErh7yErO9o3VvSCZoSglwit7s9M2J5CDo2SX3ahOAGYNoJgOEXemy7KV8k2yaISRISDGotocHNqGjAsP4LLJtXs63VEr9nFsAOiqknBxLi3Hvqck80YPp9PfawCOJmehfMKlOtOf9begkkyi00ZqiOE2OhTrUpujaUXcJdslbiGMBuSkzlcRd19gRZ5TAl8l68Ub9DC/5f5YphYiKSaWBpOfziF+7x5uMN/eR1fmyr0S216C9z7ktwnfhgm0MyHKDkgOxduN5YDVigmGbO4G46Cbv3wUivpvisilqNlyYOoep8KuQeFPoNDRvDiXUkEDUkI+db0uUwn81XxnIhVPwoFkfiYNDHmfMFfJWsJaebMTLE46UDmNot00nMn0SOakn/E89Rw5fqc9tHrYsb4+jf2DCyI84EEjNUYp6CS0ge+32V9DVb5FvIXwokhHexb/nOYmWIo3N74zWRhq1ES2WBeuqZjST+VrWBFskkxwvs8tU/fcm3yudFagVbY8E4or+WzegwapuE6tEP9dHPOR31ZaoTGKot0Ztafp//c19HmcZur5S7FkK6f3xIV7bAG4itgdXBbL1/KN5Ce7VlSmCkBxGDuMKRl87cB0Qjwe87odEyW0=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "ecosystem",
+  "jacsVersion": "5523c752-3762-47ad-b9dd-3d3ddf2d963d",
+  "jacsVersionDate": "2024-07-31T16:05:19.305189+00:00"
+}

@@ -1,0 +1,130 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "@context": "http://www.schema.org",
+  "@id": "https://jay.holtslander.ca/#person",
+  "@type": "Person",
+  "Description": "Technologist",
+  "address": {
+    "@type": "PostalAddress",
+    "addressCountry": "Canada",
+    "addressLocality": "Vancouver",
+    "addressRegion": "BC"
+  },
+  "affiliation": [
+    {
+      "@type": "Organization",
+      "name": "Futurpreneur",
+      "sameAs": [
+        "https://twitter.com/futurpreneur",
+        "https://www.facebook.com/futurpreneur/",
+        "https://www.linkedin.com/company-beta/100369/",
+        "https://www.youtube.com/user/CYBF"
+      ]
+    }
+  ],
+  "alternateName": "Jason Holtslander",
+  "alumniOf": [
+    {
+      "@type": "CollegeOrUniversity",
+      "name": "Vancouver Film School",
+      "sameAs": "https://en.wikipedia.org/wiki/Vancouver_Film_School"
+    },
+    {
+      "@type": "CollegeOrUniversity",
+      "name": "CodeCore Bootcamp"
+    }
+  ],
+  "birthPlace": {
+    "@type": "Place",
+    "address": {
+      "@type": "PostalAddress",
+      "addressCountry": "Canada",
+      "addressLocality": "Vancouver",
+      "addressRegion": "BC"
+    }
+  },
+  "disambiguatingDescription": "Co-founder of CodeCore Bootcamp",
+  "gender": "Male",
+  "image": "https://s.gravatar.com/avatar/961997eb7fd5c22b3e12fb3c8ca14e11?s=512&r=g",
+  "jacsId": "9961a668-fa85-4863-ac82-498bff663cd4",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2024-07-31T16:05:19.727495+00:00",
+  "jacsOriginalVersion": "276fefb2-0d18-4c28-a849-6a96b532effc",
+  "jacsSha256": "87630dd0b1273fc42449fd154aa7de47f0db93fc14f0eed6c0ca6e5f19160d73",
+  "jacsSignature": {
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2024-07-31T16:05:20.142811+00:00",
+    "fields": [
+      "$schema",
+      "@context",
+      "@id",
+      "@type",
+      "Description",
+      "address",
+      "affiliation",
+      "alternateName",
+      "alumniOf",
+      "birthPlace",
+      "disambiguatingDescription",
+      "gender",
+      "image",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "jobTitle",
+      "name",
+      "nationality",
+      "sameAs",
+      "url",
+      "worksFor"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "g/2kOc9TtvJC1p3VV+2BAQa42oyVh7QfUgrRc9k3rh/vfBqLcXbpSD2WD3GCd3+zFaTFy6qfFgKr2Hge6QxNU0Jp8hFfqnuVadXov5j/8l+5NKHwiaw8hIE4tMi+MjYxs1hzdd0V+ljqfkKBwc071jHly+taByE+EB16Ip1arPpNiDAUcfvFw/5G0BzDbNNlKxfaDkMBKTdwgAKtg4DbJ6EvYnAu6ryoFLU3YSsM20b0eN4NRicnluVz5Oh1XARWiBlKyTsuWNzOrHtY0V5W5KoGcd6o8GrLdeYrzxiw12H8nQV2y8nONfR9BaM1yBrIhIkunCDVzs6EaEmGmbaD0IfBTg2jieQjsR8Cj23lHztS8aQfo3nYkOMEZQVfE8axZ/taqfB2BYCjG9e0g8U2YXE1p7KnylwL75bN1QNDET08QQ3XdjYA64OBT+1Si6zswtLmJwLJEIHS7I8SfMCjAm73xPCr+2aO2SA0SjwSfRHbkFnlMa2NV77hsnl2YHZ3maPrBrYB/iRSbX0QLZcfFUVsFZH79LlPDhyWeAzLpFgL96bX0OpL4d3gcGQuTe/FHZ13rkCIFAMyuRg9nguUHOsznpQHtCNL5WNkUbuufz2OAcqSBInAbg+zk0uCv7G/K6Jpq6KMJ5m1lL4n3PD3VJUBIYyXO+lxH8HR99Gapjw=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "header",
+  "jacsVersion": "276fefb2-0d18-4c28-a849-6a96b532effc",
+  "jacsVersionDate": "2024-07-31T16:05:19.727495+00:00",
+  "jobTitle": "Technical Director",
+  "name": "Jay Holtslander",
+  "nationality": "Canadian",
+  "sameAs": [
+    "https://twitter.com/j_holtslander",
+    "https://pinterest.com/j_holtslander",
+    "https://instagram.com/j_holtslander",
+    "https://www.facebook.com/jay.holtslander",
+    "https://ca.linkedin.com/in/holtslander/en",
+    "https://plus.google.com/+JayHoltslander",
+    "https://www.youtube.com/user/jasonh1234",
+    "https://github.com/JayHoltslander",
+    "https://profiles.wordpress.org/jasonh1234",
+    "https://angel.co/j_holtslander",
+    "https://www.foursquare.com/user/184843",
+    "https://jholtslander.yelp.ca",
+    "https://codepen.io/j_holtslander/",
+    "https://stackoverflow.com/users/751570/jay",
+    "https://dribbble.com/j_holtslander",
+    "http://jasonh1234.deviantart.com/",
+    "https://www.behance.net/j_holtslander",
+    "https://www.flickr.com/people/jasonh1234/",
+    "https://medium.com/@j_holtslander"
+  ],
+  "url": "https://jay.holtslander.ca",
+  "worksFor": [
+    {
+      "@type": "Organization",
+      "name": "Skunkworks Creative Group Inc.",
+      "sameAs": [
+        "https://twitter.com/skunkworks_ca",
+        "https://www.facebook.com/skunkworks.ca",
+        "https://www.linkedin.com/company/skunkworks-creative-group-inc-",
+        "https://plus.google.com/+SkunkworksCa"
+      ]
+    }
+  ]
+}

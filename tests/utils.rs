@@ -8,9 +8,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use std::env;
-pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_85175625-e190-40a8-8e58-06451e281809:bc884da1-30c3-4f96-8560-55f723c6fa98.json";
+pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_505e1dee-0594-48e6-8236-2a423cf953a4:f53cf3e0-18f9-4a43-afc3-1713ed8f48a2.json";
 
-pub static DOCTESTFILE: &str = "examples/documents/85175625-e190-40a8-8e58-06451e281809:bc884da1-30c3-4f96-8560-55f723c6fa98.json";
+pub static DOCTESTFILE: &str = "examples/documents/505e1dee-0594-48e6-8236-2a423cf953a4:f53cf3e0-18f9-4a43-afc3-1713ed8f48a2.json";
+
 pub static AGENTONE: &str =
     "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
 pub static AGENTTWO: &str =
