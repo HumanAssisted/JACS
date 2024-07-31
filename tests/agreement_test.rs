@@ -8,7 +8,7 @@ use secrecy::ExposeSecret;
 mod utils;
 
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two, DOCTESTFILE};
+use utils::{load_local_document, load_test_agent_one, load_test_agent_two, DOCTESTFILECONFIG};
 
 #[test]
 fn test_create_agreement() {
@@ -19,7 +19,7 @@ fn test_create_agreement() {
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
+    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document
@@ -63,7 +63,7 @@ fn test_add_and_remove_agents() {
     let agents_to_add: Vec<String> = vec!["gaijin".to_string()];
     let agents_to_remove: Vec<String> = vec!["mariko".to_string()];
 
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
+    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let mut doc_v1 = agent
@@ -154,7 +154,7 @@ fn test_sign_agreement() {
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
+    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document

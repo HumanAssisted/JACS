@@ -11,6 +11,7 @@ use std::env;
 pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_505e1dee-0594-48e6-8236-2a423cf953a4:f53cf3e0-18f9-4a43-afc3-1713ed8f48a2.json";
 
 pub static DOCTESTFILE: &str = "examples/documents/505e1dee-0594-48e6-8236-2a423cf953a4:f53cf3e0-18f9-4a43-afc3-1713ed8f48a2.json";
+pub static DOCTESTFILECONFIG: &str = "examples/documents/973985c3-2429-46cc-ae40-2f8e90ad9b38:2cf9b6b1-b341-4ca4-9947-08ed940a6a7c.json";
 
 pub static AGENTONE: &str =
     "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
