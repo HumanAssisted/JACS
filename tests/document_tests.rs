@@ -5,6 +5,7 @@ use jacs::crypt::KeyManager;
 use jsonschema::{CompilationOptions, Draft, JSONSchema};
 mod utils;
 use utils::DOCTESTFILE;
+use utils::DOCTESTFILECONFIG;
 use utils::TESTFILE_MODIFIED;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
@@ -85,7 +86,7 @@ fn test_load_custom_schema_and_custom_document() {
         }
     }
 
-    let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
+    let document_string = match load_local_document(&DOCTESTFILECONFIG.to_string()) {
         Ok(content) => content,
         Err(e) => panic!(
             "Error in test_load_custom_schema_and_custom_document loading local document: {}",
@@ -285,7 +286,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         },
     };
 
-    let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
+    let document_string = match load_local_document(&DOCTESTFILECONFIG.to_string()) {
         Ok(content) => content,
         Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading local document: {}", e),
     };

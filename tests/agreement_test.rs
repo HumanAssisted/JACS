@@ -1,13 +1,10 @@
 use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::loaders::FileLoader;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
-use jacs::crypt::KeyManager;
 use secrecy::ExposeSecret;
 mod utils;
 
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two, DOCTESTFILECONFIG};
 
 #[test]

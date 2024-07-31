@@ -8,10 +8,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use std::env;
-pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_505e1dee-0594-48e6-8236-2a423cf953a4:f53cf3e0-18f9-4a43-afc3-1713ed8f48a2.json";
+pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
 
-pub static DOCTESTFILE: &str = "examples/documents/505e1dee-0594-48e6-8236-2a423cf953a4:f53cf3e0-18f9-4a43-afc3-1713ed8f48a2.json";
-pub static DOCTESTFILECONFIG: &str = "examples/documents/973985c3-2429-46cc-ae40-2f8e90ad9b38:2cf9b6b1-b341-4ca4-9947-08ed940a6a7c.json";
+pub static DOCTESTFILE: &str = "examples/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
+pub static DOCTESTFILECONFIG: &str = "examples/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
 
 pub static AGENTONE: &str =
     "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
@@ -126,11 +126,19 @@ pub fn load_test_agent_two() -> Agent {
         .expect("Agent schema should have instantiated");
     debug!("load_test_agent_two: agent instantiated");
 
+    // let _ = agent.fs_preload_keys(
+    //     &"agent-two.private.pem".to_string(),
+    //     &"agent-two.public.pem".to_string(),
+    //     Some("RSA-PSS".to_string()),
+    // );
+
+    // created agent two with agent one keys
     let _ = agent.fs_preload_keys(
-        &"agent-two.private.pem".to_string(),
-        &"agent-two.public.pem".to_string(),
+        &"agent-one.private.pem".to_string(),
+        &"agent-one.public.pem".to_string(),
         Some("RSA-PSS".to_string()),
     );
+
     debug!("load_test_agent_two: keys preloaded");
 
     let result = agent.load_by_id(Some(AGENTTWO.to_string()), None);
