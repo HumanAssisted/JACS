@@ -15,9 +15,10 @@
       "phone": "123-456-7890"
     }
   ],
-  "jacsId": "8be91198-fcff-4a54-92da-cb163c2159a8",
-  "jacsOriginalDate": "2024-06-30T08:12:22.985110+00:00",
-  "jacsOriginalVersion": "ef4e558f-7b0b-4ab9-b8c1-21265c34f813",
+  "jacsId": "ddf35096-d212-4ca9-a299-feda597d5525",
+  "jacsLevel": "config",
+  "jacsOriginalDate": "2024-07-31T15:52:17.465433+00:00",
+  "jacsOriginalVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
   "jacsServices": [
     {
       "copyright": "Only I make copies",
@@ -62,17 +63,18 @@
       ]
     }
   ],
-  "jacsSha256": "fd36cc5f907709bbbe84d6a526142a06da960dec8873abf3066fc336ec98e085",
+  "jacsSha256": "481c65fe0b57a6fbfb09afdab26162355d5f4f7ca68f0db4bfd4aa3eda4c8a6b",
   "jacsSignature": {
-    "agentID": "8be91198-fcff-4a54-92da-cb163c2159a8",
-    "agentVersion": "ef4e558f-7b0b-4ab9-b8c1-21265c34f813",
-    "date": "2024-06-30T08:12:23.368665+00:00",
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2024-07-31T15:52:17.481781+00:00",
     "fields": [
       "$schema",
       "description",
       "jacsAgentType",
       "jacsContacts",
       "jacsId",
+      "jacsLevel",
       "jacsOriginalDate",
       "jacsOriginalVersion",
       "jacsServices",
@@ -82,12 +84,11 @@
       "name"
     ],
     "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
-    "signature": "ijNip+GHFHd0eVS6ABkvyLSKrjqrc23j+pKZ2UlZ6yVujiri24RZZg2/hkkffNg11KwBL7sCGYMldnDE2CU8mzeDSevdQATP6T4SkvTNtZulGRYZ7VrMz0YUmt0+iiy5nbXy0Umd1BDvAovMZ36Bt6DaC5gtTBy+Fu2AYnXyEV3s9IjuC/BKfut9IxnDqwZe6PWIEMoze6p+QmCyl91aW971BbotrJXP0gyK13uQXkoCG8zahWmhaQ/PBM4b02XlCEfM3PvUm2OLseauGLTvZRacpqDJEPoFH8yg3YeCHV+DPmey4ItRHb145pbCGMnXdUMcQKOGRMdikG6M59mCUSy6tuW872c3IyUJ5BqQ1f6I2x1aRA4Y17NI61j8yZpFX4jtkmw1n0mhIE/0A+wafCjO5Yy5YnrAFb5h7wUygjZ8nFqi8KKplDVSqeWvf7qhPyiGpSMCODIEj/cDCb52ZtpUMeSPhkuQ+DDuA2nDg0zPf0D7UhZ+ylim7Vn4LBUZRLi/YF+G5SOCkH6/VKaXLGGZhfAia3UG1rv8TycTLuI6LEExWywlBF6HtJlgfJ/QVBunOOoLFiyq87/V1Q/eq7V22av8wfhgJWDqz+7zWOpWjQIuMz04KQfsGfDyESCdO/V97KPqTwF5hAiivO3RtTk9B6FYYKzz5lcIOY+zv+g=",
+    "signature": "GGDiy1o1xNC2HgLkxq2LShbvimTU+sJLGQ+ywKUZPNEIgddVeoBx5SkjbH6phF962YyhN9UDaH+3y5dM9tsXAj6LRlXCGyTEWdnAdhn7QC/We28ALFgpqecS6gNQNX4HCMXdAmi9vu69MCAu73U1BCBy+ISbA07Z8RuB/MYke9s+VX1xYBrsfp5ItoPboHY7Uy2KLuEXlt2hPxLQCsROwGFuF33RMNhZSPj5XNwCJyWcHufoGrDn3a5j8B6QfxrVDFv13Z7E419ZpbA3FBEO4sTQSBuIarmnzfbTTFJbJXAFS++3iRp6si/5S1YAUsUz9FPyZeEnrPLU3Bu6Fzl37aBjk9C3tI2DmYYKeAL6qZrPOVhq3z27lQlsQJfkwgbPDPQvlMD3ceJjeLxqE0cZFaUxAlQ5VFEIlW7k28tBQ/eBU1amSE5AgB3hj0rCZQpk8Tlb9dneIRjQWMnCtmS7WDkVVNESGlAtbdKFAkwENNYmNUBnuLFw5RZt2reXI1OYFaUTTF1e2jQik4YBsFcrnJmfmqg7a0LvK1xe7kpM4IMGQZ9upFn3uDQrgdPO522hN4B6rDfxwc3chXHPr7kosh61J11kY5YyMQKa4K6raS7hnny/2EDDCR6cNYRLD9RUXorVwke+6tikRAidwnpDU1Uf51X+D/2oUJDj3WMMOzE=",
     "signingAlgorithm": "RSA-PSS"
   },
   "jacsType": "agent",
-  "jacsLevel": "config",
-  "jacsVersion": "ef4e558f-7b0b-4ab9-b8c1-21265c34f813",
-  "jacsVersionDate": "2024-06-30T08:12:22.985110+00:00",
+  "jacsVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+  "jacsVersionDate": "2024-07-31T15:52:17.465433+00:00",
   "name": "Agent Smyth"
 }

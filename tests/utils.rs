@@ -12,9 +12,9 @@ pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_85175625-e190-
 
 pub static DOCTESTFILE: &str = "examples/documents/85175625-e190-40a8-8e58-06451e281809:bc884da1-30c3-4f96-8560-55f723c6fa98.json";
 pub static AGENTONE: &str =
-    "8be91198-fcff-4a54-92da-cb163c2159a8:ef4e558f-7b0b-4ab9-b8c1-21265c34f813";
+    "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
 pub static AGENTTWO: &str =
-    "0ea9b672-9fae-4073-a3d8-875d29f779a1:cbdc7cee-313b-4583-903d-bcb6b5e2fa1d";
+    "0f6bb6e8-f27c-4cf7-bb2e-01b647860680:a55739af-a3c8-4b4a-9f24-200313ee4229";
 
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
