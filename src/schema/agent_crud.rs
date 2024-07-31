@@ -37,6 +37,7 @@ pub fn create_minimal_agent(
         "jacsAgentType": agent_type,
         "jacsType": "agent",
         "jacsServices": services,
+        "jacsLevel": "config"
     });
 
     if let Some(contacts) = contacts {

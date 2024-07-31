@@ -32,6 +32,7 @@ The basis for a JACS document
 | [jacsSha256](#jacssha256)                   | `string` | Optional | cannot be null | [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")                         |
 | [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")                           |
 | [jacsEmbedding](#jacsembedding)             | `array`  | Optional | cannot be null | [Header](header-properties-jacsembedding.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding")                   |
+| [jacsLevel](#jacslevel)                     | `string` | Required | cannot be null | [Header](header-properties-jacslevel.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsLevel")                           |
 
 ## jacsId
 
@@ -308,3 +309,32 @@ A set of precalculated vector embeddings
 ### jacsEmbedding Type
 
 `object[]` ([Embedding](header-properties-jacsembedding-embedding.md))
+
+## jacsLevel
+
+What is the intended use of the data? Raw data should not change, where as an artifact and config is meant to be updated.
+
+`jacsLevel`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacslevel.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsLevel")
+
+### jacsLevel Type
+
+`string`
+
+### jacsLevel Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value        | Explanation |
+| :----------- | :---------- |
+| `"raw"`      |             |
+| `"config"`   |             |
+| `"artifact"` |             |
+| `"derived"`  |             |

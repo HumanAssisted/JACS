@@ -22,6 +22,7 @@
 - default to only loading most recent version of document in load_all
 - fixed bug with naming file on update
 - changes to message schema to always include header
+- add jacsLevel to track general type of document and its mutability
 
 ## 0.2.13
 - save public key to local fs

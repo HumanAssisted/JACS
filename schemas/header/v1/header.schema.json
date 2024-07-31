@@ -81,6 +81,17 @@
       "items": {
         "$ref": "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json"
       }
+    },
+    "jacsLevel": {
+      "description": "What is the intended use of the data? Raw data should not change, where as an artifact and config is meant to be updated. ",
+      "hai": "meta",
+      "type": "string",
+      "enum": [
+        "raw",
+        "config",
+        "artifact",
+        "derived"
+      ]
     }
   },
   "required": [
@@ -90,6 +101,7 @@
     "jacsVersionDate",
     "jacsOriginalVersion",
     "jacsOriginalDate",
+    "jacsLevel",
     "$schema"
   ]
 }

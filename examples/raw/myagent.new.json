@@ -43,6 +43,7 @@
       "piiDesired": ["email", "phone"]
     }
   ],
+  "jacsLevel": "config",
   "jacsContacts": [
     {
       "phone": "123-456-7890",

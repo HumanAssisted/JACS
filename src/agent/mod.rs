@@ -661,6 +661,7 @@ impl Agent {
         }
         // schema.create will call this "document" otherwise
         instance["jacsType"] = json!("agent");
+        instance["jacsLevel"] = json!("config");
         instance["$schema"] = json!("https://hai.ai/schemas/agent/v1/agent.schema.json");
         instance[AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&instance, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;

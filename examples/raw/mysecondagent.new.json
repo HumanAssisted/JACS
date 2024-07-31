@@ -3,6 +3,7 @@
   "name": "Ralph",
   "jacsAgentType": "human",
   "jacsType": "agent",
+  "jacsLevel": "config",
   "description": "Guy with a bank account",
   "capabilities": [
     {

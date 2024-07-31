@@ -35,6 +35,8 @@ pub struct JACSDocument {
     pub jacs_type: String,
 }
 
+pub const EDITABLE_JACS_DOCS: &'static [&'static str] = &["config", "artifact"];
+pub const DEFAULT_JACS_DOC_LEVEL: &str = "raw";
 // extend with functions for types
 impl JACSDocument {
     pub fn getkey(&self) -> String {
@@ -508,6 +510,12 @@ impl DocumentTraits for Agent {
         let error_message = format!("original document {} not found", document_key);
         let original_document = self.get_document(document_key).expect(&error_message);
         let value = original_document.value.clone();
+        let jacs_level = new_document
+            .get_str("jacsLevel")
+            .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());
+        if (!EDITABLE_JACS_DOCS.contains(&jacs_level.as_str())) {
+            return Err(format!("JACS docs of type {} are not editable", jacs_level).into());
+        };
 
         let mut files_array: Vec<Value> = new_document
             .get("jacsFiles")

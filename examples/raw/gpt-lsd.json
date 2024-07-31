@@ -2,6 +2,7 @@
   "jacsType": "ecosystem",
   "ecosystem": {
     "name": "Enchanted Forest",
+    "jacsLevel": "config",
     "regions": [
       {
         "name": "Mystic Meadows",

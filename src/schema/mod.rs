@@ -22,6 +22,7 @@ pub mod task_crud;
 pub mod tools_crud;
 pub mod utils;
 
+use crate::agent::document::DEFAULT_JACS_DOC_LEVEL;
 use utils::{EmbeddedSchemaResolver, DEFAULT_SCHEMA_STRINGS};
 
 use std::error::Error;
@@ -795,7 +796,9 @@ impl Schema {
         instance["jacsVersionDate"] = json!(format!("{}", versioncreated));
         instance["jacsOriginalVersion"] = json!(format!("{}", original_version));
         instance["jacsOriginalDate"] = json!(format!("{}", versioncreated));
-
+        instance["jacsLevel"] = json!(instance
+            .get_str("jacsLevel")
+            .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string()));
         // if no schema is present insert standard header version
         if !instance.get_str("$schema").is_some() {
             instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));
