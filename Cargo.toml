@@ -73,7 +73,6 @@ futures-util = "0.3.30"
 
 
 [dev-dependencies]
-rusqlite = "0.31.0"
 color-eyre = "0.6"
 criterion = "0.5.1"
 mdbook = "0.4.37"
