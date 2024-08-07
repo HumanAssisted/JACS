@@ -22,6 +22,8 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
   4. create agreements between human and ai agents
   5. create agents and describe what they can do
   6. create tasks manage their state
+  7. Use with [OpenAI structured ouput](https://openai.com/index/introducing-structured-outputs-in-the-api/)
+
 
 ## Documentation
 
