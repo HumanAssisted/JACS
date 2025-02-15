@@ -6,6 +6,14 @@
 
 # COMPLETED
 
+## 0.3.2
+
+
+
+waiting to upgrade 
+https://github.com/rustpq/pqcrypto/issues/79
+
+
 
 ## 0.3.1
 - upgraded many dependencies using 
