@@ -10,6 +10,7 @@ use crate::crypt::hash::hash_string;
 use std::collections::HashMap;
 // use crate::schema::utils::get_short_name;
 use crate::schema::utils::ValueExt;
+use crate::schema::ValidationError;
 use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
@@ -238,15 +239,9 @@ impl DocumentTraits for Agent {
         let validator = schemas
             .get(schema_path)
             .ok_or_else(|| format!("Validator not found for path: {}", schema_path))?;
-        //.map(|schema| Arc::new(schema))
-        //.expect("REASON");
 
         let validation_result = validator.validate(json);
-        validation_result.map_err(|error| {
-            let error_message = error.to_string();
-            error!("{}", error_message);
-            Box::new(ValidationError(error_message)) as Box<dyn std::error::Error>
-        })?;
+        validation_result.map_err(|error| error.to_string())?;
 
         Ok(())
     }

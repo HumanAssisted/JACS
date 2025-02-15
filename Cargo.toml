@@ -70,6 +70,7 @@ validator = "0.18.1"
 uuid = { version = "1.13.1", features = ["v4", "v7", "js"] }
 env_logger = "0.11.6"
 futures-util = "0.3.31"
+referencing = "0.29.0"
 
 
 [dev-dependencies]
