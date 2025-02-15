@@ -71,6 +71,11 @@ uuid = { version = "1.13.1", features = ["v4", "v7", "js"] }
 env_logger = "0.11.6"
 futures-util = "0.3.31"
 referencing = "0.29.0"
+# [target.'cfg(target_os = "macos")'.dependencies]
+# pqcrypto-mldsa = { version = "0.1", default-features = false, features = ["serialization"] }
+
+# [target.'cfg(not(target_os = "macos"))'.dependencies]
+# pqcrypto-mldsa = { version = "0.1", features = ["serialization"] }
 
 
 [dev-dependencies]
@@ -89,7 +94,7 @@ pqcrypto-traits = "0.3.5"
 ring = "0.17.9"
 reqwest = {  version ="0.12.12", features = ["blocking", "json"] }
 walkdir = "2.5.0"
-object_store = { version ="0.10.2", features = ["serde","serde_json", "aws", "http"] }
+object_store = { version ="0.11.2", features = ["serde","serde_json", "aws", "http"] }
 
  [target.'cfg(target_arch = "wasm32")'.dependencies]
  wasm-bindgen = "0.2.100"
