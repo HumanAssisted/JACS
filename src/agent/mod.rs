@@ -20,7 +20,7 @@ use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 use crate::schema::utils::{resolve_schema, EmbeddedSchemaResolver, ValueExt};
 use crate::schema::Schema;
 use chrono::prelude::*;
-use jsonschema::{Draft, JSONSchema};
+use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use log::{debug, error};
 use serde_json::{json, to_value, Value};
@@ -86,16 +86,6 @@ impl PrivateKey {
     }
 }
 
-// impl PrivateKey {
-//     pub fn with_secret<F, R>(&self, f: F) -> R
-//     where
-//         F: FnOnce(&[u8]) -> R,
-//     {
-//         let decrypted_key = decrypt_private_key(&self.0).expect("use_secret decrypt failed");
-//         f(&decrypted_key)
-//     }
-// }
-
 /// Use this alias when storing secret values
 pub type SecretPrivateKey = Secret<PrivateKey>;
 
@@ -108,7 +98,7 @@ pub struct Agent {
     value: Option<Value>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
-    document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
+    document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     default_directory: PathBuf,
     /// everything needed for the agent to sign things
@@ -623,10 +613,10 @@ impl Agent {
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
             let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
-            let schema = JSONSchema::options()
-                .with_resolver(EmbeddedSchemaResolver::new())
+            let schema = Validator::options()
                 .with_draft(Draft::Draft7)
-                .compile(&schema_value)
+                .with_resolver(EmbeddedSchemaResolver::new())
+                .build(&schema_value)
                 .map_err(|e| e.to_string())?;
             schemas.insert(path.clone(), schema);
         }

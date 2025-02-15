@@ -100,7 +100,16 @@ impl ValueExt for Value {
     }
 }
 
-/// Custom Resolver that resolves schemas from memory
+/// A schema resolver that primarily uses embedded schemas, with fallbacks to local filesystem
+/// and remote URLs. This resolver is used to fetch JSON schemas for document validation.
+///
+/// Resolution order:
+/// 1. Check embedded schemas (DEFAULT_SCHEMA_STRINGS)
+/// 2. For https://hai.ai URLs: Check embedded schemas with stripped prefix
+/// 3. For other URLs: Attempt remote fetch (except in WASM)
+/// 4. Check local filesystem
+///
+/// Security note: This implementation allows fetching from arbitrary URLs and filesystem locations.
 pub struct EmbeddedSchemaResolver {}
 
 impl EmbeddedSchemaResolver {
@@ -122,6 +131,12 @@ impl SchemaResolver for EmbeddedSchemaResolver {
     }
 }
 
+/// Fetches a schema from a remote URL using reqwest.
+///
+/// Security: This function accepts invalid certificates and makes unrestricted HTTP requests.
+/// It should only be used in development or controlled environments.
+///
+/// Not available in WASM builds.
 #[cfg(not(target_arch = "wasm32"))]
 fn get_remote_schema(url: &str) -> Result<Arc<Value>, SchemaResolverError> {
     let client = reqwest::blocking::Client::builder()
@@ -159,6 +174,8 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, SchemaResolverError> {
     }
 }
 
+/// Disabled version of remote schema fetching for WASM targets.
+/// Always returns an error indicating remote schemas are not supported.
 #[cfg(target_arch = "wasm32")]
 fn get_remote_schema(url: &str) -> Result<Arc<Value>, SchemaResolverError> {
     Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
@@ -169,7 +186,27 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, SchemaResolverError> {
     )))
 }
 
-// todo handle case for url retrieval
+/// Resolves a schema from various sources based on the provided path.
+///
+/// # Arguments
+/// * `rawpath` - The path or URL to the schema. Can be:
+///   - A key in DEFAULT_SCHEMA_STRINGS
+///   - A https://hai.ai URL (will be converted to embedded schema)
+///   - A remote URL (will attempt fetch)
+///   - A local filesystem path
+///
+/// # Resolution Order
+/// 1. Removes leading slash if present
+/// 2. Checks DEFAULT_SCHEMA_STRINGS for direct match
+/// 3. For URLs:
+///    - hai.ai URLs: Converts to embedded schema lookup
+///    - Other URLs: Attempts remote fetch
+/// 4. Checks local filesystem
+///
+/// # Security Considerations
+/// - Allows unrestricted remote URL fetching
+/// - Allows unrestricted filesystem access
+/// - Accepts invalid SSL certificates for remote fetching
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
     let schema_value: Value;

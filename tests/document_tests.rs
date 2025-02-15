@@ -2,7 +2,7 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
-use jsonschema::{CompilationOptions, Draft, JSONSchema};
+use jsonschema::{Draft, Validator};
 mod utils;
 use utils::DOCTESTFILE;
 use utils::DOCTESTFILECONFIG;
