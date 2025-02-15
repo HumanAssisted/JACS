@@ -1,7 +1,7 @@
 # Untitled integer in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/reseponseTimeout
+https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/reseponseTimeout
 ```
 
 How long to wait for a response.

@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::agent::Agent;
 use log::debug;

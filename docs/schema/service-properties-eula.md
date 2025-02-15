@@ -1,7 +1,7 @@
 # Untitled string in Service Schema
 
 ```txt
-https://hai.ai/schemas/service/v1/service-schema.json#/properties/eula
+https://hai.ai/schemas/service/v1/service.schema.json#/properties/eula
 ```
 
 End user license agreement

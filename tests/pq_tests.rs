@@ -1,5 +1,6 @@
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::crypt::aes_encrypt::decrypt_private_key;
 use jacs::crypt::KeyManager;
 use secrecy::ExposeSecret;
 use std::env;
@@ -42,7 +43,7 @@ fn test_pq_create_and_verify_signature() {
     let public = agent.get_public_key().unwrap();
     let binding = agent.get_private_key().unwrap();
     let borrowed_key = binding.expose_secret();
-    let key_vec = borrowed_key.use_secret();
+    let key_vec = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
     println!(
         "loaded keys {} {} ",
         std::str::from_utf8(&key_vec).expect("Failed to convert bytes to string"),

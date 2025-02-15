@@ -4,7 +4,7 @@
 https://hai.ai/schemas/node/v1/node.schema.json#/properties/responsibleAgent
 ```
 
-agent responsible for executing, implies tools and services
+Agent doing the evaluation, implies tools and services
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                          |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :---------------------------------------------------------------------------------- |

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/components/action/v1/action-schema.json",
+  "$id": "https://hai.ai/schemas/components/action/v1/action.schema.json",
   "title": "Action",
   "description": "General actions definitions which can comprise a service. Distinct from function calling.",
   "type": "object",

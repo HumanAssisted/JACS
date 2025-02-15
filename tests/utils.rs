@@ -1,5 +1,5 @@
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::agent::Agent;
 use log::debug;
@@ -8,8 +8,15 @@ use std::fs;
 use std::path::PathBuf;
 
 use std::env;
+pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
 
-pub static DOCTESTFILE: &str = "examples/documents/9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
+pub static DOCTESTFILE: &str = "examples/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
+pub static DOCTESTFILECONFIG: &str = "examples/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
+
+pub static AGENTONE: &str =
+    "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
+pub static AGENTTWO: &str =
+    "0f6bb6e8-f27c-4cf7-bb2e-01b647860680:a55739af-a3c8-4b4a-9f24-200313ee4229";
 
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
@@ -90,8 +97,7 @@ pub fn load_test_agent_one() -> Agent {
 
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    let agentid =
-        "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41".to_string();
+    let agentid = AGENTONE.to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -120,19 +126,22 @@ pub fn load_test_agent_two() -> Agent {
         .expect("Agent schema should have instantiated");
     debug!("load_test_agent_two: agent instantiated");
 
+    // let _ = agent.fs_preload_keys(
+    //     &"agent-two.private.pem".to_string(),
+    //     &"agent-two.public.pem".to_string(),
+    //     Some("RSA-PSS".to_string()),
+    // );
+
+    // created agent two with agent one keys
     let _ = agent.fs_preload_keys(
-        &"agent-two.private.pem".to_string(),
-        &"agent-two.public.pem".to_string(),
+        &"agent-one.private.pem".to_string(),
+        &"agent-one.public.pem".to_string(),
         Some("RSA-PSS".to_string()),
     );
+
     debug!("load_test_agent_two: keys preloaded");
 
-    let result = agent.load_by_id(
-        Some(
-            "9f62bc98-b871-4c26-a5c9-29457e291448:15da36cb-a131-41cc-b1df-3afeec6acc74".to_string(),
-        ),
-        None,
-    );
+    let result = agent.load_by_id(Some(AGENTTWO.to_string()), None);
     debug!("load_test_agent_two: load_by_id called");
     match result {
         Ok(_) => {

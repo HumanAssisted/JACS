@@ -1,4 +1,6 @@
 {
+  "jacsType": "ecosystem",
+  "jacsLevel": "config",
   "ecosystem": {
     "name": "Enchanted Forest",
     "regions": [

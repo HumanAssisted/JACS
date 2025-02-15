@@ -1,5 +1,5 @@
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{Document, JACSDocument};
+use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;
@@ -59,6 +59,9 @@ pub trait Agreement {
         agreement_fieldname: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
 
+    /// given a document, check all agreement signatures
+    fn has_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>>;
+
     /// agreements update documents
     /// however this updates the document, which updates, version, lastversion and version date
     /// the agreement itself needs it's own hash to track
@@ -95,6 +98,16 @@ impl Agreement for Agent {
         Ok(hash_string(&values_as_string))
     }
 
+    /// ineffienct because it doesn't pull from the document
+    fn has_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>> {
+        let document = self.get_document(document_key)?;
+        let agreement_fieldname_key = AGENT_AGREEMENT_FIELDNAME.to_string();
+        let agreement_field = document.value.get(&agreement_fieldname_key);
+        if agreement_field.is_some() {
+            return Ok(true);
+        }
+        return Ok(false);
+    }
     // ignore these extra fields will change
     fn trim_fields_for_hashing_and_signing(
         &self,

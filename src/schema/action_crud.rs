@@ -8,6 +8,7 @@ pub fn create_minimal_action(
 ) -> Value {
     let mut action = json!({
         "description": description,
+
     });
 
     if let Some(tools) = tools {

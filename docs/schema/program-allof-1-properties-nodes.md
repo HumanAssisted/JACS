@@ -1,4 +1,4 @@
-# Untitled array in Evaluation Schema
+# Untitled array in Program Schema
 
 ```txt
 https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes
@@ -12,4 +12,4 @@ list of evaluation units, informatio labels
 
 ## nodes Type
 
-`object[]` ([Unit](program-allof-1-properties-nodes-unit.md))
+`object[]` ([Node](program-allof-1-properties-nodes-node.md))

@@ -3,9 +3,10 @@ pub mod boilerplate;
 pub mod document;
 pub mod loaders;
 pub mod security;
+pub mod storage;
 
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{Document, JACSDocument};
+use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::crypt::hash::hash_public_key;
 use std::fs;
 
@@ -19,10 +20,9 @@ use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 use crate::schema::utils::{resolve_schema, EmbeddedSchemaResolver, ValueExt};
 use crate::schema::Schema;
 use chrono::prelude::*;
-use jsonschema::{Draft, JSONSchema};
+use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use log::{debug, error};
-use reqwest;
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
 use std::env;
@@ -32,6 +32,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use url::Url;
 use uuid::Uuid;
+
+use secrecy::zeroize::{DefaultIsZeroes, Zeroize};
+use secrecy::{ExposeSecret, SecretBox};
 
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
@@ -48,7 +51,7 @@ pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
-pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsLastVersion";
+pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsPreviousVersion";
 
 pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     SHA256_FIELDNAME,
@@ -60,44 +63,14 @@ pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     TASK_END_AGREEMENT_FIELDNAME,
 ];
 
-use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
+// Just use Vec<u8> directly since it already implements the needed traits
+pub type PrivateKey = Vec<u8>;
+pub type SecretPrivateKey = SecretBox<Vec<u8>>;
 
-#[derive(Clone)]
-pub struct PrivateKey(Vec<u8>);
-
-impl Zeroize for PrivateKey {
-    fn zeroize(&mut self) {
-        self.0.zeroize();
-    }
+// If we need any specific methods for private key operations:
+pub fn use_secret(key: &[u8]) -> Vec<u8> {
+    decrypt_private_key(key).expect("use_secret decrypt failed")
 }
-
-/// Permits cloning
-impl CloneableSecret for PrivateKey {}
-
-/// Provides a `Debug` impl (by default `[[REDACTED]]`)
-impl DebugSecret for PrivateKey {}
-
-impl PrivateKey {
-    /// A method that operates on the private key.
-    /// This method is just an example; it prints the length of the private key.
-    /// Replace this with your actual cryptographic operation.
-    pub fn use_secret(&self) -> Vec<u8> {
-        decrypt_private_key(&self.0).expect("use_secret decrypt failed")
-    }
-}
-
-// impl PrivateKey {
-//     pub fn with_secret<F, R>(&self, f: F) -> R
-//     where
-//         F: FnOnce(&[u8]) -> R,
-//     {
-//         let decrypted_key = decrypt_private_key(&self.0).expect("use_secret decrypt failed");
-//         f(&decrypted_key)
-//     }
-// }
-
-/// Use this alias when storing secret values
-pub type SecretPrivateKey = Secret<PrivateKey>;
 
 #[derive(Debug)]
 pub struct Agent {
@@ -108,7 +81,7 @@ pub struct Agent {
     value: Option<Value>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
-    document_schemas: Arc<Mutex<HashMap<String, JSONSchema>>>,
+    document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     default_directory: PathBuf,
     /// everything needed for the agent to sign things
@@ -170,7 +143,6 @@ impl Agent {
         let lookup_id = id
             .or_else(|| env::var("JACS_AGENT_ID_AND_VERSION").ok())
             .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
-
         let agent_string = self.fs_agent_load(&lookup_id)?;
         return self.load(&agent_string);
     }
@@ -186,20 +158,16 @@ impl Agent {
         key_algorithm: &String,
     ) -> Result<(), Box<dyn Error>> {
         let private_key_encrypted = encrypt_private_key(&private_key)?;
-        self.private_key = Some(Secret::new(PrivateKey(private_key_encrypted))); //Some(private_key);
+        // Box the Vec<u8> before creating SecretBox
+        self.private_key = Some(SecretBox::new(Box::new(private_key_encrypted)));
         self.public_key = Some(public_key);
-        //TODO check algo
         self.key_algorithm = Some(key_algorithm.to_string());
         Ok(())
     }
 
-    // todo keep this as private
-    pub fn get_private_key(&self) -> Result<Secret<PrivateKey>, Box<dyn Error>> {
+    pub fn get_private_key(&self) -> Result<&SecretPrivateKey, Box<dyn Error>> {
         match &self.private_key {
-            Some(private_key) => {
-                // Ok(self.private_key.map(|secret| secret.into()).expect("REASON"))
-                Ok(private_key.clone())
-            }
+            Some(private_key) => Ok(private_key),
             None => Err("private_key is None".into()),
         }
     }
@@ -573,7 +541,7 @@ impl Agent {
         let last_version = &original_self["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        new_self["jacsLastVersion"] = last_version.clone();
+        new_self["jacsPreviousVersion"] = last_version.clone();
         new_self["jacsVersion"] = json!(format!("{}", new_version));
         new_self["jacsVersionDate"] = json!(format!("{}", versioncreated));
 
@@ -624,9 +592,10 @@ impl Agent {
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
             let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
-            let schema = JSONSchema::options()
+            let schema = Validator::options()
                 .with_draft(Draft::Draft7)
-                .compile(&schema_value)
+                .with_retriever(EmbeddedSchemaResolver::new())
+                .build(&schema_value)
                 .map_err(|e| e.to_string())?;
             schemas.insert(path.clone(), schema);
         }
@@ -659,6 +628,9 @@ impl Agent {
         if self.public_key.is_none() || self.private_key.is_none() {
             let _ = self.fs_load_keys()?;
         }
+        // schema.create will call this "document" otherwise
+        instance["jacsType"] = json!("agent");
+        instance["jacsLevel"] = json!("config");
         instance["$schema"] = json!("https://hai.ai/schemas/agent/v1/agent.schema.json");
         instance[AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&instance, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;

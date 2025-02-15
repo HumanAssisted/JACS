@@ -1,5 +1,5 @@
 use crate::agent::agreement::Agreement;
-use crate::agent::document::Document;
+use crate::agent::document::DocumentTraits;
 use crate::agent::document::JACSDocument;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::TASK_END_AGREEMENT_FIELDNAME;

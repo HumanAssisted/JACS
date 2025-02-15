@@ -1,11 +1,34 @@
-PLANNED
-
+# PLANNED
+- encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
-- gzip local files
-- update libs based on devin work
-- store files by type (eval, program, node, task, actor, message)
-- WASM option
+- WASM builds
+
+# COMPLETED
+
+
+## 0.3.1
+- upgraded many dependencies using 
+    cargo install cargo-edit
+    cargo upgrade
+    
+## 0.3.0
+- added jacsType - free naming, but required field for end-user naming of file type, with defaults to "document"
+- TODO update jsonschema library
+- updated strum, criterion
+- updated reqwest library
+- fixed bug EmbeddedSchemaResolver not used for custom schemas
+- added load_all() for booting up  
+- WIP move all fileio to object_store 
+- WIP way to mark documents as not active - separate folder, or just reference them from other docs
+- fixed issue with filepaths for agents and keys
+- added jacsType to to jacs document as required
+- added archive old version, to move older versions of docs to different folder
+- added jacsEmbedding to headers, which allow persistance of vector embeddings iwth jacs docs. 
+- default to only loading most recent version of document in load_all
+- fixed bug with naming file on update
+- changes to message schema to always include header
+- add jacsLevel to track general type of document and its mutability
 
 ## 0.2.13
 - save public key to local fs

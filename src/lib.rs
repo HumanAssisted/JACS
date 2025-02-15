@@ -1,4 +1,4 @@
-use crate::agent::document::Document;
+use crate::agent::document::DocumentTraits;
 use crate::shared::save_document;
 use log::error;
 
@@ -93,19 +93,11 @@ pub fn create_task(
         .value;
     let validation_result = agent.schema.taskschema.validate(&task_value);
     match validation_result {
-        Ok(_) => {
-            return Ok(task_value.to_string());
-        }
-        Err(errors) => {
+        Ok(_) => Ok(task_value.to_string()),
+        Err(error) => {
             error!("error validating task");
-            let error_messages: Vec<String> = errors.into_iter().map(|e| e.to_string()).collect();
-            return Err(error_messages
-                .first()
-                .cloned()
-                .unwrap_or_else(|| {
-                    "Unexpected error during validation: no error messages found".to_string()
-                })
-                .into());
+            let error_message = error.to_string();
+            Err(error_message.into())
         }
     }
 }

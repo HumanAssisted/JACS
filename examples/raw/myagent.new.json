@@ -1,7 +1,8 @@
 {
-  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
   "name": "Agent Smith",
   "jacsAgentType": "ai",
+  "jacsType": "agent",
   "description": "An agent without keys, id or version, that hasn't been signed yet.",
   "jacsServices": [
     {
@@ -42,6 +43,7 @@
       "piiDesired": ["email", "phone"]
     }
   ],
+  "jacsLevel": "config",
   "jacsContacts": [
     {
       "phone": "123-456-7890",

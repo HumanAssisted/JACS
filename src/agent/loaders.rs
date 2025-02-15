@@ -7,10 +7,10 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use regex::Regex;
 use secrecy::ExposeSecret;
-
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
+use walkdir::WalkDir;
 
 use chrono::Utc;
 use log::{debug, error, info, warn};
@@ -40,14 +40,14 @@ pub fn use_filesystem() -> bool {
 pub trait FileLoader {
     // utils
     fn build_filepath(&self, doctype: &String, docid: &String) -> Result<PathBuf, Box<dyn Error>>;
+    fn build_file_directory(&self, doctype: &String) -> Result<PathBuf, Box<dyn Error>>;
     fn build_key_filepath(
         &self,
         doctype: &String,
         key_filename: &String,
     ) -> Result<PathBuf, Box<dyn Error>>;
 
-    // init
-    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Box<dyn Error>>;
+    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>>;
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>>;
     // fn fs_agent_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
     // fn fs_document_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
@@ -72,8 +72,11 @@ pub trait FileLoader {
         &self,
         document_id: &String,
         document_string: &String,
+        document_directory: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
+
+    fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn std::error::Error>>;
 
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
@@ -88,11 +91,11 @@ pub trait FileLoader {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileLoader for Agent {
-    fn build_filepath(&self, doctype: &String, docid: &String) -> Result<PathBuf, Box<dyn Error>> {
+    fn build_file_directory(&self, doctype: &String) -> Result<PathBuf, Box<dyn Error>> {
         if !use_filesystem() {
             let error_message = format!(
-                " build_filepathFilesystem features set to off with JACS_USE_FILESYSTEM: {} {}",
-                doctype, docid
+                " build_file_directory Filesystem features set to off with JACS_USE_FILESYSTEM:  {}",
+                doctype
             );
             error!("{}", error_message);
             return Err(error_message.into());
@@ -102,7 +105,10 @@ impl FileLoader for Agent {
         let jacs_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
 
         let path = current_dir.join(jacs_dir).join(doctype);
-
+        return Ok(path);
+    }
+    fn build_filepath(&self, doctype: &String, docid: &String) -> Result<PathBuf, Box<dyn Error>> {
+        let path = self.build_file_directory(doctype)?;
         let filename = if docid.ends_with(".json") {
             docid.to_string()
         } else {
@@ -133,14 +139,15 @@ impl FileLoader for Agent {
 
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
         let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
-        let default_dir = Path::new(pathstring);
+        let current_dir = env::current_dir()?;
+        let path = current_dir.join(pathstring);
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
-        let key_vec = borrowed_key.use_secret();
-        let _ = save_private_key(&default_dir, &private_key_filename, &key_vec)?;
+        let key_vec = decrypt_private_key(borrowed_key)?;
+        let _ = save_private_key(&path, &private_key_filename, &key_vec)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
-        let _ = save_file(&default_dir, &public_key_filename, &self.get_public_key()?);
+        let _ = save_file(&path, &public_key_filename, &self.get_public_key()?);
         Ok(())
     }
 
@@ -148,11 +155,14 @@ impl FileLoader for Agent {
         //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
         //todo use filepath builder
         let default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        let current_dir = env::current_dir()?;
+        let path = current_dir.join(default_dir).to_str().unwrap().to_string();
+        debug!("loading keys from: {:?}", path);
 
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
-        let private_key = load_private_key(&default_dir, &private_key_filename)?;
+        let private_key = load_private_key(&path, &private_key_filename)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
-        let public_key = load_key_file(&default_dir, &public_key_filename)?;
+        let public_key = load_key_file(&path, &public_key_filename)?;
 
         let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
         self.set_keys(private_key, public_key, &key_algorithm)
@@ -210,9 +220,37 @@ impl FileLoader for Agent {
         self.set_keys(private_key, public_key, &key_algorithm)
     }
 
-    /// on instantiation load and validata all local documents
-    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Box<dyn Error>> {
-        Err(not_implemented_error())
+    /// function used to load all documents present
+    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+        let mut errors: Vec<Box<dyn Error>> = Vec::new();
+        let mut documents: Vec<String> = Vec::new();
+        let mut paths: Vec<PathBuf> = Vec::new();
+        let agent_path = self.build_file_directory(&"agent".to_string()).unwrap();
+        paths.push(agent_path);
+        let document_path = self.build_file_directory(&"documents".to_string()).unwrap();
+        paths.push(document_path);
+        for path in paths {
+            // now walk the directory using walkdir crate
+            for entry in WalkDir::new(path)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_file())
+            {
+                let document_string = fs::read_to_string(entry.path());
+                match document_string {
+                    Ok(doc) => {
+                        documents.push(doc);
+                    }
+                    Err(e) => {
+                        errors.push(Box::new(e));
+                    }
+                }
+            }
+        }
+        if errors.len() > 0 {
+            error!("errors loading documents {:?}", errors);
+        }
+        Ok(documents)
     }
 
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
@@ -224,6 +262,7 @@ impl FileLoader for Agent {
                 Ok(data.to_string())
             }
             Err(e) => {
+                error!("agentpath {:?} error {:?}", agentpath, e);
                 panic!(
                     "Failed to find agent: agentid {} \nat agentpath {:?} \n{} ",
                     agentid, agentpath, e
@@ -253,32 +292,44 @@ impl FileLoader for Agent {
         Ok(save_to_filepath(&agentpath, agent_string.as_bytes())?)
     }
 
+    fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn std::error::Error>> {
+        let document_filename = format!("{}.json", lookup_key).to_string();
+        let old_path = self.build_filepath(&"documents".to_string(), &document_filename)?;
+        let new_path = self.build_filepath(&"documents/archive".to_string(), &document_filename)?;
+
+        println!("old_path: {:?} new_path {:?}", old_path, new_path);
+        return Ok(fs::rename(old_path, new_path)?);
+    }
+
     fn fs_document_save(
         &self,
         document_id: &String,
         document_string: &String,
+        document_directory: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
         if let Err(e) = check_data_directory() {
             error!("Failed to check data directory: {}", e);
         }
         let documentoutput_filename = match output_filename {
-            Some(filname) => {
-                // optional add jacs
-                let re = Regex::new(r"(\.[^.]+)$").unwrap();
-                let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
-                let signed_filename = if already_signed.is_match(&filname) {
-                    filname.to_string() // Do not modify if '.jacs' is already there
-                } else {
-                    re.replace(&filname, ".jacs$1").to_string() // Append '.jacs' before the extension
-                };
-                signed_filename
-            }
+            Some(filename) => filename,
+
+            // {
+            //     // optional add jacs
+            //     let re = Regex::new(r"(\.[^.]+)$").unwrap();
+            //     let already_signed = Regex::new(r"\.jacs\.[^.]+$").unwrap();
+            //     let signed_filename = if already_signed.is_match(&filename) {
+            //         filname.to_string() // Do not modify if '.jacs' is already there
+            //     } else {
+            //         re.replace(&filname, ".jacs$1").to_string() // Append '.jacs' before the extension
+            //     };
+            //     signed_filename
+            // }
+            // fix this
             _ => document_id.to_string(),
         };
 
-        let document_path =
-            self.build_filepath(&"documents".to_string(), &documentoutput_filename)?;
+        let document_path = self.build_filepath(document_directory, &documentoutput_filename)?;
         info!("saving {:?} ", document_path);
         Ok(save_to_filepath(
             &document_path,
@@ -293,7 +344,7 @@ impl FileLoader for Agent {
 
         // Check if the file path is a local filesystem path
         if !Path::new(&document_filepath).is_file() {
-            println!("document_filepath ? {}", document_filepath);
+            error!("document_filepath ? {}", document_filepath);
             return Err("File not found, only local filesystem paths are supported.".into());
         }
 
@@ -382,6 +433,7 @@ fn load_key_file(file_path: &String, filename: &String) -> std::io::Result<Vec<u
         fs::create_dir_all(parent)?;
     }
     let full_path = Path::new(file_path).join(filename);
+    debug!("load_key_file path {:?}", full_path);
     return std::fs::read(full_path);
 }
 

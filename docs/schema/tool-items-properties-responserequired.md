@@ -1,7 +1,7 @@
 # Untitled boolean in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/responseRequired
+https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/responseRequired
 ```
 
 Will the tool require waiting for a response. Default true.

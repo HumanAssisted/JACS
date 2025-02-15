@@ -1,7 +1,7 @@
 # Untitled string in Service Schema
 
 ```txt
-https://hai.ai/schemas/service/v1/service-schema.json#/properties/privacyPolicy
+https://hai.ai/schemas/service/v1/service.schema.json#/properties/privacyPolicy
 ```
 
 How data will be used

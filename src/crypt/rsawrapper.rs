@@ -1,12 +1,11 @@
 use base64::{decode, encode};
 use log::debug;
-use rand::rngs::OsRng;
-use rand::thread_rng;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
 use rsa::pss::VerifyingKey;
 use rsa::pss::{BlindedSigningKey, Signature};
+use rsa::rand_core::OsRng;
 use rsa::sha2::Sha256;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use signature::{RandomizedSigner, SignatureEncoding, Verifier}; // Correctly import VerifyingKey
@@ -39,9 +38,8 @@ pub fn sign_string(
     let private_key_content_converted =
         std::str::from_utf8(&private_key_content).expect("Failed to convert bytes to string");
     let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_content_converted)?;
-    let mut rng = thread_rng();
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
-    let signature = signing_key.sign_with_rng(&mut rng, data.as_bytes());
+    let signature = signing_key.sign_with_rng(&mut OsRng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
     let signature_base64 = encode(&signature_bytes);
     // TODO

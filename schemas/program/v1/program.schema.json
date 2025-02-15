@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/program/v1/eval.program.json",
-  "title": "Evaluation",
+  "title": "Program",
   "description": "A signed, immutable message evaluation an agent's performance on a task",
   "type": "object",
   "allOf": [
@@ -28,29 +28,47 @@
           "description": "task being processed, a description can be found there.",
           "format": "uuid"
         },
+        "activeNodeIDs": {
+          "type": "array",
+          "hai": "meta",
+          "description": "task being processed, a description can be found there.",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
         "datetime": {
           "description": "Date of evaluation",
           "format": "date-time",
           "hai": "agent",
           "type": "string"
         },
-        "qualityDescription": {
+        "requirements": {
           "type": "string",
-          "description": "When prompting an agent, is there text provided with the agreement?",
+          "description": "What are the goals for the program",
           "hai": "agent"
+        },
+        "changes": {
+          "type": "array",
+          "description": "What changes were made to the plan along the way and why.",
+          "hai": "agent",
+          "items": {
+            "type": "string"
+          }
         },
         "nodes": {
           "type": "array",
           "description": "list of evaluation units, informatio labels",
           "items": {
-            "$ref": "https://hai.ai/schemas/components/unit/v1/unit.schema.json"
+            "$ref": "https://hai.ai/schemas/node/v1/node.schema.json"
           }
         }
       },
       "required": [
         "id",
         "taskID",
-        "nodes"
+        "nodes",
+        "requirements"
       ],
       "additionalProperties": false
     }

@@ -1,20 +1,15 @@
 use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
-use jacs::agent::loaders::FileLoader;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
-use jacs::crypt::KeyManager;
 use secrecy::ExposeSecret;
 mod utils;
+use jacs::crypt::aes_encrypt::decrypt_private_key;
 
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
-
-static DOCID: &str = "3f2b7816-2200-4b66-b13e-d9522a05ceb8:40a60489-45d9-4e46-9b25-870d0c3ff9a6";
+use utils::{load_local_document, load_test_agent_one, load_test_agent_two, DOCTESTFILECONFIG};
 
 #[test]
 fn test_create_agreement() {
-    let DOCUMENT_PATH = format!("examples/documents/{}.json", DOCID);
     // cargo test   --test agreement_test -- --nocapture test_create_agreement
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
@@ -22,7 +17,7 @@ fn test_create_agreement() {
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCUMENT_PATH).unwrap();
+    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document
@@ -60,14 +55,13 @@ fn test_create_agreement() {
 
 #[test]
 fn test_add_and_remove_agents() {
-    let DOCUMENT_PATH = format!("examples/documents/{}.json", DOCID);
     // cargo test   --test agreement_test -- --nocapture test_add_and_remove_agents
     let mut agent = load_test_agent_one();
     let agents_orig: Vec<String> = vec!["mariko".to_string(), "takeda".to_string()];
     let agents_to_add: Vec<String> = vec!["gaijin".to_string()];
     let agents_to_remove: Vec<String> = vec!["mariko".to_string()];
 
-    let document_string = load_local_document(&DOCUMENT_PATH).unwrap();
+    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     let mut doc_v1 = agent
@@ -133,8 +127,7 @@ fn test_add_and_remove_agents() {
 }
 
 #[test]
-fn test_sign_agreement() {
-    let DOCUMENT_PATH = format!("examples/documents/{}.json", DOCID);
+fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
     // cargo test   --test agreement_test -- --nocapture test_sign_agreement
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
@@ -142,10 +135,10 @@ fn test_sign_agreement() {
     let a1k = agent.get_private_key().unwrap();
     let a2k = agent_two.get_private_key().unwrap();
     let borrowed_key = a1k.expose_secret();
-    let key_vec = borrowed_key.use_secret();
+    let key_vec = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
 
     let borrowed_key2 = a2k.expose_secret();
-    let key_vec2 = borrowed_key2.use_secret();
+    let key_vec2 = decrypt_private_key(borrowed_key2).expect("Failed to decrypt key 2");
 
     // println!(
     //     "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
@@ -159,7 +152,7 @@ fn test_sign_agreement() {
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCUMENT_PATH).unwrap();
+    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
     // agent one creates agreement document
@@ -249,4 +242,6 @@ fn test_sign_agreement() {
         )
         .unwrap();
     println!(" question {}, context {}", question, context);
+
+    Ok(())
 }

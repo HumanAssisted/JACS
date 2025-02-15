@@ -1,10 +1,12 @@
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
-use jsonschema::{CompilationOptions, Draft, JSONSchema};
+use jsonschema::{Draft, Validator};
 mod utils;
 use utils::DOCTESTFILE;
+use utils::DOCTESTFILECONFIG;
+use utils::TESTFILE_MODIFIED;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
@@ -15,9 +17,6 @@ use log::{error, info};
 // Define the correct absolute path for the custom schema
 static SCHEMA: &str = "examples/raw/custom.schema.json";
 
-static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_9a8f9f64-ec0c-4d8f-9b21-f7ff1f1dc2ad:fce5f150-f672-4a04-ac67-44c74ce27062.json";
-//color_eyre::install().unwrap();
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -26,6 +25,43 @@ mod tests {
     #[test]
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
+    }
+}
+
+#[test]
+fn test_load_all() {
+    // cargo test   --test document_tests -- --nocapture test_load_all
+    let mut agent = load_test_agent_one();
+    let save_docs = true;
+    let load_only_recent = true;
+    let all_docs = agent
+        .load_all(save_docs, load_only_recent)
+        .expect("load_all");
+    println!("all_docs {}  ", all_docs.len());
+}
+
+#[test]
+fn test_load_only_recent() {
+    // cargo test   --test document_tests -- --nocapture test_load_only_recent
+    let mut agent = load_test_agent_one();
+    let save_docs = true;
+    let load_only_recent = true;
+    let all_docs = agent
+        .load_all(save_docs, load_only_recent)
+        .expect("load_all");
+
+    // most recent version
+    // 85175625-e190-40a8-8e58-06451e281809:4223ba44-1a68-48d6-b0ed-de70006eb3e1
+    for doc in all_docs {
+        let id = doc.id.clone();
+        let version = doc.version.clone();
+        let key = doc.getkey();
+        if id == "85175625-e190-40a8-8e58-06451e281809"
+            && version != "4223ba44-1a68-48d6-b0ed-de70006eb3e1"
+        {
+            assert!(false, "test_load_only_recent failed");
+            println!("doc {}  ", key);
+        }
     }
 }
 
@@ -50,7 +86,7 @@ fn test_load_custom_schema_and_custom_document() {
         }
     }
 
-    let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
+    let document_string = match load_local_document(&DOCTESTFILECONFIG.to_string()) {
         Ok(content) => content,
         Err(e) => panic!(
             "Error in test_load_custom_schema_and_custom_document loading local document: {}",
@@ -139,7 +175,7 @@ fn test_create() {
 #[test]
 #[ignore]
 fn test_create_attachments() {
-    // RUST_BACKTRACE=1 cargo test --test document_tests test_create_attachments  --
+    // RUST_BACKTRACE=1 cargo test --test document_tests test_create_attachments  -- --nocapture
     utils::generate_new_docs_with_attachments(true);
 }
 
@@ -250,7 +286,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         },
     };
 
-    let document_string = match load_local_document(&DOCTESTFILE.to_string()) {
+    let document_string = match load_local_document(&DOCTESTFILECONFIG.to_string()) {
         Ok(content) => content,
         Err(e) => panic!("Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading local document: {}", e),
     };

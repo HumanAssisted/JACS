@@ -2,7 +2,7 @@ use chrono::DateTime;
 use chrono::Local;
 use clap::{value_parser, Arg, ArgAction, Command};
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::Agent;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::config::{set_env_vars, Config};
@@ -216,7 +216,7 @@ fn main() {
                         .arg(
                             Arg::new("output")
                                 .short('o')
-                                .help("Output filename. Filenames will always end with \"jacs.json\"")
+                                .help("Output filename. Filenames will always end with \"json\"")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -320,7 +320,7 @@ fn main() {
                         .arg(
                             Arg::new("output")
                                 .short('o')
-                                .help("Output filename. Filenames will always end with \"jacs.json\"")
+                                .help("Output filename. Filenames will always end with \"json\"")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -369,7 +369,7 @@ fn main() {
                         .arg(
                             Arg::new("output")
                                 .short('o')
-                                .help("Output filename. Filenames will always end with \"jacs.json\"")
+                                .help("Output filename. Filenames will always end with \"json\"")
                                 .value_parser(value_parser!(String)),
                         )
                         .arg(
@@ -736,14 +736,15 @@ fn main() {
 
                 let path = Path::new(new_filename);
                 let loading_filename = path.file_name().unwrap().to_str().unwrap();
-                let loading_filename_string = loading_filename.to_string();
+                // let loading_filename_string = loading_filename.to_string();
 
                 let new_document_key = updated_document.getkey();
+                let new_document_filename = format!("{}.json", new_document_key.clone());
                 // let document_key_string = new_document_key.to_string();
 
                 let intermediate_filename = match outputfilename {
                     Some(filename) => filename,
-                    None => &loading_filename_string,
+                    None => &new_document_filename,
                 };
 
                 if let Some(schema_file) = schema {
@@ -767,7 +768,7 @@ fn main() {
                 }
 
                 if no_save {
-                    println!("{}", new_document_key.to_string());
+                    println!("{}", &updated_document.getvalue());
                 } else {
                     agent
                         .save_document(
@@ -777,7 +778,7 @@ fn main() {
                             None,
                         )
                         .expect("save document");
-                    println!("created doc {}", new_document_key.to_string());
+                    println!("created doc {}", intermediate_filename);
                 }
             }
             Some(("sign-agreement", create_matches)) => {

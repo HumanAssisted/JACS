@@ -1,7 +1,7 @@
 # Untitled integer in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/pricingDescription
+https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/pricingDescription
 ```
 
 Is the function expensive, not expensive?

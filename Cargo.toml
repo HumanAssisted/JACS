@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.2.13"
+version = "0.3.1"
 edition = "2021"
 include = [
     "src/**/*",
@@ -14,6 +14,7 @@ include = [
     "schemas/components/service/v1/service.schema.json",
     "schemas/components/tool/v1/tool.schema.json",
     "schemas/components/contact/v1/contact.schema.json",
+    "schemas/components/component/v1/component.schema.json",
     "schemas/message/v1/message.schema.json",
     "schemas/node/v1/node.schema.json",
     "schemas/program/v1/program.schema.json",
@@ -41,39 +42,46 @@ build = "build.rs"
 
 
 [dependencies]
-base64 = "0.22.0"
-chrono = "0.4.35"
-jsonschema = "0.17.1"
-log = "0.4.21"
-pem = "3.0.3"
-rand = "0.8.5"
-rsa = { version= "0.9.6", features= ["sha2", "pem"]}
+base64 = "0.22.1"
+chrono = "0.4.39"
+jsonschema = { version = "0.29", features = ["resolve-http", "resolve-file"] }
+log = "0.4.25"
+pem = "3.0.4"
+rand = "0.9.0"
+rsa = { version= "0.9.7", features= ["sha2", "pem"]}
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0 "
+serde_json = "1.0"
 signature = "2.2.0"
-url = "2.5.0"
-sha2 = "0.10.6"
-phf = { version = "0.11.1", features = ["macros"] }
-strum = "0.24.1"
-strum_macros = "0.24.3"
-secrecy = "0.8.0"
+url = "2.5.4"
+sha2 = "0.10.8"
+phf = { version = "0.11.3", features = ["macros"] }
+strum = "0.27.0"
+strum_macros = "0.27.0"
+secrecy = "0.10.3"
 aes-gcm = "0.10.3"
-clap = "4.5.4"
-regex = "1.10.4"
-mime_guess = "2.0.4"
-flate2 = "1.0.28"
-encoding_rs = "0.8.34"
+clap = "4.5.29"
+regex = "1.11.1"
+mime_guess = "2.0.5"
+flate2 = "1.0.35"
+encoding_rs = "0.8.35"
 difference = "2.0.0"
 rpassword = "7.3.1"
-validator = "0.18.1"
-uuid = { version = "1.7.0", features = ["v4", "v7", "js"] }
-env_logger = "0.9.0"
+validator = "0.20.0"
+uuid = { version = "1.13.1", features = ["v4", "v7", "js"] }
+env_logger = "0.11.6"
+futures-util = "0.3.31"
+referencing = "0.29.0"
+# [target.'cfg(target_os = "macos")'.dependencies]
+# pqcrypto-mldsa = { version = "0.1", default-features = false, features = ["serialization"] }
+
+# [target.'cfg(not(target_os = "macos"))'.dependencies]
+# pqcrypto-mldsa = { version = "0.1", features = ["serialization"] }
+
 
 [dev-dependencies]
-rusqlite = "0.31.0"
 color-eyre = "0.6"
-criterion = "0.3"
-mdbook = "0.4.37"
+criterion = "0.5.1"
+mdbook = "0.4.44"
 
 
 [lib]
@@ -83,9 +91,13 @@ crate-type = ["cdylib", "rlib"]
 pqcrypto = "0.17.0"
 pqcrypto-dilithium = {version = "0.5.0", features=["serialization"] }
 pqcrypto-traits = "0.3.5"
-ring = "0.17.8"
-reqwest = {  version ="0.11.26", features = ["blocking", "json"] }
+ring = "0.17.9"
+reqwest = {  version ="0.12.12", features = ["blocking", "json"] }
 walkdir = "2.5.0"
+object_store = { version ="0.11.2", features = ["serde","serde_json", "aws", "http"] }
+
+ [target.'cfg(target_arch = "wasm32")'.dependencies]
+ wasm-bindgen = "0.2.100"
 
 [[bin]]
 name = "jacs"

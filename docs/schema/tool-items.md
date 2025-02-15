@@ -1,7 +1,7 @@
 # Untitled object in Tool Schema
 
 ```txt
-https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items
+https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items
 ```
 
 
@@ -18,12 +18,12 @@ https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items
 
 | Property                                  | Type      | Required | Nullable       | Defined by                                                                                                                                            |
 | :---------------------------------------- | :-------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [url](#url)                               | `string`  | Required | cannot be null | [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")                               |
-| [responseRequired](#responserequired)     | `boolean` | Optional | cannot be null | [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/responseRequired")     |
-| [reseponseTimeout](#reseponsetimeout)     | `integer` | Optional | cannot be null | [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/reseponseTimeout")     |
-| [retryTimes](#retrytimes)                 | `integer` | Optional | cannot be null | [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/retryTimes")                 |
-| [pricingDescription](#pricingdescription) | `integer` | Optional | cannot be null | [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/pricingDescription") |
-| [function](#function)                     | `object`  | Required | cannot be null | [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function")                     |
+| [url](#url)                               | `string`  | Required | cannot be null | [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/url")                               |
+| [responseRequired](#responserequired)     | `boolean` | Optional | cannot be null | [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/responseRequired")     |
+| [reseponseTimeout](#reseponsetimeout)     | `integer` | Optional | cannot be null | [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/reseponseTimeout")     |
+| [retryTimes](#retrytimes)                 | `integer` | Optional | cannot be null | [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/retryTimes")                 |
+| [pricingDescription](#pricingdescription) | `integer` | Optional | cannot be null | [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/pricingDescription") |
+| [function](#function)                     | `object`  | Required | cannot be null | [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function")                     |
 
 ## url
 
@@ -37,7 +37,7 @@ endpoint of the tool
 
 *   cannot be null
 
-*   defined in: [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/url")
+*   defined in: [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/url")
 
 ### url Type
 
@@ -59,7 +59,7 @@ Will the tool require waiting for a response. Default true.
 
 *   cannot be null
 
-*   defined in: [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/responseRequired")
+*   defined in: [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/responseRequired")
 
 ### responseRequired Type
 
@@ -77,7 +77,7 @@ How long to wait for a response.
 
 *   cannot be null
 
-*   defined in: [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/reseponseTimeout")
+*   defined in: [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/reseponseTimeout")
 
 ### reseponseTimeout Type
 
@@ -95,7 +95,7 @@ How many times to retry on failure.
 
 *   cannot be null
 
-*   defined in: [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/retryTimes")
+*   defined in: [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/retryTimes")
 
 ### retryTimes Type
 
@@ -113,7 +113,7 @@ Is the function expensive, not expensive?
 
 *   cannot be null
 
-*   defined in: [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/pricingDescription")
+*   defined in: [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/pricingDescription")
 
 ### pricingDescription Type
 
@@ -131,7 +131,7 @@ Is the function expensive, not expensive?
 
 *   cannot be null
 
-*   defined in: [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool-schema.json#/items/properties/function")
+*   defined in: [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function")
 
 ### function Type
 

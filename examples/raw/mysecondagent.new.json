@@ -1,7 +1,9 @@
 {
-  "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
   "name": "Ralph",
   "jacsAgentType": "human",
+  "jacsType": "agent",
+  "jacsLevel": "config",
   "description": "Guy with a bank account",
   "capabilities": [
     {

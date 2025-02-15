@@ -1,4 +1,4 @@
-# Evaluation Schema
+# Program Schema
 
 ```txt
 https://hai.ai/schemas/program/v1/eval.program.json
@@ -10,12 +10,12 @@ A signed, immutable message evaluation an agent's performance on a task
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [program.schema.json](../../schemas/program/v1/program.schema.json "open original schema") |
 
-## Evaluation Type
+## Program Type
 
-`object` ([Evaluation](program.md))
+`object` ([Program](program.md))
 
 all of
 
 *   [Header](task-allof-header.md "check type definition")
 
-*   [Untitled undefined type in Evaluation](program-allof-1.md "check type definition")
+*   [Untitled undefined type in Program](program-allof-1.md "check type definition")

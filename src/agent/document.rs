@@ -7,13 +7,16 @@ use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
+use std::collections::HashMap;
+// use crate::schema::utils::get_short_name;
 use crate::schema::utils::ValueExt;
-use chrono::Local;
-use chrono::Utc;
+use crate::schema::ValidationError;
+use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -25,13 +28,16 @@ use std::io::Write;
 use std::path::Path;
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JACSDocument {
     pub id: String,
     pub version: String,
     pub value: Value,
+    pub jacs_type: String,
 }
 
+pub const EDITABLE_JACS_DOCS: &'static [&'static str] = &["config", "artifact"];
+pub const DEFAULT_JACS_DOC_LEVEL: &str = "raw";
 // extend with functions for types
 impl JACSDocument {
     pub fn getkey(&self) -> String {
@@ -54,6 +60,7 @@ impl JACSDocument {
         return Err("no schema in doc or schema is not a string".into());
     }
 
+    /// use this to get the name of the
     pub fn getshortschema(&self) -> Result<String, Box<dyn Error>> {
         let longschema = self.getschema()?;
         let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
@@ -109,6 +116,18 @@ impl JACSDocument {
         return Err("no agreement or signatures in agreement".into());
     }
 
+    pub fn signing_agent_str(&self) -> Result<&str, Box<dyn Error>> {
+        let value: &serde_json::Value = &self.value;
+        if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
+            return Ok(jacs_signature
+                .get("agentID")
+                .expect("REASON")
+                .as_str()
+                .unwrap());
+        }
+        return Err("no agreement or signatures in agreement".into());
+    }
+
     pub fn agreement_signed_agents(
         &self,
         agreement_fieldname: Option<String>,
@@ -142,7 +161,7 @@ impl fmt::Display for JACSDocument {
     }
 }
 
-pub trait Document {
+pub trait DocumentTraits {
     fn verify_document_signature(
         &mut self,
         document_key: &String,
@@ -151,7 +170,10 @@ pub trait Document {
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>>;
-
+    fn archive_old_version(
+        &mut self,
+        original_document: &JACSDocument,
+    ) -> Result<(), Box<dyn Error>>;
     fn validate_document_with_custom_schema(
         &self,
         schema_path: &str,
@@ -163,7 +185,11 @@ pub trait Document {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
-
+    fn load_all(
+        &mut self,
+        store: bool,
+        load_only_recent: bool,
+    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>>;
     fn load_document(&mut self, document_string: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn remove_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn copy_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
@@ -202,7 +228,7 @@ pub trait Document {
     fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String);
 }
 
-impl Document for Agent {
+impl DocumentTraits for Agent {
     // todo change this to use stored documents only
     fn validate_document_with_custom_schema(
         &self,
@@ -213,18 +239,11 @@ impl Document for Agent {
         let validator = schemas
             .get(schema_path)
             .ok_or_else(|| format!("Validator not found for path: {}", schema_path))?;
-        //.map(|schema| Arc::new(schema))
-        //.expect("REASON");
 
-        let x = match validator.validate(json) {
-            Ok(()) => Ok(()),
-            Err(errors) => {
-                let error_messages: Vec<String> =
-                    errors.into_iter().map(|e| e.to_string()).collect();
-                Err(error_messages.join(", "))
-            }
-        };
-        x
+        let validation_result = validator.validate(json);
+        validation_result.map_err(|error| error.to_string())?;
+
+        Ok(())
     }
 
     fn create_file_json(
@@ -355,6 +374,76 @@ impl Document for Agent {
         }
     }
 
+    fn load_all(
+        &mut self,
+        store: bool,
+        load_only_recent: bool,
+    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+        let mut errors: Vec<Box<dyn Error>> = Vec::new();
+        let mut documents: Vec<JACSDocument> = Vec::new();
+        let mut doc_strings = self.fs_docs_load_all()?;
+        let mut most_recent_docs = HashMap::new();
+        // iterate over doc_strings,
+        // convert to Json Value and extract the jacsId, jacsVersion, and jacsVersionDate keys.
+        // create a data structure that only keeps the max jacsVersionDate (which needs to be converted to int64 from datetime string)
+        // for each jacsId check if it is the most recent version
+        // keep only the most recent version  this in a create a new docstrings vector of strings
+        if load_only_recent {
+            for doc_string in &doc_strings {
+                if let Ok(doc) = serde_json::from_str::<Value>(&doc_string) {
+                    if let (Some(jacs_id), Some(jacs_version_date)) =
+                        (doc["jacsId"].as_str(), doc["jacsVersionDate"].as_str())
+                    {
+                        // Convert jacsVersionDate to timestamp (i64)
+                        let timestamp = match DateTime::parse_from_rfc3339(jacs_version_date) {
+                            Ok(dt) => dt.with_timezone(&Utc).timestamp(),
+                            Err(e) => {
+                                println!("Failed to parse timestamp: {}", e);
+                                Utc::now().timestamp()
+                            }
+                        };
+
+                        let entry = most_recent_docs
+                            .entry(jacs_id.to_string())
+                            .or_insert_with(|| (timestamp, doc_string));
+                        if timestamp > entry.0 {
+                            *entry = (timestamp, doc_string);
+                        }
+                    }
+                }
+            }
+            doc_strings = most_recent_docs
+                .values()
+                .map(|&(_, doc)| doc.clone())
+                .collect();
+        }
+
+        for doc_string in doc_strings {
+            match self.validate_header(&doc_string) {
+                Ok(doc) => {
+                    let document = self.store_jacs_document(&doc);
+                    match document {
+                        Ok(document) => {
+                            if store {
+                                documents.push(document);
+                            }
+                        }
+                        Err(e) => {
+                            errors.push(e.into());
+                        }
+                    }
+                }
+                Err(e) => {
+                    errors.push(e.into());
+                }
+            }
+        }
+        if errors.len() > 0 {
+            error!("errors loading documents {:?}", errors);
+        }
+        Ok(documents)
+    }
+
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {
         let mut doc_copy = doc.clone();
         doc_copy
@@ -370,6 +459,7 @@ impl Document for Agent {
             id: value.get_str("jacsId").expect("REASON").to_string(),
             version: value.get_str("jacsVersion").expect("REASON").to_string(),
             value: Some(value.clone()).into(),
+            jacs_type: value.get_str("jacsType").expect("REASON").to_string(),
         };
         let key = doc.getkey();
         documents.insert(key.clone(), doc.clone());
@@ -392,12 +482,15 @@ impl Document for Agent {
         }
     }
 
+    // used to see if key is already in index
     fn get_document_keys(&mut self) -> Vec<String> {
         let documents = self.documents.lock().expect("documents lock");
         return documents.keys().map(|k| k.to_string()).collect();
     }
 
     /// pass in modified doc
+    /// the original document needs to be marked as obsolete
+    /// but this means not a deletion, but a move of the file
     /// TODO validate that the new document is owned by editor
     fn update_document(
         &mut self,
@@ -410,7 +503,13 @@ impl Document for Agent {
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let error_message = format!("original document {} not found", document_key);
         let original_document = self.get_document(document_key).expect(&error_message);
-        let value = original_document.value;
+        let value = original_document.value.clone();
+        let jacs_level = new_document
+            .get_str("jacsLevel")
+            .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());
+        if (!EDITABLE_JACS_DOCS.contains(&jacs_level.as_str())) {
+            return Err(format!("JACS docs of type {} are not editable", jacs_level).into());
+        };
 
         let mut files_array: Vec<Value> = new_document
             .get("jacsFiles")
@@ -463,7 +562,7 @@ impl Document for Agent {
         let last_version = &value["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        new_document["jacsLastVersion"] = last_version.clone();
+        new_document["jacsPreviousVersion"] = last_version.clone();
         new_document["jacsVersion"] = json!(format!("{}", new_version));
         new_document["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // get all fields but reserved
@@ -476,7 +575,27 @@ impl Document for Agent {
         // hash new version
         let document_hash = self.hash_doc(&new_document)?;
         new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+
+        // archive old version
+        // let result = self.archive_old_version(&original_document);
+        // if let Err(e) = result {
+        //     println!("Failed to archive old version: {}", e);
+        // }
+
         Ok(self.store_jacs_document(&new_document)?)
+    }
+
+    fn archive_old_version(
+        &mut self,
+        original_document: &JACSDocument,
+    ) -> Result<(), Box<dyn Error>> {
+        let lookup_key = original_document.getkey();
+        // remove from hashmap
+        let mut documents = self.documents.lock().expect("JACSDocument lock");
+        documents.remove(&lookup_key);
+        // move file to archive
+        let _ = self.fs_document_archive(&lookup_key)?;
+        Ok(())
     }
 
     /// copys document without modifications
@@ -487,7 +606,7 @@ impl Document for Agent {
         let last_version = &value["jacsVersion"];
         let versioncreated = Utc::now().to_rfc3339();
 
-        value["jacsLastVersion"] = last_version.clone();
+        value["jacsPreviousVersion"] = last_version.clone();
         value["jacsVersion"] = json!(format!("{}", new_version));
         value["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // sign new version
@@ -510,6 +629,7 @@ impl Document for Agent {
         extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
+        let document_directory: String = "documents".to_string(); // get_short_name(&original_document.value)?;
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
 
         let is_extract_only = match extract_only {
@@ -518,7 +638,12 @@ impl Document for Agent {
         };
 
         if !is_extract_only {
-            let _ = self.fs_document_save(&document_key, &document_string, output_filename)?;
+            let _ = self.fs_document_save(
+                &document_key,
+                &document_string,
+                &document_directory,
+                output_filename,
+            )?;
         }
 
         let do_export = match export_embedded {

@@ -23,6 +23,11 @@
       "type": "string",
       "hai": "meta"
     },
+    "jacsType": {
+      "description": "Type of the document",
+      "type": "string",
+      "hai": "agent"
+    },
     "jacsSignature": {
       "description": "Signature of of every field except this one and the hashing field by the creating/editing agent.",
       "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
@@ -69,14 +74,34 @@
       "items": {
         "$ref": "https://hai.ai/schemas/components/files/v1/files.schema.json"
       }
+    },
+    "jacsEmbedding": {
+      "description": "A set of precalculated vector embeddings ",
+      "type": "array",
+      "items": {
+        "$ref": "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json"
+      }
+    },
+    "jacsLevel": {
+      "description": "What is the intended use of the data? Raw data should not change, where as an artifact and config is meant to be updated. ",
+      "hai": "meta",
+      "type": "string",
+      "enum": [
+        "raw",
+        "config",
+        "artifact",
+        "derived"
+      ]
     }
   },
   "required": [
     "jacsId",
+    "jacsType",
     "jacsVersion",
     "jacsVersionDate",
     "jacsOriginalVersion",
     "jacsOriginalDate",
+    "jacsLevel",
     "$schema"
   ]
 }

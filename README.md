@@ -1,10 +1,10 @@
-# JACS
+# JACS 
 
-Welcome to JACS, a source of truth document.
+Welcome to JACS (JSON Agent Communication Standard), a verifiable document format for AI agents.
 
-JACS is JSON Agent Communication Standard. JACS documents enable more trusted data sharing between AI agents and Human UIs.
+JACS documents enable more trusted data sharing between AI agents and Human UIs.
 
-** NOTE: Current version 0.2.12 *ALPHA* .
+** NOTE: Current version 0.3.0 *ALPHA* .
 
 JACS is a JSON document format for creating secure, verifiable documents that AI agents, ML pipelines, SaaS services, and UIs can exchange and process. The goal of JACS is to ensure that these documents remain unchanged (immutable), produce the same verification result every time (idempotent), and can be used flexibly by software.
 
@@ -22,12 +22,14 @@ Use JACS as is, embed in other projects or libraries, commercial or otherwise.
   4. create agreements between human and ai agents
   5. create agents and describe what they can do
   6. create tasks manage their state
+  7. Use with [OpenAI structured ouput](https://openai.com/index/introducing-structured-outputs-in-the-api/)
+
 
 ## Documentation
 
  - [Usage Docs](https://humanassisted.github.io/JACS/)
  - [API docs](https://docs.rs/jacs/latest/jacs/)
- - [pypy]( )
+ - [pypy]( #)
  - [Rust Crate](https://crates.io/crates/jacs)
  - [Schema docs](./schemas)
  - [example files](./examples)
@@ -64,6 +66,9 @@ To install the command line tool for creating and verifying agents and documents
 If you are working in Rust, add the rust lib to your project
 
     cargo add jacs
+
+For development you may want    `cargo install cargo-outdated` and `cargo install cargo-edit`
+
 
 Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 

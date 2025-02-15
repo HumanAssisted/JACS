@@ -4,12 +4,12 @@ use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::TASK_END_AGREEMENT_FIELDNAME;
 use jacs::agent::TASK_START_AGREEMENT_FIELDNAME;
 use jacs::schema::action_crud::create_minimal_action;
-use jacs::schema::message_crud::create_minimal_message;
+use jacs::schema::message_crud::create_message;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
 use serde_json::json;
 
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::Document;
+use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use serde_json::Value;
@@ -74,10 +74,16 @@ fn test_create_task_with_actions() {
     let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
     // create a message
     let content = json!("lets goooo");
-    let message = create_minimal_message(
+    let mut to: Vec<String> = Vec::new();
+    let mut from: Vec<String> = Vec::new();
+    to.push("me@hai.ai".to_string());
+    from.push(agent.get_id().expect("REASON"));
+    let message = create_message(
         &mut agent,
         content,
-        task_doc.id,
+        to,
+        from,
+        Some(false),
         Some(attachments),
         Some(false),
     )

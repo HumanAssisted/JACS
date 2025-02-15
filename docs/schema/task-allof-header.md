@@ -21,6 +21,7 @@ The basis for a JACS document
 | [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")                                 |
 | [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")                       |
 | [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")               |
+| [jacsType](#jacstype)                       | `string` | Required | cannot be null | [Header](header-properties-jacstype.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsType")                             |
 | [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](header-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")      |
 | [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration") |
 | [jacsAgreement](#jacsagreement)             | `object` | Optional | cannot be null | [Header](header-properties-agreement.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/jacsAgreement")      |
@@ -30,6 +31,8 @@ The basis for a JACS document
 | [jacsOriginalDate](#jacsoriginaldate)       | `string` | Required | cannot be null | [Header](header-properties-jacsoriginaldate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsOriginalDate")             |
 | [jacsSha256](#jacssha256)                   | `string` | Optional | cannot be null | [Header](header-properties-jacssha256.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsSha256")                         |
 | [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")                           |
+| [jacsEmbedding](#jacsembedding)             | `array`  | Optional | cannot be null | [Header](header-properties-jacsembedding.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding")                   |
+| [jacsLevel](#jacslevel)                     | `string` | Required | cannot be null | [Header](header-properties-jacslevel.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsLevel")                           |
 
 ## jacsId
 
@@ -96,6 +99,24 @@ Date
 ### jacsVersionDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+
+## jacsType
+
+Type of the document
+
+`jacsType`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacstype.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsType")
+
+### jacsType Type
+
+`string`
 
 ## jacsSignature
 
@@ -270,3 +291,50 @@ A set of files included with the jacs document
 ### jacsFiles Type
 
 `object[]` ([File](header-properties-jacsfiles-file.md))
+
+## jacsEmbedding
+
+A set of precalculated vector embeddings
+
+`jacsEmbedding`
+
+*   is optional
+
+*   Type: `object[]` ([Embedding](header-properties-jacsembedding-embedding.md))
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacsembedding.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding")
+
+### jacsEmbedding Type
+
+`object[]` ([Embedding](header-properties-jacsembedding-embedding.md))
+
+## jacsLevel
+
+What is the intended use of the data? Raw data should not change, where as an artifact and config is meant to be updated.
+
+`jacsLevel`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Header](header-properties-jacslevel.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsLevel")
+
+### jacsLevel Type
+
+`string`
+
+### jacsLevel Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value        | Explanation |
+| :----------- | :---------- |
+| `"raw"`      |             |
+| `"config"`   |             |
+| `"artifact"` |             |
+| `"derived"`  |             |
