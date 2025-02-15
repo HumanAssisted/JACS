@@ -615,7 +615,7 @@ impl Agent {
             let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
             let schema = Validator::options()
                 .with_draft(Draft::Draft7)
-                .with_resolver(EmbeddedSchemaResolver::new())
+                .with_retriever(EmbeddedSchemaResolver::new())
                 .build(&schema_value)
                 .map_err(|e| e.to_string())?;
             schemas.insert(path.clone(), schema);

@@ -241,15 +241,14 @@ impl DocumentTraits for Agent {
         //.map(|schema| Arc::new(schema))
         //.expect("REASON");
 
-        let x = match validator.validate(json) {
-            Ok(()) => Ok(()),
-            Err(errors) => {
-                let error_messages: Vec<String> =
-                    errors.into_iter().map(|e| e.to_string()).collect();
-                Err(error_messages.join(", "))
-            }
-        };
-        x
+        let validation_result = validator.validate(json);
+        validation_result.map_err(|error| {
+            let error_message = error.to_string();
+            error!("{}", error_message);
+            Box::new(ValidationError(error_message)) as Box<dyn std::error::Error>
+        })?;
+
+        Ok(())
     }
 
     fn create_file_json(

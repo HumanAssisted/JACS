@@ -6,8 +6,7 @@ use std::path::Path;
 
 use phf::phf_map;
 
-use jsonschema::SchemaResolver;
-use jsonschema::SchemaResolverError;
+use jsonschema::Retrieve;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -100,34 +99,27 @@ impl ValueExt for Value {
     }
 }
 
-/// A schema resolver that primarily uses embedded schemas, with fallbacks to local filesystem
-/// and remote URLs. This resolver is used to fetch JSON schemas for document validation.
-///
-/// Resolution order:
-/// 1. Check embedded schemas (DEFAULT_SCHEMA_STRINGS)
-/// 2. For https://hai.ai URLs: Check embedded schemas with stripped prefix
-/// 3. For other URLs: Attempt remote fetch (except in WASM)
-/// 4. Check local filesystem
-///
-/// Security note: This implementation allows fetching from arbitrary URLs and filesystem locations.
+/// A schema retriever that primarily uses embedded schemas, with fallbacks to local filesystem
+/// and remote URLs.
 pub struct EmbeddedSchemaResolver {}
 
 impl EmbeddedSchemaResolver {
-    // Constructor to create a new resolver
     pub fn new() -> Self {
         EmbeddedSchemaResolver {}
     }
 }
 
-impl SchemaResolver for EmbeddedSchemaResolver {
-    fn resolve(
+impl Retrieve for EmbeddedSchemaResolver {
+    fn retrieve(
         &self,
-        _root_schema: &Value,
-        url: &Url,
-        _original_reference: &str,
-    ) -> Result<Arc<Value>, SchemaResolverError> {
-        let path = url.path();
-        resolve_schema(path)
+        uri: &jsonschema::Uri<String>,
+    ) -> Result<Value, Box<dyn Error + Send + Sync>> {
+        let path = uri.path().as_str();
+        resolve_schema(path).map(|arc| (*arc).clone()).map_err(|e| {
+            let err_msg = e.to_string();
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, err_msg))
+                as Box<dyn Error + Send + Sync>
+        })
     }
 }
 
@@ -138,52 +130,26 @@ impl SchemaResolver for EmbeddedSchemaResolver {
 ///
 /// Not available in WASM builds.
 #[cfg(not(target_arch = "wasm32"))]
-fn get_remote_schema(url: &str) -> Result<Arc<Value>, SchemaResolverError> {
+fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
     let client = reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(ACCEPT_INVALID_CERTS)
-        .build()
-        .map_err(|err| {
-            error!("Error fetching schema from URL: {}, error: {}", url, err);
-            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "Failed to create reqwest client: {}",
-                err
-            )))
-        })?;
+        .build()?;
 
-    let schema_response = client.get(url).send().map_err(|err| {
-        error!("Error fetching schema from URL: {}, error: {}", url, err);
-        SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-            "Failed to fetch schema from given URL {}: {}",
-            url, err
-        )))
-    })?;
+    let response = client.get(url).send()?;
 
-    if schema_response.status().is_success() {
-        let schema_value = schema_response.json().map_err(|err| {
-            error!("Error parsing schema from URL: {}, error: {}", url, err);
-            SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                "Failed to parse schema from URL {}: {}",
-                url, err
-            )))
-        })?;
-        return Ok(Arc::new(schema_value));
+    if response.status().is_success() {
+        let schema_value: Value = response.json()?;
+        Ok(Arc::new(schema_value))
     } else {
-        Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-            format!("Failed to get schema from URL {}", url),
-        )))
+        Err(format!("Failed to get schema from URL {}", url).into())
     }
 }
 
 /// Disabled version of remote schema fetching for WASM targets.
 /// Always returns an error indicating remote schemas are not supported.
 #[cfg(target_arch = "wasm32")]
-fn get_remote_schema(url: &str) -> Result<Arc<Value>, SchemaResolverError> {
-    Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-        format!(
-            "Remote URL schemas disabled: Failed to get schema from URL {}",
-            url
-        ),
-    )))
+fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
+    Err(format!("Remote URL schemas disabled in WASM: {}", url).into())
 }
 
 /// Resolves a schema from various sources based on the provided path.
@@ -207,57 +173,37 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, SchemaResolverError> {
 /// - Allows unrestricted remote URL fetching
 /// - Allows unrestricted filesystem access
 /// - Accepts invalid SSL certificates for remote fetching
-pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, SchemaResolverError> {
+pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
-    let schema_value: Value;
-    let path: &str;
-    if rawpath.starts_with('/') {
-        // Remove the leading slash and use the remaining path as the key
-        path = &rawpath[1..];
+    let path = if rawpath.starts_with('/') {
+        &rawpath[1..]
     } else {
-        // Use the full path as the key (relative or URI)
-        path = rawpath;
+        rawpath
     };
 
-    // in case the path is cached
-    let schema_json_result = DEFAULT_SCHEMA_STRINGS.get(path);
-    match schema_json_result {
-        Some(schema_json) => {
-            schema_value = serde_json::from_str(schema_json)?;
-            return Ok(Arc::new(schema_value));
-        }
-        _ => {}
+    // Check embedded schemas
+    if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+        let schema_value: Value = serde_json::from_str(schema_json)?;
+        return Ok(Arc::new(schema_value));
     }
-    println!("aaa to fetch schema from URL: {}", path);
+
     if path.starts_with("http://") || path.starts_with("https://") {
         debug!("Attempting to fetch schema from URL: {}", path);
         if path.starts_with("https://hai.ai") {
-            println!("loading default schema from {}", path);
             let relative_path = path.trim_start_matches("https://hai.ai/");
-            let schema_json = DEFAULT_SCHEMA_STRINGS.get(relative_path).ok_or_else(|| {
-                error!("Error: Schema not found for URL: {}", path);
-                SchemaResolverError::new(SchemaResolverErrorWrapper(format!(
-                    "Schema not found: {}",
-                    path
-                )))
-            })?;
-            schema_value = serde_json::from_str(&schema_json)?;
-            return Ok(Arc::new(schema_value));
+            if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(relative_path) {
+                let schema_value: Value = serde_json::from_str(schema_json)?;
+                return Ok(Arc::new(schema_value));
+            }
+            return Err("Schema not found".into());
         } else {
-            // TODO turn this off for security and wasm
-            println!("loading custom schema from {}", path);
-            return get_remote_schema(&path);
+            return get_remote_schema(path);
         }
     } else if Path::new(path).exists() {
-        // add default directory
-        // todo secure with let pathstring: &String = &env::var("JACS_KEY_DIRECTORY").expect("JACS_DATA_DIRECTORY");
-        println!("loading custom local schema {}", path);
         let schema_json = std::fs::read_to_string(path)?;
         let schema_value: Value = serde_json::from_str(&schema_json)?;
         return Ok(Arc::new(schema_value));
-    } else {
-        return Err(SchemaResolverError::new(SchemaResolverErrorWrapper(
-            format!("Failed all attempts to retrieve schema {} ", path,),
-        )));
     }
+
+    Err("Failed to retrieve schema".into())
 }
