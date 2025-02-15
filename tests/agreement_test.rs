@@ -4,6 +4,7 @@ use jacs::agent::document::DocumentTraits;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use secrecy::ExposeSecret;
 mod utils;
+use jacs::crypt::aes_encrypt::decrypt_private_key;
 
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two, DOCTESTFILECONFIG};
 
@@ -126,7 +127,7 @@ fn test_add_and_remove_agents() {
 }
 
 #[test]
-fn test_sign_agreement() {
+fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
     // cargo test   --test agreement_test -- --nocapture test_sign_agreement
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
@@ -134,10 +135,10 @@ fn test_sign_agreement() {
     let a1k = agent.get_private_key().unwrap();
     let a2k = agent_two.get_private_key().unwrap();
     let borrowed_key = a1k.expose_secret();
-    let key_vec = borrowed_key.use_secret();
+    let key_vec = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
 
     let borrowed_key2 = a2k.expose_secret();
-    let key_vec2 = borrowed_key2.use_secret();
+    let key_vec2 = decrypt_private_key(borrowed_key2).expect("Failed to decrypt key 2");
 
     // println!(
     //     "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
@@ -241,4 +242,6 @@ fn test_sign_agreement() {
         )
         .unwrap();
     println!(" question {}, context {}", question, context);
+
+    Ok(())
 }

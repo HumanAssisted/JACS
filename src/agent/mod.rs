@@ -33,6 +33,9 @@ use std::sync::{Arc, Mutex};
 use url::Url;
 use uuid::Uuid;
 
+use secrecy::zeroize::{DefaultIsZeroes, Zeroize};
+use secrecy::{ExposeSecret, SecretBox};
+
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
 pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "jacsAgreementHash";
@@ -60,34 +63,14 @@ pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     TASK_END_AGREEMENT_FIELDNAME,
 ];
 
-use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
+// Just use Vec<u8> directly since it already implements the needed traits
+pub type PrivateKey = Vec<u8>;
+pub type SecretPrivateKey = SecretBox<Vec<u8>>;
 
-#[derive(Clone)]
-pub struct PrivateKey(Vec<u8>);
-
-impl Zeroize for PrivateKey {
-    fn zeroize(&mut self) {
-        self.0.zeroize();
-    }
+// If we need any specific methods for private key operations:
+pub fn use_secret(key: &[u8]) -> Vec<u8> {
+    decrypt_private_key(key).expect("use_secret decrypt failed")
 }
-
-/// Permits cloning
-impl CloneableSecret for PrivateKey {}
-
-/// Provides a `Debug` impl (by default `[[REDACTED]]`)
-impl DebugSecret for PrivateKey {}
-
-impl PrivateKey {
-    /// A method that operates on the private key.
-    /// This method is just an example; it prints the length of the private key.
-    /// Replace this with your actual cryptographic operation.
-    pub fn use_secret(&self) -> Vec<u8> {
-        decrypt_private_key(&self.0).expect("use_secret decrypt failed")
-    }
-}
-
-/// Use this alias when storing secret values
-pub type SecretPrivateKey = Secret<PrivateKey>;
 
 #[derive(Debug)]
 pub struct Agent {
@@ -175,20 +158,16 @@ impl Agent {
         key_algorithm: &String,
     ) -> Result<(), Box<dyn Error>> {
         let private_key_encrypted = encrypt_private_key(&private_key)?;
-        self.private_key = Some(Secret::new(PrivateKey(private_key_encrypted))); //Some(private_key);
+        // Box the Vec<u8> before creating SecretBox
+        self.private_key = Some(SecretBox::new(Box::new(private_key_encrypted)));
         self.public_key = Some(public_key);
-        //TODO check algo
         self.key_algorithm = Some(key_algorithm.to_string());
         Ok(())
     }
 
-    // todo keep this as private
-    pub fn get_private_key(&self) -> Result<Secret<PrivateKey>, Box<dyn Error>> {
+    pub fn get_private_key(&self) -> Result<&SecretPrivateKey, Box<dyn Error>> {
         match &self.private_key {
-            Some(private_key) => {
-                // Ok(self.private_key.map(|secret| secret.into()).expect("REASON"))
-                Ok(private_key.clone())
-            }
+            Some(private_key) => Ok(private_key),
             None => Err("private_key is None".into()),
         }
     }

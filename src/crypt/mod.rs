@@ -14,6 +14,8 @@ use std::str::FromStr;
 use crate::agent::loaders::FileLoader;
 use strum_macros::{AsRefStr, Display, EnumString};
 
+use crate::crypt::aes_encrypt::decrypt_private_key;
+
 #[derive(Debug, AsRefStr, Display, EnumString)]
 enum CryptoSigningAlgorithm {
     #[strum(serialize = "RSA-PSS")]
@@ -80,22 +82,18 @@ impl KeyManager for Agent {
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
                 let binding = self.get_private_key()?;
-                let borrowed_key = binding.expose_secret();
-                let key_vec = borrowed_key.use_secret();
-
-                return rsawrapper::sign_string(key_vec.to_vec(), data);
+                let key_vec = decrypt_private_key(binding.expose_secret())?;
+                return rsawrapper::sign_string(key_vec, data);
             }
             CryptoSigningAlgorithm::RingEd25519 => {
                 let binding = self.get_private_key()?;
-                let borrowed_key = binding.expose_secret();
-                let key_vec = borrowed_key.use_secret();
-                return ringwrapper::sign_string(key_vec.to_vec(), data);
+                let key_vec = decrypt_private_key(binding.expose_secret())?;
+                return ringwrapper::sign_string(key_vec, data);
             }
             CryptoSigningAlgorithm::PqDilithium => {
                 let binding = self.get_private_key()?;
-                let borrowed_key = binding.expose_secret();
-                let key_vec = borrowed_key.use_secret();
-                return pq::sign_string(key_vec.to_vec(), data);
+                let key_vec = decrypt_private_key(binding.expose_secret())?;
+                return pq::sign_string(key_vec, data);
             }
             _ => {
                 return Err(

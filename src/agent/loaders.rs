@@ -144,7 +144,7 @@ impl FileLoader for Agent {
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
-        let key_vec = borrowed_key.use_secret();
+        let key_vec = decrypt_private_key(borrowed_key)?;
         let _ = save_private_key(&path, &private_key_filename, &key_vec)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
         let _ = save_file(&path, &public_key_filename, &self.get_public_key()?);
