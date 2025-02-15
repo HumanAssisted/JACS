@@ -6,6 +6,10 @@
 
 # COMPLETED
 
+
+## 0.3.1
+- upgraded many dependencies
+
 ## 0.3.0
 - added jacsType - free naming, but required field for end-user naming of file type, with defaults to "document"
 - TODO update jsonschema library
