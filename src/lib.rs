@@ -7,6 +7,7 @@ use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
+use crate::storage::jenv::get_required_env_var;
 use log::debug;
 use serde_json::Value;
 use std::env;
@@ -22,9 +23,12 @@ pub mod storage;
 
 pub fn get_empty_agent() -> Agent {
     Agent::new(
-        &env::var("JACS_AGENT_SCHEMA_VERSION").unwrap(),
-        &env::var("JACS_HEADER_SCHEMA_VERSION").unwrap(),
-        &env::var("JACS_SIGNATURE_SCHEMA_VERSION").unwrap(),
+        &get_required_env_var("JACS_AGENT_SCHEMA_VERSION", true)
+            .expect("JACS_AGENT_SCHEMA_VERSION must be set"),
+        &get_required_env_var("JACS_HEADER_SCHEMA_VERSION", true)
+            .expect("JACS_HEADER_SCHEMA_VERSION must be set"),
+        &get_required_env_var("JACS_SIGNATURE_SCHEMA_VERSION", true)
+            .expect("JACS_SIGNATURE_SCHEMA_VERSION must be set"),
     )
     .expect("Failed to init Agent")
 }

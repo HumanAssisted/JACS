@@ -9,6 +9,7 @@ use regex::Regex;
 use secrecy::ExposeSecret;
 use walkdir::WalkDir;
 
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 use crate::storage::MultiStorage;
 use crate::storage::StorageType;
 use chrono::Utc;
@@ -29,8 +30,10 @@ fn not_implemented_error() -> Box<dyn Error> {
 const JACS_USE_FILESYSTEM: &str = "JACS_USE_FILESYSTEM";
 
 pub fn use_filesystem() -> bool {
-    let env_var_value = env::var(JACS_USE_FILESYSTEM).unwrap_or_else(|_| "false".to_string());
-    return matches!(env_var_value.to_lowercase().as_str(), "true" | "1");
+    match get_env_var(JACS_USE_FILESYSTEM, false) {
+        Ok(Some(value)) => matches!(value.to_lowercase().as_str(), "true" | "1"),
+        _ => false,
+    }
 }
 
 /// The goal of fileloader is to prevent fileloading into arbitrary directories
@@ -350,7 +353,9 @@ fn save_private_key(
     filename: &String,
     private_key: &[u8],
 ) -> Result<String, Box<dyn Error>> {
-    let password = env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default();
+    let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
+        .unwrap_or(None)
+        .unwrap_or_default();
     let storage = MultiStorage::new(Some(true))?;
 
     if !password.is_empty() {

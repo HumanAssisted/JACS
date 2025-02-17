@@ -17,6 +17,7 @@ use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
 use jacs::shared::get_file_list;
+use jacs::storage::jenv::{get_required_env_var, set_env_var};
 use regex::Regex;
 use rpassword::read_password;
 use serde_json::Value;
@@ -538,8 +539,8 @@ fn main() {
                 let jacs_use_security =
                     request_string("Use experimental security features", "false");
                 let jacs_data_directory = request_string("Directory for data storage", "./jacs");
-                let jacs_key_directory =
-                    request_string("Directory to load keys from", "./jacs/keys");
+                let jacs_key_directory = get_required_env_var("JACS_KEY_DIRECTORY", true)
+                    .expect("JACS_KEY_DIRECTORY must be set");
 
                 let config = Config::new(
                     "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
@@ -608,7 +609,8 @@ fn main() {
                     agent.generate_keys().expect("Reason");
                     println!(
                         "keys created in {}",
-                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
+                        get_required_env_var("JACS_KEY_DIRECTORY", true)
+                            .expect("JACS_KEY_DIRECTORY must be set")
                     )
                 }
 
