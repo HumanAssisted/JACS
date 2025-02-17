@@ -83,6 +83,6 @@ pub fn set_env_var(key: &str, value: &str) -> Result<(), EnvError> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_env_var(key: &str, value: &str) -> Result<(), EnvError> {
-    std::env::set_var(key, value);
+    env::set_var(key, value);
     Ok(())
 }

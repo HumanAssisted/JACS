@@ -1,4 +1,5 @@
 use crate::error;
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 use log::info;
 
 use std::env;
@@ -20,7 +21,8 @@ pub fn check_data_directory() -> Result<(), Box<dyn Error>> {
         info!("JACS_USE_SECURITY security is off");
         return Ok(());
     }
-    let data_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
+    let data_dir =
+        get_required_env_var("JACS_DATA_DIRECTORY", true).expect("JACS_DATA_DIRECTORY must be set");
     let dir = Path::new(&data_dir);
 
     for entry in WalkDir::new(dir)
@@ -38,8 +40,7 @@ pub fn check_data_directory() -> Result<(), Box<dyn Error>> {
 /// determine if the system is configured ot use security features
 /// EXPERIMENTAL
 pub fn use_security() -> bool {
-    let env_var_value = env::var(JACS_USE_SECURITY).unwrap_or_else(|_| "false".to_string());
-    return matches!(env_var_value.to_lowercase().as_str(), "true" | "1");
+    matches!(get_env_var(JACS_USE_SECURITY, true), Ok(Some(value)) if matches!(value.to_lowercase().as_str(), "true" | "1"))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -84,7 +85,8 @@ fn is_executable(path: &std::path::Path) -> bool {
 }
 
 fn quarantine_file(file_path: &Path) -> Result<(), Box<dyn Error>> {
-    let data_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
+    let data_dir =
+        get_required_env_var("JACS_DATA_DIRECTORY", true).expect("JACS_DATA_DIRECTORY must be set");
     let mut quarantine_dir = Path::new(&data_dir);
     let binding = quarantine_dir.join("quarantine");
     quarantine_dir = &binding;

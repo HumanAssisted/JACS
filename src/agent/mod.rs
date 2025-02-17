@@ -24,7 +24,6 @@ use loaders::FileLoader;
 use log::{debug, error};
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -34,6 +33,8 @@ use uuid::Uuid;
 
 use secrecy::zeroize::{DefaultIsZeroes, Zeroize};
 use secrecy::{ExposeSecret, SecretBox};
+
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
@@ -143,7 +144,11 @@ impl Agent {
         _version: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         let lookup_id = id
-            .or_else(|| env::var("JACS_AGENT_ID_AND_VERSION").ok())
+            .or_else(|| {
+                get_env_var("JACS_AGENT_ID_AND_VERSION", false)
+                    .ok()
+                    .flatten()
+            })
             .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
         let agent_string = self.fs_agent_load(&lookup_id)?;
         return self.load(&agent_string);
@@ -400,7 +405,7 @@ impl Agent {
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = Utc::now().to_rfc3339();
 
-        let signing_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
+        let signing_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
 
         let serialized_fields = match to_value(accepted_fields) {
             Ok(value) => value,
