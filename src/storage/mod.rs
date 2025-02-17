@@ -8,6 +8,7 @@ use object_store::{
     aws::{AmazonS3, AmazonS3Builder},
     http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,
+    memory::InMemory,
     path::Path as ObjectPath,
     Error as ObjectStoreError, ObjectStore,
 };
@@ -134,6 +135,7 @@ pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,
     hai_ai: Option<Arc<HttpStore>>,
+    memory: Option<Arc<InMemory>>,
     #[cfg(target_arch = "wasm32")]
     web_local: Option<Arc<WebLocalStorage>>,
     default_storage: StorageType,
@@ -148,6 +150,8 @@ pub enum StorageType {
     FS,
     #[strum(serialize = "hai")]
     HAI,
+    #[strum(serialize = "memory")]
+    Memory,
     #[cfg(target_arch = "wasm32")]
     #[strum(serialize = "local")]
     WebLocal,
@@ -164,6 +168,7 @@ impl MultiStorage {
         let mut _s3;
         let mut _http;
         let mut _local;
+        let mut _memory;
         let storage_type = get_required_env_var("JACS_DEFAULT_STORAGE", true)
             .expect("JACS_DEFAULT_STORAGE must be set");
         let default_storage: StorageType =
@@ -216,6 +221,16 @@ impl MultiStorage {
             _local = None;
         }
 
+        // Add memory storage initialization
+        let memory = if matches!(get_env_var("JACS_USE_MEMORY_STORAGE", true), Ok(Some(_))) {
+            let mem = InMemory::new();
+            let tmp_mem = Arc::new(mem);
+            storages.push(tmp_mem.clone());
+            Some(tmp_mem)
+        } else {
+            None
+        };
+
         #[cfg(target_arch = "wasm32")]
         let web_local = if matches!(get_env_var("JACS_USE_WEB_LOCAL", true), Ok(Some(_))) {
             let storage = WebLocalStorage::new()?;
@@ -241,6 +256,7 @@ impl MultiStorage {
             aws: _s3,
             fs: _local,
             hai_ai: _http,
+            memory,
             #[cfg(target_arch = "wasm32")]
             web_local,
             default_storage,
@@ -333,6 +349,7 @@ impl MultiStorage {
             StorageType::AWS => self.aws.clone().expect("aws storage not loaded"),
             StorageType::FS => self.fs.clone().expect("filesystem storage not loaded"),
             StorageType::HAI => self.hai_ai.clone().expect("hai storage not loaded"),
+            StorageType::Memory => self.memory.clone().expect("memory storage not loaded"),
             #[cfg(target_arch = "wasm32")]
             StorageType::WebLocal => self
                 .web_local
