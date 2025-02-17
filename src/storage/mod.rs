@@ -15,6 +15,8 @@ use std::{env, str::FromStr};
 use strum_macros::{AsRefStr, Display, EnumString};
 use url::Url;
 
+pub mod jenv;
+
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,

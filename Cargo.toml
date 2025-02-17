@@ -100,6 +100,7 @@ object_store = { version ="0.11.2", features = ["serde","serde_json", "aws", "ht
 
  [target.'cfg(target_arch = "wasm32")'.dependencies]
  wasm-bindgen = "0.2.100"
+ web-sys = { version = "0.3", features = ["Storage", "Window"] }
 
 [[bin]]
 name = "jacs"
