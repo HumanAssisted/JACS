@@ -168,7 +168,7 @@ impl MultiStorage {
         let mut _s3;
         let mut _http;
         let mut _local;
-        let mut _memory;
+        let mut _memory: Option<Arc<InMemory>>;
         let storage_type = get_required_env_var("JACS_DEFAULT_STORAGE", true)
             .expect("JACS_DEFAULT_STORAGE must be set");
         let default_storage: StorageType =
