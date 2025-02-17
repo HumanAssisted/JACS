@@ -29,6 +29,7 @@ Jacs Configuration File
 | [jacs\_header\_schema\_version](#jacs_header_schema_version)            | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_header_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_header_schema_version")           |
 | [jacs\_signature\_schema\_version](#jacs_signature_schema_version)      | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_signature_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version")     |
 | [jacs\_private\_key\_password](#jacs_private_key_password)              | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_private_key_password.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_private_key_password")             |
+| [jacs\_default\_storage](#jacs_default_storage)                         | `string` | Required | cannot be null | [Config](jacs-properties-jacs_default_storage.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_default_storage")                       |
 
 ## jacs\_use\_filesystem
 
@@ -237,3 +238,31 @@ encryption password. Do not use in production and instead only keep in ENV with 
 ### jacs\_private\_key\_password Type
 
 `string`
+
+## jacs\_default\_storage
+
+default storage to use
+
+`jacs_default_storage`
+
+*   is required
+
+*   Type: `string`
+
+*   cannot be null
+
+*   defined in: [Config](jacs-properties-jacs_default_storage.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_default_storage")
+
+### jacs\_default\_storage Type
+
+`string`
+
+### jacs\_default\_storage Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value   | Explanation |
+| :------ | :---------- |
+| `"fs"`  |             |
+| `"aws"` |             |
+| `"hai"` |             |

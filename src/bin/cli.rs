@@ -517,6 +517,8 @@ fn main() {
                     "Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS)",
                     "RSA-PSS",
                 );
+                let jacs_default_storage =
+                    request_string("Enter the default storage (fs, aws, hai)", "fs");
                 //let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
 
                 println!("Please enter your password:");
@@ -553,6 +555,7 @@ fn main() {
                     Some("v1".to_string()),
                     Some(jacs_private_key_password),
                     Some(jacs_agent_id_and_version),
+                    Some(jacs_default_storage),
                 );
 
                 let serialized = serde_json::to_string_pretty(&config).unwrap();

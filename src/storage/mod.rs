@@ -1,11 +1,11 @@
 // use futures_util::stream::stream::StreamExt;
-use futures_util::stream::StreamExt;
+use futures_executor::block_on;
+use futures_util::StreamExt;
 use log::debug;
 use object_store::PutPayload;
 use object_store::{
     aws::{AmazonS3, AmazonS3Builder},
-    http::HttpBuilder,
-    http::HttpStore,
+    http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,
     path::Path,
     Error as ObjectStoreError, ObjectStore,
@@ -70,10 +70,9 @@ impl MultiStorage {
             _http = None;
         }
 
-        if env::var("JACS_ENABLE_FILE_SYSTEM_STORAGE").is_ok() {
-            let local_path = env::var("LOCAL_STORAGE_PATH").expect(
-                "LOCAL_STORAGE_PATH must be set when JACS_ENABLE_FILE_SYSTEM_STORAGE is enabled",
-            );
+        if env::var("JACS_USE_FILESYSTEM").is_ok() {
+            let local_path = env::var("JACS_DATA_DIRECTORY")
+                .expect("JACS_DATA_DIRECTORY must be set when JACS_USE_FILESYSTEM is enabled");
             let local = LocalFileSystem::new_with_prefix(local_path)?;
             let tmplocal = Arc::new(local);
             _local = Some(tmplocal.clone());
@@ -101,17 +100,18 @@ impl MultiStorage {
         })
     }
 
-    pub async fn save_file(&self, path: &str, contents: &[u8]) -> Result<(), ObjectStoreError> {
+    pub fn save_file(&self, path: &str, contents: &[u8]) -> Result<(), ObjectStoreError> {
         let object_path = Path::from(path);
         let mut errors = Vec::new();
-        // Create an owned Vec<u8> from the contents slice
         let contents_vec = contents.to_vec();
         let contents_payload = PutPayload::from(contents_vec);
+
         for storage in &self.storages {
-            if let Err(e) = storage.put(&object_path, contents_payload.clone()).await {
+            if let Err(e) = block_on(storage.put(&object_path, contents_payload.clone())) {
                 errors.push(e);
             }
         }
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -123,6 +123,54 @@ impl MultiStorage {
                 )),
             })
         }
+    }
+
+    pub fn get_file(
+        &self,
+        path: &str,
+        preference: Option<StorageType>,
+    ) -> Result<Vec<u8>, ObjectStoreError> {
+        let object_path = Path::from(path);
+        let storage = self.get_read_storage(preference);
+
+        let get_result = block_on(storage.get(&object_path))?;
+        let bytes = block_on(get_result.bytes())?;
+        Ok(bytes.to_vec())
+    }
+
+    pub fn file_exists(
+        &self,
+        path: &str,
+        preference: Option<StorageType>,
+    ) -> Result<bool, ObjectStoreError> {
+        let object_path = Path::from(path);
+        let storage = self.get_read_storage(preference);
+
+        match block_on(storage.head(&object_path)) {
+            Ok(_) => Ok(true),
+            Err(ObjectStoreError::NotFound { .. }) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn list(
+        &self,
+        prefix: &str,
+        preference: Option<StorageType>,
+    ) -> Result<Vec<String>, ObjectStoreError> {
+        let mut file_list = Vec::new();
+        let object_store = self.get_read_storage(preference);
+        let prefix_path = Path::from(prefix);
+
+        let mut list_stream = object_store.list(Some(&prefix_path));
+
+        while let Some(meta) = block_on(list_stream.next()) {
+            let meta = meta?;
+            debug!("Name: {}, size: {}", meta.location, meta.size);
+            file_list.push(meta.location.to_string());
+        }
+
+        Ok(file_list)
     }
 
     fn get_read_storage(&self, preference: Option<StorageType>) -> Arc<dyn ObjectStore> {
@@ -147,65 +195,6 @@ impl MultiStorage {
             StorageType::FS => self.fs.clone().expect("fielsystem storage not loaded"),
             StorageType::HAI => self.hai_ai.clone().expect("hai storage not loaded"),
         }
-    }
-
-    // JACS files are not overwritten, but their attachments can be when decompressed
-    pub fn file_exists(
-        &self,
-        path: &str,
-        preference: Option<StorageType>,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        Ok(true)
-    }
-
-    pub async fn get_file(
-        &self,
-        path: &str,
-        preference: Option<StorageType>,
-    ) -> Result<Vec<u8>, ObjectStoreError> {
-        let object_path = Path::from(path);
-        let mut storage: Arc<dyn ObjectStore> = self.get_read_storage(preference);
-
-        match storage.get(&object_path).await {
-            Ok(get_result) => {
-                let mut contents = Vec::new();
-                let mut stream = get_result.into_stream();
-                while let Some(chunk) = stream.next().await {
-                    contents.extend_from_slice(&chunk?);
-                }
-                return Ok(contents);
-            }
-
-            Err(e) => println!("{:?}", e),
-        }
-
-        Err(ObjectStoreError::NotFound {
-            path: object_path.to_string(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "File not found in any storage",
-            )
-            .into(),
-        })
-    }
-
-    pub async fn list(
-        &self,
-        prefix: &str,
-        preference: Option<StorageType>,
-    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        let mut file_list: Vec<String> = Vec::new();
-        let object_store = self.get_read_storage(preference);
-        let prefix_path = Path::from(prefix);
-        let mut list_stream = object_store.list(Some(&prefix_path));
-
-        // Print a line about each object
-        while let Some(meta) = list_stream.next().await.transpose().unwrap() {
-            debug!("Name: {}, size: {}", meta.location, meta.size);
-            file_list.push(meta.location.to_string());
-        }
-
-        Ok(file_list)
     }
 }
 

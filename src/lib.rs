@@ -18,6 +18,7 @@ pub mod config;
 pub mod crypt;
 pub mod schema;
 pub mod shared;
+pub mod storage;
 
 pub fn get_empty_agent() -> Agent {
     Agent::new(

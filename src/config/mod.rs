@@ -23,6 +23,7 @@ pub struct Config {
     jacs_signature_schema_version: Option<String>,
     jacs_private_key_password: Option<String>,
     jacs_agent_id_and_version: Option<String>,
+    jacs_default_storage: Option<String>,
 }
 
 impl Config {
@@ -40,6 +41,7 @@ impl Config {
         jacs_signature_schema_version: Option<String>,
         jacs_private_key_password: Option<String>,
         jacs_agent_id_and_version: Option<String>,
+        jacs_default_storage: Option<String>,
     ) -> Config {
         Config {
             schema,
@@ -55,6 +57,7 @@ impl Config {
             jacs_signature_schema_version,
             jacs_private_key_password,
             jacs_agent_id_and_version,
+            jacs_default_storage,
         }
     }
 }
@@ -99,6 +102,7 @@ pub fn set_env_vars() -> String {
             jacs_signature_schema_version: None,
             jacs_private_key_password: None,
             jacs_agent_id_and_version: None,
+            jacs_default_storage: None,
         },
     };
     debug!("configs from file {:?}", config);
@@ -164,6 +168,11 @@ pub fn set_env_vars() -> String {
         "JACS_SIGNATURE_SCHEMA_VERSION",
         &jacs_signature_schema_version,
     );
+
+    let jacs_default_storage = config
+        .jacs_default_storage
+        .unwrap_or_else(|| "fs".to_string());
+    env::set_var("JACS_DEFAULT_STORAGE", &jacs_default_storage);
 
     let jacs_agent_id_and_version = config
         .jacs_agent_id_and_version
