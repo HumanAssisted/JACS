@@ -1,4 +1,5 @@
 // use futures_util::stream::stream::StreamExt;
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 use futures_executor::block_on;
 use futures_util::StreamExt;
 use log::debug;
@@ -10,8 +11,8 @@ use object_store::{
     path::Path as ObjectPath,
     Error as ObjectStoreError, ObjectStore,
 };
+use std::str::FromStr;
 use std::sync::Arc;
-use std::{env, str::FromStr};
 use strum_macros::{AsRefStr, Display, EnumString};
 use url::Url;
 
@@ -46,18 +47,20 @@ impl MultiStorage {
         let mut _s3;
         let mut _http;
         let mut _local;
-        let storage_type =
-            env::var("JACS_DEFAULT_STORAGE").expect("JACS_DEFAULT_STORAGE must be set");
+        let storage_type = get_required_env_var("JACS_DEFAULT_STORAGE", true)
+            .expect("JACS_DEFAULT_STORAGE must be set");
         let default_storage: StorageType =
             StorageType::from_str(&storage_type).expect("JACS_DEFAULT_STORAGE must be set");
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
-        if env::var("JACS_ENABLE_AWS_STORAGE").is_ok() {
+        // Check AWS storage
+        if matches!(get_env_var("JACS_ENABLE_AWS_STORAGE", true), Ok(Some(_))) {
+            let bucket_name = get_required_env_var("JACS_ENABLE_AWS_BUCKET_NAME", true).expect(
+                "JACS_ENABLE_AWS_BUCKET_NAME must be set when JACS_ENABLE_AWS_STORAGE is set",
+            );
             let s3 = AmazonS3Builder::from_env()
-                .with_bucket_name(env::var("JACS_ENABLE_AWS_BUCKET_NAME").expect(
-                    "JACS_ENABLE_AWS_BUCKET_NAME mustbe set when JACS_ENABLE_AWS_STORAGE is set ",
-                ))
-                .with_allow_http(false) // Ensure HTTPS is used
+                .with_bucket_name(bucket_name)
+                .with_allow_http(false)
                 .build()?;
             let tmps3 = Arc::new(s3);
             _s3 = Some(tmps3.clone());
@@ -66,8 +69,9 @@ impl MultiStorage {
             _s3 = None;
         }
 
-        if env::var("JACS_ENABLE_HAI_STORAGE").is_ok() {
-            let http_url = env::var("HAI_STORAGE_URL")
+        // Check HAI storage
+        if matches!(get_env_var("JACS_ENABLE_HAI_STORAGE", true), Ok(Some(_))) {
+            let http_url = get_required_env_var("HAI_STORAGE_URL", true)
                 .expect("HAI_STORAGE_URL must be set when JACS_ENABLE_HAI_STORAGE is enabled");
             let url_obj = Url::parse(&http_url).unwrap();
             let http = HttpBuilder::new().with_url(url_obj).build()?;
@@ -78,12 +82,13 @@ impl MultiStorage {
             _http = None;
         }
 
-        if env::var("JACS_USE_FILESYSTEM").is_ok() {
+        // Check filesystem storage
+        if matches!(get_env_var("JACS_USE_FILESYSTEM", true), Ok(Some(_))) {
             let local_path = if use_key_dir.unwrap_or(false) {
-                env::var("JACS_KEY_DIRECTORY")
+                get_required_env_var("JACS_KEY_DIRECTORY", true)
                     .expect("JACS_KEY_DIRECTORY must be set when using key directory")
             } else {
-                env::var("JACS_DATA_DIRECTORY")
+                get_required_env_var("JACS_DATA_DIRECTORY", true)
                     .expect("JACS_DATA_DIRECTORY must be set when JACS_USE_FILESYSTEM is enabled")
             };
             let local: LocalFileSystem = LocalFileSystem::new_with_prefix(local_path)?;
@@ -108,8 +113,8 @@ impl MultiStorage {
             aws: _s3,
             fs: _local,
             hai_ai: _http,
-            default_storage: default_storage,
-            storages: storages,
+            default_storage,
+            storages,
         })
     }
 

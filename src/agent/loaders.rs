@@ -101,7 +101,8 @@ impl FileLoader for Agent {
         }
 
         // Instead of building local filesystem paths, create object store paths
-        let jacs_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
+        let jacs_dir = get_required_env_var("JACS_DATA_DIRECTORY", true)
+            .expect("JACS_DATA_DIRECTORY must be set");
         let path = format!("{}/{}", jacs_dir, doctype);
 
         // Still return PathBuf for compatibility with existing code
@@ -117,7 +118,8 @@ impl FileLoader for Agent {
 
         let path = format!(
             "{}/{}/{}",
-            env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY"),
+            get_required_env_var("JACS_DATA_DIRECTORY", true)
+                .expect("JACS_DATA_DIRECTORY must be set"),
             doctype,
             filename
         );
@@ -128,8 +130,8 @@ impl FileLoader for Agent {
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
         let storage = MultiStorage::new(Some(true))?;
 
-        let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
-        let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
+        let private_key_filename = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
+        let public_key_filename = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
 
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
@@ -145,13 +147,12 @@ impl FileLoader for Agent {
     }
 
     fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>> {
-        //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
-        let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
+        let private_key_filename = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
         let private_key = load_private_key(&private_key_filename)?;
-        let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
+        let public_key_filename = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
         let public_key = load_key_file(&public_key_filename)?;
 
-        let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
+        let key_algorithm = get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)?;
         self.set_keys(private_key, public_key, &key_algorithm)
     }
 
@@ -200,7 +201,7 @@ impl FileLoader for Agent {
 
         let key_algorithm = match custom_key_algorithm {
             Some(algo) => algo,
-            _ => env::var("JACS_AGENT_KEY_ALGORITHM")?,
+            _ => get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)?,
         };
 
         self.set_keys(private_key, public_key, &key_algorithm)
