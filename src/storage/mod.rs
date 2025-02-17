@@ -16,17 +16,131 @@ use std::sync::Arc;
 use strum_macros::{AsRefStr, Display, EnumString};
 use url::Url;
 
+#[cfg(target_arch = "wasm32")]
+use web_sys::window;
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone)]
+pub struct WebLocalStorage {
+    storage: web_sys::Storage,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl WebLocalStorage {
+    pub fn new() -> Result<Self, ObjectStoreError> {
+        let storage = window()
+            .ok_or_else(|| ObjectStoreError::Generic {
+                store: "WebLocalStorage",
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "No global window exists",
+                )),
+            })?
+            .local_storage()
+            .map_err(|e| ObjectStoreError::Generic {
+                store: "WebLocalStorage",
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.as_string().unwrap_or_default(),
+                )),
+            })?
+            .ok_or_else(|| ObjectStoreError::Generic {
+                store: "WebLocalStorage",
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "localStorage is not available",
+                )),
+            })?;
+
+        Ok(Self { storage })
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[async_trait::async_trait]
+impl ObjectStore for WebLocalStorage {
+    async fn put(&self, location: &ObjectPath, bytes: PutPayload) -> Result<(), ObjectStoreError> {
+        let data = bytes.into_vec().await?;
+        let encoded = base64::encode(&data);
+        self.storage
+            .set_item(location.as_ref(), &encoded)
+            .map_err(|e| ObjectStoreError::Generic {
+                store: "WebLocalStorage",
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.as_string().unwrap_or_default(),
+                )),
+            })?;
+        Ok(())
+    }
+
+    async fn get(&self, location: &ObjectPath) -> Result<GetResult, ObjectStoreError> {
+        let value = self
+            .storage
+            .get_item(location.as_ref())
+            .map_err(|e| ObjectStoreError::Generic {
+                store: "WebLocalStorage",
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.as_string().unwrap_or_default(),
+                )),
+            })?
+            .ok_or_else(|| ObjectStoreError::NotFound {
+                path: location.to_string(),
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Key not found in localStorage",
+                )),
+            })?;
+
+        let decoded = base64::decode(value).map_err(|e| ObjectStoreError::Generic {
+            store: "WebLocalStorage",
+            source: Box::new(e),
+        })?;
+
+        Ok(GetResult::Stream(Box::pin(futures_util::stream::once(
+            async move { Ok(bytes::Bytes::from(decoded)) },
+        ))))
+    }
+
+    fn list(
+        &self,
+        prefix: Option<&ObjectPath>,
+    ) -> BoxStream<'_, Result<ObjectMeta, ObjectStoreError>> {
+        let mut items = Vec::new();
+        for i in 0..self.storage.length().unwrap_or(0) {
+            if let Ok(Some(key)) = self.storage.key(i) {
+                if let Some(prefix) = prefix {
+                    if !key.starts_with(prefix.as_ref()) {
+                        continue;
+                    }
+                }
+                if let Ok(Some(value)) = self.storage.get_item(&key) {
+                    items.push(Ok(ObjectMeta {
+                        location: ObjectPath::parse(&key).unwrap(),
+                        last_modified: chrono::Utc::now(),
+                        size: value.len(),
+                    }));
+                }
+            }
+        }
+        Box::pin(futures_util::stream::iter(items))
+    }
+}
+
 pub mod jenv;
 
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,
     hai_ai: Option<Arc<HttpStore>>,
+    #[cfg(target_arch = "wasm32")]
+    web_local: Option<Arc<WebLocalStorage>>,
     default_storage: StorageType,
     storages: Vec<Arc<dyn ObjectStore>>,
 }
 
-#[derive(Debug, AsRefStr, Display, EnumString)]
+#[derive(Debug, AsRefStr, Display, EnumString, Clone)]
 pub enum StorageType {
     #[strum(serialize = "aws")]
     AWS,
@@ -34,6 +148,9 @@ pub enum StorageType {
     FS,
     #[strum(serialize = "hai")]
     HAI,
+    #[cfg(target_arch = "wasm32")]
+    #[strum(serialize = "local")]
+    WebLocal,
 }
 
 impl MultiStorage {
@@ -99,7 +216,18 @@ impl MultiStorage {
             _local = None;
         }
 
-        if _local.is_none() && _http.is_none() && _s3.is_none() {
+        #[cfg(target_arch = "wasm32")]
+        let web_local = if matches!(get_env_var("JACS_USE_WEB_LOCAL", true), Ok(Some(_))) {
+            let storage = WebLocalStorage::new()?;
+            let tmp_storage = Arc::new(storage);
+            storages.push(tmp_storage.clone());
+            Some(tmp_storage)
+        } else {
+            None
+        };
+
+        #[cfg(target_arch = "wasm32")]
+        if _local.is_none() && _http.is_none() && _s3.is_none() && web_local.is_none() {
             return Err(ObjectStoreError::Generic {
                 store: "MultiStorage",
                 source: Box::new(std::io::Error::new(
@@ -113,6 +241,8 @@ impl MultiStorage {
             aws: _s3,
             fs: _local,
             hai_ai: _http,
+            #[cfg(target_arch = "wasm32")]
+            web_local,
             default_storage,
             storages,
         })
@@ -196,24 +326,18 @@ impl MultiStorage {
     fn get_read_storage(&self, preference: Option<StorageType>) -> Arc<dyn ObjectStore> {
         let selected = match preference {
             Some(pref) => pref,
-            _ => {
-                let pref: StorageType = {
-                    if !self.fs.is_none() {
-                        StorageType::FS
-                    } else if !self.aws.is_none() {
-                        StorageType::AWS
-                    } else {
-                        StorageType::HAI
-                    }
-                };
-                pref
-            }
+            _ => self.default_storage.clone(),
         };
 
         match selected {
             StorageType::AWS => self.aws.clone().expect("aws storage not loaded"),
-            StorageType::FS => self.fs.clone().expect("fielsystem storage not loaded"),
+            StorageType::FS => self.fs.clone().expect("filesystem storage not loaded"),
             StorageType::HAI => self.hai_ai.clone().expect("hai storage not loaded"),
+            #[cfg(target_arch = "wasm32")]
+            StorageType::WebLocal => self
+                .web_local
+                .clone()
+                .expect("web local storage not loaded"),
         }
     }
 }
