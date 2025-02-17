@@ -7,7 +7,7 @@ use object_store::{
     aws::{AmazonS3, AmazonS3Builder},
     http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,
-    path::Path,
+    path::Path as ObjectPath,
     Error as ObjectStoreError, ObjectStore,
 };
 use std::sync::Arc;
@@ -34,7 +34,13 @@ pub enum StorageType {
 }
 
 impl MultiStorage {
-    pub fn new() -> Result<Self, ObjectStoreError> {
+    fn clean_path(path: &str) -> String {
+        // Remove any ./ and multiple slashes
+        path.replace("./", "").replace("//", "/")
+        // path.to_string()
+    }
+
+    pub fn new(use_key_dir: Option<bool>) -> Result<Self, ObjectStoreError> {
         let mut _s3;
         let mut _http;
         let mut _local;
@@ -71,9 +77,14 @@ impl MultiStorage {
         }
 
         if env::var("JACS_USE_FILESYSTEM").is_ok() {
-            let local_path = env::var("JACS_DATA_DIRECTORY")
-                .expect("JACS_DATA_DIRECTORY must be set when JACS_USE_FILESYSTEM is enabled");
-            let local = LocalFileSystem::new_with_prefix(local_path)?;
+            let local_path = if use_key_dir.unwrap_or(false) {
+                env::var("JACS_KEY_DIRECTORY")
+                    .expect("JACS_KEY_DIRECTORY must be set when using key directory")
+            } else {
+                env::var("JACS_DATA_DIRECTORY")
+                    .expect("JACS_DATA_DIRECTORY must be set when JACS_USE_FILESYSTEM is enabled")
+            };
+            let local: LocalFileSystem = LocalFileSystem::new_with_prefix(local_path)?;
             let tmplocal = Arc::new(local);
             _local = Some(tmplocal.clone());
             storages.push(tmplocal);
@@ -101,7 +112,8 @@ impl MultiStorage {
     }
 
     pub fn save_file(&self, path: &str, contents: &[u8]) -> Result<(), ObjectStoreError> {
-        let object_path = Path::from(path);
+        let clean = Self::clean_path(path);
+        let object_path = ObjectPath::parse(&clean)?;
         let mut errors = Vec::new();
         let contents_vec = contents.to_vec();
         let contents_payload = PutPayload::from(contents_vec);
@@ -130,9 +142,9 @@ impl MultiStorage {
         path: &str,
         preference: Option<StorageType>,
     ) -> Result<Vec<u8>, ObjectStoreError> {
-        let object_path = Path::from(path);
+        let clean = Self::clean_path(path);
+        let object_path = ObjectPath::parse(&clean)?;
         let storage = self.get_read_storage(preference);
-
         let get_result = block_on(storage.get(&object_path))?;
         let bytes = block_on(get_result.bytes())?;
         Ok(bytes.to_vec())
@@ -143,7 +155,8 @@ impl MultiStorage {
         path: &str,
         preference: Option<StorageType>,
     ) -> Result<bool, ObjectStoreError> {
-        let object_path = Path::from(path);
+        let clean = Self::clean_path(path);
+        let object_path = ObjectPath::parse(&clean)?;
         let storage = self.get_read_storage(preference);
 
         match block_on(storage.head(&object_path)) {
@@ -160,8 +173,8 @@ impl MultiStorage {
     ) -> Result<Vec<String>, ObjectStoreError> {
         let mut file_list = Vec::new();
         let object_store = self.get_read_storage(preference);
-        let prefix_path = Path::from(prefix);
-
+        let clean = Self::clean_path(prefix);
+        let prefix_path = ObjectPath::parse(&clean)?;
         let mut list_stream = object_store.list(Some(&prefix_path));
 
         while let Some(meta) = block_on(list_stream.next()) {

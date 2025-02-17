@@ -8,11 +8,10 @@
 
 ## 0.3.2
 
-
+ - use a single file to handle file i/o for all storage types
 
 waiting to upgrade 
 https://github.com/rustpq/pqcrypto/issues/79
-
 
 
 ## 0.3.1

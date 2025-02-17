@@ -42,11 +42,6 @@ pub trait FileLoader {
     // utils
     fn build_filepath(&self, doctype: &String, docid: &String) -> Result<PathBuf, Box<dyn Error>>;
     fn build_file_directory(&self, doctype: &String) -> Result<PathBuf, Box<dyn Error>>;
-    fn build_key_filepath(
-        &self,
-        doctype: &String,
-        key_filename: &String,
-    ) -> Result<PathBuf, Box<dyn Error>>;
 
     fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>>;
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>>;
@@ -127,29 +122,8 @@ impl FileLoader for Agent {
         Ok(PathBuf::from(path))
     }
 
-    fn build_key_filepath(
-        &self,
-        doctype: &String,
-        key_filename: &String,
-    ) -> Result<PathBuf, Box<dyn Error>> {
-        if !use_filesystem() {
-            let error_message = format!(
-                "build_key_filepath Filesystem features set to off with JACS_USE_FILESYSTEM: {} {}",
-                doctype, key_filename
-            );
-            error!("{}", error_message);
-            return Err(error_message.into());
-        }
-
-        let key_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
-        let path = format!("{}/{}", key_dir, key_filename);
-
-        Ok(PathBuf::from(path))
-    }
-
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new()?;
-        let key_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        let storage = MultiStorage::new(Some(true))?;
 
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
@@ -158,8 +132,8 @@ impl FileLoader for Agent {
         let borrowed_key = binding.expose_secret();
         let key_vec = decrypt_private_key(borrowed_key)?;
 
-        let private_path = format!("{}/{}", key_dir, private_key_filename);
-        let public_path = format!("{}/{}", key_dir, public_key_filename);
+        let private_path = format!("{}", private_key_filename);
+        let public_path = format!("{}", public_key_filename);
 
         storage.save_file(&private_path, &key_vec)?;
         storage.save_file(&public_path, &self.get_public_key()?)?;
@@ -169,16 +143,10 @@ impl FileLoader for Agent {
 
     fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>> {
         //todo save JACS_AGENT_PRIVATE_KEY_PASSWORD
-        //todo use filepath builder
-        let default_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
-        let current_dir = env::current_dir()?;
-        let path = current_dir.join(default_dir).to_str().unwrap().to_string();
-        debug!("loading keys from: {:?}", path);
-
         let private_key_filename = env::var("JACS_AGENT_PRIVATE_KEY_FILENAME")?;
-        let private_key = load_private_key(&path, &private_key_filename)?;
+        let private_key = load_private_key(&private_key_filename)?;
         let public_key_filename = env::var("JACS_AGENT_PUBLIC_KEY_FILENAME")?;
-        let public_key = load_key_file(&path, &public_key_filename)?;
+        let public_key = load_key_file(&public_key_filename)?;
 
         let key_algorithm = env::var("JACS_AGENT_KEY_ALGORITHM")?;
         self.set_keys(private_key, public_key, &key_algorithm)
@@ -186,9 +154,8 @@ impl FileLoader for Agent {
 
     /// in JACS the public keys need to be added manually
     fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-        let storage = MultiStorage::new()?;
-        let key_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
-        let public_key_path = format!("{}/public_keys/{}.pem", key_dir, agent_id_and_version);
+        let storage = MultiStorage::new(Some(true))?;
+        let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
 
         storage
             .get_file(&public_key_path, None)
@@ -202,11 +169,10 @@ impl FileLoader for Agent {
         public_key: &[u8],
         public_key_enc_type: &[u8],
     ) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new()?;
-        let key_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        let storage = MultiStorage::new(Some(true))?;
 
-        let public_key_path = format!("{}/public_keys/{}.pem", key_dir, agent_id_and_version);
-        let enc_type_path = format!("{}/public_keys/{}.enc_type", key_dir, agent_id_and_version);
+        let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
+        let enc_type_path = format!("public_keys/{}.enc_type", agent_id_and_version);
 
         storage.save_file(&public_key_path, public_key)?;
         storage.save_file(&enc_type_path, public_key_enc_type)?;
@@ -221,11 +187,10 @@ impl FileLoader for Agent {
         public_key_filename: &String,
         custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new()?;
-        let key_dir = env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY");
+        let storage = MultiStorage::new(Some(true))?;
 
-        let private_path = format!("{}/{}", key_dir, private_key_filename);
-        let public_path = format!("{}/{}", key_dir, public_key_filename);
+        let private_path = format!("{}", private_key_filename);
+        let public_path = format!("{}", public_key_filename);
 
         let private_key = storage.get_file(&private_path, None)?;
         let public_key = storage.get_file(&public_path, None)?;
@@ -242,7 +207,7 @@ impl FileLoader for Agent {
     fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
         let mut errors: Vec<Box<dyn Error>> = Vec::new();
         let mut documents: Vec<String> = Vec::new();
-        let storage = MultiStorage::new().map_err(|e| vec![Box::new(e) as Box<dyn Error>])?;
+        let storage = MultiStorage::new(None).map_err(|e| vec![Box::new(e) as Box<dyn Error>])?;
 
         let paths = vec!["agent", "documents"];
 
@@ -272,7 +237,7 @@ impl FileLoader for Agent {
     }
 
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
-        let storage = MultiStorage::new()?;
+        let storage = MultiStorage::new(None)?;
         let agent_path = format!("agent/{}.json", agentid);
         let contents = storage.get_file(&agent_path, None)?;
         String::from_utf8(contents).map_err(|e| Box::new(e) as Box<dyn Error>)
@@ -300,7 +265,7 @@ impl FileLoader for Agent {
     }
 
     fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new()?;
+        let storage = MultiStorage::new(None)?;
         let document_filename = format!("{}.json", lookup_key);
         let old_path = format!("documents/{}", document_filename);
         let new_path = format!("documents/archive/{}", document_filename);
@@ -329,14 +294,14 @@ impl FileLoader for Agent {
         let document_path = format!("{}/{}", document_directory, documentoutput_filename);
 
         // Use MultiStorage to save the file
-        let storage = MultiStorage::new()?;
+        let storage = MultiStorage::new(None)?;
         storage.save_file(&document_path, document_string.as_bytes())?;
 
         Ok(document_path)
     }
 
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>> {
-        let storage = MultiStorage::new()?;
+        let storage = MultiStorage::new(None)?;
         let contents = storage.get_file(&document_filepath, None)?;
 
         // Compress the contents using gzip
@@ -386,7 +351,7 @@ fn save_private_key(
     private_key: &[u8],
 ) -> Result<String, Box<dyn Error>> {
     let password = env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default();
-    let storage = MultiStorage::new()?;
+    let storage = MultiStorage::new(Some(true))?;
 
     if !password.is_empty() {
         let encrypted_key = encrypt_private_key(private_key).map_err(|e| {
@@ -412,8 +377,8 @@ fn save_private_key(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_private_key(file_path: &String, filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-    let loaded_key = load_key_file(file_path, filename)?;
+fn load_private_key(filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+    let loaded_key = load_key_file(filename)?;
     if filename.ends_with(".enc") {
         Ok(decrypt_private_key(&loaded_key)?)
     } else {
@@ -422,11 +387,10 @@ fn load_private_key(file_path: &String, filename: &String) -> Result<Vec<u8>, Bo
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_key_file(file_path: &String, filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-    let storage = MultiStorage::new()?;
-    let full_path = format!("{}/{}", file_path, filename);
+fn load_key_file(filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+    let storage = MultiStorage::new(Some(true))?;
     storage
-        .get_file(&full_path, None)
+        .get_file(&filename, None)
         .map_err(|e| Box::new(e) as Box<dyn Error>)
 }
 
@@ -442,7 +406,7 @@ fn save_file(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn save_to_filepath(full_path: &PathBuf, content: &[u8]) -> Result<String, Box<dyn Error>> {
-    let storage = MultiStorage::new()?;
+    let storage = MultiStorage::new(None)?;
     let path_str = full_path.to_string_lossy().to_string();
 
     if storage.file_exists(&path_str, None)? {

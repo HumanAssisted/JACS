@@ -71,7 +71,7 @@ fn test_create_task_with_actions() {
         .unwrap();
     let task_doc_key = task_doc.getkey();
 
-    let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
+    let attachments = vec!["raw/mobius.jpeg".to_string()];
     // create a message
     let content = json!("lets goooo");
     let mut to: Vec<String> = Vec::new();
