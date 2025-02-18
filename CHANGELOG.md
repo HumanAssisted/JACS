@@ -1,17 +1,30 @@
 # PLANNED
+
 - encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
 - WASM builds
 
+
+## 0.4.0
+- WASM
+
+## 0.3.4
+
+## 0.3.3
+ - upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+
 # COMPLETED
 
 ## 0.3.2
 
- - use a single file to handle file i/o for all storage types
-
-waiting to upgrade 
-https://github.com/rustpq/pqcrypto/issues/79
+ - [x] use a single file to handle file i/o for all storage types
+ - [] use an ENV wrapper to prep for wasm
+ - [] complete migration away from fs calls
+ - [] create tests using custom schemas - verify this is working
+ - [] init config without configs
+ - [] separate public key location from private key location
+ - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
 
 
 ## 0.3.1
