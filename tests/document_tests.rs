@@ -15,7 +15,7 @@ extern crate env_logger;
 use log::{error, info};
 
 // Define the correct absolute path for the custom schema
-static SCHEMA: &str = "examples/raw/custom.schema.json";
+static SCHEMA: &str = "raw/custom.schema.json";
 
 #[cfg(test)]
 mod tests {

@@ -2,6 +2,7 @@ use crate::agent::document::DocumentTraits;
 use crate::shared::save_document;
 use log::error;
 
+use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
 use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
@@ -10,9 +11,7 @@ use crate::schema::task_crud::create_minimal_task;
 use crate::storage::jenv::get_required_env_var;
 use log::debug;
 use serde_json::Value;
-use std::env;
 use std::error::Error;
-use std::fs;
 
 pub mod agent;
 pub mod config;
@@ -39,11 +38,10 @@ pub fn load_agent_by_id() -> Agent {
     agent
 }
 
-/// TODO exlcude or modfiy for wasm context
 fn load_path_agent(filepath: String) -> Agent {
     let mut agent = get_empty_agent();
-    let agentstring = fs::read_to_string(filepath.clone()).expect("agent file loading");
-    let _ = agent.load(&agentstring);
+    let agentstring = agent.fs_agent_load(&filepath).expect("agent file loading");
+    agent.load(&agentstring).expect("agent loading");
     agent
 }
 
