@@ -1,8 +1,12 @@
+use crate::schema::utils::{EmbeddedSchemaResolver, CONFIG_SCHEMA_STRING};
 use crate::storage::jenv::{get_env_var, set_env_var, EnvError};
-use log::debug;
-use log::info;
+use jsonschema::{Draft, Registry, Retrieve, Validator};
+
+use log::{debug, error, info};
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
+use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
@@ -11,6 +15,7 @@ use uuid::Uuid;
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Config {
     #[serde(rename = "$schema")]
+    #[serde(default = "default_schema")]
     schema: String,
     jacs_use_filesystem: Option<String>,
     jacs_use_security: Option<String>,
@@ -25,6 +30,10 @@ pub struct Config {
     jacs_private_key_password: Option<String>,
     jacs_agent_id_and_version: Option<String>,
     jacs_default_storage: Option<String>,
+}
+
+fn default_schema() -> String {
+    "https://hai.ai/schemas/jacs.config.schema.json".to_string()
 }
 
 impl Config {
@@ -131,29 +140,45 @@ pub fn split_id(input: &str) -> Option<(&str, &str)> {
     }
 }
 
-pub fn set_env_vars() -> Result<String, EnvError> {
-    // todo only can do this if our congif is local
+pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
+    let jacsconfigschema_result: Value = serde_json::from_str(CONFIG_SCHEMA_STRING)?;
+
+    let jacsconfigschema = Validator::options()
+        .with_draft(Draft::Draft7)
+        .with_retriever(EmbeddedSchemaResolver::new())
+        .build(&jacsconfigschema_result)?;
+
+    let instance: Value = serde_json::from_str(config_json).map_err(|e| {
+        error!("Invalid JSON: {}", e);
+        e
+    })?;
+
+    debug!("validate json {:?}", instance);
+
+    // Validate and convert any error into an owned error.
+    jacsconfigschema.validate(&instance).map_err(|e| {
+        let owned_error = e.into_owned(); // convert to an owned error
+        error!("Error validating config file: {}", owned_error);
+        owned_error
+    })?;
+
+    Ok(instance)
+}
+
+// todo config may be env vars only
+// todo config file may be stored in individual bucket
+// same with keys, away from data
+//        let config = fs::read_to_string("jacs.config.json").expect("config file missing");
+//       schema.validate_config(&config).expect("config validation");
+
+pub fn set_env_vars() -> Result<String, Box<dyn Error>> {
     let config: Config = match fs::read_to_string("jacs.config.json") {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => Config {
-            schema: "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
-            jacs_use_filesystem: None,
-            jacs_use_security: None,
-            jacs_data_directory: None,
-            jacs_key_directory: None,
-            jacs_agent_private_key_filename: None,
-            jacs_agent_public_key_filename: None,
-            jacs_agent_key_algorithm: None,
-            jacs_agent_schema_version: None,
-            jacs_header_schema_version: None,
-            jacs_signature_schema_version: None,
-            jacs_private_key_password: None,
-            jacs_agent_id_and_version: None,
-            jacs_default_storage: None,
-        },
+        Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
+            .unwrap_or_default(),
+        Err(_) => Config::default(),
     };
     debug!("configs from file {:?}", config);
-
+    validate_config(&serde_json::to_string(&config).map_err(|e| Box::new(e) as Box<dyn Error>)?)?;
     let jacs_use_filesystem = config
         .jacs_use_filesystem
         .as_ref()

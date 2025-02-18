@@ -117,12 +117,6 @@ impl Agent {
 
         let default_directory = get_default_dir();
 
-        // todo config may be env vars only
-        // todo config file may be stored in individual bucket
-        // same with keys, away from data
-        let config = fs::read_to_string("jacs.config.json").expect("config file missing");
-        schema.validate_config(&config).expect("config validation");
-
         Ok(Self {
             schema,
             value: None,
