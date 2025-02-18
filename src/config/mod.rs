@@ -132,6 +132,7 @@ pub fn split_id(input: &str) -> Option<(&str, &str)> {
 }
 
 pub fn set_env_vars() -> Result<String, EnvError> {
+    // todo only can do this if our congif is local
     let config: Config = match fs::read_to_string("jacs.config.json") {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => Config {

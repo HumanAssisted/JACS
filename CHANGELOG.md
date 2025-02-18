@@ -23,8 +23,14 @@
  - [] complete migration away from fs calls
  - [] create tests using custom schemas - verify this is working
  - [] init config without configs
+    - in config   let config: Config = match fs::read_to_string("jacs.config.json") {
+    - in load agent  let config = fs::read_to_string("jacs.config.json").expect("config file missing");
+    - single functino, fallback to fs:: if using filesystem and no string passed in. 
+
  - [] separate public key location from private key location
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
+
+
 
 
 ## 0.3.1
