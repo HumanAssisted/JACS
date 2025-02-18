@@ -74,6 +74,14 @@ pub fn get_required_env_var(key: &str, required_non_empty: bool) -> Result<Strin
     }
 }
 
+pub fn set_env_var_override(key: &str, value: &str, do_override: bool) -> Result<(), EnvError> {
+    if get_env_var(key, false)?.is_none() || do_override {
+        set_env_var(key, value)
+    } else {
+        Ok(())
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 pub fn set_env_var(key: &str, value: &str) -> Result<(), EnvError> {
     get_local_storage()?

@@ -1,5 +1,5 @@
 use crate::schema::utils::{EmbeddedSchemaResolver, CONFIG_SCHEMA_STRING};
-use crate::storage::jenv::{get_env_var, set_env_var, EnvError};
+use crate::storage::jenv::{get_env_var, set_env_var, set_env_var_override, EnvError};
 use jsonschema::{Draft, Registry, Retrieve, Validator};
 
 use log::{debug, error, info};
@@ -165,17 +165,21 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
     Ok(instance)
 }
 
-// todo config may be env vars only
-// todo config file may be stored in individual bucket
-// same with keys, away from data
-//        let config = fs::read_to_string("jacs.config.json").expect("config file missing");
-//       schema.validate_config(&config).expect("config validation");
-
-pub fn set_env_vars() -> Result<String, Box<dyn Error>> {
-    let config: Config = match fs::read_to_string("jacs.config.json") {
-        Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
+// THis function should be exposed to higher level functions that can load configs from
+// anywere. Additionally, since this is called automatically in creating an agent
+// it should not override any existing env vars.
+pub fn set_env_vars(
+    do_override: bool,
+    config_json: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+    let config: Config = match config_json {
+        Some(json_str) => serde_json::from_value(validate_config(json_str).unwrap_or_default())
             .unwrap_or_default(),
-        Err(_) => Config::default(),
+        None => match fs::read_to_string("jacs.config.json") {
+            Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
+                .unwrap_or_default(),
+            Err(_) => Config::default(),
+        },
     };
     debug!("configs from file {:?}", config);
     validate_config(&serde_json::to_string(&config).map_err(|e| Box::new(e) as Box<dyn Error>)?)?;
@@ -184,44 +188,49 @@ pub fn set_env_vars() -> Result<String, Box<dyn Error>> {
         .as_ref()
         .unwrap_or(&"true".to_string())
         .clone();
-    set_env_var("JACS_USE_FILESYSTEM", &jacs_use_filesystem)?;
+    set_env_var_override("JACS_USE_FILESYSTEM", &jacs_use_filesystem, do_override)?;
 
     let jacs_private_key_password = config
         .jacs_private_key_password
         .as_ref()
         .unwrap_or(&"true".to_string())
         .clone();
-    set_env_var("JACS_PRIVATE_KEY_PASSWORD", &jacs_private_key_password)?;
+    set_env_var_override(
+        "JACS_PRIVATE_KEY_PASSWORD",
+        &jacs_private_key_password,
+        do_override,
+    )?;
 
     let jacs_use_security = config
         .jacs_use_security
         .as_ref()
         .unwrap_or(&"false".to_string())
         .clone();
-    set_env_var("JACS_USE_SECURITY", &jacs_use_security)?;
+    set_env_var_override("JACS_USE_SECURITY", &jacs_use_security, do_override)?;
 
     let jacs_data_directory = config
         .jacs_data_directory
         .as_ref()
         .unwrap_or(&format!("{:?}", std::env::current_dir().unwrap()))
         .clone();
-    set_env_var("JACS_DATA_DIRECTORY", &jacs_data_directory)?;
+    set_env_var_override("JACS_DATA_DIRECTORY", &jacs_data_directory, do_override)?;
 
     let jacs_key_directory = config
         .jacs_key_directory
         .as_ref()
         .unwrap_or(&".".to_string())
         .clone();
-    set_env_var("JACS_KEY_DIRECTORY", &jacs_key_directory)?;
+    set_env_var_override("JACS_KEY_DIRECTORY", &jacs_key_directory, do_override)?;
 
     let jacs_agent_private_key_filename = config
         .jacs_agent_private_key_filename
         .as_ref()
         .unwrap_or(&"rsa_pss_private.pem".to_string())
         .clone();
-    set_env_var(
+    set_env_var_override(
         "JACS_AGENT_PRIVATE_KEY_FILENAME",
         &jacs_agent_private_key_filename,
+        do_override,
     )?;
 
     let jacs_agent_public_key_filename = config
@@ -229,9 +238,10 @@ pub fn set_env_vars() -> Result<String, Box<dyn Error>> {
         .as_ref()
         .unwrap_or(&"rsa_pss_public.pem".to_string())
         .clone();
-    set_env_var(
+    set_env_var_override(
         "JACS_AGENT_PUBLIC_KEY_FILENAME",
         &jacs_agent_public_key_filename,
+        do_override,
     )?;
 
     let jacs_agent_key_algorithm = config
@@ -239,30 +249,43 @@ pub fn set_env_vars() -> Result<String, Box<dyn Error>> {
         .as_ref()
         .unwrap_or(&"RSA-PSS".to_string())
         .clone();
-    set_env_var("JACS_AGENT_KEY_ALGORITHM", &jacs_agent_key_algorithm)?;
+    set_env_var_override(
+        "JACS_AGENT_KEY_ALGORITHM",
+        &jacs_agent_key_algorithm,
+        do_override,
+    )?;
 
     let jacs_agent_schema_version = config
         .jacs_agent_schema_version
         .as_ref()
         .unwrap_or(&"v1".to_string())
         .clone();
-    set_env_var("JACS_AGENT_SCHEMA_VERSION", &jacs_agent_schema_version)?;
+    set_env_var_override(
+        "JACS_AGENT_SCHEMA_VERSION",
+        &jacs_agent_schema_version,
+        do_override,
+    )?;
 
     let jacs_header_schema_version = config
         .jacs_header_schema_version
         .as_ref()
         .unwrap_or(&"v1".to_string())
         .clone();
-    set_env_var("JACS_HEADER_SCHEMA_VERSION", &jacs_header_schema_version)?;
+    set_env_var_override(
+        "JACS_HEADER_SCHEMA_VERSION",
+        &jacs_header_schema_version,
+        do_override,
+    )?;
 
     let jacs_signature_schema_version = config
         .jacs_signature_schema_version
         .as_ref()
         .unwrap_or(&"v1".to_string())
         .clone();
-    set_env_var(
+    set_env_var_override(
         "JACS_SIGNATURE_SCHEMA_VERSION",
         &jacs_signature_schema_version,
+        do_override,
     )?;
 
     let jacs_default_storage = config
@@ -270,7 +293,7 @@ pub fn set_env_vars() -> Result<String, Box<dyn Error>> {
         .as_ref()
         .unwrap_or(&"fs".to_string())
         .clone();
-    set_env_var("JACS_DEFAULT_STORAGE", &jacs_default_storage)?;
+    set_env_var_override("JACS_DEFAULT_STORAGE", &jacs_default_storage, do_override)?;
 
     let jacs_agent_id_and_version = config
         .jacs_agent_id_and_version
@@ -285,9 +308,64 @@ pub fn set_env_vars() -> Result<String, Box<dyn Error>> {
         }
     }
 
-    set_env_var("JACS_AGENT_ID_AND_VERSION", &jacs_agent_id_and_version)?;
+    set_env_var_override(
+        "JACS_AGENT_ID_AND_VERSION",
+        &jacs_agent_id_and_version,
+        do_override,
+    )?;
 
     let message = format!("{}", config);
     info!("{}", message);
+    check_env_vars().map_err(|e| {
+        error!("Error checking environment variables: {}", e);
+        Box::new(e) as Box<dyn Error>
+    })?;
+    Ok(message)
+}
+
+pub fn check_env_vars() -> Result<String, EnvError> {
+    let vars = [
+        ("JACS_USE_SECURITY", true),
+        ("JACS_USE_FILESYSTEM", true),
+        ("JACS_DATA_DIRECTORY", true),
+        ("JACS_KEY_DIRECTORY", true),
+        ("JACS_AGENT_PRIVATE_KEY_FILENAME", true),
+        ("JACS_AGENT_PUBLIC_KEY_FILENAME", true),
+        ("JACS_AGENT_KEY_ALGORITHM", true),
+        ("JACS_AGENT_SCHEMA_VERSION", true),
+        ("JACS_HEADER_SCHEMA_VERSION", true),
+        ("JACS_SIGNATURE_SCHEMA_VERSION", true),
+        ("JACS_PRIVATE_KEY_PASSWORD", true),
+        ("JACS_AGENT_ID_AND_VERSION", true),
+    ];
+
+    let mut message = String::from("\nChecking JACS environment variables:\n");
+    let mut missing_vars = Vec::new();
+
+    for (var_name, required) in vars.iter() {
+        let value = get_env_var(var_name, *required)?;
+        let status = match value {
+            Some(val) => val,
+            None => {
+                if *required {
+                    missing_vars.push(var_name);
+                }
+                "MISSING".to_string()
+            }
+        };
+        message.push_str(&format!(
+            "    {:<35} {}\n",
+            var_name.to_string() + ":",
+            status
+        ));
+    }
+
+    if !missing_vars.is_empty() {
+        message.push_str("\nMissing required environment variables:\n");
+        for var in missing_vars {
+            message.push_str(&format!("    {}\n", var));
+        }
+    }
+
     Ok(message)
 }

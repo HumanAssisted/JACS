@@ -29,7 +29,7 @@
 
  - [] separate public key location from private key location
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
-
+ - [] mayb JACS_AGENT_ID_AND_VERSION should not be env var to allow overwrides and runtime
 
 
 

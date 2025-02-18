@@ -46,7 +46,7 @@ fn request_string(message: &str, default: &str) -> String {
 }
 
 fn main() {
-    let _ = set_env_vars();
+    let _ = set_env_vars(true, None);
     let matches = Command::new("jacs")
         .subcommand(
             Command::new("config")
@@ -578,7 +578,7 @@ fn main() {
             Some(("read", verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");
                 // let _ = load_agent_by_id();
-                let configs = set_env_vars().unwrap_or_else(|e| {
+                let configs = set_env_vars(true, None).unwrap_or_else(|e| {
                     eprintln!("Warning: Failed to set some environment variables: {}", e);
                     Config::default().to_string()
                 });
@@ -599,7 +599,7 @@ fn main() {
                 };
 
                 let mut agent = get_empty_agent();
-                let configs = set_env_vars().unwrap_or_else(|e| {
+                let configs = set_env_vars(true, None).unwrap_or_else(|e| {
                     eprintln!("Warning: Failed to set some environment variables: {}", e);
                     Config::default().to_string()
                 });

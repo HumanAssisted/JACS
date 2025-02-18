@@ -110,7 +110,7 @@ impl Agent {
         headerversion: &String,
         signature_version: &String,
     ) -> Result<Self, Box<dyn Error>> {
-        let _ = set_env_vars();
+        let _ = set_env_vars(true, None)?;
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
