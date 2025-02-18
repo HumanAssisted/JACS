@@ -339,6 +339,25 @@ impl MultiStorage {
         Ok(file_list)
     }
 
+    pub fn rename_file(&self, from: &str, to: &str) -> Result<(), ObjectStoreError> {
+        // First get the contents of the original file
+        let contents = self.get_file(from, None)?;
+
+        // Save contents to new location
+        self.save_file(to, &contents)?;
+
+        // Delete the original file
+        for storage in &self.storages {
+            let from_path = ObjectPath::parse(&Self::clean_path(from))?;
+            if let Err(e) = block_on(storage.delete(&from_path)) {
+                // Log error but continue if file doesn't exist or other errors
+                debug!("Error deleting original file during rename: {:?}", e);
+            }
+        }
+
+        Ok(())
+    }
+
     fn get_read_storage(&self, preference: Option<StorageType>) -> Arc<dyn ObjectStore> {
         let selected = match preference {
             Some(pref) => pref,
