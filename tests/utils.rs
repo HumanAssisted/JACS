@@ -27,8 +27,8 @@ pub fn generate_new_docs_with_attachments(save: bool) {
         .create_document_and_load(
             &document_string,
             vec![
-                "examples/raw/plants.xml".to_string(),
-                "examples/raw/breakfast.xml".to_string(),
+                "raw/plants.xml".to_string(),
+                "raw/breakfast.xml".to_string(),
             ]
             .into(),
             Some(false),
@@ -43,7 +43,7 @@ pub fn generate_new_docs_with_attachments(save: bool) {
     document = agent
         .create_document_and_load(
             &document_string,
-            vec!["examples/raw/mobius.jpeg".to_string()].into(),
+            vec!["raw/mobius.jpeg".to_string()].into(),
             Some(true),
         )
         .unwrap();

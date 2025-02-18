@@ -1,4 +1,5 @@
 use crate::error;
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 use log::info;
 
 use std::env;
@@ -11,6 +12,7 @@ use walkdir::WalkDir;
 /// /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
 const JACS_USE_SECURITY: &str = "JACS_USE_SECURITY";
+const JACS_USE_FILESYSTEM: &str = "JACS_USE_FILESYSTEM";
 
 /// this function attempts to detect executable files
 /// if they should be there alert the user
@@ -20,7 +22,12 @@ pub fn check_data_directory() -> Result<(), Box<dyn Error>> {
         info!("JACS_USE_SECURITY security is off");
         return Ok(());
     }
-    let data_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
+    if !use_fs_security() {
+        info!("security is off because JACS_USE_FILESYSTEM is off");
+        return Ok(());
+    }
+    let data_dir =
+        get_required_env_var("JACS_DATA_DIRECTORY", true).expect("JACS_DATA_DIRECTORY must be set");
     let dir = Path::new(&data_dir);
 
     for entry in WalkDir::new(dir)
@@ -38,8 +45,11 @@ pub fn check_data_directory() -> Result<(), Box<dyn Error>> {
 /// determine if the system is configured ot use security features
 /// EXPERIMENTAL
 pub fn use_security() -> bool {
-    let env_var_value = env::var(JACS_USE_SECURITY).unwrap_or_else(|_| "false".to_string());
-    return matches!(env_var_value.to_lowercase().as_str(), "true" | "1");
+    matches!(get_env_var(JACS_USE_SECURITY, true), Ok(Some(value)) if matches!(value.to_lowercase().as_str(), "true" | "1"))
+}
+
+pub fn use_fs_security() -> bool {
+    matches!(get_env_var(JACS_USE_FILESYSTEM, true), Ok(Some(value)) if matches!(value.to_lowercase().as_str(), "true" | "1"))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -47,6 +57,15 @@ use std::os::unix::fs::PermissionsExt;
 
 #[cfg(not(target_os = "windows"))]
 fn is_executable(path: &std::path::Path) -> bool {
+    if !use_fs_security() {
+        info!(
+            "is_executable not possible because {} is off: {}",
+            JACS_USE_FILESYSTEM,
+            path.to_string_lossy()
+        );
+        return false;
+    }
+
     let metadata = match path.metadata() {
         Ok(metadata) => metadata,
         Err(_) => return false,
@@ -58,6 +77,14 @@ fn is_executable(path: &std::path::Path) -> bool {
 
 #[cfg(target_os = "windows")]
 fn is_executable(path: &std::path::Path) -> bool {
+    if !use_fs_security() {
+        info!(
+            "is_executable not possible because JACS_USE_FILESYSTEM is off: {}",
+            path.to_string_lossy()
+        );
+        return false;
+    }
+
     // First, check the file extension
     if let Some(ext) = path.extension() {
         match ext.to_str().unwrap_or("").to_lowercase().as_str() {
@@ -84,7 +111,16 @@ fn is_executable(path: &std::path::Path) -> bool {
 }
 
 fn quarantine_file(file_path: &Path) -> Result<(), Box<dyn Error>> {
-    let data_dir = env::var("JACS_DATA_DIRECTORY").expect("JACS_DATA_DIRECTORY");
+    if !use_fs_security() {
+        info!(
+            "is_executable not possible because JACS_USE_FILESYSTEM is off: {}",
+            file_path.to_string_lossy()
+        );
+        return Ok(());
+    }
+
+    let data_dir =
+        get_required_env_var("JACS_DATA_DIRECTORY", true).expect("JACS_DATA_DIRECTORY must be set");
     let mut quarantine_dir = Path::new(&data_dir);
     let binding = quarantine_dir.join("quarantine");
     quarantine_dir = &binding;

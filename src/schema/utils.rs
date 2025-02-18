@@ -10,6 +10,7 @@ use jsonschema::Retrieve;
 use serde_json::Value;
 use std::sync::Arc;
 
+use crate::storage::MultiStorage;
 use std::error::Error;
 use std::fmt;
 
@@ -199,11 +200,14 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
         } else {
             return get_remote_schema(path);
         }
-    } else if Path::new(path).exists() {
-        let schema_json = std::fs::read_to_string(path)?;
-        let schema_value: Value = serde_json::from_str(&schema_json)?;
-        return Ok(Arc::new(schema_value));
+    } else {
+        let storage = MultiStorage::new(None)?;
+        if storage.file_exists(path, None)? {
+            let schema_json = String::from_utf8(storage.get_file(path, None)?)?;
+            let schema_value: Value = serde_json::from_str(&schema_json)?;
+            return Ok(Arc::new(schema_value));
+        } else {
+            Err(format!("Schema file not found: {}", path).into())
+        }
     }
-
-    Err("Failed to retrieve schema".into())
 }

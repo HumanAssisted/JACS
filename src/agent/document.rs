@@ -11,6 +11,7 @@ use std::collections::HashMap;
 // use crate::schema::utils::get_short_name;
 use crate::schema::utils::ValueExt;
 use crate::schema::ValidationError;
+use crate::storage::{jenv::get_env_var, MultiStorage, StorageType};
 use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
@@ -22,7 +23,6 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
-use std::fs::{self, File};
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -670,24 +670,26 @@ impl DocumentTraits for Agent {
 
                         // TODO move this portion of code out of document as it's filesystem dependent
                         // Backup the existing file if it exists
-                        let file_path = Path::new(path);
-                        if file_path.exists() {
+                        let storage = MultiStorage::new(None)?;
+                        if storage.file_exists(path, None)? {
                             let backup_path =
                                 format!("{}.{}.bkp", path, Local::now().format("%Y%m%d_%H%M%S"));
-                            fs::rename(file_path, &backup_path)?;
+                            storage.rename_file(path, &backup_path)?;
                         }
 
                         // Save the inflated contents to the file
-                        let mut file = File::create(file_path)?;
-                        file.write_all(&inflated_contents)?;
+                        let storage = MultiStorage::new(None)?;
+                        storage.save_file(path, &inflated_contents)?;
 
                         // Mark the file as not executable
-                        #[cfg(unix)]
-                        {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if let Ok(Some(_)) = get_env_var("JACS_USE_FILESYSTEM", true) {
+                            use std::fs::Permissions;
                             use std::os::unix::fs::PermissionsExt;
-                            let mut permissions = file.metadata()?.permissions();
-                            permissions.set_mode(0o644);
-                            file.set_permissions(permissions)?;
+                            std::fs::set_permissions(
+                                Path::new(path),
+                                Permissions::from_mode(0o600),
+                            )?;
                         }
                     }
                 }
@@ -745,31 +747,29 @@ impl DocumentTraits for Agent {
     fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>> {
         match attachments {
             Some(path_str) => {
-                let path = Path::new(path_str);
-                if path.is_dir() {
-                    // If the path is a directory, read the directory and collect file paths
-                    match fs::read_dir(path) {
-                        Ok(entries) => {
-                            let file_paths: Vec<String> = entries
-                                .filter_map(|entry| {
-                                    entry
-                                        .ok()
-                                        .and_then(|e| e.path().to_str().map(|s| s.to_string()))
-                                })
-                                .collect();
+                let storage = MultiStorage::new(None).ok()?;
+
+                // First try to list files in case it's a directory
+                match storage.list(path_str, None) {
+                    Ok(file_paths) => {
+                        if !file_paths.is_empty() {
+                            // Path is a directory, return list of files
                             Some(file_paths)
-                        }
-                        Err(_) => {
-                            eprintln!("Failed to read directory: {}", path_str);
-                            None
+                        } else {
+                            // Check if path is a single file
+                            match storage.file_exists(path_str, None) {
+                                Ok(true) => Some(vec![path_str.to_string()]),
+                                _ => {
+                                    eprintln!("Invalid path: {}", path_str);
+                                    None
+                                }
+                            }
                         }
                     }
-                } else if path.is_file() {
-                    // If the path is a file, create a vector with the single file path
-                    Some(vec![path_str.to_string()])
-                } else {
-                    eprintln!("Invalid path: {}", path_str);
-                    None
+                    Err(_) => {
+                        eprintln!("Failed to read path: {}", path_str);
+                        None
+                    }
                 }
             }
             None => None,

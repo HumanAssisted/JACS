@@ -6,27 +6,32 @@ use jacs::agent::Agent;
 use log::debug;
 
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
+use jacs::storage::jenv::set_env_var;
 use rand::Rng;
 use std::env;
 
 static BENCH_SAMPLE_SIZE: usize = 100;
 
 fn set_enc_to_ring() {
-    env::set_var(
+    set_env_var(
         "JACS_AGENT_PRIVATE_KEY_FILENAME",
         "test-ring-Ed25519-private.pem",
-    );
-    env::set_var(
+    )
+    .expect("Failed to set private key filename");
+    set_env_var(
         "JACS_AGENT_PUBLIC_KEY_FILENAME",
         "test-ring-Ed25519-public.pem",
-    );
-    env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
+    )
+    .expect("Failed to set public key filename");
+    set_env_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519").expect("Failed to set key algorithm");
 }
 
 fn set_enc_to_pq() {
-    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-pq-private.pem");
-    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-pq-public.pem");
-    env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
+    set_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-pq-private.pem")
+        .expect("Failed to set private key filename");
+    set_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-pq-public.pem")
+        .expect("Failed to set public key filename");
+    set_env_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium").expect("Failed to set key algorithm");
 }
 
 fn load_test_agent_one() -> Agent {

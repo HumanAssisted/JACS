@@ -19,6 +19,7 @@ const CONFIG_CONTENT: &str = r#"{
     "jacs_header_schema_version": "v1",
     "jacs_signature_schema_version": "v1",
     "jacs_private_key_password": "secretpassord",
+    "jacs_default_storage": "fs",
     "jacs_agent_id_and_version": "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717"
 }"#;
 

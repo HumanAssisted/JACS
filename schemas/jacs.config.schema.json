@@ -53,8 +53,14 @@
      "jacs_private_key_password": {
       "description": "encryption password. Do not use in production and instead only keep in ENV with JACS_AGENT_PRIVATE_KEY_PASSWORD",
       "type": "string"
+    },
+    "jacs_default_storage": {
+      "description": "default storage to use",
+      "type": "string",
+      "enum": [
+        "fs", "aws", "hai"
+      ]
     }
-
 
   },
   "required": [
@@ -62,7 +68,8 @@
     "jacs_key_directory",
     "jacs_agent_private_key_filename",
     "jacs_agent_public_key_filename",
-    "jacs_agent_key_algorithm"
+    "jacs_agent_key_algorithm",
+    "jacs_default_storage"
   ]
 }
 

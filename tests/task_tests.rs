@@ -18,7 +18,7 @@ use utils::DOCTESTFILE;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-static SCHEMA: &str = "examples/raw/custom.schema.json";
+static SCHEMA: &str = "raw/custom.schema.json";
 use chrono::{DateTime, Duration, Utc};
 
 #[test]
@@ -26,7 +26,9 @@ fn test_hai_fields_custom_schema_and_custom_document() {
     // cargo test   --test task_tests test_hai_fields_custom_schema_and_custom_document -- --nocapture
     let mut agent = load_test_agent_one();
     let schemas = [SCHEMA.to_string()];
-    agent.load_custom_schemas(&schemas);
+    agent
+        .load_custom_schemas(&schemas)
+        .expect("Failed to load custom schemas");
     let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
@@ -71,7 +73,7 @@ fn test_create_task_with_actions() {
         .unwrap();
     let task_doc_key = task_doc.getkey();
 
-    let attachments = vec!["examples/raw/mobius.jpeg".to_string()];
+    let attachments = vec!["raw/mobius.jpeg".to_string()];
     // create a message
     let content = json!("lets goooo");
     let mut to: Vec<String> = Vec::new();
