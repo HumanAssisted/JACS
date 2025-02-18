@@ -155,11 +155,11 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
 
     debug!("validate json {:?}", instance);
 
-    // Validate and convert any error into an owned error.
+    // Validate and map any error into an owned error (a boxed String error).
     jacsconfigschema.validate(&instance).map_err(|e| {
-        let owned_error = e.into_owned(); // convert to an owned error
-        error!("Error validating config file: {}", owned_error);
-        owned_error
+        let err_msg = format!("Error validating config file: {}", e);
+        error!("{}", err_msg);
+        Box::<dyn Error>::from(err_msg)
     })?;
 
     Ok(instance)
