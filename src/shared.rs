@@ -12,6 +12,7 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
+// used only in CLI
 pub fn get_file_list(filepath: String) -> Result<Vec<String>, Box<dyn Error>> {
     let mut files: Vec<String> = Vec::new();
     let is_dir = path_is_dir(filepath.clone())?;

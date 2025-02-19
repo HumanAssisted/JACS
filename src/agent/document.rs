@@ -683,13 +683,9 @@ impl DocumentTraits for Agent {
 
                         // Mark the file as not executable
                         #[cfg(not(target_arch = "wasm32"))]
+                        use crate::agent::security::mark_file_not_executable;
                         if let Ok(Some(_)) = get_env_var("JACS_USE_FILESYSTEM", true) {
-                            use std::fs::Permissions;
-                            use std::os::unix::fs::PermissionsExt;
-                            std::fs::set_permissions(
-                                Path::new(path),
-                                Permissions::from_mode(0o600),
-                            )?;
+                            mark_file_not_executable(Path::new(path))?;
                         }
                     }
                 }

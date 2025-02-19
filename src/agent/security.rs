@@ -4,7 +4,12 @@ use log::info;
 
 use std::env;
 use std::error::Error;
-use std::fs::{self, Permissions};
+use std::fs;
+
+use std::fs::Permissions;
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -52,8 +57,46 @@ pub fn use_fs_security() -> bool {
     matches!(get_env_var(JACS_USE_FILESYSTEM, true), Ok(Some(value)) if matches!(value.to_lowercase().as_str(), "true" | "1"))
 }
 
+// Mark the file as not executable
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg(not(target_os = "windows"))]
-use std::os::unix::fs::PermissionsExt;
+pub fn mark_file_not_executable(path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    std::fs::set_permissions(Path::new(path), Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+// Mark the file as not executable
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "windows")]
+pub fn mark_file_not_executable(path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    use std::os::windows::fs::MetadataExt;
+    use windows::Win32::Security::Authorization::{
+        SetNamedSecurityInfoW, DACL_SECURITY_INFORMATION,
+    };
+    use windows::Win32::Security::ACL;
+
+    // Remove execute permissions by modifying the ACL
+    let wide_path = windows::core::PWSTR::from_raw(
+        dest_path
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>()
+            .as_mut_ptr(),
+    );
+    unsafe {
+        SetNamedSecurityInfoW(
+            wide_path,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            Some(&ACL::default()),
+            None,
+        )?;
+    }
+    Ok(())
+}
 
 #[cfg(not(target_os = "windows"))]
 fn is_executable(path: &std::path::Path) -> bool {
@@ -75,6 +118,7 @@ fn is_executable(path: &std::path::Path) -> bool {
     metadata.permissions().mode() & 0o111 != 0
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg(target_os = "windows")]
 fn is_executable(path: &std::path::Path) -> bool {
     if !use_fs_security() {
@@ -146,8 +190,7 @@ fn quarantine_file(file_path: &Path) -> Result<(), Box<dyn Error>> {
     );
     // Move the file to the quarantine directory
     fs::rename(file_path, &dest_path)?;
-    let file_permissions = Permissions::from_mode(0o644);
-    fs::set_permissions(&dest_path, file_permissions)?;
+    mark_file_not_executable(&dest_path)?;
 
     Ok(())
 }
