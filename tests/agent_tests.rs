@@ -3,7 +3,6 @@ use std::fs;
 use std::path::Path;
 
 mod utils;
-use serde_json::error;
 use utils::{load_local_document, AGENTONE};
 
 const CONFIG_CONTENT: &str = r#"{

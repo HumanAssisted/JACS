@@ -22,10 +22,7 @@
  - [x] use an ENV wrapper to prep for wasm
  - [x] complete migration away from fs calls except for config, security, tests, cli 
  - [x] create tests using custom schemas - verify this is working
- - []  TEST init   without configs such that only ENV variables are seet.
-    - in config   let config: Config = match fs::read_to_string("jacs.config.json") {
-    - in load agent  let config = fs::read_to_string("jacs.config.json").expect("config file missing");
-    - single functino, fallback to fs:: if using filesystem and no string passed in. 
+ - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
  - [] separate public key location from private key location
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
 
