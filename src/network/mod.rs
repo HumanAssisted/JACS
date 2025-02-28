@@ -1,84 +1,181 @@
-use ed25519_dalek::{Keypair, PublicKey, Signature, Signer, Verifier};
-use rand::rngs::OsRng;
-use rand::Rng;
-use serde::{Serialize, Deserialize};
-use sha2::{Sha256, Digest};
+use async_std::task;
+use futures::prelude::*;
+use libp2p::{
+    development_transport,
+    identity,
+    kad::{
+        record::{Key as KadKey, Record},
+        Kademlia, KademliaEvent, PutRecordOk, GetRecordOk, Quorum, 
+        record::store::MemoryStore,
+    },
+    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
+    Multiaddr, PeerId,
+};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::error::Error;
 
-// --- Data Structures ---
+// ---------------------------
+// Data Structures
+// ---------------------------
 
-/// Represents a stored document (immutable record) on the network.
-/// The document could be for the public key, recovery code signature, or any other immutable item.
+/// A stored immutable document on the network.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Document {
-    /// Agent identifier with version (e.g. "agent_id:version")
+    /// For agents, this is "agent_id:version"; for documents it can be "doc_id:version"
     pub agent_id: String,
-    /// Document identifier (for instance, "public_key" or "recovery_code")
+    /// Document id (e.g. "public_key" or "recovery_code")
     pub document_id: String,
-    /// The value stored (e.g. the public key encoded as hex, or the recovery code)
+    /// The actual value (e.g. the public key as hex or the recovery code)
     pub value: String,
-    /// A digital signature over the value (or over the record) in hex
+    /// The signature (as hex) over the value (or over a canonical record)
     pub signature: String,
 }
 
-/// Simulated key–value store. In a real implementation this would be replaced by a libp2p DHT.
-pub struct KVStore {
-    pub store: HashMap<String, Document>,
-}
-
-impl KVStore {
-    pub fn new() -> Self {
-        Self {
-            store: HashMap::new(),
-        }
-    }
-    
-    /// Simulate writing a document to the network.
-    /// In our model, every write is validated by the signature.
-    pub fn write_document(&mut self, doc: Document) -> bool {
-        // For simplicity, we reject if the document_id already exists.
-        if self.store.contains_key(&doc.document_id) {
-            println!("Document {} already exists.", doc.document_id);
-            return false;
-        }
-        self.store.insert(doc.document_id.clone(), doc);
-        true
-    }
-    
-    /// Returns the stored signature for a given document.
-    pub fn get_signature(&self, document_id: &str) -> Option<String> {
-        self.store.get(document_id).map(|doc| doc.signature.clone())
-    }
-    
-    /// Returns the stored public key (as a hex string) for an agent document.
-    pub fn get_public_key(&self, agent_doc_id: &str) -> Option<String> {
-        self.store.get(agent_doc_id).map(|doc| doc.value.clone())
-    }
-}
-
-/// Represents an agent’s key material.
+/// An Agent holds the identity information in our system.
 pub struct Agent {
-    /// The immutable agent id with version (e.g. "agent_id:1")
+    /// The agent id is in the form "agent_id:version"
     pub id: String,
-    /// The agent’s current keypair.
-    pub keypair: Keypair,
-    /// A large recovery code (random string)
+    /// The current keypair
+    pub keypair: ed25519_dalek::Keypair,
+    /// A large recovery code (a long random string)
     pub recovery_code: String,
-    /// The signature (by the private key) of the recovery code.
-    pub recovery_signature: Signature,
+    /// The recovery code’s signature (signed by the agent’s private key)
+    pub recovery_signature: ed25519_dalek::Signature,
 }
 
-// --- Helper Functions ---
+// ---------------------------
+// libp2p Behaviour
+// ---------------------------
 
-/// Generate a large recovery code as a random 64-character hexadecimal string.
+/// Our network behaviour currently consists solely of a Kademlia DHT.
+#[derive(NetworkBehaviour)]
+#[behaviour(event_process = true)]
+struct MyBehaviour {
+    kad: Kademlia<MemoryStore>,
+}
+
+impl MyBehaviour {
+    pub fn new(peer_id: PeerId) -> Self {
+        let store = MemoryStore::new(peer_id);
+        let kad = Kademlia::new(peer_id, store);
+        MyBehaviour { kad }
+    }
+}
+
+// For demonstration, we simply print Kademlia events.
+impl libp2p::swarm::NetworkBehaviourEventProcess<KademliaEvent> for MyBehaviour {
+    fn inject_event(&mut self, event: KademliaEvent) {
+        println!("Kademlia event: {:?}", event);
+    }
+}
+
+/// A wrapper that uses libp2p’s Kademlia DHT to store/retrieve documents.
+pub struct NetworkKVStore {
+    pub swarm: Swarm<MyBehaviour>,
+}
+
+impl NetworkKVStore {
+    /// Create a new NetworkKVStore with a libp2p swarm.
+    pub async fn new() -> Self {
+        // Generate a libp2p identity for the node.
+        let local_key = identity::Keypair::generate_ed25519();
+        let local_peer_id = PeerId::from(local_key.public());
+        println!("Local peer id: {:?}", local_peer_id);
+
+        // Build a transport (TCP + noise, multiplexed).
+        let transport = development_transport(local_key.clone()).await.unwrap();
+
+        // Create our Kademlia behaviour.
+        let behaviour = MyBehaviour::new(local_peer_id);
+        let mut swarm = Swarm::new(transport, behaviour, local_peer_id);
+
+        // Start listening on an ephemeral TCP port.
+        let addr: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse().unwrap();
+        Swarm::listen_on(&mut swarm, addr).unwrap();
+
+        NetworkKVStore { swarm }
+    }
+
+    /// Writes a document to the DHT. We serialize the Document into JSON bytes.
+    pub async fn write_document(&mut self, doc: Document) -> Result<(), Box<dyn Error>> {
+        // Use a key prefix "doc:" so that document ids don’t conflict.
+        let key = format!("doc:{}", doc.document_id);
+        let kad_key = KadKey::new(&key);
+        let value = serde_json::to_vec(&doc)?;
+        let record = Record {
+            key: kad_key,
+            value,
+            publisher: None,
+            expires: None,
+        };
+
+        let query_id = self.swarm.behaviour_mut().kad.put_record(record, Quorum::One)?;
+        loop {
+            match self.swarm.next().await {
+                Some(SwarmEvent::Behaviour(KademliaEvent::OutboundQueryCompleted { id, result, .. })) if id == query_id => {
+                    match result {
+                        libp2p::kad::QueryResult::PutRecord(Ok(PutRecordOk { key, .. })) => {
+                            println!("Successfully put record with key: {:?}", key);
+                            return Ok(());
+                        }
+                        libp2p::kad::QueryResult::PutRecord(Err(err)) => {
+                            println!("Failed to put record: {:?}", err);
+                            return Err("Failed to put record".into());
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Retrieves a document from the DHT given its document_id.
+    pub async fn get_document(&mut self, document_id: &str) -> Result<Document, Box<dyn Error>> {
+        let key = format!("doc:{}", document_id);
+        let kad_key = KadKey::new(&key);
+        let query_id = self.swarm.behaviour_mut().kad.get_record(kad_key, Quorum::One);
+        loop {
+            match self.swarm.next().await {
+                Some(SwarmEvent::Behaviour(KademliaEvent::OutboundQueryCompleted { id, result, .. })) if id == query_id => {
+                    match result {
+                        libp2p::kad::QueryResult::GetRecord(Ok(GetRecordOk { records, .. })) => {
+                            if let Some(record_entry) = records.first() {
+                                let doc: Document = serde_json::from_slice(&record_entry.record.value)?;
+                                return Ok(doc);
+                            }
+                        }
+                        libp2p::kad::QueryResult::GetRecord(Err(err)) => {
+                            println!("Error in get_record: {:?}", err);
+                            return Err("Failed to get record".into());
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+// ---------------------------
+// Helper Functions for Agent & Signing
+// ---------------------------
+use ed25519_dalek::{Keypair, PublicKey, Signature, Signer};
+use rand::rngs::OsRng;
+use rand::Rng;
+
+/// Generates a large recovery code as a random 64-character hexadecimal string.
 fn generate_large_recovery_code() -> String {
     let mut rng = rand::thread_rng();
     let code: [u8; 32] = rng.gen();
     hex::encode(code)
 }
 
-/// Given a public key and a recovery code, produce a placeholder “signature”
-/// for updating the agent’s public key. In a real system, this would be a proper cryptographic signature.
+/// Produces a placeholder signature for a new public key using the recovery code.
 fn new_public_key_signature_placeholder(new_public_key: &PublicKey, recovery_code: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(new_public_key.to_bytes());
@@ -87,77 +184,62 @@ fn new_public_key_signature_placeholder(new_public_key: &PublicKey, recovery_cod
     hex::encode(result)
 }
 
-// --- Core Functions ---
-
-/// Creates a new agent account.
-/// 1. Generates a keypair and a large recovery code.
+/// Creates a new agent:
+/// 1. Generates a keypair and a recovery code.
 /// 2. Signs the recovery code with the private key.
-/// 3. Writes both the public key and the recovery signature to the network.
-pub fn create_agent(kv: &mut KVStore) -> Agent {
+/// 3. Writes two documents: one for the public key and one for the recovery code.
+pub async fn create_agent(nkv: &mut NetworkKVStore) -> Agent {
     let mut csprng = OsRng {};
     let keypair: Keypair = Keypair::generate(&mut csprng);
-    
-    // For the agent id, we use the hex of the public key and append version 1.
     let pub_key_bytes = keypair.public.to_bytes();
     let agent_id = format!("{}:1", hex::encode(&pub_key_bytes));
-    
-    // Generate a recovery code and sign it with the private key.
+
     let recovery_code = generate_large_recovery_code();
     let recovery_signature = keypair.sign(recovery_code.as_bytes());
-    
-    // Write the public key record.
-    let pub_key_doc = Document {
+
+    // Create and write the public key document.
+    let pub_doc = Document {
         agent_id: agent_id.clone(),
         document_id: format!("{}:public_key", agent_id),
         value: hex::encode(&pub_key_bytes),
-        // Sign the public key (here we sign the raw bytes; in practice, include metadata as needed).
         signature: hex::encode(keypair.sign(&pub_key_bytes).to_bytes()),
     };
-    kv.write_document(pub_key_doc);
-    
-    // Write the recovery code signature record.
-    let recovery_doc = Document {
+    nkv.write_document(pub_doc).await.unwrap();
+
+    // Create and write the recovery code document.
+    let rec_doc = Document {
         agent_id: agent_id.clone(),
         document_id: format!("{}:recovery_code", agent_id),
         value: recovery_code.clone(),
         signature: hex::encode(recovery_signature.to_bytes()),
     };
-    kv.write_document(recovery_doc);
-    
+    nkv.write_document(rec_doc).await.unwrap();
+
     Agent { id: agent_id, keypair, recovery_code, recovery_signature }
 }
 
-/// Updates an agent’s public key using the recovery code.
-/// The function expects:
-/// - the current agent_id (with version),
-/// - the recovery code provided by the agent,
-/// - the new public key,
-/// - and (as a placeholder) a signature of the new public key generated using the recovery code.
-/// In a real implementation this signature would be generated via a secure recovery mechanism.
-pub fn update_agent(
+/// Updates the agent’s public key using the recovery code.
+/// It verifies the stored recovery code, increments the version,
+/// and writes a new public key document.
+pub async fn update_agent(
     agent: &Agent,
     new_public_key: PublicKey,
-    kv: &mut KVStore,
+    nkv: &mut NetworkKVStore,
     provided_recovery_code: &str,
 ) -> bool {
-    // Look up the stored recovery document.
     let recovery_doc_id = format!("{}:recovery_code", agent.id);
-    let stored_recovery_doc = kv.store.get(&recovery_doc_id);
-    
-    if stored_recovery_doc.is_none() {
-        println!("No recovery document found for agent.");
+    let stored_recovery = nkv.get_document(&recovery_doc_id).await;
+    if stored_recovery.is_err() {
+        println!("No recovery document found.");
         return false;
     }
-    let stored_doc = stored_recovery_doc.unwrap();
-    
-    // Verify the provided recovery code matches the stored one.
+    let stored_doc = stored_recovery.unwrap();
     if stored_doc.value != provided_recovery_code {
         println!("Recovery code mismatch.");
         return false;
     }
-    
-    // For this update, we assume that possession of the recovery code authorizes the key change.
-    // Increment the version number.
+
+    // Increment the version.
     let parts: Vec<&str> = agent.id.split(':').collect();
     if parts.len() != 2 {
         println!("Invalid agent id format.");
@@ -165,71 +247,41 @@ pub fn update_agent(
     }
     let version: u64 = parts[1].parse().unwrap_or(1);
     let new_version = version + 1;
-    
-    // Define the new agent id based on the new public key and new version.
     let new_pub_key_bytes = new_public_key.to_bytes();
     let new_agent_id = format!("{}:{}", hex::encode(&new_pub_key_bytes), new_version);
-    
-    // Produce a placeholder signature for the new public key using the recovery code.
     let new_pk_sig = new_public_key_signature_placeholder(&new_public_key, provided_recovery_code);
-    
-    // Write the new public key record to the network.
-    let pub_key_doc = Document {
+
+    let pub_doc = Document {
         agent_id: new_agent_id.clone(),
         document_id: format!("{}:public_key", new_agent_id),
         value: hex::encode(&new_pub_key_bytes),
         signature: new_pk_sig,
     };
-    kv.write_document(pub_key_doc)
+
+    nkv.write_document(pub_doc).await.is_ok()
 }
 
-/// Retrieves the signature of a stored document by its document_id.
-pub fn get_signature(kv: &KVStore, document_id: &str) -> Option<String> {
-    kv.get_signature(document_id)
+/// Retrieves the signature for a document.
+pub async fn get_signature(nkv: &mut NetworkKVStore, document_id: &str) -> Option<String> {
+    nkv.get_document(document_id).await.ok().map(|doc| doc.signature)
 }
 
-/// Retrieves the public key for an agent from its public_key document.
-pub fn get_public_key(kv: &KVStore, agent_doc_id: &str) -> Option<String> {
-    kv.get_public_key(agent_doc_id)
+/// Retrieves the public key for an agent.
+pub async fn get_public_key(nkv: &mut NetworkKVStore, agent_doc_id: &str) -> Option<String> {
+    nkv.get_document(agent_doc_id).await.ok().map(|doc| doc.value)
 }
 
-// --- Example Main Function ---
+// ---------------------------
+// Main function to test the network integration
+// ---------------------------
+#[async_std::main]
+async fn main() {
+    // Create the network KV store (this sets up our libp2p swarm with Kademlia).
+    let mut nkv = NetworkKVStore::new().await;
 
-fn main() {
-    // In a real system, this KV store would be the libp2p DHT.
-    let mut kv_store = KVStore::new();
-    
-    // Create a new agent.
-    let agent = create_agent(&mut kv_store);
-    println!("Created agent with id: {}", agent.id);
-    
-    // Retrieve and print the public key from the network.
-    let pub_doc_id = format!("{}:public_key", agent.id);
-    if let Some(pub_key_hex) = get_public_key(&kv_store, &pub_doc_id) {
-        println!("Stored public key: {}", pub_key_hex);
-    }
-    
-    // Retrieve and print the recovery signature.
-    let rec_doc_id = format!("{}:recovery_code", agent.id);
-    if let Some(rec_sig) = get_signature(&kv_store, &rec_doc_id) {
-        println!("Stored recovery signature: {}", rec_sig);
-    }
-    
-    // Simulate updating the agent's public key.
-    let mut csprng = OsRng {};
-    let new_keypair = Keypair::generate(&mut csprng);
-    let update_result = update_agent(&agent, new_keypair.public, &mut kv_store, &agent.recovery_code);
-    println!("Update agent result: {}", update_result);
-    
-    // After update, try retrieving the new public key.
-    // Note: In this sketch, the new agent id is based on the new public key.
-    let new_agent_id = format!("{}:{}", hex::encode(new_keypair.public.to_bytes()), {
-        let parts: Vec<&str> = agent.id.split(':').collect();
-        let version: u64 = parts[1].parse().unwrap_or(1);
-        version + 1
-    });
-    let new_pub_doc_id = format!("{}:public_key", new_agent_id);
-    if let Some(new_pub_key_hex) = get_public_key(&kv_store, &new_pub_doc_id) {
-        println!("New stored public key: {}", new_pub_key_hex);
-    }
-}
+    // Run the swarm in a background task so it can process events.
+    task::spawn(async move {
+        loop {
+            if let Some(event) = nkv.swarm.next().await {
+                println!("Swarm event: {:?}", event);
+   
