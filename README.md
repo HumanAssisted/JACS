@@ -14,6 +14,8 @@ JACS also provides standardization for agreement between agents. While each docu
 
 Use JACS as is, embed in other projects or libraries, commercial or otherwise.
 
+ Please note that the [license][./LICENSE] is *modified* Apache 2.0, with the [Common Clause](https://commonsclause.com/) preamble. In simple terms, unless you are competing with HAI.AI, you can create commercial products with JACS. 
+
 ## Basic use cases
 
   1. version json documents and test against a schema
