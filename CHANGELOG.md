@@ -17,7 +17,7 @@
 # COMPLETED
 
 ## 0.3.2
-
+ - [ ] add common clause to Apache 2.0
  - [x] use a single file to handle file i/o for all storage types
  - [x] use an ENV wrapper to prep for wasm
  - [x] complete migration away from fs calls except for config, security, tests, cli 
