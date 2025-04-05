@@ -27,7 +27,7 @@ mdbook build docs/jacsbook
 # Add the formatted files to the staging area
 git add docs/.
 git add schemas/.
-git add examples/.
+# git add examples/.
 git add src/.
 git add tests/.
 git add benches/.

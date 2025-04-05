@@ -17,6 +17,7 @@ use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
 use jacs::shared::get_file_list;
+use jacs::storage::jenv::{get_required_env_var, set_env_var};
 use regex::Regex;
 use rpassword::read_password;
 use serde_json::Value;
@@ -45,7 +46,7 @@ fn request_string(message: &str, default: &str) -> String {
 }
 
 fn main() {
-    set_env_vars();
+    let _ = set_env_vars(true, None);
     let matches = Command::new("jacs")
         .subcommand(
             Command::new("config")
@@ -517,6 +518,8 @@ fn main() {
                     "Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS)",
                     "RSA-PSS",
                 );
+                let jacs_default_storage =
+                    request_string("Enter the default storage (fs, aws, hai)", "fs");
                 //let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
 
                 println!("Please enter your password:");
@@ -536,8 +539,8 @@ fn main() {
                 let jacs_use_security =
                     request_string("Use experimental security features", "false");
                 let jacs_data_directory = request_string("Directory for data storage", "./jacs");
-                let jacs_key_directory =
-                    request_string("Directory to load keys from", "./jacs/keys");
+                let jacs_key_directory = get_required_env_var("JACS_KEY_DIRECTORY", true)
+                    .expect("JACS_KEY_DIRECTORY must be set");
 
                 let config = Config::new(
                     "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
@@ -553,6 +556,7 @@ fn main() {
                     Some("v1".to_string()),
                     Some(jacs_private_key_password),
                     Some(jacs_agent_id_and_version),
+                    Some(jacs_default_storage),
                 );
 
                 let serialized = serde_json::to_string_pretty(&config).unwrap();
@@ -574,7 +578,10 @@ fn main() {
             Some(("read", verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");
                 // let _ = load_agent_by_id();
-                let configs = set_env_vars();
+                let configs = set_env_vars(true, None).unwrap_or_else(|e| {
+                    eprintln!("Warning: Failed to set some environment variables: {}", e);
+                    Config::default().to_string()
+                });
                 println!("{}", configs);
             }
             _ => println!("please enter subcommand see jacs agent --help"),
@@ -592,14 +599,18 @@ fn main() {
                 };
 
                 let mut agent = get_empty_agent();
-                let configs = set_env_vars();
+                let configs = set_env_vars(true, None).unwrap_or_else(|e| {
+                    eprintln!("Warning: Failed to set some environment variables: {}", e);
+                    Config::default().to_string()
+                });
                 println!("creating agent with config {}", configs);
                 if create_keys {
                     println!("creating keys");
                     agent.generate_keys().expect("Reason");
                     println!(
                         "keys created in {}",
-                        env::var("JACS_KEY_DIRECTORY").expect("JACS_KEY_DIRECTORY")
+                        get_required_env_var("JACS_KEY_DIRECTORY", true)
+                            .expect("JACS_KEY_DIRECTORY must be set")
                     )
                 }
 

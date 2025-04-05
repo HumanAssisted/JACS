@@ -7,6 +7,7 @@ pub mod rsawrapper;
 pub mod aes_encrypt;
 
 use crate::agent::Agent;
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 use std::env;
 use std::str::FromStr;
 
@@ -47,7 +48,7 @@ pub trait KeyManager {
 impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
+        let key_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
         let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
@@ -77,7 +78,7 @@ impl KeyManager for Agent {
     }
 
     fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>> {
-        let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
+        let key_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
@@ -109,7 +110,7 @@ impl KeyManager for Agent {
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let key_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
+        let key_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
         let algo = match public_key_enc_type {
             Some(public_key_enc_type) => CryptoSigningAlgorithm::from_str(&public_key_enc_type)?,
             None => CryptoSigningAlgorithm::from_str(&key_algorithm)?,

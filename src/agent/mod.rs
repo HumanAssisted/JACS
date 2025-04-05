@@ -3,7 +3,6 @@ pub mod boilerplate;
 pub mod document;
 pub mod loaders;
 pub mod security;
-pub mod storage;
 
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
@@ -25,7 +24,6 @@ use loaders::FileLoader;
 use log::{debug, error};
 use serde_json::{json, to_value, Value};
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -35,6 +33,8 @@ use uuid::Uuid;
 
 use secrecy::zeroize::{DefaultIsZeroes, Zeroize};
 use secrecy::{ExposeSecret, SecretBox};
+
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
@@ -110,15 +110,12 @@ impl Agent {
         headerversion: &String,
         signature_version: &String,
     ) -> Result<Self, Box<dyn Error>> {
-        set_env_vars();
+        let _ = set_env_vars(true, None)?;
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
 
         let default_directory = get_default_dir();
-
-        let config = fs::read_to_string("jacs.config.json").expect("config file missing");
-        schema.validate_config(&config).expect("config validation");
 
         Ok(Self {
             schema,
@@ -141,7 +138,11 @@ impl Agent {
         _version: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         let lookup_id = id
-            .or_else(|| env::var("JACS_AGENT_ID_AND_VERSION").ok())
+            .or_else(|| {
+                get_env_var("JACS_AGENT_ID_AND_VERSION", false)
+                    .ok()
+                    .flatten()
+            })
             .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
         let agent_string = self.fs_agent_load(&lookup_id)?;
         return self.load(&agent_string);
@@ -398,7 +399,7 @@ impl Agent {
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = Utc::now().to_rfc3339();
 
-        let signing_algorithm = env::var(JACS_AGENT_KEY_ALGORITHM)?;
+        let signing_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
 
         let serialized_fields = match to_value(accepted_fields) {
             Ok(value) => value,

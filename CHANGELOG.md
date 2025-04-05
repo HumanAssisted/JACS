@@ -1,10 +1,32 @@
 # PLANNED
+
 - encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
 - WASM builds
 
+
+## 0.4.0
+- WASM
+
+## 0.3.4
+
+## 0.3.3
+ - upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+
 # COMPLETED
+
+## 0.3.2
+ - [ ] add common clause to Apache 2.0
+ - [x] use a single file to handle file i/o for all storage types
+ - [x] use an ENV wrapper to prep for wasm
+ - [x] complete migration away from fs calls except for config, security, tests, cli 
+ - [x] create tests using custom schemas - verify this is working
+ - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
+ - [] separate public key location from private key location
+ - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
+
+
 
 
 ## 0.3.1

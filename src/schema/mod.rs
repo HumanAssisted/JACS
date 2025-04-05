@@ -531,33 +531,6 @@ impl Schema {
         })
     }
 
-    pub fn validate_config(
-        &self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
-            Ok(value) => {
-                debug!("validate json {:?}", value);
-                value
-            }
-            Err(e) => {
-                let error_message = format!("Invalid JSON: {}", e);
-                error!("validate error {:?}", error_message);
-                return Err(error_message.into());
-            }
-        };
-
-        let validation_result = self.jacsconfigschema.validate(&instance);
-
-        match validation_result {
-            Ok(_) => Ok(instance.clone()),
-            Err(error) => {
-                error!("error validating config file");
-                Err(error.to_string().into())
-            }
-        }
-    }
-
     /// basic check this conforms to a schema
     /// validate header does not check hashes or signature
     pub fn validate_header(

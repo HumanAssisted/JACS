@@ -11,5 +11,6 @@
   "jacs_header_schema_version": "v1",
   "jacs_signature_schema_version": "v1",
   "jacs_private_key_password": "secretpassord",
-  "jacs_agent_id_and_version": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41"
+  "jacs_agent_id_and_version": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41",
+  "jacs_default_storage": "fs"
 }
