@@ -12,14 +12,22 @@
 ## 0.3.4
  - upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
 
-## 0.3.3
+# COMPLETED
+
+## jacs-mcp 0.1.0
+
+ - [] integrate with server
+ - [] integration test with client
+ - []
+
+## jacs 0.3.3
+ - [] change project to workspace
  - [] MCP integration
+ - [] python integration
  - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
  - [] separate public key location from private key location
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
 
-
-# COMPLETED
 
 ## 0.3.2
  - [x] add common clause to Apache 2.0
