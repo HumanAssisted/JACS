@@ -1,9 +1,9 @@
-use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{DocumentTraits, JACSDocument};
-use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
 use crate::agent::JACS_VERSION_DATE_FIELDNAME;
 use crate::agent::JACS_VERSION_FIELDNAME;
+use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::document::{DocumentTraits, JACSDocument};
+use crate::agent::loaders::FileLoader;
 use crate::agent::{
     AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME,
     SHA256_FIELDNAME,
@@ -14,8 +14,8 @@ use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
 use log::debug;
 use serde::ser::StdError;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use std::collections::HashSet;
 use std::error::Error;
 

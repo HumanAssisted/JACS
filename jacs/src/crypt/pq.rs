@@ -1,5 +1,5 @@
 use pqcrypto_dilithium::dilithium5::{
-    keypair, sign, verify_detached_signature, DetachedSignature, PublicKey, SecretKey,
+    DetachedSignature, PublicKey, SecretKey, keypair, sign, verify_detached_signature,
 };
 use pqcrypto_traits::sign::DetachedSignature as DetachedSignatureTrait;
 use pqcrypto_traits::sign::PublicKey as PublicKeyTrait;

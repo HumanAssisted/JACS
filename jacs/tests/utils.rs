@@ -1,7 +1,7 @@
+use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
-use jacs::agent::Agent;
 use log::debug;
 use std::error::Error;
 use std::fs;

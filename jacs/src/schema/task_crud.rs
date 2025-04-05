@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 /// Creates a minimal task with required fields and optional actions and messages.

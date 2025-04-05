@@ -1,11 +1,11 @@
 use chrono::DateTime;
 use chrono::Local;
-use clap::{value_parser, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, value_parser};
+use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
+use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::Agent;
-use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
-use jacs::config::{set_env_vars, Config};
+use jacs::config::{Config, set_env_vars};
 use jacs::create_minimal_blank_agent;
 use jacs::create_task;
 use jacs::crypt::KeyManager;
@@ -18,10 +18,8 @@ use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
 use jacs::shared::get_file_list;
 use jacs::storage::jenv::{get_required_env_var, set_env_var};
-use regex::Regex;
 use rpassword::read_password;
 use serde_json::Value;
-use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -669,7 +667,9 @@ fn main() {
                 // let attachment_links = agent.parse_attachement_arg(attachments);
 
                 if !outputfilename.is_none() && !directory.is_none() {
-                    eprintln!("Error: if there is a directory you can't name the file the same for multiple files.");
+                    eprintln!(
+                        "Error: if there is a directory you can't name the file the same for multiple files."
+                    );
                     std::process::exit(1);
                 }
 

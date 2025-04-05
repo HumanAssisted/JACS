@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use url::Url;
 
 /// Creates a minimal tool with required fields and optional URL.

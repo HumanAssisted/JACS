@@ -84,4 +84,4 @@ For development you may want    `cargo install cargo-outdated` and `cargo instal
 Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 
 ------
-2024 https://hai.ai
+2024, 2025 https://hai.ai

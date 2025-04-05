@@ -1,17 +1,17 @@
+use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::check_data_directory;
-use crate::agent::Agent;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use regex::Regex;
 use secrecy::ExposeSecret;
 use walkdir::WalkDir;
 
-use crate::storage::jenv::{get_env_var, get_required_env_var};
 use crate::storage::MultiStorage;
 use crate::storage::StorageType;
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 use chrono::Utc;
 use log::{debug, error, info, warn};
 use object_store::path::Path as ObjectPath;

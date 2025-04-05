@@ -1,10 +1,10 @@
 use crate::storage::jenv::get_required_env_var;
 use aes_gcm::AeadCore;
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit, OsRng},
 };
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use sha2::{Digest, Sha256};
 
 // Encrypt a private key with a password

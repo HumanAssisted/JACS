@@ -13,16 +13,16 @@ use crate::config::{get_default_dir, set_env_vars};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
-use crate::crypt::KeyManager;
 use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
+use crate::crypt::KeyManager;
 
-use crate::schema::utils::{resolve_schema, EmbeddedSchemaResolver, ValueExt};
 use crate::schema::Schema;
+use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
 use chrono::prelude::*;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use log::{debug, error};
-use serde_json::{json, to_value, Value};
+use serde_json::{Value, json, to_value};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -332,11 +332,16 @@ impl Agent {
                 .to_string(),
         };
 
-        debug!("\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n", json_value[signature_key_from]["signature"]
+        debug!(
+            "\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n",
+            json_value[signature_key_from]["signature"]
                 .as_str()
                 .unwrap_or("")
                 .trim_matches('"')
-                .to_string(), signature , signature_base64);
+                .to_string(),
+            signature,
+            signature_base64
+        );
 
         self.verify_string(
             &document_values_string,

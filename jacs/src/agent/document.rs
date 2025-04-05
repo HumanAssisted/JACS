@@ -1,25 +1,25 @@
+use crate::agent::AGENT_AGREEMENT_FIELDNAME;
+use crate::agent::Agent;
+use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
+use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
 use crate::agent::security::check_data_directory;
-use crate::agent::Agent;
-use crate::agent::AGENT_AGREEMENT_FIELDNAME;
-use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
 use std::collections::HashMap;
 // use crate::schema::utils::get_short_name;
-use crate::schema::utils::ValueExt;
 use crate::schema::ValidationError;
-use crate::storage::{jenv::get_env_var, MultiStorage, StorageType};
+use crate::schema::utils::ValueExt;
+use crate::storage::{MultiStorage, StorageType, jenv::get_env_var};
 use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
@@ -802,9 +802,9 @@ impl DocumentTraits for Agent {
         // Collect detailed differences
         for diff in &changeset.diffs {
             match diff {
-                Difference::Same(ref x) => same.push_str(x),
-                Difference::Add(ref x) => add.push_str(x),
-                Difference::Rem(ref x) => rem.push_str(x),
+                Difference::Same(x) => same.push_str(x),
+                Difference::Add(x) => add.push_str(x),
+                Difference::Rem(x) => rem.push_str(x),
             }
         }
 

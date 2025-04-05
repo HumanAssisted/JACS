@@ -4,7 +4,9 @@ members = [
      # "mcp-server",      
     "jacspy"          
 ]
-resolver = "2"
+resolver = "3"
+rust-version = "1.85"
+ 
 
 readme = "README.md"
 authors = ["HAI.AI <engineering@hai.io>"]

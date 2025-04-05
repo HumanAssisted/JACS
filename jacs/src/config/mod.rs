@@ -1,5 +1,5 @@
-use crate::schema::utils::{EmbeddedSchemaResolver, CONFIG_SCHEMA_STRING};
-use crate::storage::jenv::{get_env_var, set_env_var, set_env_var_override, EnvError};
+use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
+use crate::storage::jenv::{EnvError, get_env_var, set_env_var, set_env_var_override};
 use jsonschema::{Draft, Registry, Retrieve, Validator};
 
 use log::{debug, error, info};

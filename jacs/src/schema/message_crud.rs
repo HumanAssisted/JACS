@@ -1,7 +1,7 @@
-use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::Agent;
+use crate::agent::document::{DocumentTraits, JACSDocument};
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::error::Error;
 use uuid::Uuid;
 

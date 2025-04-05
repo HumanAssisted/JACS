@@ -70,10 +70,10 @@ pub fn mark_file_not_executable(path: &std::path::Path) -> Result<(), Box<dyn Er
 #[cfg(target_os = "windows")]
 pub fn mark_file_not_executable(path: &std::path::Path) -> Result<(), Box<dyn Error>> {
     use std::os::windows::fs::MetadataExt;
-    use windows::Win32::Security::Authorization::{
-        SetNamedSecurityInfoW, DACL_SECURITY_INFORMATION,
-    };
     use windows::Win32::Security::ACL;
+    use windows::Win32::Security::Authorization::{
+        DACL_SECURITY_INFORMATION, SetNamedSecurityInfoW,
+    };
 
     // Remove execute permissions by modifying the ACL
     let wide_path = windows::core::PWSTR::from_raw(
@@ -180,7 +180,7 @@ fn quarantine_file(file_path: &Path) -> Result<(), Box<dyn Error>> {
         None => {
             return Err(
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid file path").into(),
-            )
+            );
         }
     };
     let dest_path = quarantine_dir.join(file_name);

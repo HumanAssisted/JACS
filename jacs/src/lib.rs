@@ -2,8 +2,8 @@ use crate::agent::document::DocumentTraits;
 use crate::shared::save_document;
 use log::error;
 
-use crate::agent::loaders::FileLoader;
 use crate::agent::Agent;
+use crate::agent::loaders::FileLoader;
 use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;

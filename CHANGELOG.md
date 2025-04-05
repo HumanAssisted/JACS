@@ -10,7 +10,10 @@
 - WASM
 
 ## 0.3.4
- - upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] RBAC integration with header
+ - [] RBAC enforcement from server. If shared, new version is pinned. 
+ - [] diff versions
 
 # COMPLETED
 
@@ -18,15 +21,18 @@
 
  - [] integrate with server
  - [] integration test with client
- - []
+ - [] https://github.com/modelcontextprotocol/specification/discussions
 
 ## jacs 0.3.3
- - [] change project to workspace
- - [] MCP integration
- - [] python integration
+ - [x] change project to workspace
+ - [x] basic python integration
+ - [x] in progress: upgraded to edition = "2024" rust-version = "1.85"
  - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
  - [] separate public key location from private key location
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
+
+
+
 
 
 ## 0.3.2

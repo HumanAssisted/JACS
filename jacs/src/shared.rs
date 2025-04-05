@@ -1,13 +1,12 @@
-use crate::agent::agreement::Agreement;
-use crate::agent::document::DocumentTraits;
-use crate::agent::document::JACSDocument;
+use crate::Agent;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::TASK_END_AGREEMENT_FIELDNAME;
 use crate::agent::TASK_START_AGREEMENT_FIELDNAME;
-use crate::Agent;
+use crate::agent::agreement::Agreement;
+use crate::agent::document::DocumentTraits;
+use crate::agent::document::JACSDocument;
 use log::debug;
 use log::info;
-use regex::Regex;
 use std::error::Error;
 use std::fs;
 use std::path::Path;

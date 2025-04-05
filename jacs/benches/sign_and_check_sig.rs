@@ -1,16 +1,23 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::loaders::FileLoader;
-use jacs::agent::Agent;
 use log::debug;
 
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use jacs::storage::jenv::set_env_var;
-use rand::Rng;
-use std::env;
+use rand::distr::Alphanumeric;
+use rand::prelude::*;
 
 static BENCH_SAMPLE_SIZE: usize = 100;
+
+fn configure_criterion() -> Criterion {
+    Criterion::default()
+        .sample_size(50) // Number of samples to collect
+        .measurement_time(std::time::Duration::from_secs(10)) // Time spent measuring each sample
+        .confidence_level(0.95) // Statistical confidence level
+        .noise_threshold(0.05) // Noise threshold for detecting performance changes
+}
 
 fn set_enc_to_ring() {
     set_env_var(
@@ -42,7 +49,7 @@ fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid =
-        "37e6b2e0-5100-4eb7-b042-2630beaa8531:c46c4cdc-3abc-4e0d-a60f-e6dcbc6daad3".to_string();
+        "0f6bb6e8-f27c-4cf7-bb2e-01b647860680:a55739af-a3c8-4b4a-9f24-200313ee4229".to_string();
     let result = agent.load_by_id(Some(agentid), None);
     match result {
         Ok(_) => {
@@ -62,28 +69,24 @@ fn load_test_agent_one() -> Agent {
 
 /// JSON with arbitrary keys from 2-20 keys, with data of string length from 10-250. (random length )
 fn generate_synthetic_data(count: usize) -> Vec<String> {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut documents = Vec::with_capacity(count);
 
     for i in 0..count {
-        let num_keys = rng.gen_range(2..=20);
+        let num_keys = rng.random_range(2..=20);
         let mut document = format!("{{\"id\": {}", i);
 
         for j in 1..num_keys {
-            let key_length = rng.gen_range(5..=20);
-            let key: String = rng
-                .clone()
-                .sample_iter(&rand::distributions::Alphanumeric)
-                .take(key_length)
+            let key_length = rng.random_range(5..=20);
+            let key: String = std::iter::repeat_with(|| rng.sample(Alphanumeric))
                 .map(char::from)
+                .take(key_length)
                 .collect();
 
-            let value_length = rng.gen_range(10..=250);
-            let value: String = rng
-                .clone()
-                .sample_iter(&rand::distributions::Alphanumeric)
-                .take(value_length)
+            let value_length = rng.random_range(10..=250);
+            let value: String = std::iter::repeat_with(|| rng.sample(Alphanumeric))
                 .map(char::from)
+                .take(value_length)
                 .collect();
 
             document.push_str(&format!(",\"{}\": \"{}\"", key, value));
@@ -176,5 +179,9 @@ fn benchmark_ring(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, benchmark_rsa, benchmark_pq, benchmark_ring);
+criterion_group! {
+    name = benches;
+    config = configure_criterion();
+    targets = benchmark_rsa, benchmark_pq, benchmark_ring
+}
 criterion_main!(benches);

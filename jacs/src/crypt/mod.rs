@@ -118,13 +118,13 @@ impl KeyManager for Agent {
 
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                return rsawrapper::verify_string(public_key, data, signature_base64)
+                return rsawrapper::verify_string(public_key, data, signature_base64);
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return ringwrapper::verify_string(public_key, data, signature_base64)
+                return ringwrapper::verify_string(public_key, data, signature_base64);
             }
             CryptoSigningAlgorithm::PqDilithium => {
-                return pq::verify_string(public_key, data, signature_base64)
+                return pq::verify_string(public_key, data, signature_base64);
             }
             _ => {
                 return Err(

@@ -1,16 +1,18 @@
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::crypt::aes_encrypt::decrypt_private_key;
 use jacs::crypt::KeyManager;
+use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
 use std::env;
 use std::fs;
 use utils::load_test_agent_one;
 
 fn set_enc_to_pq() {
-    env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-pq-private.pem");
-    env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-pq-public.pem");
-    env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
+    unsafe {
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-pq-private.pem");
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-pq-public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
+    }
 }
 
 #[test]

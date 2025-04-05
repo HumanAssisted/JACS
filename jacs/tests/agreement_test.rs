@@ -1,12 +1,12 @@
+use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use secrecy::ExposeSecret;
 mod utils;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two, DOCTESTFILECONFIG};
+use utils::{DOCTESTFILECONFIG, load_local_document, load_test_agent_one, load_test_agent_two};
 
 #[test]
 fn test_create_agreement() {

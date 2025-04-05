@@ -5,12 +5,12 @@ use futures_util::StreamExt;
 use log::debug;
 use object_store::PutPayload;
 use object_store::{
+    Error as ObjectStoreError, ObjectStore,
     aws::{AmazonS3, AmazonS3Builder},
     http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,
     memory::InMemory,
     path::Path as ObjectPath,
-    Error as ObjectStoreError, ObjectStore,
 };
 use std::str::FromStr;
 use std::sync::Arc;

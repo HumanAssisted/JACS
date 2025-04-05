@@ -1,13 +1,13 @@
-use crate::schema::utils::ValueExt;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
+use crate::schema::utils::ValueExt;
 use chrono::prelude::*;
 use jsonschema::{Draft, Registry, Retrieve, Validator};
 use log::{debug, error, warn};
 use referencing::Uri;
 
 use regex::Regex;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ pub mod tools_crud;
 pub mod utils;
 
 use crate::agent::document::DEFAULT_JACS_DOC_LEVEL;
-use utils::{EmbeddedSchemaResolver, DEFAULT_SCHEMA_STRINGS};
+use utils::{DEFAULT_SCHEMA_STRINGS, EmbeddedSchemaResolver};
 
 use std::error::Error;
 use std::fmt;
@@ -422,7 +422,7 @@ impl Schema {
         {
             Ok(schema) => schema,
             Err(_) => {
-                return Err(format!("Failed to compile actionschema: {}", &action_path).into())
+                return Err(format!("Failed to compile actionschema: {}", &action_path).into());
             }
         };
 
@@ -446,7 +446,7 @@ impl Schema {
                     "Failed to compile agreementschema: {}",
                     &agreementversion_path
                 )
-                .into())
+                .into());
             }
         };
 
@@ -475,7 +475,7 @@ impl Schema {
         {
             Ok(schema) => schema,
             Err(_) => {
-                return Err(format!("Failed to compile headerschema: {}", &program_path).into())
+                return Err(format!("Failed to compile headerschema: {}", &program_path).into());
             }
         };
 
@@ -488,7 +488,7 @@ impl Schema {
             Err(_) => {
                 return Err(
                     format!("Failed to compile embeddingschema: {}", &embedding_path).into(),
-                )
+                );
             }
         };
 
@@ -698,9 +698,11 @@ impl Schema {
         instance["jacsVersionDate"] = json!(format!("{}", versioncreated));
         instance["jacsOriginalVersion"] = json!(format!("{}", original_version));
         instance["jacsOriginalDate"] = json!(format!("{}", versioncreated));
-        instance["jacsLevel"] = json!(instance
-            .get_str("jacsLevel")
-            .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string()));
+        instance["jacsLevel"] = json!(
+            instance
+                .get_str("jacsLevel")
+                .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string())
+        );
         // if no schema is present insert standard header version
         if !instance.get_str("$schema").is_some() {
             instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));

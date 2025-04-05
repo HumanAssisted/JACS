@@ -1,7 +1,7 @@
-use jacs::agent::{Agent, AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME};
+use jacs::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
 use jacs::config::set_env_vars;
-use jacs::crypt::hash::hash_string as jacs_hash_string;
 use jacs::crypt::KeyManager;
+use jacs::crypt::hash::hash_string as jacs_hash_string;
 use jacs::load_agent_by_id;
 use lazy_static::lazy_static;
 use log::{debug, error};
@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pyo3::types::PyDict;
 use pyo3::wrap_pyfunction;
-use serde_json::{json, to_value, Value};
+use serde_json::{Value, json, to_value};
 use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -114,7 +114,10 @@ fn verify_string(
         || public_key.is_empty()
         || public_key_enc_type.is_empty()
     {
-        return Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!("one param is empty \ndata {} \nsignature_base64 {} \npublic_key {:?} \npublic_key_enc_type {} ", data, signature_base64,  public_key, public_key_enc_type)));
+        return Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+            "one param is empty \ndata {} \nsignature_base64 {} \npublic_key {:?} \npublic_key_enc_type {} ",
+            data, signature_base64, public_key, public_key_enc_type
+        )));
     }
     match agent.verify_string(
         &data.to_string(),

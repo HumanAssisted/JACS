@@ -1,8 +1,8 @@
-use jacs::agent::agreement::Agreement;
-use jacs::agent::Agent;
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
+use jacs::agent::Agent;
 use jacs::agent::TASK_END_AGREEMENT_FIELDNAME;
 use jacs::agent::TASK_START_AGREEMENT_FIELDNAME;
+use jacs::agent::agreement::Agreement;
 use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::message_crud::create_message;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
