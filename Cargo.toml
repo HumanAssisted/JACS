@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "jacs",          
-    "mcp-server",      
-    "python"          
+     # "mcp-server",      
+    "jacspy"          
 ]
 resolver = "2"
 

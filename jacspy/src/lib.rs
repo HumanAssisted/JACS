@@ -1,0 +1,164 @@
+use jacs::agent::{Agent, AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME};
+use jacs::config::set_env_vars;
+use jacs::crypt::hash::hash_string as jacs_hash_string;
+use jacs::crypt::KeyManager;
+use jacs::load_agent_by_id;
+use lazy_static::lazy_static;
+use log::{debug, error};
+use pyo3::prelude::*;
+use pyo3::types::PyBytes;
+use pyo3::types::PyDict;
+use pyo3::wrap_pyfunction;
+use serde_json::{json, to_value, Value};
+use std::env;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+// mod zkp;
+// use std::panic::{catch_unwind, AssertUnwindSafe};
+
+// todo replace with new jacs config file that is baked in where we want immutable changes
+
+lazy_static! {
+    pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
+        set_env_vars(false, None);
+        let mut agent = load_agent_by_id();
+        Arc::new(Mutex::new(agent))
+
+    };
+    // todo use    load agent private key for system
+}
+
+fn log_to_python(py: Python, message: &str, log_level: &str) -> PyResult<()> {
+    let logging = py.import("logging")?;
+    logging.call_method1(log_level, (message,))?;
+    Ok(())
+}
+
+// expects self signed agents
+#[pyfunction]
+fn sign_agent(
+    py: Python,
+    agent_string: &str,
+    public_key: &[u8],
+    public_key_enc_type: &str,
+) -> PyResult<String> {
+    let mut agent = JACS_AGENT.lock().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to acquire JACS_AGENT lock: {}",
+            e
+        ))
+    })?;
+
+    let mut external_agent: Value = agent.validate_agent(agent_string).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Agent validation failed: {}", e))
+    })?;
+
+    // Attempt to log to Python
+    // let public_key_string = String::from_utf8(public_key.to_vec()).expect("Invalid UTF-8");
+    // let public_key_rehash2 = jacs_hash_string(&public_key_string);
+    // let public_key_string_lossy = String::from_utf8_lossy(public_key).to_string();
+    // let public_key_rehash3 = jacs_hash_string(&public_key_string_lossy);
+
+    // let astr  = format!("{:?}", public_key) ;
+    // let public_key_rehash5 = jacs_hash_string(&astr);
+    // log_to_python(py, &format!("sign_agent public_key {:?} {:?} {:?}      {}", public_key_rehash5, public_key_rehash3, public_key_rehash2, String::from_utf8_lossy(public_key)), "error")?;
+
+    // Proceed with signature verification
+    agent
+        .signature_verification_procedure(
+            &external_agent,
+            None,
+            &AGENT_SIGNATURE_FIELDNAME.to_string(),
+            public_key.to_vec(),
+            Some(public_key_enc_type.to_string()),
+            None,
+            None,
+        )
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Signature verification failed: {}",
+                e
+            ))
+        })?;
+
+    // If all previous steps pass, proceed with signing
+    let registration_signature = agent
+        .signing_procedure(
+            &external_agent,
+            None,
+            &AGENT_REGISTRATION_SIGNATURE_FIELDNAME.to_string(),
+        )
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Signing procedure failed: {}",
+                e
+            ))
+        })?;
+    external_agent[AGENT_REGISTRATION_SIGNATURE_FIELDNAME] = registration_signature;
+    Ok(external_agent.to_string())
+}
+
+#[pyfunction]
+fn verify_string(
+    data: &str,
+    signature_base64: &str,
+    public_key: &[u8],
+    public_key_enc_type: &str,
+) -> PyResult<bool> {
+    // Convert the public_key Vec<u8> to a Python bytes object
+    // let py_public_key = PyBytes::new(Python::acquire_gil().python(), &public_key);
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    if data.is_empty()
+        || signature_base64.is_empty()
+        || public_key.is_empty()
+        || public_key_enc_type.is_empty()
+    {
+        return Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!("one param is empty \ndata {} \nsignature_base64 {} \npublic_key {:?} \npublic_key_enc_type {} ", data, signature_base64,  public_key, public_key_enc_type)));
+    }
+    match agent.verify_string(
+        &data.to_string(),
+        &signature_base64.to_string(),
+        public_key.to_vec(),
+        Some(public_key_enc_type.to_string()),
+    ) {
+        Ok(_) => Ok(true),
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+            "signature fail: {}",
+            e
+        ))),
+    }
+
+    // let result = catch_unwind(AssertUnwindSafe(|| {
+    //     match agent.verify_string(&data.to_string(), &signature_base64.to_string(), public_key.to_vec(), Some(public_key_enc_type.to_string())) {
+    //         Ok(v) => Ok(v),
+    //         Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!("signature fail: {}", e))),
+    //     }
+
+    // }));
+
+    // match result {
+    //     Ok(result) => Ok(result),
+    //     Err(_) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+    //         "An internal error occurred.",
+    //     )),
+    // }
+}
+
+#[pyfunction]
+fn hash_string(data: &str) -> PyResult<String> {
+    return Ok(jacs_hash_string(&data.to_string()));
+}
+
+#[pymodule]
+fn jacspy(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    #[pyfn(m, name = "log_to_python")]
+    fn py_log_to_python(py: Python, message: String, log_level: String) -> PyResult<()> {
+        log_to_python(py, &message, &log_level)
+    }
+
+    m.add_function(wrap_pyfunction!(verify_string, m)?)?;
+    m.add_function(wrap_pyfunction!(hash_string, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_agent, m)?)?;
+    Ok(())
+}
