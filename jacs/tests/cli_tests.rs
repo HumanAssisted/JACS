@@ -1,14 +1,18 @@
 // here I want to test the CLI commands
 use assert_cmd::prelude::*; // Add methods on commands
+use base64;
 use predicates::prelude::*; // Used for writing assertions
 use std::env;
 use std::fs::{self, File}; // Add fs for file operations
 use std::io::Write; // Add Write trait
 use std::path::PathBuf; // Add PathBuf
-use std::{error::Error, process::Command}; // Run programs // To read CARGO_PKG_VERSION
-use tempfile::tempdir; // Add tempdir
+use std::{
+    error::Error,
+    process::{Command, Stdio},
+}; // Run programs // To read CARGO_PKG_VERSION
+use tempfile::tempdir; // Add tempdir // Ensure base64 is imported if used for dummy jpeg
 
-// cargo test   --test cli_tests -- --nocapture
+// RUST_BACKTRACE=1 cargo test   --test cli_tests -- --nocapture
 
 #[test]
 fn test_cli_help() -> Result<(), Box<dyn Error>> {
@@ -67,79 +71,138 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     // 1. Setup Temp Directory and Paths
     let temp_dir = tempdir()?;
     let temp_path = temp_dir.path();
-    let data_dir = temp_path.join("jacs");
+    let data_dir = temp_path.join("jacs_data"); // Use distinct names
     let key_dir = temp_path.join("jacs_keys");
-    let config_path = temp_path.join("jacs.config.json"); // Config in temp dir CWD
+    // Config will be created by the command in temp_path
 
-    // Ensure subdirs exist within the overall temp dir
+    // NOTE: Don't create data/key dirs yet, let config create handle it if necessary,
+    // or create them after config create if agent create expects them.
+    // fs::create_dir_all(&data_dir)?;
+    // fs::create_dir_all(&key_dir)?;
+
+    println!("Temp Dir: {}", temp_path.display());
+    println!("(Will create data dir: {})", data_dir.display());
+    println!("(Will create key dir: {})", key_dir.display());
+
+    // --- Run `config create` Interactively (Simulated) ---
+    println!("Running: config create (simulated interaction)");
+    let mut cmd_config_create = Command::cargo_bin("jacs")?;
+    cmd_config_create.current_dir(temp_path); // Run from temp dir
+    cmd_config_create.arg("config").arg("create");
+
+    // --> FIX: Set environment variables for the config create process <--
+    cmd_config_create.env("JACS_DEFAULT_STORAGE", "fs"); // Critical: For internal MultiStorage init
+    cmd_config_create.env("JACS_DATA_DIRECTORY", &data_dir); // Needed if checking input agent file path
+    cmd_config_create.env("JACS_KEY_DIRECTORY", &key_dir); // Needed if checking input agent file path
+    // Password will be handled by interactive input below, but other commands might need it set via env later.
+
+    cmd_config_create.stdin(Stdio::piped()); // Prepare to pipe input
+    cmd_config_create.stdout(Stdio::piped()); // Capture stdout to see prompts if needed
+    cmd_config_create.stderr(Stdio::piped()); // Capture stderr for errors
+
+    let mut child = cmd_config_create.spawn()?;
+    let mut child_stdin = child.stdin.take().expect("Failed to open stdin");
+
+    // Write answers matching the prompts in cli.rs config create
+    // Order: agent_filename, priv_key, pub_key, algo, storage, password, use_fs, use_sec, data_dir, key_dir
+    let inputs = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+        "",                         // agent_filename (empty)
+        "jacs.private.pem.enc",     // priv_key (default)
+        "jacs.public.pem",          // pub_key (default)
+        "RSA-PSS",                  // algo (default)
+        "fs",                       // storage (matching env var)
+        "testpassword",             // password
+        "true",                     // use_fs (default)
+        "false",                    // use_sec (default)
+        data_dir.to_str().unwrap(), // data_dir (matching env var)
+        key_dir.to_str().unwrap()   // key_dir (matching env var)
+    );
+
+    // Write inputs in a separate thread to avoid blocking
+    std::thread::spawn(move || {
+        child_stdin
+            .write_all(inputs.as_bytes())
+            .expect("Failed to write to stdin");
+        // stdin is closed when child_stdin goes out of scope
+    });
+
+    // Wait for the command to finish and check status
+    let output = child.wait_with_output()?;
+    println!(
+        "Config Create STDOUT:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    println!(
+        "Config Create STDERR:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "`jacs config create` failed");
+
+    // Verify config file was created in the temp dir
+    let config_path = temp_path.join("jacs.config.json");
+    assert!(config_path.exists(), "jacs.config.json was not created");
+    println!(
+        "Config file created successfully at: {}",
+        config_path.display()
+    );
+
+    // Now ensure data/key dirs exist if subsequent commands need them pre-created
     fs::create_dir_all(&data_dir)?;
     fs::create_dir_all(&key_dir)?;
 
-    println!("Temp Dir: {}", temp_path.display());
-    println!("Data Dir: {}", data_dir.display());
-    println!("Key Dir: {}", key_dir.display());
-    println!("Config Path: {}", config_path.display());
+    // 3. Define Environment Variables for subsequent commands
+    let dummy_password = "testpassword"; // Use the same password as provided above
 
-    // 2. Create jacs.config.json Fixture in Temp Dir
-    // Avoids interactive config create; more robust for tests
-    let config_content = format!(
-        r#"{{
-            "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-            "jacs_use_filesystem": true,
-            "jacs_use_security": false,
-            "jacs_data_directory": "{}",
-            "jacs_key_directory": "{}",
-            "jacs_agent_private_key_filename": "jacs.private.pem.enc",
-            "jacs_agent_public_key_filename": "jacs.public.pem",
-            "jacs_agent_key_algorithm": "RSA-PSS",
-            "jacs_default_storage": "fs"
-        }}"#,
-        data_dir.to_str().unwrap().replace('\\', "/"), // Ensure correct path format for JSON
-        key_dir.to_str().unwrap().replace('\\', "/")
-    );
-    let mut config_file = File::create(&config_path)?;
-    config_file.write_all(config_content.as_bytes())?;
-    println!("Created config file at: {}", config_path.display());
-
-    // 3. Define Environment Variables for Commands
-    let dummy_password = "testpassword";
-
-    // 4. Copy Fixtures to Temp Dir
-    let agent_raw_path_src = fixture_path("agent.raw.json");
+    // 4. Create other input files (agent raw, ddl, jpeg) directly in Temp Dir
     let agent_raw_path_dest = temp_path.join("agent.raw.json");
-    fs::copy(&agent_raw_path_src, &agent_raw_path_dest)?;
+    let mut agent_raw_file = File::create(&agent_raw_path_dest)?;
+    write!(
+        agent_raw_file,
+        r#"{{"jacsAgentType": "ai", "name": "Test Agent"}}"#
+    )?;
 
-    let ddl_path_src = fixture_path("ddl.json");
     let ddl_path_dest = temp_path.join("ddl.json");
-    fs::copy(&ddl_path_src, &ddl_path_dest)?;
+    let mut ddl_file = File::create(&ddl_path_dest)?;
+    write!(ddl_file, r#"{{"data": "sample document data"}}"#)?;
 
-    let mobius_path_src = fixture_path("mobius.jpeg");
     let mobius_path_dest = temp_path.join("mobius.jpeg");
-    fs::copy(&mobius_path_src, &mobius_path_dest)?;
-    println!("Copied fixtures to temp dir");
+    // Decode base64 string for dummy jpeg content
+    // Ensure you have `use base64;` at the top
+    let mobius_content_result = base64::decode(
+        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AP//Z",
+    );
+    let mobius_content = match mobius_content_result {
+        Ok(content) => content,
+        Err(e) => panic!("Failed to decode base64 content for dummy jpeg: {}", e),
+    };
+    let mut mobius_file = File::create(&mobius_path_dest)?;
+    mobius_file.write_all(&mobius_content)?;
+    println!("Created input files in temp dir");
 
-    // --- Run Commands ---
+    // --- Run Subsequent Commands ---
 
-    // Set Current Directory for commands that might rely on it (like config read/create)
-    // Alternatively, pass absolute paths always
+    // Define base command helper that sets env vars (reads created config implicitly now)
     let base_cmd = || -> Command {
         let mut cmd = Command::cargo_bin("jacs").unwrap();
-        cmd.env("JACS_CONFIG_PATH", &config_path); // Point to config in temp dir
-        cmd.env("JACS_DATA_DIRECTORY", &data_dir); // Ensure consistency
-        cmd.env("JACS_KEY_DIRECTORY", &key_dir); // Ensure consistency
-        cmd.env("JACS_PRIVATE_KEY_PASSWORD", dummy_password); // Avoid interactive prompts
+        // Set env vars needed by commands *after* config create
+        // JACS_CONFIG_PATH is not strictly needed if running from temp_path where jacs.config.json is
+        // cmd.env("JACS_CONFIG_PATH", &config_path);
+        cmd.env("JACS_DATA_DIRECTORY", &data_dir); // Still useful for clarity/consistency
+        cmd.env("JACS_KEY_DIRECTORY", &key_dir); // Still useful for clarity/consistency
+        cmd.env("JACS_PRIVATE_KEY_PASSWORD", dummy_password); // Crucial for agent create/sign
         cmd.current_dir(temp_path); // Run commands from temp dir's perspective
         cmd
     };
 
-    // jacs config read (using the fixture config)
+    // jacs config read (should read the file created by `config create`)
     println!("Running: config read");
     base_cmd()
         .arg("config")
         .arg("read")
         .assert()
         .success()
-        .stdout(predicate::str::contains(data_dir.to_str().unwrap())); // Check if data dir from config is shown
+        .stdout(predicate::str::contains(data_dir.to_str().unwrap()));
 
     // jacs agent create -f ./agent.raw.json --create-keys=true
     println!("Running: agent create");
@@ -149,8 +212,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .arg("-f")
         .arg(&agent_raw_path_dest) // Use path in temp dir
         .arg("--create-keys=true")
-        .output()?; // Capture output
-
+        .output()?;
     assert!(
         agent_create_output.status.success(),
         "agent create failed: {:?}",
@@ -158,8 +220,6 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     );
     let agent_create_stdout = String::from_utf8(agent_create_output.stdout)?;
     println!("Agent Create Output:\n{}", agent_create_stdout);
-
-    // --> Capture Agent ID <-- This part is tricky, assumes format "Agent <ID> created!"
     let agent_id_line = agent_create_stdout
         .lines()
         .find(|line| line.contains("Agent") && line.contains("created!"))
@@ -171,8 +231,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .trim_end_matches('!');
     assert!(!agent_id.is_empty(), "Could not parse agent ID from output");
     println!("Captured Agent ID: {}", agent_id);
-
-    // Check if agent file and keys exist
+    let agent_file_path = data_dir.join("agent").join(format!("{}.json", agent_id));
     assert!(
         key_dir.join("jacs.private.pem.enc").exists(),
         "Private key missing"
@@ -181,7 +240,6 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         key_dir.join("jacs.public.pem").exists(),
         "Public key missing"
     );
-    let agent_file_path = data_dir.join("agent").join(format!("{}.json", agent_id));
     assert!(
         agent_file_path.exists(),
         "Agent file missing: {}",
@@ -194,15 +252,13 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .arg("document")
         .arg("create")
         .arg("-f")
-        .arg(&ddl_path_dest) // Use path in temp dir
+        .arg(&ddl_path_dest)
         .arg("--attach")
-        .arg(&mobius_path_dest) // Use path in temp dir
+        .arg(&mobius_path_dest)
         .arg("--embed=true")
-        // We need the agent context, specify the created agent file
         .arg("-a")
-        .arg(&agent_file_path)
-        .output()?; // Capture output
-
+        .arg(&agent_file_path) // Use created agent file path
+        .output()?;
     assert!(
         doc_create_output.status.success(),
         "document create failed: {:?}",
@@ -210,22 +266,20 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     );
     let doc_create_stdout = String::from_utf8(doc_create_output.stdout)?;
     println!("Document Create Output:\n{}", doc_create_stdout);
-
-    // --> Capture Document Filename <-- Assumes format "created doc <filename>" or similar
     let doc_path_line = doc_create_stdout
         .lines()
         .find(|line| line.contains("created doc"))
         .unwrap_or("");
-    let doc_relative_path = doc_path_line
-        .split("created doc")
-        .nth(1)
-        .unwrap_or("")
-        .trim();
+    // Adjusted parsing assuming filename might have spaces or complex chars
+    let doc_relative_path = doc_path_line.trim_start_matches("created doc ").trim();
     assert!(
         !doc_relative_path.is_empty(),
-        "Could not parse document path from output"
+        "Could not parse document path from output: '{}'",
+        doc_path_line
     );
-    let doc_full_path = data_dir.join("documents").join(doc_relative_path); // Assuming it saves relative to data_dir/documents
+    // Document create saves relative to the *current working directory* of the command, which is temp_path
+    // let doc_full_path = data_dir.join("documents").join(doc_relative_path); // Old assumption incorrect
+    let doc_full_path = temp_path.join(doc_relative_path); // Path is relative to CWD
     assert!(
         doc_full_path.exists(),
         "Document file missing: {}",
@@ -239,28 +293,27 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .arg("document")
         .arg("verify")
         .arg("-f")
-        .arg(&doc_full_path) // Use full path to created doc
+        .arg(&doc_full_path) // Use full path relative to temp dir CWD
         .arg("-a")
-        .arg(&agent_file_path) // Specify agent for verification context
+        .arg(&agent_file_path)
         .assert()
         .success()
         .stdout(predicate::str::contains("document verified OK"));
 
     // jacs document create-agreement -f ... --agentids agent1,agent2
-    // Using the captured agent ID. Needs another agent ID - let's just use the same one twice for demo
     println!("Running: document create-agreement");
     base_cmd()
         .arg("document")
         .arg("create-agreement")
         .arg("-f")
-        .arg(&doc_full_path)
+        .arg(&doc_full_path) // Use full path relative to temp dir CWD
         .arg("-a")
-        .arg(&agent_file_path) // Agent context
+        .arg(&agent_file_path)
         .arg("--agentids")
-        .arg(format!("{},{}", agent_id, agent_id)) // Use captured ID twice
+        .arg(format!("{},{}", agent_id, agent_id))
         .assert()
         .success()
-        .stdout(predicate::str::contains("Agreement created")); // Adjust expected output
+        .stdout(predicate::str::contains("Agreement created"));
 
     // jacs document sign-agreement -f ...
     println!("Running: document sign-agreement");
@@ -268,12 +321,12 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .arg("document")
         .arg("sign-agreement")
         .arg("-f")
-        .arg(&doc_full_path)
+        .arg(&doc_full_path) // Use full path relative to temp dir CWD
         .arg("-a")
-        .arg(&agent_file_path) // Agent context for signing
+        .arg(&agent_file_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("signed by")); // Adjust expected output
+        .stdout(predicate::str::contains("signed by"));
 
     // jacs document check-agreement -f ...
     println!("Running: document check-agreement");
@@ -281,14 +334,13 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .arg("document")
         .arg("check-agreement")
         .arg("-f")
-        .arg(&doc_full_path)
+        .arg(&doc_full_path) // Use full path relative to temp dir CWD
         .arg("-a")
-        .arg(&agent_file_path) // Agent context
+        .arg(&agent_file_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains(agent_id)) // Check if the signing agent ID is listed
-        .stdout(predicate::str::contains("signed: true")); // Check status
+        .stdout(predicate::str::contains(agent_id))
+        .stdout(predicate::str::contains("signed: true"));
 
-    // Cleanup is handled by temp_dir going out of scope
     Ok(())
 }

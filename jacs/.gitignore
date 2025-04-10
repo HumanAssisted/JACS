@@ -16,4 +16,4 @@ Cargo.lock
 
 jacs.config.json
 .DS_Store
-examples/documents/*
+tests/fixtures/documents/*

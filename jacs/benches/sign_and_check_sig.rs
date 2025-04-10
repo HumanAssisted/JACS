@@ -76,7 +76,7 @@ fn generate_synthetic_data(count: usize) -> Vec<String> {
         let num_keys = rng.random_range(2..=20);
         let mut document = format!("{{\"id\": {}", i);
 
-        for j in 1..num_keys {
+        for _ in 1..num_keys {
             let key_length = rng.random_range(5..=20);
             let key: String = std::iter::repeat_with(|| rng.sample(Alphanumeric))
                 .map(char::from)
