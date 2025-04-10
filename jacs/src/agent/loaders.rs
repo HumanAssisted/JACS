@@ -158,7 +158,7 @@ impl FileLoader for Agent {
 
     /// in JACS the public keys need to be added manually
     fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-        let storage = MultiStorage::new(Some(true))?;
+        let storage = MultiStorage::new(Some(false))?;
         let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
 
         storage
@@ -173,7 +173,7 @@ impl FileLoader for Agent {
         public_key: &[u8],
         public_key_enc_type: &[u8],
     ) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new(Some(true))?;
+        let storage = MultiStorage::new(Some(false))?;
 
         let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
         let enc_type_path = format!("public_keys/{}.enc_type", agent_id_and_version);
@@ -191,7 +191,7 @@ impl FileLoader for Agent {
         public_key_filename: &String,
         custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new(Some(true))?;
+        let storage = MultiStorage::new(Some(false))?;
 
         let private_path = format!("{}", private_key_filename);
         let public_path = format!("{}", public_key_filename);

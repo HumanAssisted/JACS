@@ -15,7 +15,6 @@
  - [] RBAC enforcement from server. If shared, new version is pinned. 
  - [] diff versions
 
-# COMPLETED
 
 ## jacs-mcp 0.1.0
 
@@ -23,15 +22,16 @@
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
+
+# COMPLETED
+
 ## jacs 0.3.3
  - [x] change project to workspace
  - [x] basic python integration
- - [x] in progress: upgraded to edition = "2024" rust-version = "1.85"
- - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
- - [] separate public key location from private key location
+ - [x] upgraded to edition = "2024" rust-version = "1.85"
+ - [x] separate public key location from private key location
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
-
-
+ - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
 
 
 
