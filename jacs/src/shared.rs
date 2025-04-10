@@ -8,27 +8,6 @@ use crate::agent::document::JACSDocument;
 use log::debug;
 use log::info;
 use std::error::Error;
-use std::fs;
-use std::path::Path;
-
-// used only in CLI
-pub fn get_file_list(filepath: String) -> Result<Vec<String>, Box<dyn Error>> {
-    let mut files: Vec<String> = Vec::new();
-    let is_dir = path_is_dir(filepath.clone())?;
-    if is_dir {
-        for entry in fs::read_dir(filepath).expect("Failed to read directory") {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
-                    files.push(path.to_str().unwrap().to_string());
-                }
-            }
-        }
-    } else {
-        files.push(filepath.to_string());
-    }
-    return Ok(files);
-}
 
 pub fn document_create(
     agent: &mut Agent,
@@ -388,20 +367,5 @@ pub fn save_document(
         Err(ref e) => {
             return Err(format!("document  validation failed {}", e).into());
         }
-    }
-}
-
-fn path_is_dir<P: AsRef<Path>>(path: P) -> Result<bool, Box<dyn Error>> {
-    match fs::metadata(path) {
-        Ok(metadata) => {
-            if metadata.is_dir() {
-                return Ok(true);
-            } else if metadata.is_file() {
-                return Ok(false);
-            } else {
-                return Err(format!("It is neither a file nor a directory.").into());
-            }
-        }
-        Err(e) => Err(format!("path_is_dir Failed to retrieve metadata: {}", e).into()),
     }
 }

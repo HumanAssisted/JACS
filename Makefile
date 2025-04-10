@@ -14,3 +14,8 @@ build-jacspy-linux:
 	docker pull python:3.11-bookworm
 	docker buildx build --tag "jacs-build" -f ./jacspy/Dockerfile . ;\
 	docker  run --rm -v "$(PWD)/jacspy/linux:/output" jacs-build cp /usr/src/jacspy/target/release/libjacspy.so /output/jacspy.so;
+
+build-jacs:
+	cd jacs && cargo install --path . --force
+	/Users/jonathan.hendler/.cargo/bin/jacs --help 
+	/Users/jonathan.hendler/.cargo/bin/jacs version

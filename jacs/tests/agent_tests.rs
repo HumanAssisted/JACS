@@ -9,8 +9,8 @@ const CONFIG_CONTENT: &str = r#"{
     "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
     "jacs_use_filesystem": "true",
     "jacs_use_security": "true",
-    "jacs_data_directory": "./examples",
-    "jacs_key_directory": "./examples/keys",
+    "jacs_data_directory": "./tests/fixtures",
+    "jacs_key_directory": "./tests/fixtures/keys",
     "jacs_agent_private_key_filename": "agent-one.private.pem.enc",
     "jacs_agent_public_key_filename": "agent-one.public.pem",
     "jacs_agent_key_algorithm": "RSA-PSS",
@@ -64,7 +64,8 @@ fn test_update_agent_and_verify_versions() {
     }
 
     let modified_agent_string =
-        load_local_document(&"examples/raw/modified-agent-for-updating.json".to_string()).unwrap();
+        load_local_document(&"tests/fixtures/raw/modified-agent-for-updating.json".to_string())
+            .unwrap();
 
     match agent.update_self(&modified_agent_string) {
         Ok(_) => assert!(true),

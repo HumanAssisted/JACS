@@ -8,10 +8,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use std::env;
-pub static TESTFILE_MODIFIED: &str = "examples/documents/MODIFIED_f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
+pub static TESTFILE_MODIFIED: &str = "tests/fixtures/documents/MODIFIED_f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
 
-pub static DOCTESTFILE: &str = "examples/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
-pub static DOCTESTFILECONFIG: &str = "examples/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
+pub static DOCTESTFILE: &str = "tests/fixtures/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
+pub static DOCTESTFILECONFIG: &str = "tests/fixtures/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
 
 pub static AGENTONE: &str =
     "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
@@ -22,7 +22,7 @@ pub static AGENTTWO: &str =
 pub fn generate_new_docs_with_attachments(save: bool) {
     let mut agent = load_test_agent_one();
     let mut document_string =
-        load_local_document(&"examples/raw/embed-xml.json".to_string()).unwrap();
+        load_local_document(&"tests/fixtures/raw/embed-xml.json".to_string()).unwrap();
     let mut document = agent
         .create_document_and_load(
             &document_string,
@@ -39,7 +39,8 @@ pub fn generate_new_docs_with_attachments(save: bool) {
     // document_ref = agent.get_document(&document_key).unwrap();
     _ = agent.save_document(&document_key, None, None, None);
 
-    document_string = load_local_document(&"examples/raw/image-embed.json".to_string()).unwrap();
+    document_string =
+        load_local_document(&"tests/fixtures/raw/image-embed.json".to_string()).unwrap();
     document = agent
         .create_document_and_load(
             &document_string,
@@ -58,10 +59,10 @@ pub fn generate_new_docs_with_attachments(save: bool) {
 
 #[cfg(test)]
 pub fn generate_new_docs() {
-    static SCHEMA: &str = "examples/raw/custom.schema.json";
+    static SCHEMA: &str = "tests/fixtures/raw/custom.schema.json";
     let mut agent = load_test_agent_one();
     let mut document_string =
-        load_local_document(&"examples/raw/favorite-fruit.json".to_string()).unwrap();
+        load_local_document(&"tests/fixtures/raw/favorite-fruit.json".to_string()).unwrap();
     let mut document = agent
         .create_document_and_load(&document_string, None, None)
         .unwrap();
@@ -70,7 +71,7 @@ pub fn generate_new_docs() {
     // let mut document_ref = agent.get_document(&document_key).unwrap();
     let _ = agent.save_document(&document_key, None, None, None);
 
-    document_string = load_local_document(&"examples/raw/gpt-lsd.json".to_string()).unwrap();
+    document_string = load_local_document(&"tests/fixtures/raw/gpt-lsd.json".to_string()).unwrap();
     document = agent
         .create_document_and_load(&document_string, None, None)
         .unwrap();
@@ -79,7 +80,7 @@ pub fn generate_new_docs() {
     // document_ref = agent.get_document(&document_key).unwrap();
     let _ = agent.save_document(&document_key, None, None, None);
 
-    document_string = load_local_document(&"examples/raw/json-ld.json".to_string()).unwrap();
+    document_string = load_local_document(&"tests/fixtures/raw/json-ld.json".to_string()).unwrap();
     document = agent
         .create_document_and_load(&document_string, None, None)
         .unwrap();

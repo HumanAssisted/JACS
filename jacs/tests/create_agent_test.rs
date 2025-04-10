@@ -10,7 +10,7 @@ fn test_validate_agent_creation() {
     let signature_version = "v1".to_string();
     let mut agent =
         jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
+    let json_data = fs::read_to_string("./tests/fixtures/raw/myagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {
@@ -29,7 +29,8 @@ fn test_validate_agent_creation() {
         &"agent-two.public.pem".to_string(),
         Some("RSA-PSS".to_string()),
     );
-    let json_data = fs::read_to_string("./examples/raw/mysecondagent.new.json").expect("REASON");
+    let json_data =
+        fs::read_to_string("./tests/fixtures/raw/mysecondagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {
@@ -51,7 +52,7 @@ fn test_temp_validate_agent_creation() {
     let signature_version = "v1".to_string();
     let mut agent =
         jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
+    let json_data = fs::read_to_string("./tests/fixtures/raw/myagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {
@@ -72,7 +73,7 @@ fn test_temp_validate_agent_creation_save_and_load() {
     let signature_version = "v1".to_string();
     let mut agent =
         jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("./examples/raw/myagent.new.json").expect("REASON");
+    let json_data = fs::read_to_string("./tests/fixtures/raw/myagent.new.json").expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {

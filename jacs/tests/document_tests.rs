@@ -128,7 +128,9 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     };
     info!("Custom schemas loaded, proceeding to create and load document.");
 
-    let document_string = match load_local_document(&"examples/raw/not-fruit.json".to_string()) {
+    let document_string = match load_local_document(
+        &"tests/fixtures/raw/not-fruit.json".to_string(),
+    ) {
         Ok(content) => {
             info!("Local document loaded successfully.");
             content
@@ -206,8 +208,9 @@ fn test_load_custom_schema_and_new_custom_document() {
         }
     };
 
-    let document_string = match load_local_document(&"examples/raw/favorite-fruit.json".to_string())
-    {
+    let document_string = match load_local_document(
+        &"tests/fixtures/raw/favorite-fruit.json".to_string(),
+    ) {
         Ok(content) => content,
         Err(e) => panic!(
             "Error in test_load_custom_schema_and_new_custom_document loading local document: {}",
@@ -272,8 +275,9 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!(
         "test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load local document"
     );
-    let document_string = match load_local_document(&"examples/raw/favorite-fruit.json".to_string())
-    {
+    let document_string = match load_local_document(
+        &"tests/fixtures/raw/favorite-fruit.json".to_string(),
+    ) {
         Ok(content) => {
             info!(
                 "test_load_custom_schema_and_new_custom_document_agent_two: Local document loaded successfully"

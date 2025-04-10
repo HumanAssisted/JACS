@@ -1,6 +1,6 @@
 use chrono::DateTime;
 use chrono::Local;
-use clap::{Arg, ArgAction, Command, value_parser};
+use clap::{Arg, ArgAction, Command, crate_description, crate_name, crate_version, value_parser};
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
@@ -16,15 +16,14 @@ use jacs::shared::document_check_agreement;
 use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
-use jacs::shared::get_file_list;
-use jacs::storage::jenv::{get_required_env_var, set_env_var};
+use jacs::storage::MultiStorage;
+use jacs::storage::jenv::get_required_env_var;
 use rpassword::read_password;
 use serde_json::Value;
-use std::fs;
+use std::error::Error;
+use std::fs::{File, metadata, rename};
 use std::io;
 use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
 
 fn request_string(message: &str, default: &str) -> String {
     let mut input = String::new();
@@ -45,7 +44,12 @@ fn request_string(message: &str, default: &str) -> String {
 
 fn main() {
     let _ = set_env_vars(true, None);
-    let matches = Command::new("jacs")
+
+    let matches = Command::new(crate_name!())
+        .subcommand(
+            Command::new("version")
+                .about("Prints version and build information")
+        )
         .subcommand(
             Command::new("config")
                 .about(" work with JACS configuration")
@@ -466,7 +470,22 @@ fn main() {
         )
         .get_matches();
 
+    let mut storage: Option<MultiStorage> = None;
+
+    if matches.subcommand_name() != Some("version") {
+        storage = Some(MultiStorage::new(None).expect("Failed to initialize storage"));
+    }
+
     match matches.subcommand() {
+        Some(("version", _sub_matches)) => {
+            println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+            println!(
+                "{} version: {}",
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION")
+            );
+            return;
+        }
         Some(("config", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
                 println!("Welcome to the JACS Config Generator!");
@@ -479,31 +498,60 @@ fn main() {
                 agent_filename = agent_filename.trim().to_string();
 
                 let jacs_agent_id_and_version = if !agent_filename.is_empty() {
-                    let agent_path = PathBuf::from(agent_filename);
-                    if agent_path.exists() {
-                        match fs::read_to_string(&agent_path) {
-                            Ok(agent_content) => {
-                                match serde_json::from_str::<Value>(&agent_content) {
-                                    Ok(agent_json) => {
-                                        let jacs_id = agent_json["jacsId"].as_str().unwrap_or("");
-                                        let jacs_version =
-                                            agent_json["jacsVersion"].as_str().unwrap_or("");
-                                        format!("{}:{}", jacs_id, jacs_version)
-                                    }
-                                    Err(e) => {
-                                        println!("Error parsing JSON: {}", e);
-                                        String::new()
+                    // Use storage to check and read the agent file
+                    match storage.as_ref().unwrap().file_exists(&agent_filename, None) {
+                        Ok(true) => {
+                            match storage.as_ref().unwrap().get_file(&agent_filename, None) {
+                                Ok(agent_content_bytes) => {
+                                    match String::from_utf8(agent_content_bytes) {
+                                        Ok(agent_content) => {
+                                            match serde_json::from_str::<Value>(&agent_content) {
+                                                Ok(agent_json) => {
+                                                    let jacs_id =
+                                                        agent_json["jacsId"].as_str().unwrap_or("");
+                                                    let jacs_version = agent_json["jacsVersion"]
+                                                        .as_str()
+                                                        .unwrap_or("");
+                                                    format!("{}:{}", jacs_id, jacs_version)
+                                                }
+                                                Err(e) => {
+                                                    println!(
+                                                        "Error parsing agent JSON from {}: {}",
+                                                        agent_filename, e
+                                                    );
+                                                    String::new()
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            println!(
+                                                "Error converting agent file content to UTF-8 {}: {}",
+                                                agent_filename, e
+                                            );
+                                            String::new()
+                                        }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                println!("Failed to read agent file: {}", e);
-                                String::new()
+                                Err(e) => {
+                                    println!("Failed to read agent file {}: {}", agent_filename, e);
+                                    String::new()
+                                }
                             }
                         }
-                    } else {
-                        println!("Agent file not found. Skipping...");
-                        String::new()
+                        Ok(false) => {
+                            println!(
+                                "Agent file {} not found in storage. Skipping...",
+                                agent_filename
+                            );
+                            String::new()
+                        }
+                        Err(e) => {
+                            println!(
+                                "Error checking existence of agent file {}: {}",
+                                agent_filename, e
+                            );
+                            String::new()
+                        }
                     }
                 } else {
                     String::new()
@@ -559,17 +607,19 @@ fn main() {
 
                 let serialized = serde_json::to_string_pretty(&config).unwrap();
 
+                // Keep using std::fs for config file backup and writing
                 let config_path = "jacs.config.json";
-                if fs::metadata(config_path).is_ok() {
+                if metadata(config_path).is_ok() {
+                    // Keep std::fs::metadata
                     let now: DateTime<Local> = Local::now();
                     let backup_path =
                         format!("{}-backup-jacs.config.json", now.format("%Y%m%d%H%M%S"));
-                    fs::rename(config_path, backup_path.clone()).unwrap();
+                    rename(config_path, backup_path.clone()).unwrap(); // Keep std::fs::rename
                     println!("Backed up existing jacs.config.json to {}", backup_path);
                 }
 
-                let mut file = fs::File::create(config_path).unwrap();
-                file.write_all(serialized.as_bytes()).unwrap();
+                let mut file = File::create(config_path).unwrap(); // Keep std::fs::File::create
+                file.write_all(serialized.as_bytes()).unwrap(); // Keep std::fs::write_all
 
                 println!("jacs.config.json file generated successfully!");
             }
@@ -591,7 +641,16 @@ fn main() {
 
                 let agentstring = match filename {
                     Some(filename) => {
-                        fs::read_to_string(filename.clone()).expect("agent file loading")
+                        // Use storage to read the agent template file
+                        let content_bytes = storage
+                            .as_ref()
+                            .unwrap()
+                            .get_file(filename, None)
+                            .expect(&format!("Failed to load agent template file: {}", filename));
+                        String::from_utf8(content_bytes).expect(&format!(
+                            "Agent template file {} is not valid UTF-8",
+                            filename
+                        ))
                     }
                     _ => create_minimal_blank_agent("ai".to_string()).unwrap(),
                 };
@@ -673,21 +732,29 @@ fn main() {
                     std::process::exit(1);
                 }
 
-                // check if output filename exists and that if so it's for one file
-
-                let files: Vec<String> = set_file_list(filename, directory, attachments);
+                // Use updated set_file_list with storage
+                let files: Vec<String> =
+                    set_file_list(storage.as_ref().unwrap(), filename, directory, attachments)
+                        .expect("Failed to determine file list");
 
                 // iterate over filenames
                 for file in &files {
-                    let document_string: String = if filename.is_none() && directory.is_none() {
-                        "{}".to_string()
-                    } else {
-                        fs::read_to_string(file).expect("document file loading")
-                    };
-                    let path = Path::new(file);
-                    let loading_filename = path.file_name().unwrap().to_str().unwrap();
-                    let loading_filename_string = loading_filename.to_string();
-
+                    let document_string: String =
+                        if filename.is_none() && directory.is_none() && attachments.is_some() {
+                            "{}".to_string()
+                        } else if !file.is_empty() {
+                            // Use storage to read the input document file
+                            let content_bytes = storage
+                                .as_ref()
+                                .unwrap()
+                                .get_file(file, None)
+                                .expect(&format!("Failed to load document file: {}", file));
+                            String::from_utf8(content_bytes)
+                                .expect(&format!("Document file {} is not valid UTF-8", file))
+                        } else {
+                            eprintln!("Warning: Empty file path encountered in loop.");
+                            "{}".to_string()
+                        };
                     let result = document_create(
                         &mut agent,
                         &document_string,
@@ -721,17 +788,46 @@ fn main() {
                 let attachment_links = agent.parse_attachement_arg(attachments);
 
                 if let Some(schema_file) = schema {
-                    // schemastring =
-                    fs::read_to_string(schema_file).expect("Failed to load schema file");
-
-                    let schemas = [schema_file.clone()];
+                    // Use storage to read the schema file
+                    let schema_bytes = storage
+                        .as_ref()
+                        .unwrap()
+                        .get_file(schema_file, None)
+                        .expect(&format!("Failed to load schema file: {}", schema_file));
+                    let _schemastring = String::from_utf8(schema_bytes)
+                        .expect(&format!("Schema file {} is not valid UTF-8", schema_file));
+                    let schemas = [schema_file.clone()]; // Still need the path string for agent
                     agent.load_custom_schemas(&schemas);
                 }
 
-                let new_document_string =
-                    fs::read_to_string(new_filename).expect("modified document file loading");
+                // Use storage to read the document files
+                let new_doc_bytes = storage
+                    .as_ref()
+                    .unwrap()
+                    .get_file(new_filename, None)
+                    .expect(&format!(
+                        "Failed to load new document file: {}",
+                        new_filename
+                    ));
+                let new_document_string = String::from_utf8(new_doc_bytes).expect(&format!(
+                    "New document file {} is not valid UTF-8",
+                    new_filename
+                ));
+
+                let original_doc_bytes = storage
+                    .as_ref()
+                    .unwrap()
+                    .get_file(original_filename, None)
+                    .expect(&format!(
+                        "Failed to load original document file: {}",
+                        original_filename
+                    ));
                 let original_document_string =
-                    fs::read_to_string(original_filename).expect("original document file loading");
+                    String::from_utf8(original_doc_bytes).expect(&format!(
+                        "Original document file {} is not valid UTF-8",
+                        original_filename
+                    ));
+
                 let original_doc = agent
                     .load_document(&original_document_string)
                     .expect("document parse of original");
@@ -745,13 +841,8 @@ fn main() {
                     )
                     .expect("update document");
 
-                let path = Path::new(new_filename);
-                let loading_filename = path.file_name().unwrap().to_str().unwrap();
-                // let loading_filename_string = loading_filename.to_string();
-
                 let new_document_key = updated_document.getkey();
                 let new_document_filename = format!("{}.json", new_document_key.clone());
-                // let document_key_string = new_document_key.to_string();
 
                 let intermediate_filename = match outputfilename {
                     Some(filename) => filename,
@@ -801,10 +892,20 @@ fn main() {
                 let schema = create_matches.get_one::<String>("schema");
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
-                let files: Vec<String> = set_file_list(filename, directory, None);
+                // Use updated set_file_list with storage
+                let files: Vec<String> =
+                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
+                        .expect("Failed to determine file list");
 
                 for file in &files {
-                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    // Use storage to read the input document file
+                    let content_bytes = storage
+                        .as_ref()
+                        .unwrap()
+                        .get_file(file, None)
+                        .expect(&format!("Failed to load document file: {}", file));
+                    let document_string = String::from_utf8(content_bytes)
+                        .expect(&format!("Document file {} is not valid UTF-8", file));
                     let result = document_sign_agreement(
                         &mut agent,
                         &document_string,
@@ -827,10 +928,20 @@ fn main() {
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
 
-                let files: Vec<String> = set_file_list(filename, directory, None);
+                // Use updated set_file_list with storage
+                let files: Vec<String> =
+                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
+                        .expect("Failed to determine file list");
 
                 for file in &files {
-                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    // Use storage to read the input document file
+                    let content_bytes = storage
+                        .as_ref()
+                        .unwrap()
+                        .get_file(file, None)
+                        .expect(&format!("Failed to load document file: {}", file));
+                    let document_string = String::from_utf8(content_bytes)
+                        .expect(&format!("Document file {} is not valid UTF-8", file));
                     let result = document_check_agreement(
                         &mut agent,
                         &document_string,
@@ -849,16 +960,26 @@ fn main() {
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
-                let agentids: Vec<String> = matches
+                let agentids: Vec<String> = create_matches // Corrected reference to create_matches
                     .get_many::<String>("agentids")
                     .unwrap_or_default()
                     .map(|s| s.to_string())
                     .collect();
 
-                let files: Vec<String> = set_file_list(filename, directory, None);
+                // Use updated set_file_list with storage
+                let files: Vec<String> =
+                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
+                        .expect("Failed to determine file list");
 
                 for file in &files {
-                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    // Use storage to read the input document file
+                    let content_bytes = storage
+                        .as_ref()
+                        .unwrap()
+                        .get_file(file, None)
+                        .expect(&format!("Failed to load document file: {}", file));
+                    let document_string = String::from_utf8(content_bytes)
+                        .expect(&format!("Document file {} is not valid UTF-8", file));
                     let result = document_add_agreement(
                         &mut agent,
                         &document_string,
@@ -884,11 +1005,21 @@ fn main() {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
-                let files: Vec<String> = set_file_list(filename, directory, None);
+                // Use updated set_file_list with storage
+                let files: Vec<String> =
+                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
+                        .expect("Failed to determine file list");
 
                 for file in &files {
                     let load_only = true;
-                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    // Use storage to read the input document file
+                    let content_bytes = storage
+                        .as_ref()
+                        .unwrap()
+                        .get_file(file, None)
+                        .expect(&format!("Failed to load document file: {}", file));
+                    let document_string = String::from_utf8(content_bytes)
+                        .expect(&format!("Document file {} is not valid UTF-8", file));
                     let result = document_load_and_save(
                         &mut agent,
                         &document_string,
@@ -910,12 +1041,21 @@ fn main() {
                 let agentfile = extract_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
-                let files: Vec<String> = set_file_list(filename, directory, None);
-                // let mut schemastring: String = "".to_string();
+                // Use updated set_file_list with storage
+                let files: Vec<String> =
+                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
+                        .expect("Failed to determine file list");
                 // extract the contents but do not save
                 let load_only = false;
                 for file in &files {
-                    let document_string = fs::read_to_string(file).expect("document file loading ");
+                    // Use storage to read the input document file
+                    let content_bytes = storage
+                        .as_ref()
+                        .unwrap()
+                        .get_file(file, None)
+                        .expect(&format!("Failed to load document file: {}", file));
+                    let document_string = String::from_utf8(content_bytes)
+                        .expect(&format!("Document file {} is not valid UTF-8", file));
                     let result = document_load_and_save(
                         &mut agent,
                         &document_string,
@@ -932,28 +1072,39 @@ fn main() {
 
             _ => println!("please enter subcommand see jacs document --help"),
         },
-        _ => println!("please enter command see jacs --help"),
+        _ => unreachable!(
+            "Clap should handle missing subcommand or errors, and 'version' is handled above."
+        ),
     }
 }
 
+// Updated set_file_list function
 fn set_file_list(
+    storage: &MultiStorage,
     filename: Option<&String>,
     directory: Option<&String>,
     attachments: Option<&String>,
-) -> Vec<String> {
-    let mut files: Vec<String> = Vec::new();
-    if filename.is_none() && directory.is_none() && attachments.is_none() {
-        eprintln!(
-            "Error: You must specify either a filename or a directory or create from attachments."
-        );
-        std::process::exit(1);
-    } else if filename.is_none() && directory.is_none() {
-        files.push("no filepath given".to_string()); // hack to get the iterator to open
-    } else if let Some(file) = filename {
-        files = get_file_list(file.to_string()).expect("REASON");
+) -> Result<Vec<String>, Box<dyn Error>> {
+    if let Some(file) = filename {
+        // If filename is provided, return it as a single item list.
+        // The caller will attempt fs::read_to_string on this local path.
+        Ok(vec![file.clone()])
     } else if let Some(dir) = directory {
-        // Traverse the directory and store filenames ending with .json
-        files = get_file_list(dir.to_string()).expect("REASON");
+        // If directory is provided, list .json files within it using storage.
+        let prefix = if dir.ends_with('/') {
+            dir.clone()
+        } else {
+            format!("{}/", dir)
+        };
+        // Use storage.list to get files from the specified storage location
+        let files = storage.list(&prefix, None)?;
+        // Filter for .json files as originally intended for directory processing
+        Ok(files.into_iter().filter(|f| f.ends_with(".json")).collect())
+    } else if attachments.is_some() {
+        // If only attachments are provided, the loop should run once without reading files.
+        // Return an empty list; the calling loop handles creating "{}"
+        Ok(Vec::new())
+    } else {
+        Err("You must specify either a filename, a directory, or attachments.".into())
     }
-    return files;
 }

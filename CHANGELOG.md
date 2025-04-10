@@ -8,20 +8,23 @@
 
 ## 0.4.0
 - WASM
+ - [] machine fingerprinting v2
 
 ## 0.3.4
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
  - [] RBAC integration with header
  - [] RBAC enforcement from server. If shared, new version is pinned. 
  - [] diff versions
+ - [] bucket integration
+ - [] task review
 
+## jacspy cleanup
 
 ## jacs-mcp 0.1.0
 
  - [] integrate with server
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
-
 
 # COMPLETED
 
@@ -30,10 +33,11 @@
  - [x] basic python integration
  - [x] upgraded to edition = "2024" rust-version = "1.85"
  - [x] separate public key location from private key location
- - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
+ - [] migrate quanrantine and security not have filesystem access if not configured to
+ - [] cli review and tests 
+ - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
  - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
-
-
+ - [] make sure config directory is in isolated location, like with key
 
 ## 0.3.2
  - [x] add common clause to Apache 2.0

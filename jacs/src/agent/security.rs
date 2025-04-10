@@ -2,7 +2,6 @@ use crate::error;
 use crate::storage::jenv::{get_env_var, get_required_env_var};
 use log::info;
 
-use std::env;
 use std::error::Error;
 use std::fs;
 

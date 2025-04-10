@@ -63,7 +63,7 @@ strum = "0.27.1"
 strum_macros = "0.27.0"
 secrecy = "0.10.3"
 aes-gcm = "0.10.3"
-clap = "4.5.35"
+clap = { version = "4.5.4", features = ["derive", "cargo"] }
 regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
@@ -76,6 +76,8 @@ env_logger = "0.11.8"
 futures-util = "0.3.31"
 referencing = "0.29.1"
 futures-executor = "0.3.31"
+update = "0.0.0"
+
 # libp2p = "0.55.0"
 # [target.'cfg(target_os = "macos")'.dependencies]
 # pqcrypto-mldsa = { version = "0.1", default-features = false, features = ["serialization"] }
@@ -88,7 +90,9 @@ futures-executor = "0.3.31"
 color-eyre = "0.6"
 criterion = "0.5.1"
 mdbook = "0.4.48"
-
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.19.1"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
