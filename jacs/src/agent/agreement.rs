@@ -239,26 +239,47 @@ impl Agreement for Agent {
         let mut value = document.value;
         let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
 
+        // Normalize agent IDs - ensure we're only using the base ID without version
+        let normalized_agent_ids: Vec<String> = agentids
+            .iter()
+            .map(|id| {
+                // If the ID contains a colon (indicating ID:version format), just take the part before the colon
+                if let Some(pos) = id.find(':') {
+                    id[0..pos].to_string()
+                } else {
+                    id.clone()
+                }
+            })
+            .collect();
+
         if let Some(jacs_agreement) = value.get_mut(agreement_fieldname_key.clone()) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
                 if let Some(agents_array) = agents.as_array_mut() {
-                    let merged_agents = merge_without_duplicates(
-                        &agents_array
-                            .iter()
-                            .map(|v| v.as_str().unwrap().to_string())
-                            .collect(),
-                        agentids,
-                    );
+                    // Normalize existing agent IDs in the same way
+                    let existing_agents: Vec<String> = agents_array
+                        .iter()
+                        .map(|v| {
+                            let id_str = v.as_str().unwrap().to_string();
+                            if let Some(pos) = id_str.find(':') {
+                                id_str[0..pos].to_string()
+                            } else {
+                                id_str
+                            }
+                        })
+                        .collect();
+
+                    let merged_agents =
+                        merge_without_duplicates(&existing_agents, &normalized_agent_ids);
                     *agents = json!(merged_agents);
                 } else {
-                    *agents = json!(agentids);
+                    *agents = json!(normalized_agent_ids);
                 }
             } else {
-                jacs_agreement["agentIDs"] = json!(agentids);
+                jacs_agreement["agentIDs"] = json!(normalized_agent_ids);
             }
         } else {
             value[agreement_fieldname_key] = json!({
-                "agentIDs": agentids,
+                "agentIDs": normalized_agent_ids,
                 "signatures": [],
             });
         }
@@ -298,12 +319,46 @@ impl Agreement for Agent {
             &agreement_fieldname_key.to_string(),
         )?;
 
-        // redundant but make sure agent is listed as a signatory
-        let agent_complete_document = self.add_agents_to_agreement(
-            document_key,
-            &vec![signing_agent_id.clone()],
-            agreement_fieldname,
-        )?;
+        // Normalize signing agent ID to avoid duplicates - extract just the ID part
+        let normalized_agent_id = if let Some(pos) = signing_agent_id.find(':') {
+            signing_agent_id[0..pos].to_string()
+        } else {
+            signing_agent_id.clone()
+        };
+
+        // Check if agent ID (normalized) is already in the agreement
+        let mut agent_already_in_agreement = false;
+        if let Some(jacs_agreement) = value.get(agreement_fieldname_key.clone()) {
+            if let Some(agents) = jacs_agreement.get("agentIDs") {
+                if let Some(agents_array) = agents.as_array() {
+                    for agent in agents_array {
+                        let agent_str = agent.as_str().unwrap_or("");
+                        let agent_normalized = if let Some(pos) = agent_str.find(':') {
+                            agent_str[0..pos].to_string()
+                        } else {
+                            agent_str.to_string()
+                        };
+                        if agent_normalized == normalized_agent_id {
+                            agent_already_in_agreement = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Only add the agent ID if it's not already in the agreement
+        let agent_complete_document = if !agent_already_in_agreement {
+            self.add_agents_to_agreement(
+                document_key,
+                &vec![normalized_agent_id.clone()],
+                agreement_fieldname.clone(),
+            )?
+        } else {
+            // Get a fresh copy of the document instead of using the moved one
+            self.get_document(document_key)?
+        };
+
         value = agent_complete_document.getvalue().clone();
         let agent_complete_key = agent_complete_document.getkey();
         debug!(
@@ -323,7 +378,7 @@ impl Agreement for Agent {
             }
         } else {
             value[agreement_fieldname_key.clone()] = json!({
-                "agentIDs": [signing_agent_id],
+                "agentIDs": [normalized_agent_id],
                 "signatures": [agents_signature]
             });
         }

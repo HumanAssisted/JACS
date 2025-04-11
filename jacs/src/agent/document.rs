@@ -79,9 +79,32 @@ impl JACSDocument {
         let all_requested_agents = self.agreement_requested_agents(agreement_fieldname.clone())?;
         let all_agreement_signed_agents = self.agreement_signed_agents(agreement_fieldname)?;
 
+        // Normalize both lists of agent IDs before comparison
+        let normalized_requested_agents: Vec<String> = all_requested_agents
+            .iter()
+            .map(|id| {
+                if let Some(pos) = id.find(':') {
+                    id[0..pos].to_string()
+                } else {
+                    id.clone()
+                }
+            })
+            .collect();
+
+        let normalized_signed_agents: Vec<String> = all_agreement_signed_agents
+            .iter()
+            .map(|id| {
+                if let Some(pos) = id.find(':') {
+                    id[0..pos].to_string()
+                } else {
+                    id.clone()
+                }
+            })
+            .collect();
+
         return Ok(subtract_vecs(
-            &all_requested_agents,
-            &all_agreement_signed_agents,
+            &normalized_requested_agents,
+            &normalized_signed_agents,
         ));
     }
 

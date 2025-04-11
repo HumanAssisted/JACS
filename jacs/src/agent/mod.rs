@@ -634,6 +634,23 @@ impl Agent {
         if self.public_key.is_none() || self.private_key.is_none() {
             let _ = self.fs_load_keys()?;
         }
+
+        // Instead of using ID:version as the filename, we should use the public key hash
+        if self.public_key.is_some() && self.key_algorithm.is_some() {
+            let public_key = self.public_key.as_ref().unwrap();
+            let key_algorithm = self.key_algorithm.as_ref().unwrap();
+
+            // Calculate hash of public key to use as filename
+            let public_key_hash = hash_public_key(public_key.clone());
+
+            // Save public key using its hash as the identifier
+            let _ = self.fs_save_remote_public_key(
+                &public_key_hash,
+                public_key,
+                key_algorithm.as_bytes(),
+            );
+        }
+
         // schema.create will call this "document" otherwise
         instance["jacsType"] = json!("agent");
         instance["jacsLevel"] = json!("config");

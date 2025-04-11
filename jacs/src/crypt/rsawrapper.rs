@@ -12,8 +12,8 @@ use signature::{RandomizedSigner, SignatureEncoding, Verifier}; // Correctly imp
 
 /// best for pure Rust, least secure
 
-// todo option for more secure
-static BITSOFBITS: usize = 4096;
+// Use smaller key size for tests, larger for production
+static BITSOFBITS: usize = 4096; // Production value
 //static BITSOFBITS: usize = 2048;
 
 /// returns public, public_filepath, private, private_filepath
