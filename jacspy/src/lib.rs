@@ -12,8 +12,6 @@ use std::sync::Mutex;
 
 // Add these imports for the trait methods to be available
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::loaders::FileLoader;
-use std::error::Error;
 
 // mod zkp;
 // use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -205,10 +203,13 @@ fn verify_agent(py: Python, agentfile: Option<String>) -> PyResult<bool> {
             Ok(loaded_agent) => {
                 // Replace the current agent
                 *agent = loaded_agent;
-            },
-            Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                format!("Failed to load agent: {}", e)
-            ))
+            }
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to load agent: {}",
+                    e
+                )));
+            }
         }
     }
 
@@ -344,28 +345,29 @@ fn create_agreement(
     agentids: Vec<String>,
     question: Option<String>,
     context: Option<String>,
-    agreement_fieldname: Option<String>
+    agreement_fieldname: Option<String>,
 ) -> PyResult<String> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
-    
+
     // The function expects None for these parameters, not references
     match jacs::shared::document_add_agreement(
         &mut agent,
         &document_string,
         agentids,
-        None,                // custom_schema
-        None,                // save_filename
-        None,                // question - pass None, not a reference
-        None,                // context - pass None, not a reference
-        None,                // export_embedded
-        None,                // extract_only
-        false,               // load_only
-        agreement_fieldname
+        None,  // custom_schema
+        None,  // save_filename
+        question,  // question - pass None, not a reference
+        context,  // context - pass None, not a reference
+        None,  // export_embedded
+        None,  // extract_only
+        false, // load_only
+        agreement_fieldname,
     ) {
         Ok(result) => Ok(result),
-        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            format!("Failed to create agreement: {}", e)
-        ))
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to create agreement: {}",
+            e
+        ))),
     }
 }
 
