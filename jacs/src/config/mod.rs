@@ -1,6 +1,6 @@
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
 use crate::storage::jenv::{EnvError, get_env_var, set_env_var, set_env_var_override};
-use jsonschema::{Draft, Registry, Retrieve, Validator};
+use jsonschema::{Draft, Validator};
 
 use log::{debug, error, info};
 use serde::Deserialize;

@@ -58,7 +58,7 @@ pub fn document_load_and_save(
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
     let docresult = agent.load_document(&document_string);
     if !load_only {
@@ -298,7 +298,7 @@ pub fn document_add_agreement(
     };
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
     let docresult = agent.load_document(&document_string)?;
     let document_key = docresult.getkey();

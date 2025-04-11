@@ -8,7 +8,7 @@ use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
-use crate::storage::jenv::{get_env_var, get_required_env_var};
+use crate::storage::jenv::get_required_env_var;
 use log::debug;
 use serde_json::Value;
 use std::error::Error;
@@ -162,3 +162,16 @@ pub fn update_task(_: String) -> Result<String, Box<dyn Error>> {
     // validate
     return Ok("".to_string());
 }
+
+// lets move these here
+
+/*
+create_config() - Create configuration (missing)
+verify_agent() - Verify agent integrity (missing)
+verify_document() - Verify document integrity (missing)
+verify_signature() - Verify signature (missing)
+update_agent() - Update existing agent (missing)
+update_document() - Update existing document (missing)
+
+
+*/
