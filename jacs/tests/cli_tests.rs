@@ -568,7 +568,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                 .arg("-a")
                 .arg(&agent_file_path)
                 .arg("--agentids")
-                .arg(format!("{},{}", agent_id, agent_id))
+                .arg(format!("{}", agent_id)) // Use only one agent ID, not duplicated
                 .output()
                 .expect("Failed to execute create-agreement command");
 
@@ -630,13 +630,28 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                 println!("Warning: sign-agreement command failed, but proceeding with the test");
             }
 
+            // Parse the signed document ID from sign-agreement output
+            let sign_output_str = String::from_utf8_lossy(&sign_output.stdout);
+            let signed_doc_id = if let Some(saved_line) = sign_output_str
+                .lines()
+                .find(|line| line.starts_with("saved"))
+            {
+                println!("Found sign-agreement saved line: {}", saved_line);
+                let id = saved_line.trim_start_matches("saved").trim().to_string();
+                println!("Extracted signed document ID: {}", id);
+                id
+            } else {
+                println!("No saved line found in sign-agreement output, using agreement ID");
+                agreement_id.clone()
+            };
+
             // jacs document check-agreement -f ... (using a different approach because of a CLI bug)
             println!("Running: document check-agreement");
             let check_output = base_cmd()
                 .arg("document")
                 .arg("check-agreement")
                 .arg("-f")
-                .arg(format!("documents/{}", agreement_id)) // Use the agreement document ID here too
+                .arg(format!("documents/{}", signed_doc_id)) // Use the document ID from sign-agreement
                 .arg("-a")
                 .arg(&agent_file_path)
                 .output()
