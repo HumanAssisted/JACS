@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
-        set_env_vars(false, None);
+        set_env_vars(false, None, false);
         let mut agent = load_agent_by_id();
         Arc::new(Mutex::new(agent))
 

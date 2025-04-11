@@ -1,4 +1,4 @@
-.PHONY: build-jacspy build-jacspy-mac build-jacspy-linux
+.PHONY: build-jacspy build-jacspy-mac build-jacspy-linux build-jacs
 
 build-jacspy: build-jacspy-mac build-jacspy-linux
 

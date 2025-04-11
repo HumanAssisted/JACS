@@ -54,23 +54,41 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
     };
 }
 
-pub fn create_minimal_blank_agent(agentype: String) -> Result<String, Box<dyn Error>> {
+/// Creates a minimal agent JSON string with a default service.
+/// Optionally accepts descriptions for the default service.
+pub fn create_minimal_blank_agent(
+    agentype: String,
+    service_desc: Option<String>,
+    success_desc: Option<String>,
+    failure_desc: Option<String>,
+) -> Result<String, Box<dyn Error>> {
     let mut services: Vec<Value> = Vec::new();
-    // create service
-    let service_description = "Describe a service the agent provides";
-    let success_description = "Describe a success of the service the agent provides";
-    let failure_description = "Describe what failure is of the service the agent provides";
+
+    // Use provided descriptions or fall back to defaults.
+    let service_description =
+        service_desc.unwrap_or_else(|| "Describe a service the agent provides".to_string());
+    let success_description = success_desc
+        .unwrap_or_else(|| "Describe a success of the service the agent provides".to_string());
+    let failure_description = failure_desc.unwrap_or_else(|| {
+        "Describe what failure is of the service the agent provides".to_string()
+    });
+
     let service = create_minimal_service(
-        service_description,
-        success_description,
-        failure_description,
+        &service_description,
+        &success_description,
+        &failure_description,
         None,
         None,
-    )?;
+    )
+    .map_err(|e| {
+        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)) as Box<dyn Error>
+    })?;
+
     services.push(service);
-    // add service
+
+    // Add service
     let agent_value = create_minimal_agent(&agentype, Some(services), None)?;
-    return Ok(agent_value.to_string());
+    Ok(agent_value.to_string())
 }
 
 pub fn create_task(

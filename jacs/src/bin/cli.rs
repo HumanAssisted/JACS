@@ -5,7 +5,7 @@ use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::config::{Config, set_env_vars};
+use jacs::config::{Config, check_env_vars, set_env_vars};
 use jacs::create_minimal_blank_agent;
 use jacs::create_task;
 use jacs::crypt::KeyManager;
@@ -17,14 +17,16 @@ use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
 use jacs::storage::MultiStorage;
-use jacs::storage::jenv::get_required_env_var;
+use jacs::storage::jenv::{get_env_var, get_required_env_var, set_env_var};
 use rpassword::read_password;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::env;
 use std::error::Error;
 use std::fs::{File, metadata, rename};
 use std::io;
 use std::io::Write;
+use std::path::Path;
+use std::process;
 
 fn request_string(message: &str, default: &str) -> String {
     let mut input = String::new();
@@ -43,7 +45,7 @@ fn request_string(message: &str, default: &str) -> String {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let _ = set_env_vars(true, None, false);
 
     let matches = Command::new(crate_name!())
@@ -469,6 +471,7 @@ fn main() {
                         ),
                 )
         )
+        .arg_required_else_help(true)
         .get_matches();
 
     let mut storage: Option<MultiStorage> = None;
@@ -485,7 +488,7 @@ fn main() {
                 env!("CARGO_PKG_NAME"),
                 env!("CARGO_PKG_VERSION")
             );
-            return;
+            return Ok(());
         }
         Some(("config", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
@@ -583,7 +586,7 @@ fn main() {
                             Ok(password) => password,
                             Err(e) => {
                                 eprintln!("Error reading password: {}", e);
-                                std::process::exit(1);
+                                process::exit(1);
                             }
                         }
                     }
@@ -647,44 +650,182 @@ fn main() {
                 let filename = create_matches.get_one::<String>("filename");
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
 
-                let agentstring = match filename {
-                    Some(filename) => {
-                        // Use storage to read the agent template file
-                        let content_bytes = storage
-                            .as_ref()
-                            .unwrap()
-                            .get_file(filename, None)
-                            .expect(&format!("Failed to load agent template file: {}", filename));
-                        String::from_utf8(content_bytes).expect(&format!(
-                            "Agent template file {} is not valid UTF-8",
-                            filename
-                        ))
+                // Initialize storage using MultiStorage::new
+                let mut storage = MultiStorage::new(None)?; // Use MultiStorage::new directly
+                // let _ = storage.init(); // MultiStorage doesn't have an init method like this
+
+                // -- Get user input for agent details using request_string --
+                let agent_name = request_string("Agent Name", ""); // Provide an empty default
+                if agent_name.is_empty() {
+                    eprintln!("Agent name cannot be empty.");
+                    process::exit(1);
+                }
+
+                let agent_description = request_string("Agent Description", ""); // Provide an empty default
+                if agent_description.is_empty() {
+                    eprintln!("Agent description cannot be empty.");
+                    process::exit(1);
+                }
+
+                let agent_type = request_string("Agent Type (e.g., person, service, device)", ""); // Provide an empty default
+                if agent_type.is_empty() {
+                    eprintln!("Agent type cannot be empty.");
+                    process::exit(1);
+                }
+                // TODO: Add validation for agent_type against schema enum if desired
+
+                // Load or create base agent string
+                let agent_template_string = match filename {
+                    Some(fname) => {
+                        let content_bytes = storage.get_file(fname, None).unwrap_or_else(|_| {
+                            panic!("Failed to load agent template file: {}", fname)
+                        });
+                        String::from_utf8(content_bytes).unwrap_or_else(|_| {
+                            panic!("Agent template file {} is not valid UTF-8", fname)
+                        })
                     }
-                    _ => create_minimal_blank_agent("ai".to_string()).unwrap(),
+                    _ => create_minimal_blank_agent(
+                        agent_name.clone(), // Existing agent name
+                        None,               // service_desc
+                        None,               // success_desc
+                        None,               // failure_desc
+                    )
+                    .unwrap_or_else(|e| panic!("Failed to create minimal agent template: {}", e)),
                 };
 
+                // -- Modify the agent template with user input --
+                let mut agent_json: Value = serde_json::from_str(&agent_template_string)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Failed to parse agent template JSON: {}", e);
+                        eprintln!("Template content:\n{}", agent_template_string);
+                        process::exit(1);
+                    });
+
+                // Add or update fields
+                if let Some(obj) = agent_json.as_object_mut() {
+                    obj.insert("jacsName".to_string(), json!(agent_name));
+                    obj.insert("jacsDescription".to_string(), json!(agent_description));
+                    // Use 'jacsType' as per standard, ensure it's consistent with create_minimal_blank_agent if used
+                    obj.insert("jacsType".to_string(), json!(agent_type));
+                } else {
+                    eprintln!("Agent template is not a valid JSON object.");
+                    process::exit(1);
+                }
+
+                let modified_agent_string = serde_json::to_string(&agent_json).unwrap(); // Should not fail
+
+                // Proceed with agent creation using modified string
                 let mut agent = get_empty_agent();
-                let configs = set_env_vars(true, None, false).unwrap_or_else(|e| {
+                let configs = set_env_vars(true, None, true).unwrap_or_else(|e| {
+                    // Ignore agent id initially
                     eprintln!("Warning: Failed to set some environment variables: {}", e);
                     Config::default().to_string()
                 });
-                println!("creating agent with config {}", configs);
+                println!("Creating agent with config {}", configs);
                 if create_keys {
-                    println!("creating keys");
-                    agent.generate_keys().expect("Reason");
+                    println!("Creating keys...");
+                    agent.generate_keys().expect("Failed to generate keys");
                     println!(
-                        "keys created in {}",
+                        "Keys created in {}",
                         get_required_env_var("JACS_KEY_DIRECTORY", true)
                             .expect("JACS_KEY_DIRECTORY must be set")
                     )
                 }
 
+                // Use the modified agent string here
                 agent
-                    .create_agent_and_load(&agentstring, false, None)
-                    .expect("agent creation failed");
-                println!("Agent {} created!", agent.get_lookup_id().expect("id"));
+                    .create_agent_and_load(&modified_agent_string, false, None)
+                    .expect("Agent creation failed");
 
-                let _ = agent.save();
+                let agent_id_version = agent
+                    .get_lookup_id()
+                    .expect("Failed to get agent ID after creation");
+                println!("Agent {} created successfully!", agent_id_version);
+
+                let _ = agent.save().expect("Failed to save created agent");
+
+                // -- Ask user if they want to update the config using request_string --
+                let prompt_message = format!(
+                    "Do you want to set {} as the default agent in jacs.config.json and environment variable? (yes/no)",
+                    agent_id_version
+                );
+                let update_confirmation = request_string(&prompt_message, "no"); // Default to no
+
+                if update_confirmation.trim().to_lowercase() == "yes"
+                    || update_confirmation.trim().to_lowercase() == "y"
+                {
+                    println!("Updating configuration...");
+                    let config_path_str = "jacs.config.json";
+                    let config_path = Path::new(config_path_str);
+
+                    // Use std::fs for reading
+                    let mut current_config: Value = match std::fs::read_to_string(config_path) {
+                        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
+                            println!(
+                                "Warning: Could not parse {}, creating default. Error: {}",
+                                config_path_str, e
+                            );
+                            json!({}) // Start with empty object if parse fails or file empty
+                        }),
+                        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
+                            println!("Warning: {} not found, creating default.", config_path_str);
+                            json!({}) // Start with empty object if file doesn't exist
+                        }
+                        Err(e) => {
+                            eprintln!("Error reading {}: {}. Cannot update.", config_path_str, e);
+                            return Ok(()); // Exit this block gracefully if read fails for other reasons
+                        }
+                    };
+
+                    if !current_config.is_object() {
+                        println!(
+                            "Warning: {} content is not a JSON object. Overwriting with default structure.",
+                            config_path_str
+                        );
+                        current_config = json!({});
+                    }
+
+                    if let Some(obj) = current_config.as_object_mut() {
+                        obj.insert(
+                            "jacs_agent_id_and_version".to_string(),
+                            json!(agent_id_version),
+                        );
+                        if !obj.contains_key("$schema") {
+                            obj.insert(
+                                "$schema".to_string(),
+                                json!("https://hai.ai/schemas/jacs.config.schema.json"),
+                            );
+                        }
+                    }
+
+                    // Use std::fs for writing
+                    match std::fs::write(
+                        config_path,
+                        serde_json::to_string_pretty(&current_config).unwrap(),
+                    ) {
+                        Ok(_) => println!("Successfully updated {}.", config_path_str),
+                        Err(e) => eprintln!("Error writing {}: {}", config_path_str, e),
+                    }
+
+                    // Update environment variables for the current session
+                    match set_env_var("JACS_AGENT_ID_AND_VERSION", &agent_id_version) {
+                        Ok(_) => println!(
+                            "Updated JACS_AGENT_ID_AND_VERSION environment variable for this session."
+                        ),
+                        Err(e) => eprintln!(
+                            "Failed to update JACS_AGENT_ID_AND_VERSION environment variable: {}",
+                            e
+                        ),
+                    }
+                    match check_env_vars(false) {
+                        Ok(report) => println!("Environment Variable Check:\n{}", report),
+                        Err(e) => {
+                            eprintln!("Error checking environment variables after update: {}", e)
+                        }
+                    }
+                } else {
+                    println!("Skipping configuration update.");
+                }
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
@@ -737,7 +878,7 @@ fn main() {
                     eprintln!(
                         "Error: if there is a directory you can't name the file the same for multiple files."
                     );
-                    std::process::exit(1);
+                    process::exit(1);
                 }
 
                 // Use updated set_file_list with storage
@@ -754,7 +895,7 @@ fn main() {
                             // Use storage to read the input document file
                             let content_bytes = storage
                                 .as_ref()
-                                .unwrap()
+                                .expect("Storage must be initialized for this command")
                                 .get_file(file, None)
                                 .expect(&format!("Failed to load document file: {}", file));
                             String::from_utf8(content_bytes)
@@ -799,7 +940,7 @@ fn main() {
                     // Use storage to read the schema file
                     let schema_bytes = storage
                         .as_ref()
-                        .unwrap()
+                        .expect("Storage must be initialized for this command")
                         .get_file(schema_file, None)
                         .expect(&format!("Failed to load schema file: {}", schema_file));
                     let _schemastring = String::from_utf8(schema_bytes)
@@ -811,7 +952,7 @@ fn main() {
                 // Use storage to read the document files
                 let new_doc_bytes = storage
                     .as_ref()
-                    .unwrap()
+                    .expect("Storage must be initialized for this command")
                     .get_file(new_filename, None)
                     .expect(&format!(
                         "Failed to load new document file: {}",
@@ -824,7 +965,7 @@ fn main() {
 
                 let original_doc_bytes = storage
                     .as_ref()
-                    .unwrap()
+                    .expect("Storage must be initialized for this command")
                     .get_file(original_filename, None)
                     .expect(&format!(
                         "Failed to load original document file: {}",
@@ -909,7 +1050,7 @@ fn main() {
                     // Use storage to read the input document file
                     let content_bytes = storage
                         .as_ref()
-                        .unwrap()
+                        .expect("Storage must be initialized for this command")
                         .get_file(file, None)
                         .expect(&format!("Failed to load document file: {}", file));
                     let document_string = String::from_utf8(content_bytes)
@@ -945,7 +1086,7 @@ fn main() {
                     // Use storage to read the input document file
                     let content_bytes = storage
                         .as_ref()
-                        .unwrap()
+                        .expect("Storage must be initialized for this command")
                         .get_file(file, None)
                         .expect(&format!("Failed to load document file: {}", file));
                     let document_string = String::from_utf8(content_bytes)
@@ -983,7 +1124,7 @@ fn main() {
                     // Use storage to read the input document file
                     let content_bytes = storage
                         .as_ref()
-                        .unwrap()
+                        .expect("Storage must be initialized for this command")
                         .get_file(file, None)
                         .expect(&format!("Failed to load document file: {}", file));
                     let document_string = String::from_utf8(content_bytes)
@@ -1023,7 +1164,7 @@ fn main() {
                     // Use storage to read the input document file
                     let content_bytes = storage
                         .as_ref()
-                        .unwrap()
+                        .expect("Storage must be initialized for this command")
                         .get_file(file, None)
                         .expect(&format!("Failed to load document file: {}", file));
                     let document_string = String::from_utf8(content_bytes)
@@ -1059,7 +1200,7 @@ fn main() {
                     // Use storage to read the input document file
                     let content_bytes = storage
                         .as_ref()
-                        .unwrap()
+                        .expect("Storage must be initialized for this command")
                         .get_file(file, None)
                         .expect(&format!("Failed to load document file: {}", file));
                     let document_string = String::from_utf8(content_bytes)
@@ -1080,10 +1221,14 @@ fn main() {
 
             _ => println!("please enter subcommand see jacs document --help"),
         },
-        _ => unreachable!(
-            "Clap should handle missing subcommand or errors, and 'version' is handled above."
-        ),
+        _ => {
+            // This branch should ideally be unreachable after adding arg_required_else_help(true)
+            eprintln!("Invalid command or no subcommand provided. Use --help for usage.");
+            process::exit(1); // Exit with error if this branch is reached
+        }
     }
+
+    Ok(())
 }
 
 // Updated set_file_list function
