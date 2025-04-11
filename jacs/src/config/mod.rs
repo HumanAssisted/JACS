@@ -171,6 +171,7 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
 pub fn set_env_vars(
     do_override: bool,
     config_json: Option<&str>,
+    ignore_agent_id: bool,
 ) -> Result<String, Box<dyn Error>> {
     let config: Config = match config_json {
         Some(json_str) => serde_json::from_value(validate_config(json_str).unwrap_or_default())
@@ -316,14 +317,14 @@ pub fn set_env_vars(
 
     let message = format!("{}", config);
     info!("{}", message);
-    check_env_vars().map_err(|e| {
+    check_env_vars(ignore_agent_id).map_err(|e| {
         error!("Error checking environment variables: {}", e);
         Box::new(e) as Box<dyn Error>
     })?;
     Ok(message)
 }
 
-pub fn check_env_vars() -> Result<String, EnvError> {
+pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
     let vars = [
         ("JACS_USE_SECURITY", true),
         ("JACS_USE_FILESYSTEM", true),
@@ -343,6 +344,15 @@ pub fn check_env_vars() -> Result<String, EnvError> {
     let mut missing_vars = Vec::new();
 
     for (var_name, required) in vars.iter() {
+        if var_name == &"JACS_AGENT_ID_AND_VERSION" && ignore_agent_id {
+            message.push_str(&format!(
+                "    {:<35} {}\n",
+                var_name.to_string() + ":",
+                "SKIPPED (ignore_agent_id=true)".to_string()
+            ));
+            continue;
+        }
+
         let value = get_env_var(var_name, *required)?;
         let status = match value {
             Some(val) => val,

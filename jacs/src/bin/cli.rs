@@ -20,6 +20,7 @@ use jacs::storage::MultiStorage;
 use jacs::storage::jenv::get_required_env_var;
 use rpassword::read_password;
 use serde_json::Value;
+use std::env;
 use std::error::Error;
 use std::fs::{File, metadata, rename};
 use std::io;
@@ -43,7 +44,7 @@ fn request_string(message: &str, default: &str) -> String {
 }
 
 fn main() {
-    let _ = set_env_vars(true, None);
+    let _ = set_env_vars(true, None, false);
 
     let matches = Command::new(crate_name!())
         .subcommand(
@@ -566,17 +567,25 @@ fn main() {
                 );
                 let jacs_default_storage =
                     request_string("Enter the default storage (fs, aws, hai)", "fs");
-                //let jacs_private_key_password = request_string("Enter the private key password for encrypting on disk (don't use in product. set env JACS_PRIVATE_KEY_PASSWORD:", "");
 
-                println!("Please enter your password:");
-                let jacs_private_key_password = match read_password() {
-                    Ok(password) => {
-                        // If you want to use the password here or later, it's now stored in `jacs_private_key_password`
-                        password // No need for return; just pass the password directly
+                // Check for password in environment variable first
+                let jacs_private_key_password = match env::var("JACS_PRIVATE_KEY_PASSWORD") {
+                    Ok(env_password) if !env_password.is_empty() => {
+                        println!(
+                            "Using password from JACS_PRIVATE_KEY_PASSWORD environment variable."
+                        );
+                        env_password // Use password from env var
                     }
-                    Err(e) => {
-                        eprintln!("Error reading password: {}", e);
-                        std::process::exit(1); // Exit if there's an error
+                    _ => {
+                        // Only prompt if env var is not set or empty
+                        println!("Please enter your password:");
+                        match read_password() {
+                            Ok(password) => password,
+                            Err(e) => {
+                                eprintln!("Error reading password: {}", e);
+                                std::process::exit(1);
+                            }
+                        }
                     }
                 };
 
@@ -585,8 +594,7 @@ fn main() {
                 let jacs_use_security =
                     request_string("Use experimental security features", "false");
                 let jacs_data_directory = request_string("Directory for data storage", "./jacs");
-                let jacs_key_directory = get_required_env_var("JACS_KEY_DIRECTORY", true)
-                    .expect("JACS_KEY_DIRECTORY must be set");
+                let jacs_key_directory = request_string("Directory for keys", "./jacs_keys");
 
                 let config = Config::new(
                     "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
@@ -626,7 +634,7 @@ fn main() {
             Some(("read", verify_matches)) => {
                 // agent is loaded because of    schema.validate_config(&config).expect("config validation");
                 // let _ = load_agent_by_id();
-                let configs = set_env_vars(true, None).unwrap_or_else(|e| {
+                let configs = set_env_vars(true, None, false).unwrap_or_else(|e| {
                     eprintln!("Warning: Failed to set some environment variables: {}", e);
                     Config::default().to_string()
                 });
@@ -656,7 +664,7 @@ fn main() {
                 };
 
                 let mut agent = get_empty_agent();
-                let configs = set_env_vars(true, None).unwrap_or_else(|e| {
+                let configs = set_env_vars(true, None, false).unwrap_or_else(|e| {
                     eprintln!("Warning: Failed to set some environment variables: {}", e);
                     Config::default().to_string()
                 });
