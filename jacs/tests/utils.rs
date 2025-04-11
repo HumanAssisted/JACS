@@ -3,11 +3,11 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use log::debug;
+use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use std::env;
 pub static TESTFILE_MODIFIED: &str = "tests/fixtures/documents/MODIFIED_f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
 
 pub static DOCTESTFILE: &str = "tests/fixtures/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
@@ -173,5 +173,44 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
         Err(e) => {
             panic!("Failed to find file: {} {}", filepath, e);
         }
+    }
+}
+
+#[cfg(test)]
+pub fn set_test_env_vars() {
+    unsafe {
+        env::set_var("JACS_USE_SECURITY", "false");
+        env::set_var("JACS_USE_FILESYSTEM", "true");
+        env::set_var("JACS_DATA_DIRECTORY", ".");
+        env::set_var("JACS_KEY_DIRECTORY", ".");
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+        env::set_var("JACS_SCHEMA_AGENT_VERSION", "v1");
+        env::set_var("JACS_SCHEMA_HEADER_VERSION", "v1");
+        env::set_var("JACS_SCHEMA_SIGNATURE_VERSION", "v1");
+        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "test_password");
+        env::set_var(
+            "JACS_AGENT_ID_AND_VERSION",
+            "123e4567-e89b-12d3-a456-426614174000:123e4567-e89b-12d3-a456-426614174001",
+        );
+    }
+}
+
+#[cfg(test)]
+pub fn clear_test_env_vars() {
+    unsafe {
+        env::remove_var("JACS_USE_SECURITY");
+        env::remove_var("JACS_USE_FILESYSTEM");
+        env::remove_var("JACS_DATA_DIRECTORY");
+        env::remove_var("JACS_KEY_DIRECTORY");
+        env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
+        env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
+        env::remove_var("JACS_AGENT_KEY_ALGORITHM");
+        env::remove_var("JACS_SCHEMA_AGENT_VERSION");
+        env::remove_var("JACS_SCHEMA_HEADER_VERSION");
+        env::remove_var("JACS_SCHEMA_SIGNATURE_VERSION");
+        env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+        env::remove_var("JACS_AGENT_ID_AND_VERSION");
     }
 }

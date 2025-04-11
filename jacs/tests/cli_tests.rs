@@ -11,7 +11,6 @@ use std::{
     error::Error,
     process::{Command, Stdio},
 }; // Run programs // To read CARGO_PKG_VERSION
-use tempfile::TempDir;
 use tempfile::tempdir;
 
 static INIT: Once = Once::new();

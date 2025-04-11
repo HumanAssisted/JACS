@@ -17,7 +17,9 @@
  - [] diff versions
  - [] bucket integration
  - [] task review
-
+ - [] make sure config directory is in isolated location, like with key
+ - [] don't store  "jacs_private_key_password":  in config
+ 
 ## jacspy cleanup
 
 ## jacs-mcp 0.1.0
@@ -33,11 +35,10 @@
  - [x] basic python integration
  - [x] upgraded to edition = "2024" rust-version = "1.85"
  - [x] separate public key location from private key location
- - [] cli review and tests 
+ - [x] cli review and tests 
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
  - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
- - [] make sure config directory is in isolated location, like with key
- - [] don't store  "jacs_private_key_password":  in config
+
 
 ## 0.3.2
  - [x] add common clause to Apache 2.0

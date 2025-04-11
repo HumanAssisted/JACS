@@ -7,7 +7,6 @@ pub mod security;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::crypt::hash::hash_public_key;
-use std::fs;
 
 use crate::config::{get_default_dir, set_env_vars};
 
@@ -28,11 +27,9 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use url::Url;
 use uuid::Uuid;
 
-use secrecy::zeroize::{DefaultIsZeroes, Zeroize};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
 use crate::storage::jenv::{get_env_var, get_required_env_var};
 
