@@ -8,10 +8,11 @@ use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
-use crate::storage::jenv::get_required_env_var;
+use crate::storage::jenv::{get_env_var, get_required_env_var};
 use log::debug;
 use serde_json::Value;
 use std::error::Error;
+use std::path::Path;
 
 pub mod agent;
 pub mod config;
@@ -20,28 +21,60 @@ pub mod schema;
 pub mod shared;
 pub mod storage;
 
+/// Creates an empty agent struct with default schema versions.
 pub fn get_empty_agent() -> Agent {
+    // Use expect as Result handling happens elsewhere or isn't needed here.
     Agent::new(
-        &get_required_env_var("JACS_AGENT_SCHEMA_VERSION", true)
-            .expect("JACS_AGENT_SCHEMA_VERSION must be set"),
-        &get_required_env_var("JACS_HEADER_SCHEMA_VERSION", true)
-            .expect("JACS_HEADER_SCHEMA_VERSION must be set"),
-        &get_required_env_var("JACS_SIGNATURE_SCHEMA_VERSION", true)
-            .expect("JACS_SIGNATURE_SCHEMA_VERSION must be set"),
+        &get_required_env_var("JACS_SCHEMA_AGENT_VERSION", true)
+            .expect("JACS_SCHEMA_AGENT_VERSION must be set"),
+        &get_required_env_var("JACS_SCHEMA_HEADER_VERSION", true)
+            .expect("JACS_SCHEMA_HEADER_VERSION must be set"),
+        &get_required_env_var("JACS_SCHEMA_SIGNATURE_VERSION", true)
+            .expect("JACS_SCHEMA_SIGNATURE_VERSION must be set"),
     )
-    .expect("Failed to init Agent")
+    .expect("Failed to init Agent in get_empty_agent") // Panic if Agent::new fails
 }
 
 pub fn load_agent_by_id() -> Agent {
-    let mut agent = get_empty_agent();
-    agent.load_by_id(None, None).expect("agent.load_by_id: ");
+    let mut agent = get_empty_agent(); // Now returns Agent directly
+    agent
+        .load_by_id(None, None)
+        .expect("agent.load_by_id failed");
     agent
 }
 
+/// Load agent using specific path
 fn load_path_agent(filepath: String) -> Agent {
-    let mut agent = get_empty_agent();
-    let agentstring = agent.fs_agent_load(&filepath).expect("agent file loading");
-    agent.load(&agentstring).expect("agent loading");
+    println!("[load_path_agent] Loading from path: {}", filepath);
+    let mut agent = get_empty_agent(); // Assuming get_empty_agent() returns Agent directly
+
+    // Extract filename (e.g., "ID:VERSION.json") from the full path
+    let agent_filename = Path::new(&filepath)
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .map(|s| s.to_string())
+        .expect("Could not extract filename from agent path");
+
+    // Strip the .json suffix to get the logical ID
+    let agent_id = agent_filename
+        .strip_suffix(".json")
+        .expect("Agent filename does not end with .json");
+
+    println!("[load_path_agent] Extracted agent ID: {}", agent_id);
+
+    // Pass ONLY the logical ID (without .json) to fs_agent_load
+    let agent_string = agent
+        .fs_agent_load(&agent_id.to_string()) // Pass ID string
+        .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))
+        .expect("Agent file loading failed");
+
+    agent
+        .load(&agent_string)
+        .expect("agent loading from string failed");
+    println!(
+        "[load_path_agent] Agent loaded and validated successfully using ID: {}",
+        agent_id
+    );
     agent
 }
 
@@ -124,7 +157,7 @@ pub fn create_task(
 }
 
 // todo
-pub fn update_task(previoustask: String) -> Result<String, Box<dyn Error>> {
+pub fn update_task(_: String) -> Result<String, Box<dyn Error>> {
     // update document
     // validate
     return Ok("".to_string());

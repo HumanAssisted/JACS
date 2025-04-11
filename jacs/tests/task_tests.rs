@@ -1,4 +1,3 @@
-use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::Agent;
 use jacs::agent::TASK_END_AGREEMENT_FIELDNAME;
 use jacs::agent::TASK_START_AGREEMENT_FIELDNAME;
@@ -10,14 +9,11 @@ use serde_json::json;
 
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::loaders::FileLoader;
-use jacs::crypt::KeyManager;
 use serde_json::Value;
 mod utils;
 use utils::DOCTESTFILE;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 static SCHEMA: &str = "raw/custom.schema.json";
 use chrono::{DateTime, Duration, Utc};
 

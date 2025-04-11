@@ -21,7 +21,7 @@ pub fn document_create(
     let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        let _ = agent.load_custom_schemas(&schemas);
     }
 
     // let loading_filename_string = loading_filename.to_string();

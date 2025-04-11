@@ -213,7 +213,18 @@ impl MultiStorage {
                 get_required_env_var("JACS_DATA_DIRECTORY", true)
                     .expect("JACS_DATA_DIRECTORY must be set when JACS_USE_FILESYSTEM is enabled")
             };
-            let local: LocalFileSystem = LocalFileSystem::new_with_prefix(local_path)?;
+
+            // Convert to absolute path and create if needed
+            let absolute_path = std::path::PathBuf::from(&local_path)
+                .canonicalize()
+                .unwrap_or_else(|_| {
+                    std::fs::create_dir_all(&local_path).expect("Failed to create directory");
+                    std::path::PathBuf::from(&local_path)
+                        .canonicalize()
+                        .expect("Failed to get canonical path after directory creation")
+                });
+
+            let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
             let tmplocal = Arc::new(local);
             _local = Some(tmplocal.clone());
             storages.push(tmplocal);

@@ -262,7 +262,7 @@ pub fn set_env_vars(
         .unwrap_or(&"v1".to_string())
         .clone();
     set_env_var_override(
-        "JACS_AGENT_SCHEMA_VERSION",
+        "JACS_SCHEMA_AGENT_VERSION",
         &jacs_agent_schema_version,
         do_override,
     )?;
@@ -278,13 +278,24 @@ pub fn set_env_vars(
         do_override,
     )?;
 
+    let jacs_header_schema_version = config
+        .jacs_header_schema_version
+        .as_ref()
+        .unwrap_or(&"v1".to_string())
+        .clone();
+    set_env_var_override(
+        "JACS_SCHEMA_HEADER_VERSION",
+        &jacs_header_schema_version,
+        do_override,
+    )?;
+
     let jacs_signature_schema_version = config
         .jacs_signature_schema_version
         .as_ref()
         .unwrap_or(&"v1".to_string())
         .clone();
     set_env_var_override(
-        "JACS_SIGNATURE_SCHEMA_VERSION",
+        "JACS_SCHEMA_SIGNATURE_VERSION",
         &jacs_signature_schema_version,
         do_override,
     )?;

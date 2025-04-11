@@ -5,9 +5,7 @@ use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use regex::Regex;
 use secrecy::ExposeSecret;
-use walkdir::WalkDir;
 
 use crate::storage::MultiStorage;
 use crate::storage::StorageType;
@@ -15,7 +13,6 @@ use crate::storage::jenv::{get_env_var, get_required_env_var};
 use chrono::Utc;
 use log::{debug, error, info, warn};
 use object_store::path::Path as ObjectPath;
-use std::env;
 use std::error::Error;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -116,15 +113,15 @@ impl FileLoader for Agent {
             format!("{}.json", docid)
         };
 
-        let path = format!(
-            "{}/{}/{}",
+        // Use PathBuf::join for robust path construction
+        let base_dir = PathBuf::from(
             get_required_env_var("JACS_DATA_DIRECTORY", true)
                 .expect("JACS_DATA_DIRECTORY must be set"),
-            doctype,
-            filename
         );
 
-        Ok(PathBuf::from(path))
+        let path = base_dir.join(doctype).join(filename);
+
+        Ok(path)
     }
 
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
@@ -137,11 +134,11 @@ impl FileLoader for Agent {
         let borrowed_key = binding.expose_secret();
         let key_vec = decrypt_private_key(borrowed_key)?;
 
-        let private_path = format!("{}", private_key_filename);
-        let public_path = format!("{}", public_key_filename);
+        // Use save_private_key with just the filename - storage will handle paths
+        save_private_key(Path::new(""), &private_key_filename, &key_vec)?;
 
-        storage.save_file(&private_path, &key_vec)?;
-        storage.save_file(&public_path, &self.get_public_key()?)?;
+        // Public key can be saved directly
+        storage.save_file(&public_key_filename, &self.get_public_key()?)?;
 
         Ok(())
     }
@@ -241,9 +238,26 @@ impl FileLoader for Agent {
     }
 
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
+        // Expects logical agentid (no .json)
+        println!("[fs_agent_load] Loading using agent ID: {}", agentid);
         let storage = MultiStorage::new(None)?;
-        let agent_path = format!("agent/{}.json", agentid);
-        let contents = storage.get_file(&agent_path, None)?;
+
+        // Construct the relative path for storage lookup
+        let relative_path = format!("agent/{}.json", agentid);
+        println!(
+            "[fs_agent_load] Attempting to get file from relative path: {}",
+            relative_path
+        );
+
+        let contents = storage.get_file(&relative_path, None).map_err(|e| {
+            error!(
+                "[fs_agent_load] Failed to get file from relative path '{}': {}",
+                relative_path, e
+            );
+            e
+        })?;
+
+        println!("[fs_agent_load] Successfully loaded file content.");
         String::from_utf8(contents).map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
@@ -261,11 +275,95 @@ impl FileLoader for Agent {
 
     fn fs_agent_save(
         &self,
-        agentid: &String,
+        agentid: &String, // Expects logical agentid (no .json)
         agent_string: &String,
     ) -> Result<String, Box<dyn Error>> {
-        let agentpath = self.build_filepath(&"agent".to_string(), agentid)?;
-        Ok(save_to_filepath(&agentpath, agent_string.as_bytes())?)
+        println!("[fs_agent_save] Starting save for agent ID: {}", agentid);
+
+        // Construct the relative path for storage operations
+        let relative_path_str = format!("agent/{}.json", agentid);
+        println!(
+            "[fs_agent_save] Calculated relative path for storage ops: {}",
+            relative_path_str
+        );
+
+        // Calculate the absolute path for the return value
+        let agentpath_absolute: PathBuf =
+            self.build_filepath(&"agent".to_string(), &format!("{}.json", agentid))?; // Need to add .json for build_filepath
+        println!(
+            "[fs_agent_save] Calculated absolute save path for return: {:?}",
+            agentpath_absolute
+        );
+
+        let storage = match MultiStorage::new(None) {
+            Ok(s) => {
+                println!("[fs_agent_save] MultiStorage created successfully.");
+                s
+            }
+            Err(e) => {
+                println!("[fs_agent_save] Error creating MultiStorage: {}", e);
+                return Err(e.into());
+            }
+        };
+
+        // --- Use RELATIVE path for storage operations ---
+        println!(
+            "[fs_agent_save] Checking existence relative path: {}",
+            relative_path_str
+        );
+        match storage.file_exists(&relative_path_str, Some(StorageType::FS)) {
+            Ok(true) => {
+                // Construct relative backup path
+                let relative_backup_path = format!("{}.bak", relative_path_str);
+                warn!(
+                    "[fs_agent_save] Agent file exists (relative path), backing up to: {}",
+                    relative_backup_path
+                );
+                match storage.rename_file(&relative_path_str, &relative_backup_path) {
+                    Ok(_) => println!("[fs_agent_save] Backup successful (using relative paths)."),
+                    Err(e) => {
+                        error!(
+                            "[fs_agent_save] Backup rename failed (relative paths): {}. Continuing save attempt.",
+                            e
+                        );
+                    }
+                }
+            }
+            Ok(false) => {
+                println!(
+                    "[fs_agent_save] No existing file found at relative path. No backup needed."
+                );
+            }
+            Err(e) => {
+                error!(
+                    "[fs_agent_save] Error checking file existence for backup (relative path): {}. Continuing save attempt.",
+                    e
+                );
+            }
+        }
+
+        // Actual save operation using RELATIVE path
+        println!(
+            "[fs_agent_save] Calling storage.save_file with relative path: {}",
+            relative_path_str
+        );
+        storage
+            .save_file(&relative_path_str, agent_string.as_bytes())
+            .map_err(|e| {
+                error!(
+                    "[fs_agent_save] storage.save_file failed (relative path): {}",
+                    e
+                );
+                Box::new(e) as Box<dyn Error>
+            })?;
+
+        // Return the calculated ABSOLUTE path string
+        let absolute_path_string = agentpath_absolute.to_string_lossy().to_string();
+        println!(
+            "[fs_agent_save] Save successful. Returning absolute path: {}",
+            absolute_path_string
+        );
+        Ok(absolute_path_string)
     }
 
     fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn Error>> {
@@ -350,7 +448,7 @@ async fn create_backup(storage: &MultiStorage, file_path: &str) -> Result<String
 
 #[cfg(not(target_arch = "wasm32"))]
 fn save_private_key(
-    file_path: &Path,
+    _: &Path, // Ignore path parameter since storage handles paths
     filename: &String,
     private_key: &[u8],
 ) -> Result<String, Box<dyn Error>> {
@@ -360,25 +458,18 @@ fn save_private_key(
     let storage = MultiStorage::new(Some(true))?;
 
     if !password.is_empty() {
-        let encrypted_key = encrypt_private_key(private_key).map_err(|e| {
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Encryption error: {}", e),
-            ))
-        })?;
+        let encrypted_key = encrypt_private_key(private_key)?;
         let encrypted_filename = if !filename.ends_with(".enc") {
             format!("{}.enc", filename)
         } else {
             filename.to_string()
         };
 
-        let full_path = format!("{}/{}", file_path.to_string_lossy(), encrypted_filename);
-        storage.save_file(&full_path, &encrypted_key)?;
-        Ok(full_path)
+        storage.save_file(&encrypted_filename, &encrypted_key)?;
+        Ok(encrypted_filename)
     } else {
-        let full_path = format!("{}/{}", file_path.to_string_lossy(), filename);
-        storage.save_file(&full_path, private_key)?;
-        Ok(full_path)
+        storage.save_file(filename, private_key)?;
+        Ok(filename.to_string())
     }
 }
 
@@ -398,33 +489,6 @@ fn load_key_file(filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
     storage
         .get_file(&filename, None)
         .map_err(|e| Box::new(e) as Box<dyn Error>)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn save_file(
-    file_path: &Path,
-    filename: &String,
-    content: &[u8],
-) -> Result<String, Box<dyn Error>> {
-    let full_path = file_path.join(filename);
-    save_to_filepath(&full_path, content)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn save_to_filepath(full_path: &PathBuf, content: &[u8]) -> Result<String, Box<dyn Error>> {
-    let storage = MultiStorage::new(None)?;
-    let path_str = full_path.to_string_lossy().to_string();
-
-    if storage.file_exists(&path_str, None)? {
-        warn!("path exists for {}, creating backup", path_str);
-        let timestamp = Utc::now().format("backup-%Y-%m-%d-%H-%M").to_string();
-        let backup_path = format!("{}.{}", path_str, timestamp);
-        let existing_content = storage.get_file(&path_str, None)?;
-        storage.save_file(&backup_path, &existing_content)?;
-    }
-
-    storage.save_file(&path_str, content)?;
-    Ok(path_str)
 }
 
 // Helper function to convert PathBuf to object store Path

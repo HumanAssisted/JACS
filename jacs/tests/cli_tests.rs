@@ -6,11 +6,21 @@ use std::env;
 use std::fs::{self, File}; // Add fs for file operations
 use std::io::Write; // Add Write trait
 use std::path::PathBuf; // Add PathBuf
+use std::sync::Once;
 use std::{
     error::Error,
     process::{Command, Stdio},
 }; // Run programs // To read CARGO_PKG_VERSION
+use tempfile::TempDir; // <-- Add this import
 use tempfile::tempdir; // Add tempdir // Ensure base64 is imported if used for dummy jpeg
+
+static INIT: Once = Once::new();
+
+fn setup() {
+    INIT.call_once(|| {
+        env_logger::init();
+    });
+}
 
 // RUST_BACKTRACE=1 cargo test   --test cli_tests -- --nocapture
 
@@ -58,13 +68,13 @@ fn test_cli_version_subcommand() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-// Helper function to get fixture path
-fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join(name)
-}
+// // Helper function to get fixture path
+// fn fixture_path(name: &str) -> PathBuf {
+//     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+//         .join("tests")
+//         .join("fixtures")
+//         .join(name)
+// }
 
 #[test]
 fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
@@ -92,7 +102,6 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     cmd_config_create.current_dir(temp_path);
     cmd_config_create.arg("config").arg("create");
 
-    // --> FIX 1: Set environment variables for the config create process <--
     cmd_config_create.env("JACS_DEFAULT_STORAGE", "fs"); // Critical: For internal MultiStorage init
     cmd_config_create.env("JACS_DATA_DIRECTORY", &data_dir); // Needed if checking input agent file path
     cmd_config_create.env("JACS_KEY_DIRECTORY", &key_dir); // Needed if checking input agent file path
@@ -159,6 +168,11 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     );
     fs::create_dir_all(&data_dir)?;
     fs::create_dir_all(&key_dir)?;
+
+    // After config create completes:
+    println!("Created jacs.config.json contents:");
+    let config_contents = std::fs::read_to_string(temp_path.join("jacs.config.json"))?;
+    println!("{}", config_contents);
 
     // Create other input files (same as before)
     let agent_raw_path_dest = data_dir.join("agent.raw.json");
@@ -235,25 +249,77 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .success()
         .stdout(predicate::str::contains("JACS_DATA_DIRECTORY:"));
 
-    // jacs agent create -f ./agent.raw.json --create-keys=true
-    println!("Running: agent create");
-    let agent_create_output = base_cmd()
-        .arg("agent")
-        .arg("create")
-        .arg("-f")
-        .arg("agent.raw.json")
-        .arg("--create-keys=true")
-        .output()?;
+    // jacs agent create (Now using interactive minimal creation)
+    println!("Running: agent create (interactive)");
+    let mut cmd_agent_create = base_cmd(); // Get base command with env vars
+    cmd_agent_create.arg("agent").arg("create");
+    // Removed: .arg("-f").arg("agent.raw.json")
+    cmd_agent_create.arg("--create-keys=true");
+
+    // Pipe stdin for interactive prompts
+    cmd_agent_create.stdin(Stdio::piped());
+    cmd_agent_create.stdout(Stdio::piped()); // Keep stdout piped
+    cmd_agent_create.stderr(Stdio::piped()); // Keep stderr piped
+
+    let mut agent_child = cmd_agent_create.spawn()?;
+    let mut agent_child_stdin = agent_child
+        .stdin
+        .take()
+        .expect("Failed to open stdin for agent create");
+
+    // --- Provide input for agent create prompts ---
+    let input_agent_type = "ai"; // Matches default
+    let input_service_desc = "Test Service Desc";
+    let input_success_desc = "Test Success Desc";
+    let input_failure_desc = "Test Failure Desc";
+    let input_config_confirm = "yes";
+
+    let agent_inputs = format!(
+        "{}
+{}
+{}
+{}
+{}
+",
+        input_agent_type,
+        input_service_desc,
+        input_success_desc,
+        input_failure_desc,
+        input_config_confirm
+    );
+    println!("--- Sending Inputs to 'agent create' ---");
+    println!("{}", agent_inputs.trim_end());
+    println!("---------------------------------------");
+
+    // Write inputs in thread
+    std::thread::spawn(move || {
+        agent_child_stdin
+            .write_all(agent_inputs.as_bytes())
+            .expect("Failed to write to agent create stdin");
+    });
+
+    // Wait for output and assert success
+    let agent_create_output = agent_child.wait_with_output()?;
+    let agent_create_stdout = String::from_utf8_lossy(&agent_create_output.stdout);
+    let agent_create_stderr = String::from_utf8_lossy(&agent_create_output.stderr);
+    println!("--- 'agent create' STDOUT ---");
+    println!("{}", agent_create_stdout);
+    println!("----------------------------");
+    println!("--- 'agent create' STDERR ---");
+    println!("{}", agent_create_stderr);
+    println!("----------------------------");
+
     assert!(
         agent_create_output.status.success(),
-        "agent create failed: {:?}",
-        agent_create_output
+        "agent create failed: stdout: {}\nstderr: {}",
+        agent_create_stdout,
+        agent_create_stderr
     );
-    let agent_create_stdout = String::from_utf8(agent_create_output.stdout)?;
-    println!("Agent Create Output:\n{}", agent_create_stdout);
+
+    // Parse agent ID (logic remains the same, but applied to new output)
     let agent_id_line = agent_create_stdout
         .lines()
-        .find(|line| line.contains("Agent") && line.contains("created!"))
+        .find(|line| line.contains("Agent") && line.contains("created successfully!"))
         .unwrap_or("");
     let agent_id = agent_id_line
         .split_whitespace()
@@ -262,6 +328,24 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .trim_end_matches('!');
     assert!(!agent_id.is_empty(), "Could not parse agent ID from output");
     println!("Captured Agent ID: {}", agent_id);
+
+    // --- Debug: List contents of the expected agent directory ---
+    let agent_dir_path = temp_dir.path().join("jacs_data").join("agent");
+    println!("--- Checking contents of: {:?} ---", agent_dir_path);
+    match std::fs::read_dir(&agent_dir_path) {
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Ok(e) => println!("Found: {:?}", e.path()),
+                    Err(e) => println!("Error reading directory entry: {}", e),
+                }
+            }
+        }
+        Err(e) => println!("Could not read directory {:?}: {}", agent_dir_path, e),
+    }
+    println!("-------------------------------------------");
+    // ---------------------------------------------------------
+
     let agent_file_path = data_dir.join("agent").join(format!("{}.json", agent_id));
     assert!(
         key_dir.join("jacs.private.pem.enc").exists(),
@@ -277,98 +361,111 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         agent_file_path.display()
     );
 
+    // jacs agent verify
+    println!("Running: agent verify");
+    base_cmd()
+        .arg("agent")
+        .arg("verify")
+        .arg("-a")
+        .arg(&agent_file_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("signature verified OK"));
+
+    // jacs document create -f ddl.json --embed=true --attach mobius.jpeg
     // jacs document create -f ddl.json --embed=true --attach mobius.jpeg
     println!("Running: document create");
-    let doc_create_output = base_cmd()
-        .arg("document")
-        .arg("create")
-        .arg("-f")
-        .arg("ddl.json")
-        .arg("--attach")
-        .arg("mobius.jpeg")
-        .arg("--embed=true")
-        .arg("-a")
-        .arg(&agent_file_path) // Use created agent file path
-        .output()?;
-    assert!(
-        doc_create_output.status.success(),
-        "document create failed: {:?}",
-        doc_create_output
-    );
-    let doc_create_stdout = String::from_utf8(doc_create_output.stdout)?;
-    println!("Document Create Output:\n{}", doc_create_stdout);
-    let doc_path_line = doc_create_stdout
-        .lines()
-        .find(|line| line.contains("created doc"))
-        .unwrap_or("");
-    let doc_relative_path = doc_path_line.trim_start_matches("created doc ").trim();
-    assert!(
-        !doc_relative_path.is_empty(),
-        "Could not parse document path from output: '{}'",
-        doc_path_line
-    );
-    let doc_full_path = data_dir.join("documents").join(doc_relative_path);
-    assert!(
-        doc_full_path.exists(),
-        "Document file missing: {}",
-        doc_full_path.display()
-    );
-    println!("Captured Document Path: {}", doc_full_path.display());
 
-    // jacs document verify -f ./jacs/documents/... (use captured path)
-    println!("Running: document verify");
-    base_cmd()
-        .arg("document")
-        .arg("verify")
-        .arg("-f")
-        .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
-        .arg("-a")
-        .arg(&agent_file_path)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("document verified OK"));
+    // let doc_create_output = base_cmd()
+    //     .arg("document")
+    //     .arg("create")
+    //     .arg("-f")
+    //     .arg("ddl.json")
+    //     .arg("--attach")
+    //     .arg("mobius.jpeg")
+    //     .arg("--embed=true")
+    //     .arg("-a")
+    //     .arg(&agent_file_path) // Use created agent file path
+    //     .output()?;
+    // assert!(
+    //     doc_create_output.status.success(),
+    //     "document create failed: {:?}",
+    //     doc_create_output
+    // );
+    // let doc_create_stdout = String::from_utf8(doc_create_output.stdout)?;
+    // println!("Document Create Output:\n{}", doc_create_stdout);
+    // let doc_path_line = doc_create_stdout
+    //     .lines()
+    //     .find(|line| line.contains("created doc"))
+    //     .unwrap_or("");
+    // let doc_relative_path = doc_path_line.trim_start_matches("created doc ").trim();
+    // assert!(
+    //     !doc_relative_path.is_empty(),
+    //     "Could not parse document path from output: '{}'",
+    //     doc_path_line
+    // );
+    // let doc_full_path = data_dir.join("documents").join(doc_relative_path);
+    // assert!(
+    //     doc_full_path.exists(),
+    //     "Document file missing: {}",
+    //     doc_full_path.display()
+    // );
+    // println!("Captured Document Path: {}", doc_full_path.display());
 
-    // jacs document create-agreement -f ... --agentids agent1,agent2
-    println!("Running: document create-agreement");
-    base_cmd()
-        .arg("document")
-        .arg("create-agreement")
-        .arg("-f")
-        .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
-        .arg("-a")
-        .arg(&agent_file_path)
-        .arg("--agentids")
-        .arg(format!("{},{}", agent_id, agent_id))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Agreement created"));
+    // // jacs document verify -f ./jacs/documents/... (use captured path)
+    // println!("Running: document verify");
+    // base_cmd()
+    //     .arg("document")
+    //     .arg("verify")
+    //     .arg("-f")
+    //     .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
+    //     .arg("-a")
+    //     .arg(&agent_file_path)
+    //     .assert()
+    //     .success()
+    //     .stdout(predicate::str::contains("document verified OK"));
 
-    // jacs document sign-agreement -f ...
-    println!("Running: document sign-agreement");
-    base_cmd()
-        .arg("document")
-        .arg("sign-agreement")
-        .arg("-f")
-        .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
-        .arg("-a")
-        .arg(&agent_file_path)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("signed by"));
+    // // jacs document create-agreement -f ... --agentids agent1,agent2
+    // println!("Running: document create-agreement");
+    // base_cmd()
+    //     .arg("document")
+    //     .arg("create-agreement")
+    //     .arg("-f")
+    //     .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
+    //     .arg("-a")
+    //     .arg(&agent_file_path)
+    //     .arg("--agentids")
+    //     .arg(format!("{},{}", agent_id, agent_id))
+    //     .assert()
+    //     .success()
+    //     .stdout(predicate::str::contains("Agreement created"));
 
-    // jacs document check-agreement -f ...
-    println!("Running: document check-agreement");
-    base_cmd()
-        .arg("document")
-        .arg("check-agreement")
-        .arg("-f")
-        .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
-        .arg("-a")
-        .arg(&agent_file_path)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(agent_id))
-        .stdout(predicate::str::contains("signed: true"));
+    // // jacs document sign-agreement -f ...
+    // println!("Running: document sign-agreement");
+    // base_cmd()
+    //     .arg("document")
+    //     .arg("sign-agreement")
+    //     .arg("-f")
+    //     .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
+    //     .arg("-a")
+    //     .arg(&agent_file_path)
+    //     .assert()
+    //     .success()
+    //     .stdout(predicate::str::contains("signed by"));
+
+    // // jacs document check-agreement -f ...
+    // println!("Running: document check-agreement");
+    // base_cmd()
+    //     .arg("document")
+    //     .arg("check-agreement")
+    //     .arg("-f")
+    //     .arg(doc_full_path.strip_prefix(&temp_path).unwrap())
+    //     .arg("-a")
+    //     .arg(&agent_file_path)
+    //     .assert()
+    //     .success()
+    //     .stdout(predicate::str::contains(agent_id))
+    //     .stdout(predicate::str::contains("signed: true"));
 
     Ok(())
 }

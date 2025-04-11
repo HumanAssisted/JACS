@@ -651,28 +651,43 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
 
                 // Initialize storage using MultiStorage::new
-                let mut storage = MultiStorage::new(None)?; // Use MultiStorage::new directly
-                // let _ = storage.init(); // MultiStorage doesn't have an init method like this
+                let storage = MultiStorage::new(None)?;
 
-                // -- Get user input for agent details using request_string --
-                let agent_name = request_string("Agent Name", ""); // Provide an empty default
-                if agent_name.is_empty() {
-                    eprintln!("Agent name cannot be empty.");
-                    process::exit(1);
-                }
-
-                let agent_description = request_string("Agent Description", ""); // Provide an empty default
-                if agent_description.is_empty() {
-                    eprintln!("Agent description cannot be empty.");
-                    process::exit(1);
-                }
-
-                let agent_type = request_string("Agent Type (e.g., person, service, device)", ""); // Provide an empty default
+                // -- Get user input for agent type and SERVICE descriptions --
+                let agent_type =
+                    request_string("Agent Type (e.g., ai, person, service, device)", "ai"); // Default to ai
                 if agent_type.is_empty() {
                     eprintln!("Agent type cannot be empty.");
                     process::exit(1);
                 }
-                // TODO: Add validation for agent_type against schema enum if desired
+                // TODO: Validate agent_type against schema enum: ["human", "human-org", "hybrid", "ai"]
+
+                let service_description = request_string(
+                    "Service Description",
+                    "Describe a service the agent provides",
+                );
+                let success_description = request_string(
+                    "Service Success Description",
+                    "Describe a success of the service",
+                );
+                let failure_description = request_string(
+                    "Service Failure Description",
+                    "Describe what failure is of the service",
+                );
+
+                // Variables for service descriptions when creating minimal agent
+                let (minimal_service_desc, minimal_success_desc, minimal_failure_desc) =
+                    if filename.is_none() {
+                        // Use descriptions collected from user only if creating minimal agent
+                        (
+                            Some(service_description),
+                            Some(success_description),
+                            Some(failure_description),
+                        )
+                    } else {
+                        // If loading from file, pass None (template should contain service info)
+                        (None, None, None)
+                    };
 
                 // Load or create base agent string
                 let agent_template_string = match filename {
@@ -685,15 +700,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                         })
                     }
                     _ => create_minimal_blank_agent(
-                        agent_name.clone(), // Existing agent name
-                        None,               // service_desc
-                        None,               // success_desc
-                        None,               // failure_desc
+                        agent_type.clone(),   // Pass the collected agent_type
+                        minimal_service_desc, // Pass collected service description
+                        minimal_success_desc, // Pass collected success description
+                        minimal_failure_desc, // Pass collected failure description
                     )
                     .unwrap_or_else(|e| panic!("Failed to create minimal agent template: {}", e)),
                 };
 
-                // -- Modify the agent template with user input --
+                // -- Modify the agent template with remaining user input (agent_type) --
                 let mut agent_json: Value = serde_json::from_str(&agent_template_string)
                     .unwrap_or_else(|e| {
                         eprintln!("Failed to parse agent template JSON: {}", e);
@@ -701,18 +716,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                         process::exit(1);
                     });
 
-                // Add or update fields
+                // Add or update fields - ONLY agent_type remains needed here as name/desc removed
                 if let Some(obj) = agent_json.as_object_mut() {
-                    obj.insert("jacsName".to_string(), json!(agent_name));
-                    obj.insert("jacsDescription".to_string(), json!(agent_description));
-                    // Use 'jacsType' as per standard, ensure it's consistent with create_minimal_blank_agent if used
-                    obj.insert("jacsType".to_string(), json!(agent_type));
+                    // obj.insert("jacsName".to_string(), json!(agent_name)); // Removed
+                    // obj.insert("jacsDescription".to_string(), json!(agent_description)); // Removed
+                    obj.insert("jacsAgentType".to_string(), json!(agent_type)); // Use jacsAgentType based on schema
                 } else {
                     eprintln!("Agent template is not a valid JSON object.");
                     process::exit(1);
                 }
 
-                let modified_agent_string = serde_json::to_string(&agent_json).unwrap(); // Should not fail
+                let modified_agent_string = serde_json::to_string(&agent_json).unwrap();
 
                 // Proceed with agent creation using modified string
                 let mut agent = get_empty_agent();

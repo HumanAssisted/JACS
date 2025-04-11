@@ -4,13 +4,9 @@ use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
 use jacs::load_agent_by_id;
 use lazy_static::lazy_static;
-use log::{debug, error};
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
-use pyo3::types::PyDict;
 use pyo3::wrap_pyfunction;
-use serde_json::{Value, json, to_value};
-use std::env;
+use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -21,7 +17,7 @@ use std::sync::Mutex;
 
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
-        set_env_vars(false, None, false);
+        let _ = set_env_vars(false, None, false);
         let mut agent = load_agent_by_id();
         Arc::new(Mutex::new(agent))
 

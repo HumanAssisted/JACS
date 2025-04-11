@@ -4,7 +4,7 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit, OsRng},
 };
-use rand::{Rng, thread_rng};
+use rand::Rng;
 use sha2::{Digest, Sha256};
 
 // Encrypt a private key with a password
@@ -14,7 +14,7 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
 
     // Generate a random salt
     let mut salt = [0u8; 16];
-    thread_rng().fill(&mut salt[..]);
+    rand::rng().fill(&mut salt[..]);
 
     // Derive key using PBKDF2 with SHA-256
     let mut key = [0u8; 32];

@@ -1,3 +1,4 @@
+use base64::{Engine, engine::general_purpose::STANDARD};
 use ring::{
     error::{KeyRejected, Unspecified},
     rand,
@@ -21,7 +22,7 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn
         signature::Ed25519KeyPair::from_pkcs8(&secret_key).map_err(|e| KeyRejectedError(e))?;
     let signature = key_pair.sign(data.as_bytes());
     let signature_bytes = signature.as_ref();
-    let signature_base64 = base64::encode(signature_bytes);
+    let signature_base64 = STANDARD.encode(signature_bytes);
     Ok(signature_base64)
 }
 
@@ -30,7 +31,7 @@ pub fn verify_string(
     data: &String,
     signature_base64: &String,
 ) -> Result<(), Box<dyn Error>> {
-    let signature_bytes = base64::decode(signature_base64)?;
+    let signature_bytes = STANDARD.decode(signature_base64)?;
     let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);
     public_key
         .verify(data.as_bytes(), &signature_bytes)

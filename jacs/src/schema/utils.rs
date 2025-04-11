@@ -1,8 +1,4 @@
-use crate::schema::Url;
 use log::debug;
-use log::error;
-use log::info;
-use std::path::Path;
 
 use phf::phf_map;
 

@@ -19,3 +19,8 @@ build-jacs:
 	cd jacs && cargo install --path . --force
 	/Users/jonathan.hendler/.cargo/bin/jacs --help 
 	/Users/jonathan.hendler/.cargo/bin/jacs version
+
+test-jacs:
+#   --test agent_tests --test document_tests --test key_tests --test task_tests --test agreement_test  --test create_agent_test
+	cd jacs && RUST_BACKTRACE=1 cargo test  -- --nocapture
+	 

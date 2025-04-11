@@ -7,8 +7,7 @@ pub mod rsawrapper;
 pub mod aes_encrypt;
 
 use crate::agent::Agent;
-use crate::storage::jenv::{get_env_var, get_required_env_var};
-use std::env;
+use crate::storage::jenv::get_required_env_var;
 use std::str::FromStr;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -132,6 +131,5 @@ impl KeyManager for Agent {
                 );
             }
         }
-        Ok(())
     }
 }

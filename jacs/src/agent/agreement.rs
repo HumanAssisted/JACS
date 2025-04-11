@@ -472,7 +472,7 @@ impl Agreement for Agent {
                                 local_doc_value.clone(),
                                 &agreement_fieldname_key,
                             )?;
-                        let result = self.signature_verification_procedure(
+                        let _ = self.signature_verification_procedure(
                             &document.value,
                             Some(&fields),
                             &agreement_fieldname_key.to_string(),
