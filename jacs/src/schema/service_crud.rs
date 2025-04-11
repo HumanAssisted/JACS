@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 ///
 /// Returns an error if:
 /// - `service_description`, `success_description`, or `failure_description` is empty.
+///
 pub fn create_minimal_service(
     service_description: &str,
     success_description: &str,

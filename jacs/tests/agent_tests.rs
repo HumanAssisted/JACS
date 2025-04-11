@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 mod utils;
-use utils::{AGENTONE, load_local_document};
+use utils::load_local_document;
 
 const CONFIG_CONTENT: &str = r#"{
     "$schema": "https://hai.ai/schemas/jacs.config.schema.json",

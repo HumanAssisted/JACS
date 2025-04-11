@@ -1086,7 +1086,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             Some(("check-agreement", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
-                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");

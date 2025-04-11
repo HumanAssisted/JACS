@@ -1,5 +1,7 @@
 ## setting up
 
+Once you've installed the jacs cli with `cargo install jacs` 
+
 First, create your configuration which can also be loaded loaded as environment variables.
 
 For an explanation see [the schema for the config.](./schemas/jacs.config.schema.json)
@@ -21,9 +23,11 @@ Please enter the agent ID and version:
 You can use `jacs config read` to check the configs. 
 You will probably get the error `Warning: Failed to set some environment variables: Environment variable 'JACS_AGENT_ID_AND_VERSION' is empty` at this point. 
 
-You need to create an agent first. 
+You need to create an agent first.  Go to [cli/agent](./cli/agent)
 
 Note: Do not use `jacs_private_key_password` in production. Instead, use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
+
+
 
 ## developing
 

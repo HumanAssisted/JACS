@@ -196,6 +196,7 @@ Enforcement of schemas relies on <a href="https://json-schema.org/">JSON Schema'
 <p>JACS is not meant to be the easiest to use, but it should be useful as is for some specific applicaitons. More importantly it is open source.</p>
 <p>If your focus is building an AI business, or selling data to AI, there's quite a lot of work to do. For ease of use and safety of sharing documents (tasks) devs building connected Agent Apps will want to use services provided by https://hai.ai</p>
 <div style="break-before: page; page-break-before: always;"></div><h2 id="setting-up"><a class="header" href="#setting-up">setting up</a></h2>
+<p>Once you've installed the jacs cli with <code>cargo install jacs</code></p>
 <p>First, create your configuration which can also be loaded loaded as environment variables.</p>
 <p>For an explanation see <a href="cli/./schemas/jacs.config.schema.json">the schema for the config.</a>
 Create a <code>jacs.config.json</code> from <a href="cli/./jacs.config.example.json">the example</a> or use <code>jacs config create</code> which will give you this dialog:</p>
@@ -212,7 +213,7 @@ Please enter the agent ID and version:
 </code></pre>
 <p>You can use <code>jacs config read</code> to check the configs.
 You will probably get the error <code>Warning: Failed to set some environment variables: Environment variable 'JACS_AGENT_ID_AND_VERSION' is empty</code> at this point.</p>
-<p>You need to create an agent first.</p>
+<p>You need to create an agent first.  Go to <a href="cli/./cli/agent">cli/agent</a></p>
 <p>Note: Do not use <code>jacs_private_key_password</code> in production. Instead, use the environment variable <code>JACS_PRIVATE_KEY_PASSWORD</code> in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.</p>
 <h2 id="developing"><a class="header" href="#developing">developing</a></h2>
 <p>The pre-commit hook requires some libraries</p>

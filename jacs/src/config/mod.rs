@@ -273,17 +273,6 @@ pub fn set_env_vars(
         .unwrap_or(&"v1".to_string())
         .clone();
     set_env_var_override(
-        "JACS_HEADER_SCHEMA_VERSION",
-        &jacs_header_schema_version,
-        do_override,
-    )?;
-
-    let jacs_header_schema_version = config
-        .jacs_header_schema_version
-        .as_ref()
-        .unwrap_or(&"v1".to_string())
-        .clone();
-    set_env_var_override(
         "JACS_SCHEMA_HEADER_VERSION",
         &jacs_header_schema_version,
         do_override,
@@ -344,9 +333,9 @@ pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
         ("JACS_AGENT_PRIVATE_KEY_FILENAME", true),
         ("JACS_AGENT_PUBLIC_KEY_FILENAME", true),
         ("JACS_AGENT_KEY_ALGORITHM", true),
-        ("JACS_AGENT_SCHEMA_VERSION", true),
-        ("JACS_HEADER_SCHEMA_VERSION", true),
-        ("JACS_SIGNATURE_SCHEMA_VERSION", true),
+        ("JACS_SCHEMA_AGENT_VERSION", true),
+        ("JACS_SCHEMA_HEADER_VERSION", true),
+        ("JACS_SCHEMA_SIGNATURE_VERSION", true),
         ("JACS_PRIVATE_KEY_PASSWORD", true),
         ("JACS_AGENT_ID_AND_VERSION", true),
     ];
