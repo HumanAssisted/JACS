@@ -1,0 +1,85 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "name": "Ralph",
+  "jacsAgentType": "human",
+  "jacsType": "agent",
+  "jacsLevel": "config",
+  "description": "Guy with a bank account",
+  "capabilities": [
+    {
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "operation": "deduct",
+      "name": "withdraw",
+      "units": [
+        {
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "generaltype": "monetary",
+          "unit_name": "dollars",
+          "label": "net worth"
+        }
+      ]
+    }
+  ],
+  "modifications": [],
+  "quantifications": [
+    [
+      120000,
+      {
+        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+        "generaltype": "monetary",
+        "unit_name": "dollars",
+        "label": "net worth"
+      }
+    ]
+  ],
+    "jacsContacts": [
+    {
+
+      "name": "Frodo Baggins",
+      "email": "smith@example.com",
+      "isPrimary": true,
+      "mailAddress": "123 Example St.",
+      "mailAddressTwo": "Suite 101",
+      "mailCountry": "ExampleCountry",
+      "mailName": "Smith",
+      "mailState": "ExampleState",
+      "mailZip": "12345",
+      "phone": "123-456-7890"
+    }
+  ],
+  "jacsServices": [
+    {
+      "serviceDescription": "Bank account manager",
+      "successDescription": "Everything is under control",
+      "failureDescription": "Not everything is under control",
+      "costDescription": "monthly fee",
+      "idealCustomerDescription": "wealthy",
+      "isDev": true,
+      "tools": [
+        {
+          "type": "function",
+          "url": "https://api.example.com/tool",
+          "function": {
+            "name": "ExampleFunction",
+            "description": "An example function provided by the tool.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "param1": {
+                  "type": "string",
+                  "description": "A string parameter."
+                },
+                "param2": {
+                  "type": "integer",
+                  "description": "An integer parameter."
+                }
+              },
+              "required": ["param1"]
+            }
+          }
+        }
+      ],
+      "piiDesired": ["email", "phone"]
+    }
+  ]
+}

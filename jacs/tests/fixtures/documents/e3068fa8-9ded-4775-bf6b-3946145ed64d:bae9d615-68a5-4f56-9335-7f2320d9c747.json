@@ -1,0 +1,41 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "address": "2344 Madison Ave",
+  "description": "Serving only NYC",
+  "email": "ralphk@ralphspizza.com",
+  "jacsId": "e3068fa8-9ded-4775-bf6b-3946145ed64d",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2024-08-11T14:20:53.326437+00:00",
+  "jacsOriginalVersion": "bae9d615-68a5-4f56-9335-7f2320d9c747",
+  "jacsSha256": "57c78e72df6d053c865cd554f6a65c50d15518699b64ecc2923aeb4a39aa0656",
+  "jacsSignature": {
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2024-08-11T14:20:53.792446+00:00",
+    "fields": [
+      "$schema",
+      "address",
+      "description",
+      "email",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "name",
+      "rating",
+      "zip"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "IPaj1Rmah9XVhGIw66/0ofsAc2izS50zwI6iqPjCxXKcCaVyVn+B9anYmUxIkAqIdpUL1m1pReDQ+YG4RTKJIvaMbF3jEjL7B2O9vXX/85XGl6itphFOlPF0PNi2QtIWX6PILP9I/4FMjTClBi3vMYQ0lYCackjcEClJBgFrTYf0mb8tguyVXQCi5k1mPpchOcals8GeXlRqZ8njRMpR3Q4SMHG9lbc0oQtUsXglNdcYjxFgbfWS9fyaQ0xsQOET/UBCYREQqQP6FFXolVqSLOT5xDoUkZFosMriCOZJtBpSs0V1bMKRezHYa3oh8RYlfMl02DaIlPoinXB1w83J/Lv5HqCNjC7XqNEflR/lQL0rIlfuGws51Agi8eWgkcHjbcPu7BZzKfIEh03WPrgPuRAX2D8TE/xMJKsVoYbJFNI63mbDbO4OdakIHDCVfuQ1U22lAgF42H/RF1Q/R+8FfCOkXiIKOli6Uv3QVpNpcxP2qgbLqar0AkEx9b9aunRbIZmQSvdLJVJWTyseZDkDUbUlYDi2U1zlpo6V6pWKP7hDSA+yxaXZzwQ7MZ2jAE2n8GjNlfvhqQniUOuV8XYdPHGXd1X0dwXg7fMzFxobhlz1v7FMToq2GX1z9/STUkWM7bq2h2Fyiwg1XNpoSQ4QBTdCN90RgPWjjgBpmdCN6dM=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "business",
+  "jacsVersion": "bae9d615-68a5-4f56-9335-7f2320d9c747",
+  "jacsVersionDate": "2024-08-11T14:20:53.326437+00:00",
+  "name": "ralphs pizza",
+  "rating": 5.2,
+  "zip": "20348"
+}

@@ -2,9 +2,18 @@
 
 Welcome to JACS (JSON Agent Communication Standard), a verifiable document format for AI agents.
 
-JACS documents enable more trusted data sharing between AI agents and Human UIs.
+JACS documents enable more trusted data sharing between AI agents and Human UIs. 
 
-** NOTE: Current version 0.3.2 *ALPHA* .
+Usage modes are:
+ 
+  1. cli tool to bootstrap an agent or documents
+  2. Rust integration 
+  3. Python integration
+  4. MCP server
+  5. TODO: npm module (typescript) 
+
+
+** NOTE: Current version 0.3.3 *ALPHA* .
 
 JACS is a JSON document format for creating secure, verifiable documents that AI agents, ML pipelines, SaaS services, and UIs can exchange and process. The goal of JACS is to ensure that these documents remain unchanged (immutable), produce the same verification result every time (idempotent), and can be used flexibly by software.
 
@@ -75,4 +84,4 @@ For development you may want    `cargo install cargo-outdated` and `cargo instal
 Then start reading the [usage docs](https://humanassisted.github.io/JACS/)
 
 ------
-2024 https://hai.ai
+2024, 2025 https://hai.ai

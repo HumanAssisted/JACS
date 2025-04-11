@@ -1,0 +1,41 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "address": "312 east gatwick lane",
+  "description": "New Jersy's best general conractor.",
+  "email": "albert@albertscontracting.com",
+  "jacsId": "bcd645d2-b794-44f2-959c-40932ca8a1ae",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2024-08-11T14:42:00.018257+00:00",
+  "jacsOriginalVersion": "731819c8-c1d8-4296-8685-7cd21d1c10a1",
+  "jacsSha256": "fd509f305df2252d2f3fb71f5e77491f26ddaa6f375ed04490c41dde96cf4dac",
+  "jacsSignature": {
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2024-08-11T14:42:00.748381+00:00",
+    "fields": [
+      "$schema",
+      "address",
+      "description",
+      "email",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "name",
+      "rating",
+      "zip"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "jnCBkbfxKTC+A3HlOterd7DIhFBCRCLyQSSP+D3zhJqNt7XsoMSoVEmMenM7gHqWeliJMDScYGMqF+vhh2x5vNC6uwawIv8QiWqNxTlI1SFX0AUiWRAS87o9uEA6u50KOpbETMliyTIkkCHt5X3kNWUt8ZhyzGm03ELrO0ZyB+WzEXeR5/0tF+HKV4+iQn9sYEaM8SuDXtnVWoW3B1zmbvDwT5GCn/zJwPpC9wJyDuJ/Ygb+rC0zz8ndQ2lq0A+qTpCi5lxKqCk4RP6s4BLrSfYrMLDpLJu/1F7u1Ajt0lAoabfCjBjFFjw2QbBRHMw+6JoyyU7/14woxd8F/CrE0cC+kvamB4LMQnNvzLWQhtnEKGLhzV80JFhF455uYt+xPszTurcnFh66Ls/j3zY2pwidTpOGm0roimmHignK8dLzdyaSS/66izMtvAh2iEJjWAtbbFmYeADRGSA6btGYiLlnEsH+mKRdg58CaFr1pomDmi71vpUlu6HWH1lEiHq5hA8Rc9e8BxcwykaQ7GfwjhYxsLrz1eRn2YIjxzT+P+vfSP/Cus2VMe2o3VilgNbKsFQkolCIAQlOQJOQSvoraGsODTIl63aVmfVpfTIpco7jDCZlLUnpu4U6p0lX6tbp6E+1WHTBZ/dUhn7S5J7pj02H61wc+jnRKk4toC/TJKo=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "business",
+  "jacsVersion": "731819c8-c1d8-4296-8685-7cd21d1c10a1",
+  "jacsVersionDate": "2024-08-11T14:42:00.018257+00:00",
+  "name": "alberts contracting",
+  "rating": 1.2,
+  "zip": "20398"
+}

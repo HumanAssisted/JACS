@@ -1,0 +1,167 @@
+{
+  "StudyUnit": {
+    "Agency": "us.example",
+    "ID": "SU1",
+    "Version": "1.0.0",
+    "Citation": {
+      "Title": "Example Study",
+      "Subtitle": "A sample DDI document in JSON format",
+      "AlternateTitle": "Sample Study",
+      "AlternateTitleType": "Subtitle"
+    },
+    "Abstract": "This is a sample study described using DDI in JSON format.",
+    "Purpose": "The purpose of this study is to demonstrate the conversion of DDI to JSON.",
+    "Coverage": {
+      "TopicalCoverage": "Social Sciences",
+      "SpatialCoverage": "United States",
+      "TemporalCoverage": "2023-01-01/2023-12-31"
+    },
+    "UniverseReference": {
+      "Agency": "us.example",
+      "ID": "U1",
+      "Version": "1.0.0"
+    },
+    "FundingInformation": [
+      {
+        "AgencyOrganizationReference": {
+          "Agency": "us.example",
+          "ID": "FO1",
+          "Version": "1.0.0"
+        },
+        "GrantNumber": "ABC123",
+        "Role": "Sponsor"
+      }
+    ],
+    "ConceptualComponents": {
+      "ConceptScheme": [
+        {
+          "Agency": "us.example",
+          "ID": "CS1",
+          "Version": "1.0.0",
+          "Concept": [
+            {
+              "Agency": "us.example",
+              "ID": "C1",
+              "Version": "1.0.0",
+              "Label": [
+                {
+                  "Content": "Concept 1",
+                  "Type": "Preferred"
+                }
+              ]
+            },
+            {
+              "Agency": "us.example",
+              "ID": "C2",
+              "Version": "1.0.0",
+              "Label": [
+                {
+                  "Content": "Concept 2",
+                  "Type": "Preferred"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "LogicalProduct": [
+      {
+        "Agency": "us.example",
+        "ID": "LP1",
+        "Version": "1.0.0",
+        "CategoryScheme": [
+          {
+            "Agency": "us.example",
+            "ID": "CAS1",
+            "Version": "1.0.0",
+            "Category": [
+              {
+                "Agency": "us.example",
+                "ID": "CA1",
+                "Version": "1.0.0",
+                "Label": [
+                  {
+                    "Content": "Category 1",
+                    "Type": "Preferred"
+                  }
+                ]
+              },
+              {
+                "Agency": "us.example",
+                "ID": "CA2",
+                "Version": "1.0.0",
+                "Label": [
+                  {
+                    "Content": "Category 2",
+                    "Type": "Preferred"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "VariableScheme": [
+          {
+            "Agency": "us.example",
+            "ID": "VS1",
+            "Version": "1.0.0",
+            "Variable": [
+              {
+                "Agency": "us.example",
+                "ID": "V1",
+                "Version": "1.0.0",
+                "Name": "Variable 1",
+                "Label": [
+                  {
+                    "Content": "Variable 1",
+                    "Type": "Preferred"
+                  }
+                ]
+              },
+              {
+                "Agency": "us.example",
+                "ID": "V2",
+                "Version": "1.0.0",
+                "Name": "Variable 2",
+                "Label": [
+                  {
+                    "Content": "Variable 2",
+                    "Type": "Preferred"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "PhysicalDataProduct": [
+      {
+        "Agency": "us.example",
+        "ID": "PDP1",
+        "Version": "1.0.0",
+        "PhysicalStructureScheme": [
+          {
+            "Agency": "us.example",
+            "ID": "PSS1",
+            "Version": "1.0.0",
+            "PhysicalStructure": [
+              {
+                "Agency": "us.example",
+                "ID": "PS1",
+                "Version": "1.0.0",
+                "Format": "CSV",
+                "DefaultVariableSchemeReference": {
+                  "Agency": "us.example",
+                  "ID": "VS1",
+                  "Version": "1.0.0"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
