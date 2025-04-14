@@ -354,13 +354,13 @@ fn create_agreement(
         &mut agent,
         &document_string,
         agentids,
-        None,  // custom_schema
-        None,  // save_filename
-        question,  // question - pass None, not a reference
+        None,     // custom_schema
+        None,     // save_filename
+        question, // question - pass None, not a reference
         context,  // context - pass None, not a reference
-        None,  // export_embedded
-        None,  // extract_only
-        false, // load_only
+        None,     // export_embedded
+        None,     // extract_only
+        false,    // load_only
         agreement_fieldname,
     ) {
         Ok(result) => Ok(result),

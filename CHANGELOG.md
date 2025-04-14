@@ -19,7 +19,7 @@
  - [] task review
  - [] make sure config directory is in isolated location, like with key
  - [] don't store  "jacs_private_key_password":  in config, don't display
-
+ - [] domain to header
 
 
 ## jacspy cleanup
