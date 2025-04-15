@@ -26,13 +26,13 @@ unknown
 
 `jacsAgentType`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Agent](agent-if-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType")
+* defined in: [Agent](agent-if-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/if/properties/jacsAgentType")
 
 ### jacsAgentType Type
 

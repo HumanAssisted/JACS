@@ -34,13 +34,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `planningSignature`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/planningSignature")
+* defined in: [Program](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/planningSignature")
 
 ### planningSignature Type
 
@@ -52,13 +52,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `safetySignature`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/safetySignature")
+* defined in: [Program](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/safetySignature")
 
 ### safetySignature Type
 
@@ -70,13 +70,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `evaluationSignature`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/evaluationSignature")
+* defined in: [Program](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/allOf/1/properties/evaluationSignature")
 
 ### evaluationSignature Type
 
@@ -88,13 +88,13 @@ task being processed, a description can be found there.
 
 `taskID`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](program-allof-1-properties-taskid.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/taskID")
+* defined in: [Program](program-allof-1-properties-taskid.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/taskID")
 
 ### taskID Type
 
@@ -110,13 +110,13 @@ task being processed, a description can be found there.
 
 `activeNodeIDs`
 
-*   is optional
+* is optional
 
-*   Type: `string[]`
+* Type: `string[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](program-allof-1-properties-activenodeids.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs")
+* defined in: [Program](program-allof-1-properties-activenodeids.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs")
 
 ### activeNodeIDs Type
 
@@ -128,13 +128,13 @@ Date of evaluation
 
 `datetime`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](program-allof-1-properties-datetime.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/datetime")
+* defined in: [Program](program-allof-1-properties-datetime.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/datetime")
 
 ### datetime Type
 
@@ -150,13 +150,13 @@ What are the goals for the program
 
 `requirements`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](program-allof-1-properties-requirements.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements")
+* defined in: [Program](program-allof-1-properties-requirements.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/requirements")
 
 ### requirements Type
 
@@ -168,13 +168,13 @@ What changes were made to the plan along the way and why.
 
 `changes`
 
-*   is optional
+* is optional
 
-*   Type: `string[]`
+* Type: `string[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](program-allof-1-properties-changes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/changes")
+* defined in: [Program](program-allof-1-properties-changes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/changes")
 
 ### changes Type
 
@@ -186,13 +186,13 @@ list of evaluation units, informatio labels
 
 `nodes`
 
-*   is required
+* is required
 
-*   Type: `object[]` ([Node](program-allof-1-properties-nodes-node.md))
+* Type: `object[]` ([Node](program-allof-1-properties-nodes-node.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Program](program-allof-1-properties-nodes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes")
+* defined in: [Program](program-allof-1-properties-nodes.md "https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes")
 
 ### nodes Type
 

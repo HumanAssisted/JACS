@@ -16,6 +16,6 @@ A signed, immutable message evaluation an agent's performance on a task
 
 all of
 
-*   [Header](task-allof-header.md "check type definition")
+* [Header](task-allof-header.md "check type definition")
 
-*   [Untitled undefined type in Program](program-allof-1.md "check type definition")
+* [Untitled undefined type in Program](program-allof-1.md "check type definition")
