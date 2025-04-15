@@ -26,6 +26,10 @@ test-jacs:
 test-jacspy:
 	cd jacspy && cargo test  -- --nocapture
 
+publish-jacs:
+	cargo publish --dry-run -p jacs
+
+
 test: test-jacs test-jacspy
 #   --test agent_tests --test document_tests --test key_tests --test task_tests --test agreement_test  --test create_agent_test
 	
