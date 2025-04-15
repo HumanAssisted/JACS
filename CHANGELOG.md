@@ -19,8 +19,12 @@
  - [] task review
  - [] make sure config directory is in isolated location, like with key
  - [] don't store  "jacs_private_key_password":  in config, don't display
- - [] domain to header
-
+ - [] domain to header, and related verification
+ - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
+   - more complete python implementation
+   - pass document string or document id - with optional version instead of string
+   - load document whatever storage config is
+   - function test output metadata about current config and current agent
 
 ## jacspy cleanup
 
@@ -39,11 +43,7 @@
  - [x] separate public key location from private key location
  - [x] cli review and tests 
  - [x] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
- - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
-   - more complete python implementation
-   - pass document string or document id - with optional version instead of string
-   - load document whatever storage config is
-   - function test output metadata about current config and current agent
+
 
 
 
