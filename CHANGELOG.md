@@ -10,11 +10,17 @@
 - WASM
  - [] machine fingerprinting v2
 
-## 0.3.4
+
+## 0.3.5
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
  - [] RBAC integration with header
- - [] RBAC enforcement from server. If shared, new version is pinned. 
  - [] diff versions
+
+# COMPLETED
+
+## 0.3.4
+
+ - [] RBAC enforcement from server. If shared, new version is pinned. 
  - [] bucket integration
  - [] task review
  - [] make sure config directory is in isolated location, like with key
@@ -26,7 +32,12 @@
    - load document whatever storage config is
    - function test output metadata about current config and current agent
 
-## jacspy cleanup
+## jacspy 
+
+ - [ ] load into client and server and use for auth
+ - [ ] instructions for how to create - cli create agent 1, cli create agent 2, config jacspy to load each agent
+ - [ ] integrate as MCP auth header
+ - [ ] publish jacspy and jascpy mcp middleware
 
 ## jacs-mcp 0.1.0
 
@@ -34,7 +45,6 @@
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
-# COMPLETED
 
 ## jacs 0.3.3
  - [x] change project to workspace
