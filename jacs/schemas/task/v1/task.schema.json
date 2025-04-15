@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/task/v1/task-schema.json",
+  "title": "Task",
+  "description": "General schema for stateful resources.",
+  "allOf": [
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "jacsTaskName": {
+          "description": "Name of the agent, unique per registrar",
+          "hai": "agent",
+          "type": "string"
+        },
+        "jacsTaskSuccess": {
+          "description": "Description of success",
+          "hai": "agent",
+          "type": "string"
+        },
+        "jacsTaskCustomer": {
+          "description": "customer signature",
+          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+        },
+        "jacsTaskAgent": {
+          "description": "Agent assigned the task",
+          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+        },
+        "jacsTaskState": {
+          "description": "Is the document locked from edits",
+          "type": "string",
+          "hai": "meta",
+          "enum": [
+            "creating",
+            "rfp",
+            "proposal",
+            "negotiation",
+            "started",
+            "review",
+            "completed"
+          ]
+        },
+        "jacsTaskStartDate": {
+          "description": "When the lock expires",
+          "format": "date-time",
+          "type": "string",
+          "hai": "meta"
+        },
+        "jacsTaskCompleteDate": {
+          "description": "When the lock expires",
+          "format": "date-time",
+          "type": "string",
+          "hai": "meta"
+        },
+        "jacsStartAgreement": {
+          "description": "Signatures signifying an agreement between agents to start work.",
+          "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+        },
+        "jacsEndAgreement": {
+          "description": "Signatures signifying an agreement between agents work is completed.",
+          "$ref": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json"
+        },
+        "jacsTaskActionsDesired": {
+          "type": "array",
+          "description": "list of actions desired, should be a subset of actions in the resources and agents when complete.",
+          "items": {
+            "minItems": 1,
+            "$ref": "https://hai.ai/schemas/components/action/v1/action.schema.json"
+          }
+        },
+        "jacsTaskSubTaskOf": {
+          "type": "array",
+          "description": "list of task ids this may be a subtask of.",
+          "hai": "meta",
+          "items": {
+            "type": "string",
+            "description": "taskid",
+            "format": "uuid"
+          }
+        },
+        "jacsTaskCopyOf": {
+          "type": "array",
+          "hai": "meta",
+          "description": "list of task ids this may be a copy of. Can be a partial copy, can be considered a branch.",
+          "items": {
+            "type": "string",
+            "description": "taskid",
+            "format": "uuid"
+          }
+        },
+        "jacsTaskMergedTasks": {
+          "type": "array",
+          "hai": "meta",
+          "description": "list of task ids that have been folded into this task.",
+          "items": {
+            "type": "string",
+            "description": "taskid",
+            "format": "uuid"
+          }
+        }
+      }
+    }
+  ],
+  "required": [
+    "jacsTaskCustomer",
+    "jacsTaskState",
+    "jacsTaskActionsDesired"
+  ]
+}

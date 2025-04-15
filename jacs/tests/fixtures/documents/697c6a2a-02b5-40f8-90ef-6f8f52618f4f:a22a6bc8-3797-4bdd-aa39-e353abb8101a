@@ -1,0 +1,46 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "description": "We should embed an xml document here",
+  "jacsFiles": [
+    {
+      "embed": false,
+      "mimetype": "text/xml",
+      "path": "raw/plants.xml",
+      "sha256": "8615f88410eeafb38e2c386ed9dbae8fadf3d4d0e50a8dc43c4287246f104311"
+    },
+    {
+      "embed": false,
+      "mimetype": "text/xml",
+      "path": "raw/breakfast.xml",
+      "sha256": "71ae785d2f68d8b818da97171013033a5bfc632b6cad7d286e8e1907e023d0dd"
+    }
+  ],
+  "jacsId": "697c6a2a-02b5-40f8-90ef-6f8f52618f4f",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2025-02-18T18:38:50.132626+00:00",
+  "jacsOriginalVersion": "a22a6bc8-3797-4bdd-aa39-e353abb8101a",
+  "jacsSha256": "16fb0d7227fab620ad9dcc462b0c2e5c0af7e1164557ca8aa6d83478611ab57e",
+  "jacsSignature": {
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2025-02-18T18:38:50.507265+00:00",
+    "fields": [
+      "$schema",
+      "description",
+      "jacsFiles",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "I1P4MrexabsLqgyzn1mulwbKwuP0mR6XVQ0uTyL/2uKHaAglfpGlZGMnHFTH5LVEQEEMDsLhg0l4EVpON52KwvaZLLJK9o9Rjm1H+Qw3Mfaz2nFf2OlYMl/U3bA81FjxQIBx6qDXn1AIYZTR5dS3JLVDubkJrzYFF1FFwjtrvgjB7970Qb5vjRBz21dWt+69hFw2xIqt9zf5RF2mP+DtVoPjq1eyMGVjd+hwS0j4VolAKqRegMpXcsO26UQ/2LYuyGQG+WMW6/BtFIZ+Dg4yCs7MwLNijeS26/sPIxjKW/Z5JmQ/6+QIPphGBbb+FD1Q5Ra4OqcCEkGal6G8G4c8JgOw6X/KdKTyiblQHjZn7VGS84q7mIMICy05EYiWqRcrNzcwyt8b0c/+/NPoQ5XuHSvAzAKNrci88YrzaGVqA7CT/WtRUoAKzNgaz7HV/45i5XvFlxDW6oy2yiBH6FROuX0VVuWA86J2Oohty5CLupNww/n2RMY033e1K6ElTN/TWknxDQCc3NYLTT2C77TOHfYcfmBvW0opqjL4f3vBYWAfyRdMrRC7N03rt2/vlU6vPWCy1cPv9ZEDdDNe+RgdazQ1vOTE3ksrQS0hYyaUl3IpJ0BKmU8FtaiUwK/dMH0g/h6pnk6lYXJbBUgpkT94XY4pcOW0XA+w8WOfNArCnLg=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "header",
+  "jacsVersion": "a22a6bc8-3797-4bdd-aa39-e353abb8101a",
+  "jacsVersionDate": "2025-02-18T18:38:50.132626+00:00"
+}

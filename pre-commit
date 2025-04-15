@@ -1,36 +1,42 @@
 #!/bin/sh
 
-cargo fmt
+# Run cargo fmt for all workspace members
+cargo fmt --all
 
 # format all json
-for file in ./schemas/*/*/*.json; do
+for file in ./jacs/schemas/*/*/*.json; do
   echo "formatting $file"
   jq  '.' "$file" > temp.json && mv temp.json "$file"
 done
 
-
 # format all json
-for file in ./schemas/components/*/*/*.json; do
+for file in ./jacs/schemas/components/*/*/*.json; do
   echo "formatting $file"
   jq  '.' "$file" > temp.json && mv temp.json "$file"
 done
-
 
 rm temp.json
 
 # create json schema docs
 # todo -r "https://hai.ai/schemas/=schemas/"  or -i schemas fails because of resolving version of json schema
-jsonschema2md -d schemas  -o docs/schema -x -
+jsonschema2md -d jacs/schemas  -o jacs/docs/schema -x -
 
-mdbook build docs/jacsbook
+mdbook build jacs/docs/jacsbook
 
 # Add the formatted files to the staging area
-git add docs/.
-git add schemas/.
-# git add examples/.
-git add src/.
-git add tests/.
-git add benches/.
+git add jacs/docs/.
+git add jacs/schemas/.
+# git add jacs/examples/.
+git add jacs/src/.
+git add jacs/tests/.
+git add jacs/benches/.
+
+# Add workspace members
+git add jacs-mcp/src/.
+git add jacs-python/src/.
+
+# Add workspace configuration
+git add Cargo.toml
 
 # Continue with the commit
 exit 0

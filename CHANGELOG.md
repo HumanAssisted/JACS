@@ -8,18 +8,44 @@
 
 ## 0.4.0
 - WASM
+ - [] machine fingerprinting v2
 
 ## 0.3.4
- - upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] RBAC integration with header
+ - [] RBAC enforcement from server. If shared, new version is pinned. 
+ - [] diff versions
+ - [] bucket integration
+ - [] task review
+ - [] make sure config directory is in isolated location, like with key
+ - [] don't store  "jacs_private_key_password":  in config, don't display
+ - [] domain to header, and related verification
+ - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
+   - more complete python implementation
+   - pass document string or document id - with optional version instead of string
+   - load document whatever storage config is
+   - function test output metadata about current config and current agent
 
-## 0.3.3
- - [] MCP integration
- - [] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
- - [] separate public key location from private key location
- - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document
+## jacspy cleanup
 
+## jacs-mcp 0.1.0
+
+ - [] integrate with server
+ - [] integration test with client
+ - [] https://github.com/modelcontextprotocol/specification/discussions
 
 # COMPLETED
+
+## jacs 0.3.3
+ - [x] change project to workspace
+ - [x] basic python integration
+ - [x] upgraded to edition = "2024" rust-version = "1.85"
+ - [x] separate public key location from private key location
+ - [x] cli review and tests 
+ - [x] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
+
+
+
 
 ## 0.3.2
  - [x] add common clause to Apache 2.0

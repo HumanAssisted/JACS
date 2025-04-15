@@ -1,0 +1,121 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "capabilities": [
+    {
+      "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+      "name": "withdraw",
+      "operation": "deduct",
+      "units": [
+        {
+          "generaltype": "monetary",
+          "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+          "label": "net worth",
+          "unit_name": "dollars"
+        }
+      ]
+    }
+  ],
+  "description": "Guy with a bank account",
+  "jacsAgentType": "human",
+  "jacsContacts": [
+    {
+      "email": "smith@example.com",
+      "isPrimary": true,
+      "mailAddress": "123 Example St.",
+      "mailAddressTwo": "Suite 101",
+      "mailCountry": "ExampleCountry",
+      "mailName": "Smith",
+      "mailState": "ExampleState",
+      "mailZip": "12345",
+      "name": "Frodo Baggins",
+      "phone": "123-456-7890"
+    }
+  ],
+  "jacsId": "0f6bb6e8-f27c-4cf7-bb2e-01b647860680",
+  "jacsLevel": "config",
+  "jacsOriginalDate": "2024-07-31T15:52:35.103201+00:00",
+  "jacsOriginalVersion": "a55739af-a3c8-4b4a-9f24-200313ee4229",
+  "jacsServices": [
+    {
+      "costDescription": "monthly fee",
+      "failureDescription": "Not everything is under control",
+      "idealCustomerDescription": "wealthy",
+      "isDev": true,
+      "piiDesired": [
+        "email",
+        "phone"
+      ],
+      "serviceDescription": "Bank account manager",
+      "successDescription": "Everything is under control",
+      "tools": [
+        {
+          "function": {
+            "description": "An example function provided by the tool.",
+            "name": "ExampleFunction",
+            "parameters": {
+              "properties": {
+                "param1": {
+                  "description": "A string parameter.",
+                  "type": "string"
+                },
+                "param2": {
+                  "description": "An integer parameter.",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "param1"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function",
+          "url": "https://api.example.com/tool"
+        }
+      ]
+    }
+  ],
+  "jacsSha256": "331a1178f7a88bc35c0ba057abffb25bea5f1523c36e08acd27555ff7221514a",
+  "jacsSignature": {
+    "agentID": "0f6bb6e8-f27c-4cf7-bb2e-01b647860680",
+    "agentVersion": "a55739af-a3c8-4b4a-9f24-200313ee4229",
+    "date": "2024-07-31T15:52:35.118841+00:00",
+    "fields": [
+      "$schema",
+      "capabilities",
+      "description",
+      "jacsAgentType",
+      "jacsContacts",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsServices",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "modifications",
+      "name",
+      "quantifications"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "W90LXpSCkhV2oaRndfRNm2BxpcgZ7lz7UevPvCi1/76so3ouehcIMMI0GKb0SguseYH0g+qPsffSUAsrxlUY7L4Ktg3nKIcJyH7OKllX0QWIGoSAcc4dyqVaNsMQuxhe2ZCtmYLBBwgVmKIeCqAk2Iz5YGnUm2uhVUInT0ff0xSUkP8Mm/b9PW0RTz8VIYBZ1ZteNI1u92+/6UHNayQP9C1i9EdPetDosMrWWdY/Si89NvQ0ylg1XILuoo21PtWrugrQVdY8qfgvuZWE7unrrYRzSWSJQGFOeQVcnqorYVror1tOAccUgtm+6aFREQbqhV/1qrclncwFRwCi4qtbiA415zNpmSGagMzewRj1v56bYriTQNbJit6mGIoaHN9DhzhmJ3Wt6LKfqgMW1S1YtsIk2b2TQzFPXXIdCRURA+DFukOIFZylIXtZ0vLV8VP26sQraM7ru4eiTihFaeoD1tpYAuFkaOGwE39V7u/MjcxrUC/kM6a4OtD4RE8PZfdf4m4jivxIqQZDQOqwNMkSeuD/NiuvbrxTbpHplxOYQQFYS9jD3TdXE/4opPvnhHduzZO8nMlmBxBFVxPDeJevPp0QqFkJSV7a/tdArOZtdRsFQJV9pMAEzL7JIdXzBvSs6ghFYkJPhm3ua52ERnR9u5tibZV2hCqNcWC1AMz9Gds=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "agent",
+  "jacsVersion": "a55739af-a3c8-4b4a-9f24-200313ee4229",
+  "jacsVersionDate": "2024-07-31T15:52:35.103201+00:00",
+  "modifications": [],
+  "name": "Ralph",
+  "quantifications": [
+    [
+      120000,
+      {
+        "generaltype": "monetary",
+        "id": "b6a7fcb4-a6e0-41db-9f5d-48a42a8e9d14",
+        "label": "net worth",
+        "unit_name": "dollars"
+      }
+    ]
+  ]
+}

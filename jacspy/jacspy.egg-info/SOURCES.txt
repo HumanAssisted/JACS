@@ -1,0 +1,7 @@
+README.md
+setup.py
+jacspy.egg-info/PKG-INFO
+jacspy.egg-info/SOURCES.txt
+jacspy.egg-info/dependency_links.txt
+jacspy.egg-info/top_level.txt
+linux/__init__.py

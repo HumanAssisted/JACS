@@ -1,0 +1,33 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "content": "This is a test document",
+  "jacsId": "12a3d0c7-b1cb-44e1-b70c-be13cfc19bd8",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2024-08-02T10:37:04.980597+00:00",
+  "jacsOriginalVersion": "e49c3b45-50a6-4aed-82f3-3a8300b3c860",
+  "jacsSha256": "142887243c32c11e08045cde601d2011c96ef76d363e7a1242ba093dbf7f2f11",
+  "jacsSignature": {
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2024-08-02T10:37:05.841365+00:00",
+    "fields": [
+      "$schema",
+      "content",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "title"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "msIhfJt7uSUhCX1+7BwHJqgIVMFA2dTv/6I7PnlMtfGfJC1iJNAAKJMjRbZDk5gonASXeq7Os14tVzUIS4RaTOyR6Hnnm2Jf49geCkWnFJv8/i6dzIfLa0oJWRsCrOaqU2G3/MO14gbH4YRBJCvhg6TRnINHBaD3KMaY7uzRV+kNIxu+FH8iD7M3cxvYFriHM86pTRQqpHW7v9BOOgFw7TFlNeDSToWjeqXkeT/KBnK9bu2XPI2TXvkczavQsSVAPOTEVEoxUz8q713nMQwoBrQQQ2bg+ciKpkvz31y/y1QVh27VGLP6dQX6ceA4o8/haq/EbQNfTnwUMQkLf9rYlJuVjd4dpVoT13zpmSFxzQSzC5Kj3qBZrBuEncb/9Pw4E3d0FMwWo9qEq9uZCRLw8iXK497f+XgHMoSMuMeDvlXkrSGTBLGZkc7CiXVzoJuXdF6QmIPWBRp+r9JTEVwPgqaNLbVuSVI944gw1GRoANtbPAr8YIclJ9QsRlo2jqg02Bf5s4K0XuV/1WXxwOkynurljV2TaFmCmGORKzSxnrEjEUbgOsbqdPKWBcN9e6RFaj3ryvL/pIIKXIVdcyB6bVxFaT8Qo8bTkEZWDnwWA/4FtlIPIkMgN9fWp7jvDrrMO/5Ej6QpdHtiQZie9l3C3W60ND3dlw5Rc/ELVFgQ2tE=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "custom",
+  "jacsVersion": "e49c3b45-50a6-4aed-82f3-3a8300b3c860",
+  "jacsVersionDate": "2024-08-02T10:37:04.980597+00:00",
+  "title": "Test Document"
+}
