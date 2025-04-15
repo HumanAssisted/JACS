@@ -5,7 +5,7 @@ import asyncio
 import urllib.parse
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-
+from lib import jacspy
 
 async def main():
     # Create parameters for connecting to the server
