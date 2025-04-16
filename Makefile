@@ -17,8 +17,8 @@ build-jacspy-linux:
 
 build-jacs:
 	cd jacs && cargo install --path . --force
-	/Users/jonathan.hendler/.cargo/bin/jacs --help 
-	/Users/jonathan.hendler/.cargo/bin/jacs version
+	~/.cargo/bin/jacs --help 
+	~/.cargo/bin/jacs version
 
 test-jacs:
 	cd jacs && RUST_BACKTRACE=1 cargo test  -- --nocapture

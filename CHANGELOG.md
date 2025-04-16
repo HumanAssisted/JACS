@@ -31,6 +31,9 @@
    - pass document string or document id - with optional version instead of string
    - load document whatever storage config is
    - function test output metadata about current config and current agent
+ - [x] cli init function
+ - [ ] clean up fs defaults in init/config/ 
+ - [ ] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
 
 ## jacspy 
 
@@ -41,7 +44,8 @@
 
 ## jacs-mcp 0.1.0
 
- - [] integrate with server
+ - [] integrate with RUST server
+ - [] auth or all features
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
