@@ -15,12 +15,12 @@ use std::error::Error;
 use std::path::Path;
 
 pub mod agent;
+pub mod cli_utils;
 pub mod config;
 pub mod crypt;
 pub mod schema;
 pub mod shared;
 pub mod storage;
-
 /// Creates an empty agent struct with default schema versions.
 pub fn get_empty_agent() -> Agent {
     // Use expect as Result handling happens elsewhere or isn't needed here.

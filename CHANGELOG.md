@@ -34,6 +34,7 @@
  - [x] cli init function
  - [ ] clean up fs defaults in init/config/ 
  - [ ] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
+ - [ ] separate JACS from REPO readme
 
 ## jacspy 
 
