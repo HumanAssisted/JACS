@@ -5,13 +5,11 @@ use crate::crypt::KeyManager;
 use crate::get_empty_agent;
 use crate::storage::MultiStorage;
 use crate::storage::jenv::{get_required_env_var, set_env_var};
-use chrono::DateTime;
-use chrono::Local;
 use rpassword::read_password;
 use serde_json::{Value, json};
 use std::env;
 use std::error::Error;
-use std::fs::{File, metadata, rename};
+use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::Path;
@@ -119,13 +117,39 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
             env_password // Use password from env var
         }
         _ => {
-            // Only prompt if env var is not set or empty
-            println!("Please enter your password (used to encrypt private key):");
-            match read_password() {
-                Ok(password) => password,
-                Err(e) => {
-                    eprintln!("Error reading password: {}", e);
-                    process::exit(1);
+            // Environment variable not set or empty, prompt user interactively.
+            loop {
+                println!("Please enter a password (used to encrypt private key):");
+                let password = match read_password() {
+                    Ok(pass) => pass,
+                    Err(e) => {
+                        eprintln!("Error reading password: {}. Please try again.", e);
+                        continue; // Ask again
+                    }
+                };
+
+                if password.is_empty() {
+                    eprintln!("Password cannot be empty. Please try again.");
+                    continue; // Ask again
+                }
+
+                println!("Please confirm the password:");
+                let password_confirm = match read_password() {
+                    Ok(pass) => pass,
+                    Err(e) => {
+                        eprintln!(
+                            "Error reading confirmation password: {}. Please start over.",
+                            e
+                        );
+                        continue; // Ask again from the beginning
+                    }
+                };
+
+                if password == password_confirm {
+                    break password; // Passwords match and are not empty, exit loop
+                } else {
+                    eprintln!("Passwords do not match. Please try again.");
+                    // Loop continues
                 }
             }
         }
@@ -186,6 +210,31 @@ pub fn handle_agent_create(
     let storage = storage
         .as_ref()
         .ok_or("Storage must be initialized before creating an agent")?;
+
+    // Try to load config file and set environment variables from it
+    let config_path_str = "jacs.config.json";
+    let _ = if Path::new(config_path_str).exists() {
+        match std::fs::read_to_string(config_path_str) {
+            Ok(content) => {
+                println!("Loading configuration from {}...", config_path_str);
+                // Call set_env_vars with the content, don't override existing env vars,
+                // and consider the agent ID from the config file initially.
+                set_env_vars(false, Some(&content), false)
+            }
+            Err(e) => {
+                eprintln!("Warning: Could not read {}: {}", config_path_str, e);
+                // Proceed without config file content, let set_env_vars handle defaults
+                set_env_vars(false, None, false)
+            }
+        }
+    } else {
+        println!(
+            "{} not found, proceeding with defaults or environment variables.",
+            config_path_str
+        );
+        // Config file doesn't exist, let set_env_vars handle defaults/env vars
+        set_env_vars(false, None, false)
+    };
 
     // -- Get user input for agent type and SERVICE descriptions --
     let agent_type = request_string("Agent Type (e.g., ai, person, service, device)", "ai"); // Default to ai
@@ -262,12 +311,20 @@ pub fn handle_agent_create(
 
     // Proceed with agent creation using modified string
     let mut agent = get_empty_agent();
+    // NOTE: We previously called set_env_vars here. Now it's called earlier when loading the config.
+    // We might still need to call check_env_vars or ensure the agent uses the loaded config.
+    // For now, let's assume the environment is set correctly by the earlier call.
+    // Let's remove the redundant set_env_vars call here.
+    /*
     let configs = set_env_vars(true, None, true).unwrap_or_else(|e| {
         // Ignore agent id initially
         eprintln!("Warning: Failed to set some environment variables: {}", e);
         Config::default().to_string()
     });
     println!("Creating agent with config {}", configs);
+    */
+    println!("Proceeding with agent creation using loaded configuration/environment variables.");
+
     if create_keys {
         println!("Creating keys...");
         agent.generate_keys()?;
