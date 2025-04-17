@@ -32,9 +32,9 @@
    - load document whatever storage config is
    - function test output metadata about current config and current agent
  - [x] cli init function
- - [ ] clean up fs defaults in init/config/ 
- - [ ] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
- - [ ] separate JACS from REPO readme
+ - [x] clean up fs defaults in init/config/ 
+ - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
+ - [x] separate JACS from REPO readme
 
 ## jacspy 
 
