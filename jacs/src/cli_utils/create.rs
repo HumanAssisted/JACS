@@ -90,6 +90,18 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
     } else {
         String::new()
     };
+
+    // --- Check if config file already exists ---
+    let config_path = "jacs.config.json";
+    if Path::new(config_path).exists() {
+        println!(
+            "Configuration file '{}' already exists. Please remove or rename it if you want to create a new one.",
+            config_path
+        );
+        process::exit(0); // Exit gracefully
+    }
+    // --- End check ---
+
     let jacs_agent_private_key_filename =
         request_string("Enter the private key filename:", "jacs.private.pem.enc");
     let jacs_agent_public_key_filename =
@@ -145,7 +157,9 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
     let serialized = serde_json::to_string_pretty(&config).unwrap();
 
     // Keep using std::fs for config file backup and writing
-    let config_path = "jacs.config.json";
+    // The check and backup logic below is no longer needed as we exit earlier if the file exists.
+    /*
+    let config_path = "jacs.config.json"; // This line is already defined above
     if metadata(config_path).is_ok() {
         // Keep std::fs::metadata
         let now: DateTime<Local> = Local::now();
@@ -153,6 +167,7 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
         rename(config_path, backup_path.clone()).unwrap(); // Keep std::fs::rename
         println!("Backed up existing jacs.config.json to {}", backup_path);
     }
+    */
 
     let mut file = File::create(config_path).unwrap(); // Keep std::fs::File::create
     file.write_all(serialized.as_bytes()).unwrap(); // Keep std::fs::write_all
