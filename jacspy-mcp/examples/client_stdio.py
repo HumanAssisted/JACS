@@ -1,6 +1,7 @@
 # client_stdio.py
 import asyncio
 import sys # To specify python executable path
+import datetime # <-- Import datetime
 from fastmcp import Client
 # Use PythonStdioTransport
 from fastmcp.client.transports import PythonStdioTransport
@@ -31,8 +32,9 @@ async def main():
 
     # 3. Pass the injector transport AND the reader handler to the Client
     try:
-        # Increase timeout if needed for server startup
-        async with Client(auth_injector, message_handler=metadata_reader, read_timeout_seconds=30.0) as client:
+        # Pass timeout as a timedelta object
+        timeout = datetime.timedelta(seconds=30.0) # <-- Create timedelta
+        async with Client(auth_injector, message_handler=metadata_reader, read_timeout_seconds=timeout) as client: # <-- Use timeout object
             print("CLIENT: Calling echo tool via Stdio...")
             # Make the call
             result = await client.call_tool("echo", {"msg": "Hello Stdio"})

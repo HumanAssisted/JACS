@@ -1,6 +1,6 @@
 import contextlib
 from typing import Any, Callable, Dict, Optional, Coroutine, Awaitable
-from fastmcp.client.transports import PythonStdioTransport, SSETransport, FastMCPTransport
+from fastmcp.client.transports import PythonStdioTransport, SSETransport, FastMCPTransport, ClientTransport
 import uuid
 
 # For FastAPI Middleware (add necessary imports if not present)
@@ -8,6 +8,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 import json
+
+# Ensure JSONRPCMessage is imported if needed for type hinting
+from mcp.types import JSONRPCMessage
 
 
 def get_metadata() -> Dict[str, str]:
@@ -51,9 +54,10 @@ def get_client_metadata() -> Dict[str, str]:
     }
 
 
-class AuthInjectTransport:
+class AuthInjectTransport(ClientTransport):
     """
     CLIENT-SIDE INJECTOR: Wraps a transport to inject metadata into outgoing requests.
+    Now inherits from ClientTransport and patches the correct stream send method.
     """
 
     def __init__(
@@ -61,6 +65,8 @@ class AuthInjectTransport:
         base_transport: Any,
         meta_fn: Callable[[], Dict[str, str]] = get_client_metadata,
     ):
+        # Ensure the base transport is valid if needed, or handle appropriately
+        # super().__init__() # ClientTransport has no __init__
         self.base = base_transport
         self.meta_fn = meta_fn
 
@@ -68,16 +74,33 @@ class AuthInjectTransport:
     async def connect_session(self, **kwargs):
         # Delegate to the underlying transport
         async with self.base.connect_session(**kwargs) as session:
-            orig_send = session.send
+            # Patch the underlying stream's send method, not a session method
+            try:
+                # Access the protected _write_stream attribute
+                original_stream_send = session._write_stream.send
+            except AttributeError:
+                 # Handle case where _write_stream might not exist or be named differently
+                 # This would indicate a breaking change in the underlying mcp library
+                 raise RuntimeError("Could not find session._write_stream.send to patch. MCP library structure may have changed.") from None
 
-            async def send_with_meta(message: dict, **send_kwargs):
-                # JSON-RPC 2.0 envelope: always a dict
-                if isinstance(message, dict): # Ensure it's a dict before modifying
-                    message.setdefault("metadata", {}).update(self.meta_fn())
-                return await orig_send(message, **send_kwargs)
+            async def stream_send_with_meta(message: JSONRPCMessage, **send_kwargs):
+                # message is already a JSONRPCMessage object from BaseSession
+                # Its 'root' attribute holds the actual request/notification/response dict
+                if hasattr(message, 'root') and isinstance(message.root, dict):
+                    # Inject metadata into the root dictionary
+                    message.root.setdefault("metadata", {}).update(self.meta_fn())
+                # Call the original stream send method
+                return await original_stream_send(message, **send_kwargs)
 
-            session.send = send_with_meta
-            yield session
+            # Replace the send method on the stream object itself
+            session._write_stream.send = stream_send_with_meta
+
+            try:
+                 yield session # Yield the session for the client to use
+            finally:
+                 # Restore the original send method when exiting the context
+                 # (Important for cleanup and avoiding side effects)
+                 session._write_stream.send = original_stream_send
 
     def __repr__(self) -> str:
         return f"<AuthInjectTransport wrapping {self.base!r}>"
