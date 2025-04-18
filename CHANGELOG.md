@@ -19,7 +19,7 @@
  - [] task review
  - [] don't store  "jacs_private_key_password":  in config, don't display
 
- 
+
 # COMPLETED
 
 ## 0.3.4
@@ -42,6 +42,7 @@
  - [x] clean up fs defaults in init/config/ 
  - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
  - [x] separate JACS readme repo readme
+ - [x] github actions]
  
 
 ## jacspy 
@@ -50,6 +51,8 @@
  - [ ] instructions for how to create - cli create agent 1, cli create agent 2, config jacspy to load each agent
  - [ ] integrate as MCP auth header
  - [ ] publish jacspy and jascpy mcp middleware
+ - [x] new local builder
+ - [ ] github actions builder
 
 ## jacs-mcp 0.1.0
 

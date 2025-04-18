@@ -14,10 +14,13 @@ authors = [
 ]
 classifiers = [  
     "Programming Language :: Python :: 3",
-    "License :: Apache-2.0 with Common Clause"
-    "Operating System :: Linux, MacOS",
+    # "Operating System :: Linux", # Temporarily commented out
+    # "Operating System :: MacOS", # Temporarily commented out
 ]
+ # "jacs>=0.1.0" 
 dependencies = [
+   "fastmcp>=2.2.0",
+   "mcp[cli]>=1.6.0",
 ]
 
 [project.urls] 
