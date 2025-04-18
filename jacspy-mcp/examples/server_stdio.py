@@ -1,60 +1,47 @@
-# server.py - Standalone FastMCP Stdio Server Example
+# server_stdio.py - Standalone FastMCP Stdio Server Example
 import uuid
-# Remove FastAPI import, Keep HTTPException if used in tools
-from fastapi import HTTPException # Keep for error handling if needed within tool
-from fastmcp import FastMCP, Context
-# No uvicorn needed
+from fastmcp import Context # Keep Context
+# Import the JACS wrapper, decorator, and default auth functions
+from jacs_mcp.fast_mcp_auth import (
+    JACSFastMCP,
+    validate_tool_request, # Import the decorator
+    default_sign_response # Needed for manual response signing
+    # default_validate_request is used by the decorator by default
+)
 
-# Remove the server-side middleware import as it's FastAPI specific
-# from jacs_mcp.fast_mcp_auth import MetadataInjectingMiddleware, get_server_metadata
+# --- Auth Server Setup using JACSFastMCP ---
+# Instantiate the wrapper. Auth functions are needed for manual use here.
+mcp = JACSFastMCP(
+    name="AuthExampleStdio_JACS_Decorated"
+)
 
-# --- MCP Server Setup ---
-mcp = FastMCP("AuthExampleStdio")
-
-# --- Server-Side Reading Logic (Adapt for missing metadata) ---
-def validate_client_metadata(meta: dict | None): # Allow meta to be None
-    # Safely handle if metadata is missing from the request context
-    if meta is None:
-        print("SERVER: No metadata found in request context.")
-        # Decide if this is an error or acceptable
-        # For this example, we'll just log and continue
-        return
-
-    print(f"SERVER: Validating client metadata: {meta}")
-    client_id = meta.get("client_id", "unknown")
-    req_id = meta.get("client_request_id", "unknown")
-    print(f"SERVER: Received call from client='{client_id}', request_id='{req_id}'")
-    # Apply validation logic if metadata is present
-    if client_id != "trusted-client":
-         print(f"SERVER: Warning - Invalid client_id: {client_id}")
-    if not meta.get("client_request_id"):
-         print("SERVER: Warning - Missing client_request_id")
-
-# --- MCP Tool (Adapt for missing metadata) ---
+# --- MCP Tool (Using Decorator for Request Validation) ---
 @mcp.tool()
-async def echo(msg: str, ctx: Context) -> str:
-    print(f"SERVER: echo tool called with msg='{msg}'")
+@validate_tool_request() # Apply the request validation decorator
+# Signature does NOT need **kwargs anymore
+# MUST STILL return dict for manual response signing in Stdio
+async def echo(msg: str, ctx: Context) -> dict:
+    """A simple echo tool with automatic request validation via decorator."""
+    # Request metadata was validated by the decorator before this point
+    print(f"STDIO SERVER: echo tool executing with msg='{msg}'")
 
-    # Safely get metadata from context, defaulting to None if attribute doesn't exist
-    request_metadata = getattr(ctx, 'metadata', None)
+    # Tool logic
+    result_string = f"Echoing via Stdio: '{msg}'"
 
-    # Server reads client metadata from context (if it was successfully passed)
-    validate_client_metadata(request_metadata) # Pass the potentially None metadata
+    # Manually sign response for Stdio (Middleware doesn't apply here)
+    server_meta = default_sign_response(result_string) # Call signing function
+    print(f"STDIO SERVER: Manually signing response: {server_meta}")
 
-    # Use metadata in the response if it was available
-    client_id_from_meta = "N/A"
-    if request_metadata:
-        client_id_from_meta = request_metadata.get('client_id', 'N/A')
-    client_info = f"client={client_id_from_meta}"
-
-    return f"Echoing: '{msg}' (Seen by server, processed for {client_info})"
+    # Return dictionary with result and metadata
+    return {
+        "result": result_string,
+        "metadata": server_meta
+    }
 
 # --- Run the standalone FastMCP server using default (Stdio) transport ---
 if __name__ == "__main__":
-    # Use mcp.run() with default transport (Stdio)
-    print("Starting standalone FastMCP Stdio server using mcp.run...")
-    mcp.run()
+    print("Starting JACSFastMCP Stdio server (with decorator)...")
+    # Use the wrapper's run method, which delegates to internal FastMCP for stdio
+    mcp.run() # Defaults to stdio if not specified
 
-    # --- Original call that failed ---
-    # print("Starting standalone FastMCP SSE server on port 8000...")
-    # mcp.run(transport='sse', port=8000, host="0.0.0.0")
+ 
