@@ -2,3 +2,4 @@
 uvicorn 
 mcp
 fastmcp
+fastapi

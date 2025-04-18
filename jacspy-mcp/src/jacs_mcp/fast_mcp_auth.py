@@ -1,10 +1,10 @@
 import contextlib
-from typing import Any, Callable, Dict, Optional, Coroutine
+from typing import Any, Callable, Dict, Optional, Coroutine, Awaitable
 from fastmcp.client.transports import PythonStdioTransport, SSETransport, FastMCPTransport
 import uuid
 
 # For FastAPI Middleware (add necessary imports if not present)
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseFunction
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 import json
@@ -145,7 +145,7 @@ class MetadataInjectingMiddleware(BaseHTTPMiddleware):
         self.meta_fn = meta_fn
 
     async def dispatch(
-        self, request: Request, call_next: RequestResponseFunction
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         response = await call_next(request)
 
