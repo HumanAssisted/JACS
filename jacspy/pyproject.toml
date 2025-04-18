@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"] 
+build-backend = "maturin"       
+[project]
+name = "jacs"
+version = "0.1.0"  
+description = "Python bindings for the JACS Rust library."  
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0 with Common Clause" } 
+authors = [
+    { name = "HAI.AI", email = "engineering@hai.io" }, 
+]
+classifiers = [  
+    "Programming Language :: Python :: 3",
+    "License :: Apache-2.0 with Common Clause",
+    "Operating System :: Linux, MacOS",
+]
+dependencies = [
+]
+
+[project.urls] 
+Homepage = "https://github.com/HumanAssisted/JACS" 
+Issues = "https://github.com/HumanAssisted/JACS/issues"  
+
+ 
+
+[tool.maturin]
+features = ["pyo3/extension-module"] 
+module-name = "jacs"  
+binding = "pyo3"  

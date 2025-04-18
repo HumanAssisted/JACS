@@ -1,20 +1,6 @@
-.PHONY: build-jacspy build-jacspy-mac build-jacspy-linux build-jacs test
+.PHONY:  build-jacs test
 
-build-jacspy: build-jacspy-mac build-jacspy-linux
-
-build-jacspy-mac:
-	$(info PYTHON_INCLUDE: $(PYTHON_INCLUDE))
-	$(info PYTHON_LIB: $(PYTHON_LIB))
-	echo $(PYTHON_INCLUDE)
-	echo $(PYTHON_LIB)
-	cd jacspy && env PYTHON_INCLUDE=$(PYTHON_INCLUDE) PYTHON_LIB=$(PYTHON_LIB) cargo build --release
-	cp target/release/libjacspy.dylib jacspy/jacspy.so
-
-build-jacspy-linux:
-	docker pull python:3.11-bookworm
-	docker buildx build --tag "jacs-build" -f ./jacspy/Dockerfile . ;\
-	docker  run --rm -v "$(PWD)/jacspy/linux:/output" jacs-build cp /usr/src/jacspy/target/release/libjacspy.so /output/jacspy.so;
-
+ 
 build-jacs:
 	cd jacs && cargo install --path . --force
 	~/.cargo/bin/jacs --help 
@@ -23,8 +9,6 @@ build-jacs:
 test-jacs:
 	cd jacs && RUST_BACKTRACE=1 cargo test  -- --nocapture
 
-test-jacspy:
-	cd jacspy && cargo test  -- --nocapture
 
 publish-jacs:
 	cargo publish --dry-run -p jacs

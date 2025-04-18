@@ -1,8 +1,9 @@
-use jacs::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
-use jacs::config::set_env_vars;
-use jacs::crypt::KeyManager;
-use jacs::crypt::hash::hash_string as jacs_hash_string;
-use jacs::load_agent_by_id;
+use ::jacs as jacs_core;
+use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
+use jacs_core::config::set_env_vars;
+use jacs_core::crypt::KeyManager;
+use jacs_core::crypt::hash::hash_string as jacs_hash_string;
+use jacs_core::load_agent_by_id;
 use lazy_static::lazy_static;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -11,7 +12,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 // Add these imports for the trait methods to be available
-use jacs::agent::document::DocumentTraits;
+use jacs_core::agent::document::DocumentTraits;
 
 // mod zkp;
 // use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -166,7 +167,7 @@ fn create_config(
     jacs_agent_id_and_version: Option<String>,
     jacs_default_storage: Option<String>,
 ) -> PyResult<String> {
-    let config = jacs::config::Config::new(
+    let config = jacs_core::config::Config::new(
         "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
         jacs_use_filesystem,
         jacs_use_security,
@@ -198,7 +199,7 @@ fn verify_agent(py: Python, agentfile: Option<String>) -> PyResult<bool> {
 
     if let Some(file) = agentfile {
         // Load agent from file using the FileLoader trait
-        let agent_result = jacs::load_agent(Some(file));
+        let agent_result = jacs_core::load_agent(Some(file));
         match agent_result {
             Ok(loaded_agent) => {
                 // Replace the current agent
@@ -350,7 +351,7 @@ fn create_agreement(
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
 
     // The function expects None for these parameters, not references
-    match jacs::shared::document_add_agreement(
+    match jacs_core::shared::document_add_agreement(
         &mut agent,
         &document_string,
         agentids,
@@ -379,7 +380,7 @@ fn sign_agreement(
 ) -> PyResult<String> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
 
-    match jacs::shared::document_sign_agreement(
+    match jacs_core::shared::document_sign_agreement(
         &mut agent,
         &document_string,
         None,
@@ -409,7 +410,7 @@ fn create_document(
 ) -> PyResult<String> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
 
-    match jacs::shared::document_create(
+    match jacs_core::shared::document_create(
         &mut agent,
         &document_string,
         custom_schema,
@@ -434,7 +435,7 @@ fn check_agreement(
 ) -> PyResult<String> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
 
-    match jacs::shared::document_check_agreement(
+    match jacs_core::shared::document_check_agreement(
         &mut agent,
         &document_string,
         None,
@@ -449,7 +450,7 @@ fn check_agreement(
 }
 
 #[pymodule]
-fn jacspy(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyfn(m, name = "log_to_python")]
     fn py_log_to_python(py: Python, message: String, log_level: String) -> PyResult<()> {
         log_to_python(py, &message, &log_level)
