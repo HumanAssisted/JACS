@@ -1,0 +1,88 @@
+name: Python (jacspy crate)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths: # Optional: Trigger only on changes within jacspy/ or relevant files
+      - 'JACS/jacspy/**'
+      - 'JACS/jacs/**' # jacspy depends on jacs
+      - '.github/workflows/python.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths: # Optional: Trigger only on changes within jacspy/ or relevant files
+      - 'JACS/jacspy/**'
+      - 'JACS/jacs/**' # jacspy depends on jacs
+      - '.github/workflows/python.yml'
+  workflow_dispatch: # Allows manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Job to run tests on every push/PR
+  test-jacspy:
+    name: Test jacspy crate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run jacspy tests
+        working-directory: jacspy  
+        run: cargo test --verbose
+
+  # Job to build wheels, runs ONLY on push to main
+  build-jacspy-wheels:
+    name: Build jacspy wheels on ${{ matrix.os }}
+    # Condition: Only run on push events to the main branch
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' 
+    needs: test-jacspy # Optional: Ensure tests pass before building wheels
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-latest] 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for cibuildwheel versioning
+
+      - name: Set up QEMU (Linux only)
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all 
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' 
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel
+
+      - name: Build wheels
+        # Run cibuildwheel from the root, but it should detect ./JACS/jacspy/pyproject.toml
+        # Or use working-directory: JACS/jacspy
+        run: cibuildwheel --output-dir wheelhouse JACS/jacspy
+        env:
+          # === cibuildwheel configuration ===
+          # Build architectures
+          CIBW_ARCHS_LINUX: "x86_64 aarch64"
+          CIBW_ARCHS_MACOS: "x86_64 aarch64" # Build both Intel and ARM on macOS runners
+          # Skip PyPy builds
+          CIBW_SKIP: "pp*" 
+          # Python versions to build for (align with pyproject.toml requires-python)
+          CIBW_BUILD: "cp311-* cp312-* cp313-*" # Example: Build for 3.11, 3.12, 3.13
+          # Linux specific dependencies (if needed inside manylinux container)
+          # CIBW_BUILD_DEPENDS_LINUX: "openssl-devel" 
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-jacspy-${{ matrix.os }}
+          # Path is relative to GITHUB_WORKSPACE (repo root)
+          path: ./wheelhouse/*.whl 

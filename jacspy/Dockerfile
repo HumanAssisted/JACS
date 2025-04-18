@@ -1,14 +1,16 @@
-FROM quay.io/pypa/manylinux_2_28_x86_64
+FROM quay.io/pypa/manylinux_2_28_aarch64
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH \
+    PATH=/opt/python/cp311-cp311/bin:/usr/local/cargo/bin:$PATH \
     RUST_VERSION=1.85.1
 
-RUN yum install -y curl gcc openssl-devel && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUST_VERSION && \
-    yum remove -y curl && \
-    yum clean all && \
+RUN yum install -y curl gcc openssl-devel
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUST_VERSION
+RUN  yum clean all && \
     rm -rf /var/cache/yum
+
+# Install maturin using pip for one of the Pythons in the image
+RUN /opt/python/cp311-cp311/bin/python -m pip install maturin
 
 WORKDIR /work
