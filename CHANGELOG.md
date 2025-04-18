@@ -15,16 +15,23 @@
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
  - [] RBAC integration with header
  - [] diff versions
+ - [] bucket integration
+ - [] task review
+ - [] don't store  "jacs_private_key_password":  in config, don't display
 
+ 
 # COMPLETED
 
 ## 0.3.4
 
+### DNS
+
+
+ ### General 
+
  - [] RBAC enforcement from server. If shared, new version is pinned. 
- - [] bucket integration
- - [] task review
  - [] make sure config directory is in isolated location, like with key
- - [] don't store  "jacs_private_key_password":  in config, don't display
+
  - [] domain to header, and related verification
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
    - more complete python implementation
@@ -34,7 +41,8 @@
  - [x] cli init function
  - [x] clean up fs defaults in init/config/ 
  - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
- - [x] separate JACS from REPO readme
+ - [x] separate JACS readme repo readme
+ 
 
 ## jacspy 
 

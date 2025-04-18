@@ -11,7 +11,7 @@ This repo and general usage consists of
   1. a cli tool to bootstrap an agent or documents
   2. Rust Library for general integrations
   3. Rust MCP server for LLM usage
-  4. Python MCP server and client integrations
+  4. Python MCP server and client integrations for AUTH
   5. MORE PLANNED
 
 
