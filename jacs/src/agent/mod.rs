@@ -8,7 +8,7 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::crypt::hash::hash_public_key;
 
-use crate::config::{get_default_dir, set_env_vars};
+use crate::config::{Config, get_default_dir, load_config, set_env_vars};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
@@ -76,6 +76,7 @@ pub struct Agent {
     /// the agent JSON Struct
     /// TODO make this threadsafe
     value: Option<Value>,
+    config: Option<Config>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
@@ -117,6 +118,7 @@ impl Agent {
         Ok(Self {
             schema,
             value: None,
+            config: None,
             document_schemas: document_schemas_map,
             documents: document_map,
             default_directory,
@@ -142,6 +144,14 @@ impl Agent {
             })
             .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
         let agent_string = self.fs_agent_load(&lookup_id)?;
+        return self.load(&agent_string);
+    }
+
+    pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
+        // load config string
+        let config = load_config(&path)?;
+        let lookup_id: &str = config.jacs_agent_id_and_version().as_deref().unwrap_or("");
+        let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
         return self.load(&agent_string);
     }
 

@@ -1,7 +1,7 @@
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
 use crate::storage::jenv::{EnvError, get_env_var, set_env_var, set_env_var_override};
+use getset::Getters;
 use jsonschema::{Draft, Validator};
-
 use log::{debug, error, info};
 use serde::Deserialize;
 use serde::Serialize;
@@ -12,23 +12,36 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Getters)]
 pub struct Config {
     #[serde(rename = "$schema")]
     #[serde(default = "default_schema")]
+    #[getset(get)]
     schema: String,
+    #[getset(get)]
     jacs_use_filesystem: Option<String>,
+    #[getset(get)]
     jacs_use_security: Option<String>,
+    #[getset(get)]
     jacs_data_directory: Option<String>,
+    #[getset(get)]
     jacs_key_directory: Option<String>,
+    #[getset(get)]
     jacs_agent_private_key_filename: Option<String>,
+    #[getset(get)]
     jacs_agent_public_key_filename: Option<String>,
+    #[getset(get)]
     jacs_agent_key_algorithm: Option<String>,
+    #[getset(get)]
     jacs_agent_schema_version: Option<String>,
+    #[getset(get)]
     jacs_header_schema_version: Option<String>,
+    #[getset(get)]
     jacs_signature_schema_version: Option<String>,
     jacs_private_key_password: Option<String>,
+    #[getset(get = "pub")]
     jacs_agent_id_and_version: Option<String>,
+    #[getset(get = "pub")]
     jacs_default_storage: Option<String>,
 }
 
@@ -107,6 +120,15 @@ impl fmt::Display for Config {
             self.jacs_agent_id_and_version.as_deref().unwrap_or(""),
         )
     }
+}
+
+// the simplest way to load a config is to pass in a path to a config file
+// the config is stored in the agent, no need to use ENV vars
+pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
+    let json_str = fs::read_to_string(config_path)?;
+    let validated_value: Value = validate_config(&json_str)?;
+    let config: Config = serde_json::from_value(validated_value)?;
+    Ok(config)
 }
 
 pub fn get_default_dir() -> PathBuf {

@@ -11,7 +11,7 @@ use crate::storage::MultiStorage;
 use crate::storage::StorageType;
 use crate::storage::jenv::{get_env_var, get_required_env_var};
 use chrono::Utc;
-use log::{debug, error, info, warn};
+use log::{error, warn};
 use object_store::path::Path as ObjectPath;
 use std::error::Error;
 use std::io::Write;

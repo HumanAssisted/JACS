@@ -10,7 +10,6 @@
 - WASM
  - [] machine fingerprinting v2
 
-
 ## 0.3.5
  - [] RBAC enforcement from server. If shared, new version is pinned. 
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
@@ -35,7 +34,6 @@
 
 ## 0.3.4
 
-
  ### General 
 
 
@@ -50,7 +48,7 @@
  - [x] clean up fs defaults in init/config/ 
  - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
  - [x] separate JACS readme repo readme
- - [x] github actions]
+ - [x] minimal github actions
  
 ## jacspy-mcp
  - [] integrate jacspy
@@ -73,6 +71,8 @@
  - [x] new local builder
  - [ ] github actions builder
 
+
+# 0.3.3
 
 ## jacs 0.3.3
  - [x] change project to workspace

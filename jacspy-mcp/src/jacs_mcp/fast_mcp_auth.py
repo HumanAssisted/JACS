@@ -16,6 +16,7 @@ from starlette.responses import Response as StarletteResponse, StreamingResponse
 from mcp.types import JSONRPCMessage
 from fastmcp import FastMCP, Client, Context
 
+import jacs 
 
 # --- Deprecated Example Function ---
 def get_metadata() -> Dict[str, str]:

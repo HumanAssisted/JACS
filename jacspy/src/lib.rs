@@ -14,19 +14,12 @@ use std::sync::Mutex;
 // Add these imports for the trait methods to be available
 use jacs_core::agent::document::DocumentTraits;
 
-// mod zkp;
-// use std::panic::{catch_unwind, AssertUnwindSafe};
-
-// todo replace with new jacs config file that is baked in where we want immutable changes
-
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
         let _ = set_env_vars(false, None, false);
         let mut agent = load_agent_by_id();
         Arc::new(Mutex::new(agent))
-
     };
-    // todo use    load agent private key for system
 }
 
 fn log_to_python(py: Python, message: &str, log_level: &str) -> PyResult<()> {
