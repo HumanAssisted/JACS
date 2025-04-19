@@ -12,6 +12,18 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+/*
+Config is embedded agents and may have private information
+The agent file itself is NOT private (the .value field in the agent struct)
+
+Each config _may_ be loaded from a file, or from environment variables.
+
+For example, create_agent_and_load() does not neeed a config file at all?
+
+
+
+*/
+
 #[derive(Serialize, Deserialize, Default, Debug, Getters)]
 pub struct Config {
     #[serde(rename = "$schema")]
@@ -130,6 +142,16 @@ pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
     let config: Config = serde_json::from_value(validated_value)?;
     Ok(config)
 }
+
+// pub fn create_config_from_env_vars() -> Result<Config, Box<dyn Error>> {
+//     let config = Config::new(
+//             default_schema(),
+//         "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
+//         get_env_var("JACS_USE_FILESYSTEM", false)?,
+//         get_env_var("JACS_USE_SECURITY", false)?,
+//         get_env_var("JACS_DATA_DIRECTORY", false)?,
+//     );
+// }
 
 pub fn get_default_dir() -> PathBuf {
     match get_env_var("JACS_DATA_DIRECTORY", false) {

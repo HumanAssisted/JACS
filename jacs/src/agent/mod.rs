@@ -45,11 +45,11 @@ pub const AGENT_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
 pub const TASK_START_AGREEMENT_FIELDNAME: &str = "jacsStartAgreement";
 pub const TASK_END_AGREEMENT_FIELDNAME: &str = "jacsEndAgreement";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
-
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
 pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsPreviousVersion";
 
+// these fields are ignored when hashing
 pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     SHA256_FIELDNAME,
     AGENT_SIGNATURE_FIELDNAME,
@@ -72,10 +72,12 @@ pub fn use_secret(key: &[u8]) -> Vec<u8> {
 #[derive(Debug)]
 pub struct Agent {
     /// the JSONSchema used
+    /// todo use getter
     pub schema: Schema,
     /// the agent JSON Struct
     /// TODO make this threadsafe
     value: Option<Value>,
+    /// use getter
     config: Option<Config>,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
@@ -674,22 +676,3 @@ impl Agent {
         return Ok(instance);
     }
 }
-
-/*
-
-todo
- - load actor and sign and act on other things
- - which requires a private key
- - also a verifier
- - remote public key or embeeded?
-
-
-EVERY resource(actor) and task has
-
-1. hash/checksum based on
-  - previous hash, id, version
-2. signature based on hash
-
-
-
-*/

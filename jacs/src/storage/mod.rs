@@ -142,7 +142,7 @@ pub struct MultiStorage {
     storages: Vec<Arc<dyn ObjectStore>>,
 }
 
-#[derive(Debug, AsRefStr, Display, EnumString, Clone)]
+#[derive(Debug, AsRefStr, Display, EnumString, Clone, PartialEq)]
 pub enum StorageType {
     #[strum(serialize = "aws")]
     AWS,
@@ -161,22 +161,36 @@ impl MultiStorage {
     fn clean_path(path: &str) -> String {
         // Remove any ./ and multiple slashes
         path.replace("./", "").replace("//", "/")
-        // path.to_string()
     }
 
     pub fn new(use_key_dir: Option<bool>) -> Result<Self, ObjectStoreError> {
+        let storage_type = get_required_env_var("JACS_DEFAULT_STORAGE", true)
+            .expect("JACS_DEFAULT_STORAGE must be set");
+        let data_directory = get_required_env_var("JACS_DATA_DIRECTORY", true)
+            .expect("JACS_DATA_DIRECTORY must be set");
+        let key_directory = get_required_env_var("JACS_KEY_DIRECTORY", true)
+            .expect("JACS_KEY_DIRECTORY must be set");
+        return Self::known_new(storage_type, data_directory, key_directory, use_key_dir);
+    }
+
+    pub fn known_new(
+        storage_type: String,
+        data_directory: String,
+        key_directory: String,
+        use_key_dir: Option<bool>,
+    ) -> Result<Self, ObjectStoreError> {
         let mut _s3;
         let mut _http;
         let mut _local;
         let mut _memory: Option<Arc<InMemory>>;
-        let storage_type = get_required_env_var("JACS_DEFAULT_STORAGE", true)
-            .expect("JACS_DEFAULT_STORAGE must be set");
-        let default_storage: StorageType =
-            StorageType::from_str(&storage_type).expect("JACS_DEFAULT_STORAGE must be set");
+
+        let default_storage: StorageType = StorageType::from_str(&storage_type)
+            .expect(&format!("storage_type {} is not known", storage_type));
+
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
         // Check AWS storage
-        if matches!(get_env_var("JACS_ENABLE_AWS_STORAGE", true), Ok(Some(_))) {
+        if default_storage == StorageType::AWS {
             let bucket_name = get_required_env_var("JACS_ENABLE_AWS_BUCKET_NAME", true).expect(
                 "JACS_ENABLE_AWS_BUCKET_NAME must be set when JACS_ENABLE_AWS_STORAGE is set",
             );
@@ -192,7 +206,7 @@ impl MultiStorage {
         }
 
         // Check HAI storage
-        if matches!(get_env_var("JACS_ENABLE_HAI_STORAGE", true), Ok(Some(_))) {
+        if default_storage == StorageType::HAI {
             let http_url = get_required_env_var("HAI_STORAGE_URL", true)
                 .expect("HAI_STORAGE_URL must be set when JACS_ENABLE_HAI_STORAGE is enabled");
             let url_obj = Url::parse(&http_url).unwrap();
@@ -205,13 +219,11 @@ impl MultiStorage {
         }
 
         // Check filesystem storage
-        if matches!(get_env_var("JACS_USE_FILESYSTEM", true), Ok(Some(_))) {
+        if default_storage == StorageType::FS {
             let local_path = if use_key_dir.unwrap_or(false) {
-                get_required_env_var("JACS_KEY_DIRECTORY", true)
-                    .expect("JACS_KEY_DIRECTORY must be set when using key directory")
+                key_directory
             } else {
-                get_required_env_var("JACS_DATA_DIRECTORY", true)
-                    .expect("JACS_DATA_DIRECTORY must be set when JACS_USE_FILESYSTEM is enabled")
+                data_directory
             };
 
             // Convert to absolute path and create if needed
@@ -233,7 +245,7 @@ impl MultiStorage {
         }
 
         // Add memory storage initialization
-        let memory = if matches!(get_env_var("JACS_USE_MEMORY_STORAGE", true), Ok(Some(_))) {
+        let memory = if default_storage == StorageType::Memory {
             let mem = InMemory::new();
             let tmp_mem = Arc::new(mem);
             storages.push(tmp_mem.clone());
@@ -243,7 +255,7 @@ impl MultiStorage {
         };
 
         #[cfg(target_arch = "wasm32")]
-        let web_local = if matches!(get_env_var("JACS_USE_WEB_LOCAL", true), Ok(Some(_))) {
+        let web_local = if default_storage == StorageType::WebLocal {
             let storage = WebLocalStorage::new()?;
             let tmp_storage = Arc::new(storage);
             storages.push(tmp_storage.clone());

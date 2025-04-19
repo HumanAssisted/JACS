@@ -17,11 +17,6 @@ use std::error::Error;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-fn not_implemented_error() -> Box<dyn Error> {
-    error!("NOT IMPLEMENTED");
-    return "NOT IMPLEMENTED".into();
-}
-
 /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
 const JACS_USE_FILESYSTEM: &str = "JACS_USE_FILESYSTEM";
