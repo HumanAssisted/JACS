@@ -2,6 +2,8 @@
 use assert_cmd::prelude::*; // Add methods on commands
 use base64;
 use predicates::prelude::*; // Used for writing assertions
+use serde_json;
+use serde_json::json;
 use std::env;
 use std::fs::{self, File}; // Add fs for file operations
 use std::io::Write; // Add Write trait

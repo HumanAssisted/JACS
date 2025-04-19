@@ -27,13 +27,13 @@ Language model used to generate the embedding
 
 `llm`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Embedding](embedding-properties-llm.md "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json#/properties/llm")
+* defined in: [Embedding](embedding-properties-llm.md "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json#/properties/llm")
 
 ### llm Type
 
@@ -45,13 +45,13 @@ the vector, does not indicate datatype or width (e.g. f32 764)
 
 `vector`
 
-*   is required
+* is required
 
-*   Type: `number[]`
+* Type: `number[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Embedding](embedding-properties-vector.md "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json#/properties/vector")
+* defined in: [Embedding](embedding-properties-vector.md "https://hai.ai/schemas/components/embedding/v1/embedding.schema.json#/properties/vector")
 
 ### vector Type
 

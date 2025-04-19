@@ -29,13 +29,13 @@ Signatures of agents
 
 `signatures`
 
-*   is optional
+* is optional
 
-*   Type: `object[]` ([Signature](header-properties-signature-1.md))
+* Type: `object[]` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")
+* defined in: [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")
 
 ### signatures Type
 
@@ -47,13 +47,13 @@ The agents which are required in order to sign the document
 
 `agentIDs`
 
-*   is required
+* is required
 
-*   Type: `string[]`
+* Type: `string[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")
+* defined in: [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")
 
 ### agentIDs Type
 
@@ -65,13 +65,13 @@ When prompting an agent, what are they agreeing to?
 
 `question`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [agreement](agreement-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")
+* defined in: [agreement](agreement-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")
 
 ### question Type
 
@@ -83,13 +83,13 @@ Context for the question?
 
 `context`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [agreement](agreement-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")
+* defined in: [agreement](agreement-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")
 
 ### context Type
 

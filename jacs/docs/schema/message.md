@@ -16,6 +16,6 @@ merged type ([Message](message.md))
 
 all of
 
-*   [Header](task-allof-header.md "check type definition")
+* [Header](task-allof-header.md "check type definition")
 
-*   [Untitled object in Message](message-allof-1.md "check type definition")
+* [Untitled object in Message](message-allof-1.md "check type definition")

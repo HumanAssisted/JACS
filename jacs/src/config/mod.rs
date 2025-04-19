@@ -166,7 +166,7 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
 }
 
 // THis function should be exposed to higher level functions that can load configs from
-// anywere. Additionally, since this is called automatically in creating an agent
+// anywhere. Additionally, since this is called automatically in creating an agent
 // it should not override any existing env vars.
 pub fn set_env_vars(
     do_override: bool,

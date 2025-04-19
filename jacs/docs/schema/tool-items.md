@@ -31,13 +31,13 @@ endpoint of the tool
 
 `url`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/url")
+* defined in: [Tool](tool-items-properties-url.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/url")
 
 ### url Type
 
@@ -53,13 +53,13 @@ Will the tool require waiting for a response. Default true.
 
 `responseRequired`
 
-*   is optional
+* is optional
 
-*   Type: `boolean`
+* Type: `boolean`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/responseRequired")
+* defined in: [Tool](tool-items-properties-responserequired.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/responseRequired")
 
 ### responseRequired Type
 
@@ -71,13 +71,13 @@ How long to wait for a response.
 
 `reseponseTimeout`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/reseponseTimeout")
+* defined in: [Tool](tool-items-properties-reseponsetimeout.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/reseponseTimeout")
 
 ### reseponseTimeout Type
 
@@ -89,13 +89,13 @@ How many times to retry on failure.
 
 `retryTimes`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/retryTimes")
+* defined in: [Tool](tool-items-properties-retrytimes.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/retryTimes")
 
 ### retryTimes Type
 
@@ -107,13 +107,13 @@ Is the function expensive, not expensive?
 
 `pricingDescription`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/pricingDescription")
+* defined in: [Tool](tool-items-properties-pricingdescription.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/pricingDescription")
 
 ### pricingDescription Type
 
@@ -125,13 +125,13 @@ Is the function expensive, not expensive?
 
 `function`
 
-*   is required
+* is required
 
-*   Type: `object` ([Details](tool-items-properties-function.md))
+* Type: `object` ([Details](tool-items-properties-function.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function")
+* defined in: [Tool](tool-items-properties-function.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/items/properties/function")
 
 ### function Type
 

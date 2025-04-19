@@ -30,13 +30,13 @@ https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1
 
 `threadID`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Message](message-allof-1-properties-threadid.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/threadID")
+* defined in: [Message](message-allof-1-properties-threadid.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/threadID")
 
 ### threadID Type
 
@@ -48,13 +48,13 @@ list of addressees, optional
 
 `to`
 
-*   is optional
+* is optional
 
-*   Type: `string[]`
+* Type: `string[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Message](message-allof-1-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/to")
+* defined in: [Message](message-allof-1-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/to")
 
 ### to Type
 
@@ -66,13 +66,13 @@ list of addressees, optional
 
 `from`
 
-*   is optional
+* is optional
 
-*   Type: `string[]`
+* Type: `string[]`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Message](message-allof-1-properties-from.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/from")
+* defined in: [Message](message-allof-1-properties-from.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/from")
 
 ### from Type
 
@@ -84,13 +84,13 @@ body , subject etc
 
 `content`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Details](message-allof-1-properties-content.md))
+* Type: `object` ([Details](message-allof-1-properties-content.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Message](message-allof-1-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/content")
+* defined in: [Message](message-allof-1-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/content")
 
 ### content Type
 
@@ -102,13 +102,13 @@ list of files
 
 `attachments`
 
-*   is optional
+* is optional
 
-*   Type: `object[]` ([File](header-properties-jacsfiles-file.md))
+* Type: `object[]` ([File](header-properties-jacsfiles-file.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Message](message-allof-1-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/attachments")
+* defined in: [Message](message-allof-1-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/attachments")
 
 ### attachments Type
 

@@ -30,13 +30,13 @@ Type of file. e.g. <https://www.iana.org/assignments/media-types/application/jso
 
 `mimetype`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [File](files-properties-mimetype.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/mimetype")
+* defined in: [File](files-properties-mimetype.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/mimetype")
 
 ### mimetype Type
 
@@ -48,13 +48,13 @@ where can the file be found on the filesystem. For now no online. ipfs, https, e
 
 `path`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [File](files-properties-path.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/path")
+* defined in: [File](files-properties-path.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/path")
 
 ### path Type
 
@@ -66,13 +66,13 @@ base64 encoded contents, possibly compressed
 
 `contents`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [File](files-properties-contents.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/contents")
+* defined in: [File](files-properties-contents.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/contents")
 
 ### contents Type
 
@@ -84,13 +84,13 @@ should JACS embed the file contents?
 
 `embed`
 
-*   is required
+* is required
 
-*   Type: `boolean`
+* Type: `boolean`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [File](files-properties-embed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/embed")
+* defined in: [File](files-properties-embed.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/embed")
 
 ### embed Type
 
@@ -102,13 +102,13 @@ content checksum to verify contents on download.
 
 `sha256`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [File](files-properties-sha256.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/sha256")
+* defined in: [File](files-properties-sha256.md "https://hai.ai/schemas/components/files/v1/files.schema.json#/properties/sha256")
 
 ### sha256 Type
 

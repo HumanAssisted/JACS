@@ -35,13 +35,13 @@ General actions definitions which can comprise a service. Distinct from function
 
 `name`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/name")
+* defined in: [Action](action-properties-name.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/name")
 
 ### name Type
 
@@ -53,13 +53,13 @@ type of change that can happen
 
 `description`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/description")
+* defined in: [Action](action-properties-description.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/description")
 
 ### description Type
 
@@ -71,13 +71,13 @@ tools that can be utilized
 
 `tools`
 
-*   is optional
+* is optional
 
-*   Type: `object[][]` ([Details](tool-items.md))
+* Type: `object[][]` ([Details](tool-items.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/tools")
+* defined in: [Action](action-properties-tools.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/tools")
 
 ### tools Type
 
@@ -89,13 +89,13 @@ Labels and quantitative values.
 
 `cost`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Unit](action-properties-unit-1.md))
+* Type: `object` ([Unit](action-properties-unit-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Action](action-properties-unit-1.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/cost")
+* defined in: [Action](action-properties-unit-1.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/cost")
 
 ### cost Type
 
@@ -107,13 +107,13 @@ Labels and quantitative values.
 
 `duration`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Unit](action-properties-unit-1.md))
+* Type: `object` ([Unit](action-properties-unit-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Action](action-properties-unit-1.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/duration")
+* defined in: [Action](action-properties-unit-1.md "https://hai.ai/schemas/components/unit/v1/unit.schema.json#/properties/duration")
 
 ### duration Type
 
@@ -125,13 +125,13 @@ Do agents need to agree this is completed for task to be.
 
 `completionAgreementRequired`
 
-*   is optional
+* is optional
 
-*   Type: `boolean`
+* Type: `boolean`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Action](action-properties-completionagreementrequired.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/completionAgreementRequired")
+* defined in: [Action](action-properties-completionagreementrequired.md "https://hai.ai/schemas/components/action/v1/action.schema.json#/properties/completionAgreementRequired")
 
 ### completionAgreementRequired Type
 

@@ -49,13 +49,13 @@ A a node in a finite state machine. Stateless, a class to be used to instantiate
 
 `nodeID`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-nodeid.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/nodeID")
+* defined in: [Node](node-properties-nodeid.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/nodeID")
 
 ### nodeID Type
 
@@ -71,13 +71,13 @@ what program it belongs to
 
 `programID`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-programid.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/programID")
+* defined in: [Node](node-properties-programid.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/programID")
 
 ### programID Type
 
@@ -93,13 +93,13 @@ what program version created
 
 `programVersion`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-programversion.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/programVersion")
+* defined in: [Node](node-properties-programversion.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/programVersion")
 
 ### programVersion Type
 
@@ -115,13 +115,13 @@ what service is being used
 
 `serviceID`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-serviceid.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/serviceID")
+* defined in: [Node](node-properties-serviceid.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/serviceID")
 
 ### serviceID Type
 
@@ -137,13 +137,13 @@ what service version was  first used
 
 `serviceVersion`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-serviceversion.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/serviceVersion")
+* defined in: [Node](node-properties-serviceversion.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/serviceVersion")
 
 ### serviceVersion Type
 
@@ -159,13 +159,13 @@ is the task completed
 
 `completed`
 
-*   is optional
+* is optional
 
-*   Type: `boolean`
+* Type: `boolean`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-completed.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completed")
+* defined in: [Node](node-properties-completed.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completed")
 
 ### completed Type
 
@@ -177,13 +177,13 @@ datetime of completion
 
 `completedAt`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-completedat.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedAt")
+* defined in: [Node](node-properties-completedat.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedAt")
 
 ### completedAt Type
 
@@ -199,13 +199,13 @@ OpenAI function calling definitions <https://platform.openai.com/docs/assistants
 
 `tool`
 
-*   is optional
+* is optional
 
-*   Type: `object[]` ([Details](tool-items.md))
+* Type: `object[]` ([Details](tool-items.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](action-properties-tools-tool.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/properties/tool")
+* defined in: [Node](action-properties-tools-tool.md "https://hai.ai/schemas/components/tool/v1/tool.schema.json#/properties/tool")
 
 ### tool Type
 
@@ -217,13 +217,13 @@ prompt to run before tool is run
 
 `preToolPrompt`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-pretoolprompt.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/preToolPrompt")
+* defined in: [Node](node-properties-pretoolprompt.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/preToolPrompt")
 
 ### preToolPrompt Type
 
@@ -235,13 +235,13 @@ prompt to run after tool is run
 
 `postToolPrompt`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-posttoolprompt.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/postToolPrompt")
+* defined in: [Node](node-properties-posttoolprompt.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/postToolPrompt")
 
 ### postToolPrompt Type
 
@@ -253,13 +253,13 @@ estimated cost in dollars
 
 `estimatedCost`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-estimatedcost.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/estimatedCost")
+* defined in: [Node](node-properties-estimatedcost.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/estimatedCost")
 
 ### estimatedCost Type
 
@@ -271,13 +271,13 @@ estimated time in seconds
 
 `estimatedTime`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-estimatedtime.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/estimatedTime")
+* defined in: [Node](node-properties-estimatedtime.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/estimatedTime")
 
 ### estimatedTime Type
 
@@ -289,13 +289,13 @@ actual cost in dollars
 
 `cost`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-cost.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/cost")
+* defined in: [Node](node-properties-cost.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/cost")
 
 ### cost Type
 
@@ -307,13 +307,13 @@ actual time in seconds
 
 `time`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-time.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/time")
+* defined in: [Node](node-properties-time.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/time")
 
 ### time Type
 
@@ -325,13 +325,13 @@ Run in the future - job queue
 
 `runAt`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-runat.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/runAt")
+* defined in: [Node](node-properties-runat.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/runAt")
 
 ### runAt Type
 
@@ -347,13 +347,13 @@ Human Evaluator is required
 
 `humanEvaluatorRequired`
 
-*   is optional
+* is optional
 
-*   Type: `boolean`
+* Type: `boolean`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-humanevaluatorrequired.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/humanEvaluatorRequired")
+* defined in: [Node](node-properties-humanevaluatorrequired.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/humanEvaluatorRequired")
 
 ### humanEvaluatorRequired Type
 
@@ -365,13 +365,13 @@ A binary represenation of if the task completed successfully according to evalua
 
 `completedSuccess`
 
-*   is optional
+* is optional
 
-*   Type: `boolean`
+* Type: `boolean`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-completedsuccess.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedSuccess")
+* defined in: [Node](node-properties-completedsuccess.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedSuccess")
 
 ### completedSuccess Type
 
@@ -383,13 +383,13 @@ A floating scale evaluation of level of success
 
 `completedEvaluation`
 
-*   is optional
+* is optional
 
-*   Type: `integer`
+* Type: `integer`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-completedevaluation.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedEvaluation")
+* defined in: [Node](node-properties-completedevaluation.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedEvaluation")
 
 ### completedEvaluation Type
 
@@ -401,13 +401,13 @@ A qualitative description of the evaluation.
 
 `completedEvaluationDescription`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-completedevaluationdescription.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedEvaluationDescription")
+* defined in: [Node](node-properties-completedevaluationdescription.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/completedEvaluationDescription")
 
 ### completedEvaluationDescription Type
 
@@ -419,13 +419,13 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 `signature`
 
-*   is optional
+* is optional
 
-*   Type: `object` ([Signature](header-properties-signature-1.md))
+* Type: `object` ([Signature](header-properties-signature-1.md))
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
+* defined in: [Node](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")
 
 ### signature Type
 
@@ -437,13 +437,13 @@ agent responsible for executing, implies tools and services
 
 `executingAgent`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-executingagent.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/executingAgent")
+* defined in: [Node](node-properties-executingagent.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/executingAgent")
 
 ### executingAgent Type
 
@@ -459,13 +459,13 @@ Agent doing the evaluation, implies tools and services
 
 `responsibleAgent`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-responsibleagent.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/responsibleAgent")
+* defined in: [Node](node-properties-responsibleagent.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/responsibleAgent")
 
 ### responsibleAgent Type
 
@@ -481,13 +481,13 @@ Which LLM to use when loaded prompts are provided.
 
 `LLMType`
 
-*   is optional
+* is optional
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-llmtype.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/LLMType")
+* defined in: [Node](node-properties-llmtype.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/LLMType")
 
 ### LLMType Type
 
@@ -499,13 +499,13 @@ Date of evaluation
 
 `datetime`
 
-*   is required
+* is required
 
-*   Type: `string`
+* Type: `string`
 
-*   cannot be null
+* cannot be null
 
-*   defined in: [Node](node-properties-datetime.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/datetime")
+* defined in: [Node](node-properties-datetime.md "https://hai.ai/schemas/node/v1/node.schema.json#/properties/datetime")
 
 ### datetime Type
 
