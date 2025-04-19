@@ -12,6 +12,7 @@
 
 
 ## 0.3.5
+ - [] RBAC enforcement from server. If shared, new version is pinned. 
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
  - [] RBAC integration with header
  - [] diff versions
@@ -19,20 +20,27 @@
  - [] task review
  - [] don't store  "jacs_private_key_password":  in config, don't display
 
+## jacs-mcp 0.1.0
+
+ - [] integrate with RUST server
+ - [] auth or all features
+ - [] integration test with client
+ - [] https://github.com/modelcontextprotocol/specification/discussions
+
+### DNS
+ - [] domain to header, and related verification
+
 
 # COMPLETED
 
 ## 0.3.4
 
-### DNS
-
 
  ### General 
 
- - [] RBAC enforcement from server. If shared, new version is pinned. 
- - [] make sure config directory is in isolated location, like with key
 
- - [] domain to header, and related verification
+ - [x] make sure config directory is in isolated location, like with key
+ - [ ] don't use env configs everywhere- dep jacspy
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
    - more complete python implementation
    - pass document string or document id - with optional version instead of string
@@ -44,22 +52,26 @@
  - [x] separate JACS readme repo readme
  - [x] github actions]
  
+## jacspy-mcp
+ - [] integrate jacspy
+ - [x] make decorator for easy use in @tools
+ - [] make decorator for @resource
+ - [] make sure "list" request is signed
+ - [x] fastmcp client and server sse
+ - [x] fastmcp client and server stdio
+ - [] fastmcp client and server websocket
+ - [] mcp client and server sse
+ - [] mcp client and server stdio
+ - [] mcp client and server websocket
+ - [] publish jacspy to pypi
 
 ## jacspy 
-
+ - [ ] don't use env configs everywhere
  - [ ] load into client and server and use for auth
  - [ ] instructions for how to create - cli create agent 1, cli create agent 2, config jacspy to load each agent
- - [ ] integrate as MCP auth header
- - [ ] publish jacspy and jascpy mcp middleware
+ - [ ] publish jacspy  to pypi
  - [x] new local builder
  - [ ] github actions builder
-
-## jacs-mcp 0.1.0
-
- - [] integrate with RUST server
- - [] auth or all features
- - [] integration test with client
- - [] https://github.com/modelcontextprotocol/specification/discussions
 
 
 ## jacs 0.3.3
@@ -70,9 +82,6 @@
  - [x] cli review and tests 
  - [x] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
 
-
-
-
 ## 0.3.2
  - [x] add common clause to Apache 2.0
  - [x] use a single file to handle file i/o for all storage types
@@ -81,9 +90,8 @@
  - [x] create tests using custom schemas - verify this is working
 
 
-
 ## 0.3.1
-- upgraded many dependencies using 
+- [x] upgraded many dependencies using 
     cargo install cargo-edit
     cargo upgrade
     
