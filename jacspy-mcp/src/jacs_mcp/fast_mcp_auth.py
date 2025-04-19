@@ -225,42 +225,133 @@ class MetadataInjectingMiddleware(BaseHTTPMiddleware):
             except Exception: print("Error yielding final buffer content in middleware"); traceback.print_exc()
 
 
-# --- Server Wrapper (JACSFastMCP - Composition Approach - Fixed Run Logic) ---
+# --- Server Wrapper (JACSFastMCP - Composition with Auto-Validation Decorators) ---
 class JACSFastMCP:
-    """Wrapper using composition to apply auth patterns (auto response signing middleware)."""
+    """
+    Wrapper using composition to apply auth patterns:
+      - Auto request validation via @mcp.tool / @mcp.resource decorators.
+      - Auto response signing middleware for SSE/WS.
+    """
     def __init__(
         self,
         name: str,
-        # REMOVED sign_response_fn parameter
-        # validate_request_fn is not used here yet
+        # Reinstate validator function reference
+        validate_request_fn: SyncMetadataCallback = default_validate_request,
         **kwargs
     ):
-        print(f"DEBUG: Initializing JACSFastMCP '{name}'")
+        print(f"DEBUG: Initializing JACSFastMCP '{name}' with validator: {validate_request_fn.__name__}")
         self._internal_mcp = FastMCP(name, **kwargs)
-        # No need to store _sign_response_fn if we always use the middleware default
+        self._validate_request_fn = validate_request_fn # Store validator
 
-    def tool(self, *args, **kwargs):
-        return self._internal_mcp.tool(*args, **kwargs)
+    # --- Internal Helper to Wrap Functions for Validation ---
+    def _wrap_for_validation(self, func):
+        """Wraps a tool/resource function to validate request metadata."""
+        # Check if the function is already wrapped (simple check)
+        if hasattr(func, '_jacs_validated'):
+            return func
 
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            print(f"DEBUG: JACS Validation Wrapper executing for {func.__name__}")
+            metadata = kwargs.get('metadata')
+            try:
+                self._validate_request_fn(metadata)
+            except Exception as e:
+                print(f"Server Auth Error (Wrapper): Request validation failed: {e}")
+                raise ValueError(f"Client metadata validation failed: {e}") from e
+
+            original_params = inspect.signature(func).parameters
+            call_kwargs = {k: v for k, v in kwargs.items() if k in original_params and k != 'metadata'}
+            # Basic positional arg handling (adjust if needed for complex cases)
+            num_positional_expected = sum(1 for p in original_params.values() if p.kind in [p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD])
+            num_keyword_expected = len(call_kwargs)
+            num_positional_to_pass = min(len(args), num_positional_expected)
+
+            call_args = args[:num_positional_to_pass]
+
+            # print(f"DEBUG: Calling original {func.__name__} with args: {call_args}, kwargs: {call_kwargs}")
+            return await func(*call_args, **call_kwargs)
+
+        wrapper._jacs_validated = True # Mark as wrapped
+        return wrapper
+
+    # --- Modified Tool Decorator Factory (Accepts & Filters 'strict') ---
+    def tool(
+        self,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        strict: bool = False, # Explicitly accept 'strict'
+        **kwargs # Accept any other potential kwargs
+    ):
+        """
+        Registers a tool, automatically wrapping it for request validation.
+        Accepts 'strict' param but does not pass it to underlying FastMCP.tool.
+        """
+        print(f"DEBUG: JACSFastMCP.tool called with name={name}, strict={strict}, kwargs={kwargs}")
+        # **kwargs might contain other valid arguments for the underlying tool decorator later
+        # We explicitly filter out 'strict' before passing kwargs down.
+
+        # Log a warning if strict=True is used, as it has no effect currently
+        if strict:
+            print("WARN: 'strict=True' provided to JACSFastMCP.tool, but the underlying FastMCP does not support it. Parameter ignored.")
+
+        def decorator(func):
+            wrapped_func = self._wrap_for_validation(func)
+            # Register the wrapped function, passing name, description, and **kwargs (excluding strict)
+            # The underlying call only receives arguments it expects.
+            self._internal_mcp.tool(name=name, description=description, **kwargs)(wrapped_func)
+            return func
+        return decorator
+
+    # --- Modified Resource Decorator Factory (Apply similar logic if needed) ---
+    def resource(
+        self,
+        uri_template: str,
+        description: Optional[str] = None,
+        strict: bool = False, # Example: Add strict here too if desired
+        **kwargs
+    ):
+        """
+        Registers a resource provider, automatically wrapping it for request validation.
+        Accepts 'strict' param but does not pass it down.
+        """
+        if strict:
+             print("WARN: 'strict=True' provided to JACSFastMCP.resource, parameter ignored.")
+
+        def decorator(func):
+            wrapped_func = self._wrap_for_validation(func)
+            self._internal_mcp.resource(uri_template=uri_template, description=description, **kwargs)(wrapped_func)
+            return func
+        return decorator
+
+    # --- Delegated List Method (Assuming it's not a decorator for functions needing validation) ---
+    def list(self, *args, **kwargs):
+        """Delegates the list call to the internal FastMCP instance."""
+        # Check if _internal_mcp.list exists and is callable
+        if hasattr(self._internal_mcp, 'list') and callable(self._internal_mcp.list):
+            return self._internal_mcp.list(*args, **kwargs)
+        else:
+            # Handle case where FastMCP might not have a 'list' method
+            raise NotImplementedError("The underlying FastMCP object does not have a 'list' method.")
+
+
+    # --- ASGI App Methods (Apply response signing middleware) ---
     def sse_app(self) -> Any:
-        print("DEBUG: JACSFastMCP generating SSE app")
+        print("DEBUG: JACSFastMCP generating SSE app with response signing middleware")
         app = self._internal_mcp.sse_app()
+        # Middleware uses default_sign_response by default
         app.add_middleware(MetadataInjectingMiddleware)
         return app
 
-    def ws_app(self) -> Any: # Assuming ws_app exists
-        print("DEBUG: JACSFastMCP generating WS app")
+    def ws_app(self) -> Any:
+        print("DEBUG: JACSFastMCP generating WS app with response signing middleware")
         app = self._internal_mcp.ws_app()
         app.add_middleware(MetadataInjectingMiddleware)
         return app
 
-    # --- MODIFIED Run Method ---
+    # --- Run Method (Unchanged from previous version) ---
     def run(self, transport: Optional[str] = None, **kwargs):
-        """
-        Runs the server. Handles Stdio directly, requires manual uvicorn setup
-        for SSE/WS using the .sse_app() or .ws_app() methods.
-        """
-        # Determine effective transport - Default to 'stdio' if None
+        # ... (logic to default to stdio, delegate stdio run, error for sse/ws) ...
         if transport is None:
             effective_transport = 'stdio'
             print("DEBUG: JACSFastMCP run: No transport specified, defaulting to 'stdio'")
@@ -268,69 +359,19 @@ class JACSFastMCP:
             effective_transport = transport
             print(f"DEBUG: JACSFastMCP run: Explicit transport specified: '{effective_transport}'")
 
-        # --- Branch based on effective transport ---
         if effective_transport == 'stdio':
             print(f"DEBUG: JACSFastMCP running Stdio transport for '{self._internal_mcp.name}' (Auth handled by decorator/manual return)")
-            # Delegate Stdio run to the internal FastMCP instance
-            # The @validate_tool_request decorator handles request validation.
-            # The tool function MUST manually handle response signing for Stdio.
             self._internal_mcp.run(transport='stdio', **kwargs)
-
         elif effective_transport in ['sse', 'ws']:
-            # Guide user to use uvicorn for ASGI transports
             print(f"ERROR: For {effective_transport.upper()} transport, get app via .{effective_transport}_app() and run with uvicorn.")
-            print(f"Example: uvicorn your_server_module:{effective_transport}_app --host localhost --port 8000")
             raise NotImplementedError(f"Direct run for {effective_transport.upper()} not supported. Use .{effective_transport}_app() with uvicorn.")
-
         else:
-            # Attempt to run any other specified transports directly via internal FastMCP
-            # Behavior for these other transports regarding auth is undefined here.
             print(f"DEBUG: JACSFastMCP attempting to run '{effective_transport}' via internal FastMCP (Auth behavior unknown)")
             self._internal_mcp.run(transport=effective_transport, **kwargs)
 
+
+    # --- Delegated Properties ---
     @property
     def settings(self): return self._internal_mcp.settings
     @property
     def name(self): return self._internal_mcp.name
-
-
-# --- NEW: Tool Request Validation Decorator ---
-def validate_tool_request(validator_func: SyncMetadataCallback = default_validate_request):
-    """
-    Decorator for FastMCP tool functions to automatically validate incoming request metadata.
-
-    It extracts 'metadata' from kwargs, calls the validator, and then calls
-    the original tool function with only its explicitly defined arguments.
-    """
-    def decorator(tool_func):
-        @functools.wraps(tool_func)
-        async def wrapper(*args, **kwargs):
-            print(f"DEBUG: @validate_tool_request wrapping {tool_func.__name__}, received kwargs: {list(kwargs.keys())}")
-
-            metadata = kwargs.get('metadata')
-
-            # Call the validator function
-            try:
-                validator_func(metadata) # Use the provided or default validator
-            except Exception as e:
-                print(f"Server Auth Error (@validate_tool_request): Request validation failed: {e}")
-                # Re-raise to signal error to FastMCP/FastAPI
-                raise ValueError(f"Client metadata validation failed: {e}") from e
-
-            # Prepare args for the original function, filtering out metadata
-            original_params = inspect.signature(tool_func).parameters
-            call_kwargs = {k: v for k, v in kwargs.items() if k in original_params and k != 'metadata'}
-
-            # Ensure all positional args expected by the original function are present
-            # This handles 'self' or 'cls' if it's a method, and context, etc.
-            # We assume FastMCP passes positional args correctly first.
-            call_args = args[:len(original_params) - len(call_kwargs)] # Basic positional arg handling
-
-            print(f"DEBUG: Calling original tool {tool_func.__name__} with args: {call_args}, kwargs: {call_kwargs}")
-            return await tool_func(*call_args, **call_kwargs)
-
-        return wrapper
-    return decorator
-
-
-# --- REMOVED AuthFastMCPServer (Inheritance version) ---
