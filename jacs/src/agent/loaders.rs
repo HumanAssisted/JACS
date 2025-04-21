@@ -61,7 +61,14 @@ pub trait FileLoader {
     ) -> Result<String, Box<dyn Error>>;
 
     fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn Error>>;
-
+    fn load_key_file(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn load_private_key(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn save_private_key(
+        &self,
+        filename: &String,
+        private_key: &[u8],
+    ) -> Result<String, Box<dyn Error>>;
+    fn create_backup(&self, file_path: &str) -> Result<String, Box<dyn Error>>;
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
     fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>>;
@@ -121,8 +128,6 @@ impl FileLoader for Agent {
     }
 
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new(Some(true))?;
-
         let private_key_filename = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
         let public_key_filename = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
 
@@ -131,19 +136,20 @@ impl FileLoader for Agent {
         let key_vec = decrypt_private_key(borrowed_key)?;
 
         // Use save_private_key with just the filename - storage will handle paths
-        save_private_key(Path::new(""), &private_key_filename, &key_vec)?;
+        self.save_private_key(&private_key_filename, &key_vec)?;
 
         // Public key can be saved directly
-        storage.save_file(&public_key_filename, &self.get_public_key()?)?;
+        self.storage
+            .save_file(&public_key_filename, &self.get_public_key()?)?;
 
         Ok(())
     }
 
     fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>> {
         let private_key_filename = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
-        let private_key = load_private_key(&private_key_filename)?;
+        let private_key = self.load_private_key(&private_key_filename)?;
         let public_key_filename = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
-        let public_key = load_key_file(&public_key_filename)?;
+        let public_key = self.load_key_file(&public_key_filename)?;
 
         let key_algorithm = get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)?;
         self.set_keys(private_key, public_key, &key_algorithm)
@@ -151,10 +157,9 @@ impl FileLoader for Agent {
 
     /// in JACS the public keys need to be added manually
     fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-        let storage = MultiStorage::new(Some(false))?;
         let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
 
-        storage
+        self.storage
             .get_file(&public_key_path, None)
             .map_err(|e| Box::new(e) as Box<dyn Error>)
     }
@@ -166,13 +171,12 @@ impl FileLoader for Agent {
         public_key: &[u8],
         public_key_enc_type: &[u8],
     ) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new(Some(false))?;
-
         let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
         let enc_type_path = format!("public_keys/{}.enc_type", agent_id_and_version);
 
-        storage.save_file(&public_key_path, public_key)?;
-        storage.save_file(&enc_type_path, public_key_enc_type)?;
+        self.storage.save_file(&public_key_path, public_key)?;
+        self.storage
+            .save_file(&enc_type_path, public_key_enc_type)?;
 
         Ok(())
     }
@@ -184,13 +188,11 @@ impl FileLoader for Agent {
         public_key_filename: &String,
         custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new(Some(false))?;
-
         let private_path = format!("{}", private_key_filename);
         let public_path = format!("{}", public_key_filename);
 
-        let private_key = storage.get_file(&private_path, None)?;
-        let public_key = storage.get_file(&public_path, None)?;
+        let private_key = self.storage.get_file(&private_path, None)?;
+        let public_key = self.storage.get_file(&public_path, None)?;
 
         let key_algorithm = match custom_key_algorithm {
             Some(algo) => algo,
@@ -204,15 +206,14 @@ impl FileLoader for Agent {
     fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
         let mut errors: Vec<Box<dyn Error>> = Vec::new();
         let mut documents: Vec<String> = Vec::new();
-        let storage = MultiStorage::new(None).map_err(|e| vec![Box::new(e) as Box<dyn Error>])?;
 
         let paths = vec!["agent", "documents"];
 
         for prefix in paths {
-            match storage.list(prefix, None) {
+            match self.storage.list(prefix, None) {
                 Ok(files) => {
                     for file_path in files {
-                        match storage.get_file(&file_path, None) {
+                        match self.storage.get_file(&file_path, None) {
                             Ok(contents) => match String::from_utf8(contents) {
                                 Ok(doc) => documents.push(doc),
                                 Err(e) => errors.push(Box::new(e)),
@@ -290,23 +291,12 @@ impl FileLoader for Agent {
             agentpath_absolute
         );
 
-        let storage = match MultiStorage::new(None) {
-            Ok(s) => {
-                println!("[fs_agent_save] MultiStorage created successfully.");
-                s
-            }
-            Err(e) => {
-                println!("[fs_agent_save] Error creating MultiStorage: {}", e);
-                return Err(e.into());
-            }
-        };
-
         // --- Use RELATIVE path for storage operations ---
         println!(
             "[fs_agent_save] Checking existence relative path: {}",
             relative_path_str
         );
-        match storage.file_exists(&relative_path_str, Some(StorageType::FS)) {
+        match self.storage.file_exists(&relative_path_str, None) {
             Ok(true) => {
                 // Construct relative backup path
                 let relative_backup_path = format!("{}.bak", relative_path_str);
@@ -314,7 +304,10 @@ impl FileLoader for Agent {
                     "[fs_agent_save] Agent file exists (relative path), backing up to: {}",
                     relative_backup_path
                 );
-                match storage.rename_file(&relative_path_str, &relative_backup_path) {
+                match self
+                    .storage
+                    .rename_file(&relative_path_str, &relative_backup_path)
+                {
                     Ok(_) => println!("[fs_agent_save] Backup successful (using relative paths)."),
                     Err(e) => {
                         error!(
@@ -342,7 +335,7 @@ impl FileLoader for Agent {
             "[fs_agent_save] Calling storage.save_file with relative path: {}",
             relative_path_str
         );
-        storage
+        self.storage
             .save_file(&relative_path_str, agent_string.as_bytes())
             .map_err(|e| {
                 error!(
@@ -362,13 +355,12 @@ impl FileLoader for Agent {
     }
 
     fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn Error>> {
-        let storage = MultiStorage::new(None)?;
         let document_filename = format!("{}.json", lookup_key);
         let old_path = format!("documents/{}", document_filename);
         let new_path = format!("documents/archive/{}", document_filename);
 
-        let contents = storage.get_file(&old_path, None)?;
-        storage.save_file(&new_path, &contents)?;
+        let contents = self.storage.get_file(&old_path, None)?;
+        self.storage.save_file(&new_path, &contents)?;
         Ok(())
     }
 
@@ -391,15 +383,14 @@ impl FileLoader for Agent {
         let document_path = format!("{}/{}", document_directory, documentoutput_filename);
 
         // Use MultiStorage to save the file
-        let storage = MultiStorage::new(None)?;
-        storage.save_file(&document_path, document_string.as_bytes())?;
+        self.storage
+            .save_file(&document_path, document_string.as_bytes())?;
 
         Ok(document_path)
     }
 
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>> {
-        let storage = MultiStorage::new(None)?;
-        let contents = storage.get_file(&document_filepath, None)?;
+        let contents = self.storage.get_file(&document_filepath, None)?;
 
         // Compress the contents using gzip
         let mut gz_encoder = GzEncoder::new(Vec::new(), Compression::default());
@@ -409,84 +400,77 @@ impl FileLoader for Agent {
         // Encode the compressed contents using base64
         Ok(base64::encode(&compressed_contents))
     }
-}
 
-/// private Helper function to create a backup file name based on the current timestamp
-#[cfg(not(target_arch = "wasm32"))]
-async fn create_backup(storage: &MultiStorage, file_path: &str) -> Result<String, Box<dyn Error>> {
-    let timestamp = Utc::now().format("backup-%Y-%m-%d-%H-%M").to_string();
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load_key_file(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.storage
+            .get_file(&filename, None)
+            .map_err(|e| Box::new(e) as Box<dyn Error>)
+    }
 
-    // Split the path into directory and filename
-    let path = Path::new(file_path);
-    let file_stem = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .ok_or_else(|| {
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Failed to read file stem",
-            ))
-        })?;
-    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-
-    // Create the backup path
-    let backup_filename = format!("{}.{}.{}", timestamp, file_stem, extension);
-    let parent = path.parent().and_then(|p| p.to_str()).unwrap_or("");
-    let backup_path = format!("{}/{}", parent, backup_filename);
-
-    // Copy the file using MultiStorage
-    let contents = storage.get_file(file_path, None)?;
-    storage.save_file(&backup_path, &contents)?;
-
-    Ok(backup_path)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn save_private_key(
-    _: &Path, // Ignore path parameter since storage handles paths
-    filename: &String,
-    private_key: &[u8],
-) -> Result<String, Box<dyn Error>> {
-    let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
-        .unwrap_or(None)
-        .unwrap_or_default();
-    let storage = MultiStorage::new(Some(true))?;
-
-    if !password.is_empty() {
-        let encrypted_key = encrypt_private_key(private_key)?;
-        let encrypted_filename = if !filename.ends_with(".enc") {
-            format!("{}.enc", filename)
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load_private_key(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+        let loaded_key = self.load_key_file(filename)?;
+        if filename.ends_with(".enc") {
+            Ok(decrypt_private_key(&loaded_key)?)
         } else {
-            filename.to_string()
-        };
-
-        storage.save_file(&encrypted_filename, &encrypted_key)?;
-        Ok(encrypted_filename)
-    } else {
-        storage.save_file(filename, private_key)?;
-        Ok(filename.to_string())
+            Ok(loaded_key)
+        }
     }
-}
 
-#[cfg(not(target_arch = "wasm32"))]
-fn load_private_key(filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-    let loaded_key = load_key_file(filename)?;
-    if filename.ends_with(".enc") {
-        Ok(decrypt_private_key(&loaded_key)?)
-    } else {
-        Ok(loaded_key)
+    #[cfg(not(target_arch = "wasm32"))]
+    fn save_private_key(
+        &self,
+        filename: &String,
+        private_key: &[u8],
+    ) -> Result<String, Box<dyn Error>> {
+        let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+        if !password.is_empty() {
+            let encrypted_key = encrypt_private_key(private_key)?;
+            let encrypted_filename = if !filename.ends_with(".enc") {
+                format!("{}.enc", filename)
+            } else {
+                filename.to_string()
+            };
+
+            self.storage
+                .save_file(&encrypted_filename, &encrypted_key)?;
+            Ok(encrypted_filename)
+        } else {
+            self.storage.save_file(filename, private_key)?;
+            Ok(filename.to_string())
+        }
     }
-}
+    /// private Helper function to create a backup file name based on the current timestamp
+    #[cfg(not(target_arch = "wasm32"))]
+    fn create_backup(&self, file_path: &str) -> Result<String, Box<dyn Error>> {
+        let timestamp = Utc::now().format("backup-%Y-%m-%d-%H-%M").to_string();
 
-#[cfg(not(target_arch = "wasm32"))]
-fn load_key_file(filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-    let storage = MultiStorage::new(Some(true))?;
-    storage
-        .get_file(&filename, None)
-        .map_err(|e| Box::new(e) as Box<dyn Error>)
-}
+        // Split the path into directory and filename
+        let path = Path::new(file_path);
+        let file_stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Failed to read file stem",
+                ))
+            })?;
+        let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
 
-// Helper function to convert PathBuf to object store Path
-fn to_object_path(path: &PathBuf) -> ObjectPath {
-    ObjectPath::from(path.to_string_lossy().as_ref())
+        // Create the backup path
+        let backup_filename = format!("{}.{}.{}", timestamp, file_stem, extension);
+        let parent = path.parent().and_then(|p| p.to_str()).unwrap_or("");
+        let backup_path = format!("{}/{}", parent, backup_filename);
+
+        // Copy the file using MultiStorage
+        let contents = self.storage.get_file(file_path, None)?;
+        self.storage.save_file(&backup_path, &contents)?;
+
+        Ok(backup_path)
+    }
 }

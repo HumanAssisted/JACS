@@ -1,14 +1,11 @@
-use log::debug;
-
-use phf::phf_map;
-
-use jsonschema::Retrieve;
-use serde_json::Value;
-use std::sync::Arc;
-
 use crate::storage::MultiStorage;
+use jsonschema::Retrieve;
+use log::debug;
+use phf::phf_map;
+use serde_json::Value;
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 pub const ACCEPT_INVALID_CERTS: bool = true;
 pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
@@ -197,7 +194,8 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
             return get_remote_schema(path);
         }
     } else {
-        let storage = MultiStorage::new(None)?;
+        // check filesystem
+        let storage = MultiStorage::default_new()?;
         if storage.file_exists(path, None)? {
             let schema_json = String::from_utf8(storage.get_file(path, None)?)?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;

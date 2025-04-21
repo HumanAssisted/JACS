@@ -38,21 +38,21 @@
 
  - init √
  - load(config) -> Agent
- - sign(content) -> (signature, agentid, agentverson)
+ - sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
  - verify(content, signature, agentid, agentversion) -> bool, error
  
 ### itemized
- 
-
-
  - [x] make sure config directory is in isolated location, like with key
+ - [x] make config and security part of Agent
  - [ ] don't use env configs everywhere- dep jacspy
-   - load multistorage into agent object to re-use
-   - change config to have storagetype string, add to config schema
+   - [x] load multistorage into agent object to re-use
+   - [] BUG keys directory isolation broken when re-using Multistorage. TODO wrap key saving in different function
+        
+   - [x] change config to have storagetype string, add to config schema
    - write tests for no env vars usage of config
    - load by id from default store
-   - test config without password - function to check config then env vars for each
-     (get config, or check env, if required and null in both fail)
+   - DON"T STORE PASSWORD IN CONFIG
+   - all old tests and some new tests pass
 
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
    - more complete python implementation

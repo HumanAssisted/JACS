@@ -690,7 +690,8 @@ impl DocumentTraits for Agent {
 
                         // TODO move this portion of code out of document as it's filesystem dependent
                         // Backup the existing file if it exists
-                        let storage = MultiStorage::new(None)?;
+                        let config_ref = self.config.as_ref().ok_or("Agent config is None")?;
+                        let storage = MultiStorage::new(config_ref, None)?;
                         if storage.file_exists(path, None)? {
                             let backup_path =
                                 format!("{}.{}.bkp", path, Local::now().format("%Y%m%d_%H%M%S"));
@@ -698,7 +699,6 @@ impl DocumentTraits for Agent {
                         }
 
                         // Save the inflated contents to the file
-                        let storage = MultiStorage::new(None)?;
                         storage.save_file(path, &inflated_contents)?;
 
                         // Mark the file as not executable
@@ -762,7 +762,8 @@ impl DocumentTraits for Agent {
     fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>> {
         match attachments {
             Some(path_str) => {
-                let storage = MultiStorage::new(None).ok()?;
+                let config_ref = self.config.as_ref().ok_or("Agent config is None").unwrap();
+                let storage = MultiStorage::new(config_ref, None).ok()?;
 
                 // First try to list files in case it's a directory
                 match storage.list(path_str, None) {

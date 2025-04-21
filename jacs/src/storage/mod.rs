@@ -1,4 +1,5 @@
 // use futures_util::stream::stream::StreamExt;
+use crate::config::Config;
 use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
@@ -164,16 +165,19 @@ impl MultiStorage {
         path.replace("./", "").replace("//", "/")
     }
 
-    pub fn new(use_key_dir: Option<bool>) -> Result<Self, ObjectStoreError> {
-        let storage_type = get_required_env_var("JACS_DEFAULT_STORAGE", true)
-            .expect("JACS_DEFAULT_STORAGE must be set");
-        let data_directory = get_required_env_var("JACS_DATA_DIRECTORY", true)
-            .expect("JACS_DATA_DIRECTORY must be set");
-        let key_directory = get_required_env_var("JACS_KEY_DIRECTORY", true)
-            .expect("JACS_KEY_DIRECTORY must be set");
+    pub fn new(config: &Config, use_key_dir: Option<bool>) -> Result<Self, ObjectStoreError> {
+        let storage_type = config.jacs_default_storage().clone().unwrap_or_default();
+        let data_directory = config.jacs_data_directory().clone().unwrap_or_default();
+        let key_directory = config.jacs_key_directory().clone().unwrap_or_default();
         return Self::known_new(storage_type, data_directory, key_directory, use_key_dir);
     }
 
+    pub fn default_new() -> Result<Self, ObjectStoreError> {
+        let storage_type = "fs".to_string();
+        let data_directory: String = "jacs_data".to_string();
+        let key_directory: String = "jacs_keys".to_string();
+        return Self::known_new(storage_type, data_directory, key_directory, Some(true));
+    }
     pub fn known_new(
         storage_type: String,
         data_directory: String,

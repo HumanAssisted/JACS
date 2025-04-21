@@ -149,7 +149,6 @@ fn hash_string(data: &str) -> PyResult<String> {
 #[pyfunction]
 fn create_config(
     py: Python,
-    jacs_use_filesystem: Option<String>,
     jacs_use_security: Option<String>,
     jacs_data_directory: Option<String>,
     jacs_key_directory: Option<String>,
@@ -161,8 +160,6 @@ fn create_config(
     jacs_default_storage: Option<String>,
 ) -> PyResult<String> {
     let config = jacs_core::config::Config::new(
-        "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
-        jacs_use_filesystem,
         jacs_use_security,
         jacs_data_directory,
         jacs_key_directory,

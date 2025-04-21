@@ -117,15 +117,13 @@ impl Agent {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
-        let storage = MultiStorage::new(None)?;
-
         let default_directory = get_default_dir();
 
         Ok(Self {
             schema,
             value: None,
             config: None,
-            storage: storage,
+            storage: MultiStorage::default_new()?,
             document_schemas: document_schemas_map,
             documents: document_map,
             default_directory,

@@ -454,7 +454,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut storage: Option<MultiStorage> = None;
 
     if matches.subcommand_name() != Some("version") {
-        storage = Some(MultiStorage::new(None).expect("Failed to initialize storage"));
+        storage = Some(MultiStorage::default_new().expect("Failed to initialize storage"));
     }
 
     match matches.subcommand() {
