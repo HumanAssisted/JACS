@@ -5,8 +5,10 @@ pub mod loaders;
 pub mod security;
 
 use crate::agent::boilerplate::BoilerPlate;
+
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::crypt::hash::hash_public_key;
+use crate::storage::MultiStorage;
 
 use crate::config::{Config, get_default_dir, load_config, set_env_vars};
 
@@ -79,6 +81,7 @@ pub struct Agent {
     value: Option<Value>,
     /// use getter
     config: Option<Config>,
+    storage: MultiStorage,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
@@ -114,6 +117,7 @@ impl Agent {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
+        let storage = MultiStorage::new(None)?;
 
         let default_directory = get_default_dir();
 
@@ -121,6 +125,7 @@ impl Agent {
             schema,
             value: None,
             config: None,
+            storage: storage,
             document_schemas: document_schemas_map,
             documents: document_map,
             default_directory,
@@ -133,6 +138,7 @@ impl Agent {
     }
 
     // loads and validates agent
+    // doesn't need config file, but can use env vars?
     pub fn load_by_id(
         &mut self,
         id: Option<String>,
@@ -151,8 +157,41 @@ impl Agent {
 
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
         // load config string
-        let config = load_config(&path)?;
-        let lookup_id: &str = config.jacs_agent_id_and_version().as_deref().unwrap_or("");
+        self.config = Some(load_config(&path)?);
+        let lookup_id: &str = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_agent_id_and_version()
+            .as_deref()
+            .unwrap_or("");
+        let storage_type = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_default_storage()
+            .as_deref()
+            .unwrap_or("");
+        let key_directory = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("");
+        let data_directory = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_data_directory()
+            .as_deref()
+            .unwrap_or("");
+        self.storage = MultiStorage::known_new(
+            storage_type.to_string(),
+            data_directory.to_string(),
+            key_directory.to_string(),
+            Some(false),
+        )?;
         let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
         return self.load(&agent_string);
     }

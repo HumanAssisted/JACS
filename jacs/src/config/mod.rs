@@ -20,8 +20,6 @@ Each config _may_ be loaded from a file, or from environment variables.
 
 For example, create_agent_and_load() does not neeed a config file at all?
 
-
-
 */
 
 #[derive(Serialize, Deserialize, Default, Debug, Getters)]
@@ -31,18 +29,16 @@ pub struct Config {
     #[getset(get)]
     schema: String,
     #[getset(get)]
-    jacs_use_filesystem: Option<String>,
-    #[getset(get)]
     jacs_use_security: Option<String>,
-    #[getset(get)]
+    #[getset(get = "pub")]
     jacs_data_directory: Option<String>,
-    #[getset(get)]
+    #[getset(get = "pub")]
     jacs_key_directory: Option<String>,
-    #[getset(get)]
+    #[getset(get = "pub")]
     jacs_agent_private_key_filename: Option<String>,
-    #[getset(get)]
+    #[getset(get = "pub")]
     jacs_agent_public_key_filename: Option<String>,
-    #[getset(get)]
+    #[getset(get = "pub")]
     jacs_agent_key_algorithm: Option<String>,
     #[getset(get)]
     jacs_agent_schema_version: Option<String>,
@@ -63,8 +59,6 @@ fn default_schema() -> String {
 
 impl Config {
     pub fn new(
-        schema: String,
-        jacs_use_filesystem: Option<String>,
         jacs_use_security: Option<String>,
         jacs_data_directory: Option<String>,
         jacs_key_directory: Option<String>,
@@ -79,8 +73,7 @@ impl Config {
         jacs_default_storage: Option<String>,
     ) -> Config {
         Config {
-            schema,
-            jacs_use_filesystem,
+            schema: default_schema(),
             jacs_use_security,
             jacs_data_directory,
             jacs_key_directory,
@@ -104,7 +97,6 @@ impl fmt::Display for Config {
             r#"
         Loading JACS and Sophon env variables of:
             JACS_USE_SECURITY                {},
-            JACS_USE_FILESYSTEM:             {},
             JACS_DATA_DIRECTORY:             {},
             JACS_KEY_DIRECTORY:              {},
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},
@@ -117,7 +109,6 @@ impl fmt::Display for Config {
             JACS_AGENT_ID_AND_VERSION        {}
         "#,
             self.jacs_use_security.as_deref().unwrap_or(""),
-            self.jacs_use_filesystem.as_deref().unwrap_or(""),
             self.jacs_data_directory.as_deref().unwrap_or(""),
             self.jacs_key_directory.as_deref().unwrap_or(""),
             self.jacs_agent_private_key_filename
@@ -147,7 +138,6 @@ pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
 //     let config = Config::new(
 //             default_schema(),
 //         "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
-//         get_env_var("JACS_USE_FILESYSTEM", false)?,
 //         get_env_var("JACS_USE_SECURITY", false)?,
 //         get_env_var("JACS_DATA_DIRECTORY", false)?,
 //     );
@@ -228,12 +218,6 @@ pub fn set_env_vars(
     };
     debug!("configs from file {:?}", config);
     validate_config(&serde_json::to_string(&config).map_err(|e| Box::new(e) as Box<dyn Error>)?)?;
-    let jacs_use_filesystem = config
-        .jacs_use_filesystem
-        .as_ref()
-        .unwrap_or(&"true".to_string())
-        .clone();
-    set_env_var_override("JACS_USE_FILESYSTEM", &jacs_use_filesystem, do_override)?;
 
     let jacs_private_key_password = config
         .jacs_private_key_password
@@ -371,7 +355,6 @@ pub fn set_env_vars(
 pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
     let vars = [
         ("JACS_USE_SECURITY", true),
-        ("JACS_USE_FILESYSTEM", true),
         ("JACS_DATA_DIRECTORY", true),
         ("JACS_KEY_DIRECTORY", true),
         ("JACS_AGENT_PRIVATE_KEY_FILENAME", true),

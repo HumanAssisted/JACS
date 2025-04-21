@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::security::check_data_directory;
+use crate::agent::security::SecurityTraits;
 use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::crypt::aes_encrypt::encrypt_private_key;
 use flate2::Compression;
@@ -16,17 +16,10 @@ use object_store::path::Path as ObjectPath;
 use std::error::Error;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
-const JACS_USE_FILESYSTEM: &str = "JACS_USE_FILESYSTEM";
-
-pub fn use_filesystem() -> bool {
-    match get_env_var(JACS_USE_FILESYSTEM, false) {
-        Ok(Some(value)) => matches!(value.to_lowercase().as_str(), "true" | "1"),
-        _ => false,
-    }
-}
 
 /// The goal of fileloader is to prevent fileloading into arbitrary directories
 /// by centralizing all filesystem access
@@ -72,6 +65,7 @@ pub trait FileLoader {
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
     fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn use_filesystem(&self) -> bool;
     fn fs_save_remote_public_key(
         &self,
         agent_id_and_version: &String,
@@ -82,10 +76,17 @@ pub trait FileLoader {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileLoader for Agent {
+    fn use_filesystem(&self) -> bool {
+        // Handle Option<Config> and Option<String> from getter
+        self.config.as_ref().map_or(false, |conf| {
+            conf.jacs_default_storage().as_deref() == Some("fs")
+        })
+    }
+
     fn build_file_directory(&self, doctype: &String) -> Result<PathBuf, Box<dyn Error>> {
-        if !use_filesystem() {
+        if !self.use_filesystem() {
             let error_message = format!(
-                "build_file_directory Filesystem features set to off with JACS_USE_FILESYSTEM: {}",
+                "build_file_directory Filesystem features set to off because we aren't using the filesystem: {}",
                 doctype
             );
             error!("{}", error_message);
@@ -235,7 +236,6 @@ impl FileLoader for Agent {
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
         // Expects logical agentid (no .json)
         println!("[fs_agent_load] Loading using agent ID: {}", agentid);
-        let storage = MultiStorage::new(None)?;
 
         // Construct the relative path for storage lookup
         let relative_path = format!("agent/{}.json", agentid);
@@ -244,7 +244,7 @@ impl FileLoader for Agent {
             relative_path
         );
 
-        let contents = storage.get_file(&relative_path, None).map_err(|e| {
+        let contents = self.storage.get_file(&relative_path, None).map_err(|e| {
             error!(
                 "[fs_agent_load] Failed to get file from relative path '{}': {}",
                 relative_path, e
@@ -379,7 +379,7 @@ impl FileLoader for Agent {
         document_directory: &String,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
-        if let Err(e) = check_data_directory() {
+        if let Err(e) = self.check_data_directory() {
             error!("Failed to check data directory: {}", e);
         }
 

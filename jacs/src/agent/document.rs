@@ -5,10 +5,10 @@ use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
-use crate::agent::security::check_data_directory;
+use crate::agent::security::SecurityTraits;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
-use crate::storage::{MultiStorage, jenv::get_env_var};
+use crate::storage::MultiStorage;
 use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
@@ -673,7 +673,7 @@ impl DocumentTraits for Agent {
 
         if do_export {
             if let Some(jacs_files) = original_document.value["jacsFiles"].as_array() {
-                if let Err(e) = check_data_directory() {
+                if let Err(e) = self.check_data_directory() {
                     error!("Failed to check data directory: {}", e);
                 }
                 for item in jacs_files {
@@ -703,9 +703,8 @@ impl DocumentTraits for Agent {
 
                         // Mark the file as not executable
                         #[cfg(not(target_arch = "wasm32"))]
-                        use crate::agent::security::mark_file_not_executable;
-                        if let Ok(Some(_)) = get_env_var("JACS_USE_FILESYSTEM", true) {
-                            mark_file_not_executable(Path::new(path))?;
+                        if !self.use_filesystem() {
+                            self.mark_file_not_executable(Path::new(path))?;
                         }
                     }
                 }

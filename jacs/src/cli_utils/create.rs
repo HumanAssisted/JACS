@@ -124,13 +124,13 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
                     Ok(pass) => pass,
                     Err(e) => {
                         eprintln!("Error reading password: {}. Please try again.", e);
-                        continue; // Ask again
+                        continue;
                     }
                 };
 
                 if password.is_empty() {
                     eprintln!("Password cannot be empty. Please try again.");
-                    continue; // Ask again
+                    continue;
                 }
 
                 println!("Please confirm the password:");
@@ -155,15 +155,11 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
         }
     };
 
-    let jacs_use_filesystem =
-        request_string("Use filesystem. If false, will print to std:io", "true");
     let jacs_use_security = request_string("Use experimental security features", "false");
     let jacs_data_directory = request_string("Directory for data storage", "./jacs");
     let jacs_key_directory = request_string("Directory for keys", "./jacs_keys");
 
     let config = Config::new(
-        "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
-        Some(jacs_use_filesystem),
         Some(jacs_use_security),
         Some(jacs_data_directory),
         Some(jacs_key_directory),

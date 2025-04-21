@@ -1,5 +1,5 @@
 // use futures_util::stream::stream::StreamExt;
-use crate::storage::jenv::{get_env_var, get_required_env_var};
+use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
 use log::debug;
@@ -131,6 +131,7 @@ impl ObjectStore for WebLocalStorage {
 
 pub mod jenv;
 
+#[derive(Debug, Clone)]
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,
