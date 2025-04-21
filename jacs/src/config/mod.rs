@@ -147,7 +147,7 @@ impl fmt::Display for Config {
             f,
             r#"
         Loading JACS config variables of:
-            JACS_USE_SECURITY:                {},
+            JACS_USE_SECURITY:               {},
             JACS_DATA_DIRECTORY:             {},
             JACS_KEY_DIRECTORY:              {},
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},
