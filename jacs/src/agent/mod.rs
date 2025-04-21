@@ -288,11 +288,11 @@ impl Agent {
         }
     }
 
-    fn unset_self(&mut self) {
-        self.id = None;
-        self.version = None;
-        self.value = None;
-    }
+    // fn unset_self(&mut self) {
+    //     self.id = None;
+    //     self.version = None;
+    //     self.value = None;
+    // }
 
     pub fn get_agent_for_doc(
         &mut self,

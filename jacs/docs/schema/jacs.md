@@ -18,7 +18,6 @@ Jacs Configuration File
 
 | Property                                                                | Type     | Required | Nullable       | Defined by                                                                                                                                                |
 | :---------------------------------------------------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [jacs\_use\_filesystem](#jacs_use_filesystem)                           | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_use_filesystem.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_use_filesystem")                         |
 | [jacs\_use\_security](#jacs_use_security)                               | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_use_security.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_use_security")                             |
 | [jacs\_data\_directory](#jacs_data_directory)                           | `string` | Required | cannot be null | [Config](jacs-properties-jacs_data_directory.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_data_directory")                         |
 | [jacs\_key\_directory](#jacs_key_directory)                             | `string` | Required | cannot be null | [Config](jacs-properties-jacs_key_directory.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_key_directory")                           |
@@ -30,24 +29,6 @@ Jacs Configuration File
 | [jacs\_signature\_schema\_version](#jacs_signature_schema_version)      | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_signature_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version")     |
 | [jacs\_private\_key\_password](#jacs_private_key_password)              | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_private_key_password.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_private_key_password")             |
 | [jacs\_default\_storage](#jacs_default_storage)                         | `string` | Required | cannot be null | [Config](jacs-properties-jacs_default_storage.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_default_storage")                       |
-
-## jacs\_use\_filesystem
-
-write documents to the filesystem - false or 0 or 1 as string
-
-`jacs_use_filesystem`
-
-* is optional
-
-* Type: `string`
-
-* cannot be null
-
-* defined in: [Config](jacs-properties-jacs_use_filesystem.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_use_filesystem")
-
-### jacs\_use\_filesystem Type
-
-`string`
 
 ## jacs\_use\_security
 

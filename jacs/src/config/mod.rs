@@ -1,5 +1,7 @@
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
-use crate::storage::jenv::{EnvError, get_env_var, set_env_var, set_env_var_override};
+use crate::storage::jenv::{
+    EnvError, get_env_var, get_required_env_var, set_env_var, set_env_var_override,
+};
 use getset::Getters;
 use jsonschema::{Draft, Validator};
 use log::{debug, error, info};
@@ -57,6 +59,107 @@ fn default_schema() -> String {
     "https://hai.ai/schemas/jacs.config.schema.json".to_string()
 }
 
+pub struct ConfigKey {
+    pub key: &'static str,
+    pub env_var: &'static str,
+    pub required: bool,
+    pub default: Option<&'static str>,
+}
+
+pub static ALL_CONFIG_KEYS: &[ConfigKey] = &[
+    ConfigKey {
+        key: "jacs_use_security",
+        env_var: "JACS_USE_SECURITY",
+        required: true,
+        default: Some("true"),
+    },
+    ConfigKey {
+        key: "jacs_data_directory",
+        env_var: "JACS_DATA_DIRECTORY",
+        required: true,
+        default: Some("./jacs_data"),
+    },
+    ConfigKey {
+        key: "jacs_key_directory",
+        env_var: "JACS_KEY_DIRECTORY",
+        required: true,
+        default: Some("./jacs_keys"),
+    },
+    ConfigKey {
+        key: "jacs_agent_private_key_filename",
+        env_var: "JACS_AGENT_PRIVATE_KEY_FILENAME",
+        required: true,
+        default: Some("rsa_pss_private.pem"),
+    },
+    ConfigKey {
+        key: "jacs_agent_public_key_filename",
+        env_var: "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        required: true,
+        default: Some("rsa_pss_public.pem"),
+    },
+    ConfigKey {
+        key: "jacs_agent_key_algorithm",
+        env_var: "JACS_AGENT_KEY_ALGORITHM",
+        required: true,
+        default: Some("RSA-PSS"),
+    },
+    ConfigKey {
+        key: "jacs_agent_schema_version",
+        env_var: "JACS_SCHEMA_AGENT_VERSION",
+        required: true,
+        default: Some("v1"),
+    },
+    ConfigKey {
+        key: "jacs_header_schema_version",
+        env_var: "JACS_SCHEMA_HEADER_VERSION",
+        required: true,
+        default: Some("v1"),
+    },
+    ConfigKey {
+        key: "jacs_signature_schema_version",
+        env_var: "JACS_SCHEMA_SIGNATURE_VERSION",
+        required: true,
+        default: Some("v1"),
+    },
+    ConfigKey {
+        key: "jacs_private_key_password",
+        env_var: "JACS_PRIVATE_KEY_PASSWORD",
+        required: true,
+        default: None,
+    },
+    ConfigKey {
+        key: "jacs_agent_id_and_version",
+        env_var: "JACS_AGENT_ID_AND_VERSION",
+        required: true,
+        default: None,
+    },
+    ConfigKey {
+        key: "jacs_default_storage",
+        env_var: "JACS_DEFAULT_STORAGE",
+        required: true,
+        default: Some("fs"),
+    },
+];
+
+/// Finds a ConfigKey definition by its JSON/struct key name.
+pub fn get_config_key(key: &str) -> Option<&'static ConfigKey> {
+    ALL_CONFIG_KEYS
+        .iter()
+        .find(|&config_key| config_key.key == key)
+}
+
+pub fn get_config_key_default(key: &str) -> Option<String> {
+    get_config_key(key).and_then(|config_key| config_key.default.map(|s| s.to_string()))
+}
+
+pub fn get_config_key_env_var(key: &str) -> Option<&'static str> {
+    get_config_key(key).map(|config_key| config_key.env_var)
+}
+
+pub fn get_config_key_required(key: &str) -> bool {
+    get_config_key(key).map_or(false, |config_key| config_key.required)
+}
+
 impl Config {
     pub fn new(
         jacs_use_security: Option<String>,
@@ -88,6 +191,65 @@ impl Config {
             jacs_default_storage,
         }
     }
+
+    pub fn find_config_value(&self, key: &str) -> Result<String, Box<dyn Error>> {
+        // 1. Find the config key metadata
+        let config_key =
+            get_config_key(key).ok_or_else(|| format!("Invalid configuration key: {}", key))?;
+
+        // 2. Check the value in the provided Config struct
+        let struct_value_opt: Option<String> = match config_key.key {
+            "jacs_use_security" => self.jacs_use_security().as_ref().map(|s| s.clone()),
+            "jacs_data_directory" => self.jacs_data_directory().as_ref().map(|s| s.clone()),
+            "jacs_key_directory" => self.jacs_key_directory().as_ref().map(|s| s.clone()),
+            "jacs_agent_private_key_filename" => self
+                .jacs_agent_private_key_filename()
+                .as_ref()
+                .map(|s| s.clone()),
+            "jacs_agent_public_key_filename" => self
+                .jacs_agent_public_key_filename()
+                .as_ref()
+                .map(|s| s.clone()),
+            "jacs_agent_key_algorithm" => {
+                self.jacs_agent_key_algorithm().as_ref().map(|s| s.clone())
+            }
+            "jacs_agent_schema_version" => {
+                self.jacs_agent_schema_version().as_ref().map(|s| s.clone())
+            }
+            "jacs_header_schema_version" => self
+                .jacs_header_schema_version()
+                .as_ref()
+                .map(|s| s.clone()),
+            "jacs_signature_schema_version" => self
+                .jacs_signature_schema_version()
+                .as_ref()
+                .map(|s| s.clone()),
+            "jacs_private_key_password" => self.jacs_private_key_password.clone(), // No getter, direct access
+            "jacs_agent_id_and_version" => {
+                self.jacs_agent_id_and_version().as_ref().map(|s| s.clone())
+            }
+            "jacs_default_storage" => self.jacs_default_storage().as_ref().map(|s| s.clone()),
+            _ => None, // Should not happen
+        };
+
+        if let Some(value) = struct_value_opt {
+            return Ok(value);
+        }
+
+        // 3. If not in struct, get from environment variable or use default
+        match get_env_var(config_key.env_var, config_key.required) {
+            Ok(Some(env_val)) => Ok(env_val), // Found in env
+            Ok(None) => {
+                // Not found in env, and was not required
+                // Return default value or empty string
+                Ok(config_key.default.unwrap_or("").to_string())
+            }
+            Err(e) => {
+                // Error occurred (e.g., required but not found)
+                Err(Box::new(e) as Box<dyn Error>)
+            }
+        }
+    }
 }
 
 impl fmt::Display for Config {
@@ -95,8 +257,8 @@ impl fmt::Display for Config {
         write!(
             f,
             r#"
-        Loading JACS and Sophon env variables of:
-            JACS_USE_SECURITY                {},
+        Loading JACS config variables of:
+            JACS_USE_SECURITY:                {},
             JACS_DATA_DIRECTORY:             {},
             JACS_KEY_DIRECTORY:              {},
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},

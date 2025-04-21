@@ -7,16 +7,12 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use secrecy::ExposeSecret;
 
-use crate::storage::MultiStorage;
-use crate::storage::StorageType;
 use crate::storage::jenv::{get_env_var, get_required_env_var};
 use chrono::Utc;
 use log::{error, warn};
-use object_store::path::Path as ObjectPath;
 use std::error::Error;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
@@ -79,6 +75,7 @@ pub trait FileLoader {
         public_key: &[u8],
         public_key_enc_type: &[u8],
     ) -> Result<(), Box<dyn Error>>;
+    fn get_base_directory(&self) -> Result<String, Box<dyn Error>>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -88,6 +85,16 @@ impl FileLoader for Agent {
         self.config.as_ref().map_or(false, |conf| {
             conf.jacs_default_storage().as_deref() == Some("fs")
         })
+    }
+
+    fn get_base_directory(&self) -> Result<String, Box<dyn Error>> {
+        // first check config
+
+        // then check env
+        let jacs_dir = get_required_env_var("JACS_DATA_DIRECTORY", true)
+            .expect("JACS_DATA_DIRECTORY must be set");
+
+        return Ok(jacs_dir);
     }
 
     fn build_file_directory(&self, doctype: &String) -> Result<PathBuf, Box<dyn Error>> {
@@ -101,8 +108,7 @@ impl FileLoader for Agent {
         }
 
         // Instead of building local filesystem paths, create object store paths
-        let jacs_dir = get_required_env_var("JACS_DATA_DIRECTORY", true)
-            .expect("JACS_DATA_DIRECTORY must be set");
+        let jacs_dir = self.get_base_directory()?;
         let path = format!("{}/{}", jacs_dir, doctype);
 
         // Still return PathBuf for compatibility with existing code
@@ -116,12 +122,9 @@ impl FileLoader for Agent {
             format!("{}.json", docid)
         };
 
-        // Use PathBuf::join for robust path construction
-        let base_dir = PathBuf::from(
-            get_required_env_var("JACS_DATA_DIRECTORY", true)
-                .expect("JACS_DATA_DIRECTORY must be set"),
-        );
-
+        // Use PathBuf::join for robust path construction\
+        let jacs_dir = self.get_base_directory()?;
+        let base_dir = PathBuf::from(jacs_dir);
         let path = base_dir.join(doctype).join(filename);
 
         Ok(path)

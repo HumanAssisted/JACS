@@ -12,7 +12,7 @@ use utils::{DOCTESTFILECONFIG, load_local_document, load_test_agent_one, load_te
 fn test_create_agreement() {
     // cargo test   --test agreement_test -- --nocapture test_create_agreement
     let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let agent_two = load_test_agent_two();
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
@@ -64,7 +64,7 @@ fn test_add_and_remove_agents() {
     let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
     let document = agent.load_document(&document_string).unwrap();
     let document_key = document.getkey();
-    let mut doc_v1 = agent
+    let doc_v1 = agent
         .create_agreement(
             &document_key,
             &agents_orig,
@@ -135,10 +135,10 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
     let a1k = agent.get_private_key().unwrap();
     let a2k = agent_two.get_private_key().unwrap();
     let borrowed_key = a1k.expose_secret();
-    let key_vec = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
+    let _ = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
 
     let borrowed_key2 = a2k.expose_secret();
-    let key_vec2 = decrypt_private_key(borrowed_key2).expect("Failed to decrypt key 2");
+    let _ = decrypt_private_key(borrowed_key2).expect("Failed to decrypt key 2");
 
     // println!(
     //     "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",

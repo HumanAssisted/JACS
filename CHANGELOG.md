@@ -47,7 +47,7 @@
  - [ ] don't use env configs everywhere- dep jacspy
    - [x] load multistorage into agent object to re-use
    - [] BUG keys directory isolation broken when re-using Multistorage. TODO wrap key saving in different function
-        
+   - [] don't use set_env_vars() by default - may be more than one agent in system    
    - [x] change config to have storagetype string, add to config schema
    - write tests for no env vars usage of config
    - load by id from default store

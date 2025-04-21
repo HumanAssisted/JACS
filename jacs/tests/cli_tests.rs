@@ -1,27 +1,25 @@
 // here I want to test the CLI commands
 use assert_cmd::prelude::*; // Add methods on commands
-use base64;
+use base64::{Engine as _, engine::general_purpose::STANDARD}; // Import Engine trait and STANDARD engine
 use predicates::prelude::*; // Used for writing assertions
-use serde_json;
-use serde_json::json;
 use std::env;
 use std::fs::{self, File}; // Add fs for file operations
 use std::io::Write; // Add Write trait
 use std::path::Path;
-use std::sync::Once;
+// use std::sync::Once;
 use std::{
     error::Error,
     process::{Command, Stdio},
 }; // Run programs // To read CARGO_PKG_VERSION
 use tempfile::tempdir;
 
-static INIT: Once = Once::new();
+// static INIT: Once = Once::new();
 
-fn setup() {
-    INIT.call_once(|| {
-        env_logger::init();
-    });
-}
+// fn setup() {
+//     INIT.call_once(|| {
+//         env_logger::init();
+//     });
+// }
 
 // RUST_BACKTRACE=1 cargo test   --test cli_tests -- --nocapture
 
@@ -209,7 +207,8 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     write!(ddl_file, r#"{{"data": "sample document data"}}"#)?;
 
     let mobius_path_dest = data_dir.join("mobius.jpeg");
-    let mobius_content_result = base64::decode(
+    // Use the STANDARD engine to decode
+    let mobius_content_result = STANDARD.decode(
         "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AP//Z",
     );
     let mobius_content = mobius_content_result.expect("Bad base64");
@@ -239,7 +238,8 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let mobius_path_dest = temp_path.join("mobius.jpeg");
     // Decode base64 string for dummy jpeg content
     // Ensure you have `use base64;` at the top
-    let mobius_content_result = base64::decode(
+    // Use the STANDARD engine to decode again
+    let mobius_content_result = STANDARD.decode(
         "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AP//Z",
     );
     let mobius_content = match mobius_content_result {
