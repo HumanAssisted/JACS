@@ -1,0 +1,7 @@
+pub const JACS_AGENT_SCHEMA_VERSION: &str = "v1";
+pub const JACS_HEADER_SCHEMA_VERSION: &str = "v1";
+pub const JACS_SIGNATURE_SCHEMA_VERSION: &str = "v1";
+
+// const JACS_PRIVATE_KEY_PASSWORD: str= "test_password";
+// const JACS_AGENT_ID_AND_VERSION: str= "123e4567-e89b-12d3-a456-426614174000:123e4567-e89b-12d3-a456-426614174001";
+// const JACS_DEFAULT_STORAGE: str= "fs";

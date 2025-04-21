@@ -1,7 +1,5 @@
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
-use crate::storage::jenv::{
-    EnvError, get_env_var, get_required_env_var, set_env_var, set_env_var_override,
-};
+use crate::storage::jenv::{EnvError, get_env_var, set_env_var, set_env_var_override};
 use getset::Getters;
 use jsonschema::{Draft, Validator};
 use log::{debug, error, info};
@@ -14,6 +12,7 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+pub mod constants;
 /*
 Config is embedded agents and may have private information
 The agent file itself is NOT private (the .value field in the agent struct)
@@ -43,11 +42,6 @@ pub struct Config {
     #[getset(get = "pub")]
     jacs_agent_key_algorithm: Option<String>,
     #[getset(get)]
-    jacs_agent_schema_version: Option<String>,
-    #[getset(get)]
-    jacs_header_schema_version: Option<String>,
-    #[getset(get)]
-    jacs_signature_schema_version: Option<String>,
     jacs_private_key_password: Option<String>,
     #[getset(get = "pub")]
     jacs_agent_id_and_version: Option<String>,
@@ -104,24 +98,6 @@ pub static ALL_CONFIG_KEYS: &[ConfigKey] = &[
         default: Some("RSA-PSS"),
     },
     ConfigKey {
-        key: "jacs_agent_schema_version",
-        env_var: "JACS_SCHEMA_AGENT_VERSION",
-        required: true,
-        default: Some("v1"),
-    },
-    ConfigKey {
-        key: "jacs_header_schema_version",
-        env_var: "JACS_SCHEMA_HEADER_VERSION",
-        required: true,
-        default: Some("v1"),
-    },
-    ConfigKey {
-        key: "jacs_signature_schema_version",
-        env_var: "JACS_SCHEMA_SIGNATURE_VERSION",
-        required: true,
-        default: Some("v1"),
-    },
-    ConfigKey {
         key: "jacs_private_key_password",
         env_var: "JACS_PRIVATE_KEY_PASSWORD",
         required: true,
@@ -168,9 +144,6 @@ impl Config {
         jacs_agent_private_key_filename: Option<String>,
         jacs_agent_public_key_filename: Option<String>,
         jacs_agent_key_algorithm: Option<String>,
-        jacs_agent_schema_version: Option<String>,
-        jacs_header_schema_version: Option<String>,
-        jacs_signature_schema_version: Option<String>,
         jacs_private_key_password: Option<String>,
         jacs_agent_id_and_version: Option<String>,
         jacs_default_storage: Option<String>,
@@ -183,9 +156,6 @@ impl Config {
             jacs_agent_private_key_filename,
             jacs_agent_public_key_filename,
             jacs_agent_key_algorithm,
-            jacs_agent_schema_version,
-            jacs_header_schema_version,
-            jacs_signature_schema_version,
             jacs_private_key_password,
             jacs_agent_id_and_version,
             jacs_default_storage,
@@ -213,17 +183,6 @@ impl Config {
             "jacs_agent_key_algorithm" => {
                 self.jacs_agent_key_algorithm().as_ref().map(|s| s.clone())
             }
-            "jacs_agent_schema_version" => {
-                self.jacs_agent_schema_version().as_ref().map(|s| s.clone())
-            }
-            "jacs_header_schema_version" => self
-                .jacs_header_schema_version()
-                .as_ref()
-                .map(|s| s.clone()),
-            "jacs_signature_schema_version" => self
-                .jacs_signature_schema_version()
-                .as_ref()
-                .map(|s| s.clone()),
             "jacs_private_key_password" => self.jacs_private_key_password.clone(), // No getter, direct access
             "jacs_agent_id_and_version" => {
                 self.jacs_agent_id_and_version().as_ref().map(|s| s.clone())
@@ -264,11 +223,9 @@ impl fmt::Display for Config {
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},
             JACS_AGENT_PUBLIC_KEY_FILENAME:  {},
             JACS_AGENT_KEY_ALGORITHM:        {},
-            JACS_AGENT_SCHEMA_VERSION:       {},
-            JACS_HEADER_SCHEMA_VERSION:      {},
-            JACS_SIGNATURE_SCHEMA_VERSION:   {},
-            JACS_PRIVATE_KEY_PASSWORD        {},
-            JACS_AGENT_ID_AND_VERSION        {}
+            JACS_PRIVATE_KEY_PASSWORD:       {},
+            JACS_AGENT_ID_AND_VERSION:       {},
+            JACS_DEFAULT_STORAGE:            {},
         "#,
             self.jacs_use_security.as_deref().unwrap_or(""),
             self.jacs_data_directory.as_deref().unwrap_or(""),
@@ -278,11 +235,9 @@ impl fmt::Display for Config {
                 .unwrap_or(""),
             self.jacs_agent_public_key_filename.as_deref().unwrap_or(""),
             self.jacs_agent_key_algorithm.as_deref().unwrap_or(""),
-            self.jacs_agent_schema_version.as_deref().unwrap_or(""),
-            self.jacs_header_schema_version.as_deref().unwrap_or(""),
-            self.jacs_signature_schema_version.as_deref().unwrap_or(""),
             self.jacs_private_key_password.as_deref().unwrap_or(""),
             self.jacs_agent_id_and_version.as_deref().unwrap_or(""),
+            self.jacs_default_storage.as_deref().unwrap_or("")
         )
     }
 }
@@ -446,39 +401,6 @@ pub fn set_env_vars(
         do_override,
     )?;
 
-    let jacs_agent_schema_version = config
-        .jacs_agent_schema_version
-        .as_ref()
-        .unwrap_or(&"v1".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_SCHEMA_AGENT_VERSION",
-        &jacs_agent_schema_version,
-        do_override,
-    )?;
-
-    let jacs_header_schema_version = config
-        .jacs_header_schema_version
-        .as_ref()
-        .unwrap_or(&"v1".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_SCHEMA_HEADER_VERSION",
-        &jacs_header_schema_version,
-        do_override,
-    )?;
-
-    let jacs_signature_schema_version = config
-        .jacs_signature_schema_version
-        .as_ref()
-        .unwrap_or(&"v1".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_SCHEMA_SIGNATURE_VERSION",
-        &jacs_signature_schema_version,
-        do_override,
-    )?;
-
     let jacs_default_storage = config
         .jacs_default_storage
         .as_ref()
@@ -522,9 +444,6 @@ pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
         ("JACS_AGENT_PRIVATE_KEY_FILENAME", true),
         ("JACS_AGENT_PUBLIC_KEY_FILENAME", true),
         ("JACS_AGENT_KEY_ALGORITHM", true),
-        ("JACS_SCHEMA_AGENT_VERSION", true),
-        ("JACS_SCHEMA_HEADER_VERSION", true),
-        ("JACS_SCHEMA_SIGNATURE_VERSION", true),
         ("JACS_PRIVATE_KEY_PASSWORD", true),
         ("JACS_AGENT_ID_AND_VERSION", true),
     ];

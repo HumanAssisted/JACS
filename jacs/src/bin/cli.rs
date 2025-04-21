@@ -19,7 +19,7 @@ use std::error::Error;
 use std::process;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let _ = set_env_vars(true, None, false);
+    //let _ = set_env_vars(true, None, false);
 
     let matches = Command::new(crate_name!())
         .subcommand(

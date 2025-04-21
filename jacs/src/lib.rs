@@ -8,7 +8,6 @@ use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
-use crate::storage::jenv::get_required_env_var;
 use log::debug;
 use serde_json::Value;
 use std::error::Error;
@@ -21,16 +20,14 @@ pub mod crypt;
 pub mod schema;
 pub mod shared;
 pub mod storage;
+
 /// Creates an empty agent struct with default schema versions.
 pub fn get_empty_agent() -> Agent {
     // Use expect as Result handling happens elsewhere or isn't needed here.
     Agent::new(
-        &get_required_env_var("JACS_SCHEMA_AGENT_VERSION", true)
-            .expect("JACS_SCHEMA_AGENT_VERSION must be set"),
-        &get_required_env_var("JACS_SCHEMA_HEADER_VERSION", true)
-            .expect("JACS_SCHEMA_HEADER_VERSION must be set"),
-        &get_required_env_var("JACS_SCHEMA_SIGNATURE_VERSION", true)
-            .expect("JACS_SCHEMA_SIGNATURE_VERSION must be set"),
+        &config::constants::JACS_AGENT_SCHEMA_VERSION.to_string(),
+        &config::constants::JACS_HEADER_SCHEMA_VERSION.to_string(),
+        &config::constants::JACS_SIGNATURE_SCHEMA_VERSION.to_string(),
     )
     .expect("Failed to init Agent in get_empty_agent") // Panic if Agent::new fails
 }

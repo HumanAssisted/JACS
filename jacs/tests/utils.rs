@@ -180,7 +180,6 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
 pub fn set_test_env_vars() {
     unsafe {
         env::set_var("JACS_USE_SECURITY", "false");
-        env::set_var("JACS_USE_FILESYSTEM", "true");
         env::set_var("JACS_DATA_DIRECTORY", ".");
         env::set_var("JACS_KEY_DIRECTORY", ".");
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
@@ -201,7 +200,6 @@ pub fn set_test_env_vars() {
 pub fn clear_test_env_vars() {
     unsafe {
         env::remove_var("JACS_USE_SECURITY");
-        env::remove_var("JACS_USE_FILESYSTEM");
         env::remove_var("JACS_DATA_DIRECTORY");
         env::remove_var("JACS_KEY_DIRECTORY");
         env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
