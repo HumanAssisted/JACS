@@ -113,7 +113,7 @@ impl Agent {
         headerversion: &String,
         signature_version: &String,
     ) -> Result<Self, Box<dyn Error>> {
-        let _ = set_env_vars(true, None, true)?;
+        //let _ = set_env_vars(true, None, true)?;
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
@@ -184,12 +184,7 @@ impl Agent {
             .jacs_data_directory()
             .as_deref()
             .unwrap_or("");
-        self.storage = MultiStorage::known_new(
-            storage_type.to_string(),
-            data_directory.to_string(),
-            key_directory.to_string(),
-            Some(false),
-        )?;
+        self.storage = MultiStorage::new(storage_type.to_string(), None)?;
         let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
         return self.load(&agent_string);
     }

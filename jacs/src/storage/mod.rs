@@ -142,6 +142,7 @@ pub struct MultiStorage {
     web_local: Option<Arc<WebLocalStorage>>,
     default_storage: StorageType,
     storages: Vec<Arc<dyn ObjectStore>>,
+    path_prefix: Option<String>,
 }
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone, PartialEq)]
@@ -165,24 +166,15 @@ impl MultiStorage {
         path.replace("./", "").replace("//", "/")
     }
 
-    pub fn new(config: &Config, use_key_dir: Option<bool>) -> Result<Self, ObjectStoreError> {
-        let storage_type = config.jacs_default_storage().clone().unwrap_or_default();
-        let data_directory = config.jacs_data_directory().clone().unwrap_or_default();
-        let key_directory = config.jacs_key_directory().clone().unwrap_or_default();
-        return Self::known_new(storage_type, data_directory, key_directory, use_key_dir);
-    }
-
     pub fn default_new() -> Result<Self, ObjectStoreError> {
         let storage_type = "fs".to_string();
-        let data_directory: String = "jacs_data".to_string();
-        let key_directory: String = "jacs_keys".to_string();
-        return Self::known_new(storage_type, data_directory, key_directory, Some(true));
+        let path_prefix = Some(".".to_string());
+        Self::new(storage_type, path_prefix)
     }
-    pub fn known_new(
+
+    pub fn new(
         storage_type: String,
-        data_directory: String,
-        key_directory: String,
-        use_key_dir: Option<bool>,
+        path_prefix: Option<String>,
     ) -> Result<Self, ObjectStoreError> {
         let mut _s3;
         let mut _http;
@@ -225,26 +217,24 @@ impl MultiStorage {
 
         // Check filesystem storage
         if default_storage == StorageType::FS {
-            let local_path = if use_key_dir.unwrap_or(false) {
-                key_directory
+            if let Some(path_prefix_ref) = path_prefix.as_ref() {
+                let absolute_path = std::path::PathBuf::from(path_prefix_ref)
+                    .canonicalize()
+                    .unwrap_or_else(|_| {
+                        std::fs::create_dir_all(path_prefix_ref)
+                            .expect("Failed to create directory");
+                        std::path::PathBuf::from(path_prefix_ref)
+                            .canonicalize()
+                            .expect("Failed to get canonical path after directory creation")
+                    });
+
+                let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
+                let tmplocal = Arc::new(local);
+                _local = Some(tmplocal.clone());
+                storages.push(tmplocal);
             } else {
-                data_directory
-            };
-
-            // Convert to absolute path and create if needed
-            let absolute_path = std::path::PathBuf::from(&local_path)
-                .canonicalize()
-                .unwrap_or_else(|_| {
-                    std::fs::create_dir_all(&local_path).expect("Failed to create directory");
-                    std::path::PathBuf::from(&local_path)
-                        .canonicalize()
-                        .expect("Failed to get canonical path after directory creation")
-                });
-
-            let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
-            let tmplocal = Arc::new(local);
-            _local = Some(tmplocal.clone());
-            storages.push(tmplocal);
+                _local = None;
+            }
         } else {
             _local = None;
         }
@@ -289,6 +279,7 @@ impl MultiStorage {
             web_local,
             default_storage,
             storages,
+            path_prefix: path_prefix.clone(),
         })
     }
 

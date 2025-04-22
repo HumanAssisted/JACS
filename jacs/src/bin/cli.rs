@@ -5,7 +5,7 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
-use jacs::config::{Config, check_env_vars, set_env_vars};
+use jacs::config::{Config, set_env_vars};
 use jacs::create_task;
 use jacs::load_agent;
 use jacs::shared::document_add_agreement;
@@ -19,7 +19,7 @@ use std::error::Error;
 use std::process;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    //let _ = set_env_vars(true, None, false);
+    // let _ = set_env_vars(true, None, false);
 
     let matches = Command::new(crate_name!())
         .subcommand(

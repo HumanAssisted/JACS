@@ -131,7 +131,13 @@ impl JACSDocument {
     pub fn signing_agent(&self) -> Result<String, Box<dyn Error>> {
         let value: &serde_json::Value = &self.value;
         if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
-            return Ok(jacs_signature.get("agentID").expect("REASON").to_string());
+            // Use ok_or_else for better error message if agentID is missing or not a string
+            return Ok(jacs_signature
+                .get("agentID")
+                .ok_or_else(|| "Missing 'agentID' in signature".to_string())?
+                .as_str() // Assuming agentID should be a string
+                .ok_or_else(|| "'agentID' in signature is not a string".to_string())?
+                .to_string());
         }
         return Err("no agreement or signatures in agreement".into());
     }
@@ -141,9 +147,9 @@ impl JACSDocument {
         if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
             return Ok(jacs_signature
                 .get("agentID")
-                .expect("REASON")
+                .ok_or_else(|| "Missing 'agentID' in signature".to_string())?
                 .as_str()
-                .unwrap());
+                .ok_or_else(|| "'agentID' in signature is not a string".to_string())?);
         }
         return Err("no agreement or signatures in agreement".into());
     }
@@ -162,15 +168,20 @@ impl JACSDocument {
                 if let Some(signatures_array) = signatures.as_array() {
                     let mut signed_agents: Vec<String> = Vec::<String>::new();
                     for signature in signatures_array {
-                        let agentid: String =
-                            signature["agentID"].as_str().expect("REASON").to_string();
+                        // Use ok_or_else for better error message
+                        let agentid: String = signature["agentID"]
+                            .as_str()
+                            .ok_or_else(|| {
+                                format!("'agentID' in signature {:?} is not a string", signature)
+                            })?
+                            .to_string();
                         signed_agents.push(agentid);
                     }
                     return Ok(signed_agents);
                 }
             }
         }
-        return Err("no agreement or signatures in agreement".into());
+        Err("no agreement or signatures in agreement".into())
     }
 }
 
@@ -475,11 +486,25 @@ impl DocumentTraits for Agent {
 
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
         let mut documents = self.documents.lock().expect("JACSDocument lock");
+        // Use ok_or_else for mandatory fields
+        let id = value
+            .get_str("jacsId")
+            .ok_or_else(|| "Missing 'jacsId' field".to_string())?
+            .to_string();
+        let version = value
+            .get_str("jacsVersion")
+            .ok_or_else(|| "Missing 'jacsVersion' field".to_string())?
+            .to_string();
+        let jacs_type = value
+            .get_str("jacsType")
+            .ok_or_else(|| "Missing 'jacsType' field".to_string())?
+            .to_string();
+
         let doc = JACSDocument {
-            id: value.get_str("jacsId").expect("REASON").to_string(),
-            version: value.get_str("jacsVersion").expect("REASON").to_string(),
-            value: Some(value.clone()).into(),
-            jacs_type: value.get_str("jacsType").expect("REASON").to_string(),
+            id,
+            version,
+            value: value.clone(), // No into() needed for Value
+            jacs_type,
         };
         let key = doc.getkey();
         documents.insert(key.clone(), doc.clone());
@@ -547,9 +572,7 @@ impl DocumentTraits for Agent {
             for attachment_path in attachment_list {
                 // Call create_file_json with embed set to false
                 let final_embed = embed.unwrap_or(false);
-                let file_json = self
-                    .create_file_json(&attachment_path, final_embed)
-                    .unwrap();
+                let file_json = self.create_file_json(&attachment_path, final_embed)?;
 
                 // Add the file JSON to the files array
                 files_array.push(file_json);
@@ -691,7 +714,12 @@ impl DocumentTraits for Agent {
                         // TODO move this portion of code out of document as it's filesystem dependent
                         // Backup the existing file if it exists
                         let config_ref = self.config.as_ref().ok_or("Agent config is None")?;
-                        let storage = MultiStorage::new(config_ref, None)?;
+                        // Clone the &Option<String> to get Option<String>, then unwrap
+                        let storage_type = config_ref
+                            .jacs_default_storage()
+                            .clone() // Clones the Option<String>
+                            .unwrap_or_else(|| "fs".to_string()); // Provide default owned String
+                        let storage = MultiStorage::new(storage_type, None)?;
                         if storage.file_exists(path, None)? {
                             let backup_path =
                                 format!("{}.{}.bkp", path, Local::now().format("%Y%m%d_%H%M%S"));
@@ -763,7 +791,12 @@ impl DocumentTraits for Agent {
         match attachments {
             Some(path_str) => {
                 let config_ref = self.config.as_ref().ok_or("Agent config is None").unwrap();
-                let storage = MultiStorage::new(config_ref, None).ok()?;
+                // Clone the &Option<String> returned by the getter to get an owned Option<String>
+                let storage_type = config_ref
+                    .jacs_default_storage()
+                    .clone() // Clones the Option<String>
+                    .unwrap_or_else(|| "fs".to_string()); // Provide default owned String
+                let storage = MultiStorage::new(storage_type, None).ok()?;
 
                 // First try to list files in case it's a directory
                 match storage.list(path_str, None) {

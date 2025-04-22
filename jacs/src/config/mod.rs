@@ -181,15 +181,6 @@ pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
-// pub fn create_config_from_env_vars() -> Result<Config, Box<dyn Error>> {
-//     let config = Config::new(
-//             default_schema(),
-//         "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
-//         get_env_var("JACS_USE_SECURITY", false)?,
-//         get_env_var("JACS_DATA_DIRECTORY", false)?,
-//     );
-// }
-
 pub fn get_default_dir() -> PathBuf {
     match get_env_var("JACS_DATA_DIRECTORY", false) {
         Ok(Some(dir)) => PathBuf::from(dir),
