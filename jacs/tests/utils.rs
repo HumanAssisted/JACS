@@ -99,7 +99,7 @@ pub fn load_test_agent_one() -> Agent {
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
     let agentid = AGENTONE.to_string();
-    let result = agent.load_by_id(Some(agentid), None);
+    let result = agent.load_by_id(agentid);
     match result {
         Ok(_) => {
             debug!(
@@ -141,9 +141,7 @@ pub fn load_test_agent_two() -> Agent {
     );
 
     debug!("load_test_agent_two: keys preloaded");
-
-    let result = agent.load_by_id(Some(AGENTTWO.to_string()), None);
-    debug!("load_test_agent_two: load_by_id called");
+    let result = agent.load_by_id(AGENTTWO.to_string());
     match result {
         Ok(_) => {
             debug!(

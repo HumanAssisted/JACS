@@ -32,14 +32,6 @@ pub fn get_empty_agent() -> Agent {
     .expect("Failed to init Agent in get_empty_agent") // Panic if Agent::new fails
 }
 
-pub fn load_agent_by_id() -> Agent {
-    let mut agent = get_empty_agent(); // Now returns Agent directly
-    agent
-        .load_by_id(None, None)
-        .expect("agent.load_by_id failed");
-    agent
-}
-
 /// Load agent using specific path
 fn load_path_agent(filepath: String) -> Agent {
     println!("[load_path_agent] Loading from path: {}", filepath);
@@ -80,8 +72,8 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
     if let Some(file) = agentfile {
         return Ok(load_path_agent(file.to_string()));
     } else {
-        return Ok(load_agent_by_id());
-    };
+        return Err("No agent file provided".into());
+    }
 }
 
 /// Creates a minimal agent JSON string with a default service.

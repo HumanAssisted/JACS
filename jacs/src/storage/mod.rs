@@ -1,5 +1,4 @@
 // use futures_util::stream::stream::StreamExt;
-use crate::config::Config;
 use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
@@ -17,6 +16,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::{AsRefStr, Display, EnumString};
 use url::Url;
+pub mod jenv;
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -130,8 +130,6 @@ impl ObjectStore for WebLocalStorage {
     }
 }
 
-pub mod jenv;
-
 #[derive(Debug, Clone)]
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
@@ -142,7 +140,6 @@ pub struct MultiStorage {
     web_local: Option<Arc<WebLocalStorage>>,
     default_storage: StorageType,
     storages: Vec<Arc<dyn ObjectStore>>,
-    path_prefix: Option<String>,
 }
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone, PartialEq)]
@@ -168,14 +165,10 @@ impl MultiStorage {
 
     pub fn default_new() -> Result<Self, ObjectStoreError> {
         let storage_type = "fs".to_string();
-        let path_prefix = Some(".".to_string());
-        Self::new(storage_type, path_prefix)
+        Self::new(storage_type)
     }
 
-    pub fn new(
-        storage_type: String,
-        path_prefix: Option<String>,
-    ) -> Result<Self, ObjectStoreError> {
+    pub fn new(storage_type: String) -> Result<Self, ObjectStoreError> {
         let mut _s3;
         let mut _http;
         let mut _local;
@@ -217,24 +210,12 @@ impl MultiStorage {
 
         // Check filesystem storage
         if default_storage == StorageType::FS {
-            if let Some(path_prefix_ref) = path_prefix.as_ref() {
-                let absolute_path = std::path::PathBuf::from(path_prefix_ref)
-                    .canonicalize()
-                    .unwrap_or_else(|_| {
-                        std::fs::create_dir_all(path_prefix_ref)
-                            .expect("Failed to create directory");
-                        std::path::PathBuf::from(path_prefix_ref)
-                            .canonicalize()
-                            .expect("Failed to get canonical path after directory creation")
-                    });
-
-                let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
-                let tmplocal = Arc::new(local);
-                _local = Some(tmplocal.clone());
-                storages.push(tmplocal);
-            } else {
-                _local = None;
-            }
+            // get the curent local absolute path
+            let absolute_path = std::env::current_dir().unwrap();
+            let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
+            let tmplocal = Arc::new(local);
+            _local = Some(tmplocal.clone());
+            storages.push(tmplocal);
         } else {
             _local = None;
         }
@@ -279,7 +260,6 @@ impl MultiStorage {
             web_local,
             default_storage,
             storages,
-            path_prefix: path_prefix.clone(),
         })
     }
 

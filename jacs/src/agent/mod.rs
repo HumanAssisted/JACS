@@ -5,12 +5,11 @@ pub mod loaders;
 pub mod security;
 
 use crate::agent::boilerplate::BoilerPlate;
-
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::crypt::hash::hash_public_key;
 use crate::storage::MultiStorage;
 
-use crate::config::{Config, get_default_dir, load_config, set_env_vars};
+use crate::config::{Config, find_config, load_config};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
@@ -86,7 +85,6 @@ pub struct Agent {
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
-    default_directory: PathBuf,
     /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
@@ -117,7 +115,6 @@ impl Agent {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
-        let default_directory = get_default_dir();
 
         Ok(Self {
             schema,
@@ -126,7 +123,6 @@ impl Agent {
             storage: MultiStorage::default_new()?,
             document_schemas: document_schemas_map,
             documents: document_map,
-            default_directory,
             id: None,
             version: None,
             key_algorithm: None,
@@ -135,20 +131,9 @@ impl Agent {
         })
     }
 
-    // loads and validates agent
-    // doesn't need config file, but can use env vars?
-    pub fn load_by_id(
-        &mut self,
-        id: Option<String>,
-        _version: Option<String>,
-    ) -> Result<(), Box<dyn Error>> {
-        let lookup_id = id
-            .or_else(|| {
-                get_env_var("JACS_AGENT_ID_AND_VERSION", false)
-                    .ok()
-                    .flatten()
-            })
-            .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
+    pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
+        self.config = Some(find_config("./".to_string())?);
+        debug!("load_by_id config {:?}", self.config);
         let agent_string = self.fs_agent_load(&lookup_id)?;
         return self.load(&agent_string);
     }
@@ -170,21 +155,7 @@ impl Agent {
             .jacs_default_storage()
             .as_deref()
             .unwrap_or("");
-        let key_directory = self
-            .config
-            .as_ref()
-            .unwrap()
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("");
-        let data_directory = self
-            .config
-            .as_ref()
-            .unwrap()
-            .jacs_data_directory()
-            .as_deref()
-            .unwrap_or("");
-        self.storage = MultiStorage::new(storage_type.to_string(), None)?;
+        self.storage = MultiStorage::new(storage_type.to_string())?;
         let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
         return self.load(&agent_string);
     }
@@ -212,10 +183,6 @@ impl Agent {
             Some(private_key) => Ok(private_key),
             None => Err("private_key is None".into()),
         }
-    }
-
-    pub fn get_default_dir(&self) -> PathBuf {
-        self.default_directory.clone()
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {

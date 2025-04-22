@@ -4,7 +4,7 @@
 - refine schema usage
 - more getters and setters for documents recognized by schemas
 - WASM builds
-
+ - https://github.com/verus-lang/verus?tab=readme-ov-file
 
 ## 0.4.0
 - WASM

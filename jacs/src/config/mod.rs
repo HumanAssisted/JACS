@@ -181,23 +181,6 @@ pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
-pub fn get_default_dir() -> PathBuf {
-    match get_env_var("JACS_DATA_DIRECTORY", false) {
-        Ok(Some(dir)) => PathBuf::from(dir),
-        _ => {
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let _ = set_env_var("JACS_DATA_DIRECTORY", ".");
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            }
-            #[cfg(target_arch = "wasm32")]
-            {
-                PathBuf::from(".")
-            }
-        }
-    }
-}
-
 pub fn split_id(input: &str) -> Option<(&str, &str)> {
     if !input.is_empty() && input.contains(':') {
         let mut parts = input.splitn(2, ':');
@@ -225,7 +208,7 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
         e
     })?;
 
-    debug!("validate json {:?}", instance);
+    //debug!("validate json {:?}", instance);
 
     // Validate and map any error into an owned error (a boxed String error).
     jacsconfigschema.validate(&instance).map_err(|e| {
@@ -237,6 +220,16 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
     Ok(instance)
 }
 
+pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
+    let config: Config = match fs::read_to_string(format!("{}jacs.config.json", path)) {
+        Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
+            .unwrap_or_default(),
+        Err(_) => Config::default(),
+    };
+
+    Ok(config)
+}
+
 // TODO DEPRICATE - focuse on configs created from env vars as backup
 pub fn set_env_vars(
     do_override: bool,
@@ -246,13 +239,9 @@ pub fn set_env_vars(
     let config: Config = match config_json {
         Some(json_str) => serde_json::from_value(validate_config(json_str).unwrap_or_default())
             .unwrap_or_default(),
-        None => match fs::read_to_string("jacs.config.json") {
-            Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
-                .unwrap_or_default(),
-            Err(_) => Config::default(),
-        },
+        None => find_config(".".to_string())?,
     };
-    debug!("configs from file {:?}", config);
+    // debug!("configs from file {:?}", config);
     validate_config(&serde_json::to_string(&config).map_err(|e| Box::new(e) as Box<dyn Error>)?)?;
 
     let jacs_private_key_password = config
