@@ -3,7 +3,6 @@ use crate::agent::document::{DocumentTraits, JACSDocument};
 use chrono::Utc;
 use serde_json::{Value, json};
 use std::error::Error;
-use uuid::Uuid;
 
 /// Creates a minimal message with required fields.
 /// message are immutable and signed so theres no update method
@@ -20,7 +19,7 @@ pub fn create_message(
     let datetime = Utc::now();
     let schema = "https://hai.ai/schemas/message/v1/message.schema.json";
 
-    let mut message = json!({
+    let message = json!({
         "$schema": schema,
         "datetime": datetime.to_rfc3339(),
         "content": content,

@@ -8,7 +8,6 @@ use crate::agent::loaders::FileLoader;
 use crate::agent::security::SecurityTraits;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
-use crate::storage::MultiStorage;
 use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
@@ -552,7 +551,7 @@ impl DocumentTraits for Agent {
         let jacs_level = new_document
             .get_str("jacsLevel")
             .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());
-        if (!EDITABLE_JACS_DOCS.contains(&jacs_level.as_str())) {
+        if !EDITABLE_JACS_DOCS.contains(&jacs_level.as_str()) {
             return Err(format!("JACS docs of type {} are not editable", jacs_level).into());
         };
 

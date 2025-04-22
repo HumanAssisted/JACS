@@ -5,7 +5,6 @@ use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
 use std::env;
 use std::fs;
-use utils::load_test_agent_one;
 
 fn set_enc_to_pq() {
     unsafe {

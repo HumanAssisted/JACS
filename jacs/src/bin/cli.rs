@@ -1,11 +1,11 @@
-use clap::{Arg, ArgAction, Command, crate_description, crate_name, crate_version, value_parser};
+use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
-use jacs::config::{Config, find_config, set_env_vars};
+use jacs::config::{Config, set_env_vars};
 use jacs::create_task;
 use jacs::load_agent;
 use jacs::shared::document_add_agreement;

@@ -26,13 +26,12 @@ use serde_json::{Value, json, to_value};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use secrecy::SecretBox;
 
-use crate::storage::jenv::{get_env_var, get_required_env_var};
+use crate::storage::jenv::get_required_env_var;
 
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering

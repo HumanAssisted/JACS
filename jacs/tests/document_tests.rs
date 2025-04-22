@@ -1,6 +1,5 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jsonschema::{Draft, Validator};
 mod utils;
 use utils::DOCTESTFILECONFIG;
 use utils::TESTFILE_MODIFIED;

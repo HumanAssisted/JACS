@@ -15,7 +15,7 @@ use utils::DOCTESTFILE;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
 static SCHEMA: &str = "raw/custom.schema.json";
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 
 #[test]
 fn test_hai_fields_custom_schema_and_custom_document() {

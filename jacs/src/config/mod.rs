@@ -1,15 +1,14 @@
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
-use crate::storage::jenv::{EnvError, get_env_var, set_env_var, set_env_var_override};
+use crate::storage::jenv::{EnvError, get_env_var, set_env_var_override};
 use getset::Getters;
 use jsonschema::{Draft, Validator};
-use log::{debug, error, info};
+use log::{error, info};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::fs;
-use std::path::PathBuf;
 use uuid::Uuid;
 
 pub mod constants;

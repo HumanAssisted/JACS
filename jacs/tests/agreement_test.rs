@@ -83,7 +83,7 @@ fn test_add_and_remove_agents() {
             .agreement_unsigned_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
             .unwrap()
     );
-    let mut doc_v2 = agent
+    let doc_v2 = agent
         .add_agents_to_agreement(
             &doc_v1_key,
             &agents_to_add,
@@ -97,7 +97,7 @@ fn test_add_and_remove_agents() {
             .agreement_requested_agents(Some(AGENT_AGREEMENT_FIELDNAME.to_string()),)
             .unwrap()
     );
-    let mut doc_v3 = agent
+    let doc_v3 = agent
         .remove_agents_from_agreement(
             &doc_v2_key,
             &agents_to_remove,
