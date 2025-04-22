@@ -711,15 +711,9 @@ impl DocumentTraits for Agent {
                         let mut inflated_contents = Vec::new();
                         gz_decoder.read_to_end(&mut inflated_contents)?;
 
-                        // TODO move this portion of code out of document as it's filesystem dependent
+                        let storage = self.storage.clone();
+
                         // Backup the existing file if it exists
-                        let config_ref = self.config.as_ref().ok_or("Agent config is None")?;
-                        // Clone the &Option<String> to get Option<String>, then unwrap
-                        let storage_type = config_ref
-                            .jacs_default_storage()
-                            .clone() // Clones the Option<String>
-                            .unwrap_or_else(|| "fs".to_string()); // Provide default owned String
-                        let storage = MultiStorage::new(storage_type, None)?;
                         if storage.file_exists(path, None)? {
                             let backup_path =
                                 format!("{}.{}.bkp", path, Local::now().format("%Y%m%d_%H%M%S"));
@@ -790,13 +784,8 @@ impl DocumentTraits for Agent {
     fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>> {
         match attachments {
             Some(path_str) => {
-                let config_ref = self.config.as_ref().ok_or("Agent config is None").unwrap();
-                // Clone the &Option<String> returned by the getter to get an owned Option<String>
-                let storage_type = config_ref
-                    .jacs_default_storage()
-                    .clone() // Clones the Option<String>
-                    .unwrap_or_else(|| "fs".to_string()); // Provide default owned String
-                let storage = MultiStorage::new(storage_type, None).ok()?;
+                // Use the agent's existing storage
+                let storage = self.storage.clone(); // Assuming self.storage exists and is clonable
 
                 // First try to list files in case it's a directory
                 match storage.list(path_str, None) {
@@ -809,6 +798,7 @@ impl DocumentTraits for Agent {
                             match storage.file_exists(path_str, None) {
                                 Ok(true) => Some(vec![path_str.to_string()]),
                                 _ => {
+                                    // Consider returning Err instead of printing and returning None
                                     eprintln!("Invalid path: {}", path_str);
                                     None
                                 }
@@ -816,6 +806,7 @@ impl DocumentTraits for Agent {
                         }
                     }
                     Err(_) => {
+                        // Consider returning Err instead of printing and returning None
                         eprintln!("Failed to read path: {}", path_str);
                         None
                     }
