@@ -140,23 +140,21 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let input_pub_key = "jacs.public.pem";
     let input_algo = "RSA-PSS";
     let input_storage = "fs";
-    let input_use_fs = "true";
     let input_use_sec = "false";
     let input_data_dir = data_dir.to_str().unwrap();
     let input_key_dir = key_dir.to_str().unwrap();
 
-    // Assemble the input string (9 lines - password line omitted)
+    // Assemble the input string - ADJUST THIS ORDER BASED ON ACTUAL CLI PROMPTS
     let inputs = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        input_agent_filename,
-        input_priv_key,
-        input_pub_key,
-        input_algo,
-        input_storage,
-        input_use_fs,
-        input_use_sec,
-        input_data_dir,
-        input_key_dir
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+        input_agent_filename, // 1. Agent filename (empty)
+        input_priv_key,       // 2. Private key filename
+        input_pub_key,        // 3. Public key filename
+        input_algo,           // 4. Algorithm
+        input_storage,        // 5. Storage type
+        input_use_sec,        // 6. Use security? (Example - CHECK ACTUAL)
+        input_data_dir,       // 7. Data directory? (Example - CHECK ACTUAL)
+        input_key_dir, // 8. Key directory? (Example - CHECK ACTUAL)                                // Password prompt is skipped by env var
     );
     println!("--- Sending Inputs to 'config create' ---");
     println!("{}", inputs.trim_end());
