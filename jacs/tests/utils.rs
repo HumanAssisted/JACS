@@ -90,8 +90,15 @@ pub fn generate_new_docs() {
     _ = agent.save_document(&document_key, None, None, None);
 }
 
+fn set_min_test_env_vars() {
+    unsafe {
+        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "secretpassord");
+    }
+}
+
 #[cfg(test)]
 pub fn load_test_agent_one() -> Agent {
+    set_min_test_env_vars();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
@@ -118,6 +125,7 @@ pub fn load_test_agent_one() -> Agent {
 
 #[cfg(test)]
 pub fn load_test_agent_two() -> Agent {
+    set_min_test_env_vars();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
@@ -183,9 +191,6 @@ pub fn set_test_env_vars() {
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
-        env::set_var("JACS_SCHEMA_AGENT_VERSION", "v1");
-        env::set_var("JACS_SCHEMA_HEADER_VERSION", "v1");
-        env::set_var("JACS_SCHEMA_SIGNATURE_VERSION", "v1");
         env::set_var("JACS_PRIVATE_KEY_PASSWORD", "test_password");
         env::set_var(
             "JACS_AGENT_ID_AND_VERSION",
@@ -203,9 +208,6 @@ pub fn clear_test_env_vars() {
         env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
         env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
         env::remove_var("JACS_AGENT_KEY_ALGORITHM");
-        env::remove_var("JACS_SCHEMA_AGENT_VERSION");
-        env::remove_var("JACS_SCHEMA_HEADER_VERSION");
-        env::remove_var("JACS_SCHEMA_SIGNATURE_VERSION");
         env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
         env::remove_var("JACS_AGENT_ID_AND_VERSION");
     }

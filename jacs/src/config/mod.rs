@@ -1,5 +1,5 @@
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
-use crate::storage::jenv::{EnvError, get_env_var, set_env_var_override};
+use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var, set_env_var_override};
 use getset::Getters;
 use jsonschema::{Draft, Validator};
 use log::{error, info};
@@ -138,6 +138,16 @@ impl Config {
             jacs_default_storage,
         }
     }
+
+    pub fn get_key_algorithm(&self) -> Result<String, Box<dyn std::error::Error>> {
+        // 1. Try getting from config
+        if let Some(algo_str) = self.jacs_agent_key_algorithm().as_deref() {
+            // Config exists and has the key algorithm string
+            return Ok(algo_str.to_string());
+        }
+        get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)
+            .map_err(|e| Box::new(e) as Box<dyn Error>) // Map EnvError to Box<dyn Error>
+    }
 }
 
 impl fmt::Display for Config {
@@ -152,7 +162,7 @@ impl fmt::Display for Config {
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},
             JACS_AGENT_PUBLIC_KEY_FILENAME:  {},
             JACS_AGENT_KEY_ALGORITHM:        {},
-            JACS_PRIVATE_KEY_PASSWORD:       {},
+            JACS_PRIVATE_KEY_PASSWORD:       REDACTED,
             JACS_AGENT_ID_AND_VERSION:       {},
             JACS_DEFAULT_STORAGE:            {},
         "#,
@@ -164,7 +174,6 @@ impl fmt::Display for Config {
                 .unwrap_or(""),
             self.jacs_agent_public_key_filename.as_deref().unwrap_or(""),
             self.jacs_agent_key_algorithm.as_deref().unwrap_or(""),
-            self.jacs_private_key_password.as_deref().unwrap_or(""),
             self.jacs_agent_id_and_version.as_deref().unwrap_or(""),
             self.jacs_default_storage.as_deref().unwrap_or("")
         )

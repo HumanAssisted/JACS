@@ -27,10 +27,8 @@ enum CryptoSigningAlgorithm {
 }
 
 pub const JACS_KEY_DIRECTORY: &str = "JACS_KEY_DIRECTORY";
-const JACS_AGENT_PRIVATE_KEY_PASSWORD: &str = "JACS_AGENT_PRIVATE_KEY_PASSWORD";
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
 pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
-pub const JACS_AGENT_KEY_ALGORITHM: &str = "JACS_AGENT_KEY_ALGORITHM";
 
 pub trait KeyManager {
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
@@ -47,7 +45,7 @@ pub trait KeyManager {
 impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let key_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
+        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
         let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
@@ -77,7 +75,7 @@ impl KeyManager for Agent {
     }
 
     fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>> {
-        let key_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
+        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
@@ -109,7 +107,7 @@ impl KeyManager for Agent {
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let key_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
+        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
         let algo = match public_key_enc_type {
             Some(public_key_enc_type) => CryptoSigningAlgorithm::from_str(&public_key_enc_type)?,
             None => CryptoSigningAlgorithm::from_str(&key_algorithm)?,

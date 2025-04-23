@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 mod utils;
+use std::env;
 use utils::load_local_document;
-
 const CONFIG_CONTENT: &str = r#"{
     "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
     "jacs_use_filesystem": "true",
@@ -29,6 +29,9 @@ fn setup() {
     // Create config file if it doesn't exist
     if !Path::new("jacs.config.json").exists() {
         fs::write("jacs.config.json", CONFIG_CONTENT).expect("Failed to write config file");
+    }
+    unsafe {
+        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "secretpassord");
     }
 }
 

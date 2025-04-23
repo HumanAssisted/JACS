@@ -13,7 +13,6 @@ use crate::config::{Config, find_config, load_config};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
-use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 use crate::crypt::KeyManager;
 
 use crate::schema::Schema;
@@ -78,7 +77,7 @@ pub struct Agent {
     /// TODO make this threadsafe
     value: Option<Value>,
     /// use getter
-    config: Option<Config>,
+    pub config: Option<Config>,
     storage: MultiStorage,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
@@ -114,11 +113,11 @@ impl Agent {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
-
+        let config = Some(find_config("./".to_string())?);
         Ok(Self {
             schema,
             value: None,
-            config: None,
+            config: config,
             storage: MultiStorage::default_new()?,
             document_schemas: document_schemas_map,
             documents: document_map,
@@ -411,7 +410,7 @@ impl Agent {
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = Utc::now().to_rfc3339();
 
-        let signing_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
+        let signing_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
 
         let serialized_fields = match to_value(accepted_fields) {
             Ok(value) => value,

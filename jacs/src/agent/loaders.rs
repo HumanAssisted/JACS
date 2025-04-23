@@ -106,15 +106,14 @@ impl FileLoader for Agent {
             .as_deref() // Convert to Option<&str>
             .ok_or_else(|| "Public key filename not found in config".to_string())? // Error if Option is None
             .to_string(); // Convert &str to String
-        let absolute_public_key_path = self.make_data_directory_path(&public_key_filename)?;
-        let absolute_private_key_path = self.make_data_directory_path(&private_key_filename)?;
+        let absolute_public_key_path = self.make_key_directory_path(&public_key_filename)?;
         // No need for absolute_ variants anymore, the variables hold the correct string.
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
         let key_vec = decrypt_private_key(borrowed_key)?;
 
         // Use save_private_key with the determined filename string
-        self.save_private_key(&absolute_private_key_path, &key_vec)?;
+        self.save_private_key(&private_key_filename, &key_vec)?;
 
         // Public key can be saved directly using the determined filename string
         self.storage
@@ -143,7 +142,7 @@ impl FileLoader for Agent {
             .ok_or_else(|| "Public key filename not found in config".to_string())? // Error if Option is None
             .to_string(); //
         let private_key = self.load_private_key(&private_key_filename)?;
-        let public_key = self.load_public_key_file(&public_key_filename)?;
+        let agents_public_key = self.load_private_key(&public_key_filename)?;
 
         let key_algorithm = self
             .config
@@ -154,7 +153,7 @@ impl FileLoader for Agent {
             .ok_or_else(|| "Public key filename not found in config".to_string())? // Error if Option is None
             .to_string();
 
-        self.set_keys(private_key, public_key, &key_algorithm)
+        self.set_keys(private_key, agents_public_key, &key_algorithm)
     }
 
     /// in JACS the public keys need to be added manually
@@ -198,9 +197,13 @@ impl FileLoader for Agent {
         let private_key = self.storage.get_file(&private_path, None)?;
         let public_key = self.storage.get_file(&public_path, None)?;
 
-        let key_algorithm = match custom_key_algorithm {
-            Some(algo) => algo,
-            _ => get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)?,
+        // Determine the key algorithm with priority: custom -> config -> env var
+        let key_algorithm = if let Some(algo) = custom_key_algorithm {
+            // 1. Use custom_key_algorithm if provided
+            algo
+        } else {
+            // 2. If no custom algo, try config
+            self.config.as_ref().unwrap().get_key_algorithm()?
         };
 
         self.set_keys(private_key, public_key, &key_algorithm)
@@ -424,6 +427,7 @@ impl FileLoader for Agent {
         filename: &String,
         private_key: &[u8],
     ) -> Result<String, Box<dyn Error>> {
+        // must be env var - not in config
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
             .unwrap_or(None)
             .unwrap_or_default();
