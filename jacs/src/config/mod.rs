@@ -12,6 +12,7 @@ use std::fs;
 use uuid::Uuid;
 
 pub mod constants;
+
 /*
 Config is embedded in agents and may have private information.
 
@@ -62,6 +63,7 @@ fn default_schema() -> String {
     "https://hai.ai/schemas/jacs.config.schema.json".to_string()
 }
 
+// TODO change these to macros
 fn default_storage() -> Option<String> {
     match get_env_var("JACS_DEFAULT_STORAGE", false) {
         Ok(Some(val)) if !val.is_empty() => Some(val),

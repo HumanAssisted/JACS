@@ -30,8 +30,6 @@ use uuid::Uuid;
 
 use secrecy::SecretBox;
 
-use crate::storage::jenv::get_required_env_var;
-
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
 pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "jacsAgreementHash";

@@ -322,8 +322,14 @@ pub fn handle_agent_create(
         println!("Creating keys...");
         agent.generate_keys()?;
         println!(
-            "Keys created in {}",
-            get_required_env_var("JACS_KEY_DIRECTORY", true)?
+            "Keys created in {}. Don't loose them! Keep them in a safe place. ",
+            agent
+                .config
+                .as_ref()
+                .unwrap()
+                .jacs_key_directory()
+                .as_deref()
+                .unwrap_or_default()
         )
     }
 

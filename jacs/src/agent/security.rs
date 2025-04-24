@@ -40,8 +40,14 @@ impl SecurityTraits for Agent {
             info!("filesystem security is off because the config is not using filestyem ");
             return Ok(());
         }
-        let data_dir = get_required_env_var("JACS_DATA_DIRECTORY", true)
-            .expect("JACS_DATA_DIRECTORY must be set");
+
+        let data_dir = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_data_directory()
+            .as_deref()
+            .unwrap_or_default();
         let dir = Path::new(&data_dir);
 
         for entry in WalkDir::new(dir)
@@ -168,8 +174,13 @@ impl SecurityTraits for Agent {
             return Ok(());
         }
 
-        let data_dir = get_required_env_var("JACS_DATA_DIRECTORY", true)
-            .expect("JACS_DATA_DIRECTORY must be set");
+        let data_dir = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_data_directory()
+            .as_deref()
+            .unwrap_or_default();
         let mut quarantine_dir = Path::new(&data_dir);
         let binding = quarantine_dir.join("quarantine");
         quarantine_dir = &binding;

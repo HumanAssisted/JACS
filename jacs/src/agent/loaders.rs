@@ -91,31 +91,31 @@ impl FileLoader for Agent {
         let private_key_filename = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing".to_string())? // Error if config itself is None
-            .jacs_agent_private_key_filename() // Get &Option<String>
-            .as_deref() // Convert to Option<&str>
-            .ok_or_else(|| "Private key filename not found in config".to_string())? // Error if Option is None
-            .to_string(); // Convert &str to String
+            .ok_or_else(|| "Agent config is missing".to_string())?
+            .jacs_agent_private_key_filename()
+            .as_deref()
+            .ok_or_else(|| "Private key filename not found in config".to_string())?
+            .to_string();
 
         // Get public key filename: ONLY from config
         let public_key_filename = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing".to_string())? // Error if config itself is None
-            .jacs_agent_public_key_filename() // Get &Option<String>
-            .as_deref() // Convert to Option<&str>
-            .ok_or_else(|| "Public key filename not found in config".to_string())? // Error if Option is None
-            .to_string(); // Convert &str to String
+            .ok_or_else(|| "Agent config is missing".to_string())?
+            .jacs_agent_public_key_filename()
+            .as_deref()
+            .ok_or_else(|| "Public key filename not found in config".to_string())?
+            .to_string();
+
         let absolute_public_key_path = self.make_key_directory_path(&public_key_filename)?;
-        // No need for absolute_ variants anymore, the variables hold the correct string.
+        let absolute_private_key_path = self.make_key_directory_path(&private_key_filename)?;
+
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
         let key_vec = decrypt_private_key(borrowed_key)?;
 
-        // Use save_private_key with the determined filename string
-        self.save_private_key(&private_key_filename, &key_vec)?;
+        self.save_private_key(&absolute_private_key_path, &key_vec)?;
 
-        // Public key can be saved directly using the determined filename string
         self.storage
             .save_file(&absolute_public_key_path, &self.get_public_key()?)?;
 
@@ -424,28 +424,25 @@ impl FileLoader for Agent {
     #[cfg(not(target_arch = "wasm32"))]
     fn save_private_key(
         &self,
-        filename: &String,
+        full_filepath: &String,
         private_key: &[u8],
     ) -> Result<String, Box<dyn Error>> {
-        // must be env var - not in config
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
             .unwrap_or(None)
             .unwrap_or_default();
 
         if !password.is_empty() {
             let encrypted_key = encrypt_private_key(private_key)?;
-            let encrypted_filename = if !filename.ends_with(".enc") {
-                format!("{}.enc", filename)
+            let final_path = if !full_filepath.ends_with(".enc") {
+                format!("{}.enc", full_filepath)
             } else {
-                filename.to_string()
+                full_filepath.to_string()
             };
-            let encrypted_path = self.make_key_directory_path(&encrypted_filename)?;
-            self.storage.save_file(&encrypted_path, &encrypted_key)?;
-            Ok(encrypted_path)
+            self.storage.save_file(&final_path, &encrypted_key)?;
+            Ok(final_path)
         } else {
-            let filepath = self.make_key_directory_path(&filename)?;
-            self.storage.save_file(&filepath, private_key)?;
-            Ok(filepath.to_string())
+            self.storage.save_file(full_filepath, private_key)?;
+            Ok(full_filepath.to_string())
         }
     }
     /// private Helper function to create a backup file name based on the current timestamp

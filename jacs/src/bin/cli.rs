@@ -5,7 +5,7 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
-use jacs::config::{Config, set_env_vars};
+use jacs::config::find_config;
 use jacs::create_task;
 use jacs::load_agent;
 use jacs::shared::document_add_agreement;
@@ -473,12 +473,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 handle_config_create(&storage)?;
             }
             Some(("read", verify_matches)) => {
-                // agent is loaded because of    schema.validate_config(&config).expect("config validation");
-                let configs = set_env_vars(true, None, false).unwrap_or_else(|e| {
-                    eprintln!("Warning: Failed to set some environment variables: {}", e);
-                    Config::default().to_string()
-                });
-                println!("{}", configs);
+                let config = find_config("./".to_string())?;
+                println!("{}", config);
             }
             _ => println!("please enter subcommand see jacs config --help"),
         },

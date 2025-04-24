@@ -26,7 +26,6 @@ enum CryptoSigningAlgorithm {
     PqDilithium,
 }
 
-pub const JACS_KEY_DIRECTORY: &str = "JACS_KEY_DIRECTORY";
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
 pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
 

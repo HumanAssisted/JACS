@@ -7,6 +7,7 @@ use std::fs::{self, File}; // Add fs for file operations
 use std::io::Write; // Add Write trait
 use std::path::Path;
 // use std::sync::Once;
+use jacs::storage::MultiStorage;
 use std::{
     error::Error,
     process::{Command, Stdio},
@@ -109,7 +110,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let data_dir = temp_path.join("jacs_data");
     let key_dir = temp_path.join("jacs_keys");
 
-    println!("Temp Dir: {}", temp_path.display()); // Original prints start here
+    println!("Temp Dir: {}", temp_path.display()); // Original prints staJACS_KEY_DIRECTORYrt here
     println!("(Will create data dir: {})", data_dir.display());
     println!("(Will create key dir: {})", key_dir.display());
 
@@ -349,6 +350,22 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     assert!(!agent_id.is_empty(), "Could not parse agent ID from output");
     println!("Captured Agent ID: {}", agent_id);
 
+    // After getting the agent ID, initialize a storage instance
+    let mut storage = MultiStorage::new("fs".to_string())?;
+
+    // Then check if files exist using the storage abstraction instead
+    assert!(
+        storage.file_exists(
+            &key_dir.join("jacs.private.pem.enc").to_str().unwrap(),
+            None
+        )?,
+        "Private key missing"
+    );
+    assert!(
+        storage.file_exists(&key_dir.join("jacs.public.pem").to_str().unwrap(), None)?,
+        "Public key missing"
+    );
+
     // --- Debug: List contents of the expected agent directory ---
     let agent_dir_path = temp_dir.path().join("jacs_data").join("agent");
     println!("--- Checking contents of: {:?} ---", agent_dir_path);
@@ -367,14 +384,6 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     // ---------------------------------------------------------
 
     let agent_file_path = data_dir.join("agent").join(format!("{}.json", agent_id));
-    assert!(
-        key_dir.join("jacs.private.pem.enc").exists(),
-        "Private key missing"
-    );
-    assert!(
-        key_dir.join("jacs.public.pem").exists(),
-        "Public key missing"
-    );
     assert!(
         agent_file_path.exists(),
         "Agent file missing: {}",
