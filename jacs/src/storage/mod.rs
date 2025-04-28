@@ -12,10 +12,12 @@ use object_store::{
     memory::InMemory,
     path::Path as ObjectPath,
 };
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::{AsRefStr, Display, EnumString};
 use url::Url;
+
 pub mod jenv;
 
 #[cfg(target_arch = "wasm32")]
@@ -169,6 +171,11 @@ impl MultiStorage {
     }
 
     pub fn new(storage_type: String) -> Result<Self, ObjectStoreError> {
+        let absolute_path = std::env::current_dir().unwrap();
+        return Self::_new(storage_type, absolute_path);
+    }
+
+    pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
         let mut _s3;
         let mut _http;
         let mut _local;
@@ -211,7 +218,6 @@ impl MultiStorage {
         // Check filesystem storage
         if default_storage == StorageType::FS {
             // get the curent local absolute path
-            let absolute_path = std::env::current_dir().unwrap();
             let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
             let tmplocal = Arc::new(local);
             _local = Some(tmplocal.clone());

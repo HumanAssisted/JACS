@@ -9,6 +9,10 @@ build-jacs:
 test-jacs:
 	cd jacs && RUST_BACKTRACE=1 cargo test  -- --nocapture
 
+test-jacs-cli:
+	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests  -- --nocapture
+
+
 
 publish-jacs:
 	cargo publish --dry-run -p jacs

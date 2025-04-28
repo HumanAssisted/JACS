@@ -34,7 +34,7 @@ pub struct Config {
     #[serde(default = "default_schema")]
     #[getset(get)]
     schema: String,
-    #[getset(get)]
+    #[getset(get = "pub")]
     #[serde(default = "default_security")]
     jacs_use_security: Option<String>,
     #[getset(get = "pub")]

@@ -1,7 +1,6 @@
 use crate::agent::Agent;
 use crate::agent::FileLoader;
 use crate::error;
-use crate::storage::jenv::{get_env_var, get_required_env_var};
 use log::info;
 use std::error::Error;
 use std::fs;
@@ -64,7 +63,7 @@ impl SecurityTraits for Agent {
     /// determine if the system is configured ot use security features
     /// EXPERIMENTAL
     fn use_security(&self) -> bool {
-        matches!(get_env_var(JACS_USE_SECURITY, true), Ok(Some(value)) if matches!(value.to_lowercase().as_str(), "true" | "1"))
+        matches!(self.config.as_ref().unwrap().jacs_use_security(), Some(value) if matches!(value.to_lowercase().as_str(), "true" | "1"))
     }
 
     fn use_fs_security(&self) -> bool {
