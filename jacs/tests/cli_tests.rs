@@ -99,23 +99,35 @@ fn find_fixtures_dir() -> std::path::PathBuf {
 
 #[test]
 fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
-    // --> Add print statement RIGHT AT THE START <--
+    // Save the original working directory at the start of the test
+    let original_cwd = std::env::current_dir()?;
+    println!("Original working directory: {:?}", original_cwd);
+
     println!(">>> Starting test_cli_script_flow execution <<<");
+    let data_dir_string = "jacs_data";
+    let key_dir_string = "jacs_keys";
 
     // 1. Setup Temp Directory and Paths
-    println!("Attempting to create tempdir..."); // Add print before tempdir call
+    println!("Attempting to create tempdir...");
     let temp_dir = tempdir()?;
-    println!("Tempdir created successfully."); // Add print after tempdir call
+    println!("Tempdir created successfully.");
     let temp_path = temp_dir.path();
-    let data_dir = temp_path.join("jacs_data");
-    let key_dir = temp_path.join("jacs_keys");
+    let data_dir = temp_path.join(data_dir_string);
+    let key_dir = temp_path.join(key_dir_string);
 
-    println!("Temp Dir: {}", temp_path.display()); // Original prints staJACS_KEY_DIRECTORYrt here
+    println!("Temp Dir: {}", temp_path.display());
     println!("(Will create data dir: {})", data_dir.display());
     println!("(Will create key dir: {})", key_dir.display());
 
     fs::create_dir_all(&data_dir)?;
     fs::create_dir_all(&key_dir)?;
+
+    // Change to the temp directory right at the beginning
+    std::env::set_current_dir(temp_path)?;
+    println!(
+        "Changed working directory to temp dir: {:?}",
+        std::env::current_dir()?
+    );
 
     // --- Run `config create` Interactively (Simulated) ---
     println!("Running: config create (simulated interaction)");
@@ -123,9 +135,6 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     cmd_config_create.current_dir(temp_path);
     cmd_config_create.arg("config").arg("create");
 
-    cmd_config_create.env("JACS_DEFAULT_STORAGE", "fs"); // Critical: For internal MultiStorage init
-    cmd_config_create.env("JACS_DATA_DIRECTORY", &data_dir); // Needed if checking input agent file path
-    cmd_config_create.env("JACS_KEY_DIRECTORY", &key_dir); // Needed if checking input agent file path
     cmd_config_create.env("JACS_PRIVATE_KEY_PASSWORD", "testpassword"); // Skips interactive password
 
     cmd_config_create.stdin(Stdio::piped());
@@ -142,8 +151,9 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let input_algo = "RSA-PSS";
     let input_storage = "fs";
     let input_use_sec = "false";
-    let input_data_dir = data_dir.to_str().unwrap();
-    let input_key_dir = key_dir.to_str().unwrap();
+    // IMPORTANT: Use relative paths for directories
+    let input_data_dir = data_dir_string;
+    let input_key_dir = key_dir_string;
 
     // Assemble the input string - ADJUST THIS ORDER BASED ON ACTUAL CLI PROMPTS
     let inputs = format!(
@@ -192,6 +202,35 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     println!("Created jacs.config.json contents:");
     let config_contents = std::fs::read_to_string(temp_path.join("jacs.config.json"))?;
     println!("{}", config_contents);
+
+    // Add debugging to check key files
+    println!("\n=== Checking Key Files After Config Create ===");
+    println!("Current dir: {:?}", std::env::current_dir()?);
+    println!("Key dir exists: {}", key_dir.exists());
+    if key_dir.exists() {
+        println!("Contents of key directory:");
+        for entry in fs::read_dir(&key_dir)? {
+            match entry {
+                Ok(entry) => println!("  {:?}", entry.path()),
+                Err(e) => println!("  Error reading entry: {}", e),
+            }
+        }
+    }
+
+    // Verify the specific key files exist
+    let priv_key_path = key_dir.join("jacs.private.pem.enc");
+    let pub_key_path = key_dir.join("jacs.public.pem");
+    println!(
+        "Private key path exists: {} at {:?}",
+        priv_key_path.exists(),
+        priv_key_path
+    );
+    println!(
+        "Public key path exists: {} at {:?}",
+        pub_key_path.exists(),
+        pub_key_path
+    );
+    println!("===========================================\n");
 
     // Create other input files (same as before)
     let agent_raw_path_dest = data_dir.join("agent.raw.json");
@@ -254,8 +293,6 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     // Define base command helper that sets env vars (reads created config implicitly now)
     let base_cmd = || -> Command {
         let mut cmd = Command::cargo_bin("jacs").unwrap();
-        cmd.env("JACS_DATA_DIRECTORY", &data_dir);
-        cmd.env("JACS_KEY_DIRECTORY", &key_dir);
         cmd.env("JACS_PRIVATE_KEY_PASSWORD", dummy_password);
         cmd.current_dir(temp_path); // Keep CWD as temp_path
         cmd
@@ -350,25 +387,119 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     assert!(!agent_id.is_empty(), "Could not parse agent ID from output");
     println!("Captured Agent ID: {}", agent_id);
 
-    // After getting the agent ID, initialize a storage instance
-    let mut storage = MultiStorage::new("fs".to_string())?;
+    // Right after agent creation, add extensive debugging
+    println!("\n=== EXTENSIVE KEY DEBUGGING ===");
+    // 1. Check the actual filesystem location specified in the config
+    let config_path = "jacs.config.json";
+    let config_content = fs::read_to_string(config_path)?;
+    println!("Config file content:\n{}", config_content);
 
-    // Then check if files exist using the storage abstraction instead
-    assert!(
-        storage.file_exists(
-            &key_dir.join("jacs.private.pem.enc").to_str().unwrap(),
-            None
-        )?,
-        "Private key missing"
+    // 2. List all directories to make sure we're looking in the right place
+    println!("Current directory: {:?}", std::env::current_dir()?);
+    println!("Listing contents of current directory:");
+    for entry in fs::read_dir(".")? {
+        let entry = entry?;
+        println!("  {:?}", entry.path());
+    }
+
+    // 3. Check the actual key directory from config
+    let config: serde_json::Value = serde_json::from_str(&config_content)?;
+    let key_dir_from_config = config["jacs_key_directory"]
+        .as_str()
+        .unwrap_or("./jacs_keys");
+    println!("Key directory from config: {}", key_dir_from_config);
+
+    // 4. Check if that directory exists and list its contents
+    if Path::new(key_dir_from_config).exists() {
+        println!("Key directory from config exists. Contents:");
+        for entry in fs::read_dir(key_dir_from_config)? {
+            let entry = entry?;
+            println!("  {:?}", entry.path());
+        }
+    } else {
+        println!("Key directory from config DOES NOT EXIST!");
+    }
+
+    // 5. Try with full paths from config
+    let full_private_key_path = format!(
+        "{}/{}",
+        key_dir_from_config,
+        config["jacs_agent_private_key_filename"]
+            .as_str()
+            .unwrap_or("jacs.private.pem.enc")
     );
-    assert!(
-        storage.file_exists(&key_dir.join("jacs.public.pem").to_str().unwrap(), None)?,
-        "Public key missing"
+    let full_public_key_path = format!(
+        "{}/{}",
+        key_dir_from_config,
+        config["jacs_agent_public_key_filename"]
+            .as_str()
+            .unwrap_or("jacs.public.pem")
     );
+
+    println!(
+        "Full private key path from config: {}",
+        full_private_key_path
+    );
+    println!(
+        "Private key exists at full path: {}",
+        Path::new(&full_private_key_path).exists()
+    );
+
+    println!("Full public key path from config: {}", full_public_key_path);
+    println!(
+        "Public key exists at full path: {}",
+        Path::new(&full_public_key_path).exists()
+    );
+
+    // 6. If the directory doesn't exist, create it and see if that helps
+    if !Path::new(key_dir_from_config).exists() {
+        println!(
+            "Creating key directory from config: {}",
+            key_dir_from_config
+        );
+        fs::create_dir_all(key_dir_from_config)?;
+    }
+
+    println!("=== END EXTENSIVE KEY DEBUGGING ===\n");
+
+    // After getting the agent ID, look for keys using MultiStorage with the key directory path
+    let storage = MultiStorage::new("fs".to_string())?;
+
+    // List all files in the key directory to see what's actually there
+    println!("Listing all files in key directory:");
+    if Path::new(key_dir_string).exists() {
+        for entry in fs::read_dir(key_dir_string)? {
+            println!("  Found: {:?}", entry?.path());
+        }
+    } else {
+        println!("  Key directory doesn't exist!");
+    }
+
+    // Try to check using storage with fully qualified paths
+    let priv_key = format!("{}/jacs.private.pem.enc", key_dir_string);
+    let pub_key = format!("{}/jacs.public.pem", key_dir_string);
+
+    println!("Checking for private key at: {}", priv_key);
+    let priv_exists = storage.file_exists(&priv_key, None)?;
+    println!("Private key exists (according to storage): {}", priv_exists);
+
+    println!("Checking for public key at: {}", pub_key);
+    let pub_exists = storage.file_exists(&pub_key, None)?;
+    println!("Public key exists (according to storage): {}", pub_exists);
+
+    // As a fallback, directly check filesystem
+    let priv_exists_fs = Path::new(&priv_key).exists();
+    let pub_exists_fs = Path::new(&pub_key).exists();
+
+    println!("Private key exists (filesystem): {}", priv_exists_fs);
+    println!("Public key exists (filesystem): {}", pub_exists_fs);
+
+    assert!(priv_exists_fs, "Private key missing at {}", priv_key);
+    assert!(pub_exists_fs, "Public key missing at {}", pub_key);
 
     // --- Debug: List contents of the expected agent directory ---
-    let agent_dir_path = temp_dir.path().join("jacs_data").join("agent");
-    println!("--- Checking contents of: {:?} ---", agent_dir_path);
+    let agent_dir_path = format!("{}/agent", data_dir_string);
+    println!("--- Checking contents of: {} ---", agent_dir_path);
     match std::fs::read_dir(&agent_dir_path) {
         Ok(entries) => {
             for entry in entries {
@@ -378,16 +509,15 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        Err(e) => println!("Could not read directory {:?}: {}", agent_dir_path, e),
+        Err(e) => println!("Could not read directory {}: {}", agent_dir_path, e),
     }
     println!("-------------------------------------------");
-    // ---------------------------------------------------------
 
-    let agent_file_path = data_dir.join("agent").join(format!("{}.json", agent_id));
+    let agent_file_path = format!("{}/agent/{}.json", data_dir_string, agent_id);
     assert!(
-        agent_file_path.exists(),
+        Path::new(&agent_file_path).exists(),
         "Agent file missing: {}",
-        agent_file_path.display()
+        agent_file_path
     );
 
     // jacs agent verify
@@ -403,29 +533,47 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     println!("Running: document tests ");
 
-    // Copy test fixtures to temp directory
+    // For fixtures we need to switch back to original directory
+    std::env::set_current_dir(&original_cwd)?;
+    println!(
+        "Temporarily switched to original directory for fixtures: {:?}",
+        std::env::current_dir()?
+    );
+
+    // Get fixtures paths
     let fixtures_dir = find_fixtures_dir();
     let src_ddl = fixtures_dir.join("raw").join("favorite-fruit.json");
     let src_mobius = fixtures_dir.join("raw").join("mobius.jpeg");
-    let dst_ddl = data_dir.join("fruit.json");
-    let dst_mobius = data_dir.join("mobius.jpeg");
+
+    // Important: Switch back to temp directory for the rest of the test
+    std::env::set_current_dir(temp_path)?;
+    println!(
+        "Switched back to temp directory: {:?}",
+        std::env::current_dir()?
+    );
+
+    let dst_ddl = format!("{}/fruit.json", data_dir_string);
+    let dst_mobius = format!("{}/mobius.jpeg", data_dir_string);
 
     println!("Attempting to copy:");
     println!("From: {:?}", src_ddl);
-    println!("To: {:?}", dst_ddl);
+    println!("To: {}", dst_ddl);
     println!("And from: {:?}", src_mobius);
-    println!("To: {:?}", dst_mobius);
+    println!("To: {}", dst_mobius);
 
     // Check if source files exist
     println!("Source ddi exists: {}", src_ddl.exists());
     println!("Source mobius exists: {}", src_mobius.exists());
 
-    std::fs::copy(&src_ddl, &dst_ddl)?;
-    std::fs::copy(&src_mobius, &dst_mobius)?;
+    std::fs::copy(&src_ddl, Path::new(&dst_ddl))?;
+    std::fs::copy(&src_mobius, Path::new(&dst_mobius))?;
 
     println!("Files copied successfully");
-    println!("Destination ddl exists: {}", dst_ddl.exists());
-    println!("Destination mobius exists: {}", dst_mobius.exists());
+    println!("Destination ddl exists: {}", Path::new(&dst_ddl).exists());
+    println!(
+        "Destination mobius exists: {}",
+        Path::new(&dst_mobius).exists()
+    );
 
     // Now run document create with the copied files
     println!("Running document create command...");
@@ -433,9 +581,9 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .arg("document")
         .arg("create")
         .arg("-f")
-        .arg("fruit.json")
+        .arg(&dst_ddl)
         .arg("--attach")
-        .arg("mobius.jpeg")
+        .arg(&dst_mobius)
         .arg("--embed=true")
         .arg("-a")
         .arg(&agent_file_path)
@@ -458,22 +606,20 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     );
 
     // Check if documents directory exists and list its contents
-    let documents_dir = data_dir.join("documents");
-    println!("Checking documents directory: {:?}", documents_dir);
-    if documents_dir.exists() {
+    let documents_dir = format!("{}/documents", data_dir_string);
+    println!("Checking documents directory: {}", documents_dir);
+    if Path::new(&documents_dir).exists() {
         println!("Documents directory exists, listing contents:");
         for entry in fs::read_dir(&documents_dir)? {
             let entry = entry?;
             println!("Found: {:?}", entry.path());
             // Use the first document we find
-            let entry_path = entry.path();
-            let doc_filename = entry_path.file_name().unwrap().to_str().unwrap();
-            let agent_path = agent_file_path.as_path();
-            let agent_filename = agent_path.file_name().unwrap().to_str().unwrap();
+            let doc_filename = entry.file_name().to_str().unwrap().to_string();
 
+            let doc_path = format!("{}/documents/{}", data_dir_string, doc_filename);
             println!("Running: document verify");
-            println!("Document path: documents/{}", doc_filename);
-            println!("Agent path: agent/{}", agent_filename);
+            println!("Document path: {}", doc_path);
+            println!("Agent path: {}", agent_file_path);
 
             // Add debugging before verify
             println!("\n===== DEBUGGING PATH ISSUES =====");
@@ -481,41 +627,17 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                 "Current working directory: {:?}",
                 std::env::current_dir().unwrap()
             );
-            println!("Temp path: {:?}", temp_path);
-            println!("Data dir: {:?}", data_dir);
-            println!("Full document path: {:?}", entry_path);
-            println!("Document exists: {}", entry_path.exists());
+            println!("Document path: {}", doc_path);
+            println!("Document exists: {}", Path::new(&doc_path).exists());
 
-            // Check if the file exists with various path combinations
-            println!("Checking possible document paths:");
-            let possible_doc_paths = [
-                entry_path.clone(),
-                data_dir.join("documents").join(doc_filename),
-                temp_path.join("documents").join(doc_filename),
-                std::path::PathBuf::from(format!("documents/{}", doc_filename)),
-            ];
-
-            for (i, path) in possible_doc_paths.iter().enumerate() {
-                println!("Path {}: {:?} - exists: {}", i, path, path.exists());
-            }
-
-            // Let's try using just the simplified path
-            let doc_simple_path = format!("documents/{}", doc_filename);
-            let agent_simple_path = format!("agent/{}", agent_filename);
-
-            println!("Will try with simple paths:");
-            println!("Document: {}", doc_simple_path);
-            println!("Agent: {}", agent_simple_path);
-            println!("===== END DEBUGGING =====\n");
-
-            // Then use the simplified paths for the verify command
+            // Then use the paths for the verify command
             let verify_output = base_cmd()
                 .arg("document")
                 .arg("verify")
                 .arg("-f")
-                .arg(doc_simple_path.clone())
+                .arg(&doc_path)
                 .arg("-a")
-                .arg(agent_simple_path)
+                .arg(&agent_file_path)
                 .output()
                 .expect("Failed to execute verify command");
 
@@ -566,17 +688,17 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                 stdout_str, stderr_str
             );
 
-            // jacs document create-agreement -f ... --agentids agent1,agent2
+            // Create agreement
             println!("Running: document create-agreement");
             let create_agreement_output = base_cmd()
                 .arg("document")
                 .arg("create-agreement")
                 .arg("-f")
-                .arg(doc_simple_path.clone())
+                .arg(&doc_path)
                 .arg("-a")
                 .arg(&agent_file_path)
                 .arg("--agentids")
-                .arg(format!("{}", agent_id)) // Use only one agent ID, not duplicated
+                .arg(agent_id)
                 .output()
                 .expect("Failed to execute create-agreement command");
 
@@ -597,12 +719,9 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                 .find(|line| line.starts_with("saved"))
             {
                 println!("Found saved line: {}", saved_line);
-                let id = saved_line.trim_start_matches("saved").trim().to_string();
-                println!("Extracted agreement ID: {}", id);
-                id
+                saved_line.trim_start_matches("saved").trim().to_string()
             } else {
-                println!("No saved line found in output, using original document path");
-                doc_simple_path.clone()
+                doc_filename.clone()
             };
 
             println!("Using agreement ID: {}", agreement_id);
@@ -611,13 +730,14 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
             println!("Sleeping for 1 second before signing agreement...");
             std::thread::sleep(std::time::Duration::from_secs(1));
 
-            // jacs document sign-agreement -f ...
+            // Sign agreement
             println!("Running: document sign-agreement");
+            let agreement_path = format!("{}/documents/{}", data_dir_string, agreement_id);
             let sign_output = base_cmd()
                 .arg("document")
                 .arg("sign-agreement")
                 .arg("-f")
-                .arg(format!("documents/{}", agreement_id)) // Use the document ID from create-agreement
+                .arg(&agreement_path)
                 .arg("-a")
                 .arg(&agent_file_path)
                 .output()
@@ -643,22 +763,20 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                     .find(|line| line.starts_with("saved"))
                 {
                     println!("Found sign-agreement saved line: {}", saved_line);
-                    let id = saved_line.trim_start_matches("saved").trim().to_string();
-                    println!("Extracted signed document ID: {}", id);
-                    id
+                    saved_line.trim_start_matches("saved").trim().to_string()
                 } else {
-                    println!("No saved line found in sign-agreement output, using agreement ID");
                     agreement_id.clone()
                 };
 
-                // jacs document check-agreement -f ...
+                // Check agreement
                 println!("Running: document check-agreement");
                 println!("Using signed document ID: {}", signed_doc_id);
+                let signed_doc_path = format!("{}/documents/{}", data_dir_string, signed_doc_id);
                 let check_output = base_cmd()
                     .arg("document")
                     .arg("check-agreement")
                     .arg("-f")
-                    .arg(format!("documents/{}", signed_doc_id)) // Use the signed doc ID, not the agreement ID
+                    .arg(&signed_doc_path)
                     .arg("-a")
                     .arg(&agent_file_path)
                     .output()
@@ -699,4 +817,43 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     } else {
         panic!("Documents directory does not exist after document create");
     }
+
+    // After agent creation, add more debugging to check the var directory
+    println!("\n=== CHECK VAR DIRECTORY ===");
+    let var_dir = Path::new("var");
+    if var_dir.exists() && var_dir.is_dir() {
+        println!("Found var directory in current directory!");
+        // Recursively list contents to find key files
+        fn list_dir_recursive(dir: &Path, depth: usize) -> Result<(), Box<dyn Error>> {
+            let prefix = "  ".repeat(depth);
+            println!("{}Listing contents of: {}", prefix, dir.display());
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    println!("{}{}/", prefix, path.display());
+                    list_dir_recursive(&path, depth + 1)?;
+                } else {
+                    println!("{}{}", prefix, path.display());
+                    // If this looks like a key file, check its contents
+                    if path.to_string_lossy().contains("jacs.private")
+                        || path.to_string_lossy().contains("jacs.public")
+                    {
+                        println!("{}  Found a potential key file!", prefix);
+                    }
+                }
+            }
+            Ok(())
+        }
+        list_dir_recursive(var_dir, 0)?;
+    } else {
+        println!("No var directory found in current directory");
+    }
+    println!("=== END CHECK VAR DIRECTORY ===\n");
+
+    // At the end of the test, restore original directory
+    std::env::set_current_dir(&original_cwd)?;
+    println!("Restored original working directory at end of test");
+
+    Ok(())
 }

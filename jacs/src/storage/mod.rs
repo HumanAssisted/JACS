@@ -160,9 +160,17 @@ pub enum StorageType {
 }
 
 impl MultiStorage {
-    fn clean_path(path: &str) -> String {
-        // Remove any ./ and multiple slashes
-        path.replace("./", "").replace("//", "/")
+    pub fn clean_path(path: &str) -> String {
+        // Remove any leading slashes to ensure consistent path format
+        // and convert absolute paths to relative
+        let cleaned = path.trim_start_matches('/');
+
+        // If path is empty after cleaning, return "." to indicate current directory
+        if cleaned.is_empty() {
+            ".".to_string()
+        } else {
+            cleaned.to_string()
+        }
     }
 
     pub fn default_new() -> Result<Self, ObjectStoreError> {
@@ -317,10 +325,28 @@ impl MultiStorage {
         let object_path = ObjectPath::parse(&clean)?;
         let storage = self.get_read_storage(preference);
 
+        // --- Debugging Start ---
+        let current_process_cwd =
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("unknown_cwd"));
+        println!(
+            "[MultiStorage::file_exists DEBUG]\n  - Input Path: '{}'\n  - Clean Path: '{}'\n  - Object Path: '{}'\n  - Process CWD: {:?}\n  - Attempting storage.head...",
+            path, clean, object_path, current_process_cwd
+        );
+        // --- Debugging End ---
+
         match block_on(storage.head(&object_path)) {
-            Ok(_) => Ok(true),
-            Err(ObjectStoreError::NotFound { .. }) => Ok(false),
-            Err(e) => Err(e),
+            Ok(_) => {
+                println!("  - storage.head: OK (Found)"); // Log success
+                Ok(true)
+            }
+            Err(ObjectStoreError::NotFound { path: _, source: _ }) => {
+                println!("  - storage.head: Err (NotFound)"); // Log not found
+                Ok(false)
+            }
+            Err(e) => {
+                println!("  - storage.head: Err ({:?})", e); // Log other errors
+                Err(e)
+            }
         }
     }
 
