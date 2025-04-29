@@ -6,6 +6,7 @@ use log::debug;
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 
 pub static TESTFILE_MODIFIED: &str = "tests/fixtures/documents/MODIFIED_f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
@@ -21,30 +22,32 @@ pub static AGENTTWO: &str =
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
     let mut agent = load_test_agent_one();
+    let fixtures_dir = find_fixtures_dir();
     let mut document_string =
-        load_local_document(&"tests/fixtures/raw/embed-xml.json".to_string()).unwrap();
+        load_local_document(&format!("{}/raw/embed-xml.json", fixtures_dir.display())).unwrap();
     let mut document = agent
         .create_document_and_load(
             &document_string,
             vec![
-                "raw/plants.xml".to_string(),
-                "raw/breakfast.xml".to_string(),
+                format!("{}/raw/plants.xml", fixtures_dir.display()),
+                format!("{}/raw/breakfast.xml", fixtures_dir.display()),
             ]
             .into(),
             Some(false),
         )
         .unwrap();
     let mut document_key = document.getkey();
+
     println!("document_key {}", document_key);
     // document_ref = agent.get_document(&document_key).unwrap();
     _ = agent.save_document(&document_key, None, None, None);
 
     document_string =
-        load_local_document(&"tests/fixtures/raw/image-embed.json".to_string()).unwrap();
+        load_local_document(&format!("{}/raw/image-embed.json", fixtures_dir.display())).unwrap();
     document = agent
         .create_document_and_load(
             &document_string,
-            vec!["raw/mobius.jpeg".to_string()].into(),
+            vec![format!("{}/raw/mobius.jpeg", fixtures_dir.display())].into(),
             Some(true),
         )
         .unwrap();
@@ -59,10 +62,13 @@ pub fn generate_new_docs_with_attachments(save: bool) {
 
 #[cfg(test)]
 pub fn generate_new_docs() {
-    static SCHEMA: &str = "tests/fixtures/raw/custom.schema.json";
+    let fixtures_dir = find_fixtures_dir();
     let mut agent = load_test_agent_one();
-    let mut document_string =
-        load_local_document(&"tests/fixtures/raw/favorite-fruit.json".to_string()).unwrap();
+    let mut document_string = load_local_document(&format!(
+        "{}/raw/favorite-fruit.json",
+        fixtures_dir.display()
+    ))
+    .unwrap();
     let mut document = agent
         .create_document_and_load(&document_string, None, None)
         .unwrap();
@@ -71,7 +77,8 @@ pub fn generate_new_docs() {
     // let mut document_ref = agent.get_document(&document_key).unwrap();
     let _ = agent.save_document(&document_key, None, None, None);
 
-    document_string = load_local_document(&"tests/fixtures/raw/gpt-lsd.json".to_string()).unwrap();
+    document_string =
+        load_local_document(&format!("{}/raw/gpt-lsd.json", fixtures_dir.display())).unwrap();
     document = agent
         .create_document_and_load(&document_string, None, None)
         .unwrap();
@@ -80,7 +87,8 @@ pub fn generate_new_docs() {
     // document_ref = agent.get_document(&document_key).unwrap();
     let _ = agent.save_document(&document_key, None, None, None);
 
-    document_string = load_local_document(&"tests/fixtures/raw/json-ld.json".to_string()).unwrap();
+    document_string =
+        load_local_document(&format!("{}/raw/json-ld.json", fixtures_dir.display())).unwrap();
     document = agent
         .create_document_and_load(&document_string, None, None)
         .unwrap();
@@ -90,10 +98,32 @@ pub fn generate_new_docs() {
     _ = agent.save_document(&document_key, None, None, None);
 }
 
-fn set_min_test_env_vars() {
+pub fn set_min_test_env_vars() {
     unsafe {
         env::set_var("JACS_PRIVATE_KEY_PASSWORD", "secretpassord");
     }
+}
+
+pub fn find_fixtures_dir() -> std::path::PathBuf {
+    let possible_paths = [
+        "../fixtures",         // When running from tests/scratch
+        "tests/fixtures",      // When running from jacs/
+        "jacs/tests/fixtures", // When running from workspace root
+    ];
+
+    println!(
+        "Current working directory: {:?}",
+        std::env::current_dir().unwrap()
+    );
+    for path in possible_paths.iter() {
+        println!("Checking path: {}", path);
+        if Path::new(path).exists() {
+            let found_path = Path::new(path).to_path_buf();
+            println!("Found fixtures directory at: {:?}", found_path);
+            return found_path;
+        }
+    }
+    panic!("Could not find fixtures directory in any of the expected locations");
 }
 
 #[cfg(test)]

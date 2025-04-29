@@ -4,6 +4,7 @@ mod utils;
 
 #[test]
 fn test_validate_agent_creation() {
+    utils::set_min_test_env_vars();
     // RUST_BACKTRACE=1 cargo test create_agent_tests -- --test test_validate_agent_creation
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -47,6 +48,7 @@ fn test_validate_agent_creation() {
 
 #[test]
 fn test_temp_validate_agent_creation() {
+    utils::set_min_test_env_vars();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
@@ -68,6 +70,7 @@ fn test_temp_validate_agent_creation() {
 
 #[test]
 fn test_temp_validate_agent_creation_save_and_load() {
+    utils::set_min_test_env_vars();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();

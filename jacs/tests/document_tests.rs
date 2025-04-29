@@ -11,7 +11,14 @@ extern crate env_logger;
 use log::{error, info};
 
 // Define the correct absolute path for the custom schema
-static SCHEMA: &str = "raw/custom.schema.json";
+
+static SCHEMA: &str = "custom.schema.json";
+
+fn get_raw_schema_path() -> String {
+    let fixtures_dir = utils::find_fixtures_dir();
+    let schema_path = fixtures_dir.join("raw").join(SCHEMA);
+    schema_path.to_string_lossy().to_string()
+}
 
 #[cfg(test)]
 mod tests {
@@ -66,7 +73,7 @@ fn test_load_custom_schema_and_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+    match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => {
             info!("Schemas loaded successfully in test_load_custom_schema_and_custom_document.")
         }
@@ -100,7 +107,7 @@ fn test_load_custom_schema_and_custom_document() {
 
     info!("loaded valid {}", document.getkey());
 
-    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
         Ok(_) => info!("Document is valid in test_load_custom_schema_and_custom_document."),
         Err(e) => panic!(
             "Document validation error in test_load_custom_schema_and_custom_document: {}",
@@ -115,7 +122,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     let mut agent = load_test_agent_one();
 
     info!("Starting to load custom schemas.");
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+    match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
             error!("Error loading schemas: {}", e);
@@ -156,7 +163,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     };
 
     info!("Document loaded, proceeding to validate document.");
-    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
         Ok(()) => {
             info!("Document validation succeeded, which should not happen.");
             panic!(
@@ -196,7 +203,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+    match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
             error!("Error loading schemas: {}", e);
@@ -234,7 +241,7 @@ fn test_load_custom_schema_and_new_custom_document() {
         ),
     };
 
-    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
         Ok(_) => info!("Document is valid in test_load_custom_schema_and_new_custom_document."),
         Err(e) => panic!(
             "Document validation error in test_load_custom_schema_and_new_custom_document: {}",
@@ -252,7 +259,7 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!(
         "test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load custom schemas"
     );
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+    match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!(
             "test_load_custom_schema_and_new_custom_document_agent_two: Custom schemas loaded successfully"
         ),
@@ -305,7 +312,7 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!(
         "test_load_custom_schema_and_new_custom_document_agent_two: Attempting to validate document with custom schema"
     );
-    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
         Ok(_) => info!(
             "test_load_custom_schema_and_new_custom_document_agent_two: Document validation completed"
         ),
@@ -321,7 +328,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
     // cargo test   --test document_tests -- --nocapture
     let mut agent = load_test_agent_one();
 
-    match agent.load_custom_schemas(&[SCHEMA.to_string()]) {
+    match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!(
             "Schemas loaded successfully in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."
         ),
@@ -385,7 +392,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         ),
     };
 
-    match agent.validate_document_with_custom_schema(&SCHEMA, &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
         Ok(_) => info!(
             "Document is valid in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."
         ),

@@ -30,14 +30,12 @@ fn setup() {
     if !Path::new("jacs.config.json").exists() {
         fs::write("jacs.config.json", CONFIG_CONTENT).expect("Failed to write config file");
     }
-    unsafe {
-        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "secretpassord");
-    }
 }
 
 #[test]
 fn test_update_agent_and_verify_versions() {
     setup();
+    utils::set_min_test_env_vars();
     log::debug!("Starting test_update_agent_and_verify_versions");
 
     // cargo test   --test agent_tests -- --nocapture
@@ -90,6 +88,7 @@ fn test_update_agent_and_verify_versions() {
 #[test]
 fn test_validate_agent_json_raw() {
     setup();
+    utils::set_min_test_env_vars();
     let json_data = r#"{
       "id": "agent123",
       "name": "Agent Smith",

@@ -17,6 +17,7 @@ fn set_enc_to_pq() {
 #[test]
 #[ignore]
 fn test_pq_create() {
+    let fixtures_dir = utils::find_fixtures_dir();
     set_enc_to_pq();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -32,13 +33,16 @@ fn test_pq_create() {
 
 #[test]
 fn test_pq_create_and_verify_signature() {
+    let fixtures_dir = utils::find_fixtures_dir();
     set_enc_to_pq();
+
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
     let mut agent =
         jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("tests/fixtures/raw/myagent.new.json").expect("REASON");
+    let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
+        .expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
     let private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
