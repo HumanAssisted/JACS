@@ -75,28 +75,6 @@ fn test_cli_version_subcommand() -> Result<(), Box<dyn Error>> {
 //         .join(name)
 // }
 
-fn find_fixtures_dir() -> std::path::PathBuf {
-    let possible_paths = [
-        "../fixtures",         // When running from tests/scratch
-        "tests/fixtures",      // When running from jacs/
-        "jacs/tests/fixtures", // When running from workspace root
-    ];
-
-    println!(
-        "Current working directory: {:?}",
-        std::env::current_dir().unwrap()
-    );
-    for path in possible_paths.iter() {
-        println!("Checking path: {}", path);
-        if Path::new(path).exists() {
-            let found_path = Path::new(path).to_path_buf();
-            println!("Found fixtures directory at: {:?}", found_path);
-            return found_path;
-        }
-    }
-    panic!("Could not find fixtures directory in any of the expected locations");
-}
-
 #[test]
 fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     // Save the original working directory at the start of the test

@@ -7,7 +7,6 @@ pub mod rsawrapper;
 pub mod aes_encrypt;
 
 use crate::agent::Agent;
-use crate::storage::jenv::get_required_env_var;
 use std::str::FromStr;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -16,7 +15,7 @@ use strum_macros::{AsRefStr, Display, EnumString};
 
 use crate::crypt::aes_encrypt::decrypt_private_key;
 
-#[derive(Debug, AsRefStr, Display, EnumString)]
+#[derive(Debug, AsRefStr, Display, EnumString, Clone)]
 enum CryptoSigningAlgorithm {
     #[strum(serialize = "RSA-PSS")]
     RsaPss,
@@ -28,6 +27,47 @@ enum CryptoSigningAlgorithm {
 
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
 pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
+
+/// Detects the algorithm type based on the public key format.
+///
+/// Each algorithm has unique characteristics in their public keys:
+/// - Ed25519: Fixed length of 32 bytes, contains non-ASCII characters
+/// - RSA-PSS: Typically longer (512+ bytes), mostly ASCII-compatible and starts with specific ASN.1 DER encoding
+/// - Dilithium: Has a specific binary format with non-ASCII characters and varying lengths based on the parameter set
+fn detect_algorithm_from_public_key(
+    public_key: &[u8],
+) -> Result<CryptoSigningAlgorithm, Box<dyn std::error::Error>> {
+    // Count non-ASCII bytes in the key
+    let non_ascii_count = public_key.iter().filter(|&&b| b > 127).count();
+    let non_ascii_ratio = non_ascii_count as f32 / public_key.len() as f32;
+
+    // Ed25519 public keys are exactly 32 bytes and typically contain non-ASCII characters
+    if public_key.len() == 32 && non_ascii_ratio > 0.5 {
+        return Ok(CryptoSigningAlgorithm::RingEd25519);
+    }
+
+    // RSA keys are typically longer, mostly ASCII-compatible, and often start with specific ASN.1 DER encoding
+    if public_key.len() > 100 && public_key.starts_with(&[0x30]) && non_ascii_ratio < 0.2 {
+        return Ok(CryptoSigningAlgorithm::RsaPss);
+    }
+
+    // PQ Dilithium keys have specific formats with many non-ASCII characters and larger sizes
+    if public_key.len() > 1000 && non_ascii_ratio > 0.3 {
+        return Ok(CryptoSigningAlgorithm::PqDilithium);
+    }
+
+    // If we have a high proportion of non-ASCII characters but don't match other criteria,
+    // it's more likely to be Ed25519 or PQ Dilithium than RSA
+    if non_ascii_ratio > 0.5 {
+        if public_key.len() > 500 {
+            return Ok(CryptoSigningAlgorithm::PqDilithium);
+        } else {
+            return Ok(CryptoSigningAlgorithm::RingEd25519);
+        }
+    }
+
+    Err("Could not determine the algorithm from the public key format".into())
+}
 
 pub trait KeyManager {
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
@@ -106,10 +146,20 @@ impl KeyManager for Agent {
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
+        // Determine the algorithm type
         let algo = match public_key_enc_type {
             Some(public_key_enc_type) => CryptoSigningAlgorithm::from_str(&public_key_enc_type)?,
-            None => CryptoSigningAlgorithm::from_str(&key_algorithm)?,
+            None => {
+                // Try to auto-detect the algorithm type from the public key
+                match detect_algorithm_from_public_key(&public_key) {
+                    Ok(detected_algo) => detected_algo,
+                    Err(_) => {
+                        // Fall back to the agent's configured algorithm if auto-detection fails
+                        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
+                        CryptoSigningAlgorithm::from_str(&key_algorithm)?
+                    }
+                }
+            }
         };
 
         match algo {
@@ -123,9 +173,7 @@ impl KeyManager for Agent {
                 return pq::verify_string(public_key, data, signature_base64);
             }
             _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
+                return Err(format!("{} is not a known or implemented algorithm.", algo).into());
             }
         }
     }

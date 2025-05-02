@@ -19,6 +19,8 @@
  - [] task review
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [] sign config
+ - [] fix decryption for pq BUG
+ 
 ## jacs-mcp 0.1.0
 
  - [] integrate with RUST server
@@ -51,8 +53,8 @@
    - [x] change config to have storagetype string, add to config schema
    - write tests for no env vars usage of config
    - load by id from default store
-   - DON"T STORE PASSWORD IN CONFIG
-   - all old tests and some new tests pass
+   - [x] don't store passwords in config
+   - [] all old tests and some new tests pass
 
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
    - more complete python implementation
@@ -64,6 +66,8 @@
  - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
  - [x] separate JACS readme repo readme
  - [x] minimal github actions
+ - [x] autodetect public key type
+ - [ ] remove requirement to store public key type
  
 ## jacspy-mcp
  - [] integrate jacspy

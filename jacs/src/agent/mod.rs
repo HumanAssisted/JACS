@@ -152,8 +152,12 @@ impl Agent {
             .as_deref()
             .unwrap_or("");
         self.storage = MultiStorage::new(storage_type.to_string())?;
-        let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
-        return self.load(&agent_string);
+        if !lookup_id.is_empty() {
+            let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
+            return self.load(&agent_string);
+        } else {
+            return Ok(());
+        }
     }
 
     pub fn ready(&mut self) -> bool {

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "jacsAgentType": "ai",
+  "jacsId": "f3eef285-221d-4217-91a3-84b700951aa5",
+  "jacsLevel": "config",
+  "jacsOriginalDate": "2025-05-01T18:52:59.297486+00:00",
+  "jacsOriginalVersion": "81716d1f-7935-41b6-b5cc-f864375c8300",
+  "jacsServices": [
+    {
+      "failureDescription": "Test Failure Desc",
+      "serviceDescription": "Test Service Desc",
+      "successDescription": "Test Success Desc"
+    }
+  ],
+  "jacsSha256": "4830b393598f46fc7a00dc2fa4e6c2d722dab209fc11942e8310419476b07d16",
+  "jacsSignature": {
+    "agentID": "f3eef285-221d-4217-91a3-84b700951aa5",
+    "agentVersion": "81716d1f-7935-41b6-b5cc-f864375c8300",
+    "date": "2025-05-01T18:52:59.459850+00:00",
+    "fields": [
+      "$schema",
+      "jacsAgentType",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsServices",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "b96cdc7b428388e24e38810496e1b957722c4fdbd895128c290ff6b0376088be",
+    "signature": "NWbu+KmWtgA+KIHoJF7cVeC0NahNR5L0shr37xAC2cmvV1IDvSiIYx7U7i+4kGVTsURVW9H4gWqLwNbbcicmPqbN/gnh3UNECrYmxAsEJd4RmzFcG9EIKMdVZQkIQLDgXIbmHx/nGCTJNarb7NvNpqGZCfa93452hq+y6jhf119YFQ9CFOqPrTF1ZcA4KW3B9P08SNShguxSu++1LiZuuKo5leGzP1Io91L9RhpH+cMUPVjLik9JwLkuUqOhKXZygNFn4mOB0TIzzOuWNNcpi19t1+bCmL+/QxKc4hyqzWkVIMOPuYtCBfSex0mhaLe1myXV073T2rMmp+tfxrSfSZaN5cg6WLr1aZESMfa/iYevTNqU0ZpmUfPqQcpFLJhIQOoaszSN9naGR6gXnITQTFE961cyekT8Q3nOZEabNheEcG5N75WkTOxa57MXS4EnxQpqNc8P6sKR3Em2cdcPdSjJTYCzQaxd0HW4HLXK8bzrC+Cl32VgCnf3zOsjUNwhhnZATURnpE/jv2xQLt6dqogfwADxItLt0mSbQxOp0Fav/EHmG53FuV8t1O41AwzpuO3PMyG3urD95b/DHlqshksASqKxpDF2pEcJ7H2SjHQW0dvflgz6vDkiizfniibYhjWieb3nPWEMzPBa3/kcvgIi+giWejR5GapwVOZQLaU=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "agent",
+  "jacsVersion": "81716d1f-7935-41b6-b5cc-f864375c8300",
+  "jacsVersionDate": "2025-05-01T18:52:59.297486+00:00"
+}
