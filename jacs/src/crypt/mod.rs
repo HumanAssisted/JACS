@@ -16,7 +16,7 @@ use strum_macros::{AsRefStr, Display, EnumString};
 use crate::crypt::aes_encrypt::decrypt_private_key;
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone)]
-enum CryptoSigningAlgorithm {
+pub enum CryptoSigningAlgorithm {
     #[strum(serialize = "RSA-PSS")]
     RsaPss,
     #[strum(serialize = "ring-Ed25519")]
@@ -34,7 +34,7 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 /// - Ed25519: Fixed length of 32 bytes, contains non-ASCII characters
 /// - RSA-PSS: Typically longer (512+ bytes), mostly ASCII-compatible and starts with specific ASN.1 DER encoding
 /// - Dilithium: Has a specific binary format with non-ASCII characters and varying lengths based on the parameter set
-fn detect_algorithm_from_public_key(
+pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
 ) -> Result<CryptoSigningAlgorithm, Box<dyn std::error::Error>> {
     // Count non-ASCII bytes in the key

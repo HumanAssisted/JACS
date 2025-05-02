@@ -8,20 +8,6 @@ use secrecy::ExposeSecret;
 use std::env;
 use std::fs;
 
-// fn set_enc_to_ring() {
-//     unsafe {
-//         env::set_var(
-//             "JACS_AGENT_PRIVATE_KEY_FILENAME",
-//             "test-ring-Ed25519-private.pem",
-//         );
-//         env::set_var(
-//             "JACS_AGENT_PUBLIC_KEY_FILENAME",
-//             "test-ring-Ed25519-public.pem",
-//         );
-//         env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
-//     }
-// }
-
 fn get_ring_config() -> String {
     let fixtures_dir = utils::find_fixtures_dir();
     unsafe {

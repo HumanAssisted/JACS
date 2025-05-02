@@ -1,24 +1,14 @@
 use jacs::agent::loaders::FileLoader;
 use secrecy::ExposeSecret;
-use std::env;
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use utils::load_test_agent_one;
 
-fn set_enc_to_rsa() {
-    unsafe {
-        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
-        env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
-    }
-}
-
 #[test]
 #[ignore]
 fn test_rsa_create() {
-    set_enc_to_rsa();
     let mut agent = load_test_agent_one();
     agent.generate_keys().expect("Reason");
 }
@@ -26,14 +16,12 @@ fn test_rsa_create() {
 #[test]
 #[ignore]
 fn test_rsa_save_encrypted() {
-    set_enc_to_rsa();
     let mut agent = load_test_agent_one();
     agent.fs_save_keys().expect("Reason");
 }
 
 #[test]
 fn test_rsa_create_and_verify_signature() {
-    set_enc_to_rsa();
     let agent = load_test_agent_one();
     let _private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
