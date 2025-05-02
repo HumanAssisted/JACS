@@ -1,5 +1,5 @@
 # PLANNED
-
+-  machine fingerprinting v2
 - encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
@@ -7,34 +7,57 @@
  - https://github.com/verus-lang/verus?tab=readme-ov-file
 
 ## 0.4.0
-- WASM
- - [] machine fingerprinting v2
-
-## 0.3.5
+- Domain integration
+- [] sign config
  - [] RBAC enforcement from server. If shared, new version is pinned. 
- - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
- - [] RBAC integration with header
- - [] diff versions
- - [] bucket integration
- - [] task review
- - [] don't store  "jacs_private_key_password":  in config, don't display
- - [] sign config
- - [] fix decryption for pq BUG
 
+  - more complete python implementation
+   - pass document string or document id - with optional version instead of string
+   - load document whatever storage config is
+   - function test output metadata about current config and current agent
 ## jacs-mcp 0.1.0
 
- - [] integrate with RUST server
+ - [] use rmcp
  - [] auth or all features
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
-### DNS
- - [] domain to header, and related verification
 
+
+--------------------
+
+## 0.3.5
+
+### Register agent
+
+ - [] register agent
+    - [] remove requirement to store public key typ
+    - [] 
+
+
+ - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] RBAC integration with header
+ - [] diff versions
+ - [] bucket integration
+ - [] don't store  "jacs_private_key_password":  in config, don't display
+## jacspy
+
+## jacspy-mcp
+
+--------------------
 
 # COMPLETED
 
 ## 0.3.4
+
+ ## main goals of demo
+
+ 1. auto generate agent doc from MCP server list, auto versions
+ 2. init and load agent in an mcp server and client, timestamp/IP
+ 3. *** register public key somewhere ***
+ 4. have identity available to business logic
+ 5. traceable, verifiable request logs
+ 
 
  ### General 
 
@@ -61,15 +84,21 @@
  - [x] separate JACS readme repo readme
  - [x] minimal github actions
  - [x] autodetect public key type
-
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
-   - more complete python implementation
-   - pass document string or document id - with optional version instead of string
-   - load document whatever storage config is
-   - function test output metadata about current config and current agent
- - [ ] remove requirement to store public key type
+   init, load agent, verify agent, verify document, 
+   - [x] single init, also signs agent
+   - [x] load from config
+   - [ ] have load agent from config also load keys IF SIGNED
+
+ 
  
 ## jacspy-mcp
+ - load(config) -> Agent
+ - sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
+ - verify(content, signature, agentid, agentversion) -> bool, error
+ 
+
+
  - [] integrate jacspy
  - [x] make decorator for easy use in @tools
  - [] make decorator for @resource
@@ -82,14 +111,20 @@
  - [] mcp client and server websocket
  - [] publish jacspy to pypi
 
-## jacspy 
- - [ ] don't use env configs everywhere
+## jacspy  *** For demo, init and register are handled by cli *** 
+
+load, update agent
+server validate request string
+client validate agent
+cli view logs in filesystem, view error log
+
  - [ ] load into client and server and use for auth
  - [ ] instructions for how to create - cli create agent 1, cli create agent 2, config jacspy to load each agent
  - [ ] publish jacspy  to pypi
  - [x] new local builder
  - [ ] github actions builder
 
+---------------
 
 # 0.3.3
 
