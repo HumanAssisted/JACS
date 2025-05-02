@@ -20,7 +20,7 @@
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [] sign config
  - [] fix decryption for pq BUG
- 
+
 ## jacs-mcp 0.1.0
 
  - [] integrate with RUST server
@@ -46,27 +46,27 @@
 ### itemized
  - [x] make sure config directory is in isolated location, like with key
  - [x] make config and security part of Agent
- - [ ] don't use env configs everywhere- dep jacspy
+ - [x] don't use env  everywhere- dep jacspy
    - [x] load multistorage into agent object to re-use
-   - [] BUG keys directory isolation broken when re-using Multistorage. TODO wrap key saving in different function
-   - [] don't use set_env_vars() by default - may be more than one agent in system    
+   - [x] BUG keys directory isolation broken when re-using Multistorage. TODO wrap key saving in different function
+   - [x] don't use set_env_vars() by default - may be more than one agent in system    
    - [x] change config to have storagetype string, add to config schema
    - write tests for no env vars usage of config
    - load by id from default store
    - [x] don't store passwords in config
-   - [] all old tests and some new tests pass
+   - [x] all old tests and some new tests pass
+- [x] cli init function
+ - [x] clean up fs defaults in init/config/ 
+ - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
+ - [x] separate JACS readme repo readme
+ - [x] minimal github actions
+ - [x] autodetect public key type
 
  - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
    - more complete python implementation
    - pass document string or document id - with optional version instead of string
    - load document whatever storage config is
    - function test output metadata about current config and current agent
- - [x] cli init function
- - [x] clean up fs defaults in init/config/ 
- - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
- - [x] separate JACS readme repo readme
- - [x] minimal github actions
- - [x] autodetect public key type
  - [ ] remove requirement to store public key type
  
 ## jacspy-mcp
