@@ -23,6 +23,8 @@ pub enum CryptoSigningAlgorithm {
     RingEd25519,
     #[strum(serialize = "pq-dilithium")]
     PqDilithium,
+    #[strum(serialize = "pq-dilithium-alt")]
+    PqDilithiumAlt, // Alternative version with different signature size
 }
 
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
@@ -69,6 +71,28 @@ pub fn detect_algorithm_from_public_key(
     Err("Could not determine the algorithm from the public key format".into())
 }
 
+/// Detects which algorithm to use based on signature length and other characteristics
+/// This helps handle version differences in the same algorithm family (like different PQ versions)
+pub fn detect_algorithm_from_signature(
+    signature_bytes: &[u8],
+    detected_algo: &CryptoSigningAlgorithm,
+) -> CryptoSigningAlgorithm {
+    match detected_algo {
+        CryptoSigningAlgorithm::PqDilithium => {
+            // Handle different Dilithium signature lengths
+            if signature_bytes.len() > 4640 && signature_bytes.len() < 4650 {
+                // This appears to be the newer version with ~4644 byte signatures
+                CryptoSigningAlgorithm::PqDilithiumAlt
+            } else {
+                // Stick with the original detection
+                CryptoSigningAlgorithm::PqDilithium
+            }
+        }
+        // For other algorithms, just return the detected algorithm as-is
+        _ => detected_algo.clone(),
+    }
+}
+
 pub trait KeyManager {
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
     fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>>;
@@ -96,7 +120,7 @@ impl KeyManager for Agent {
                 (private_key, public_key) =
                     ringwrapper::generate_keys().map_err(|e| e.to_string())?;
             }
-            CryptoSigningAlgorithm::PqDilithium => {
+            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 (private_key, public_key) = pq::generate_keys().map_err(|e| e.to_string())?;
             }
             _ => {
@@ -127,7 +151,7 @@ impl KeyManager for Agent {
                 let key_vec = decrypt_private_key(binding.expose_secret())?;
                 return ringwrapper::sign_string(key_vec, data);
             }
-            CryptoSigningAlgorithm::PqDilithium => {
+            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 let binding = self.get_private_key()?;
                 let key_vec = decrypt_private_key(binding.expose_secret())?;
                 return pq::sign_string(key_vec, data);
@@ -139,6 +163,7 @@ impl KeyManager for Agent {
             }
         }
     }
+
     fn verify_string(
         &self,
         data: &String,
@@ -146,13 +171,19 @@ impl KeyManager for Agent {
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Get the signature bytes for analysis
+        let signature_bytes = base64::decode(signature_base64)?;
+
         // Determine the algorithm type
         let algo = match public_key_enc_type {
             Some(public_key_enc_type) => CryptoSigningAlgorithm::from_str(&public_key_enc_type)?,
             None => {
                 // Try to auto-detect the algorithm type from the public key
                 match detect_algorithm_from_public_key(&public_key) {
-                    Ok(detected_algo) => detected_algo,
+                    Ok(detected_algo) => {
+                        // Further refine detection based on signature
+                        detect_algorithm_from_signature(&signature_bytes, &detected_algo)
+                    }
                     Err(_) => {
                         // Fall back to the agent's configured algorithm if auto-detection fails
                         let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
@@ -169,8 +200,29 @@ impl KeyManager for Agent {
             CryptoSigningAlgorithm::RingEd25519 => {
                 return ringwrapper::verify_string(public_key, data, signature_base64);
             }
-            CryptoSigningAlgorithm::PqDilithium => {
-                return pq::verify_string(public_key, data, signature_base64);
+            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
+                // Try the standard PQ verification first
+                let result = pq::verify_string(public_key.clone(), data, signature_base64);
+
+                if result.is_ok() {
+                    return Ok(());
+                }
+
+                // If we encounter a signature length error and we're using PqDilithiumAlt,
+                // we could implement a special handling here for the alternative format
+                if let Err(e) = &result {
+                    if e.to_string().contains("BadLength")
+                        && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
+                    {
+                        // Here we would add special handling for the alternative format
+                        // For now, we'll just log it and fail with a more descriptive error
+                        return Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}", 
+                            signature_bytes.len(), e).into());
+                    }
+                }
+
+                // Return the original error
+                result
             }
             _ => {
                 return Err(format!("{} is not a known or implemented algorithm.", algo).into());

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "description": "We should embed an xml document here",
+  "jacsFiles": [
+    {
+      "embed": false,
+      "mimetype": "text/xml",
+      "path": "tests/fixtures/raw/plants.xml",
+      "sha256": "8615f88410eeafb38e2c386ed9dbae8fadf3d4d0e50a8dc43c4287246f104311"
+    },
+    {
+      "embed": false,
+      "mimetype": "text/xml",
+      "path": "tests/fixtures/raw/breakfast.xml",
+      "sha256": "71ae785d2f68d8b818da97171013033a5bfc632b6cad7d286e8e1907e023d0dd"
+    }
+  ],
+  "jacsId": "9d80354e-1f5c-4a7c-b148-109349180958",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2025-05-02T08:00:38.216533+00:00",
+  "jacsOriginalVersion": "83c32dc0-2612-43a2-a46a-dbc70fca556c",
+  "jacsSha256": "e1f1ad9ab77237e1365e054700cb5a188d6f629e8c27f0a0033f90a38a152cc9",
+  "jacsSignature": {
+    "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
+    "agentVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
+    "date": "2025-05-02T08:00:38.404119+00:00",
+    "fields": [
+      "$schema",
+      "description",
+      "jacsFiles",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "2c9cc6361e2003173df86b9c267b3891193319da7fe7c6f42cb0fbe5b30d7c0d",
+    "signature": "kUfuJ6C2F06NY2FaPmyctXw0hg1KRnKcmKoJ49NmeQRrtAyfy+WU/A/dBoBMY4K8oELyM/X+OF3cMfJMFxWXqX3GxjeautL6fOM0LwBKv3aP9MPyS/c/I/1d9EXaRSvaXFyT1sB/YP0JnJWzGIFPe+mOOTooJStN6XRXuVr441Qk0iyqlXi6my5HItDDMx6geOkqHdwuPtWv77H2tXT+ITek6l0Mo3yi6RFcBJp4xIESb2wznxqK70kmL41g7RXcljIPfSMgUJsDWQhP40A6vHgba8xJ3GgHSb9IJoi1leXCcdY5j3ADOtO1MxXa1i9I4X5G/+VDbOi+Lwu3OP5lIdqY48ToNBvyjbKTtFeYPsqtg2gqZXI7NLKyNEMBRlEy4PlroZhoyfH8Yn1jrU8/gn4XM1pcg5XQGxA8cniohuRldedCdygjrMwuNN70ou8tybI22e7wZRnhW4IrFvIJhHNJ/oZRbE8kHQ9458G/zPCUVXQwvDUeWIQjGbLMw2rMJ5SuGbK5aFtjdNpc31I14zzWdol1882H2qFVedeTY8lpkhSBvVxasxIl95gOaq0KQsIpSowYDM7WiR/J5hxIsdc4/7JG9ZZF9v9YMpAOz0nxw30CjZDdIfHHlxhgF+Y3/2Wf64ilJ47ComAuRO7HPNXREM1i0kt+ALO+AWX8CMA=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "header",
+  "jacsVersion": "83c32dc0-2612-43a2-a46a-dbc70fca556c",
+  "jacsVersionDate": "2025-05-02T08:00:38.216533+00:00"
+}
