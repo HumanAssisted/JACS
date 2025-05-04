@@ -19,8 +19,8 @@ classifiers = [
 ]
  # "jacs>=0.1.0" 
 dependencies = [
-   "fastmcp>=2.2.0",
-   "mcp[cli]>=1.6.0",
+   "fastmcp>=2.2.7",
+   "mcp[cli]>=1.7.1",
 ]
 
 [project.urls] 

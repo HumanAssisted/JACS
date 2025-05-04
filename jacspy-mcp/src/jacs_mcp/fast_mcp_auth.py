@@ -265,7 +265,6 @@ class JACSFastMCP:
             call_kwargs = {k: v for k, v in kwargs.items() if k in original_params and k != 'metadata'}
             # Basic positional arg handling (adjust if needed for complex cases)
             num_positional_expected = sum(1 for p in original_params.values() if p.kind in [p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD])
-            num_keyword_expected = len(call_kwargs)
             num_positional_to_pass = min(len(args), num_positional_expected)
 
             call_args = args[:num_positional_to_pass]

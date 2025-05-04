@@ -1,6 +1,6 @@
 Install jacs
 
-  crate install jacs
+  cargo install jacs
 
 Install requirements
 

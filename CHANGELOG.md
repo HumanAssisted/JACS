@@ -5,6 +5,9 @@
 - more getters and setters for documents recognized by schemas
 - WASM builds
  - https://github.com/verus-lang/verus?tab=readme-ov-file
+- use rcgen to sign certs, and register with ACME
+ https://opentelemetry.io/docs/languages/rust/
+. ai.pydantic.dev
 
 ## 0.4.0
 - Domain integration
