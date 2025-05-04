@@ -1,10 +1,11 @@
 # server_stdio.py - Standalone FastMCP Stdio Server Example
 import uuid
 from fastmcp import Context
+
 # Import the JACS wrapper and only the manual signing function
 from jacs_mcp.fast_mcp_auth import (
     JACSFastMCP,
-    default_sign_response # Needed for manual response signing
+    default_sign_response,  # Needed for manual response signing
     # Decorator handles request validation using default_validate_request
 )
 
@@ -14,8 +15,9 @@ mcp = JACSFastMCP(
     # Can pass custom validate_request_fn here if needed
 )
 
+
 # --- MCP Tool (Clean Signature, Auto Request Validation) ---
-@mcp.tool(strict=True) # Pass strict=True (or False) - example usage
+@mcp.tool(strict=True)  # Pass strict=True (or False) - example usage
 # Signature is clean, no **kwargs needed for auth
 # MUST STILL return dict for manual response signing in Stdio
 async def echo(msg: str, ctx: Context) -> dict:
@@ -29,14 +31,10 @@ async def echo(msg: str, ctx: Context) -> dict:
     server_meta = default_sign_response(result_string)
     print(f"STDIO SERVER: Manually signing response: {server_meta}")
 
-    return {
-        "result": result_string,
-        "metadata": server_meta
-    }
+    return {"result": result_string, "metadata": server_meta}
+
 
 # --- Run ---
 if __name__ == "__main__":
     print("Starting JACSFastMCP Stdio server (auto-validate)...")
     mcp.run()
-
- 

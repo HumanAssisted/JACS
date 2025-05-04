@@ -1,8 +1,10 @@
 # server_sse.py
 import uvicorn
 from fastmcp import Context
+
 # Import only the JACS wrapper
 from jacs_mcp.fast_mcp_auth import JACSFastMCP
+
 # Defaults for validation (decorator) and signing (middleware) are used
 
 # --- Auth Server Setup using JACSFastMCP ---
@@ -11,8 +13,11 @@ mcp = JACSFastMCP(
     # Can pass custom validate_request_fn here if needed
 )
 
+
 # --- Tool Definition (Clean Signature, Auto Request Validation) ---
-@mcp.tool(name="echo", description="Echoes a message via SSE", strict=True) # Add strict=True back
+@mcp.tool(
+    name="echo", description="Echoes a message via SSE", strict=True
+)  # Add strict=True back
 # Signature is clean
 async def echo(msg: str, ctx: Context) -> str:
     """A simple echo tool with automatic request/response auth handling."""
@@ -21,6 +26,7 @@ async def echo(msg: str, ctx: Context) -> str:
     result_string = f"Echo via SSE: {msg}"
     # Response signing handled by middleware in mcp.sse_app()
     return result_string
+
 
 # --- Get the prepared ASGI app ---
 sse_app_with_middleware = mcp.sse_app()

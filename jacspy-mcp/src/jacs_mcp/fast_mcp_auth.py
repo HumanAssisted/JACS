@@ -1,6 +1,6 @@
 import contextlib
-from typing import Any, Callable, Dict, Optional, Coroutine, Awaitable, Union
-from fastmcp.client.transports import PythonStdioTransport, SSETransport, FastMCPTransport, ClientTransport, infer_transport
+from typing import Any, Callable, Dict, Optional, Coroutine, Awaitable
+from fastmcp.client.transports import ClientTransport, infer_transport
 import uuid
 import json
 import traceback
@@ -35,7 +35,7 @@ SyncMetadataCallback = Callable[[Dict[str, Any]], None]
 MessageHandlerFnT = Callable[[Dict[str, Any]], Coroutine[Any, Any, Optional[Dict[str, Any]]]]
 
 def default_sign_request(params: dict) -> dict:
-    print("AUTH: Signing Client Request")
+    print("AUTH: Signing Client Request", params)
     return {"client_id": "c1", "req_id": f"creq-{uuid.uuid4()}"}
 
 def default_validate_response(metadata: dict):
@@ -45,7 +45,7 @@ def default_validate_request(metadata: dict):
     print(f"AUTH: Validating Client Request Metadata: {metadata}")
 
 def default_sign_response(result: Any) -> dict:
-    print("AUTH: Signing Server Response")
+    print("AUTH: Signing Server Response", result)
     return {"server_id": "s1", "res_id": f"sres-{uuid.uuid4()}"}
 
 
