@@ -1,9 +1,8 @@
 use ::jacs as jacs_core;
+use jacs_core::agent::document::DocumentTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
-use jacs_core::config::set_env_vars;
 use jacs_core::crypt::KeyManager;
 use jacs_core::crypt::hash::hash_string as jacs_hash_string;
-use jacs_core::load_agent_by_id;
 use lazy_static::lazy_static;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -11,14 +10,11 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-// Add these imports for the trait methods to be available
-use jacs_core::agent::document::DocumentTraits;
 
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
-        let _ = set_env_vars(false, None, false);
-        let mut agent = load_agent_by_id();
-        Arc::new(Mutex::new(agent))
+        let agent:  Arc<Mutex<Agent>> = Arc::new(Mutex::new(Agent::new(&"None".to_string(), &"None".to_string(), &"None".to_string()).unwrap()));; 
+        return agent;
     };
 }
 
@@ -26,6 +22,18 @@ fn log_to_python(py: Python, message: &str, log_level: &str) -> PyResult<()> {
     let logging = py.import("logging")?;
     logging.call_method1(log_level, (message,))?;
     Ok(())
+}
+
+#[pyfunction]
+fn load(
+    py: Python,
+    config_path: &str
+) -> PyResult<String> {
+    let mut agent_ref = JACS_AGENT.lock().expect("Failed to lock agent");
+    agent_ref.load_by_config(config_path.to_string()).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load agent: {}", e))
+    })?;
+    Ok("Agent loaded".to_string())
 }
 
 // expects self signed agents
@@ -445,6 +453,8 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(verify_string, m)?)?;
     m.add_function(wrap_pyfunction!(hash_string, m)?)?;
+
+    
     m.add_function(wrap_pyfunction!(sign_agent, m)?)?;
     m.add_function(wrap_pyfunction!(create_config, m)?)?;
     m.add_function(wrap_pyfunction!(verify_agent, m)?)?;
