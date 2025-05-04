@@ -18,16 +18,16 @@ from fastmcp import FastMCP, Client, Context
 
 import jacs
 
-# --- Deprecated Example Function ---
-def get_metadata() -> Dict[str, str]:
-    """DEPRECATED example function."""
-    return {"client_id": "deprecated", "request_id": "deprecated"}
+# # --- Deprecated Example Function ---
+# def get_metadata() -> Dict[str, str]:
+#     """DEPRECATED example function."""
+#     return {"client_id": "deprecated", "request_id": "deprecated"}
 
-# --- Deprecated AuthTransport Class ---
-class AuthTransport:
-    """DEPRECATED by AuthClient/JACSFastMCP approach."""
-    # ... (implementation omitted for brevity) ...
-    pass
+# # --- Deprecated AuthTransport Class ---
+# class AuthTransport:
+#     """DEPRECATED by AuthClient/JACSFastMCP approach."""
+#     # ... (implementation omitted for brevity) ...
+#     pass
 
 
 # --- User-defined function types and Defaults ---
@@ -35,17 +35,17 @@ SyncMetadataCallback = Callable[[Dict[str, Any]], None]
 MessageHandlerFnT = Callable[[Dict[str, Any]], Coroutine[Any, Any, Optional[Dict[str, Any]]]]
 
 def default_sign_request(params: dict) -> dict:
-    print("AUTH: Signing Client Request", params)
+    print("default_sign_request: Signing Client Request", params)
     return {"client_id": "c1", "req_id": f"creq-{uuid.uuid4()}"}
 
 def default_validate_response(metadata: dict):
-    print(f"AUTH: Validating Server Response Metadata: {metadata}")
+    print(f"default_validate_response: Validating Server Response Metadata: {metadata}")
 
 def default_validate_request(metadata: dict):
-    print(f"AUTH: Validating Client Request Metadata: {metadata}")
+    print(f"default_validate_request: Validating Client Request Metadata: {metadata}")
 
 def default_sign_response(result: Any) -> dict:
-    print("AUTH: Signing Server Response", result)
+    print("default_sign_response: Signing Server Response", result)
     return {"server_id": "s1", "res_id": f"sres-{uuid.uuid4()}"}
 
 
@@ -70,17 +70,19 @@ class AuthInjectTransport(ClientTransport):
                  raise RuntimeError("Could not find session._write_stream.send to patch.") from None
 
             async def stream_send_with_meta(message: JSONRPCMessage, **send_kwargs):
+                print(f"DEBUG: OUTGOING REQUEST BEFORE: {message.root}")
                 if hasattr(message, 'root') and isinstance(message.root, dict) and message.root.get("method"):
                     request_params = message.root.get("params", {})
                     metadata_to_inject = self.sign_request_fn(request_params or {})
                     current_params = message.root.get("params")
                     if isinstance(current_params, dict):
-                         current_params["metadata"] = metadata_to_inject
-                         message.root["params"] = current_params
+                        current_params["metadata"] = metadata_to_inject
+                        message.root["params"] = current_params
                     elif current_params is None:
-                         message.root["params"] = {"metadata": metadata_to_inject}
+                        message.root["params"] = {"metadata": metadata_to_inject}
                     else:
                         print(f"Warning: Cannot inject metadata into non-dict params: {current_params}")
+                    print(f"DEBUG: OUTGOING REQUEST AFTER: {message.root}")
                 await original_stream_send(message, **send_kwargs)
 
             session._write_stream.send = stream_send_with_meta
@@ -98,12 +100,16 @@ def create_metadata_reading_handler(
     """CLIENT-SIDE READER: Creates handler to extract metadata and call validator."""
     # ... (implementation from previous working version) ...
     async def handle_message_with_metadata(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        print(f"DEBUG: INCOMING RESPONSE: {message}")
         processed_message: Optional[Dict[str, Any]] = message
         if isinstance(message, dict) and "metadata" in message:
             try:
+                print(f"DEBUG: Found metadata in response: {message['metadata']}")
                 validate_response_fn(message["metadata"])
             except Exception as e:
-                 print(f"Client Auth Error: Response validation failed: {e}")
+                print(f"Client Auth Error: Response validation failed: {e}")
+        else:
+            print(f"DEBUG: No metadata found in response")
         if original_handler and processed_message is not None:
             processed_message = await original_handler(processed_message)
         return processed_message
@@ -210,12 +216,15 @@ class MetadataInjectingMiddleware(BaseHTTPMiddleware):
                         try:
                             data_part = event_str[len("data:"):].strip()
                             data = json.loads(data_part)
+                            print(f"DEBUG: SERVER OUTGOING RESPONSE BEFORE: {data}")
                             if isinstance(data, dict) and data.get("jsonrpc") == "2.0" and ("result" in data or "error" in data):
-                                 metadata_to_inject = self.sign_response_fn(data.get("result"))
-                                 data.setdefault("metadata", {}).update(metadata_to_inject)
-                                 modified_event = f"data: {json.dumps(data)}\n\n"
-                                 yield modified_event.encode("utf-8")
-                                 continue
+                                metadata_to_inject = self.sign_response_fn(data.get("result"))
+                                print(f"DEBUG: SERVER INJECTING METADATA: {metadata_to_inject}")
+                                data.setdefault("metadata", {}).update(metadata_to_inject)
+                                print(f"DEBUG: SERVER OUTGOING RESPONSE AFTER: {data}")
+                                modified_event = f"data: {json.dumps(data)}\n\n"
+                                yield modified_event.encode("utf-8")
+                                continue
                         except json.JSONDecodeError: pass
                     yield (event_str + "\n\n").encode("utf-8")
             except Exception: print("Error modifying stream in middleware"); traceback.print_exc();

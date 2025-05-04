@@ -1,3 +1,17 @@
+# JACS
+
+
+```
+pip install jacs
+```
+
+## Usage
+
+
+
+
+
+
 ## Development Setup
 
 This project uses Rust for the core library and Python bindings generated via [PyO3](https://pyo3.rs/) and packaged using [maturin](https://github.com/PyO3/maturin). The [uv](https://github.com/astral-sh/uv) tool is recommended for managing Python environments and dependencies.

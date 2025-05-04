@@ -10,10 +10,16 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
-        let agent:  Arc<Mutex<Agent>> = Arc::new(Mutex::new(Agent::new(&"None".to_string(), &"None".to_string(), &"None".to_string()).unwrap()));; 
+        let agent: Arc<Mutex<Agent>> = Arc::new(Mutex::new(
+            Agent::new(
+                &"None".to_string(),
+                &"None".to_string(),
+                &"None".to_string(),
+            )
+            .unwrap(),
+        ));
         return agent;
     };
 }
@@ -25,14 +31,16 @@ fn log_to_python(py: Python, message: &str, log_level: &str) -> PyResult<()> {
 }
 
 #[pyfunction]
-fn load(
-    py: Python,
-    config_path: &str
-) -> PyResult<String> {
+fn load(py: Python, config_path: &str) -> PyResult<String> {
     let mut agent_ref = JACS_AGENT.lock().expect("Failed to lock agent");
-    agent_ref.load_by_config(config_path.to_string()).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load agent: {}", e))
-    })?;
+    agent_ref
+        .load_by_config(config_path.to_string())
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to load agent: {}",
+                e
+            ))
+        })?;
     Ok("Agent loaded".to_string())
 }
 
@@ -109,7 +117,7 @@ fn verify_string(
 ) -> PyResult<bool> {
     // Convert the public_key Vec<u8> to a Python bytes object
     // let py_public_key = PyBytes::new(Python::acquire_gil().python(), &public_key);
-    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    let agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
     if data.is_empty()
         || signature_base64.is_empty()
         || public_key.is_empty()
@@ -147,6 +155,22 @@ fn verify_string(
     //         "An internal error occurred.",
     //     )),
     // }
+}
+
+#[pyfunction]
+fn sign_string(py: Python, data: &str) -> PyResult<String> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    let signed_string = agent.sign_string(&data.to_string()).expect("string sig");
+
+            // // Add a timestamp field to the JSON payload object
+            // let timestamp = chrono::Utc::now().timestamp();
+            // payload["sending-timestamp"] = serde_json::Value::Number(timestamp.into());
+            // payload["sending-agent"] = serde_json::Value::String(agent_id_and_version.into());
+    
+            // let payload_str = serde_json::to_string(&payload).expect("Failed to serialize JSON");
+    
+            // let payload_signature = self.agent.sign_string(&payload_str).expect("string sig");
+    Ok(signed_string)
 }
 
 #[pyfunction]
@@ -451,9 +475,10 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
         log_to_python(py, &message, &log_level)
     }
 
+    
     m.add_function(wrap_pyfunction!(verify_string, m)?)?;
     m.add_function(wrap_pyfunction!(hash_string, m)?)?;
-
+    m.add_function(wrap_pyfunction!(sign_string, m)?)?;
     
     m.add_function(wrap_pyfunction!(sign_agent, m)?)?;
     m.add_function(wrap_pyfunction!(create_config, m)?)?;
