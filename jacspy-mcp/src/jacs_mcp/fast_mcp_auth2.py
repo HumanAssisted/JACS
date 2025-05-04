@@ -1,357 +1,426 @@
-"""
-Complete drop‑in enhancement layer for FastMCP that provides
-
-* **JACSFastMCP** – a server wrapper that preserves the familiar
-  `@tool`, `@resource`, and `@list` decorators while validating every
-  incoming request and automatically signing every response (works for
-  stdio, SSE, and WebSocket transports).
-* **AuthClient** – a client wrapper that transparently signs outgoing
-  requests, validates returned metadata, and works with any FastMCP
-  transport. The example below targets SSE.
-
-The file is organised like a miniature package so you can either keep
-it as one module or split it into `jacs_mcp/__init__.py`,
-`jacs_mcp/fast_mcp_server.py`, and `jacs_mcp/fast_mcp_auth.py`.
-
-Dependencies:  `mcp[cli]`, `fastapi`, `starlette`, `uvicorn`.
-"""
-
-from __future__ import annotations
-
-import contextlib
-import functools
-import inspect
 import json
-import traceback
+import logging
+import contextlib
 import uuid
-from typing import Any, Awaitable, Callable, Coroutine, Dict, Optional
-
-from fastapi import FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response as StarletteResponse, StreamingResponse
-
-# FastMCP primitives
+from fastmcp import FastMCP, Client, Context
 from fastmcp.client.transports import ClientTransport, infer_transport
-from mcp.server.fastmcp import FastMCP, Context
-from mcp.types import JSONRPCMessage
-import jacs
+from starlette.middleware.base import BaseHTTPMiddleware
+import asyncio
+import sys
+from starlette.applications import Starlette
+from starlette.routing import Mount
+from typing import Dict, Any, Optional
+import datetime
 
-###############################################################################
-# Helper callbacks – override if you need different signing/validation rules.
-###############################################################################
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("auth_server.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("auth")
 
-SyncMetadataCallback = Callable[[Dict[str, Any]], None]
+# -- Server implementation --
+class JACSFastMCP(FastMCP):
+    def __init__(self, name, validate_request_fn=None, sign_response_fn=None, **kwargs):
+        super().__init__(name, **kwargs)
+        self._validate_request = validate_request_fn or default_validate_request
+        self._sign_response = sign_response_fn or default_sign_response
+        
+        # Create a file logger
+        self.log_file = open("server_debug.log", "w")
+        self.log_file.write("=== SERVER STARTED ===\n")
+        self.log_file.write(f"Registered tools: {getattr(self, '_tool_manager', None)}\n")
+        self.log_file.flush()
+        
+    # Custom middleware for SSE app
+    def sse_app(self):
+        app = super().sse_app()
+        
+        # Log what routes and middleware are available
+        with open("server_debug.log", "a") as f:
+            f.write("\n=== APP INSPECTION ===\n")
+            f.write(f"Routes: {app.routes}\n")
+            if hasattr(app, "middleware"):
+                f.write(f"Middleware: {app.middleware}\n")
+            f.flush()
+        
+        # Create middleware for response signing
+        class ResponseSigningMiddleware(BaseHTTPMiddleware):
+            def __init__(self, app, jacs_server):
+                super().__init__(app)
+                self.jacs_server = jacs_server
+                logger.info("Initializing ResponseSigningMiddleware")
+                
+            async def dispatch(self, request, call_next):
+                # Check for metadata in request
+                if request.method == "POST":
+                    try:
+                        # Get request body
+                        body = await request.body()
+                        body_text = body.decode('utf-8')
+                        logger.info(f"REQUEST RECEIVED: {request.url.path}")
+                        
+                        # Try to parse JSON
+                        try:
+                            data = json.loads(body_text)
+                            
+                            # Check for tool call
+                            if isinstance(data, dict) and data.get("method") == "tools/call" and "params" in data:
+                                params = data["params"]
+                                
+                                # Extract metadata if present
+                                if "arguments" in params and "metadata" in params["arguments"]:
+                                    metadata = params["arguments"]["metadata"]
+                                    logger.info(f"REQUEST METADATA: {metadata}")
+                                    
+                                    # Validate metadata
+                                    try:
+                                        self.jacs_server._validate_request(metadata)
+                                        logger.info("REQUEST METADATA VALIDATED")
+                                    except Exception as e:
+                                        logger.error(f"METADATA VALIDATION ERROR: {e}")
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse request body as JSON: {body_text[:100]}")
+                        
+                        # Important: Put the body back
+                        request._body = body
+                    except Exception as e:
+                        logger.error(f"Error processing request: {e}")
+                
+                # Continue with the middleware chain
+                response = await call_next(request)
+                
+                # Handle SSE responses (they use body_iterator)
+                if hasattr(response, "body_iterator"):
+                    original_iterator = response.body_iterator
+                    
+                    async def modified_iterator():
+                        # Buffer for collecting SSE events
+                        buffer = ""
+                        
+                        async for chunk in original_iterator:
+                            # Convert chunk to text
+                            if isinstance(chunk, bytes):
+                                chunk_text = chunk.decode('utf-8')
+                            else:
+                                chunk_text = str(chunk)
+                            
+                            # Add to buffer
+                            buffer += chunk_text
+                            
+                            # Process complete SSE events (format: "data: {...}\n\n")
+                            while "\n\n" in buffer:
+                                event, buffer = buffer.split("\n\n", 1)
+                                
+                                # Only process data events
+                                if event.startswith("data:"):
+                                    try:
+                                        # Extract JSON data
+                                        data_part = event[5:].strip()
+                                        data = json.loads(data_part)
+                                        
+                                        # Only process JSON-RPC responses
+                                        if isinstance(data, dict) and data.get("jsonrpc") == "2.0":
+                                            # Sign the response
+                                            result = data.get("result")
+                                            metadata = self.jacs_server._sign_response(result)
+                                            logger.info(f"SIGNING RESPONSE: {result}")
+                                            logger.info(f"RESPONSE METADATA: {metadata}")
+                                            
+                                            # Add metadata to the response
+                                            data["metadata"] = metadata
+                                            
+                                            # Replace the event data
+                                            event = f"data: {json.dumps(data)}"
+                                            logger.info("RESPONSE SIGNED")
+                                    except json.JSONDecodeError:
+                                        logger.warning(f"Failed to parse SSE data as JSON: {data_part[:100]}")
+                                    except Exception as e:
+                                        logger.error(f"Error signing response: {e}")
+                                
+                                # Yield the event (modified or original)
+                                yield (event + "\n\n").encode()
+                            
+                        # Yield any remaining buffer
+                        if buffer:
+                            yield buffer.encode()
+                    
+                    # Replace the original iterator with our modified version
+                    response.body_iterator = modified_iterator()
+                
+                return response
+        
+        # Apply our custom middleware
+        app.add_middleware(ResponseSigningMiddleware, jacs_server=self)
+        
+        # Create a simple wrapper to log all ASGI events
+        async def logging_asgi(scope, receive, send):
+            with open("server_debug.log", "a") as f:
+                f.write(f"\n=== ASGI REQUEST ===\n")
+                f.write(f"Type: {scope.get('type')}\n")
+                f.write(f"Path: {scope.get('path')}\n")
+                f.write(f"Method: {scope.get('method')}\n")
+                f.flush()
+            
+            # Pass to the original app
+            await app(scope, receive, send)
+        
+        # Return the original app
+        return app
+    
+    # Modify tool decorator to add metadata validation
+    def tool(self, name=None, description=None, **kwargs):
+        """Decorator to register a tool with metadata validation"""
+        
+        def decorator(func):
+            import inspect
+            import functools
+            
+            # Log the tool registration
+            with open("server_debug.log", "a") as f:
+                f.write(f"\n=== REGISTERING TOOL ===\n")
+                f.write(f"Name: {name or func.__name__}\n")
+                f.write(f"Description: {description}\n")
+                f.write(f"Function: {func}\n")
+                f.write(f"Signature: {inspect.signature(func)}\n")
+                f.flush()
+            
+            @functools.wraps(func)
+            async def wrapper(*args, **kwargs):
+                # Log tool execution
+                with open("server_debug.log", "a") as f:
+                    f.write(f"\n=== TOOL EXECUTION ===\n")
+                    f.write(f"Tool: {name or func.__name__}\n")
+                    f.write(f"Args: {args}\n")
+                    f.write(f"Kwargs: {kwargs}\n")
+                    f.flush()
+                
+                # Extract metadata from Context if available
+                if 'ctx' in kwargs and kwargs['ctx'] is not None:
+                    ctx = kwargs['ctx']
+                    if hasattr(ctx, 'metadata') and ctx.metadata:
+                        with open("server_debug.log", "a") as f:
+                            f.write(f"Context metadata: {ctx.metadata}\n")
+                            f.flush()
+                        self._validate_request(ctx.metadata)
+                
+                # Call the original function
+                try:
+                    result = await func(*args, **kwargs)
+                    with open("server_debug.log", "a") as f:
+                        f.write(f"Tool result: {result}\n")
+                        f.flush()
+                    return result
+                except Exception as e:
+                    with open("server_debug.log", "a") as f:
+                        f.write(f"Tool error: {e}\n")
+                        import traceback
+                        f.write(traceback.format_exc())
+                        f.flush()
+                    raise
+            
+            # Register with FastMCP - don't use super() here
+            return FastMCP.tool(self, name=name, description=description, **kwargs)(wrapper)
+        
+        return decorator
 
-
-def default_sign_request(params: dict) -> dict:  # CLIENT‑SIDE
-    """Attach IDs that the server can validate later."""
-    print("default_sign_request: Signing Client Request", params)
-    return {"client_id": "c1", "req_id": f"creq-{uuid.uuid4()}"}
-
-
-def default_validate_request(meta: dict):  # SERVER‑SIDE
-    """Fail fast if metadata is missing or malformed."""
-    print("default_validate_request: Validating Server Request Metadata", meta)
-    if not meta or "client_id" not in meta:
-        raise ValueError("metadata.client_id missing")
-
-
-def default_sign_response(result: Any) -> dict:  # SERVER‑SIDE
-    """Add server signature to every success / error payload."""
-    print("default_sign_response: Signing Server Response", result)
-    return {"server_id": "s1", "res_id": f"sres-{uuid.uuid4()}"}
-
-
-def default_validate_response(meta: dict):  # CLIENT‑SIDE
-    print("default_validate_response: Validating Client Response Metadata", meta)
-    if not meta or "server_id" not in meta:
-        raise ValueError("metadata.server_id missing")
-
-###############################################################################
-# CLIENT – transport wrapper + convenience client
-###############################################################################
-
-class _AuthInjectTransport(ClientTransport):
-    """Wrap *any* ClientTransport to inject metadata into outgoing calls."""
-
-    def __init__(
-        self,
-        base_transport: ClientTransport,
-        sign_request_fn: Callable[[dict], dict] = default_sign_request,
-    ) -> None:
-        self._base = base_transport
-        self._sign_request = sign_request_fn
-
+# -- Client implementation --
+class AuthInjectTransport(ClientTransport):
+    def __init__(self, base_transport, sign_request_fn, validate_response_fn):
+        self.base = base_transport
+        self.sign_request_fn = sign_request_fn
+        self.validate_response_fn = validate_response_fn
+    
     @contextlib.asynccontextmanager
-    async def connect_session(self, **kwargs):  # type: ignore[override]
-        async with self._base.connect_session(**kwargs) as session:
-            original_send = session._write_stream.send  # pylint: disable=protected-access
-
-            async def patched_send(message: JSONRPCMessage, **send_kwargs):  # type: ignore[override]
-                if (
-                    hasattr(message, "root")
-                    and isinstance(message.root, dict)
-                    and message.root.get("method")
-                ):
-                    params: dict | None = message.root.get("params")
-                    params = {} if params is None else dict(params)  # shallow‑copy
-                    params.setdefault("metadata", {}).update(
-                        self._sign_request(params)
-                    )
-                    message.root["params"] = params
-                await original_send(message, **send_kwargs)
-
-            session._write_stream.send = patched_send  # type: ignore[attr-defined]
+    async def connect_session(self, **kwargs):
+        async with self.base.connect_session(**kwargs) as session:
+            # Save original methods
+            original_send = session._write_stream.send
+            
+            # Patch send method to inject metadata
+            async def patched_send(message, **skw):
+                if hasattr(message, "root") and hasattr(message.root, "method"):
+                    method_name = message.root.method
+                    
+                    # Check for tool call method
+                    if method_name == "tools/call" and hasattr(message.root, "params"):
+                        params = message.root.params
+                        
+                        # Sign the request by adding metadata
+                        logger.info(f"CLIENT SIGNING REQUEST: {params}")
+                        metadata = self.sign_request_fn(params)
+                        logger.info(f"CLIENT REQUEST METADATA: {metadata}")
+                        
+                        # Add metadata to arguments
+                        if "arguments" not in params:
+                            params["arguments"] = {}
+                        
+                        params["arguments"]["metadata"] = metadata
+                        logger.info("CLIENT ADDED METADATA TO REQUEST")
+                
+                # Send the modified message
+                await original_send(message, **skw)
+            
+            # Replace the send method
+            session._write_stream.send = patched_send
+            
+            # To handle response validation, we need to intercept the raw message stream
+            original_handler = getattr(session, '_message_handler', None)
+            
+            # Create a wrapper for the message handler
+            async def message_handler_with_validation(message):
+                # Check for metadata in the message
+                if isinstance(message, dict) and "metadata" in message:
+                    logger.info(f"CLIENT RECEIVED RESPONSE WITH METADATA: {message['metadata']}")
+                    
+                    try:
+                        # Validate the metadata
+                        self.validate_response_fn(message["metadata"])
+                        logger.info("CLIENT VERIFIED RESPONSE METADATA")
+                    except Exception as e:
+                        logger.error(f"CLIENT METADATA VALIDATION ERROR: {str(e)}")
+                
+                # Call the original handler if it exists
+                if original_handler:
+                    return await original_handler(message)
+                return message
+            
+            # Set the message handler
+            session._message_handler = message_handler_with_validation
+            
             try:
                 yield session
             finally:
-                session._write_stream.send = original_send  # type: ignore[attr-defined]
-
-
-MessageHandlerFn = Callable[[dict[str, Any]], Coroutine[Any, Any, Optional[dict[str, Any]]]]
-
-
-def _make_response_validator(
-    validate_fn: SyncMetadataCallback,
-    downstream: MessageHandlerFn | None = None,
-) -> MessageHandlerFn:
-    async def handler(message: dict[str, Any]):
-        if "metadata" in message:
-            validate_fn(message["metadata"])
-        if downstream is not None:
-            return await downstream(message)
-        return message
-
-    return handler
-
+                # Restore original methods
+                session._write_stream.send = original_send
+                session._message_handler = original_handler
 
 class AuthClient:
-    """Drop‑in replacement for `mcp.client.Client` with auto auth & validation."""
-
     def __init__(
         self,
-        transport: str | ClientTransport,
-        *,
-        sign_request_fn: Callable[[dict], dict] = default_sign_request,
-        validate_response_fn: SyncMetadataCallback = default_validate_response,
-        **client_kwargs,
-    ) -> None:
-        base = infer_transport(transport)
-        auth_transport = _AuthInjectTransport(base, sign_request_fn)
-        message_handler = _make_response_validator(validate_response_fn)
-        from fastmcp import Client  # local import to avoid heavy dep when unused
-
-        self._client = Client(auth_transport, message_handler=message_handler, **client_kwargs)
-
+        url,
+        sign_request_fn=None,
+        validate_response_fn=None,
+        **client_kwargs
+    ):
+        self.url = url
+        self.sign_request = sign_request_fn or default_sign_request
+        self.validate_response = validate_response_fn or default_validate_response
+        self._client = Client(url, **client_kwargs)
+        logger.info("AuthClient created")
+    
     async def __aenter__(self):
         await self._client.__aenter__()
         return self
-
-    async def __aexit__(self, *exc):  # noqa: D401
+    
+    async def __aexit__(self, *exc):
         await self._client.__aexit__(*exc)
-
-    # proxy common methods
-    async def call_tool(self, *a, **kw):  # noqa: D401
-        return await self._client.call_tool(*a, **kw)
-
-    async def list(self):  # noqa: D401
-        return await self._client.list()
-
-###############################################################################
-# SERVER – FastMCP wrapper + middleware to sign outgoing payloads
-###############################################################################
-
-class _MetadataInjectingMiddleware(BaseHTTPMiddleware):
-    """Signs every JSON‑RPC payload leaving the SSE/WS app."""
-
-    def __init__(
-        self,
-        app: FastAPI,
-        *,
-        sign_response_fn: Callable[[Any], dict] = default_sign_response,
-    ) -> None:
-        super().__init__(app)
-        self._sign_response = sign_response_fn
-
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[StarletteResponse]]):  # type: ignore[override]
-        response = await call_next(request)
-
-        # Handle SSE streams
-        if isinstance(response, StreamingResponse):
-            response.body_iterator = self._patch_stream_iter(response.body_iterator)
-            return response
-
-        # Handle normal JSON responses
-        if response.headers.get("content-type") == "application/json":
-            body = b"".join([chunk async for chunk in response.body_iterator])
-            response.body_iterator = iter(()).__aiter__()  # empty iterator afterwards
-            try:
-                data = json.loads(body)
-                if isinstance(data, dict) and data.get("jsonrpc") == "2.0":
-                    data.setdefault("metadata", {}).update(self._sign_response(data.get("result")))
-                    body = json.dumps(data).encode()
-            except Exception:  # pragma: no cover
-                traceback.print_exc()
-            patched = StarletteResponse(content=body, status_code=response.status_code, headers=dict(response.headers), media_type="application/json")
-            patched.headers["content-length"] = str(len(body))
-            return patched
-        return response
-
-    def _patch_stream_iter(self, original_iter):
-        async def generator():
-            buffer = ""
-            async for chunk in original_iter:
+    
+    async def call_tool(self, tool_name, params=None, **kwargs):
+        logger.info(f"CALLING TOOL: {tool_name} with {params}")
+        
+        # Prepare parameters with metadata
+        if params is None:
+            params = {}
+        
+        # Sign the request
+        metadata = self.sign_request(params)
+        logger.info(f"REQUEST METADATA: {metadata}")
+        
+        # Make a copy of params and add metadata
+        params_with_metadata = dict(params)
+        params_with_metadata["metadata"] = metadata
+        
+        # Call the tool
+        try:
+            result = await self._client.call_tool(tool_name, params_with_metadata, **kwargs)
+            logger.info(f"RECEIVED RESULT: {result}")
+            
+            # Try to extract and validate metadata from raw JSON responses 
+            # (this works if MCP hasn't converted to TextContent yet)
+            if isinstance(result, dict) and "metadata" in result:
                 try:
-                    buffer += chunk.decode()
-                    while "\n\n" in buffer:
-                        event, buffer = buffer.split("\n\n", 1)
-                        if event.startswith("data:"):
-                            raw = json.loads(event[5:].strip())
-                            if (
-                                isinstance(raw, dict)
-                                and raw.get("jsonrpc") == "2.0"
-                                and ("result" in raw or "error" in raw)
-                            ):
-                                raw.setdefault("metadata", {}).update(
-                                    self._sign_response(raw.get("result"))
-                                )
-                                event = f"data: {json.dumps(raw)}"
-                        yield (event + "\n\n").encode()
-                except Exception:  # pragma: no cover
-                    traceback.print_exc()
-            if buffer:
-                yield buffer.encode()
+                    self.validate_response(result["metadata"])
+                    logger.info(f"RESPONSE METADATA VALIDATED: {result['metadata']}")
+                except Exception as e:
+                    logger.error(f"RESPONSE VALIDATION ERROR: {e}")
+            
+            return result
+        except Exception as e:
+            logger.error(f"ERROR CALLING TOOL: {e}")
+            raise
 
-        return generator()
+# -- Default functions --
+def default_sign_request(params):
+    """Default function to sign requests"""
+    return {"client_id": f"c1", "req_id": f"req-{uuid.uuid4()}"}
 
-###############################################################################
-# Public server wrapper – mirrors FastMCP API but adds auth.
-###############################################################################
+def default_validate_response(metadata):
+    """Default function to validate response metadata"""
+    if not metadata.get("server_id"):
+        raise ValueError("Missing server_id in response metadata")
 
-class JACSFastMCP:
-    """FastMCP with first‑class auth decorators and signed responses."""
+def default_validate_request(metadata):
+    """Default function to validate request metadata"""
+    if not metadata.get("client_id"):
+        raise ValueError("Missing client_id in request metadata")
 
-    def __init__(
-        self,
-        name: str,
-        *,
-        validate_request_fn: SyncMetadataCallback = default_validate_request,
-        sign_response_fn: Callable[[Any], dict] = default_sign_response,
-        **fastmcp_kwargs,
-    ) -> None:
-        self._mcp = FastMCP(name, **fastmcp_kwargs)
-        self._validate_request = validate_request_fn
-        self._sign_response = sign_response_fn
+def default_sign_response(result):
+    """Default function to sign responses"""
+    return {"server_id": "s1", "res_id": f"res-{uuid.uuid4()}"}
 
-    # ---------------------------------------------------------------------
-    # Decorator helpers – tool / resource / list
-    # ---------------------------------------------------------------------
-    def _wrap_fn(self, fn):
-        if getattr(fn, "_jacs_wrapped", False):
-            return fn
-
-        @functools.wraps(fn)
-        async def wrapper(*args, **kwargs):
-            meta = kwargs.pop("metadata", None)
-            self._validate_request(meta)
-            sig = inspect.signature(fn)
-            bound = sig.bind_partial(*args, **kwargs)
-            bound.apply_defaults()
-            return await fn(*bound.args, **bound.kwargs)
-
-        wrapper._jacs_wrapped = True  # type: ignore[attr-defined]
-        return wrapper
-
-    def tool(self, *d_args, **d_kw):  # noqa: D401
-        def decorator(fn):
-            return self._mcp.tool(*d_args, **d_kw)(self._wrap_fn(fn))
-
-        return decorator
-
-    def resource(self, *d_args, **d_kw):  # noqa: D401
-        def decorator(fn):
-            return self._mcp.resource(*d_args, **d_kw)(self._wrap_fn(fn))
-
-        return decorator
-
-    def list(self, *d_args, **d_kw):  # noqa: D401 – list handler decorator
-        def decorator(fn):
-            return self._mcp.list(*d_args, **d_kw)(self._wrap_fn(fn))
-
-        return decorator
-
-    # ------------------------------------------------------------------
-    # Transport helpers
-    # ------------------------------------------------------------------
-    def sse_app(self):
-        app = self._mcp.sse_app()
-        app.add_middleware(
-            _MetadataInjectingMiddleware, sign_response_fn=self._sign_response
-        )
-        return app
-
-    def ws_app(self):
-        app = self._mcp.ws_app()
-        app.add_middleware(
-            _MetadataInjectingMiddleware, sign_response_fn=self._sign_response
-        )
-        return app
-
-    def run(self, *a, **kw):  # stdio unchanged
-        self._mcp.run(*a, **kw)
-
-    # Convenience proxies
-    @property
-    def name(self):
-        return self._mcp.name
-
-    @property
-    def settings(self):
-        return self._mcp.settings
-
-###############################################################################
-# --------------------------- Example usage ----------------------------------
-###############################################################################
+# -- Demo implementation --
+async def run_auth_demo():
+    # Create server with auth
+    server = JACSFastMCP("AuthServer")
+    
+    # Register echo tool that returns structured response
+    @server.tool(name="secure_echo", description="Echo with metadata")
+    async def secure_echo(msg: str, metadata: dict = None, ctx: Context = None):
+        logger.info(f"SECURE_ECHO CALLED: {msg}, metadata={metadata}")
+        
+        # Validate request metadata (redundant but explicit)
+        if metadata:
+            server._validate_request(metadata)
+            logger.info("REQUEST METADATA VALIDATED IN TOOL")
+        
+        # Create a response
+        response = {
+            "text": f"Secure echo: {msg}",
+            "timestamp": str(datetime.datetime.now())
+        }
+        
+        # Return structured data
+        return response
+    
+    # Start server
+    app = server.sse_app()
+    
+    # Add proper imports for Uvicorn
+    import uvicorn
+    from uvicorn.config import Config
+    from uvicorn.server import Server
+    
+    config = Config(app=app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn_server = Server(config=config)
+    server_task = asyncio.create_task(uvicorn_server.serve())
+    
+    await asyncio.sleep(1)
+    
+    try:
+        # Client with auth
+        async with AuthClient("http://localhost:8000/sse") as client:
+            result = await client.call_tool("secure_echo", {"msg": "Hello secure world"})
+            print(f"RESULT: {result}")
+    finally:
+        uvicorn_server.should_exit = True
+        await server_task
 
 if __name__ == "__main__":
-    import asyncio
-    import uvicorn
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
-
-    # ------------------------------------------------------------------
-    # 1. Build a server with auth‑aware decorators
-    # ------------------------------------------------------------------
-    server = JACSFastMCP("Echo‑Secure")
-
-    @server.tool(description="Echo a message back to the caller")
-    async def echo(msg: str) -> str:  # metadata auto‑validated
-        return msg
-
-    # Expose over SSE under /sse so it matches the example client
-    starlette_app = Starlette(routes=[Mount("/sse", app=server.sse_app())])
-
-    # Run server in background for demo purposes
-    async def _launch_server():
-        config = uvicorn.Config(starlette_app, host="0.0.0.0", port=8000, log_level="info")
-        server_obj = uvicorn.Server(config)
-        await server_obj.serve()
-
-    # ------------------------------------------------------------------
-    # 2. Example SSE client calling the secured echo tool
-    # ------------------------------------------------------------------
-    async def _run_client():
-        await asyncio.sleep(1)  # give server a moment to start
-        from datetime import timedelta
-
-        async with AuthClient(
-            "http://localhost:8000/sse",
-            read_timeout_seconds=timedelta(seconds=30),  # passes straight through
-        ) as client:
-            res = await client.call_tool("echo", {"msg": "Hello SSE"})
-            print("CLIENT RESULT:", res)
-
-    asyncio.get_event_loop().run_until_complete(
-        asyncio.gather(_launch_server(), _run_client())
-    )
+    # Add datetime import
+    import datetime
+    asyncio.run(run_auth_demo())

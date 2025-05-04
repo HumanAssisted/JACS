@@ -6,6 +6,7 @@ import json
 import traceback
 import functools
 import inspect
+import logging
 
 # For FastAPI Middleware (add necessary imports if not present)
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -18,16 +19,7 @@ from fastmcp import FastMCP, Client, Context
 
 import jacs
 
-# # --- Deprecated Example Function ---
-# def get_metadata() -> Dict[str, str]:
-#     """DEPRECATED example function."""
-#     return {"client_id": "deprecated", "request_id": "deprecated"}
-
-# # --- Deprecated AuthTransport Class ---
-# class AuthTransport:
-#     """DEPRECATED by AuthClient/JACSFastMCP approach."""
-#     # ... (implementation omitted for brevity) ...
-#     pass
+ 
 
 
 # --- User-defined function types and Defaults ---
@@ -35,17 +27,17 @@ SyncMetadataCallback = Callable[[Dict[str, Any]], None]
 MessageHandlerFnT = Callable[[Dict[str, Any]], Coroutine[Any, Any, Optional[Dict[str, Any]]]]
 
 def default_sign_request(params: dict) -> dict:
-    print("default_sign_request: Signing Client Request", params)
+    logging.info("default_sign_request: Signing Client Request", params)
     return {"client_id": "c1", "req_id": f"creq-{uuid.uuid4()}"}
 
 def default_validate_response(metadata: dict):
-    print(f"default_validate_response: Validating Server Response Metadata: {metadata}")
+    logging.info(f"default_validate_response: Validating Server Response Metadata: {metadata}")
 
 def default_validate_request(metadata: dict):
-    print(f"default_validate_request: Validating Client Request Metadata: {metadata}")
+    logging.info(f"default_validate_request: Validating Client Request Metadata: {metadata}")
 
 def default_sign_response(result: Any) -> dict:
-    print("default_sign_response: Signing Server Response", result)
+    logging.info("default_sign_response: Signing Server Response", result)
     return {"server_id": "s1", "res_id": f"sres-{uuid.uuid4()}"}
 
 

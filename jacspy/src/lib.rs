@@ -162,14 +162,14 @@ fn sign_string(py: Python, data: &str) -> PyResult<String> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
     let signed_string = agent.sign_string(&data.to_string()).expect("string sig");
 
-            // // Add a timestamp field to the JSON payload object
-            // let timestamp = chrono::Utc::now().timestamp();
-            // payload["sending-timestamp"] = serde_json::Value::Number(timestamp.into());
-            // payload["sending-agent"] = serde_json::Value::String(agent_id_and_version.into());
-    
-            // let payload_str = serde_json::to_string(&payload).expect("Failed to serialize JSON");
-    
-            // let payload_signature = self.agent.sign_string(&payload_str).expect("string sig");
+    // // Add a timestamp field to the JSON payload object
+    // let timestamp = chrono::Utc::now().timestamp();
+    // payload["sending-timestamp"] = serde_json::Value::Number(timestamp.into());
+    // payload["sending-agent"] = serde_json::Value::String(agent_id_and_version.into());
+
+    // let payload_str = serde_json::to_string(&payload).expect("Failed to serialize JSON");
+
+    // let payload_signature = self.agent.sign_string(&payload_str).expect("string sig");
     Ok(signed_string)
 }
 
@@ -475,11 +475,10 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
         log_to_python(py, &message, &log_level)
     }
 
-    
     m.add_function(wrap_pyfunction!(verify_string, m)?)?;
     m.add_function(wrap_pyfunction!(hash_string, m)?)?;
     m.add_function(wrap_pyfunction!(sign_string, m)?)?;
-    
+
     m.add_function(wrap_pyfunction!(sign_agent, m)?)?;
     m.add_function(wrap_pyfunction!(create_config, m)?)?;
     m.add_function(wrap_pyfunction!(verify_agent, m)?)?;
