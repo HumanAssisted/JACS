@@ -9,6 +9,9 @@ use pyo3::wrap_pyfunction;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
+use pyo3::types::{PyDict, PyList, PyBytes, PyString, PyBool, PyFloat, PyInt, PyDateTime, PyAny, PyNone};
+use serde_json::{Map as JsonMap};
+
 
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
@@ -468,8 +471,135 @@ fn check_agreement(
     }
 }
 
+/// Converts a Bound<'_, PyAny> into a serde_json::Value.
+fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
+    if obj.is_none() {
+        Ok(Value::Null)
+    } else if let Ok(b) = obj.downcast::<PyBool>() {
+        Ok(Value::Bool(b.is_true()))
+    } else if let Ok(i) = obj.extract::<i64>() {
+        Ok(Value::Number(i.into()))
+    } else if let Ok(f) = obj.extract::<f64>() {
+        Ok(Value::Number(serde_json::Number::from_f64(f).ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid float value"))?))
+    } else if let Ok(s) = obj.downcast::<PyString>() {
+        Ok(Value::String(s.to_string_lossy().into_owned()))
+    } else if let Ok(list) = obj.downcast::<PyList>() {
+        let mut vec = Vec::new();
+        for item_obj in list.iter() {
+            vec.push(pyany_to_value(py, &item_obj)?);
+        }
+        Ok(Value::Array(vec))
+    } else if let Ok(dict) = obj.downcast::<PyDict>() {
+        let mut map = JsonMap::new();
+        for (key_obj, value_obj) in dict.iter() {
+            let key = key_obj.extract::<String>()?;
+            map.insert(key, pyany_to_value(py, &value_obj)?);
+        }
+        Ok(Value::Object(map))
+    }
+    else {
+        let type_name = obj.get_type().qualname()?;
+        Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(format!(
+            "Unsupported Python type for JSON conversion: {}", type_name
+        )))
+    }
+}
+
+#[pyfunction]
+fn sign_request(py: Python, params_obj: PyObject) -> PyResult<String> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+
+    let bound_params = params_obj.bind(py);
+    let payload_value = pyany_to_value(py, bound_params)?;
+
+    let wrapper_value = serde_json::json!({
+        "jacs_payload": payload_value
+    });
+
+    let wrapper_string = serde_json::to_string(&wrapper_value)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to serialize wrapper JSON: {}", e)))?;
+
+    let outputfilename: Option<String> = None;
+    let attachments: Option<String> = None;
+    jacs_core::shared::document_create(
+        &mut agent,
+        &wrapper_string,
+        None,
+        outputfilename,
+        false,
+        attachments.as_ref(),
+        Some(false),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+        "Failed to create document: {}",
+        e
+    )))
+}
+
+
+/**
+ * 
+ * a jacs document is verified and then the payload is returned in the type is was first created as
+ * 
+ */
+
+#[pyfunction]
+fn verify_response(py: Python, document_string: String) -> PyResult<PyObject> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+
+    let doc = agent.load_document(&document_string)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load document: {}", e)))?;
+
+    let document_key = doc.getkey();
+    let value = doc.getvalue();
+
+    agent.verify_hash(value)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to verify document hash: {}", e)))?;
+
+    agent.verify_document_signature(&document_key, None, None, None, None)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to verify document signature: {}", e)))?;
+
+    let payload = value.get("jacs_payload")
+        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyKeyError, _>("'jacs_payload' field not found in document value"))?;
+
+    value_to_pyobject(py, payload)
+}
+
+fn value_to_pyobject(py: Python, value: &Value) -> PyResult<PyObject> {
+    match value {
+        Value::Null => Ok(py.None()),
+        Value::Bool(b) => Ok(b.into_py(py)),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i.into_py(py))
+            } else if let Some(u) = n.as_u64() {
+                Ok(u.into_py(py))
+            } else if let Some(f) = n.as_f64() {
+                Ok(f.into_py(py))
+            } else {
+                Err(pyo3::exceptions::PyValueError::new_err("Invalid JSON number"))
+            }
+        }
+        Value::String(s) => Ok(s.into_py(py)),
+        Value::Array(a) => {
+            let mut py_items = Vec::with_capacity(a.len());
+            for item in a {
+                py_items.push(value_to_pyobject(py, item)?);
+            }
+            Ok(PyList::new_bound(py, py_items).into_py(py))
+        }
+        Value::Object(o) => {
+            let dict = PyDict::new_bound(py);
+            for (key, val) in o {
+                dict.set_item(key, value_to_pyobject(py, val)?)?;
+            }
+            Ok(dict.into_py(py))
+        }
+    }
+}
+
 #[pymodule]
-fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[pyfn(m, name = "log_to_python")]
     fn py_log_to_python(py: Python, message: String, log_level: String) -> PyResult<()> {
         log_to_python(py, &message, &log_level)
@@ -490,6 +620,9 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign_agreement, m)?)?;
     m.add_function(wrap_pyfunction!(create_document, m)?)?;
     m.add_function(wrap_pyfunction!(check_agreement, m)?)?;
+
+    m.add_function(wrap_pyfunction!(sign_request, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_response, m)?)?;
 
     Ok(())
 }
