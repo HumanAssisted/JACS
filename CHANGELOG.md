@@ -34,18 +34,35 @@
 ### Register agent
 
  - [] register agent
-    - [] remove requirement to store public key typ
-    - [] 
-
+    - [] remove requirement to store public key type
 
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
  - [] RBAC integration with header
  - [] diff versions
  - [] bucket integration
  - [] don't store  "jacs_private_key_password":  in config, don't display
-## jacspy
+ - [] register public key 
+ - [] CA for cert
+ - [] add timestamp to prevent timing attacks to request/response features
+ - [] no_save = false should save document and still return json string instead of message on create document
+ - 
 
-## jacspy-mcp
+## jacspy
+ - [] install jacs cli with the python wheel
+ - [] auto generate agent doc from MCP server list, auto versions
+ - [] traceable, verifiable request logs
+ - [] fastmcp client and server stdio
+ - [] fastmcp client and server websocket
+ - [] publish jacspy to pypi
+ - [] github actions builder for linux
+ - [] mcp make decorator for @resource
+ - [] mcp make sure "list" request is signed
+
+## jacsnpm
+proof of concept
+
+ - [] typescript mcp client and server
+ - [] npm install jacs (cli and available to plugin)
 
 --------------------
 
@@ -53,23 +70,33 @@
 
 ## 0.3.4
 
- ## main goals of demo
+## integrated demo
 
- 1. auto generate agent doc from MCP server list, auto versions
- 2. init and load agent in an mcp server and client, timestamp/IP
- 3. *** register public key somewhere ***
- 4. have identity available to business logic
- 5. traceable, verifiable request logs
+ - [] sign request/response (any python object -> payload)
+ - [] verify response/request (any payload json string -> python object)
+ - [] integrate with fastMCP, MCP, and Web for request response
+ - [] have identity available to business logic
+ - [] have logs available for review
+
+## jacspy
+
+ - [x] make decorator for easy use in @tools
+ - [x] new local builder
+ - [] also install jacs as cli
+ - [] fastmcp client and server sse
+ - [] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
+ - [] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
+ - [] python based instructions for how to create - cli create agent 
+      1. cli create agent 
+      2. config jacspy to load each agent
+
  
-
  ### General 
 
  - init √
- - load(config) -> Agent
- - sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
- - verify(content, signature, agentid, agentversion) -> bool, error
+ - [x] load(config) -> Agent
  
-### itemized
+### detailed
  - [x] make sure config directory is in isolated location, like with key
  - [x] make config and security part of Agent
  - [x] don't use env  everywhere- dep jacspy
@@ -87,45 +114,14 @@
  - [x] separate JACS readme repo readme
  - [x] minimal github actions
  - [x] autodetect public key type
- - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
+ - [x] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
    init, load agent, verify agent, verify document, 
    - [x] single init, also signs agent
    - [x] load from config
-   - [ ] have load agent from config also load keys IF SIGNED
+   - [x] have load agent from config also load keys IF SIGNED
 
  
  
-## jacspy-mcp
- - load(config) -> Agent
- - sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
- - verify(content, signature, agentid, agentversion) -> bool, error
- 
-
-
- - [] integrate jacspy
- - [x] make decorator for easy use in @tools
- - [] make decorator for @resource
- - [] make sure "list" request is signed
- - [x] fastmcp client and server sse
- - [x] fastmcp client and server stdio
- - [] fastmcp client and server websocket
- - [] mcp client and server sse
- - [] mcp client and server stdio
- - [] mcp client and server websocket
- - [] publish jacspy to pypi
-
-## jacspy  *** For demo, init and register are handled by cli *** 
-
-load, update agent
-server validate request string
-client validate agent
-cli view logs in filesystem, view error log
-
- - [ ] load into client and server and use for auth
- - [ ] instructions for how to create - cli create agent 1, cli create agent 2, config jacspy to load each agent
- - [ ] publish jacspy  to pypi
- - [x] new local builder
- - [ ] github actions builder
 
 ---------------
 

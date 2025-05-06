@@ -6,26 +6,35 @@ name = "jacs"
 version = "0.1.0"  
 description = "Python bindings for the JACS Rust library."  
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "Apache-2.0 with Common Clause" } 
 authors = [
     { name = "HAI.AI", email = "engineering@hai.io" }, 
 ]
 classifiers = [  
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3",
     "License :: Apache-2.0 with Common Clause",
     "Operating System :: Linux, MacOS",
 ]
-dependencies = [
-]
+
+dependencies = []
 
 [project.urls] 
 Homepage = "https://github.com/HumanAssisted/JACS" 
 Issues = "https://github.com/HumanAssisted/JACS/issues"  
 
- 
-
 [tool.maturin]
 features = ["pyo3/extension-module"] 
 module-name = "jacs"  
 binding = "pyo3"  
+# binaries = ["jacs"]
+
+# [project.scripts]
+# jacs = "jacs.cli:main"

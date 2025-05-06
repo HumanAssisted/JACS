@@ -18,7 +18,7 @@ use std::env;
 use std::error::Error;
 use std::process;
 
-fn main() -> Result<(), Box<dyn Error>> {
+pub fn main() -> Result<(), Box<dyn Error>> {
     let matches = Command::new(crate_name!())
         .subcommand(
             Command::new("version")
