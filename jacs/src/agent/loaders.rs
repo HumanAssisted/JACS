@@ -65,8 +65,12 @@ pub trait FileLoader {
     fn create_backup(&self, file_path: &str) -> Result<String, Box<dyn Error>>;
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
-    fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn fs_load_public_key(&self, hash: &String) -> Result<Vec<u8>, Box<dyn Error>>;
     fn use_filesystem(&self) -> bool;
+    fn fs_load_public_key_type(
+        &self,
+        agent_id_and_version: &String,
+    ) -> Result<String, Box<dyn Error>>;
     fn fs_save_remote_public_key(
         &self,
         agent_id_and_version: &String,
@@ -157,12 +161,19 @@ impl FileLoader for Agent {
     }
 
     /// in JACS the public keys need to be added manually
-    fn fs_load_public_key(&self, agent_id_and_version: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-        let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
+    fn fs_load_public_key(&self, hash: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+        let public_key_path = format!("public_keys/{}.pem", hash);
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
         self.storage
             .get_file(&absolute_public_key_path, None)
             .map_err(|e| Box::new(e) as Box<dyn Error>)
+    }
+
+    fn fs_load_public_key_type(&self, hash: &String) -> Result<String, Box<dyn Error>> {
+        let public_key_path = format!("public_keys/{}.enc_type", hash);
+        let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
+        let bytes = self.storage.get_file(&absolute_public_key_path, None)?;
+        String::from_utf8(bytes).map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
     /// in JACS the public keys need to be added manually

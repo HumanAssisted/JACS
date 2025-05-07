@@ -9,6 +9,7 @@ use crate::agent::security::SecurityTraits;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
 use chrono::{DateTime, Local, Utc};
+use core::hash;
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
@@ -227,6 +228,10 @@ pub trait DocumentTraits {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
+    fn verify_external_document_signature(
+        &mut self,
+        document_key: &String,
+    ) -> Result<(), Box<dyn Error>>;
     fn diff_json_strings(
         &self,
         json1: &str,
@@ -726,6 +731,30 @@ impl DocumentTraits for Agent {
             }
         }
         Ok(())
+    }
+
+    fn verify_external_document_signature(
+        &mut self,
+        document_key: &String,
+    ) -> Result<(), Box<dyn Error>> {
+        let document = self.get_document(document_key).unwrap();
+        let json_value = document.getvalue();
+        let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let public_key_hash: String = json_value[signature_key_from]["publicKeyHash"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let public_key = self.fs_load_public_key(&public_key_hash)?;
+        let public_key_enc_type = self.fs_load_public_key_type(&public_key_hash)?;
+        return self.verify_document_signature(
+            document_key,
+            Some(signature_key_from),
+            None,
+            Some(public_key),
+            Some(public_key_enc_type),
+        );
     }
 
     fn verify_document_signature(

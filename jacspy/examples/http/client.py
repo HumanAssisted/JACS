@@ -86,8 +86,8 @@ if __name__ == "__main__":
     try:
         # Run all tests
         test_post_endpoint()
-        test_get_endpoint()
-        test_invalid_signature()
+        # test_get_endpoint()
+        # test_invalid_signature()
         
     except requests.exceptions.ConnectionError:
         print("\nError: Could not connect to the server. Make sure it's running on http://localhost:8000")

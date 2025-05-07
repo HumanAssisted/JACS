@@ -6,8 +6,10 @@ import os
 from typing import Any
 from pathlib import Path
 import json
+import logging
 from starlette.types import Message
 
+logger = logging.getLogger(__name__)
 # Load JACS configuration
 current_dir = Path(__file__).parent.absolute()
 jacs_config_path = current_dir / "jacs.server.config.json"
@@ -30,6 +32,7 @@ class JacsRequestMiddleware(BaseHTTPMiddleware):
                 # Read request body
                 body = await request.body()
                 jacs_document = body.decode('utf-8')
+                logger.error(f"JacsRequestMiddleware JACS document: {jacs_document}")
                 
                 # Skip verification if body is empty
                 if not jacs_document:
@@ -79,9 +82,11 @@ app.add_middleware(JacsRequestMiddleware)
 
 # Example route using the verified payload
 @app.post("/api/data")
-async def process_data(payload = Depends(get_verified_payload)):
-    if not payload:
-        raise HTTPException(status_code=400, detail="No verified payload found")
+async def process_data(request: Request):
+    payload = await request.json()
+    
+    if payload is None:
+        raise HTTPException(status_code=400, detail="No verified payload found or payload is empty")
     
     # Process the verified payload
     return JacsJSONResponse(content={"message": "Processed verified data", "data": payload})

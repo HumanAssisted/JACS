@@ -293,7 +293,7 @@ fn verify_document(py: Python, document_string: String) -> PyResult<bool> {
     }
 
     // Verify signature using the DocumentTraits trait method
-    match agent.verify_document_signature(&document_key, None, None, None, None) {
+    match agent.verify_external_document_signature(&document_key) {
         Ok(_) => Ok(true),
         Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "Failed to verify document signature: {}",
@@ -346,6 +346,7 @@ fn verify_signature(
     let sig_field_ref = signature_field.as_ref();
 
     // Verify signature using the DocumentTraits trait method
+    // FIXME get the public key from the document
     match agent.verify_document_signature(&document_key, sig_field_ref, None, None, None) {
         Ok(_) => Ok(true),
         Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
@@ -528,9 +529,9 @@ fn verify_response(py: Python, document_string: String) -> PyResult<PyObject> {
             e
         ))
     })?;
-
+    
     agent
-        .verify_document_signature(&document_key, None, None, None, None)
+        .verify_external_document_signature(&document_key)
         .map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to verify document signature: {}",
