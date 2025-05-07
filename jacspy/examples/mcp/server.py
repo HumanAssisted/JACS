@@ -2,6 +2,7 @@ import jacs
 import os
 from pathlib import Path
 import logging
+from mcp.server.fastmcp import FastMCP  # Make sure to import FastMCP
 from middleware import JACSMCPServer 
 import uvicorn
 
@@ -17,14 +18,17 @@ os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "hello"  # You should use a secure met
 jacs.load(str(jacs_config_path))
 
 
-# Create server
-mcp = JACSMCPServer("Authenticated Echo Server")
+# Create original FastMCP server first
+original_mcp = FastMCP("Authenticated Echo Server")
+
+# Then wrap it with JACSMCPServer
+mcp = JACSMCPServer(original_mcp)
 
 
 @mcp.tool()
 def echo_tool(text: str) -> str:
     """Echo the input text"""
-    return text
+    return f"SERVER SAYS: {text}"
 
 
 @mcp.resource("echo://static")

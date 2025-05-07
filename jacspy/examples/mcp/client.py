@@ -25,8 +25,12 @@ async def main():
     
     try:
         client = JACSMCPClient(server_url)
-        result = await client.call_tool("echo_tool", {"text": "Hello from authenticated client!"})
-        print(f"\nFinal result: {result}")
+        
+        # Use the client within an async context manager
+        async with client:
+            result = await client.call_tool("echo_tool", {"text": "Hello from authenticated client!"})
+            print(f"\nFinal result: {result}")
+            
     except Exception as e:
         print(f"Error during client operation: {e}")
         import traceback
