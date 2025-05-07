@@ -1,5 +1,5 @@
 import jacs
-
+import json
 
 
 
@@ -120,100 +120,4 @@ def JACSMCPServer(mcp_server):
 
 
 
-
-
-
-
-
-
-
-
-# class JACSMCPMiddleware:
-#     """Base middleware class that can be extended"""
-#     def __init__(self, next_middleware=None):
-#         self.next = next_middleware
-    
-#     async def process_request(self, method, params):
-#         """Process incoming request before reaching the handler"""
-#         if self.next:
-#             return await self.next.process_request(method, params)
-#         return params
-    
-#     async def process_response(self, method, result):
-#         """Process outgoing response after handler execution"""
-#         if self.next:
-#             return await self.next.process_response(method, result)
-#         return result
-
-# class JACSMCPProxy:
-#     """Server-side proxy that applies middleware to FastMCP"""
-#     def __init__(self, mcp_instance, middleware=None):
-#         self.mcp = mcp_instance
-#         self.middleware = middleware
-    
-#     def tool(self, *args, **kwargs):
-#         """Wrap the tool decorator to apply middleware"""
-#         mcp_decorator = self.mcp.tool(*args, **kwargs)
-        
-#         def wrapper(func):
-#             @functools.wraps(func)
-#             async def middleware_wrapper(*args, **kwargs):
-#                 # Extract method name from func
-#                 method = func.__name__
-                
-#                 # Process request through middleware chain
-#                 if self.middleware:
-#                     kwargs = await self.middleware.process_request(method, kwargs)
-                
-#                 # Call original function
-#                 result = await func(*args, **kwargs)
-                
-#                 # Process response through middleware chain
-#                 if self.middleware:
-#                     result = await self.middleware.process_response(method, result)
-                
-#                 return result
-            
-#             # Apply the original decorator
-#             return mcp_decorator(middleware_wrapper)
-        
-#         return wrapper
-    
-#     # Similar wrappers for resource, prompt, etc.
-    
-#     # Delegate other methods to the underlying mcp instance
-#     def __getattr__(self, name):
-#         return getattr(self.mcp, name)
-# # Create your middleware
-# class JACSAuthMiddleware(JACSMCPMiddleware):
-#     async def process_request(self, method, params):
-#         print(f"Server received request: {params}")
-        
-#         # Extract the original parameters if they exist
-#         original_params = params.get('_original_params', params)
-        
-#         try:
-#             # Verify the request signature
-#             jacs.verify_request(params)
-#             print("Server verified request signature")
-#         except Exception as e:
-#             print(f"Failed to verify request signature: {e}")
-#             # Continue with request processing even if verification fails
-            
-#         # Continue with the middleware chain using the original parameters
-#         return await super().process_request(method, original_params)
-    
-#     async def process_response(self, method, result):
-#         print(f"Server processing response: {result}")
-        
-#         # Process through the middleware chain first
-#         processed_result = await super().process_response(method, result)
-        
-#         # Sign the response
-#         try:
-#             signed_result = jacs.sign_response(processed_result)
-#             print(f"Server signed response")
-#             return signed_result
-#         except Exception as e:
-#             print(f"Failed to sign response: {e}")
-#             return processed_result
+ 

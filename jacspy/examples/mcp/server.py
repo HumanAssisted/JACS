@@ -2,8 +2,7 @@ import jacs
 import os
 from pathlib import Path
 import logging
-from mcp.server.fastmcp import FastMCP
-from middleware import JACSAuthMiddleware, JACSMCPProxy
+from middleware import JACSMCPServer 
 import uvicorn
 
 logger = logging.getLogger(__name__)
@@ -19,34 +18,33 @@ jacs.load(str(jacs_config_path))
 
 
 # Create server
-mcp = FastMCP("Authenticated Echo Server")
-auth_mcp = JACSMCPProxy(mcp, JACSAuthMiddleware())
+mcp = JACSMCPServer("Authenticated Echo Server")
 
 
-@auth_mcp.tool()
+@mcp.tool()
 def echo_tool(text: str) -> str:
     """Echo the input text"""
     return text
 
 
-@auth_mcp.resource("echo://static")
+@mcp.resource("echo://static")
 def echo_resource() -> str:
     return "Echo!"
 
 
-@auth_mcp.resource("echo://{text}")
+@mcp.resource("echo://{text}")
 def echo_template(text: str) -> str:
     """Echo the input text"""
     return f"Echo: {text}"
 
 
-@auth_mcp.prompt("echo")
+@mcp.prompt("echo")
 def echo_prompt(text: str) -> str:
     return text
 
 
 # --- Get the prepared ASGI app ---
-sse_app_with_middleware = auth_mcp.sse_app()
+sse_app_with_middleware = mcp.sse_app()
 
 # --- Run with uvicorn ---
 if __name__ == "__main__":
