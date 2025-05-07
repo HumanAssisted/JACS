@@ -228,6 +228,11 @@ pub trait DocumentTraits {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
+
+    fn get_document_signature_agent_id(
+        &mut self,
+        document_key: &String,
+    ) -> Result<String, Box<dyn Error>>;
     fn verify_external_document_signature(
         &mut self,
         document_key: &String,
@@ -755,6 +760,29 @@ impl DocumentTraits for Agent {
             Some(public_key),
             Some(public_key_enc_type),
         );
+    }
+
+    fn get_document_signature_agent_id(
+        &mut self,
+        document_key: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        let document = self.get_document(document_key).unwrap();
+        let json_value = document.getvalue();
+        let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let angent_id: String = json_value[signature_key_from]["agentID"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let angent_version: String = json_value[signature_key_from]["agentVersion"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let agent_id_version = format!("{}:{}", angent_id, angent_version);
+        Ok(agent_id_version)
     }
 
     fn verify_document_signature(

@@ -548,6 +548,52 @@ fn verify_response(py: Python, document_string: String) -> PyResult<PyObject> {
     conversion_utils::value_to_pyobject(py, payload)
 }
 
+#[pyfunction]
+fn verify_response_with_agent_id(py: Python, document_string: String) -> PyResult<PyObject> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+
+    let doc = agent.load_document(&document_string).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load document: {}", e))
+    })?;
+
+    let document_key = doc.getkey();
+    let value = doc.getvalue();
+
+    agent.verify_hash(value).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to verify document hash: {}",
+            e
+        ))
+    })?;
+
+    agent
+        .verify_external_document_signature(&document_key)
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify document signature: {}",
+                e
+            ))
+        })?;
+
+    let payload = value.get("jacs_payload").ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyKeyError, _>(
+            "'jacs_payload' field not found in document value",
+        )
+    })?;
+
+    let agent_id = agent.get_document_signature_agent_id(&document_key).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to get agent id: {}", e))
+    })?;
+
+    let py_payload = conversion_utils::value_to_pyobject(py, payload)?;
+    let py_agent_id: Py<pyo3::types::PyString> = pyo3::types::PyString::new_bound(py, &agent_id).into();
+    
+    let tuple_bound_ref = pyo3::types::PyTuple::new_bound(py, &[py_agent_id.into_py(py), py_payload]);
+    let py_object_tuple = tuple_bound_ref.to_object(py);
+    
+    Ok(py_object_tuple)
+}
+
 #[pymodule]
 fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
@@ -562,6 +608,7 @@ fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hash_string, m)?)?;
     m.add_function(wrap_pyfunction!(sign_string, m)?)?;
     m.add_function(wrap_pyfunction!(load, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_response_with_agent_id, m)?)?;
 
     m.add_function(wrap_pyfunction!(sign_agent, m)?)?;
     m.add_function(wrap_pyfunction!(create_config, m)?)?;

@@ -53,8 +53,9 @@ def helper_request_data(request_data):
         pytest.fail(f"Test failed with error: {e}")
  
     try:
-        payload = jacs.verify_response(signed_request_data)
+        agent_id, payload = jacs.verify_response_with_agent_id(signed_request_data)
         assert payload == request_data
+        print(f"Agent ID: type {type(agent_id)} {agent_id}")
         print(f"Verified Payload: type {type(payload)} {payload}")  
 
     except Exception as e:

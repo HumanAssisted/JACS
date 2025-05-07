@@ -76,19 +76,19 @@ proof of concept
 
 ## integrated demo
 
- - [] sign request/response (any python object -> payload)
- - [] verify response/request (any payload json string -> python object)
+ - [x] sign request/response (any python object -> payload)
+ - [x] verify response/request (any payload json string -> python object)
  - [] integrate with fastMCP, MCP, and Web for request response
- - [] have identity available to business logic
- - [] have logs available for review (no writing to file, ephemoral)
+ - [x] have identity available to business logic
+ - [x] have logs available for review (no writing to file, ephemoral)
 
 ## jacspy
 
  - [x] make decorator for easy use in @tools
  - [x] new local builder
  - [] fastmcp client and server sse
- - [] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
- - [] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
+ - [x] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
+ - [x] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
 
  
  ### General 
