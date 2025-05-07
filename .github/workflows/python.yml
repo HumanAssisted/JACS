@@ -4,14 +4,14 @@ on:
   push:
     branches: [ "main" ]
     paths: # Optional: Trigger only on changes within jacspy/ or relevant files
-      - 'JACS/jacspy/**'
-      - 'JACS/jacs/**' # jacspy depends on jacs
+      - 'jacspy/**'
+      - 'jacs/**' # jacspy depends on jacs
       - '.github/workflows/python.yml'
   pull_request:
     branches: [ "main" ]
     paths: # Optional: Trigger only on changes within jacspy/ or relevant files
-      - 'JACS/jacspy/**'
-      - 'JACS/jacs/**' # jacspy depends on jacs
+      - 'jacspy/**'
+      - 'jacs/**' # jacspy depends on jacs
       - '.github/workflows/python.yml'
   workflow_dispatch: # Allows manual triggering
 
@@ -21,16 +21,34 @@ env:
 jobs:
   # Job to run tests on every push/PR
   test-jacspy:
-    name: Test jacspy crate
-    runs-on: ubuntu-latest
+    name: Test jacspy crate (x86_64)
+    runs-on: ubuntu-latest # Docker is available on ubuntu-latest runners (x86_64)
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run jacspy tests
-        working-directory: jacspy  
-        run: cargo test --verbose
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for testing (x86_64)
+        working-directory: jacspy # Directory containing DockerfileBuilder
+        run: docker buildx build --tag "jacs-build-x86_64" -f DockerfileBuilder . --load # --load makes image available
+
+      - name: Run jacspy tests in Docker (x86_64)
+        working-directory: jacspy # To match PWD context if needed by scripts
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          docker run --rm \
+            -v "$(pwd)/..:/workspace" \
+            jacs-build-x86_64 \
+            bash -c "\
+              cd /workspace/jacspy && \
+              /opt/python/cp311-cp311/bin/python3.11 -m venv .venv && \
+              source .venv/bin/activate && \
+              pip install pytest && \
+              make test-python"
 
   # Job to build wheels, runs ONLY on push to main
   build-jacspy-wheels:
@@ -67,7 +85,7 @@ jobs:
       - name: Build wheels
         # Run cibuildwheel from the root, but it should detect ./JACS/jacspy/pyproject.toml
         # Or use working-directory: JACS/jacspy
-        run: cibuildwheel --output-dir wheelhouse JACS/jacspy
+        run: cibuildwheel --output-dir wheelhouse jacspy
         env:
           # === cibuildwheel configuration ===
           # Build architectures

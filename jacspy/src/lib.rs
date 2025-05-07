@@ -529,7 +529,7 @@ fn verify_response(py: Python, document_string: String) -> PyResult<PyObject> {
             e
         ))
     })?;
-    
+
     agent
         .verify_external_document_signature(&document_key)
         .map_err(|e| {
