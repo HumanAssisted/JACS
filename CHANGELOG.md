@@ -78,7 +78,7 @@ proof of concept
 
  - [x] sign request/response (any python object -> payload)
  - [x] verify response/request (any payload json string -> python object)
- - [] integrate with fastMCP, MCP, and Web for request response
+ - [x] integrate with fastMCP, MCP, and Web for request response
  - [x] have identity available to business logic
  - [x] have logs available for review (no writing to file, ephemoral)
 
