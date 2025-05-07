@@ -2,7 +2,6 @@ import pytest
 import jacs  #
 import os
 import pathlib
-from datetime import datetime
 os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "hello"
 current_dir = pathlib.Path(__file__).parent.absolute()
 fixtures_path = current_dir / "fixtures"
