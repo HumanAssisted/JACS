@@ -50,7 +50,7 @@ fn load_test_agent_one() -> Agent {
         .expect("Agent schema should have instantiated");
     let agentid =
         "0f6bb6e8-f27c-4cf7-bb2e-01b647860680:a55739af-a3c8-4b4a-9f24-200313ee4229".to_string();
-    let result = agent.load_by_id(Some(agentid), None);
+    let result = agent.load_by_id(agentid);
     match result {
         Ok(_) => {
             debug!(

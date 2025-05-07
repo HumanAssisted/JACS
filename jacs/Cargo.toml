@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 rust-version = "1.85"
 resolver = "3"
@@ -77,6 +77,7 @@ futures-util = "0.3.31"
 referencing = "0.29.1"
 futures-executor = "0.3.31"
 update = "0.0.0"
+getset = "0.1.5"
 
 # libp2p = "0.55.0"
 # [target.'cfg(target_os = "macos")'.dependencies]
@@ -94,6 +95,7 @@ assert_cmd = "2.0"
 predicates = "3.1"
 tempfile = "3.19.1"
 serial_test = "0.6.0"
+futures = "0.3"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

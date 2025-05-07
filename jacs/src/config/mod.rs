@@ -1,34 +1,61 @@
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
-use crate::storage::jenv::{EnvError, get_env_var, set_env_var, set_env_var_override};
+use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var, set_env_var_override};
+use getset::Getters;
 use jsonschema::{Draft, Validator};
-
-use log::{debug, error, info};
+use log::{error, info};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::fs;
-use std::path::PathBuf;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+pub mod constants;
+
+/*
+Config is embedded in agents and may have private information.
+
+It can be
+1. loadded from json
+2. values from environment variables (useful for secrets)
+
+The difficult part is bootstrapping an agent.
+
+The agent file itself is NOT private (the .value field in the agent struct)
+Each config _may_ be loaded from a file, or from environment variables.
+For example, create_agent_and_load() does not neeed a config file at all?
+
+*/
+
+#[derive(Serialize, Deserialize, Default, Debug, Getters)]
 pub struct Config {
     #[serde(rename = "$schema")]
     #[serde(default = "default_schema")]
+    #[getset(get)]
     schema: String,
-    jacs_use_filesystem: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default = "default_security")]
     jacs_use_security: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default = "default_data_directory")]
     jacs_data_directory: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default = "default_key_directory")]
     jacs_key_directory: Option<String>,
+    #[getset(get = "pub")]
     jacs_agent_private_key_filename: Option<String>,
+    #[getset(get = "pub")]
     jacs_agent_public_key_filename: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default = "default_algorithm")]
     jacs_agent_key_algorithm: Option<String>,
-    jacs_agent_schema_version: Option<String>,
-    jacs_header_schema_version: Option<String>,
-    jacs_signature_schema_version: Option<String>,
+    #[getset(get)]
     jacs_private_key_password: Option<String>,
+    #[getset(get = "pub")]
     jacs_agent_id_and_version: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default = "default_storage")]
     jacs_default_storage: Option<String>,
 }
 
@@ -36,39 +63,92 @@ fn default_schema() -> String {
     "https://hai.ai/schemas/jacs.config.schema.json".to_string()
 }
 
+// TODO change these to macros
+fn default_storage() -> Option<String> {
+    match get_env_var("JACS_DEFAULT_STORAGE", false) {
+        Ok(Some(val)) if !val.is_empty() => Some(val),
+        _ => Some("fs".to_string()),
+    }
+}
+
+fn default_algorithm() -> Option<String> {
+    match get_env_var("JACS_AGENT_KEY_ALGORITHM", false) {
+        Ok(Some(val)) if !val.is_empty() => Some(val),
+        _ => Some("RSA-PSS".to_string()),
+    }
+}
+
+fn default_security() -> Option<String> {
+    match get_env_var("JACS_USE_SECURITY", false) {
+        Ok(Some(val)) if !val.is_empty() => Some(val),
+        _ => Some("false".to_string()),
+    }
+}
+
+fn default_data_directory() -> Option<String> {
+    match get_env_var("JACS_DATA_DIRECTORY", false) {
+        Ok(Some(val)) if !val.is_empty() => Some(val),
+        _ => {
+            if default_storage() == Some("fs".to_string()) {
+                let cur_dir = std::env::current_dir().unwrap();
+                let data_dir = cur_dir.join("jacs_data");
+                Some(data_dir.to_string_lossy().to_string())
+            } else {
+                Some("./jacs_data".to_string())
+            }
+        }
+    }
+}
+
+fn default_key_directory() -> Option<String> {
+    match get_env_var("JACS_KEY_DIRECTORY", false) {
+        Ok(Some(val)) if !val.is_empty() => Some(val),
+        _ => {
+            if default_storage() == Some("fs".to_string()) {
+                let cur_dir = std::env::current_dir().unwrap();
+                let data_dir = cur_dir.join("jacs_keys");
+                Some(data_dir.to_string_lossy().to_string())
+            } else {
+                Some("./jacs_keys".to_string())
+            }
+        }
+    }
+}
+
 impl Config {
     pub fn new(
-        schema: String,
-        jacs_use_filesystem: Option<String>,
         jacs_use_security: Option<String>,
         jacs_data_directory: Option<String>,
         jacs_key_directory: Option<String>,
         jacs_agent_private_key_filename: Option<String>,
         jacs_agent_public_key_filename: Option<String>,
         jacs_agent_key_algorithm: Option<String>,
-        jacs_agent_schema_version: Option<String>,
-        jacs_header_schema_version: Option<String>,
-        jacs_signature_schema_version: Option<String>,
         jacs_private_key_password: Option<String>,
         jacs_agent_id_and_version: Option<String>,
         jacs_default_storage: Option<String>,
     ) -> Config {
         Config {
-            schema,
-            jacs_use_filesystem,
+            schema: default_schema(),
             jacs_use_security,
             jacs_data_directory,
             jacs_key_directory,
             jacs_agent_private_key_filename,
             jacs_agent_public_key_filename,
             jacs_agent_key_algorithm,
-            jacs_agent_schema_version,
-            jacs_header_schema_version,
-            jacs_signature_schema_version,
             jacs_private_key_password,
             jacs_agent_id_and_version,
             jacs_default_storage,
         }
+    }
+
+    pub fn get_key_algorithm(&self) -> Result<String, Box<dyn std::error::Error>> {
+        // 1. Try getting from config
+        if let Some(algo_str) = self.jacs_agent_key_algorithm().as_deref() {
+            // Config exists and has the key algorithm string
+            return Ok(algo_str.to_string());
+        }
+        get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)
+            .map_err(|e| Box::new(e) as Box<dyn Error>) // Map EnvError to Box<dyn Error>
     }
 }
 
@@ -77,22 +157,18 @@ impl fmt::Display for Config {
         write!(
             f,
             r#"
-        Loading JACS and Sophon env variables of:
-            JACS_USE_SECURITY                {},
-            JACS_USE_FILESYSTEM:             {},
+        Loading JACS config variables of:
+            JACS_USE_SECURITY:               {},
             JACS_DATA_DIRECTORY:             {},
             JACS_KEY_DIRECTORY:              {},
             JACS_AGENT_PRIVATE_KEY_FILENAME: {},
             JACS_AGENT_PUBLIC_KEY_FILENAME:  {},
             JACS_AGENT_KEY_ALGORITHM:        {},
-            JACS_AGENT_SCHEMA_VERSION:       {},
-            JACS_HEADER_SCHEMA_VERSION:      {},
-            JACS_SIGNATURE_SCHEMA_VERSION:   {},
-            JACS_PRIVATE_KEY_PASSWORD        {},
-            JACS_AGENT_ID_AND_VERSION        {}
+            JACS_PRIVATE_KEY_PASSWORD:       REDACTED,
+            JACS_AGENT_ID_AND_VERSION:       {},
+            JACS_DEFAULT_STORAGE:            {},
         "#,
             self.jacs_use_security.as_deref().unwrap_or(""),
-            self.jacs_use_filesystem.as_deref().unwrap_or(""),
             self.jacs_data_directory.as_deref().unwrap_or(""),
             self.jacs_key_directory.as_deref().unwrap_or(""),
             self.jacs_agent_private_key_filename
@@ -100,30 +176,19 @@ impl fmt::Display for Config {
                 .unwrap_or(""),
             self.jacs_agent_public_key_filename.as_deref().unwrap_or(""),
             self.jacs_agent_key_algorithm.as_deref().unwrap_or(""),
-            self.jacs_agent_schema_version.as_deref().unwrap_or(""),
-            self.jacs_header_schema_version.as_deref().unwrap_or(""),
-            self.jacs_signature_schema_version.as_deref().unwrap_or(""),
-            self.jacs_private_key_password.as_deref().unwrap_or(""),
             self.jacs_agent_id_and_version.as_deref().unwrap_or(""),
+            self.jacs_default_storage.as_deref().unwrap_or("")
         )
     }
 }
 
-pub fn get_default_dir() -> PathBuf {
-    match get_env_var("JACS_DATA_DIRECTORY", false) {
-        Ok(Some(dir)) => PathBuf::from(dir),
-        _ => {
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let _ = set_env_var("JACS_DATA_DIRECTORY", ".");
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            }
-            #[cfg(target_arch = "wasm32")]
-            {
-                PathBuf::from(".")
-            }
-        }
-    }
+// the simplest way to load a config is to pass in a path to a config file
+// the config is stored in the agent, no need to use ENV vars
+pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
+    let json_str = fs::read_to_string(config_path)?;
+    let validated_value: Value = validate_config(&json_str)?;
+    let config: Config = serde_json::from_value(validated_value)?;
+    Ok(config)
 }
 
 pub fn split_id(input: &str) -> Option<(&str, &str)> {
@@ -153,7 +218,7 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
         e
     })?;
 
-    debug!("validate json {:?}", instance);
+    //debug!("validate json {:?}", instance);
 
     // Validate and map any error into an owned error (a boxed String error).
     jacsconfigschema.validate(&instance).map_err(|e| {
@@ -165,9 +230,17 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
     Ok(instance)
 }
 
-// THis function should be exposed to higher level functions that can load configs from
-// anywere. Additionally, since this is called automatically in creating an agent
-// it should not override any existing env vars.
+pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
+    let config: Config = match fs::read_to_string(format!("{}jacs.config.json", path)) {
+        Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
+            .unwrap_or_default(),
+        Err(_) => Config::default(),
+    };
+
+    Ok(config)
+}
+
+// TODO DEPRICATE - focuse on configs created from env vars as backup
 pub fn set_env_vars(
     do_override: bool,
     config_json: Option<&str>,
@@ -176,20 +249,10 @@ pub fn set_env_vars(
     let config: Config = match config_json {
         Some(json_str) => serde_json::from_value(validate_config(json_str).unwrap_or_default())
             .unwrap_or_default(),
-        None => match fs::read_to_string("jacs.config.json") {
-            Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
-                .unwrap_or_default(),
-            Err(_) => Config::default(),
-        },
+        None => find_config(".".to_string())?,
     };
-    debug!("configs from file {:?}", config);
+    // debug!("configs from file {:?}", config);
     validate_config(&serde_json::to_string(&config).map_err(|e| Box::new(e) as Box<dyn Error>)?)?;
-    let jacs_use_filesystem = config
-        .jacs_use_filesystem
-        .as_ref()
-        .unwrap_or(&"true".to_string())
-        .clone();
-    set_env_var_override("JACS_USE_FILESYSTEM", &jacs_use_filesystem, do_override)?;
 
     let jacs_private_key_password = config
         .jacs_private_key_password
@@ -256,39 +319,6 @@ pub fn set_env_vars(
         do_override,
     )?;
 
-    let jacs_agent_schema_version = config
-        .jacs_agent_schema_version
-        .as_ref()
-        .unwrap_or(&"v1".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_SCHEMA_AGENT_VERSION",
-        &jacs_agent_schema_version,
-        do_override,
-    )?;
-
-    let jacs_header_schema_version = config
-        .jacs_header_schema_version
-        .as_ref()
-        .unwrap_or(&"v1".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_SCHEMA_HEADER_VERSION",
-        &jacs_header_schema_version,
-        do_override,
-    )?;
-
-    let jacs_signature_schema_version = config
-        .jacs_signature_schema_version
-        .as_ref()
-        .unwrap_or(&"v1".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_SCHEMA_SIGNATURE_VERSION",
-        &jacs_signature_schema_version,
-        do_override,
-    )?;
-
     let jacs_default_storage = config
         .jacs_default_storage
         .as_ref()
@@ -327,15 +357,11 @@ pub fn set_env_vars(
 pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
     let vars = [
         ("JACS_USE_SECURITY", true),
-        ("JACS_USE_FILESYSTEM", true),
         ("JACS_DATA_DIRECTORY", true),
         ("JACS_KEY_DIRECTORY", true),
         ("JACS_AGENT_PRIVATE_KEY_FILENAME", true),
         ("JACS_AGENT_PUBLIC_KEY_FILENAME", true),
         ("JACS_AGENT_KEY_ALGORITHM", true),
-        ("JACS_SCHEMA_AGENT_VERSION", true),
-        ("JACS_SCHEMA_HEADER_VERSION", true),
-        ("JACS_SCHEMA_SIGNATURE_VERSION", true),
         ("JACS_PRIVATE_KEY_PASSWORD", true),
         ("JACS_AGENT_ID_AND_VERSION", true),
     ];

@@ -5,11 +5,11 @@ use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
-use crate::agent::security::check_data_directory;
+use crate::agent::security::SecurityTraits;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
-use crate::storage::{MultiStorage, jenv::get_env_var};
 use chrono::{DateTime, Local, Utc};
+use core::hash;
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use log::error;
@@ -131,7 +131,13 @@ impl JACSDocument {
     pub fn signing_agent(&self) -> Result<String, Box<dyn Error>> {
         let value: &serde_json::Value = &self.value;
         if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
-            return Ok(jacs_signature.get("agentID").expect("REASON").to_string());
+            // Use ok_or_else for better error message if agentID is missing or not a string
+            return Ok(jacs_signature
+                .get("agentID")
+                .ok_or_else(|| "Missing 'agentID' in signature".to_string())?
+                .as_str() // Assuming agentID should be a string
+                .ok_or_else(|| "'agentID' in signature is not a string".to_string())?
+                .to_string());
         }
         return Err("no agreement or signatures in agreement".into());
     }
@@ -141,9 +147,9 @@ impl JACSDocument {
         if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
             return Ok(jacs_signature
                 .get("agentID")
-                .expect("REASON")
+                .ok_or_else(|| "Missing 'agentID' in signature".to_string())?
                 .as_str()
-                .unwrap());
+                .ok_or_else(|| "'agentID' in signature is not a string".to_string())?);
         }
         return Err("no agreement or signatures in agreement".into());
     }
@@ -162,15 +168,20 @@ impl JACSDocument {
                 if let Some(signatures_array) = signatures.as_array() {
                     let mut signed_agents: Vec<String> = Vec::<String>::new();
                     for signature in signatures_array {
-                        let agentid: String =
-                            signature["agentID"].as_str().expect("REASON").to_string();
+                        // Use ok_or_else for better error message
+                        let agentid: String = signature["agentID"]
+                            .as_str()
+                            .ok_or_else(|| {
+                                format!("'agentID' in signature {:?} is not a string", signature)
+                            })?
+                            .to_string();
                         signed_agents.push(agentid);
                     }
                     return Ok(signed_agents);
                 }
             }
         }
-        return Err("no agreement or signatures in agreement".into());
+        Err("no agreement or signatures in agreement".into())
     }
 }
 
@@ -217,6 +228,15 @@ pub trait DocumentTraits {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
+
+    fn get_document_signature_agent_id(
+        &mut self,
+        document_key: &String,
+    ) -> Result<String, Box<dyn Error>>;
+    fn verify_external_document_signature(
+        &mut self,
+        document_key: &String,
+    ) -> Result<(), Box<dyn Error>>;
     fn diff_json_strings(
         &self,
         json1: &str,
@@ -475,11 +495,25 @@ impl DocumentTraits for Agent {
 
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
         let mut documents = self.documents.lock().expect("JACSDocument lock");
+        // Use ok_or_else for mandatory fields
+        let id = value
+            .get_str("jacsId")
+            .ok_or_else(|| "Missing 'jacsId' field".to_string())?
+            .to_string();
+        let version = value
+            .get_str("jacsVersion")
+            .ok_or_else(|| "Missing 'jacsVersion' field".to_string())?
+            .to_string();
+        let jacs_type = value
+            .get_str("jacsType")
+            .ok_or_else(|| "Missing 'jacsType' field".to_string())?
+            .to_string();
+
         let doc = JACSDocument {
-            id: value.get_str("jacsId").expect("REASON").to_string(),
-            version: value.get_str("jacsVersion").expect("REASON").to_string(),
-            value: Some(value.clone()).into(),
-            jacs_type: value.get_str("jacsType").expect("REASON").to_string(),
+            id,
+            version,
+            value: value.clone(), // No into() needed for Value
+            jacs_type,
         };
         let key = doc.getkey();
         documents.insert(key.clone(), doc.clone());
@@ -527,7 +561,7 @@ impl DocumentTraits for Agent {
         let jacs_level = new_document
             .get_str("jacsLevel")
             .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());
-        if (!EDITABLE_JACS_DOCS.contains(&jacs_level.as_str())) {
+        if !EDITABLE_JACS_DOCS.contains(&jacs_level.as_str()) {
             return Err(format!("JACS docs of type {} are not editable", jacs_level).into());
         };
 
@@ -547,9 +581,7 @@ impl DocumentTraits for Agent {
             for attachment_path in attachment_list {
                 // Call create_file_json with embed set to false
                 let final_embed = embed.unwrap_or(false);
-                let file_json = self
-                    .create_file_json(&attachment_path, final_embed)
-                    .unwrap();
+                let file_json = self.create_file_json(&attachment_path, final_embed)?;
 
                 // Add the file JSON to the files array
                 files_array.push(file_json);
@@ -649,7 +681,6 @@ impl DocumentTraits for Agent {
         extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>> {
         let original_document = self.get_document(document_key).unwrap();
-        let document_directory: String = "documents".to_string(); // get_short_name(&original_document.value)?;
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
 
         let is_extract_only = match extract_only {
@@ -658,12 +689,7 @@ impl DocumentTraits for Agent {
         };
 
         if !is_extract_only {
-            let _ = self.fs_document_save(
-                &document_key,
-                &document_string,
-                &document_directory,
-                output_filename,
-            )?;
+            let _ = self.fs_document_save(&document_key, &document_string, output_filename)?;
         }
 
         let do_export = match export_embedded {
@@ -673,7 +699,7 @@ impl DocumentTraits for Agent {
 
         if do_export {
             if let Some(jacs_files) = original_document.value["jacsFiles"].as_array() {
-                if let Err(e) = check_data_directory() {
+                if let Err(e) = self.check_data_directory() {
                     error!("Failed to check data directory: {}", e);
                 }
                 for item in jacs_files {
@@ -688,9 +714,9 @@ impl DocumentTraits for Agent {
                         let mut inflated_contents = Vec::new();
                         gz_decoder.read_to_end(&mut inflated_contents)?;
 
-                        // TODO move this portion of code out of document as it's filesystem dependent
+                        let storage = self.storage.clone();
+
                         // Backup the existing file if it exists
-                        let storage = MultiStorage::new(None)?;
                         if storage.file_exists(path, None)? {
                             let backup_path =
                                 format!("{}.{}.bkp", path, Local::now().format("%Y%m%d_%H%M%S"));
@@ -698,20 +724,65 @@ impl DocumentTraits for Agent {
                         }
 
                         // Save the inflated contents to the file
-                        let storage = MultiStorage::new(None)?;
                         storage.save_file(path, &inflated_contents)?;
 
                         // Mark the file as not executable
                         #[cfg(not(target_arch = "wasm32"))]
-                        use crate::agent::security::mark_file_not_executable;
-                        if let Ok(Some(_)) = get_env_var("JACS_USE_FILESYSTEM", true) {
-                            mark_file_not_executable(Path::new(path))?;
+                        if !self.use_filesystem() {
+                            self.mark_file_not_executable(Path::new(path))?;
                         }
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    fn verify_external_document_signature(
+        &mut self,
+        document_key: &String,
+    ) -> Result<(), Box<dyn Error>> {
+        let document = self.get_document(document_key).unwrap();
+        let json_value = document.getvalue();
+        let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let public_key_hash: String = json_value[signature_key_from]["publicKeyHash"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let public_key = self.fs_load_public_key(&public_key_hash)?;
+        let public_key_enc_type = self.fs_load_public_key_type(&public_key_hash)?;
+        return self.verify_document_signature(
+            document_key,
+            Some(signature_key_from),
+            None,
+            Some(public_key),
+            Some(public_key_enc_type),
+        );
+    }
+
+    fn get_document_signature_agent_id(
+        &mut self,
+        document_key: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        let document = self.get_document(document_key).unwrap();
+        let json_value = document.getvalue();
+        let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let angent_id: String = json_value[signature_key_from]["agentID"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let angent_version: String = json_value[signature_key_from]["agentVersion"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let agent_id_version = format!("{}:{}", angent_id, angent_version);
+        Ok(agent_id_version)
     }
 
     fn verify_document_signature(
@@ -763,7 +834,8 @@ impl DocumentTraits for Agent {
     fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>> {
         match attachments {
             Some(path_str) => {
-                let storage = MultiStorage::new(None).ok()?;
+                // Use the agent's existing storage
+                let storage = self.storage.clone(); // Assuming self.storage exists and is clonable
 
                 // First try to list files in case it's a directory
                 match storage.list(path_str, None) {
@@ -776,6 +848,7 @@ impl DocumentTraits for Agent {
                             match storage.file_exists(path_str, None) {
                                 Ok(true) => Some(vec![path_str.to_string()]),
                                 _ => {
+                                    // Consider returning Err instead of printing and returning None
                                     eprintln!("Invalid path: {}", path_str);
                                     None
                                 }
@@ -783,6 +856,7 @@ impl DocumentTraits for Agent {
                         }
                     }
                     Err(_) => {
+                        // Consider returning Err instead of printing and returning None
                         eprintln!("Failed to read path: {}", path_str);
                         None
                     }

@@ -18,6 +18,7 @@ done
 rm temp.json
 
 # create json schema docs
+# npm install -g @adobe/jsonschema2md
 # todo -r "https://hai.ai/schemas/=schemas/"  or -i schemas fails because of resolving version of json schema
 jsonschema2md -d jacs/schemas  -o jacs/docs/schema -x -
 

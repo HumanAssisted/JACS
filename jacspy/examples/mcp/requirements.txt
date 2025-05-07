@@ -1,0 +1,4 @@
+requests
+jacs
+uvicorn
+fastmcp

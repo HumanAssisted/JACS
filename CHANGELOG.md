@@ -1,40 +1,131 @@
 # PLANNED
-
+-  machine fingerprinting v2
 - encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
 - WASM builds
-
+ - https://github.com/verus-lang/verus?tab=readme-ov-file
+- use rcgen to sign certs, and register with ACME
+ https://opentelemetry.io/docs/languages/rust/
+. ai.pydantic.dev
 
 ## 0.4.0
-- WASM
- - [] machine fingerprinting v2
-
-## 0.3.4
- - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
- - [] RBAC integration with header
+- Domain integration
+- [] sign config
  - [] RBAC enforcement from server. If shared, new version is pinned. 
- - [] diff versions
- - [] bucket integration
- - [] task review
- - [] make sure config directory is in isolated location, like with key
- - [] don't store  "jacs_private_key_password":  in config, don't display
- - [] domain to header, and related verification
- - [] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
-   - more complete python implementation
+
+  - more complete python implementation
    - pass document string or document id - with optional version instead of string
    - load document whatever storage config is
    - function test output metadata about current config and current agent
-
-## jacspy cleanup
-
 ## jacs-mcp 0.1.0
 
- - [] integrate with server
+ - [] use rmcp
+ - [] auth or all features
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
+
+
+--------------------
+
+## 0.3.5
+
+### Register agent
+
+ - [] register agent
+    - [] remove requirement to store public key type
+
+ - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] RBAC integration with header
+ - [] diff versions
+ - [] bucket integration
+ - [] don't store  "jacs_private_key_password":  in config, don't display
+ - [] register public key 
+ - [] CA for cert
+ - [] add timestamp to prevent timing attacks to request/response features
+ - [] no_save = false should save document and still return json string instead of message on create document
+ - 
+
+## jacspy
+ - [] install jacs cli with the python wheel
+ - [] python based instructions for how to create - cli create agent 
+      1. cli create agent 
+      2. config jacspy to load each agent
+
+ - [] auto generate agent doc from MCP server list, auto versions
+ - [] traceable, verifiable request logs
+ - [] fastmcp client and server stdio
+ - [] fastmcp client and server websocket
+ - [] publish jacspy to pypi
+ - [] github actions builder for linux
+ - [] mcp make decorator for @resource
+ - [] mcp make sure "list" request is signed
+
+## jacsnpm
+proof of concept
+
+ - [] typescript mcp client and server
+ - [] npm install jacs (cli and available to plugin)
+
+--------------------
+
 # COMPLETED
+
+## 0.3.4
+
+## integrated demo
+
+ - [x] sign request/response (any python object -> payload)
+ - [x] verify response/request (any payload json string -> python object)
+ - [x] integrate with fastMCP, MCP, and Web for request response
+ - [x] have identity available to business logic
+ - [x] have logs available for review (no writing to file, ephemoral)
+
+## jacspy
+
+ - [x] make decorator for easy use in @tools
+ - [x] new local builder
+ - [] fastmcp client and server sse
+ - [x] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
+ - [x] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
+
+ 
+ ### General 
+
+ - init √
+ - [x] load(config) -> Agent
+ 
+### detailed
+ - [x] make sure config directory is in isolated location, like with key
+ - [x] make config and security part of Agent
+ - [x] don't use env  everywhere- dep jacspy
+   - [x] load multistorage into agent object to re-use
+   - [x] BUG keys directory isolation broken when re-using Multistorage. TODO wrap key saving in different function
+   - [x] don't use set_env_vars() by default - may be more than one agent in system    
+   - [x] change config to have storagetype string, add to config schema
+   - write tests for no env vars usage of config
+   - load by id from default store
+   - [x] don't store passwords in config
+   - [x] all old tests and some new tests pass
+- [x] cli init function
+ - [x] clean up fs defaults in init/config/ 
+ - [x] bug with JACS_SCHEMA_AGENT_VERSION didn't have default on cli init
+ - [x] separate JACS readme repo readme
+ - [x] minimal github actions
+ - [x] autodetect public key type
+ - [x] refactor API so easier to use from higher level libraries  - create agent, load agent, save document, create document, update document, sign 
+   init, load agent, verify agent, verify document, 
+   - [x] single init, also signs agent
+   - [x] load from config
+   - [x] have load agent from config also load keys IF SIGNED
+
+ 
+ 
+
+---------------
+
+# 0.3.3
 
 ## jacs 0.3.3
  - [x] change project to workspace
@@ -44,9 +135,6 @@
  - [x] cli review and tests 
  - [x] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
 
-
-
-
 ## 0.3.2
  - [x] add common clause to Apache 2.0
  - [x] use a single file to handle file i/o for all storage types
@@ -55,9 +143,8 @@
  - [x] create tests using custom schemas - verify this is working
 
 
-
 ## 0.3.1
-- upgraded many dependencies using 
+- [x] upgraded many dependencies using 
     cargo install cargo-edit
     cargo upgrade
     

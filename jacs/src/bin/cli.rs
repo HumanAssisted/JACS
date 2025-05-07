@@ -1,15 +1,12 @@
-use chrono::DateTime;
-use chrono::Local;
-use clap::{Arg, ArgAction, Command, crate_description, crate_name, crate_version, value_parser};
+use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::config::{Config, check_env_vars, set_env_vars};
-use jacs::create_minimal_blank_agent;
+use jacs::cli_utils::create::handle_agent_create;
+use jacs::cli_utils::create::handle_config_create;
+use jacs::config::find_config;
 use jacs::create_task;
-use jacs::crypt::KeyManager;
-use jacs::get_empty_agent;
 use jacs::load_agent;
 use jacs::shared::document_add_agreement;
 use jacs::shared::document_check_agreement;
@@ -17,37 +14,11 @@ use jacs::shared::document_create;
 use jacs::shared::document_load_and_save;
 use jacs::shared::document_sign_agreement;
 use jacs::storage::MultiStorage;
-use jacs::storage::jenv::{get_env_var, get_required_env_var, set_env_var};
-use rpassword::read_password;
-use serde_json::{Value, json};
 use std::env;
 use std::error::Error;
-use std::fs::{File, metadata, rename};
-use std::io;
-use std::io::Write;
-use std::path::Path;
 use std::process;
 
-fn request_string(message: &str, default: &str) -> String {
-    let mut input = String::new();
-    println!("{}: (default: {})", message, default);
-
-    match io::stdin().read_line(&mut input) {
-        Ok(_) => {
-            let trimmed = input.trim();
-            if trimmed.is_empty() {
-                default.to_string() // Return default if no input
-            } else {
-                trimmed.to_string() // Return trimmed input if there's any
-            }
-        }
-        Err(_) => default.to_string(), // Return default on error
-    }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    let _ = set_env_vars(true, None, false);
-
+pub fn main() -> Result<(), Box<dyn Error>> {
     let matches = Command::new(crate_name!())
         .subcommand(
             Command::new("version")
@@ -471,13 +442,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                         ),
                 )
         )
+        .subcommand(
+            Command::new("init")
+                .about("Initialize JACS by creating both config and agent (with keys)")
+        )
         .arg_required_else_help(true)
         .get_matches();
 
     let mut storage: Option<MultiStorage> = None;
 
     if matches.subcommand_name() != Some("version") {
-        storage = Some(MultiStorage::new(None).expect("Failed to initialize storage"));
+        storage = Some(MultiStorage::default_new().expect("Failed to initialize storage"));
     }
 
     match matches.subcommand() {
@@ -490,356 +465,25 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
             return Ok(());
         }
-        Some(("config", agent_matches)) => match agent_matches.subcommand() {
-            Some(("create", create_matches)) => {
-                println!("Welcome to the JACS Config Generator!");
-
-                println!(
-                    "Enter the path to the agent file if it already exists (leave empty to skip):"
-                );
-                let mut agent_filename = String::new();
-                io::stdin().read_line(&mut agent_filename).unwrap();
-                agent_filename = agent_filename.trim().to_string();
-
-                let jacs_agent_id_and_version = if !agent_filename.is_empty() {
-                    // Use storage to check and read the agent file
-                    match storage.as_ref().unwrap().file_exists(&agent_filename, None) {
-                        Ok(true) => {
-                            match storage.as_ref().unwrap().get_file(&agent_filename, None) {
-                                Ok(agent_content_bytes) => {
-                                    match String::from_utf8(agent_content_bytes) {
-                                        Ok(agent_content) => {
-                                            match serde_json::from_str::<Value>(&agent_content) {
-                                                Ok(agent_json) => {
-                                                    let jacs_id =
-                                                        agent_json["jacsId"].as_str().unwrap_or("");
-                                                    let jacs_version = agent_json["jacsVersion"]
-                                                        .as_str()
-                                                        .unwrap_or("");
-                                                    format!("{}:{}", jacs_id, jacs_version)
-                                                }
-                                                Err(e) => {
-                                                    println!(
-                                                        "Error parsing agent JSON from {}: {}",
-                                                        agent_filename, e
-                                                    );
-                                                    String::new()
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            println!(
-                                                "Error converting agent file content to UTF-8 {}: {}",
-                                                agent_filename, e
-                                            );
-                                            String::new()
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    println!("Failed to read agent file {}: {}", agent_filename, e);
-                                    String::new()
-                                }
-                            }
-                        }
-                        Ok(false) => {
-                            println!(
-                                "Agent file {} not found in storage. Skipping...",
-                                agent_filename
-                            );
-                            String::new()
-                        }
-                        Err(e) => {
-                            println!(
-                                "Error checking existence of agent file {}: {}",
-                                agent_filename, e
-                            );
-                            String::new()
-                        }
-                    }
-                } else {
-                    String::new()
-                };
-                let jacs_agent_private_key_filename =
-                    request_string("Enter the private key filename:", "jacs.private.pem.enc");
-                let jacs_agent_public_key_filename =
-                    request_string("Enter the public key filename:", "jacs.public.pem");
-                let jacs_agent_key_algorithm = request_string(
-                    "Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS)",
-                    "RSA-PSS",
-                );
-                let jacs_default_storage =
-                    request_string("Enter the default storage (fs, aws, hai)", "fs");
-
-                // Check for password in environment variable first
-                let jacs_private_key_password = match env::var("JACS_PRIVATE_KEY_PASSWORD") {
-                    Ok(env_password) if !env_password.is_empty() => {
-                        println!(
-                            "Using password from JACS_PRIVATE_KEY_PASSWORD environment variable."
-                        );
-                        env_password // Use password from env var
-                    }
-                    _ => {
-                        // Only prompt if env var is not set or empty
-                        println!("Please enter your password:");
-                        match read_password() {
-                            Ok(password) => password,
-                            Err(e) => {
-                                eprintln!("Error reading password: {}", e);
-                                process::exit(1);
-                            }
-                        }
-                    }
-                };
-
-                let jacs_use_filesystem =
-                    request_string("Use filesystem. If false, will print to std:io", "true");
-                let jacs_use_security =
-                    request_string("Use experimental security features", "false");
-                let jacs_data_directory = request_string("Directory for data storage", "./jacs");
-                let jacs_key_directory = request_string("Directory for keys", "./jacs_keys");
-
-                let config = Config::new(
-                    "https://hai.ai/schemas/jacs.config.schema.json".to_string(),
-                    Some(jacs_use_filesystem),
-                    Some(jacs_use_security),
-                    Some(jacs_data_directory),
-                    Some(jacs_key_directory),
-                    Some(jacs_agent_private_key_filename),
-                    Some(jacs_agent_public_key_filename),
-                    Some(jacs_agent_key_algorithm),
-                    Some("v1".to_string()),
-                    Some("v1".to_string()),
-                    Some("v1".to_string()),
-                    Some(jacs_private_key_password),
-                    Some(jacs_agent_id_and_version),
-                    Some(jacs_default_storage),
-                );
-
-                let serialized = serde_json::to_string_pretty(&config).unwrap();
-
-                // Keep using std::fs for config file backup and writing
-                let config_path = "jacs.config.json";
-                if metadata(config_path).is_ok() {
-                    // Keep std::fs::metadata
-                    let now: DateTime<Local> = Local::now();
-                    let backup_path =
-                        format!("{}-backup-jacs.config.json", now.format("%Y%m%d%H%M%S"));
-                    rename(config_path, backup_path.clone()).unwrap(); // Keep std::fs::rename
-                    println!("Backed up existing jacs.config.json to {}", backup_path);
-                }
-
-                let mut file = File::create(config_path).unwrap(); // Keep std::fs::File::create
-                file.write_all(serialized.as_bytes()).unwrap(); // Keep std::fs::write_all
-
-                println!("jacs.config.json file generated successfully!");
+        Some(("config", config_matches)) => match config_matches.subcommand() {
+            Some(("create", _create_matches)) => {
+                // Call the refactored handler function
+                handle_config_create(&storage)?;
             }
             Some(("read", verify_matches)) => {
-                // agent is loaded because of    schema.validate_config(&config).expect("config validation");
-                // let _ = load_agent_by_id();
-                let configs = set_env_vars(true, None, false).unwrap_or_else(|e| {
-                    eprintln!("Warning: Failed to set some environment variables: {}", e);
-                    Config::default().to_string()
-                });
-                println!("{}", configs);
+                let config = find_config("./".to_string())?;
+                println!("{}", config);
             }
-            _ => println!("please enter subcommand see jacs agent --help"),
+            _ => println!("please enter subcommand see jacs config --help"),
         },
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
             Some(("create", create_matches)) => {
+                // Parse args for the specific agent create command
                 let filename = create_matches.get_one::<String>("filename");
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
 
-                // Initialize storage using MultiStorage::new
-                let storage = MultiStorage::new(None)?;
-
-                // -- Get user input for agent type and SERVICE descriptions --
-                let agent_type =
-                    request_string("Agent Type (e.g., ai, person, service, device)", "ai"); // Default to ai
-                if agent_type.is_empty() {
-                    eprintln!("Agent type cannot be empty.");
-                    process::exit(1);
-                }
-                // TODO: Validate agent_type against schema enum: ["human", "human-org", "hybrid", "ai"]
-
-                let service_description = request_string(
-                    "Service Description",
-                    "Describe a service the agent provides",
-                );
-                let success_description = request_string(
-                    "Service Success Description",
-                    "Describe a success of the service",
-                );
-                let failure_description = request_string(
-                    "Service Failure Description",
-                    "Describe what failure is of the service",
-                );
-
-                // Variables for service descriptions when creating minimal agent
-                let (minimal_service_desc, minimal_success_desc, minimal_failure_desc) =
-                    if filename.is_none() {
-                        // Use descriptions collected from user only if creating minimal agent
-                        (
-                            Some(service_description),
-                            Some(success_description),
-                            Some(failure_description),
-                        )
-                    } else {
-                        // If loading from file, pass None (template should contain service info)
-                        (None, None, None)
-                    };
-
-                // Load or create base agent string
-                let agent_template_string = match filename {
-                    Some(fname) => {
-                        let content_bytes = storage.get_file(fname, None).unwrap_or_else(|_| {
-                            panic!("Failed to load agent template file: {}", fname)
-                        });
-                        String::from_utf8(content_bytes).unwrap_or_else(|_| {
-                            panic!("Agent template file {} is not valid UTF-8", fname)
-                        })
-                    }
-                    _ => create_minimal_blank_agent(
-                        agent_type.clone(),   // Pass the collected agent_type
-                        minimal_service_desc, // Pass collected service description
-                        minimal_success_desc, // Pass collected success description
-                        minimal_failure_desc, // Pass collected failure description
-                    )
-                    .unwrap_or_else(|e| panic!("Failed to create minimal agent template: {}", e)),
-                };
-
-                // -- Modify the agent template with remaining user input (agent_type) --
-                let mut agent_json: Value = serde_json::from_str(&agent_template_string)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Failed to parse agent template JSON: {}", e);
-                        eprintln!("Template content:\n{}", agent_template_string);
-                        process::exit(1);
-                    });
-
-                // Add or update fields - ONLY agent_type remains needed here as name/desc removed
-                if let Some(obj) = agent_json.as_object_mut() {
-                    // obj.insert("jacsName".to_string(), json!(agent_name)); // Removed
-                    // obj.insert("jacsDescription".to_string(), json!(agent_description)); // Removed
-                    obj.insert("jacsAgentType".to_string(), json!(agent_type)); // Use jacsAgentType based on schema
-                } else {
-                    eprintln!("Agent template is not a valid JSON object.");
-                    process::exit(1);
-                }
-
-                let modified_agent_string = serde_json::to_string(&agent_json).unwrap();
-
-                // Proceed with agent creation using modified string
-                let mut agent = get_empty_agent();
-                let configs = set_env_vars(true, None, true).unwrap_or_else(|e| {
-                    // Ignore agent id initially
-                    eprintln!("Warning: Failed to set some environment variables: {}", e);
-                    Config::default().to_string()
-                });
-                println!("Creating agent with config {}", configs);
-                if create_keys {
-                    println!("Creating keys...");
-                    agent.generate_keys().expect("Failed to generate keys");
-                    println!(
-                        "Keys created in {}",
-                        get_required_env_var("JACS_KEY_DIRECTORY", true)
-                            .expect("JACS_KEY_DIRECTORY must be set")
-                    )
-                }
-
-                // Use the modified agent string here
-                agent
-                    .create_agent_and_load(&modified_agent_string, false, None)
-                    .expect("Agent creation failed");
-
-                let agent_id_version = agent
-                    .get_lookup_id()
-                    .expect("Failed to get agent ID after creation");
-                println!("Agent {} created successfully!", agent_id_version);
-
-                let _ = agent.save().expect("Failed to save created agent");
-
-                // -- Ask user if they want to update the config using request_string --
-                let prompt_message = format!(
-                    "Do you want to set {} as the default agent in jacs.config.json and environment variable? (yes/no)",
-                    agent_id_version
-                );
-                let update_confirmation = request_string(&prompt_message, "no"); // Default to no
-
-                if update_confirmation.trim().to_lowercase() == "yes"
-                    || update_confirmation.trim().to_lowercase() == "y"
-                {
-                    println!("Updating configuration...");
-                    let config_path_str = "jacs.config.json";
-                    let config_path = Path::new(config_path_str);
-
-                    // Use std::fs for reading
-                    let mut current_config: Value = match std::fs::read_to_string(config_path) {
-                        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
-                            println!(
-                                "Warning: Could not parse {}, creating default. Error: {}",
-                                config_path_str, e
-                            );
-                            json!({}) // Start with empty object if parse fails or file empty
-                        }),
-                        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
-                            println!("Warning: {} not found, creating default.", config_path_str);
-                            json!({}) // Start with empty object if file doesn't exist
-                        }
-                        Err(e) => {
-                            eprintln!("Error reading {}: {}. Cannot update.", config_path_str, e);
-                            return Ok(()); // Exit this block gracefully if read fails for other reasons
-                        }
-                    };
-
-                    if !current_config.is_object() {
-                        println!(
-                            "Warning: {} content is not a JSON object. Overwriting with default structure.",
-                            config_path_str
-                        );
-                        current_config = json!({});
-                    }
-
-                    if let Some(obj) = current_config.as_object_mut() {
-                        obj.insert(
-                            "jacs_agent_id_and_version".to_string(),
-                            json!(agent_id_version),
-                        );
-                        if !obj.contains_key("$schema") {
-                            obj.insert(
-                                "$schema".to_string(),
-                                json!("https://hai.ai/schemas/jacs.config.schema.json"),
-                            );
-                        }
-                    }
-
-                    // Use std::fs for writing
-                    match std::fs::write(
-                        config_path,
-                        serde_json::to_string_pretty(&current_config).unwrap(),
-                    ) {
-                        Ok(_) => println!("Successfully updated {}.", config_path_str),
-                        Err(e) => eprintln!("Error writing {}: {}", config_path_str, e),
-                    }
-
-                    // Update environment variables for the current session
-                    match set_env_var("JACS_AGENT_ID_AND_VERSION", &agent_id_version) {
-                        Ok(_) => println!(
-                            "Updated JACS_AGENT_ID_AND_VERSION environment variable for this session."
-                        ),
-                        Err(e) => eprintln!(
-                            "Failed to update JACS_AGENT_ID_AND_VERSION environment variable: {}",
-                            e
-                        ),
-                    }
-                    match check_env_vars(false) {
-                        Ok(report) => println!("Environment Variable Check:\n{}", report),
-                        Err(e) => {
-                            eprintln!("Error checking environment variables after update: {}", e)
-                        }
-                    }
-                } else {
-                    println!("Skipping configuration update.");
-                }
+                // Call the refactored handler function
+                handle_agent_create(&storage, filename, create_keys)?;
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
@@ -1234,6 +878,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             _ => println!("please enter subcommand see jacs document --help"),
         },
+        Some(("init", _init_matches)) => {
+            println!("--- Running Config Creation ---");
+            handle_config_create(&storage)?;
+            println!("\n--- Running Agent Creation (with keys) ---");
+            // Call agent create handler with None for filename and true for create_keys
+            handle_agent_create(&storage, None, true)?;
+            println!("\n--- JACS Initialization Complete ---");
+        }
         _ => {
             // This branch should ideally be unreachable after adding arg_required_else_help(true)
             eprintln!("Invalid command or no subcommand provided. Use --help for usage.");

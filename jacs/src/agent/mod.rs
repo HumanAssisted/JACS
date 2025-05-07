@@ -7,12 +7,12 @@ pub mod security;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::crypt::hash::hash_public_key;
+use crate::storage::MultiStorage;
 
-use crate::config::{get_default_dir, set_env_vars};
+use crate::config::{Config, find_config, load_config};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
-use crate::crypt::JACS_AGENT_KEY_ALGORITHM;
 use crate::crypt::KeyManager;
 
 use crate::schema::Schema;
@@ -25,13 +25,10 @@ use serde_json::{Value, json, to_value};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use secrecy::SecretBox;
-
-use crate::storage::jenv::{get_env_var, get_required_env_var};
 
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
@@ -45,11 +42,11 @@ pub const AGENT_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
 pub const TASK_START_AGREEMENT_FIELDNAME: &str = "jacsStartAgreement";
 pub const TASK_END_AGREEMENT_FIELDNAME: &str = "jacsEndAgreement";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
-
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
 pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsPreviousVersion";
 
+// these fields are ignored when hashing
 pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     SHA256_FIELDNAME,
     AGENT_SIGNATURE_FIELDNAME,
@@ -72,15 +69,18 @@ pub fn use_secret(key: &[u8]) -> Vec<u8> {
 #[derive(Debug)]
 pub struct Agent {
     /// the JSONSchema used
+    /// todo use getter
     pub schema: Schema,
     /// the agent JSON Struct
     /// TODO make this threadsafe
     value: Option<Value>,
+    /// use getter
+    pub config: Option<Config>,
+    storage: MultiStorage,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
     documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
-    default_directory: PathBuf,
     /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
@@ -107,19 +107,17 @@ impl Agent {
         headerversion: &String,
         signature_version: &String,
     ) -> Result<Self, Box<dyn Error>> {
-        let _ = set_env_vars(true, None, true)?;
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let document_map = Arc::new(Mutex::new(HashMap::new()));
-
-        let default_directory = get_default_dir();
-
+        let config = Some(find_config("./".to_string())?);
         Ok(Self {
             schema,
             value: None,
+            config: config,
+            storage: MultiStorage::default_new()?,
             document_schemas: document_schemas_map,
             documents: document_map,
-            default_directory,
             id: None,
             version: None,
             key_algorithm: None,
@@ -128,21 +126,37 @@ impl Agent {
         })
     }
 
-    // loads and validates agent
-    pub fn load_by_id(
-        &mut self,
-        id: Option<String>,
-        _version: Option<String>,
-    ) -> Result<(), Box<dyn Error>> {
-        let lookup_id = id
-            .or_else(|| {
-                get_env_var("JACS_AGENT_ID_AND_VERSION", false)
-                    .ok()
-                    .flatten()
-            })
-            .ok_or_else(|| "need to set JACS_AGENT_ID_AND_VERSION")?;
+    pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
+        self.config = Some(find_config("./".to_string())?);
+        debug!("load_by_id config {:?}", self.config);
         let agent_string = self.fs_agent_load(&lookup_id)?;
         return self.load(&agent_string);
+    }
+
+    pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
+        // load config string
+        self.config = Some(load_config(&path)?);
+        let lookup_id: &str = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_agent_id_and_version()
+            .as_deref()
+            .unwrap_or("");
+        let storage_type = self
+            .config
+            .as_ref()
+            .unwrap()
+            .jacs_default_storage()
+            .as_deref()
+            .unwrap_or("");
+        self.storage = MultiStorage::new(storage_type.to_string())?;
+        if !lookup_id.is_empty() {
+            let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
+            return self.load(&agent_string);
+        } else {
+            return Ok(());
+        }
     }
 
     pub fn ready(&mut self) -> bool {
@@ -168,10 +182,6 @@ impl Agent {
             Some(private_key) => Ok(private_key),
             None => Err("private_key is None".into()),
         }
-    }
-
-    pub fn get_default_dir(&self) -> PathBuf {
-        self.default_directory.clone()
     }
 
     pub fn load(&mut self, agent_string: &String) -> Result<(), Box<dyn Error>> {
@@ -239,11 +249,11 @@ impl Agent {
         }
     }
 
-    fn unset_self(&mut self) {
-        self.id = None;
-        self.version = None;
-        self.value = None;
-    }
+    // fn unset_self(&mut self) {
+    //     self.id = None;
+    //     self.version = None;
+    //     self.value = None;
+    // }
 
     pub fn get_agent_for_doc(
         &mut self,
@@ -401,7 +411,7 @@ impl Agent {
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = Utc::now().to_rfc3339();
 
-        let signing_algorithm = get_required_env_var(JACS_AGENT_KEY_ALGORITHM, true)?;
+        let signing_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
 
         let serialized_fields = match to_value(accepted_fields) {
             Ok(value) => value,
@@ -664,22 +674,3 @@ impl Agent {
         return Ok(instance);
     }
 }
-
-/*
-
-todo
- - load actor and sign and act on other things
- - which requires a private key
- - also a verifier
- - remote public key or embeeded?
-
-
-EVERY resource(actor) and task has
-
-1. hash/checksum based on
-  - previous hash, id, version
-2. signature based on hash
-
-
-
-*/

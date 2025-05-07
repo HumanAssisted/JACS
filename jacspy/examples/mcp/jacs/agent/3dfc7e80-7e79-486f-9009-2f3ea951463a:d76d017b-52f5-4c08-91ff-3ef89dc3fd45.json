@@ -1,0 +1,39 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "jacsAgentType": "ai",
+  "jacsId": "3dfc7e80-7e79-486f-9009-2f3ea951463a",
+  "jacsLevel": "config",
+  "jacsOriginalDate": "2025-05-07T06:18:43.035916+00:00",
+  "jacsOriginalVersion": "d76d017b-52f5-4c08-91ff-3ef89dc3fd45",
+  "jacsServices": [
+    {
+      "failureDescription": "Describe what failure is of the service",
+      "serviceDescription": "Describe a service the agent provides",
+      "successDescription": "Describe a success of the service"
+    }
+  ],
+  "jacsSha256": "3bbd17df868155f471c1f46420d9dad33fa80f085a92acb3c0aef5d7a856323b",
+  "jacsSignature": {
+    "agentID": "3dfc7e80-7e79-486f-9009-2f3ea951463a",
+    "agentVersion": "d76d017b-52f5-4c08-91ff-3ef89dc3fd45",
+    "date": "2025-05-07T06:18:43.041538+00:00",
+    "fields": [
+      "$schema",
+      "jacsAgentType",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsServices",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "cc925b9956101314e9ebadad9337faf7fd5c5ba24aef2eaa61db58ab56d55581",
+    "signature": "gO4VRIzab58zUxGA4/A+6Ejuau5Zu2FcllLSczCTwccoeR9vnaNoZW5hY3c7S3AqXIOrOtyQtnNQxJNEeNycZqgkLoee929yUwOsZpDNQkopk+K81cxWZd29gd8wdwV9SkxjCwQon/xfYjEwGgUlNZyXjsUH3FLhblSzqFb9kPQFgWVGTbmlG1pYQ5YJB0JrcJQ7Z7kUpDGKqQLD0J4yGaENQQL4bQXCCheYUhNRWHQCL/ryxJ5PkrDU7O+ZwY1DGmgQklvAC4EivuBEvN3UDVDqZfmMwFBys6BOa2V3tB+rMgv5cn2GPybd3dJ1kl+ETz7dMuOEbBKEa+3SqRogz9TZjH7xGPBejRKSiD2k+nMkx5h1FTSlfptYEMmGwiumFdZxaE7f3F80YHGAPiVvV2Bq2KTpUPOBIV8Mx0/CcBuffD1y69qTQ72wsrH4PAbMVgZ1qc7I/mMCwGkZc0L2uzFF5fRMC6ClF/gp2/9OZvthep/BdhcsVG6rSfuco/3Ljy4j7k+z1ZnJbbjiqkUqNAlGM4VOBFJbZHEDw4oGGHzj52UELfbdNoGOYUDZHtbOjeCEASV/uvwePhh0TZpQ3rs8uOrv+V04qXqZodnDUfbarK7S1W8WMQKzTYZu3jy6nzwxO3d2VxIHY5YsR6skWgOj4dltn/1MNhS2Oc/SNOE=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "agent",
+  "jacsVersion": "d76d017b-52f5-4c08-91ff-3ef89dc3fd45",
+  "jacsVersionDate": "2025-05-07T06:18:43.035916+00:00"
+}

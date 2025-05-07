@@ -5,10 +5,6 @@
   "description": "Jacs Configuration File",
   "type": "object",
   "properties": {
-    "jacs_use_filesystem": {
-      "description": "write documents to the filesystem - false or 0 or 1 as string",
-      "type": "string"
-    } ,
     "jacs_use_security": {
       "description": "use strict security features - false or 0 or 1 as string",
       "type": "string"

@@ -14,14 +14,14 @@ mod utils;
 use utils::DOCTESTFILE;
 use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
 // use color_eyre::eyre::Result;
-static SCHEMA: &str = "raw/custom.schema.json";
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 
 #[test]
 fn test_hai_fields_custom_schema_and_custom_document() {
     // cargo test   --test task_tests test_hai_fields_custom_schema_and_custom_document -- --nocapture
     let mut agent = load_test_agent_one();
-    let schemas = [SCHEMA.to_string()];
+    let fixtures_dir = utils::find_fixtures_dir();
+    let schemas = [format!("{}/raw/custom.schema.json", fixtures_dir.display())];
     agent
         .load_custom_schemas(&schemas)
         .expect("Failed to load custom schemas");
@@ -31,7 +31,10 @@ fn test_hai_fields_custom_schema_and_custom_document() {
     println!("loaded valid {}", document_key);
     let document_copy = agent.get_document(&document_key).unwrap();
     agent
-        .validate_document_with_custom_schema(&SCHEMA, &document_copy.getvalue())
+        .validate_document_with_custom_schema(
+            &format!("{}/raw/custom.schema.json", fixtures_dir.display()),
+            &document_copy.getvalue(),
+        )
         .unwrap();
 
     let value = document_copy.getvalue();
@@ -41,6 +44,7 @@ fn test_hai_fields_custom_schema_and_custom_document() {
 
 #[test]
 fn test_create_task_with_actions() {
+    let fixtures_dir = utils::find_fixtures_dir();
     // cargo test   --test task_tests test_create_task_with_actions -- --nocapture
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
@@ -69,7 +73,7 @@ fn test_create_task_with_actions() {
         .unwrap();
     let task_doc_key = task_doc.getkey();
 
-    let attachments = vec!["raw/mobius.jpeg".to_string()];
+    let attachments = vec![format!("{}/raw/mobius.jpeg", fixtures_dir.display())];
     // create a message
     let content = json!("lets goooo");
     let mut to: Vec<String> = Vec::new();

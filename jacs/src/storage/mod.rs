@@ -1,5 +1,5 @@
 // use futures_util::stream::stream::StreamExt;
-use crate::storage::jenv::{get_env_var, get_required_env_var};
+use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
 use log::debug;
@@ -12,10 +12,13 @@ use object_store::{
     memory::InMemory,
     path::Path as ObjectPath,
 };
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::{AsRefStr, Display, EnumString};
 use url::Url;
+
+pub mod jenv;
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -129,8 +132,7 @@ impl ObjectStore for WebLocalStorage {
     }
 }
 
-pub mod jenv;
-
+#[derive(Debug, Clone)]
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,
@@ -142,7 +144,7 @@ pub struct MultiStorage {
     storages: Vec<Arc<dyn ObjectStore>>,
 }
 
-#[derive(Debug, AsRefStr, Display, EnumString, Clone)]
+#[derive(Debug, AsRefStr, Display, EnumString, Clone, PartialEq)]
 pub enum StorageType {
     #[strum(serialize = "aws")]
     AWS,
@@ -158,25 +160,42 @@ pub enum StorageType {
 }
 
 impl MultiStorage {
-    fn clean_path(path: &str) -> String {
-        // Remove any ./ and multiple slashes
-        path.replace("./", "").replace("//", "/")
-        // path.to_string()
+    pub fn clean_path(path: &str) -> String {
+        // Remove any leading slashes to ensure consistent path format
+        // and convert absolute paths to relative
+        let cleaned = path.trim_start_matches('/');
+
+        // If path is empty after cleaning, return "." to indicate current directory
+        if cleaned.is_empty() {
+            ".".to_string()
+        } else {
+            cleaned.to_string()
+        }
     }
 
-    pub fn new(use_key_dir: Option<bool>) -> Result<Self, ObjectStoreError> {
+    pub fn default_new() -> Result<Self, ObjectStoreError> {
+        let storage_type = "fs".to_string();
+        Self::new(storage_type)
+    }
+
+    pub fn new(storage_type: String) -> Result<Self, ObjectStoreError> {
+        let absolute_path = std::env::current_dir().unwrap();
+        return Self::_new(storage_type, absolute_path);
+    }
+
+    pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
         let mut _s3;
         let mut _http;
         let mut _local;
         let mut _memory: Option<Arc<InMemory>>;
-        let storage_type = get_required_env_var("JACS_DEFAULT_STORAGE", true)
-            .expect("JACS_DEFAULT_STORAGE must be set");
-        let default_storage: StorageType =
-            StorageType::from_str(&storage_type).expect("JACS_DEFAULT_STORAGE must be set");
+
+        let default_storage: StorageType = StorageType::from_str(&storage_type)
+            .expect(&format!("storage_type {} is not known", storage_type));
+
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
         // Check AWS storage
-        if matches!(get_env_var("JACS_ENABLE_AWS_STORAGE", true), Ok(Some(_))) {
+        if default_storage == StorageType::AWS {
             let bucket_name = get_required_env_var("JACS_ENABLE_AWS_BUCKET_NAME", true).expect(
                 "JACS_ENABLE_AWS_BUCKET_NAME must be set when JACS_ENABLE_AWS_STORAGE is set",
             );
@@ -192,7 +211,7 @@ impl MultiStorage {
         }
 
         // Check HAI storage
-        if matches!(get_env_var("JACS_ENABLE_HAI_STORAGE", true), Ok(Some(_))) {
+        if default_storage == StorageType::HAI {
             let http_url = get_required_env_var("HAI_STORAGE_URL", true)
                 .expect("HAI_STORAGE_URL must be set when JACS_ENABLE_HAI_STORAGE is enabled");
             let url_obj = Url::parse(&http_url).unwrap();
@@ -205,25 +224,8 @@ impl MultiStorage {
         }
 
         // Check filesystem storage
-        if matches!(get_env_var("JACS_USE_FILESYSTEM", true), Ok(Some(_))) {
-            let local_path = if use_key_dir.unwrap_or(false) {
-                get_required_env_var("JACS_KEY_DIRECTORY", true)
-                    .expect("JACS_KEY_DIRECTORY must be set when using key directory")
-            } else {
-                get_required_env_var("JACS_DATA_DIRECTORY", true)
-                    .expect("JACS_DATA_DIRECTORY must be set when JACS_USE_FILESYSTEM is enabled")
-            };
-
-            // Convert to absolute path and create if needed
-            let absolute_path = std::path::PathBuf::from(&local_path)
-                .canonicalize()
-                .unwrap_or_else(|_| {
-                    std::fs::create_dir_all(&local_path).expect("Failed to create directory");
-                    std::path::PathBuf::from(&local_path)
-                        .canonicalize()
-                        .expect("Failed to get canonical path after directory creation")
-                });
-
+        if default_storage == StorageType::FS {
+            // get the curent local absolute path
             let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
             let tmplocal = Arc::new(local);
             _local = Some(tmplocal.clone());
@@ -233,7 +235,7 @@ impl MultiStorage {
         }
 
         // Add memory storage initialization
-        let memory = if matches!(get_env_var("JACS_USE_MEMORY_STORAGE", true), Ok(Some(_))) {
+        let memory = if default_storage == StorageType::Memory {
             let mem = InMemory::new();
             let tmp_mem = Arc::new(mem);
             storages.push(tmp_mem.clone());
@@ -243,7 +245,7 @@ impl MultiStorage {
         };
 
         #[cfg(target_arch = "wasm32")]
-        let web_local = if matches!(get_env_var("JACS_USE_WEB_LOCAL", true), Ok(Some(_))) {
+        let web_local = if default_storage == StorageType::WebLocal {
             let storage = WebLocalStorage::new()?;
             let tmp_storage = Arc::new(storage);
             storages.push(tmp_storage.clone());
@@ -323,10 +325,28 @@ impl MultiStorage {
         let object_path = ObjectPath::parse(&clean)?;
         let storage = self.get_read_storage(preference);
 
+        // --- Debugging Start ---
+        let current_process_cwd =
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("unknown_cwd"));
+        println!(
+            "[MultiStorage::file_exists DEBUG]\n  - Input Path: '{}'\n  - Clean Path: '{}'\n  - Object Path: '{}'\n  - Process CWD: {:?}\n  - Attempting storage.head...",
+            path, clean, object_path, current_process_cwd
+        );
+        // --- Debugging End ---
+
         match block_on(storage.head(&object_path)) {
-            Ok(_) => Ok(true),
-            Err(ObjectStoreError::NotFound { .. }) => Ok(false),
-            Err(e) => Err(e),
+            Ok(_) => {
+                println!("  - storage.head: OK (Found)"); // Log success
+                Ok(true)
+            }
+            Err(ObjectStoreError::NotFound { path: _, source: _ }) => {
+                println!("  - storage.head: Err (NotFound)"); // Log not found
+                Ok(false)
+            }
+            Err(e) => {
+                println!("  - storage.head: Err ({:?})", e); // Log other errors
+                Err(e)
+            }
         }
     }
 

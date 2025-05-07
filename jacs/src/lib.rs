@@ -8,13 +8,13 @@ use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
-use crate::storage::jenv::get_required_env_var;
 use log::debug;
 use serde_json::Value;
 use std::error::Error;
 use std::path::Path;
 
 pub mod agent;
+pub mod cli_utils;
 pub mod config;
 pub mod crypt;
 pub mod schema;
@@ -25,22 +25,11 @@ pub mod storage;
 pub fn get_empty_agent() -> Agent {
     // Use expect as Result handling happens elsewhere or isn't needed here.
     Agent::new(
-        &get_required_env_var("JACS_SCHEMA_AGENT_VERSION", true)
-            .expect("JACS_SCHEMA_AGENT_VERSION must be set"),
-        &get_required_env_var("JACS_SCHEMA_HEADER_VERSION", true)
-            .expect("JACS_SCHEMA_HEADER_VERSION must be set"),
-        &get_required_env_var("JACS_SCHEMA_SIGNATURE_VERSION", true)
-            .expect("JACS_SCHEMA_SIGNATURE_VERSION must be set"),
+        &config::constants::JACS_AGENT_SCHEMA_VERSION.to_string(),
+        &config::constants::JACS_HEADER_SCHEMA_VERSION.to_string(),
+        &config::constants::JACS_SIGNATURE_SCHEMA_VERSION.to_string(),
     )
     .expect("Failed to init Agent in get_empty_agent") // Panic if Agent::new fails
-}
-
-pub fn load_agent_by_id() -> Agent {
-    let mut agent = get_empty_agent(); // Now returns Agent directly
-    agent
-        .load_by_id(None, None)
-        .expect("agent.load_by_id failed");
-    agent
 }
 
 /// Load agent using specific path
@@ -83,8 +72,8 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
     if let Some(file) = agentfile {
         return Ok(load_path_agent(file.to_string()));
     } else {
-        return Ok(load_agent_by_id());
-    };
+        return Err("No agent file provided".into());
+    }
 }
 
 /// Creates a minimal agent JSON string with a default service.

@@ -1,7 +1,7 @@
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use crate::schema::utils::ValueExt;
 use chrono::prelude::*;
-use jsonschema::{Draft, Registry, Retrieve, Validator};
+use jsonschema::{Draft, Retrieve, Validator};
 use log::{debug, error, warn};
 use referencing::Uri;
 

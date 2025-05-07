@@ -211,8 +211,7 @@ Please enter the signature schema version:
 Please enter the private key password:
 Please enter the agent ID and version:
 </code></pre>
-<p>You can use <code>jacs config read</code> to check the configs.
-You will probably get the error <code>Warning: Failed to set some environment variables: Environment variable 'JACS_AGENT_ID_AND_VERSION' is empty</code> at this point.</p>
+<p>You can use <code>jacs config read</code> to check the configs.</p>
 <p>You need to create an agent first.  Go to <a href="cli/./cli/agent">cli/agent</a></p>
 <p>Note: Do not use <code>jacs_private_key_password</code> in production. Instead, use the environment variable <code>JACS_PRIVATE_KEY_PASSWORD</code> in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.</p>
 <h2 id="developing"><a class="header" href="#developing">developing</a></h2>

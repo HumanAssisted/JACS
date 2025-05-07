@@ -14,7 +14,7 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
 }
 
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {
-    let mut secret_key_obj: SecretKey = SecretKey::from_bytes(&secret_key)?;
+    let secret_key_obj: SecretKey = SecretKey::from_bytes(&secret_key)?;
     let signature = sign(data.as_bytes(), &secret_key_obj);
     let signature_bytes = signature.as_bytes();
     let signature_base64 = base64::encode(signature_bytes);

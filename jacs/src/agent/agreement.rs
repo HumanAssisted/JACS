@@ -196,7 +196,7 @@ impl Agreement for Agent {
         };
         let document = self.get_document(document_key)?;
         let mut value = document.value;
-        let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
+        let _ = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
 
         if let Some(jacs_agreement) = value.get_mut(agreement_fieldname_key) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
@@ -237,7 +237,7 @@ impl Agreement for Agent {
         };
         let document = self.get_document(document_key)?;
         let mut value = document.value;
-        let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
+        let _ = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
 
         // Normalize agent IDs - ensure we're only using the base ID without version
         let normalized_agent_ids: Vec<String> = agentids

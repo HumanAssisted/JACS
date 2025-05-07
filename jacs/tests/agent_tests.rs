@@ -1,16 +1,17 @@
+use env_logger;
 use jacs::agent::boilerplate::BoilerPlate;
 use std::fs;
 use std::path::Path;
 
 mod utils;
+use std::env;
 use utils::load_local_document;
-
 const CONFIG_CONTENT: &str = r#"{
     "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
     "jacs_use_filesystem": "true",
     "jacs_use_security": "true",
-    "jacs_data_directory": "./tests/fixtures",
-    "jacs_key_directory": "./tests/fixtures/keys",
+    "jacs_data_directory": "tests/fixtures",
+    "jacs_key_directory": "tests/fixtures/keys",
     "jacs_agent_private_key_filename": "agent-one.private.pem.enc",
     "jacs_agent_public_key_filename": "agent-one.public.pem",
     "jacs_agent_key_algorithm": "RSA-PSS",
@@ -23,6 +24,8 @@ const CONFIG_CONTENT: &str = r#"{
 }"#;
 
 fn setup() {
+    let _ = env_logger::builder().is_test(true).try_init();
+
     // Create config file if it doesn't exist
     if !Path::new("jacs.config.json").exists() {
         fs::write("jacs.config.json", CONFIG_CONTENT).expect("Failed to write config file");
@@ -32,6 +35,9 @@ fn setup() {
 #[test]
 fn test_update_agent_and_verify_versions() {
     setup();
+    utils::set_min_test_env_vars();
+    log::debug!("Starting test_update_agent_and_verify_versions");
+
     // cargo test   --test agent_tests -- --nocapture
 
     // Parse config to get agent ID
@@ -47,7 +53,7 @@ fn test_update_agent_and_verify_versions() {
     let signature_version = "v1".to_string();
     let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
         .expect("Agent schema should have instantiated");
-    let result = agent.load_by_id(Some(agent_id), None);
+    let result = agent.load_by_id(agent_id);
 
     match result {
         Ok(_) => {
@@ -82,6 +88,7 @@ fn test_update_agent_and_verify_versions() {
 #[test]
 fn test_validate_agent_json_raw() {
     setup();
+    utils::set_min_test_env_vars();
     let json_data = r#"{
       "id": "agent123",
       "name": "Agent Smith",

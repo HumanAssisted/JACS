@@ -1,51 +1,64 @@
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
+#[cfg(not(target_arch = "wasm32"))]
+use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
 use std::env;
 use std::fs;
 
-fn set_enc_to_ring() {
+fn get_ring_config() -> String {
+    let fixtures_dir = utils::find_fixtures_dir();
     unsafe {
-        env::set_var(
-            "JACS_AGENT_PRIVATE_KEY_FILENAME",
-            "test-ring-Ed25519-private.pem",
-        );
-        env::set_var(
-            "JACS_AGENT_PUBLIC_KEY_FILENAME",
-            "test-ring-Ed25519-public.pem",
-        );
-        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
+        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "testpassword");
     }
+    format!("{}/raw/ring.jacs.config.json", fixtures_dir.display())
+}
+
+// Helper function to convert bytes to hex string for display
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<String>>()
+        .join("")
 }
 
 #[test]
 #[ignore]
 fn test_ring_Ed25519_create() {
-    set_enc_to_ring();
+    let fixtures_dir = utils::find_fixtures_dir();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
     let mut agent =
         jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("tests/fixtures/raw/myagent.new.json").expect("REASON");
+    agent.load_by_config(get_ring_config()).unwrap();
+    let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
+        .expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
-    set_enc_to_ring();
     // does this modify the agent sig?
     agent.generate_keys().expect("Reason");
 }
 
 #[test]
 fn test_ring_Ed25519_create_and_verify_signature() {
-    set_enc_to_ring();
+    let fixtures_dir = utils::find_fixtures_dir();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
     let mut agent =
         jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("tests/fixtures/raw/myagent.new.json").expect("REASON");
+    agent.load_by_config(get_ring_config()).unwrap();
+    let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
+        .expect("REASON");
     let result = agent.create_agent_and_load(&json_data, false, None);
+
+    // Explicitly load keys before trying to access them
+    #[cfg(not(target_arch = "wasm32"))]
+    agent.fs_load_keys().expect("Failed to load keys");
+
     let private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
 
@@ -54,8 +67,8 @@ fn test_ring_Ed25519_create_and_verify_signature() {
     let key_vec = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
 
     println!(
-        "loaded keys {} {} ",
-        std::str::from_utf8(&key_vec).expect("Failed to convert bytes to string"),
-        std::str::from_utf8(&public).expect("Failed to convert bytes to string")
+        "loaded keys:\nPrivate key (hex): {}\nPublic key (hex): {}",
+        bytes_to_hex(&key_vec),
+        bytes_to_hex(&public)
     );
 }

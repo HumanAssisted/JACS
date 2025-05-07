@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jacs-mcp"
+version = "0.0.1"  
+description = "Integrate JACS with MCP and FastMCP"
+readme = "README.md"
+requires-python = ">=3.11"  
+license = { text = "Apache-2.0 with Common Clause" } 
+authors = [
+    { name = "HAI.AI", email = "engineering@hai.io" }, 
+]
+classifiers = [  
+    "Programming Language :: Python :: 3",
+    # "Operating System :: Linux", # Temporarily commented out
+    # "Operating System :: MacOS", # Temporarily commented out
+]
+ # "jacs>=0.1.0" 
+dependencies = [
+   "fastmcp>=2.2.7",
+   "mcp[cli]>=1.7.1",
+]
+
+[project.urls] 
+Homepage = "https://github.com/HumanAssisted/JACS" 
+Issues = "https://github.com/HumanAssisted/JACS/issues"  
+
+ 

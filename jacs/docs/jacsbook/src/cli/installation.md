@@ -21,7 +21,6 @@ Please enter the agent ID and version:
 ```
 
 You can use `jacs config read` to check the configs. 
-You will probably get the error `Warning: Failed to set some environment variables: Environment variable 'JACS_AGENT_ID_AND_VERSION' is empty` at this point. 
 
 You need to create an agent first.  Go to [cli/agent](./cli/agent)
 
