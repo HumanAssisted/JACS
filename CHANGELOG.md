@@ -49,6 +49,10 @@
 
 ## jacspy
  - [] install jacs cli with the python wheel
+ - [] python based instructions for how to create - cli create agent 
+      1. cli create agent 
+      2. config jacspy to load each agent
+
  - [] auto generate agent doc from MCP server list, auto versions
  - [] traceable, verifiable request logs
  - [] fastmcp client and server stdio
@@ -76,19 +80,15 @@ proof of concept
  - [] verify response/request (any payload json string -> python object)
  - [] integrate with fastMCP, MCP, and Web for request response
  - [] have identity available to business logic
- - [] have logs available for review
+ - [] have logs available for review (no writing to file, ephemoral)
 
 ## jacspy
 
  - [x] make decorator for easy use in @tools
  - [x] new local builder
- - [] also install jacs as cli
  - [] fastmcp client and server sse
  - [] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
  - [] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
- - [] python based instructions for how to create - cli create agent 
-      1. cli create agent 
-      2. config jacspy to load each agent
 
  
  ### General 

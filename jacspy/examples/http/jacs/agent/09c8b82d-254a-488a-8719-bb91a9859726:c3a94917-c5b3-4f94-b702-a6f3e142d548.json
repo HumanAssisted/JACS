@@ -1,0 +1,39 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "jacsAgentType": "ai",
+  "jacsId": "09c8b82d-254a-488a-8719-bb91a9859726",
+  "jacsLevel": "config",
+  "jacsOriginalDate": "2025-05-07T06:19:50.118041+00:00",
+  "jacsOriginalVersion": "c3a94917-c5b3-4f94-b702-a6f3e142d548",
+  "jacsServices": [
+    {
+      "failureDescription": "Describe what failure is of the service",
+      "serviceDescription": "Describe a service the agent provides",
+      "successDescription": "Describe a success of the service"
+    }
+  ],
+  "jacsSha256": "2f3dcb7b6ccf983aafaf14c04e7a67c94edcfc161efbf68d37f8137ddfad006d",
+  "jacsSignature": {
+    "agentID": "09c8b82d-254a-488a-8719-bb91a9859726",
+    "agentVersion": "c3a94917-c5b3-4f94-b702-a6f3e142d548",
+    "date": "2025-05-07T06:19:50.123507+00:00",
+    "fields": [
+      "$schema",
+      "jacsAgentType",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsServices",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "0ee2c3638a3ca80b3d9915c6f18a85ccc7be3cb4685316b5dbfa76f95a20d584",
+    "signature": "dBkJ9ILP2SNp/Tuy4SZcPhukoYef7JfRHpltHIwhutI/iGgSFMeLhVs1zkA1BfZBoL7klSfvICWfBrdck3bp7u03CcHokYMVkN6oI5ec8CJbSB7okwsjMSvyrBIGwR5beTsJJvmOxNBsbJsNhBzQkVxjG6rKm3IPcZeYc9KsqWey0a/MEYETDtHnf3eKeCV6y64Naevggs6copQ96f9u60G/84sThr+C+gSJhafKOGdNA2Qf5dUu1FUeZrG255BCuPY1+t59Wew5ivlAKmPsijfL+5tCSbQmICLEbsZJe+VptBP+QXdF3Xa2mpqHLAn4FHp2j8rowBjQa5dyzWYixiiVJTdCZM/Nem7aKIIITb5i/qOvjQsE/ONgoEQgkVKkmYRkesPRAfwekYj+ni5b0qZ61uqcT51bkq7uxST5xIyy2yNhq6d4uvX8U3ODNs2UFB/OR9FnjsTsveY+uIILAN3FMlFmH0rHmKzKaOs5Hy8A6QChJKDNPXH7KDt3Ukgawn91KqGIoaZKHsx0Rm+95gTPY5vnz7hG7AddnYo2SokJyBL4H5Ij72Mi8sDZK1lJb/+AtxwKG0aHqsXCf7+fsAbbTf63PYeVJpJjUaf/T2Q1IDv9z1g6Jz+s40Ua/+/J99kYW7NIHF7+4f4PrQfuuw+e9jA0xGrOY4ON8kMrag4=",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "jacsType": "agent",
+  "jacsVersion": "c3a94917-c5b3-4f94-b702-a6f3e142d548",
+  "jacsVersionDate": "2025-05-07T06:19:50.118041+00:00"
+}
