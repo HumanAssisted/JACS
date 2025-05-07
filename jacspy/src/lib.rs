@@ -581,16 +581,23 @@ fn verify_response_with_agent_id(py: Python, document_string: String) -> PyResul
         )
     })?;
 
-    let agent_id = agent.get_document_signature_agent_id(&document_key).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to get agent id: {}", e))
-    })?;
+    let agent_id = agent
+        .get_document_signature_agent_id(&document_key)
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to get agent id: {}",
+                e
+            ))
+        })?;
 
     let py_payload = conversion_utils::value_to_pyobject(py, payload)?;
-    let py_agent_id: Py<pyo3::types::PyString> = pyo3::types::PyString::new_bound(py, &agent_id).into();
-    
-    let tuple_bound_ref = pyo3::types::PyTuple::new_bound(py, &[py_agent_id.into_py(py), py_payload]);
+    let py_agent_id: Py<pyo3::types::PyString> =
+        pyo3::types::PyString::new_bound(py, &agent_id).into();
+
+    let tuple_bound_ref =
+        pyo3::types::PyTuple::new_bound(py, &[py_agent_id.into_py(py), py_payload]);
     let py_object_tuple = tuple_bound_ref.to_object(py);
-    
+
     Ok(py_object_tuple)
 }
 
