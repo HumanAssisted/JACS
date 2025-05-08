@@ -19,10 +19,7 @@ jacs.load(str(jacs_config_path))
 
 
 # Create original FastMCP server first
-original_mcp = FastMCP("Authenticated Echo Server")
-
-# Then wrap it with JACSMCPServer
-mcp = JACSMCPServer(original_mcp)
+mcp = JACSMCPServer(FastMCP("Authenticated Echo Server"))
 
 
 @mcp.tool()

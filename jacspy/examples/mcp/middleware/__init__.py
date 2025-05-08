@@ -8,8 +8,6 @@ from mcp import ClientSession
 from starlette.responses import Response
 
 
-
-
 def JACSMCPClient(url, **kwargs):
     """Creates a FastMCP client with JACS authentication interceptors"""
     
