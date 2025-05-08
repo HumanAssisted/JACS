@@ -1,5 +1,0 @@
--e ../
-uvicorn 
-mcp
-fastmcp
-fastapi
