@@ -1,6 +1,6 @@
 use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
-use jacs_core::agent::payloads::PayloadTraits; 
+use jacs_core::agent::payloads::PayloadTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
 use jacs_core::crypt::KeyManager;
 use jacs_core::crypt::hash::hash_string as jacs_hash_string;
@@ -474,10 +474,7 @@ fn sign_request(py: Python, params_obj: PyObject) -> PyResult<String> {
     let bound_params = params_obj.bind(py);
     let payload_value = conversion_utils::pyany_to_value(py, bound_params)?;
     let payload_string = agent.sign_payload(payload_value).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to sign payload: {}",
-            e
-        ))
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign payload: {}", e))
     })?;
     Ok(payload_string)
 }
@@ -498,9 +495,14 @@ fn verify_response(py: Python, document_string: String) -> PyResult<PyObject> {
 #[pyfunction]
 fn verify_response_with_agent_id(py: Python, document_string: String) -> PyResult<PyObject> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
-    let (payload, agent_id) = agent.verify_payload_with_agent_id(document_string, None).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load document: {}", e))
-    })?;
+    let (payload, agent_id) = agent
+        .verify_payload_with_agent_id(document_string, None)
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to load document: {}",
+                e
+            ))
+        })?;
     let py_payload = conversion_utils::value_to_pyobject(py, &payload)?;
     let py_agent_id: Py<pyo3::types::PyString> =
         pyo3::types::PyString::new_bound(py, &agent_id).into();

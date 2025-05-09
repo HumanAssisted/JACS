@@ -34,13 +34,14 @@
 
  - [] github actions builder for linux varieties
 
-
 ### JACS core
 
  - [] register public key 
  - [] register agent
  - [] remove requirement to store public key type
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] diff versions
+ - [] bucket integration
 
 --------------------
 
@@ -50,17 +51,16 @@
 
  - [] clean 
  - [] RBAC integration with header
- - [] diff versions
- - [] bucket integration
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [] CA for cert
- - [] add timestamp to prevent replay attacks to request/response features
+ - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
 
 ### jacspy
 
- - [] install jacs cli with the python wheel (refactor jacs cli to also pull from shared lib so python can wrap these)
+ - [] have jacs cli work with the python wheel (refactor jacs cli to also pull from shared lib so python can wrap these)
  - [] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
+ 
  - [] python based instructions for how to create - cli create agent 
       1. cli create agent 
       2. config jacspy to load each agent
@@ -75,7 +75,8 @@
 ## jacsnpm
 
 proof of concept
-
+ - [x] scaffold
+ - [] use refactored agent trait instead of replicating
  - [] typescript mcp client and server
  - [] npm install jacs (cli and available to plugin)
 
