@@ -1,5 +1,6 @@
 use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
+use jacs_core::agent::payloads::PayloadTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
 use jacs_core::crypt::KeyManager;
 use jacs_core::crypt::hash::hash_string as jacs_hash_string;
@@ -526,40 +527,8 @@ fn verify_response(env: Env, document_string: String) -> Result<JsObject> {
         )
     })?;
 
-    let doc = agent.load_document(&document_string).map_err(|e| {
-        Error::new(
-            Status::GenericFailure,
-            format!("Failed to load document: {}", e),
-        )
-    })?;
-
-    let document_key = doc.getkey();
-    let value = doc.getvalue();
-
-    agent.verify_hash(value).map_err(|e| {
-        Error::new(
-            Status::GenericFailure,
-            format!("Failed to verify document hash: {}", e),
-        )
-    })?;
-
-    agent
-        .verify_external_document_signature(&document_key)
-        .map_err(|e| {
-            Error::new(
-                Status::GenericFailure,
-                format!("Failed to verify document signature: {}", e),
-            )
-        })?;
-
-    let payload = value.get("jacs_payload").ok_or_else(|| {
-        Error::new(
-            Status::GenericFailure,
-            "'jacs_payload' field not found in document value".to_string(),
-        )
-    })?;
-
-    let js_value = value_to_js_value(env, payload)?;
+    let payload = agent.verify_payload(document_string, None).map_err(|e| Error::new(Status::GenericFailure, e.to_string()))?;;
+    let js_value = value_to_js_value(env, &payload)?;
     Ok(js_value.try_into()?)
 }
 
@@ -572,49 +541,9 @@ fn verify_response_with_agent_id(env: Env, document_string: String) -> Result<Js
         )
     })?;
 
-    let doc = agent.load_document(&document_string).map_err(|e| {
-        Error::new(
-            Status::GenericFailure,
-            format!("Failed to load document: {}", e),
-        )
-    })?;
+    let (payload, agent_id) = agent.verify_payload_with_agent_id(document_string, None).map_err(|e| Error::new(Status::GenericFailure, e.to_string()))?;
 
-    let document_key = doc.getkey();
-    let value = doc.getvalue();
-
-    agent.verify_hash(value).map_err(|e| {
-        Error::new(
-            Status::GenericFailure,
-            format!("Failed to verify document hash: {}", e),
-        )
-    })?;
-
-    agent
-        .verify_external_document_signature(&document_key)
-        .map_err(|e| {
-            Error::new(
-                Status::GenericFailure,
-                format!("Failed to verify document signature: {}", e),
-            )
-        })?;
-
-    let payload = value.get("jacs_payload").ok_or_else(|| {
-        Error::new(
-            Status::GenericFailure,
-            "'jacs_payload' field not found in document value".to_string(),
-        )
-    })?;
-
-    let agent_id = agent
-        .get_document_signature_agent_id(&document_key)
-        .map_err(|e| {
-            Error::new(
-                Status::GenericFailure,
-                format!("Failed to get agent id: {}", e),
-            )
-        })?;
-
-    let js_payload = value_to_js_value(env, payload)?;
+    let js_payload = value_to_js_value(env, &payload)?;
     let js_agent_id = env.create_string(&agent_id)?;
 
     // Create a JavaScript object to hold both values
