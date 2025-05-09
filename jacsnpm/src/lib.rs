@@ -1,15 +1,15 @@
 use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
-use jacs_core::crypt::hash::hash_string as jacs_hash_string;
 use jacs_core::crypt::KeyManager;
+use jacs_core::crypt::hash::hash_string as jacs_hash_string;
 use lazy_static::lazy_static;
+use napi::JsObject;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
-use napi::JsObject;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
@@ -115,11 +115,13 @@ fn verify_string(
     {
         return Err(Error::new(
             Status::InvalidArg,
-            format!("One parameter is empty: data: {}, signature_base64: {}, public_key_enc_type: {}", 
-                data, signature_base64, public_key_enc_type),
+            format!(
+                "One parameter is empty: data: {}, signature_base64: {}, public_key_enc_type: {}",
+                data, signature_base64, public_key_enc_type
+            ),
         ));
     }
-    
+
     match agent.verify_string(
         &data,
         &signature_base64,
@@ -142,14 +144,14 @@ fn sign_string(data: String) -> Result<String> {
             format!("Failed to acquire JACS_AGENT lock: {}", e),
         )
     })?;
-    
+
     let signed_string = agent.sign_string(&data).map_err(|e| {
         Error::new(
             Status::GenericFailure,
             format!("Failed to sign string: {}", e),
         )
     })?;
-    
+
     Ok(signed_string)
 }
 
@@ -318,10 +320,7 @@ fn update_document(
 }
 
 #[napi]
-fn verify_signature(
-    document_string: String,
-    signature_field: Option<String>,
-) -> Result<bool> {
+fn verify_signature(document_string: String, signature_field: Option<String>) -> Result<bool> {
     let mut agent = JACS_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
@@ -342,7 +341,7 @@ fn verify_signature(
     };
 
     let document_key = doc.getkey();
-    let sig_field_ref = signature_field.as_ref();// .map(|s| s.as_str());
+    let sig_field_ref = signature_field.as_ref(); // .map(|s| s.as_str());
 
     // Verify signature using the DocumentTraits trait method
     // FIXME get the public key from the document
@@ -392,10 +391,7 @@ fn create_agreement(
 }
 
 #[napi]
-fn sign_agreement(
-    document_string: String,
-    agreement_fieldname: Option<String>,
-) -> Result<String> {
+fn sign_agreement(document_string: String, agreement_fieldname: Option<String>) -> Result<String> {
     let mut agent = JACS_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
@@ -455,10 +451,7 @@ fn create_document(
 }
 
 #[napi]
-fn check_agreement(
-    document_string: String,
-    agreement_fieldname: Option<String>,
-) -> Result<String> {
+fn check_agreement(document_string: String, agreement_fieldname: Option<String>) -> Result<String> {
     let mut agent = JACS_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,

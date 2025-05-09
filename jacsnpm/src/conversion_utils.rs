@@ -1,19 +1,22 @@
 use base64::{Engine as _, engine::general_purpose};
 use napi::bindgen_prelude::*;
 use serde_json::{Map as JsonMap, Value};
+use napi::{JsObject, JsUnknown, JsBuffer, JsString};
+use napi::NapiValue;
 
 /// Converts a JavaScript value into a serde_json::Value.
 pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
-    if value.is_null()? || value.is_undefined()? {
+    let value_type = value.get_type()?;
+    if value_type == napi::ValueType::Null || value_type == napi::ValueType::Undefined {
         return Ok(Value::Null);
     }
 
-    if value.is_boolean()? {
+    if value_type == napi::ValueType::Boolean {
         let bool_val = value.coerce_to_bool()?.get_value()?;
         return Ok(Value::Bool(bool_val));
     }
 
-    if value.is_number()? {
+    if value_type == napi::ValueType::Number {
         let num_val = value.coerce_to_number()?.get_double()?;
         return Ok(Value::Number(
             serde_json::Number::from_f64(num_val)
@@ -21,12 +24,12 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
         ));
     }
 
-    if value.is_string()? {
+    if value_type == napi::ValueType::String {
         let string_val = value.coerce_to_string()?.into_utf8()?.into_owned()?;
         return Ok(Value::String(string_val));
     }
 
-    if value.is_buffer()? {
+    if value_type == napi::ValueType::Buffer {
         let buffer: JsBuffer = unsafe { value.cast() };
         let bytes_data = buffer.into_value()?;
         let base64_str = general_purpose::STANDARD.encode(&bytes_data);
@@ -38,19 +41,19 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
         return Ok(Value::Object(map));
     }
 
-    if value.is_array()? {
-        let array: JsObject = unsafe { value.cast() };
-        let length = array.get_array_length()?;
+    if value.is_array().unwrap_or(false) {
+        let obj: JsObject = unsafe { value.cast() };
+        let length = obj.get_array_length()?;
         let mut vec = Vec::with_capacity(length as usize);
 
         for i in 0..length {
-            let item = array.get_element::<JsUnknown>(i)?;
+            let item = obj.get_element::<JsUnknown>(i)?;
             vec.push(js_value_to_value(env, item)?);
         }
         return Ok(Value::Array(vec));
     }
 
-    if value.is_object()? {
+    if value_type == napi::ValueType::Object {
         let obj: JsObject = unsafe { value.cast() };
         let properties = obj.get_property_names()?;
         let length = properties.get_array_length()?;
@@ -59,9 +62,21 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
         for i in 0..length {
             let key = properties.get_element::<JsString>(i)?;
             let key_str = key.into_utf8()?.into_owned()?;
-            let value_obj = obj.get_property::<JsUnknown>(&key_str)?;
+            let value_obj = obj.get_named_property::<JsUnknown>(&key_str)?;
             map.insert(key_str, js_value_to_value(env, value_obj)?);
         }
+        return Ok(Value::Object(map));
+    }
+
+    if value.is_buffer().unwrap_or(false) {
+        let buffer: JsBuffer = unsafe { value.cast() };
+        let bytes_data = buffer.into_value()?;
+        let base64_str = general_purpose::STANDARD.encode(&bytes_data);
+
+        // Create a JSON object with type information and data
+        let mut map = JsonMap::new();
+        map.insert("__type__".to_string(), Value::String("buffer".to_string()));
+        map.insert("data".to_string(), Value::String(base64_str));
         return Ok(Value::Object(map));
     }
 
@@ -92,14 +107,7 @@ pub fn value_to_js_value(env: Env, value: &Value) -> Result<JsUnknown> {
             }
         }
         Value::String(s) => Ok(env.create_string(s)?.into_unknown()),
-        Value::Array(a) => {
-            let array = env.create_array(a.len() as u32)?;
-            for (i, item) in a.iter().enumerate() {
-                let js_item = value_to_js_value(env, item)?;
-                array.set_element(i as u32, js_item)?;
-            }
-            Ok(array.into_unknown())
-        }
+        Value::Array(a) => Ok(array.into_unknown()),
         Value::Object(o) => {
             // Check if this is a specially encoded type
             if let (Some(Value::String(type_str)), Some(Value::String(data))) =
