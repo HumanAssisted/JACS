@@ -15,9 +15,10 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
 
     if value.is_number()? {
         let num_val = value.coerce_to_number()?.get_double()?;
-        return Ok(Value::Number(serde_json::Number::from_f64(num_val).ok_or_else(
-            || Error::new(Status::InvalidArg, "Invalid number value"),
-        )?));
+        return Ok(Value::Number(
+            serde_json::Number::from_f64(num_val)
+                .ok_or_else(|| Error::new(Status::InvalidArg, "Invalid number value"))?,
+        ));
     }
 
     if value.is_string()? {
@@ -87,10 +88,7 @@ pub fn value_to_js_value(env: Env, value: &Value) -> Result<JsUnknown> {
             } else if let Some(f) = n.as_f64() {
                 Ok(env.create_double(f)?.into_unknown())
             } else {
-                Err(Error::new(
-                    Status::InvalidArg,
-                    "Invalid JSON number",
-                ))
+                Err(Error::new(Status::InvalidArg, "Invalid JSON number"))
             }
         }
         Value::String(s) => Ok(env.create_string(s)?.into_unknown()),
@@ -140,4 +138,4 @@ pub fn value_to_js_value(env: Env, value: &Value) -> Result<JsUnknown> {
             }
         }
     }
-} 
+}

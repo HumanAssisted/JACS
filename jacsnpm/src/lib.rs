@@ -2,12 +2,14 @@ use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
 use jacs_core::crypt::hash::hash_string as jacs_hash_string;
+use jacs_core::crypt::KeyManager;
 use lazy_static::lazy_static;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
+use napi::JsObject;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
@@ -113,8 +115,8 @@ fn verify_string(
     {
         return Err(Error::new(
             Status::InvalidArg,
-            format!("One parameter is empty: data: {}, signature_base64: {}, public_key: {:?}, public_key_enc_type: {}", 
-                data, signature_base64, public_key, public_key_enc_type),
+            format!("One parameter is empty: data: {}, signature_base64: {}, public_key_enc_type: {}", 
+                data, signature_base64, public_key_enc_type),
         ));
     }
     
@@ -340,7 +342,7 @@ fn verify_signature(
     };
 
     let document_key = doc.getkey();
-    let sig_field_ref = signature_field.as_ref().map(|s| s.as_str());
+    let sig_field_ref = signature_field.as_ref();// .map(|s| s.as_str());
 
     // Verify signature using the DocumentTraits trait method
     // FIXME get the public key from the document
@@ -478,8 +480,8 @@ fn check_agreement(
     }
 }
 
-#[napi]
-fn sign_request(env: Env, params_obj: JsUnknown) -> Result<String> {
+#[napi(ts_args_type = "params: any")]
+fn sign_request(env: Env, params_obj: JsObject) -> Result<String> {
     let mut agent = JACS_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
@@ -487,7 +489,7 @@ fn sign_request(env: Env, params_obj: JsUnknown) -> Result<String> {
         )
     })?;
 
-    let payload_value = js_value_to_value(env, params_obj)?;
+    let payload_value = js_value_to_value(env, params_obj.into_unknown())?;
 
     let wrapper_value = serde_json::json!({
         "jacs_payload": payload_value
@@ -523,7 +525,7 @@ fn sign_request(env: Env, params_obj: JsUnknown) -> Result<String> {
 }
 
 #[napi]
-fn verify_response(env: Env, document_string: String) -> Result<JsUnknown> {
+fn verify_response(env: Env, document_string: String) -> Result<JsObject> {
     let mut agent = JACS_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
@@ -564,7 +566,8 @@ fn verify_response(env: Env, document_string: String) -> Result<JsUnknown> {
         )
     })?;
 
-    value_to_js_value(env, payload)
+    let js_value = value_to_js_value(env, payload)?;
+    Ok(js_value.try_into()?)
 }
 
 #[napi]
@@ -622,7 +625,7 @@ fn verify_response_with_agent_id(env: Env, document_string: String) -> Result<Js
     let js_agent_id = env.create_string(&agent_id)?;
 
     // Create a JavaScript object to hold both values
-    let result_obj = env.create_object()?;
+    let mut result_obj = env.create_object()?;
     result_obj.set_named_property("agent_id", js_agent_id)?;
     result_obj.set_named_property("payload", js_payload)?;
 
