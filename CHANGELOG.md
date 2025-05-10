@@ -42,6 +42,7 @@
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
  - [] diff versions
  - [] bucket integration
+ - [] RBAC integration with header
 
 --------------------
 
@@ -49,8 +50,7 @@
 
 ### JACS core
 
- - [] clean io for prep
- - [] RBAC integration with header
+ - [] clean io prepping for config of io
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [] CA for cert
  - [x] add timestamp to prevent replay attacks to request/response features
@@ -59,7 +59,7 @@
 ### jacspy
 
  - [] have jacs cli work with the python wheel (refactor jacs cli to also pull from shared lib so python can wrap these)
- - [] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
+ - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
  
  - [] python based instructions for how to create - cli create agent 
       1. cli create agent 
