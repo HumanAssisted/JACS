@@ -49,7 +49,7 @@
 
 ### JACS core
 
- - [] clean 
+ - [] clean io for prep
  - [] RBAC integration with header
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [] CA for cert
@@ -76,7 +76,7 @@
 
 proof of concept
  - [x] scaffold
- - [] use refactored agent trait instead of replicating
+ - [x] use refactored agent trait instead of replicating
  - [] typescript mcp client and server
  - [] npm install jacs (cli and available to plugin)
 
