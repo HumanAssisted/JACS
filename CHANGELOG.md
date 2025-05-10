@@ -26,29 +26,46 @@
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
 
+--------------------
+
+## 0.3.6
+
+### jacsnpm
+
+ - [] github actions builder for linux varieties
+ - [] npm install jacs (cli and available to plugin)
+
+### jacspy
+
+ - [] github actions builder for linux varieties
+
+### JACS core
+
+ - [] register public key 
+ - [] register agent
+ - [] remove requirement to store public key type
+ - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] diff versions
+ - [] bucket integration
+ - [] RBAC integration with header
 
 --------------------
 
 ## 0.3.5
 
-### Register agent
+### JACS core
 
- - [] register agent
-    - [] remove requirement to store public key type
-
- - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
- - [] RBAC integration with header
- - [] diff versions
- - [] bucket integration
+ - [] clean io prepping for config of io
  - [] don't store  "jacs_private_key_password":  in config, don't display
- - [] register public key 
  - [] CA for cert
- - [] add timestamp to prevent timing attacks to request/response features
- - [] no_save = false should save document and still return json string instead of message on create document
- - 
+ - [x] add timestamp to prevent replay attacks to request/response features
+ - [] minor feature - no_save = false should save document and still return json string instead of message on create document
 
-## jacspy
- - [] install jacs cli with the python wheel
+### jacspy
+
+ - [] have jacs cli work with the python wheel (refactor jacs cli to also pull from shared lib so python can wrap these)
+ - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
+ 
  - [] python based instructions for how to create - cli create agent 
       1. cli create agent 
       2. config jacspy to load each agent
@@ -58,15 +75,16 @@
  - [] fastmcp client and server stdio
  - [] fastmcp client and server websocket
  - [] publish jacspy to pypi
- - [] github actions builder for linux
- - [] mcp make decorator for @resource
  - [] mcp make sure "list" request is signed
 
 ## jacsnpm
-proof of concept
 
- - [] typescript mcp client and server
- - [] npm install jacs (cli and available to plugin)
+proof of concept
+ - [x] scaffold
+ - [x] use refactored agent trait instead of replicating
+ - [ ] integrate cli
+ - [] typescript mcp client and server tests
+
 
 --------------------
 
@@ -86,7 +104,7 @@ proof of concept
 
  - [x] make decorator for easy use in @tools
  - [x] new local builder
- - [] fastmcp client and server sse
+ - [x] fastmcp client and server sse
  - [x] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
  - [x] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
 

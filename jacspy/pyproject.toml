@@ -33,6 +33,7 @@ Issues = "https://github.com/HumanAssisted/JACS/issues"
 [tool.maturin]
 features = ["pyo3/extension-module"] 
 module-name = "jacs"  
+python-source = "python" 
 binding = "pyo3"  
 # binaries = ["jacs"]
 
