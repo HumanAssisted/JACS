@@ -4,7 +4,7 @@ import asyncio
 import os
 from pathlib import Path
 import jacs
-from middleware import JACSMCPClient
+from jacs.mcp import JACSMCPClient
 
 # Load JACS configuration
 current_dir = Path(__file__).parent.absolute()

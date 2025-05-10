@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import logging
 from mcp.server.fastmcp import FastMCP  # Make sure to import FastMCP
-from middleware import JACSMCPServer 
+from jacs.mcp import JACSMCPServer 
 import uvicorn
 
 logger = logging.getLogger(__name__)

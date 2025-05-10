@@ -37,6 +37,17 @@ test-python: install-dev
 	@echo "Running Python tests with pytest..."
 	 RUST_BACKTRACE=1 pytest -v tests/ -s
 
+test-mac-wheel: build-wheel-mac
+	@echo "Uninstalling any existing jacs package..."
+	uv pip uninstall jacs  || true  # 
+	@echo "Installing newly built macOS wheel from dist/ directory..."
+	# Assuming there's only one mac wheel, otherwise be more specific
+	uv pip install dist/jacs-*-macosx_*.whl
+	@echo "Running Python tests against the installed wheel..."
+	RUST_BACKTRACE=1 pytest -v tests/ -s
+	@echo "Cleaning up installed package..."
+	uv pip uninstall jacs  || true
+
 # Clean up Python build artifacts
 clean-python:
 	@echo "Cleaning up Python build artifacts..."
