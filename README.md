@@ -18,17 +18,27 @@ Install with `pip install jacs` with example using [fastmcp](https://github.com/
 
 ```python
 # server
-mcp = JACSMCPServer(FastMCP("Authenticated Echo Server"))
+import jacs
 
 # client
-client = JACSMCPClient(server_url)
+# client = JACSMCPClient(server_url)
 
 # setup
 jacs_config_path = "jacs.server.config.json"
-os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "hello"   
+# set the secret
+# os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "hello"   
 jacs.load(str(jacs_config_path))
 
-# use like fastmcp
+mcp = JACSMCPServer(FastMCP("Authenticated Echo Server"))
+
+@mcp.tool()
+def add(a: int, b: int) -> int:
+    """Add two numbers"""
+    return a + b
+
+if __name__ == "__main__":
+    mcp.run()
+
 ```
 
 ## Node JS

@@ -30,6 +30,11 @@
 
 ## 0.3.6
 
+### jacsnpm
+
+ - [] github actions builder for linux varieties
+ - [] npm install jacs (cli and available to plugin)
+
 ### jacspy
 
  - [] github actions builder for linux varieties
@@ -77,8 +82,9 @@
 proof of concept
  - [x] scaffold
  - [x] use refactored agent trait instead of replicating
- - [] typescript mcp client and server
- - [] npm install jacs (cli and available to plugin)
+ - [ ] integrate cli
+ - [] typescript mcp client and server tests
+
 
 --------------------
 
