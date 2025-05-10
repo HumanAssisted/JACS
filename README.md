@@ -19,6 +19,8 @@ Install with `pip install jacs` with example using [fastmcp](https://github.com/
 ```python
 # server
 import jacs
+from jacs.mcp import JACSMCPServer, JACSMCPClient
+from mcp.server.fastmcp import FastMCP 
 
 # client
 # client = JACSMCPClient(server_url)
