@@ -4,7 +4,7 @@ import os
 # Import the Rust module
 try:
     # Direct import - should work when properly installed via pip
-    from jacs.jacs import *
+    from jacs.jacs import *  # noqa: F403, F401
 except ImportError:
     try:
         # For development environment
