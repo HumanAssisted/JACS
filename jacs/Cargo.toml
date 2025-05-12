@@ -63,7 +63,6 @@ strum = "0.27.1"
 strum_macros = "0.27.0"
 secrecy = "0.10.3"
 aes-gcm = "0.10.3"
-clap = { version = "4.5.4", features = ["derive", "cargo"] }
 regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
@@ -78,6 +77,8 @@ referencing = "0.29.1"
 futures-executor = "0.3.31"
 update = "0.0.0"
 getset = "0.1.5"
+clap = { version = "4.5.4", features = ["derive", "cargo"], optional = true }
+# ratatui = { version = "0.29.0", optional = true }
 
 # libp2p = "0.55.0"
 # [target.'cfg(target_os = "macos")'.dependencies]
@@ -109,13 +110,17 @@ reqwest = {  version ="0.12.12", features = ["blocking", "json"] }
 walkdir = "2.5.0"
 object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "http"] }
 
- [target.'cfg(target_arch = "wasm32")'.dependencies]
- wasm-bindgen = "0.2.100"
- web-sys = { version = "0.3", features = ["Storage", "Window"] }
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3", features = ["Storage", "Window"] }
 
 [[bin]]
 name = "jacs"
 path = "src/bin/cli.rs"
+required-features = ["cli"]
+
+[features]
+cli = ["dep:clap", "dep:ratatui"]
 
 [[bench]]
 name = "sign_and_check_sig"
@@ -123,3 +128,4 @@ harness = false
 
 [package.metadata.cargo-install]
 bin = ["jacs"]
+ 
