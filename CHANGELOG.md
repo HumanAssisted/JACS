@@ -34,14 +34,15 @@
 
  - [] github actions builder for linux varieties
  - [] npm install jacs (cli and available to plugin)
+ - [] a2a integration
 
 ### jacspy
-
+ - [] a2a integration
  - [] github actions builder for linux varieties
 
 ### JACS core
-
- - [] register public key 
+ - [] CA for cert
+ - [] register public key in d option 
  - [] register agent
  - [] remove requirement to store public key type
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
@@ -57,7 +58,6 @@
 
  - [] clean io prepping for config of io
  - [] don't store  "jacs_private_key_password":  in config, don't display
- - [] CA for cert
  - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
 

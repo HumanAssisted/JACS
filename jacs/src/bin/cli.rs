@@ -1,21 +1,19 @@
 use clap::{Arg, ArgAction, Command, crate_name, value_parser};
-use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
+
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
+use jacs::cli_utils::document::check_agreement;
+use jacs::cli_utils::document::create_agreement;
 use jacs::config::find_config;
 use jacs::create_task;
 use jacs::load_agent;
-use jacs::shared::document_add_agreement;
-use jacs::shared::document_check_agreement;
-use jacs::shared::document_create;
-use jacs::shared::document_load_and_save;
-use jacs::shared::document_sign_agreement;
-use jacs::storage::MultiStorage;
+
 use std::env;
 use std::error::Error;
+use std::os::unix::fs::DirBuilderExt;
 use std::process;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -738,32 +736,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let files: Vec<String> =
                     set_file_list(storage.as_ref().unwrap(), filename, directory, None)
                         .expect("Failed to determine file list");
-
-                for file in &files {
-                    // Use storage to read the input document file
-                    let content_bytes = storage
-                        .as_ref()
-                        .expect("Storage must be initialized for this command")
-                        .get_file(file, None)
-                        .expect(&format!("Failed to load document file: {}", file));
-                    let document_string = String::from_utf8(content_bytes)
-                        .expect(&format!("Document file {} is not valid UTF-8", file));
-                    let result = document_check_agreement(
-                        &mut agent,
-                        &document_string,
-                        schema.cloned(),
-                        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-                    )
-                    .expect("reason");
-                    println!("{}", result);
-                }
+                check_agreement(agent, schema, filename, directory)?;
             }
             Some(("create-agreement", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+
                 let schema = create_matches.get_one::<String>("schema");
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentids: Vec<String> = create_matches // Corrected reference to create_matches
@@ -772,36 +752,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.to_string())
                     .collect();
 
+                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 // Use updated set_file_list with storage
-                let files: Vec<String> =
-                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
-                        .expect("Failed to determine file list");
-
-                for file in &files {
-                    // Use storage to read the input document file
-                    let content_bytes = storage
-                        .as_ref()
-                        .expect("Storage must be initialized for this command")
-                        .get_file(file, None)
-                        .expect(&format!("Failed to load document file: {}", file));
-                    let document_string = String::from_utf8(content_bytes)
-                        .expect(&format!("Document file {} is not valid UTF-8", file));
-                    let result = document_add_agreement(
-                        &mut agent,
-                        &document_string,
-                        agentids.clone(),
-                        schema.cloned(),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        no_save,
-                        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-                    )
-                    .expect("reason");
-                    println!("{}", result);
-                }
+                create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
             }
 
             Some(("verify", verify_matches)) => {
@@ -894,35 +847,4 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-// Updated set_file_list function
-fn set_file_list(
-    storage: &MultiStorage,
-    filename: Option<&String>,
-    directory: Option<&String>,
-    attachments: Option<&String>,
-) -> Result<Vec<String>, Box<dyn Error>> {
-    if let Some(file) = filename {
-        // If filename is provided, return it as a single item list.
-        // The caller will attempt fs::read_to_string on this local path.
-        Ok(vec![file.clone()])
-    } else if let Some(dir) = directory {
-        // If directory is provided, list .json files within it using storage.
-        let prefix = if dir.ends_with('/') {
-            dir.clone()
-        } else {
-            format!("{}/", dir)
-        };
-        // Use storage.list to get files from the specified storage location
-        let files = storage.list(&prefix, None)?;
-        // Filter for .json files as originally intended for directory processing
-        Ok(files.into_iter().filter(|f| f.ends_with(".json")).collect())
-    } else if attachments.is_some() {
-        // If only attachments are provided, the loop should run once without reading files.
-        // Return an empty list; the calling loop handles creating "{}"
-        Ok(Vec::new())
-    } else {
-        Err("You must specify either a filename, a directory, or attachments.".into())
-    }
 }

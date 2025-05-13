@@ -77,6 +77,7 @@ pub struct Agent {
     value: Option<Value>,
     /// use getter
     pub config: Option<Config>,
+    //  todo make read commands public but not write commands
     storage: MultiStorage,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
