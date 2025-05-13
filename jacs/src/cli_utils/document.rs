@@ -10,6 +10,75 @@ use crate::shared::document_load_and_save;
 use crate::shared::document_sign_agreement;
 use std::error::Error;
 
+pub fn verify_documents(
+    mut agent: Agent,
+    schema: Option<&String>,
+    filename: Option<&String>,
+    directory: Option<&String>,
+) -> Result<(), Box<dyn Error>> {
+    let storage = get_storage_default_for_cli();
+    let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
+        .expect("Failed to determine file list");
+    for file in &files {
+        let load_only = true;
+        // Use storage to read the input document file
+        let content_bytes = storage
+            .as_ref()
+            .expect("Storage must be initialized for this command")
+            .get_file(file, None)
+            .expect(&format!("Failed to load document file: {}", file));
+        let document_string = String::from_utf8(content_bytes)
+            .expect(&format!("Document file {} is not valid UTF-8", file));
+        let result = document_load_and_save(
+            &mut agent,
+            &document_string,
+            schema.cloned(),
+            None,
+            None,
+            None,
+            load_only,
+        )
+        .expect("reason");
+        println!("{}", result);
+    }
+    return Ok(());
+}
+
+pub fn sign_documents(
+    mut agent: Agent,
+    schema: Option<&String>,
+    filename: Option<&String>,
+    directory: Option<&String>,
+) -> Result<(), Box<dyn Error>> {
+    let storage = get_storage_default_for_cli();
+    let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
+        .expect("Failed to determine file list");
+    let no_save = false;
+    for file in &files {
+        // Use storage to read the input document file
+        let content_bytes = storage
+            .as_ref()
+            .expect("Storage must be initialized for this command")
+            .get_file(file, None)
+            .expect(&format!("Failed to load document file: {}", file));
+        let document_string = String::from_utf8(content_bytes)
+            .expect(&format!("Document file {} is not valid UTF-8", file));
+        let result = document_sign_agreement(
+            &mut agent,
+            &document_string,
+            schema.cloned(),
+            None,
+            None,
+            None,
+            no_save,
+            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+        )
+        .expect("reason");
+        println!("{}", result);
+    }
+    return Ok(());
+}
+
 pub fn create_agreement(
     mut agent: Agent,
     agentids: Vec<String>,

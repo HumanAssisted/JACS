@@ -7,6 +7,7 @@ use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
 use jacs::cli_utils::document::check_agreement;
 use jacs::cli_utils::document::create_agreement;
+use jacs::cli_utils::document::sign_documents;
 use jacs::config::find_config;
 use jacs::create_task;
 use jacs::load_agent;
@@ -498,22 +499,21 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => println!("please enter subcommand see jacs agent --help"),
         },
 
-        Some(("task", task_matches)) => match task_matches.subcommand() {
-            Some(("create", create_matches)) => {
-                let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
-                let name = create_matches.get_one::<String>("name").expect("REASON");
-                let description = create_matches
-                    .get_one::<String>("description")
-                    .expect("REASON");
-                println!(
-                    "{}",
-                    create_task(&mut agent, name.to_string(), description.to_string()).unwrap()
-                );
-            }
-            _ => println!("please enter subcommand see jacs task --help"),
-        },
-
+        // Some(("task", task_matches)) => match task_matches.subcommand() {
+        //     Some(("create", create_matches)) => {
+        //         let agentfile = create_matches.get_one::<String>("agent-file");
+        //         let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
+        //         let name = create_matches.get_one::<String>("name").expect("REASON");
+        //         let description = create_matches
+        //             .get_one::<String>("description")
+        //             .expect("REASON");
+        //         println!(
+        //             "{}",
+        //             create_task(&mut agent, name.to_string(), description.to_string()).unwrap()
+        //         );
+        //     }
+        //     _ => println!("please enter subcommand see jacs task --help"),
+        // },
         Some(("document", document_matches)) => match document_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
@@ -698,32 +698,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
                 // Use updated set_file_list with storage
-                let files: Vec<String> =
-                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
-                        .expect("Failed to determine file list");
-
-                for file in &files {
-                    // Use storage to read the input document file
-                    let content_bytes = storage
-                        .as_ref()
-                        .expect("Storage must be initialized for this command")
-                        .get_file(file, None)
-                        .expect(&format!("Failed to load document file: {}", file));
-                    let document_string = String::from_utf8(content_bytes)
-                        .expect(&format!("Document file {} is not valid UTF-8", file));
-                    let result = document_sign_agreement(
-                        &mut agent,
-                        &document_string,
-                        schema.cloned(),
-                        None,
-                        None,
-                        None,
-                        no_save,
-                        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-                    )
-                    .expect("reason");
-                    println!("{}", result);
-                }
+                sign_documents(agent, schema, filename, directory)?;
             }
             Some(("check-agreement", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
@@ -765,32 +740,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
-                let files: Vec<String> =
-                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
-                        .expect("Failed to determine file list");
-
-                for file in &files {
-                    let load_only = true;
-                    // Use storage to read the input document file
-                    let content_bytes = storage
-                        .as_ref()
-                        .expect("Storage must be initialized for this command")
-                        .get_file(file, None)
-                        .expect(&format!("Failed to load document file: {}", file));
-                    let document_string = String::from_utf8(content_bytes)
-                        .expect(&format!("Document file {} is not valid UTF-8", file));
-                    let result = document_load_and_save(
-                        &mut agent,
-                        &document_string,
-                        schema.cloned(),
-                        None,
-                        None,
-                        None,
-                        load_only,
-                    )
-                    .expect("reason");
-                    println!("{}", result);
-                }
+                verify_documents(agent, schema, filename, directory)?;
             }
 
             Some(("extract", extract_matches)) => {
