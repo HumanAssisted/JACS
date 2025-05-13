@@ -1,11 +1,11 @@
 use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 
-use crate::cli_utils::set_file_list;
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
+use jacs::cli_utils::default_set_file_list;
 use jacs::cli_utils::document::{
     check_agreement, create_agreement, create_documents, extract_documents, sign_documents,
     update_documents, verify_documents,
@@ -450,12 +450,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         .arg_required_else_help(true)
         .get_matches();
 
-    let mut storage: Option<MultiStorage> = None;
-
-    if matches.subcommand_name() != Some("version") {
-        storage = Some(MultiStorage::default_new().expect("Failed to initialize storage"));
-    }
-
     match matches.subcommand() {
         Some(("version", _sub_matches)) => {
             println!("{}", env!("CARGO_PKG_DESCRIPTION"));
@@ -469,7 +463,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         Some(("config", config_matches)) => match config_matches.subcommand() {
             Some(("create", _create_matches)) => {
                 // Call the refactored handler function
-                handle_config_create(&storage)?;
+                handle_config_create()?;
             }
             Some(("read", verify_matches)) => {
                 let config = find_config("./".to_string())?;
@@ -484,7 +478,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
 
                 // Call the refactored handler function
-                handle_agent_create(&storage, filename, create_keys)?;
+                handle_agent_create(filename, create_keys)?;
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
@@ -553,7 +547,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
                 let attachments = create_matches.get_one::<String>("attach");
-                let embed = create_matches.get_one::<bool>("embed");
+                let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
 
@@ -589,9 +583,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let schema = create_matches.get_one::<String>("schema");
 
                 // Use updated set_file_list with storage
-                let files: Vec<String> =
-                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
-                        .expect("Failed to determine file list");
+                let files: Vec<String> = default_set_file_list(filename, directory, None)
+                    .expect("Failed to determine file list");
                 check_agreement(agent, schema, filename, directory)?;
             }
             Some(("create-agreement", create_matches)) => {
@@ -632,9 +625,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
-                let files: Vec<String> =
-                    set_file_list(storage.as_ref().unwrap(), filename, directory, None)
-                        .expect("Failed to determine file list");
+                let files: Vec<String> = default_set_file_list(filename, directory, None)
+                    .expect("Failed to determine file list");
                 // extract the contents but do not save
                 extract_documents(agent, schema, filename, directory)?;
             }
@@ -643,10 +635,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         },
         Some(("init", _init_matches)) => {
             println!("--- Running Config Creation ---");
-            handle_config_create(&storage)?;
+            handle_config_create()?;
             println!("\n--- Running Agent Creation (with keys) ---");
             // Call agent create handler with None for filename and true for create_keys
-            handle_agent_create(&storage, None, true)?;
+            handle_agent_create(None, true)?;
             println!("\n--- JACS Initialization Complete ---");
         }
         _ => {

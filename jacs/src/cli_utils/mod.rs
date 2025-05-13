@@ -3,6 +3,15 @@ pub mod document;
 use crate::storage::MultiStorage;
 use std::error::Error;
 
+pub fn default_set_file_list(
+    filename: Option<&String>,
+    directory: Option<&String>,
+    attachments: Option<&String>,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
+    set_file_list(&storage, filename, directory, attachments)
+}
+
 fn set_file_list(
     storage: &MultiStorage,
     filename: Option<&String>,

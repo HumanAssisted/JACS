@@ -78,7 +78,7 @@ pub fn update_documents(
     original_filename: &String,
     outputfilename: Option<&String>,
     attachment_links: Option<Vec<String>>,
-    embed: bool,
+    embed: Option<bool>,
     no_save: bool,
     schema: Option<&String>,
 ) -> Result<(), Box<dyn Error>> {
@@ -132,7 +132,7 @@ pub fn update_documents(
             &original_doc_key,
             &new_document_string,
             attachment_links.clone(),
-            Some(embed),
+            embed,
         )
         .expect("update document");
 
