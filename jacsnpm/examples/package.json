@@ -5,13 +5,17 @@
     "main": "example.js",
     "type": "module",
     "scripts": {
-      "start": "node example.js"
+        "start": "node example.js",
+        "server": "node mcp.server.js",
+        "client": "node mcp.client.js",
+        "test:mcp": "npm run server & sleep 2 && npm run client",
+        "setup": "mkdir -p data keys && node setup.js"
     },
     "dependencies": {
-      "@modelcontextprotocol/sdk": "^1.11.2",
-      "jacsnpm": "file:../jacsnpm"
+        "@modelcontextprotocol/sdk": "^1.11.2",
+        "jacsnpm": "file:../jacsnpm"
     },
     "devDependencies": {
-      "@types/node": "^22"
+        "@types/node": "^22"
     }
-  }
+}

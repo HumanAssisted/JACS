@@ -21,6 +21,7 @@
    - pass document string or document id - with optional version instead of string
    - load document whatever storage config is
    - function test output metadata about current config and current agent
+
 ## jacs-mcp 0.1.0
 
  - [] use rmcp
@@ -58,6 +59,7 @@
  - [] diff versions
  - [] bucket integration
  - [] RBAC integration with header
+ - [] clean io prepping for config of io
 
 --------------------
 
@@ -65,7 +67,7 @@
 
 ### JACS core
 
- - [] clean io prepping for config of io
+ - [] logging output without file output  
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
@@ -76,20 +78,22 @@
 
 
  - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
- - [] auto generate agent doc from MCP server list, auto versions
- - [] traceable, verifiable request logs
+
  - [] fastmcp client and server stdio
  - [] fastmcp client and server websocket
  - [] publish jacspy to pypi
  - [] mcp make sure "list" request is signed
+ - [] fastapi, django, flask, guvicorn 
+ - [] auto generate agent doc from MCP server list, auto versions (important for A2A as well)
 
 ## jacsnpm
 
 proof of concept
  - [x] scaffold
  - [x] use refactored agent trait instead of replicating
- 
- - [] typescript mcp client and server tests
+ - [x] typescript mcp client and server tests
+ - []  test mcp client and server
+ - []  node express middleware
 
 
 --------------------

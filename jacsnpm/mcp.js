@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 /**
- * Creates middleware for JACS document verification and signing
+ * Creates middleware for JACS request/response signing and verification
  * @param {Object} options
  * @param {string} [options.configPath] - Path to JACS config file
  */
@@ -16,28 +16,30 @@ export function createJacsMiddleware(options = {}) {
             await jacs.load(options.configPath);
         }
 
-        // Verify incoming documents
-        if (ctx.request?.params?.document) {
-            const isValid = await jacs.verifyDocument(ctx.request.params.document);
-            if (!isValid) {
-                throw new Error('Invalid JACS document');
+        // Verify incoming request
+        if (ctx.request) {
+            try {
+                ctx.request = jacs.verifyResponse(ctx.request);
+            } catch (error) {
+                throw new Error(`Invalid JACS request: ${error.message}`);
             }
         }
 
         await next();
 
-        // Sign outgoing documents
-        if (ctx.response?.result?.document) {
-            ctx.response.result.document = await jacs.createDocument(
-                ctx.response.result.document,
-                null, null, true, null, false
-            );
+        // Sign outgoing response
+        if (ctx.response) {
+            try {
+                ctx.response = jacs.signRequest(ctx.response);
+            } catch (error) {
+                throw new Error(`Failed to sign response: ${error.message}`);
+            }
         }
     };
 }
 
 /**
- * Creates a transport wrapper for JACS document handling
+ * Creates a transport wrapper for JACS request/response handling
  * @param {Object} transport - The original MCP transport
  * @param {Object} options
  * @param {string} [options.configPath] - Path to JACS config file
@@ -52,14 +54,12 @@ export function createJacsTransport(transport, options = {}) {
             await jacs.load(options.configPath);
         }
 
-        if (msg.params?.document) {
-            msg.params.document = await jacs.createDocument(
-                msg.params.document,
-                null, null, true, null, false
-            );
-        }
-
-        return originalSend(msg);
+        // Sign the entire outgoing message
+        const signedMsg = jacs.signRequest(msg);
+        const response = await originalSend(signedMsg);
+        
+        // Verify the entire response
+        return jacs.verifyResponse(response);
     };
 
     return transport;
