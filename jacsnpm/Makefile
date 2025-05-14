@@ -20,10 +20,13 @@ install:
 
 # Development build
 dev:
-	cargo build
+	cargo build --verbose
+	npm install
+	npm run build:debug
 	@echo "Development build completed successfully"
 
 # Run tests
 test:
 	cargo test
+	node examples/example.js
 	@echo "Tests completed successfully"

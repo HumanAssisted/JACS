@@ -1,21 +1,12 @@
-const jacs = require('./index.js');
+import jacs from '../index.js';
+
+// Debug what's available in the module
+console.log('Module contents:', Object.keys(jacs));
 
 async function example() {
     try {
-        // Create a config
-        const config = await jacs.create_config(
-            "true",                    // jacs_use_security
-            "./data",                  // jacs_data_directory
-            "./keys",                  // jacs_key_directory
-            "private_key.pem",         // jacs_agent_private_key_filename
-            "public_key.pem",          // jacs_agent_public_key_filename
-            "RSA",                     // jacs_agent_key_algorithm
-            "password123",             // jacs_private_key_password
-            "agent1:1.0.0",           // jacs_agent_id_and_version
-            "file"                     // jacs_default_storage
-        );
-        console.log("Created config:", config);
-
+        // First check what we're actually getting
+        console.log('Module type:', typeof jacs);
         // Load the agent with the config
         await jacs.load("./config.json");
         console.log("Agent loaded successfully");
@@ -37,6 +28,12 @@ async function example() {
 
     } catch (error) {
         console.error("Error:", error);
+        // Log more details about the error
+        console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
     }
 }
 
