@@ -35,12 +35,18 @@
  - [] github actions builder for linux varieties
  - [] npm install jacs (cli and available to plugin)
  - [] a2a integration
+ - [] integrate cli
 
 ### jacspy
  - [] a2a integration
+  - [] have jacs cli installed along with wheel
+   - [] python based instructions for how to create - cli create agent 
+      1. cli create agent 
+      2. config jacspy to load each agent
  - [] github actions builder for linux varieties
 
 ### JACS core
+
  - [] CA for cert
  - [] register public key in d option 
  - [] register agent
@@ -60,18 +66,13 @@
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
- - [] make cli utils functions a feature only on when building shared objects
+ - [x] make cli utils available to other libs
 
 
 ### jacspy
 
- - [] have jacs cli work with the python wheel (refactor jacs cli to also pull from shared lib so python can wrap these)
- - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
- 
- - [] python based instructions for how to create - cli create agent 
-      1. cli create agent 
-      2. config jacspy to load each agent
 
+ - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
  - [] auto generate agent doc from MCP server list, auto versions
  - [] traceable, verifiable request logs
  - [] fastmcp client and server stdio
@@ -84,7 +85,7 @@
 proof of concept
  - [x] scaffold
  - [x] use refactored agent trait instead of replicating
- - [ ] integrate cli
+ 
  - [] typescript mcp client and server tests
 
 

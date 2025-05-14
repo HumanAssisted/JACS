@@ -2,28 +2,32 @@ use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
 use jacs_core::agent::payloads::PayloadTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
+// use jacs_core::cli_utils::create::handle_agent_create;
+// use jacs_core::cli_utils::create::handle_config_create;
+// use jacs_core::cli_utils::default_set_file_list;
+// use jacs_core::cli_utils::document::{
+//     check_agreement as cli_check_agreement, create_agreement as cli_create_agreement,
+//     create_documents as cli_create_documents, extract_documents as cli_extract_documents,
+//     sign_documents as cli_sign_documents, update_documents as cli_update_documents,
+//     verify_documents as cli_verify_documents,
+// };
+// use jacs_core::config::find_config;
+// use pyo3::types::PyDict;
+// use pyo3::types::PyDateTime;
+
 use jacs_core::crypt::KeyManager;
 use jacs_core::crypt::hash::hash_string as jacs_hash_string;
-use jacs_core::cli_utils::create::handle_agent_create;
-use jacs_core::cli_utils::create::handle_config_create;
-use jacs_core::cli_utils::default_set_file_list;
-use jacs_core::cli_utils::document::{
-    check_agreement as cli_check_agreement, create_agreement as cli_create_agreement, create_documents as cli_create_documents, extract_documents as cli_extract_documents, sign_documents as cli_sign_documents,
-    update_documents as cli_update_documents, verify_documents as cli_verify_documents,
-};
-use jacs_core::config::find_config;
 use lazy_static::lazy_static;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
-// use pyo3::types::PyDateTime;
-use pyo3::types::PyDict;
+
+
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
-
 
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
@@ -556,7 +560,8 @@ fn create_documents_py(
         embed,
         no_save,
         schema.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
@@ -579,7 +584,8 @@ fn update_documents_py(
         embed,
         no_save,
         schema.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
@@ -598,7 +604,8 @@ fn create_agreement_py(
         schema.as_ref(),
         no_save,
         directory.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
@@ -609,11 +616,12 @@ fn check_agreement_py(
 ) -> PyResult<()> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
     jacs_core::cli_utils::document::check_agreement(
-        &mut agent,  // Clone the dereferenced Agent
+        &mut agent, // Clone the dereferenced Agent
         schema.as_ref(),
         filename.as_ref(),
         directory.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
@@ -628,7 +636,8 @@ fn sign_documents_py(
         schema.as_ref(),
         filename.as_ref(),
         directory.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
@@ -637,13 +646,14 @@ fn verify_documents_py(
     filename: Option<String>,
     directory: Option<String>,
 ) -> PyResult<()> {
-    let mut  agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
     jacs_core::cli_utils::document::verify_documents(
         &mut agent,
         schema.as_ref(),
         filename.as_ref(),
         directory.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
@@ -658,7 +668,8 @@ fn extract_documents_py(
         schema.as_ref(),
         filename.as_ref(),
         directory.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pymodule]
@@ -692,15 +703,16 @@ fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign_request, m)?)?;
     m.add_function(wrap_pyfunction!(verify_response, m)?)?;
 
-    m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
-    m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
-    m.add_function(wrap_pyfunction!(create_documents_py, m)?)?;
-    m.add_function(wrap_pyfunction!(update_documents_py, m)?)?;
-    m.add_function(wrap_pyfunction!(create_agreement_py, m)?)?;
-    m.add_function(wrap_pyfunction!(check_agreement_py, m)?)?;
-    m.add_function(wrap_pyfunction!(sign_documents_py, m)?)?;
-    m.add_function(wrap_pyfunction!(verify_documents_py, m)?)?;
-    m.add_function(wrap_pyfunction!(extract_documents_py, m)?)?;
+    //cli functions 
+    // m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(create_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(update_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(create_agreement_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(check_agreement_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(sign_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(verify_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(extract_documents_py, m)?)?;
 
     Ok(())
 }
