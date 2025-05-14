@@ -1,9 +1,19 @@
 {
   "name": "jacsnpm",
   "version": "0.1.0",
-  "description": "JACS Node.js bindings",
+  "description": "JACS Node.js bindings with MCP integration",
   "main": "index.js",
   "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "types": "./index.d.ts"
+    },
+    "./mcp": {
+      "import": "./mcp.js",
+      "types": "./mcp.d.ts"
+    }
+  },
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
@@ -11,6 +21,7 @@
     "test": "node test"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.2",
     "@napi-rs/cli": "^2.16.3"
   },
   "devDependencies": {
@@ -30,6 +41,8 @@
   "license": "ISC",
   "files": [
     "index.js",
-    "index.d.ts"
+    "index.d.ts",
+    "mcp.js",
+    "mcp.d.ts"
   ]
 } 

@@ -1,5 +1,6 @@
 # PLANNED
 -  machine fingerprinting v2
+- passkey-client integration
 - encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
@@ -8,6 +9,8 @@
 - use rcgen to sign certs, and register with ACME
  https://opentelemetry.io/docs/languages/rust/
 . ai.pydantic.dev
+- secure storage of private key for shared server envs https://crates.io/crates/tss-esapi, https://docs.rs/cryptoki/latest/cryptoki/
+
 
 ## 0.4.0
 - Domain integration

@@ -1,11 +1,13 @@
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { JacsMcpServer } from '../mcp.js';
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-// Create an MCP server
-const server = new McpServer({
+// Create a JACS-enabled MCP server
+const server = new JacsMcpServer({
   name: "Demo",
-  version: "1.0.0"
+  version: "1.0.0",
+  configPath: "./config.json"  // JACS config path
 });
 
 // Add an addition tool
@@ -24,6 +26,18 @@ server.resource(
     contents: [{
       uri: uri.href,
       text: `Hello, ${name}!`
+    }]
+  })
+);
+
+// Add a JACS document tool example
+server.tool("processDocument",
+  { document: z.string() },
+  async ({ document }) => ({
+    content: [{ 
+      type: "text", 
+      text: "Document processed",
+      document: document  // Will be automatically signed by JACS middleware
     }]
   })
 );
