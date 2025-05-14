@@ -14,7 +14,7 @@
     "@napi-rs/cli": "^2.16.3"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0"
+    "@types/node": "^22"
   },
   "napi": {
     "name": "jacsnpm",

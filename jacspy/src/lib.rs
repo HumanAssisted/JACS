@@ -24,8 +24,6 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-
-
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
 
@@ -703,7 +701,7 @@ fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign_request, m)?)?;
     m.add_function(wrap_pyfunction!(verify_response, m)?)?;
 
-    //cli functions 
+    //cli functions
     // m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
     // m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
     // m.add_function(wrap_pyfunction!(create_documents_py, m)?)?;

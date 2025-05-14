@@ -1,0 +1,17 @@
+{
+    "name": "jacs-example",
+    "version": "0.1.0",
+    "description": "Example application using JACS with MCP SDK",
+    "main": "example.js",
+    "type": "module",
+    "scripts": {
+      "start": "node example.js"
+    },
+    "dependencies": {
+      "@modelcontextprotocol/sdk": "^1.11.2",
+      "jacsnpm": "file:../jacsnpm"
+    },
+    "devDependencies": {
+      "@types/node": "^22"
+    }
+  }
