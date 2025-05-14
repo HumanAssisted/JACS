@@ -8,7 +8,7 @@ pub fn default_set_file_list(
     directory: Option<&String>,
     attachments: Option<&String>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
+    let storage: MultiStorage = get_storage_default_for_cli()?;
     set_file_list(&storage, filename, directory, attachments)
 }
 
@@ -42,7 +42,7 @@ fn set_file_list(
     }
 }
 
-fn get_storage_default_for_cli() -> Result<MultiStorage, Box<dyn Error>> {
+pub fn get_storage_default_for_cli() -> Result<MultiStorage, Box<dyn Error>> {
     let mut storage: Option<MultiStorage> =
         Some(MultiStorage::default_new().expect("Failed to initialize storage"));
     if let Some(storage) = storage {

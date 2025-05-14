@@ -12,6 +12,15 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use jacs_core::cli_utils::create::handle_agent_create;
+use jacs_core::cli_utils::create::handle_config_create;
+use jacs_core::cli_utils::default_set_file_list;
+use jacs_core::cli_utils::document::{
+    check_agreement as cli_check_agreement, create_agreement as cli_create_agreement, create_documents as cli_create_documents, extract_documents as cli_extract_documents, sign_documents as cli_sign_documents,
+    update_documents as cli_update_documents, verify_documents as cli_verify_documents,
+};
+use jacs_core::config::find_config;
+
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
 use conversion_utils::{js_value_to_value, value_to_js_value};

@@ -60,6 +60,8 @@
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
+ - [] make cli utils functions a feature only on when building shared objects
+
 
 ### jacspy
 

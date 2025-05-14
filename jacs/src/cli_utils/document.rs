@@ -179,7 +179,7 @@ pub fn update_documents(
 }
 
 pub fn extract_documents(
-    mut agent: Agent,
+    agent: &mut Agent,
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
@@ -198,7 +198,7 @@ pub fn extract_documents(
         let document_string = String::from_utf8(content_bytes)
             .expect(&format!("Document file {} is not valid UTF-8", file));
         let result = document_load_and_save(
-            &mut agent,
+            agent,
             &document_string,
             schema.cloned(),
             None,
@@ -213,7 +213,7 @@ pub fn extract_documents(
     return Ok(());
 }
 pub fn verify_documents(
-    mut agent: Agent,
+    agent: &mut Agent,
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
@@ -232,7 +232,7 @@ pub fn verify_documents(
         let document_string = String::from_utf8(content_bytes)
             .expect(&format!("Document file {} is not valid UTF-8", file));
         let result = document_load_and_save(
-            &mut agent,
+            agent,
             &document_string,
             schema.cloned(),
             None,
@@ -247,7 +247,7 @@ pub fn verify_documents(
 }
 
 pub fn sign_documents(
-    mut agent: Agent,
+    agent: &mut Agent,
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
@@ -266,7 +266,7 @@ pub fn sign_documents(
         let document_string = String::from_utf8(content_bytes)
             .expect(&format!("Document file {} is not valid UTF-8", file));
         let result = document_sign_agreement(
-            &mut agent,
+            agent,
             &document_string,
             schema.cloned(),
             None,
@@ -321,7 +321,7 @@ pub fn create_agreement(
 }
 
 pub fn check_agreement(
-    mut agent: Agent,
+    agent: &mut Agent,
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
@@ -339,7 +339,7 @@ pub fn check_agreement(
         let document_string = String::from_utf8(content_bytes)
             .expect(&format!("Document file {} is not valid UTF-8", file));
         let result = document_check_agreement(
-            &mut agent,
+            agent,
             &document_string,
             schema.cloned(),
             Some(AGENT_AGREEMENT_FIELDNAME.to_string()),

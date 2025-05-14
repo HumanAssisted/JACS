@@ -14,12 +14,14 @@ use std::error::Error;
 use std::path::Path;
 
 pub mod agent;
-pub mod cli_utils;
 pub mod config;
 pub mod crypt;
 pub mod schema;
 pub mod shared;
 pub mod storage;
+
+// #[cfg(feature = "cli")]
+pub mod cli_utils;
 
 /// Creates an empty agent struct with default schema versions.
 pub fn get_empty_agent() -> Agent {

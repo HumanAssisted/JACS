@@ -573,7 +573,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
                 // Use updated set_file_list with storage
-                sign_documents(agent, schema, filename, directory)?;
+                sign_documents(&mut agent, schema, filename, directory)?;
             }
             Some(("check-agreement", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
@@ -585,7 +585,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Use updated set_file_list with storage
                 let files: Vec<String> = default_set_file_list(filename, directory, None)
                     .expect("Failed to determine file list");
-                check_agreement(agent, schema, filename, directory)?;
+                check_agreement(&mut agent, schema, filename, directory)?;
             }
             Some(("create-agreement", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
@@ -614,7 +614,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
-                verify_documents(agent, schema, filename, directory)?;
+                verify_documents(&mut agent, schema, filename, directory)?;
             }
 
             Some(("extract", extract_matches)) => {
@@ -628,7 +628,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let files: Vec<String> = default_set_file_list(filename, directory, None)
                     .expect("Failed to determine file list");
                 // extract the contents but do not save
-                extract_documents(agent, schema, filename, directory)?;
+                extract_documents(&mut agent, schema, filename, directory)?;
             }
 
             _ => println!("please enter subcommand see jacs document --help"),
