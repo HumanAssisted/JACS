@@ -18,7 +18,7 @@ const server = new JacsMcpServer({
     name: "example-server",
     version: "1.0.0",
     transport: transport,
-    configPath: "./config.json"  // Path to your JACS config
+    configPath: "./jacs.server.config.json"  
 });
 
 // Add an addition tool

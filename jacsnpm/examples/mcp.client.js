@@ -7,7 +7,7 @@ const client = new JacsMcpClient({
     name: "example-client",
     version: "1.0.0",
     url: "http://localhost:3000/mcp",  // For HTTP transport
-    configPath: "./config.json"        // JACS config path
+    configPath: "./jacs.client.config.json"        
 });
 
 // Example usage

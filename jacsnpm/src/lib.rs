@@ -538,10 +538,11 @@ fn verify_response(env: Env, document_string: String) -> Result<JsObject> {
         )
     })?;
 
-    let payload = agent
+    let payload_serde_value: Value = agent
         .verify_payload(document_string, None)
         .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))?;
-    let js_value = value_to_js_value(env, &payload)?;
+    
+    let js_value = value_to_js_value(env, &payload_serde_value)?;
     Ok(js_value.try_into()?)
 }
 
@@ -554,14 +555,13 @@ fn verify_response_with_agent_id(env: Env, document_string: String) -> Result<Js
         )
     })?;
 
-    let (payload, agent_id) = agent
+    let (payload_serde_value, agent_id) = agent
         .verify_payload_with_agent_id(document_string, None)
         .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))?;
-
-    let js_payload = value_to_js_value(env, &payload)?;
+    
+    let js_payload = value_to_js_value(env, &payload_serde_value)?;
     let js_agent_id = env.create_string(&agent_id)?;
 
-    // Create a JavaScript object to hold both values
     let mut result_obj = env.create_object()?;
     result_obj.set_named_property("agent_id", js_agent_id)?;
     result_obj.set_named_property("payload", js_payload)?;

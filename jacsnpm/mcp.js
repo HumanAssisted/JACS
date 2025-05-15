@@ -11,30 +11,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
  */
 export function createJacsMiddleware(options = {}) {
     return async (ctx, next) => {
-        const jacs = await import('./index.js'); // Restored dynamic import
-        
-        if (options.configPath) {
-            await jacs.load(options.configPath);
-        }
-
-        // Verify incoming request
+        const jacs = await import('./index.js');
+        if (options.configPath) { await jacs.load(options.configPath); }
         if (ctx.request) {
-            try {
-                ctx.request = jacs.verifyResponse(ctx.request);
-            } catch (error) {
-                throw new Error(`Invalid JACS request: ${error.message}`);
-            }
+            try { ctx.request = jacs.verifyResponse(ctx.request); }
+            catch (error) { throw new Error(`Invalid JACS request: ${error.message}`); }
         }
-
         await next();
-
-        // Sign outgoing response
         if (ctx.response) {
-            try {
-                ctx.response = jacs.signRequest(ctx.response);
-            } catch (error) {
-                throw new Error(`Failed to sign response: ${error.message}`);
-            }
+            try { ctx.response = jacs.signRequest(ctx.response); }
+            catch (error) { throw new Error(`Failed to sign response: ${error.message}`); }
         }
     };
 }
@@ -47,22 +33,42 @@ export function createJacsMiddleware(options = {}) {
  */
 export function createJacsTransport(transport, options = {}) {
     const originalSend = transport.send.bind(transport);
-    
     transport.send = async (msg) => {
-        const jacs = await import('./index.js'); // Restored dynamic import
+        const jacs = await import('./index.js');
+        if (options.configPath) { await jacs.load(options.configPath); }
+
+        const signedRequestJws = jacs.signRequest(msg);
         
-        if (options.configPath) {
-            await jacs.load(options.configPath);
+        const serverRpcResponse = await originalSend(signedRequestJws);
+
+        let jwsToVerify;
+        let responseFieldIsError = false;
+
+        if (serverRpcResponse.hasOwnProperty('result')) {
+            jwsToVerify = serverRpcResponse.result;
+        } else if (serverRpcResponse.hasOwnProperty('error')) {
+            if (typeof serverRpcResponse.error === 'string' && serverRpcResponse.error.split('.').length === 3) {
+                jwsToVerify = serverRpcResponse.error;
+                responseFieldIsError = true;
+            } else {
+                return serverRpcResponse;
+            }
+        } else {
+            throw new Error('Client: Server response missing "result" or "error" field.');
+        }
+        
+        if (typeof jwsToVerify !== 'string') {
+            throw new Error(`Client: Expected JWS string in server response's "${responseFieldIsError ? 'error' : 'result'}" field, got ${typeof jwsToVerify}`);
         }
 
-        // Sign the entire outgoing message
-        const signedMsg = jacs.signRequest(msg);
-        const response = await originalSend(signedMsg);
-        
-        // Verify the entire response
-        return jacs.verifyResponse(response);
-    };
+        const verifiedPayload = await jacs.verifyResponse(jwsToVerify);
 
+        if (responseFieldIsError) {
+            return { ...serverRpcResponse, error: verifiedPayload };
+        } else {
+            return { ...serverRpcResponse, result: verifiedPayload };
+        }
+    };
     return transport;
 }
 
@@ -87,32 +93,24 @@ export class JacsMcpServer extends McpServer {
 
         this.configPath = options.configPath;
         this.explicitTransport = transportInstance;
-        this.jacsAgent = null; // To store the loaded JACS agent
+        this.jacsAgent = null;
     }
 
     async loadJacsAgent() {
         if (!this.configPath) {
-            console.warn("JacsMcpServer: configPath not provided, JACS agent not loaded. Signing/verification will likely fail.");
-            return false; // Indicate agent not loaded
+            console.warn("JacsMcpServer: configPath not provided, JACS agent not loaded.");
+            return false;
         }
-        if (this.jacsAgent) {
-            return true; // Already loaded
-        }
+        if (this.jacsAgent) return true;
         try {
             const jacs = await import('./index.js');
-            // Assuming jacs.load might return the agent or a status,
-            // or simply configures a global state within the jacs module.
-            // For simplicity, we'll assume it configures a global state
-            // and we store a reference to the jacs module itself,
-            // or a specific agent object if load returns one.
             await jacs.load(this.configPath);
-            this.jacsAgent = jacs; // Store reference to the jacs module after successful load
+            this.jacsAgent = jacs;
             console.log("JacsMcpServer: JACS agent loaded successfully.");
             return true;
         } catch (error) {
             console.error("JacsMcpServer: Failed to load JACS agent.", error);
             this.jacsAgent = null;
-            // Re-throw or throw a specific error to halt server startup if critical
             throw new Error(`JacsMcpServer: Critical JACS agent failed to load from ${this.configPath}. Server cannot start securely. Original error: ${error.message}`);
         }
     }
@@ -125,53 +123,44 @@ export class JacsMcpServer extends McpServer {
             throw new Error("JacsMcpServer: Transport not initialized or configured.");
         }
 
-        // Attempt to load JACS agent before connecting the underlying MCP server
-        await this.loadJacsAgent(); 
-        // If loadJacsAgent throws, connect will not proceed.
-
+        await this.loadJacsAgent();
         await super.connect(this.explicitTransport);
-        // Note: The actual HTTP server listening is started in mcp.server.js AFTER this connect.
-        // If loadJacsAgent fails, the main() in mcp.server.js would catch it.
     }
 
-    // Override the handle method to add JACS verification
     async handle(request) {
         if (!this.jacsAgent) {
-            // This case should ideally be prevented by connect() failing if agent load is critical.
-            // However, as a safeguard or if agent loading was made non-critical at startup:
-            console.error("JacsMcpServer: JACS agent not available for handling request. Verification/signing will be skipped or fail.");
-            // Depending on policy, either throw, or proceed without JACS (unsafe), or try to load again.
-            // For now, let's assume if connect succeeded, agent should be available or loading was optional.
-            // If agent loading is strictly critical, an error should be thrown here.
-            // For this example, let's try loading it again if it wasn't loaded.
-            // This makes it behave like it did before, loading per-request if not preloaded.
-            if (!this.jacsAgent) { // Check again after potential console error
-                 const jacs = await import('./index.js');
-                 if (this.configPath) {
-                    try {
-                        await jacs.load(this.configPath);
-                        this.jacsAgent = jacs; // Store it for subsequent requests
-                    } catch (loadError) {
-                         console.error("JacsMcpServer: Failed to load JACS agent during handle.", loadError);
-                         throw new Error(`Request handling failed: JACS agent could not be loaded. Original error: ${loadError.message}`);
-                    }
-                 } else {
-                    throw new Error("Request handling failed: JACS configPath not set, agent cannot be loaded.");
-                 }
+            console.error("JacsMcpServer: JACS agent not loaded during handle. Attempting to load...");
+            await this.loadJacsAgent();
+            if (!this.jacsAgent) {
+                 throw new Error("JacsMcpServer: JACS agent could not be loaded for handling request.");
             }
         }
 
-        const verified = await this.jacsAgent.verifyRequest(request.payload);
-        if (!verified) {
-            throw new Error('Failed to verify request signature');
+        const actualRpcRequestObject = await this.jacsAgent.verifyRequest(request.payload);
+        
+        if (!actualRpcRequestObject || typeof actualRpcRequestObject !== 'object') {
+            console.error("JacsMcpServer: verifyRequest did not return an object. Received:", actualRpcRequestObject);
+            throw new Error('JACS verification failed or did not return a valid RPC request object.');
         }
 
-        const response = await super.handle(request);
+        const mcpResponse = await super.handle(actualRpcRequestObject);
 
-        return {
-            ...response,
-            payload: await this.jacsAgent.signResponse(response.payload)
-        };
+        let payloadToSign;
+        let responseIsError = mcpResponse.hasOwnProperty('error');
+
+        if (responseIsError) {
+            payloadToSign = mcpResponse.error;
+        } else {
+            payloadToSign = mcpResponse.result;
+        }
+
+        const signedPayloadJws = await this.jacsAgent.signResponse(payloadToSign);
+
+        if (responseIsError) {
+            return { jsonrpc: "2.0", id: mcpResponse.id, error: signedPayloadJws };
+        } else {
+            return { jsonrpc: "2.0", id: mcpResponse.id, result: signedPayloadJws };
+        }
     }
 }
 
