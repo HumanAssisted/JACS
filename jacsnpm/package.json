@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "JACS Node.js bindings with MCP integration",
   "main": "index.js",
+  "type": "module",
   "types": "index.d.ts",
   "exports": {
     ".": {

@@ -2,6 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 /**
  * Creates middleware for JACS request/response signing and verification
@@ -74,16 +75,56 @@ export class JacsMcpServer extends McpServer {
      * @param {string} options.name - Server name
      * @param {string} options.version - Server version
      * @param {string} [options.configPath] - Path to JACS config
+     * @param {Object} [options.transport] - Custom transport (defaults to StdioServerTransport)
      */
     constructor(options) {
+        const transportInstance = options.transport || new StdioServerTransport();
+        
+        // Pass only name and version to McpServer constructor,
+        // as transport is handled by McpServer.connect(transport)
         super({
             name: options.name,
             version: options.version
         });
+
+        this.configPath = options.configPath;
+        // Store the transport instance to be used in the connect method
+        this.explicitTransport = transportInstance;
+    }
+
+    /**
+     * Connects the server using the configured transport.
+     */
+    async connect() {
+        if (!this.explicitTransport) {
+            throw new Error("JacsMcpServer: Transport not initialized or configured.");
+        }
+        // Call the parent McpServer's connect method with the stored transport
+        await super.connect(this.explicitTransport);
+    }
+
+    // Override the handle method to add JACS verification
+    async handle(request) {
+        const jacs = await import('./index.js');
         
-        this.use(createJacsMiddleware({
-            configPath: options.configPath
-        }));
+        if (this.configPath) {
+            await jacs.load(this.configPath);
+        }
+
+        // Verify the incoming request using JACS
+        const verified = await jacs.verifyRequest(request.payload);
+        if (!verified) {
+            throw new Error('Failed to verify request signature');
+        }
+
+        // Call parent class to handle the request
+        const response = await super.handle(request);
+
+        // Sign the response using JACS
+        return {
+            ...response,
+            payload: await jacs.signResponse(response.payload)
+        };
     }
 }
 
