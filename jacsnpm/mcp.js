@@ -145,9 +145,26 @@ export class JacsMcpClient extends Client {
             version: options.version
         });
 
-        const baseTransport = new StreamableHTTPClientTransport(options.url);
-        this.transport = createJacsTransport(baseTransport, {
-            configPath: options.configPath
+        // Store URL and configPath for use in the connect method
+        this.serverUrl = options.url;
+        this.configPath = options.configPath;
+        // this.transport will be initialized and passed during the connect phase
+    }
+
+    /**
+     * Connects the client to the server using the configured JACS transport.
+     */
+    async connect() {
+        if (!this.serverUrl) {
+            throw new Error("JacsMcpClient: Server URL is not configured.");
+        }
+
+        const baseTransport = new StreamableHTTPClientTransport(this.serverUrl);
+        const jacsTransport = createJacsTransport(baseTransport, {
+            configPath: this.configPath
         });
+
+        // Call the parent Client's connect method with the JACS-wrapped transport
+        await super.connect(jacsTransport);
     }
 }

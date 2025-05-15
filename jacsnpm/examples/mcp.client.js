@@ -1,5 +1,6 @@
 import { JacsMcpClient } from '../mcp.js';
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+// StdioClientTransport is not used if connecting via HTTP, so it can be removed if not needed for other purposes.
+// import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"; 
 
 // Create a JACS-enabled MCP client
 const client = new JacsMcpClient({
@@ -12,6 +13,10 @@ const client = new JacsMcpClient({
 // Example usage
 async function runExample() {
     try {
+        // Explicitly connect the client
+        await client.connect();
+        console.log('Client connected to server.');
+
         // List prompts
         const prompts = await client.listPrompts();
         console.log('Available prompts:', prompts);
