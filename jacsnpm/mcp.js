@@ -37,36 +37,91 @@ export function createJacsTransport(transport, options = {}) {
         const jacs = await import('./index.js');
         if (options.configPath) { await jacs.load(options.configPath); }
 
-        const signedRequestJws = jacs.signRequest(msg);
+        console.log("Original MCP message:", JSON.stringify(msg, null, 2));
         
-        const serverRpcResponse = await originalSend(signedRequestJws);
-
-        let jwsToVerify;
-        let responseFieldIsError = false;
-
-        if (serverRpcResponse.hasOwnProperty('result')) {
-            jwsToVerify = serverRpcResponse.result;
-        } else if (serverRpcResponse.hasOwnProperty('error')) {
-            if (typeof serverRpcResponse.error === 'string' && serverRpcResponse.error.split('.').length === 3) {
-                jwsToVerify = serverRpcResponse.error;
-                responseFieldIsError = true;
-            } else {
-                return serverRpcResponse;
+        // Don't modify the original message structure at all
+        // Instead, create a wrapper for JACS
+        const wrapper = { jacs_payload: msg };
+        
+        // Sign the entire wrapper, which will return a JWS
+        const signedJWS = jacs.signRequest(wrapper);
+        console.log("Signed JWS (first 50 chars):", signedJWS.substring(0, 50) + "...");
+        
+        // The signed JWS contains our original message wrapped in jacs_payload
+        // We need to extract the payload back out and send it
+        try {
+            // Parse the JWS to extract the payload
+            const jwsParts = signedJWS.split('.');
+            if (jwsParts.length !== 3) {
+                throw new Error('Invalid JWS format');
             }
-        } else {
-            throw new Error('Client: Server response missing "result" or "error" field.');
-        }
-        
-        if (typeof jwsToVerify !== 'string') {
-            throw new Error(`Client: Expected JWS string in server response's "${responseFieldIsError ? 'error' : 'result'}" field, got ${typeof jwsToVerify}`);
-        }
-
-        const verifiedPayload = await jacs.verifyResponse(jwsToVerify);
-
-        if (responseFieldIsError) {
-            return { ...serverRpcResponse, error: verifiedPayload };
-        } else {
-            return { ...serverRpcResponse, result: verifiedPayload };
+            
+            // Base64 decode the payload
+            const payloadB64 = jwsParts[1];
+            const payloadJson = Buffer.from(payloadB64, 'base64').toString('utf8');
+            const payload = JSON.parse(payloadJson);
+            
+            // Extract the original message from jacs_payload
+            if (!payload.jacs_payload) {
+                throw new Error('Missing jacs_payload in decoded JWS');
+            }
+            
+            console.log("Extracted payload from JWS:", JSON.stringify(payload.jacs_payload, null, 2));
+            
+            // Send the original message, unchanged
+            const serverRpcResponse = await originalSend(msg);
+            console.log("Server RPC Response:", JSON.stringify(serverRpcResponse, null, 2));
+            
+            // Handle potential JWS responses similarly
+            if (serverRpcResponse.hasOwnProperty('result') && 
+                typeof serverRpcResponse.result === 'string' && 
+                serverRpcResponse.result.split('.').length === 3) {
+                
+                console.log("Result appears to be a JWS, verifying...");
+                const verifiedPayload = await jacs.verifyResponse(serverRpcResponse.result);
+                console.log("Verified payload:", JSON.stringify(verifiedPayload, null, 2));
+                
+                // Extract the actual payload content from jacs_payload if it exists
+                if (verifiedPayload && verifiedPayload.jacs_payload) {
+                    return {
+                        ...serverRpcResponse,
+                        result: verifiedPayload.jacs_payload
+                    };
+                }
+                
+                return {
+                    ...serverRpcResponse,
+                    result: verifiedPayload
+                };
+            }
+            
+            if (serverRpcResponse.hasOwnProperty('error') && 
+                typeof serverRpcResponse.error === 'string' && 
+                serverRpcResponse.error.split('.').length === 3) {
+                
+                console.log("Error appears to be a JWS, verifying...");
+                const verifiedPayload = await jacs.verifyResponse(serverRpcResponse.error);
+                console.log("Verified error payload:", JSON.stringify(verifiedPayload, null, 2));
+                
+                // Extract the actual payload content from jacs_payload if it exists
+                if (verifiedPayload && verifiedPayload.jacs_payload) {
+                    return {
+                        ...serverRpcResponse,
+                        error: verifiedPayload.jacs_payload
+                    };
+                }
+                
+                return {
+                    ...serverRpcResponse,
+                    error: verifiedPayload
+                };
+            }
+            
+            return serverRpcResponse;
+            
+        } catch (error) {
+            console.error("Error in JACS transport:", error);
+            throw new Error(`JACS transport error: ${error.message}`);
         }
     };
     return transport;
@@ -136,31 +191,56 @@ export class JacsMcpServer extends McpServer {
             }
         }
 
-        const actualRpcRequestObject = await this.jacsAgent.verifyRequest(request.payload);
+        // The 'request' object here is the MCP compliant request, e.g. { jsonrpc: "2.0", id: "1", method: "...", payload: ... }
+        // request.payload is the JSON-RPC request object { id: "1", method: "...", params: ... }
+
+        console.log("JACS Server: Received raw request payload:", JSON.stringify(request.payload, null, 2));
+
+        // Clone the request.payload to modify it for super.handle()
+        const actualRpcRequestObject = JSON.parse(JSON.stringify(request.payload));
         
-        if (!actualRpcRequestObject || typeof actualRpcRequestObject !== 'object') {
-            console.error("JacsMcpServer: verifyRequest did not return an object. Received:", actualRpcRequestObject);
-            throw new Error('JACS verification failed or did not return a valid RPC request object.');
+        // If actualRpcRequestObject.params exists and is a string (potentially a JWS)
+        if (actualRpcRequestObject.params && typeof actualRpcRequestObject.params === 'string' && actualRpcRequestObject.params.split('.').length === 3) {
+            console.log("JACS Server: Verifying JWS in 'params' field:", actualRpcRequestObject.params.substring(0, 50) + "...");
+            const verifiedParamsWrapper = await this.jacsAgent.verifyRequest(actualRpcRequestObject.params); // verifyRequest is an alias for verifyResponse
+            
+            if (verifiedParamsWrapper && verifiedParamsWrapper.hasOwnProperty('jacs_payload')) {
+                actualRpcRequestObject.params = verifiedParamsWrapper.jacs_payload;
+                console.log("JACS Server: Unwrapped 'params' from jacs_payload:", JSON.stringify(actualRpcRequestObject.params, null, 2));
+            } else {
+                // This means the JWS didn't contain the expected jacs_payload structure.
+                // This could be an error or a JWS not signed by our convention.
+                console.error("JACS Server: 'params' JWS verification did not yield jacs_payload. Using raw verification output:", JSON.stringify(verifiedParamsWrapper, null, 2));
+                actualRpcRequestObject.params = verifiedParamsWrapper; // Let SDK handle this, may fail Zod
+            }
+        } else if (actualRpcRequestObject.params) {
+             console.log("JACS Server: 'params' field is not a JWS string, passing as is:", JSON.stringify(actualRpcRequestObject.params, null, 2));
         }
 
+
+        console.log("JACS Server: Calling super.handle with processed request object:", JSON.stringify(actualRpcRequestObject, null, 2));
         const mcpResponse = await super.handle(actualRpcRequestObject);
+        console.log("JACS Server: Response from super.handle:", JSON.stringify(mcpResponse, null, 2));
 
-        let payloadToSign;
-        let responseIsError = mcpResponse.hasOwnProperty('error');
+        const signedResponse = { 
+            jsonrpc: "2.0", 
+            id: mcpResponse.id 
+        };
 
-        if (responseIsError) {
-            payloadToSign = mcpResponse.error;
-        } else {
-            payloadToSign = mcpResponse.result;
+        if (mcpResponse.hasOwnProperty('error')) {
+            // mcpResponse.error is the actual error object
+            console.log("JACS Server: Signing 'error' object:", JSON.stringify(mcpResponse.error, null, 2));
+            signedResponse.error = await this.jacsAgent.signResponse(mcpResponse.error); // signResponse wraps in jacs_payload and returns JWS
+            console.log("JACS Server: 'error' object signed into JWS.");
+        } else if (mcpResponse.hasOwnProperty('result')) {
+            // mcpResponse.result is the actual result object
+            console.log("JACS Server: Signing 'result' object:", JSON.stringify(mcpResponse.result, null, 2));
+            signedResponse.result = await this.jacsAgent.signResponse(mcpResponse.result); // signResponse wraps in jacs_payload and returns JWS
+            console.log("JACS Server: 'result' object signed into JWS.");
         }
 
-        const signedPayloadJws = await this.jacsAgent.signResponse(payloadToSign);
-
-        if (responseIsError) {
-            return { jsonrpc: "2.0", id: mcpResponse.id, error: signedPayloadJws };
-        } else {
-            return { jsonrpc: "2.0", id: mcpResponse.id, result: signedPayloadJws };
-        }
+        console.log("JACS Server: Final signed response to send:", JSON.stringify(signedResponse, null, 2));
+        return signedResponse;
     }
 }
 
