@@ -8,23 +8,20 @@ async function example() {
         // First check what we're actually getting
         console.log('Module type:', typeof jacs);
         // Load the agent with the config
-        await jacs.load("./config.json");
+        await jacs.load("./jacs.client.config.json");
         console.log("Agent loaded successfully");
 
-        // Create a document
-        const document = await jacs.create_document(
+        const request = await jacs.signRequest(
             JSON.stringify({ hello: "world" }),  // document_string
             null,                               // custom_schema
             "example.json",                     // outputfilename
-            false,                              // no_save
+            true,                              // no_save
             null,                               // attachments
             false                               // embed
         );
-        console.log("Created document:", document);
-
-        // Verify the document
-        const isValid = await jacs.verify_document(document);
-        console.log("Document is valid:", isValid);
+        console.log("Created request:", request);
+        const agentId = await jacs.verifyResponseWithAgentId(request);
+        console.log("Agent ID and payload:", agentId);
 
     } catch (error) {
         console.error("Error:", error);
