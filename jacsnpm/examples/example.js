@@ -11,8 +11,10 @@ async function example() {
         await jacs.load("./jacs.client.config.json");
         console.log("Agent loaded successfully");
 
+        const docstring = { hello: "world" };
+
         const request = await jacs.signRequest(
-            JSON.stringify({ hello: "world" }),  // document_string
+            JSON.stringify(docstring),      // document_string
             null,                               // custom_schema
             "example.json",                     // outputfilename
             true,                              // no_save
@@ -22,6 +24,12 @@ async function example() {
         console.log("Created request:", request);
         const agentId = await jacs.verifyResponseWithAgentId(request);
         console.log("Agent ID and payload:", agentId);
+
+        const response = await jacs.verifyResponse(request);
+        console.log("Verified response:", response);
+        let payload = response.payload;
+        console.log("Payload:", payload);   
+        assert(payload == docstring);
 
     } catch (error) {
         console.error("Error:", error);
