@@ -11,14 +11,14 @@
         "mcp:client": "node mcp.client.js",
         "test:mcp": "npm run server & sleep 2 && npm run client",
         "koa": "node koaserver.js",
-        "express": "node expressserver.js",
+        "express": "node expressmiddleware.js",
         "http:client": "node httpclient.js"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.11.4",
         "jacsnpm": "file:../jacsnpm",
         "koa": "^3",
-        "express": "^4.19.2"
+        "express": "^5.0"
     },
     "devDependencies": {
         "@types/node": "^22"
