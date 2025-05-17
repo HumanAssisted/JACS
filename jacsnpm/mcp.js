@@ -1,8 +1,10 @@
 // File: JACS/jacsnpm/mcp.js
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server as CoreMcpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import jacsNapiInstance from './index.js'; // Import the NAPI instance at the module level
 
 /**
  * Creates middleware for JACS request/response signing and verification
@@ -12,18 +14,37 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 export function createJacsMiddleware(options = {}) {
     return async (ctx, next) => {
         const jacs = await import('./index.js');
-        if (options.configPath) { await jacs.load(options.configPath); }
-        if (ctx.request) {
-            try { 
-                let validated_request = jacs.verifyResponse(ctx.request);
-                ctx.request = validated_request.payload;
-             }
-            catch (error) { throw new Error(`Invalid JACS request: ${error.message}`); }
+        if (options.configPath) { 
+            await jacs.load(options.configPath); 
         }
+
+        // Verify incoming request if present
+        if (ctx.request) {
+            try {
+                if (typeof ctx.request === 'string') {
+                    // Assuming server receives JACS doc, client sends JACS doc
+                    // Server verifies incoming request (which was signed by client's signRequest)
+                    const verifiedRequest = await jacs.verifyResponse(ctx.request); // verifyResponse used to decrypt/verify a JACS document
+                    ctx.request = verifiedRequest.payload;
+                } else {
+                    console.log("JACS Middleware: Request is not a string, assuming already parsed JSON");
+                }
+            } catch (error) { 
+                throw new Error(`Invalid JACS request: ${error.message}`); 
+            }
+        }
+
+        // Process the request through next middleware
         await next();
+
+        // Sign outgoing response if present
         if (ctx.response) {
-            try { ctx.response = jacs.signRequest(ctx.response); }
-            catch (error) { throw new Error(`Failed to sign response: ${error.message}`); }
+            try {
+                // Server signs outgoing response
+                ctx.response = await jacs.signRequest(ctx.response); // signRequest used to create a JACS document
+            } catch (error) { 
+                throw new Error(`Failed to sign response: ${error.message}`); 
+            }
         }
     };
 }
@@ -36,53 +57,45 @@ export function createJacsMiddleware(options = {}) {
  */
 export function createJacsTransport(transport, options = {}) {
     const originalSend = transport.send.bind(transport);
+    
     transport.send = async (msg) => { // msg is the original JSON-RPC object
         const jacs = await import('./index.js');
+        
         if (options.configPath) { 
             try {
                 console.log(`JACS Client: Loading JACS config from ${options.configPath}`);
                 await jacs.load(options.configPath); 
-                console.log("JACS Client: JACS config loaded successfully.");
+                console.log("JACS Client: JACS config loaded successfully");
             } catch (e) {
                 console.error(`JACS Client: FATAL - Failed to load JACS config ${options.configPath}`, e);
                 throw e; 
             }
         }
 
-        console.log("JACS Client: Original MCP JSON-RPC message to sign & send:", JSON.stringify(msg, null, 2));
-        
         let jacsDocumentStringForRequest;
         try {
-            // Sign the entire original JSON-RPC message object
-            // Assuming jacs.signRequest takes the object and returns the JACS Document String
+            // Client signs the JSON-RPC message object
             jacsDocumentStringForRequest = await jacs.signRequest(msg);
             console.log("JACS Client: JACS Document String prepared for sending (first 100 chars):", jacsDocumentStringForRequest.substring(0,100) + "...");
         } catch (signingError) {
             console.error("JACS Client: ERROR signing entire request object:", signingError);
-            // If signing fails, we can't proceed with this request securely.
-            // Propagate a meaningful error.
-            // Make sure to return a JSON-RPC compliant error if possible, or rethrow.
              return {
                 jsonrpc: "2.0",
-                id: msg.id || null, // Use original request ID if available
+                id: msg.id || null,
                 error: {
-                    code: -32010, // Custom client-side error for JACS signing failure
+                    code: -32010, 
                     message: `JACS Client: Failed to sign request object: ${signingError.message}`,
                     data: signingError.toString() 
                 }
             };
         }
         
-        // Send the JACS Document String as the raw request body.
         console.log("JACS Client: Sending JACS Document String to server (via originalSend) (first 100 chars):", jacsDocumentStringForRequest.substring(0,100) + "...");
         const rawServerResponse = await originalSend(jacsDocumentStringForRequest); 
-        // ^^^ We now expect rawServerResponse to be the JACS Document String from the server OR undefined on error/no response
         
         if (typeof rawServerResponse === 'undefined') {
-            console.warn(`JACS Client: WARNING - originalSend for request (id=${msg.id}, method=${msg.method}) returned undefined. Expected JACS Document String or specific error object from transport.`);
+            console.warn(`JACS Client: WARNING - originalSend for request (id=${msg.id}, method=${msg.method}) returned undefined.`);
             if (msg.hasOwnProperty('id')) { 
-                console.error(`JACS Client: ERROR - originalSend returned undefined for a request that expected a JACS response.`);
-                // This is the case where the transport itself gives up or returns nothing.
                 return { 
                     jsonrpc: "2.0", 
                     id: msg.id, 
@@ -91,50 +104,41 @@ export function createJacsTransport(transport, options = {}) {
                         message: "Client Error: No JACS response or undefined response received from server's transport layer." 
                     } 
                 };
-            } else { 
-                console.log(`JACS Client: Notification ${msg.method} sent. No JACS response expected, and originalSend returned undefined.`);
-                return undefined; 
             }
+            return undefined; 
         } else if (rawServerResponse && rawServerResponse.jsonrpc && rawServerResponse.error && typeof rawServerResponse.error.code === 'number') {
-            // This checks if originalSend itself returned a JSON-RPC error object (e.g. from StreamableHTTPClientTransport due to HTTP error)
             console.warn(`JACS Client: originalSend returned a JSON-RPC error object directly:`, JSON.stringify(rawServerResponse, null, 2));
-            return rawServerResponse; // Pass this error through
+            return rawServerResponse;
         } else if (typeof rawServerResponse !== 'string') {
-             // This is an unexpected response type from originalSend if it's not undefined and not a JACS string
             console.error("JACS Client: ERROR - Expected JACS Document String from server, but received non-string:", typeof rawServerResponse, rawServerResponse);
             return { 
                 jsonrpc: "2.0", 
                 id: msg.id || null, 
                 error: { 
                     code: -32009, 
-                    message: "Client Error: Did not receive a JACS Document String from server as expected. Received type: " + typeof rawServerResponse,
-                    data: String(rawServerResponse).substring(0, 200) // Include snippet of what was received
+                    message: "Client Error: Did not receive a JACS Document String from server. Received type: " + typeof rawServerResponse,
+                    data: String(rawServerResponse).substring(0, 200)
                 } 
             };
         } else {
             console.log("JACS Client: Received raw JACS Document String from server (first 100 chars):", rawServerResponse.substring(0,100) + "...");
         }
 
-        // Now, rawServerResponse should be the JACS Document String from the server.
         let finalRpcResponseObject;
-        // No need to check typeof rawServerResponse === 'string' again due to previous conditional block
-        console.log("JACS Client: Response is a string. Assuming JACS Document. Verifying with jacs.verifyResponse.");
         try {
+            // Client verifies the JACS Document String from the server
             let verified_response = await jacs.verifyResponse(rawServerResponse); 
             finalRpcResponseObject = verified_response.payload;
 
-            console.log("JACS Client: Verified JSON-RPC response object from server:", JSON.stringify(finalRpcResponseObject, null, 2));
-            
             if (!finalRpcResponseObject || typeof finalRpcResponseObject !== 'object' || !finalRpcResponseObject.jsonrpc) {
                 console.error("JACS Client: ERROR - Verified response is not a valid JSON-RPC object:", finalRpcResponseObject);
-                // Construct a JSON-RPC error to return to the application
                 finalRpcResponseObject = {
                     jsonrpc: "2.0",
-                    id: msg.id || null, // Try to preserve ID
+                    id: msg.id || null,
                     error: {
-                        code: -32011, // Custom error: verification yielded invalid RPC
+                        code: -32011, 
                         message: "Client Error: JACS verification of server response did not yield a valid JSON-RPC object.",
-                        data: JSON.stringify(finalRpcResponseObject) // show what was actually parsed
+                        data: JSON.stringify(finalRpcResponseObject)
                     }
                 };
             }
@@ -151,7 +155,6 @@ export function createJacsTransport(transport, options = {}) {
             };
         }
         
-        console.log("JACS Client: Final processed JSON-RPC response to return to application:", JSON.stringify(finalRpcResponseObject, null, 2));
         return finalRpcResponseObject;
     };
     return transport;
@@ -166,26 +169,36 @@ export class JacsMcpServer extends McpServer {
      * @param {string} options.name - Server name
      * @param {string} options.version - Server version
      * @param {string} [options.configPath] - Path to JACS config
-     * @param {Object} [options.transport] - Custom transport (defaults to StdioServerTransport)
+     * @param {Object} [options.transport] - Custom transport
      */
     constructor(options) {
-        const transportInstance = options.transport || new StdioServerTransport();
-        
-        super({
-            name: options.name,
-            version: options.version
-        });
+        super(
+            { name: options.name, version: options.version },
+            options.serverOptions
+        );
 
         this.configPath = options.configPath;
-        this.explicitTransport = transportInstance;
         this.jacsAgent = null;
-        console.log(`JacsMcpServer Constructor: Initialized name='${options.name}', version='${options.version}'. Explicit transport set. Config path: '${this.configPath}'`);
+        console.log(`JacsMcpServer Constructor: Initialized. Config path: '${this.configPath}'`);
+
+        // Store the transport from constructor options
+        if (!options.transport) {
+            // If no transport is provided in options, you might default or error.
+            // Your example mcp.server.js *does* provide options.transport.
+            console.warn("JacsMcpServer constructor: options.transport is undefined. Using default StdioServerTransport.");
+            this.storedTransport = new StdioServerTransport(); 
+        } else {
+            this.storedTransport = options.transport;
+        }
     }
 
+    /**
+     * Load the JACS agent
+     */
     async loadJacsAgent() {
         if (!this.configPath) {
-            console.error("JacsMcpServer.loadJacsAgent: configPath not provided. JACS agent cannot be loaded.");
-            return false; 
+            console.error("JacsMcpServer.loadJacsAgent: configPath not provided.");
+            return false;
         }
         if (this.jacsAgent) {
             console.log("JacsMcpServer.loadJacsAgent: JACS agent already loaded.");
@@ -193,10 +206,12 @@ export class JacsMcpServer extends McpServer {
         }
         console.log(`JacsMcpServer.loadJacsAgent: Attempting to load JACS NAPI and config from '${this.configPath}'`);
         try {
-            const jacs = await import('./index.js'); 
-            await jacs.load(this.configPath);
-            this.jacsAgent = jacs; 
-            console.log("JacsMcpServer.loadJacsAgent: JACS agent loaded successfully from:", this.configPath);
+            // Use the module-level jacsNapiInstance.
+            // The load call configures this shared instance.
+            console.log(`JacsMcpServer.loadJacsAgent: Loading JACS NAPI instance with config: ${this.configPath}`);
+            await jacsNapiInstance.load(this.configPath);
+            this.jacsAgent = jacsNapiInstance; // Assign the configured NAPI instance
+            console.log("JacsMcpServer.loadJacsAgent: JACS NAPI instance configured and assigned to this.jacsAgent.");
             return true;
         } catch (error) {
             console.error(`JacsMcpServer.loadJacsAgent: CRITICAL - Failed to load JACS agent from ${this.configPath}.`, error);
@@ -206,81 +221,125 @@ export class JacsMcpServer extends McpServer {
     }
 
     /**
-     * Connects the server using the configured transport.
+     * Connect the server to its transport
      */
     async connect() {
-        console.log("JacsMcpServer.connect: Process started. Attempting to load JACS agent...");
+        console.log("JacsMcpServer.connect: Attempting to load JACS agent...");
         const agentLoaded = await this.loadJacsAgent();
         if (!agentLoaded || !this.jacsAgent) {
             console.error("JacsMcpServer.connect: Critical JACS agent failed to load. Server cannot start securely.");
-            throw new Error("JacsMcpServer.connect: Critical JACS agent failed to load. Server cannot start securely.");
+            throw new Error("JacsMcpServer.connect: Critical JACS agent failed to load.");
         }
 
-        if (!this.explicitTransport) {
-            console.error("JacsMcpServer.connect: explicitTransport is not set. This is required.");
-            throw new Error("JacsMcpServer.connect: Transport not initialized or configured.");
+        if (!this.storedTransport) {
+            // This should ideally be caught in the constructor if options.transport was mandatory
+            throw new Error("JacsMcpServer.connect: Stored transport is undefined. It should have been set in the constructor from options.transport.");
         }
+
+        // McpServer.connect(transport) internally calls this.server.connect(transport).
+        // We call super.connect() and pass it the transport we stored from the constructor.
+        console.log("JacsMcpServer.connect: Calling super.connect with stored transport.");
+        await super.connect(this.storedTransport); 
         
-        console.log("JacsMcpServer.connect: JACS Agent loaded. Connecting server to its explicit transport...");
-        await super.connect(this.explicitTransport); 
         console.log("JacsMcpServer.connect: Server connection to transport successful.");
     }
 
-    async handle(request) { 
+    /**
+     * Handle a request
+     * @param {string|Object} request - Raw request (JACS document string or parsed JSON)
+     */
+    async handle(requestString) {
+        let requestId = null;
+        try {
+            const preParse = JSON.parse(requestString);
+            if (preParse && typeof preParse === 'object' && preParse.jacs_payload && typeof preParse.jacs_payload === 'object' && preParse.jacs_payload.hasOwnProperty('id')) {
+                requestId = preParse.jacs_payload.id;
+            }
+        } catch (e) { /* Potentially not a JACS string or not plain JSON, ID might be found later */ }
+
         if (!this.jacsAgent) {
-            console.error("JacsMcpServer.handle: CRITICAL - JACS agent not available!");
-            // Return a JACS-signed error if possible, otherwise a raw error string might be the only option
-            // For now, this is a plain object. The transport layer (StreamableHTTPServerTransport)
-            // will JSON.stringify this. If we want this error itself JACS signed, it's more complex here.
-            // However, the client might not be able to JACS-verify it if the agent itself is the problem.
-             return { 
-                jsonrpc: "2.0", 
-                id: request.id || null, 
-                error: { code: -32002, message: "Internal server error: JACS agent unavailable for response signing." } 
+            console.error("JacsMcpServer.handle: CRITICAL - this.jacsAgent is null. Ensure loadJacsAgent was successful during connect.");
+            const err = { jsonrpc: "2.0", id: requestId, error: { code: -32002, message: "JACS agent not available" }};
+            return JSON.stringify(err);
+        }
+
+        let jsonRpcPayload;
+        try {
+            if (typeof requestString !== 'string') {
+                console.error(`JacsMcpServer.handle: Input 'requestString' is not a string (type: ${typeof requestString}). This is unexpected.`);
+                throw new Error("Invalid input: requestString must be a string for JACS verification.");
+            }
+            console.log(`JacsMcpServer.handle: Attempting JACS verification. Input string length: ${requestString.length}.`);
+            // --- THE CRITICAL CALL ---
+            const verificationResult = await this.jacsAgent.verifyResponse(requestString);
+            // --- END CRITICAL CALL ---
+            console.log("JacsMcpServer.handle: jacsAgent.verifyResponse returned:", JSON.stringify(verificationResult));
+
+            if (!verificationResult || typeof verificationResult !== 'object' || !verificationResult.hasOwnProperty('payload')) {
+                console.error("JacsMcpServer.handle: Invalid result from jacsAgent.verifyResponse. Expected object with 'payload', got:", verificationResult);
+                throw new Error("JACS verification failed: result structure incorrect (missing payload).");
+            }
+            jsonRpcPayload = verificationResult.payload;
+            if (typeof jsonRpcPayload !== 'object' || jsonRpcPayload === null) {
+                console.error("JacsMcpServer.handle: 'payload' from JACS verification is not an object. Payload:", jsonRpcPayload);
+                throw new Error("JACS verification failed: payload is not an object.");
+            }
+            if (jsonRpcPayload.hasOwnProperty('id')) requestId = jsonRpcPayload.id; // Update ID from verified payload
+            console.log("JacsMcpServer.handle: JACS document verified successfully. Payload extracted.");
+
+        } catch (jacsError) {
+            console.error(`JacsMcpServer.handle: Error during jacsAgent.verifyResponse stage. Message: ${jacsError.message}`, jacsError.stack);
+            const err = { jsonrpc: "2.0", id: requestId, error: { code: -32700, message: `JACS verification error: ${jacsError.message}` }};
+            try { return await this.jacsAgent.signRequest(err); }
+            catch (signErr) { console.error("JacsMcpServer.handle: Failed to sign verification error:", signErr); return JSON.stringify(err); }
+        }
+
+        if (!jsonRpcPayload || typeof jsonRpcPayload.method !== 'string') {
+            console.error("JacsMcpServer.handle: Invalid JSON-RPC payload after verification (e.g., missing 'method'). Payload:", jsonRpcPayload);
+            const err = { jsonrpc: "2.0", id: requestId, error: { code: -32600, message: "Invalid JSON-RPC structure in JACS payload." }};
+            try { return await this.jacsAgent.signRequest(err); }
+            catch (signErr) { return JSON.stringify(err); }
+        }
+
+        let mcpResponseObject;
+        if (this.server && typeof this.server['receiveRequest'] === 'function') {
+            try {
+                if ('method' in jsonRpcPayload && 'id' in jsonRpcPayload) {
+                    mcpResponseObject = await this.server['receiveRequest'](jsonRpcPayload);
+                } else if ('method' in jsonRpcPayload) {
+                    await this.server['receiveNotification'](jsonRpcPayload);
+                    mcpResponseObject = undefined;
+                } else {
+                    throw new Error("Invalid JSON-RPC message structure");
+                }
+            } catch (processingError) {
+                console.error("JacsMcpServer.handle: Error processing request via this.server.receiveRequest/Notification:", processingError);
+                mcpResponseObject = {
+                    jsonrpc: "2.0",
+                    id: requestId,
+                    error: { code: -32603, message: `Internal error processing request: ${processingError.message}` }
+                };
+            }
+        } else {
+            console.error("JacsMcpServer.handle: CRITICAL - this.server (CoreMcpServer) does not have a 'receiveRequest' or 'receiveNotification' method or is undefined.");
+            mcpResponseObject = {
+                jsonrpc: "2.0",
+                id: requestId,
+                error: { code: -32000, message: "Server misconfiguration: Cannot process request." }
             };
         }
-        
-        // 'request' is the actual JSON-RPC object, already verified and unwrapped by the HTTP layer in mcp.server.js
-        console.log("JacsMcpServer.handle: Received verified JSON-RPC request:", JSON.stringify(request, null, 2));
-        
-        // Get the standard JSON-RPC response object from the core MCP server logic
-        const mcpResponseObject = await super.handle(request); 
-        console.log("JacsMcpServer.handle: JSON-RPC response from super.handle (to be JACS-signed):", JSON.stringify(mcpResponseObject, null, 2));
+
+        if (mcpResponseObject === undefined) {
+            return undefined;
+        }
 
         try {
-            // Sign the entire JSON-RPC response object
-            // Assuming this.jacsAgent.signResponse takes an object and returns a JACS Document String
-            const jacsDocumentStringResponse = await this.jacsAgent.signResponse(mcpResponseObject);
-            console.log("JacsMcpServer.handle: Returning JACS Document String to transport layer (first 100 chars):", jacsDocumentStringResponse.substring(0,100) + "...");
-            
-            // This JACS Document String will be sent as the raw HTTP response body by StreamableHTTPServerTransport
-            return jacsDocumentStringResponse; 
-
+            console.log("JacsMcpServer.handle: Signing JACS response");
+            return await this.jacsAgent.signRequest(mcpResponseObject);
         } catch (signingError) {
-            console.error("JacsMcpServer.handle: CRITICAL - Error JACS-signing the mcpResponseObject:", signingError);
-            // If signing the actual response fails, we must try to send a JACS-signed error about *that* failure.
-            const signingFailureErrorObject = {
-                jsonrpc: "2.0",
-                id: mcpResponseObject.id || request.id || null, // Try to use original ID
-                error: {
-                    code: -32003, // Internal JACS error on server
-                    message: `Internal Server Error: Failed to JACS-sign the response: ${signingError.message}`,
-                    data: signingError.toString()
-                }
-            };
-            // Try to sign this new error object.
-            try {
-                const signedErrorResponse = await this.jacsAgent.signResponse(signingFailureErrorObject);
-                console.warn("JacsMcpServer.handle: Returning JACS-signed error about a signing failure.");
-                return signedErrorResponse;
-            } catch (doubleFaultError) {
-                console.error("JacsMcpServer.handle: DOUBLE FAULT - Failed to even sign the error about a signing failure:", doubleFaultError);
-                // Last resort: send a plain text error. The client won't be able to JACS-verify this.
-                // The StreamableHTTPServerTransport will likely try to JSON.stringify this if it's not a string.
-                // So, returning a string directly is safest for raw transmission.
-                // Note: The client expects a JACS string. This will likely cause a verification error on client.
-                return `{\"jsonrpc\":\"2.0\",\"id\":${JSON.stringify(signingFailureErrorObject.id)},\"error\":{\"code\":-32000,\"message\":\"Server double fault: Cannot JACS-sign error response: ${doubleFaultError.message}\"}}`;
-            }
+            console.error("JacsMcpServer.handle: Error JACS-signing response:", signingError);
+            const err = { jsonrpc: "2.0", id: requestId, error: { code: -32003, message: `Failed to sign JACS response: ${signingError.message}` }};
+            return JSON.stringify(err); 
         }
     }
 }
@@ -304,11 +363,11 @@ export class JacsMcpClient extends Client {
 
         this.serverUrl = options.url;
         this.configPath = options.configPath;
-        console.log(`JacsMcpClient Constructor: Initialized name='${options.name}', version='${options.version}\', url='${this.serverUrl}\'. Config path: \'${this.configPath}\'`);
+        console.log(`JacsMcpClient Constructor: Initialized. URL='${this.serverUrl}'. Config path: \'${this.configPath}\'`);
     }
 
     /**
-     * Connects the client to the server using the configured JACS transport.
+     * Connects the client to the server
      */
     async connect() {
         if (!this.serverUrl) {
