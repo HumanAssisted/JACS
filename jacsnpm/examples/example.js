@@ -15,7 +15,7 @@ async function example() {
         const docstring = { hello: "world" };
 
         const request = await jacs.signRequest(
-            JSON.stringify(docstring),      // document_string
+            docstring,      
             null,                               // custom_schema
             "example.json",                     // outputfilename
             true,                              // no_save
@@ -38,7 +38,8 @@ async function example() {
        
 
       
-        console.log("Payload:", payload);   
+        console.log("Payload:", payload); 
+        console.log(typeof payload);   
         assert.deepStrictEqual(payload, docstring);
 
     } catch (error) {
