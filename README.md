@@ -1,10 +1,14 @@
 # JACS 
 
-Welcome to JACS (JSON Agent Communication Standard). JACS library provides
+Welcome to JACS (JSON Agent Communication Standard). 
 
-  1. a way to identify, trust and verify AI agents
-  2. authorize Agents to do tasks
-  3. create, update, version, and verify the origin and validity of documents
+JACS is used by agents to validate the source and identity of data. The data may be ephemeral, changing, or idempotent such as files, identities, logs, http requests. 
+
+Example uses:
+
+  1. A document is sitting on a server. Where did it come from? Who has access to it?
+  2. An MCP server gets a request from an unknown agent, the oauth flow doesn't guarantee the identity of the client or the server after the initial handshake. 
+  3. a document is modified by multiple human and AI collaborators. Which one is latest, correct version?
 
 This repo includes JACS available in several languages:
  

@@ -21,13 +21,20 @@ async function example() {
             null,                               // attachments
             false                               // embed
         );
+        console.log(typeof request);
         console.log("Created request:", request);
-        const agentId = await jacs.verifyResponseWithAgentId(request);
-        console.log("Agent ID and payload:", agentId);
 
         const response = await jacs.verifyResponse(request);
+        console.log(typeof response);
         console.log("Verified response:", response);
         let payload = response.payload;
+
+        const agent_and_payload = await jacs.verifyResponseWithAgentId(request);
+        console.log(typeof agent_and_payload);
+        console.log("Agent ID and payload:", agent_and_payload);
+       
+
+      
         console.log("Payload:", payload);   
         assert(payload == docstring);
 
