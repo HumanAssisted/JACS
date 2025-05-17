@@ -12,6 +12,10 @@
     "./mcp": {
       "import": "./mcp.js",
       "types": "./mcp.d.ts"
+    },
+    "./http": {
+      "import": "./http.js",
+      "types": "./http.d.ts"
     }
   },
   "scripts": {
@@ -43,6 +47,8 @@
     "index.js",
     "index.d.ts",
     "mcp.js",
-    "mcp.d.ts"
+    "mcp.d.ts",
+    "http.js",
+    "http.d.ts"
   ]
 } 

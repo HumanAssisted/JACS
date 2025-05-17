@@ -1,4 +1,3 @@
-// File: JACS/jacsnpm/mcp.d.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { Client } from "@modelcontextprotocol/sdk/client/index";
 
@@ -15,7 +14,6 @@ export interface JacsClientOptions extends JacsServerOptions {
     url: string;
 }
 
-export function createJacsMiddleware(options?: JacsOptions): (ctx: any, next: () => Promise<void>) => Promise<void>;
 export function createJacsTransport(transport: any, options?: JacsOptions): any;
 
 export class JacsMcpServer extends McpServer {

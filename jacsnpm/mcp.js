@@ -1,53 +1,11 @@
-// File: JACS/jacsnpm/mcp.js
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Server as CoreMcpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import jacsNapiInstance from './index.js'; // Import the NAPI instance at the module level
 
-/**
- * Creates middleware for JACS request/response signing and verification
- * @param {Object} options
- * @param {string} [options.configPath] - Path to JACS config file
- */
-export function createJacsMiddleware(options = {}) {
-    return async (ctx, next) => {
-        const jacs = await import('./index.js');
-        if (options.configPath) { 
-            await jacs.load(options.configPath); 
-        }
-
-        // Verify incoming request if present
-        if (ctx.request) {
-            try {
-                if (typeof ctx.request === 'string') {
-                    // Assuming server receives JACS doc, client sends JACS doc
-                    // Server verifies incoming request (which was signed by client's signRequest)
-                    const verifiedRequest = await jacs.verifyResponse(ctx.request); // verifyResponse used to decrypt/verify a JACS document
-                    ctx.request = verifiedRequest.payload;
-                } else {
-                    console.log("JACS Middleware: Request is not a string, assuming already parsed JSON");
-                }
-            } catch (error) { 
-                throw new Error(`Invalid JACS request: ${error.message}`); 
-            }
-        }
-
-        // Process the request through next middleware
-        await next();
-
-        // Sign outgoing response if present
-        if (ctx.response) {
-            try {
-                // Server signs outgoing response
-                ctx.response = await jacs.signRequest(ctx.response); // signRequest used to create a JACS document
-            } catch (error) { 
-                throw new Error(`Failed to sign response: ${error.message}`); 
-            }
-        }
-    };
-}
 
 /**
  * Creates a transport wrapper for JACS request/response handling
@@ -352,8 +310,11 @@ export class JacsMcpClient extends Client {
      * @param {Object} options
      * @param {string} options.name - Client name
      * @param {string} options.version - Client version
-     * @param {string} options.url - Server URL
+     * @param {string} [options.url] - Server URL (for HTTP transport)
+     * @param {string} [options.command] - Command to run for Stdio transport (e.g., "node")
+     * @param {string[]} [options.args] - Arguments for the command for Stdio transport (e.g., ["server.js"])
      * @param {string} [options.configPath] - Path to JACS config
+     * @param {Record<string, string>} [options.stdioEnv] - Environment variables for Stdio transport's child process
      */
     constructor(options) {
         super({
@@ -363,25 +324,41 @@ export class JacsMcpClient extends Client {
 
         this.serverUrl = options.url;
         this.configPath = options.configPath;
-        console.log(`JacsMcpClient Constructor: Initialized. URL='${this.serverUrl}'. Config path: \'${this.configPath}\'`);
+        this.command = options.command;
+        this.args = options.args;
+        this.stdioEnv = options.stdioEnv;
+        console.log(`JacsMcpClient Constructor: Initialized. URL='${this.serverUrl}'. Command='${this.command}'. Config path: \'${this.configPath}\'. StdioEnv provided: ${!!this.stdioEnv}`);
     }
 
     /**
      * Connects the client to the server
      */
     async connect() {
-        if (!this.serverUrl) {
-            throw new Error("JacsMcpClient.connect: Server URL (options.url) is not configured.");
+        let baseTransport;
+        if (this.serverUrl) {
+            // HTTP Transport
+            if (this.command || this.args) {
+                console.warn("JacsMcpClient.connect: 'url' is provided, 'command' and 'args' will be ignored for HTTP transport.");
+            }
+            let serverUrlObject;
+            try {
+                serverUrlObject = new URL(this.serverUrl);
+            } catch (e) {
+                throw new Error(`JacsMcpClient.connect: Invalid server URL \'${this.serverUrl}\': ${e.message}`);
+            }
+            console.log(`JacsMcpClient.connect: Creating StreamableHTTPClientTransport for URL: ${serverUrlObject.href}`);
+            baseTransport = new StreamableHTTPClientTransport(serverUrlObject);
+        } else if (this.command && this.args) {
+            // Stdio Transport
+            console.log(`JacsMcpClient.connect: Creating StdioClientTransport with command: '${this.command}', args: [${this.args.join(', ')}]`);
+            baseTransport = new StdioClientTransport({
+                command: this.command,
+                args: this.args,
+                env: this.stdioEnv 
+            });
+        } else {
+            throw new Error("JacsMcpClient.connect: Insufficient options. Provide 'url' for HTTP transport, or 'command' and 'args' for Stdio transport.");
         }
-        let serverUrlObject;
-        try {
-            serverUrlObject = new URL(this.serverUrl);
-        } catch (e) {
-            throw new Error(`JacsMcpClient.connect: Invalid server URL \'${this.serverUrl}\': ${e.message}`);
-        }
-
-        console.log(`JacsMcpClient.connect: Creating StreamableHTTPClientTransport for URL: ${serverUrlObject.href}`);
-        const baseTransport = new StreamableHTTPClientTransport(serverUrlObject);
         
         console.log(`JacsMcpClient.connect: Wrapping base transport with JACS. Config path for JACS: \'${this.configPath}\'`);
         const jacsWrappedTransport = createJacsTransport(baseTransport, {
@@ -391,5 +368,26 @@ export class JacsMcpClient extends Client {
         console.log("JacsMcpClient.connect: Attempting super.connect with JACS-wrapped transport...");
         await super.connect(jacsWrappedTransport);
         console.log("JacsMcpClient.connect: Successfully connected to server.");
+    }
+
+    /**
+     * Checks if the client is currently connected to a transport.
+     * @returns {boolean} True if connected, false otherwise.
+     */
+    isConnected() {
+        return this.transport !== undefined;
+    }
+
+    /**
+     * Closes the connection to the server.
+     * For StdioClientTransport, this will also terminate the child process.
+     */
+    async close() {
+        if (this.transport) {
+            await this.transport.close(); // The base Client's connect method should set this.transport
+            // The base Client's _onclose handler will set this.transport to undefined.
+            // If direct manipulation is needed and not handled by SDK's close:
+            // this.transport = undefined; 
+        }
     }
 }

@@ -50,7 +50,7 @@
  - [] github actions builder for linux varieties
 
 ### JACS core
-
+ - [] create centralized logging output without file output  
  - [] CA for cert
  - [] register public key in d option 
  - [] register agent
@@ -67,7 +67,7 @@
 
 ### JACS core
 
- - [] logging output without file output  
+
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
