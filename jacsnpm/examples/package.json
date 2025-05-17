@@ -1,0 +1,22 @@
+{
+    "name": "jacs-example",
+    "version": "0.1.0",
+    "description": "Example application using JACS with MCP SDK",
+    "main": "example.js",
+    "type": "module",
+    "scripts": {
+        "reset": "cd ../ && make dev && npm install --upgrade && cd examples && npm install --upgrade",
+        "start": "node example.js",
+        "server": "node mcp.server.js",
+        "client": "node mcp.client.js",
+        "test:mcp": "npm run server & sleep 2 && npm run client",
+        "setup": "mkdir -p data keys && node setup.js"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.11.2",
+        "jacsnpm": "file:../jacsnpm"
+    },
+    "devDependencies": {
+        "@types/node": "^22"
+    }
+}

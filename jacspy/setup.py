@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="jacspy",
+    name="jacs",
     version="0.1.0",
     packages=find_packages(),
-    package_data={"jacspy": ["jacspy.so", "linux/jacspylinux.so"]},
+    package_data={"jacs": ["jacs.abi3.so", "linux/jacspylinux.so"]},
 )

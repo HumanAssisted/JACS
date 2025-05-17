@@ -2,20 +2,20 @@
 
  
 build-jacs:
-	cd jacs && cargo install --path . --force
+	cd jacs && cargo install --path . --force  --features cli 
 	~/.cargo/bin/jacs --help 
 	~/.cargo/bin/jacs version
 
 test-jacs:
-	cd jacs && RUST_BACKTRACE=1 cargo test  -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --features cli   -- --nocapture
 
 test-jacs-cli:
-	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests  -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --features cli  --test cli_tests  -- --nocapture
 
 
 
 publish-jacs:
-	cargo publish --dry-run -p jacs
+	cargo publish --features cli  --dry-run -p jacs
 
 
 test: test-jacs test-jacspy

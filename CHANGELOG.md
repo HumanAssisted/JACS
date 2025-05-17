@@ -1,5 +1,6 @@
 # PLANNED
 -  machine fingerprinting v2
+- passkey-client integration
 - encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
@@ -8,6 +9,8 @@
 - use rcgen to sign certs, and register with ACME
  https://opentelemetry.io/docs/languages/rust/
 . ai.pydantic.dev
+- secure storage of private key for shared server envs https://crates.io/crates/tss-esapi, https://docs.rs/cryptoki/latest/cryptoki/
+
 
 ## 0.4.0
 - Domain integration
@@ -18,6 +21,7 @@
    - pass document string or document id - with optional version instead of string
    - load document whatever storage config is
    - function test output metadata about current config and current agent
+
 ## jacs-mcp 0.1.0
 
  - [] use rmcp
@@ -26,47 +30,71 @@
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
 
+--------------------
+
+## 0.3.6
+
+### jacsnpm
+
+ - [] github actions builder for linux varieties
+ - [] npm install jacs (cli and available to plugin)
+ - [] a2a integration
+ - [] integrate cli
+
+### jacspy
+ - [] a2a integration
+  - [] have jacs cli installed along with wheel
+   - [] python based instructions for how to create - cli create agent 
+      1. cli create agent 
+      2. config jacspy to load each agent
+ - [] github actions builder for linux varieties
+
+### JACS core
+
+ - [] CA for cert
+ - [] register public key in d option 
+ - [] register agent
+ - [] remove requirement to store public key type
+ - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] diff versions
+ - [] bucket integration
+ - [] RBAC integration with header
+ - [] clean io prepping for config of io
 
 --------------------
 
 ## 0.3.5
 
-### Register agent
+### JACS core
 
- - [] register agent
-    - [] remove requirement to store public key type
-
- - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
- - [] RBAC integration with header
- - [] diff versions
- - [] bucket integration
+ - [] logging output without file output  
  - [] don't store  "jacs_private_key_password":  in config, don't display
- - [] register public key 
- - [] CA for cert
- - [] add timestamp to prevent timing attacks to request/response features
- - [] no_save = false should save document and still return json string instead of message on create document
- - 
+ - [x] add timestamp to prevent replay attacks to request/response features
+ - [] minor feature - no_save = false should save document and still return json string instead of message on create document
+ - [x] make cli utils available to other libs
 
-## jacspy
- - [] install jacs cli with the python wheel
- - [] python based instructions for how to create - cli create agent 
-      1. cli create agent 
-      2. config jacspy to load each agent
 
- - [] auto generate agent doc from MCP server list, auto versions
- - [] traceable, verifiable request logs
+### jacspy
+
+
+ - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
+
  - [] fastmcp client and server stdio
  - [] fastmcp client and server websocket
  - [] publish jacspy to pypi
- - [] github actions builder for linux
- - [] mcp make decorator for @resource
  - [] mcp make sure "list" request is signed
+ - [] fastapi, django, flask, guvicorn 
+ - [] auto generate agent doc from MCP server list, auto versions (important for A2A as well)
 
 ## jacsnpm
-proof of concept
 
- - [] typescript mcp client and server
- - [] npm install jacs (cli and available to plugin)
+proof of concept
+ - [x] scaffold
+ - [x] use refactored agent trait instead of replicating
+ - [x] typescript mcp client and server tests
+ - []  test mcp client and server
+ - []  node express middleware
+
 
 --------------------
 
@@ -86,7 +114,7 @@ proof of concept
 
  - [x] make decorator for easy use in @tools
  - [x] new local builder
- - [] fastmcp client and server sse
+ - [x] fastmcp client and server sse
  - [x] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
  - [x] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
 
