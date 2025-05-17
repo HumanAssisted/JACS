@@ -1,8 +1,6 @@
-
-
-
 ## Usage 
 
+see [examples](./examples)
 
 ### With MCP
 
