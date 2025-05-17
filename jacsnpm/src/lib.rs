@@ -543,7 +543,12 @@ fn verify_response(env: Env, document_string: String) -> Result<JsObject> {
         .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))?;
 
     let js_value = value_to_js_value(env, &payload_serde_value)?;
-    Ok(js_value.try_into()?)
+    
+    // Create a wrapper object and set the payload as a property
+    let mut result_obj = env.create_object()?;
+    result_obj.set_named_property("payload", js_value)?;
+    
+    Ok(result_obj)
 }
 
 #[napi]

@@ -1,4 +1,5 @@
 import jacs from '../index.js';
+import assert from 'assert';
 
 // Debug what's available in the module
 console.log('Module contents:', Object.keys(jacs));
@@ -23,8 +24,10 @@ async function example() {
         );
         console.log(typeof request);
         console.log("Created request:", request);
-
+        console.log("Request type BEFORE verifyResponse:", typeof request);
         const response = await jacs.verifyResponse(request);
+        console.log("Request type AFTER verifyResponse:", typeof request);
+        
         console.log(typeof response);
         console.log("Verified response:", response);
         let payload = response.payload;
@@ -36,7 +39,7 @@ async function example() {
 
       
         console.log("Payload:", payload);   
-        assert(payload == docstring);
+        assert.deepStrictEqual(payload, docstring);
 
     } catch (error) {
         console.error("Error:", error);

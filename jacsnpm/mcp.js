@@ -14,7 +14,10 @@ export function createJacsMiddleware(options = {}) {
         const jacs = await import('./index.js');
         if (options.configPath) { await jacs.load(options.configPath); }
         if (ctx.request) {
-            try { ctx.request = jacs.verifyResponse(ctx.request); }
+            try { 
+                let validated_request = jacs.verifyResponse(ctx.request);
+                ctx.request = validated_request.payload;
+             }
             catch (error) { throw new Error(`Invalid JACS request: ${error.message}`); }
         }
         await next();
@@ -117,7 +120,9 @@ export function createJacsTransport(transport, options = {}) {
         // No need to check typeof rawServerResponse === 'string' again due to previous conditional block
         console.log("JACS Client: Response is a string. Assuming JACS Document. Verifying with jacs.verifyResponse.");
         try {
-            finalRpcResponseObject = await jacs.verifyResponse(rawServerResponse); // rawServerResponse IS a string here
+            let verified_response = await jacs.verifyResponse(rawServerResponse); 
+            finalRpcResponseObject = verified_response.payload;
+
             console.log("JACS Client: Verified JSON-RPC response object from server:", JSON.stringify(finalRpcResponseObject, null, 2));
             
             if (!finalRpcResponseObject || typeof finalRpcResponseObject !== 'object' || !finalRpcResponseObject.jsonrpc) {
