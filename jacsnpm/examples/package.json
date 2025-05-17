@@ -5,16 +5,20 @@
     "main": "example.js",
     "type": "module",
     "scripts": {
-        "reset": "cd ../ && make dev && npm install --upgrade && cd examples && npm install --upgrade",
-        "start": "node example.js",
-        "server": "node mcp.server.js",
-        "client": "node mcp.client.js",
+        "setup": "cd ../ && make dev && npm install --upgrade && cd examples && npm install --upgrade",
+        "example": "node example.js",
+        "mcp:server": "node mcp.server.js",
+        "mcp:client": "node mcp.client.js",
         "test:mcp": "npm run server & sleep 2 && npm run client",
-        "setup": "mkdir -p data keys && node setup.js"
+        "koa": "node koaserver.js",
+        "express": "node expressserver.js",
+        "http:client": "node httpclient.js"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.11.2",
-        "jacsnpm": "file:../jacsnpm"
+        "@modelcontextprotocol/sdk": "^1.11.4",
+        "jacsnpm": "file:../jacsnpm",
+        "koa": "^3",
+        "express": "^4.19.2"
     },
     "devDependencies": {
         "@types/node": "^22"
