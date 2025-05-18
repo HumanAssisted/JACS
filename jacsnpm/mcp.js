@@ -150,118 +150,135 @@ export function createJacsClientTransportWrapper(rawTransport, options = {}) {
  * Server-side JACS transport wrapper.
  */
 function createJacsServerTransportWrapper(rawTransport, jacsAgentInstance) {
-    const wrappedTransport = { ...rawTransport }; 
+    const wrappedTransport = {
+        // Store reference to the raw transport for direct access
+        _rawSseTransport: rawTransport
+    }; 
     let sdkServerOnMessageCallback = null;
-    let sdkServerOnCloseCallback = null;
-    let sdkServerOnErrorCallback = null;
+
+    const jacsProcessingOnMessage = async (jacsDocumentStringFromClient) => {
+        if (!jacsAgentInstance) { // JACS security is off
+            try {
+                // For JACS off, just parse the JSON normally
+                const plainJson = JSON.parse(jacsDocumentStringFromClient);
+                if (sdkServerOnMessageCallback) {
+                    sdkServerOnMessageCallback(plainJson);
+                } else {
+                    console.error("JACS Server Wrapper (jacsProcessingOnMessage - JACS OFF): sdkServerOnMessageCallback NOT SET!");
+                }
+            } catch (e) {
+                console.error("JACS Server Wrapper (jacsProcessingOnMessage - JACS OFF): Failed to parse as JSON:", e);
+                if (rawTransport.onerror) rawTransport.onerror(new Error("Invalid JSON message received"));
+            }
+            return;
+        }
+
+        // JACS security is ON
+        if (typeof jacsDocumentStringFromClient !== 'string') {
+            console.error("JACS Server Wrapper (jacsProcessingOnMessage - JACS ON): Expected string, got:", typeof jacsDocumentStringFromClient);
+            if (rawTransport.onerror) rawTransport.onerror(new Error("Invalid message format: Expected string."));
+            return;
+        }
+
+        try {
+            // The string we receive is actually a JSON-stringified string
+            // We need to parse it first to get the actual JACS document string
+            const actualJacsDocument = JSON.parse(jacsDocumentStringFromClient);
+            
+            console.log("JACS Server Wrapper: Parsed document type:", typeof actualJacsDocument);
+            
+            // Now pass the actual JACS document string to verification
+            const verificationResult = await jacsAgentInstance.verifyResponse(actualJacsDocument);
+            const jsonRpcRequest = verificationResult.payload;
+            
+            if (sdkServerOnMessageCallback) {
+                sdkServerOnMessageCallback(jsonRpcRequest);
+            } else {
+                console.error("JACS Server Wrapper: SDK callback not set, message not delivered");
+            }
+        } catch (error) {
+            console.error("JACS Server Wrapper: JACS verification failed:", error);
+            // Rest of error handling...
+            throw error;
+        }
+    };
 
     Object.defineProperty(wrappedTransport, 'onmessage', {
         get: () => sdkServerOnMessageCallback,
         set: (callback) => {
-            // console.error("JACS Server Wrapper: SDK's onmessage_server setter called.");
-            sdkServerOnMessageCallback = callback;
+            sdkServerOnMessageCallback = callback; 
         },
         configurable: true, enumerable: true
     });
 
-    rawTransport.onmessage = async (jacsDocumentStringFromClient) => {
-        // console.error("JACS Server Wrapper (raw onmessage): Received (first 100):", typeof jacsDocumentStringFromClient === 'string' ? jacsDocumentStringFromClient.substring(0, 100) : "[Not a string]");
-        if (!jacsAgentInstance) {
-            // console.warn("JACS Server Wrapper (raw onmessage): JACS agent N/A. Assuming plain JSON string.");
-            try {
-                const plainJson = JSON.parse(jacsDocumentStringFromClient);
-                if (sdkServerOnMessageCallback) sdkServerOnMessageCallback(plainJson);
-            } catch (e) {
-                console.error("JACS Server Wrapper (raw onmessage): JACS off, failed to parse as JSON:", e);
-                if (sdkServerOnErrorCallback) sdkServerOnErrorCallback(new Error("Invalid JSON message received"));
-            }
-            return;
-        }
-        if (typeof jacsDocumentStringFromClient !== 'string') {
-            console.error("JACS Server Wrapper (raw onmessage): Expected string, got:", typeof jacsDocumentStringFromClient);
-            if (sdkServerOnErrorCallback) sdkServerOnErrorCallback(new Error("Invalid message format: Expected string."));
-            return;
-        }
-
-        let jsonRpcRequest;
-        let requestId = null;
-        try {
-            const verificationResult = await jacsAgentInstance.verifyRequest(jacsDocumentStringFromClient);
-            jsonRpcRequest = verificationResult.payload;
-            if (jsonRpcRequest && jsonRpcRequest.id !== undefined) requestId = jsonRpcRequest.id;
-            // console.error("JACS Server Wrapper (raw onmessage): JACS verified. Payload to SDK:", jsonRpcRequest);
-            if (sdkServerOnMessageCallback) {
-                sdkServerOnMessageCallback(jsonRpcRequest); 
-            } else {
-                console.error("JACS Server Wrapper (raw onmessage): SDK onmessage_server_callback NOT SET!");
-            }
-        } catch (error) {
-            console.error("JACS Server Wrapper (raw onmessage): Error verifying JACS request:", error);
-            const errorResponse = {
-                jsonrpc: "2.0", id: requestId,
-                error: { code: -32007, message: "JACS verification failed: " + error.message }
-            };
-            try { await wrappedTransport.send(errorResponse); } 
-            catch (sendError) { console.error("JACS Server Wrapper (raw onmessage): Failed to send JACS verification error:", sendError); }
-            if (sdkServerOnErrorCallback) sdkServerOnErrorCallback(error);
-        }
-    };
+    wrappedTransport.processMessageWithJacs = jacsProcessingOnMessage;
 
     const originalRawServerSend = rawTransport.send.bind(rawTransport);
     wrappedTransport.send = async (jsonRpcResponseFromServer) => {
-        // console.error("JACS Server Wrapper (send): SDK sending JSON (first 100):", JSON.stringify(jsonRpcResponseFromServer).substring(0, 100));
-        if (!jacsAgentInstance) {
-            // console.warn("JACS Server Wrapper (send): JACS agent N/A. Sending raw JSON string.");
-            return await originalRawServerSend(JSON.stringify(jsonRpcResponseFromServer)); 
+        if (!jacsAgentInstance) { // JACS OFF
+            // When JACS is off, the originalRawServerSend (e.g. SSEServerTransport.send)
+            // might expect an object or a stringified object depending on its implementation.
+            // McpServer usually sends an object to the transport.send.
+            return await originalRawServerSend(jsonRpcResponseFromServer); 
         }
+        // JACS ON
         try {
-            const jacsDocumentStringForResponse = await jacsAgentInstance.signResponse(jsonRpcResponseFromServer);
-            // console.error("JACS Server Wrapper (send): JACS signed (first 100):", jacsDocumentStringForResponse.substring(0, 100));
+            const jacsDocumentStringForResponse = await jacsAgentInstance.signRequest(jsonRpcResponseFromServer);
+            // originalRawServerSend here is the raw transport's send (e.g. SSEServerTransport)
+            // which should handle the string appropriately (e.g. SSEServerTransport stringifies its input if it's an object,
+            // but if it receives a string, it might send it as is or wrap it further in an event).
+            // Given JACS document is already a string, it should be passed directly.
             return await originalRawServerSend(jacsDocumentStringForResponse);
         } catch (error) {
-            console.error("JACS Server Wrapper (send): Error signing JACS response:", error);
+            console.error("JACS Server Wrapper (send - JACS ON): Error signing JACS response:", error);
             throw error; 
         }
     };
     
+    // Forward close handling
+    let sdkServerOnCloseCallback = null;
     Object.defineProperty(wrappedTransport, 'onclose', {
         get: () => sdkServerOnCloseCallback,
-        set: (cb) => { 
-            // console.error("JACS Server Wrapper: SDK's onclose_server setter called.");
-            sdkServerOnCloseCallback = cb; 
-        },
+        set: (cb) => { sdkServerOnCloseCallback = cb; },
         configurable: true, enumerable: true
     });
+    const originalRawOnClose = rawTransport.onclose;
     rawTransport.onclose = () => {
-        // console.error("JACS Server Wrapper: Raw transport onclose triggered.");
+        if(typeof originalRawOnClose === 'function') originalRawOnClose.call(rawTransport);
         if (sdkServerOnCloseCallback) sdkServerOnCloseCallback();
     };
+    if (typeof rawTransport.close === 'function') {
+        wrappedTransport.close = () => {
+            return rawTransport.close();
+        };
+    }
 
+    // Forward error handling
+    let sdkServerOnErrorCallback = null;
     Object.defineProperty(wrappedTransport, 'onerror', {
         get: () => sdkServerOnErrorCallback,
-        set: (cb) => { 
-            // console.error("JACS Server Wrapper: SDK's onerror_server setter called.");
-            sdkServerOnErrorCallback = cb; 
-        },
+        set: (cb) => { sdkServerOnErrorCallback = cb; },
         configurable: true, enumerable: true
     });
+    const originalRawOnError = rawTransport.onerror;
     rawTransport.onerror = (error) => {
-        // console.error("JACS Server Wrapper: Raw transport onerror triggered:", error);
+        if(typeof originalRawOnError === 'function') originalRawOnError.call(rawTransport, error);
         if (sdkServerOnErrorCallback) sdkServerOnErrorCallback(error);
     };
-    
+
+    // Forward start if it exists
     if (typeof rawTransport.start === 'function') {
         wrappedTransport.start = rawTransport.start.bind(rawTransport);
     }
-    if (typeof rawTransport.close === 'function') {
-        wrappedTransport.close = rawTransport.close.bind(rawTransport);
-    }
-    if (rawTransport.hasOwnProperty('sessionId')) {
+    
+    // Forward sessionId if it exists
+    if (Object.prototype.hasOwnProperty.call(rawTransport, 'sessionId')) {
       Object.defineProperty(wrappedTransport, 'sessionId', {
         get: () => rawTransport.sessionId,
         enumerable: true, configurable: false,
       });
     }
+
     return wrappedTransport;
 }
 
@@ -286,22 +303,24 @@ export class JacsMcpServer extends McpServer {
     }
 
     async loadJacsAgent() {
-        if (this.jacsAgent) return true;
-        if (!this.configPath) {
-            // console.warn("JacsMcpServer.loadJacsAgent: configPath not provided. JACS security bypassed.");
-            return false; 
+        // Skip if already loaded
+        if (this.jacsAgent) {
+            console.log("JacsMcpServer: JACS agent already loaded, skipping reload");
+            return this.jacsAgent;
         }
-        // console.log(`JacsMcpServer.loadJacsAgent: Loading JACS NAPI from '${this.configPath}'`);
-        try {
-            await jacsNapiInstance.load(this.configPath);
-            this.jacsAgent = jacsNapiInstance;
-            // console.log("JacsMcpServer.loadJacsAgent: JACS NAPI instance configured.");
-            return true;
-        } catch (error) {
-            console.error(`JacsMcpServer.loadJacsAgent: CRITICAL - Failed to load JACS agent from ${this.configPath}.`, error);
-            this.jacsAgent = null;
-            throw error; 
+
+        if (this.configPath) {
+            try {
+                console.log(`JacsMcpServer: Loading JACS agent from ${this.configPath}`);
+                await jacsNapiInstance.load(this.configPath);
+                this.jacsAgent = jacsNapiInstance;
+                return this.jacsAgent;
+            } catch (e) {
+                console.error("JacsMcpServer: Failed to load JACS agent:", e);
+                throw e;
+            }
         }
+        return null;
     }
 
     async connect(transportOverride = null) {
@@ -376,7 +395,10 @@ export class JacsMcpServer extends McpServer {
             : rawSseTransport;
 
         try {
-            await transportForThisSseClient.start(); 
+            // Connect this transport to the server
+            // Note: connect() will call start() automatically, so we don't need to call it ourselves
+            await super.connect(transportForThisSseClient);
+            
             this.activeSseTransports.set(rawSseTransport.sessionId, transportForThisSseClient);
 
             req.on('close', () => {
@@ -386,7 +408,10 @@ export class JacsMcpServer extends McpServer {
 
         } catch (error) {
             console.error("JacsMcpServer (SSE GET): Error starting SSE transport:", error);
-            res.writeHead(500).end("Failed to establish SSE connection with MCP server.");
+            // Only try to send headers if they haven't been sent already
+            if (!res.headersSent) {
+                res.writeHead(500).end("Failed to establish SSE connection with MCP server.");
+            }
         }
     }
 
@@ -395,15 +420,15 @@ export class JacsMcpServer extends McpServer {
             res.writeHead(400).end("Server not configured for SSE POSTs or no active transports.");
             return;
         }
-
+    
         const url = new URL(req.url, `http://${req.headers.host}`);
         const sessionIdFromQuery = url.searchParams.get('sessionId');
-
+    
         if (!sessionIdFromQuery) {
             res.writeHead(400).end("Missing sessionId in POST request query.");
             return;
         }
-
+        
         const activeWrappedTransport = this.activeSseTransports.get(sessionIdFromQuery);
         if (!activeWrappedTransport) {
             console.error(`JacsMcpServer (SSE POST): No active transport for sessionId: ${sessionIdFromQuery}`);
@@ -423,20 +448,39 @@ export class JacsMcpServer extends McpServer {
             res.writeHead(400).end("Failed to read request body.");
             return;
         }
-
-        if (activeWrappedTransport.onmessage) {
-            try {
-                await activeWrappedTransport.onmessage(rawBodyString);
-                res.writeHead(202).end("Accepted"); 
-            } catch (processingError) {
-                console.error("JacsMcpServer (SSE POST): Error processing message via onmessage handler:", processingError);
-                if (!res.writableEnded) {
-                    res.writeHead(500).end("Error processing message.");
-                }
+    
+        try {
+            // If we have JACS enabled and we're using a wrapped transport with processMessageWithJacs
+            if (this.jacsAgent && typeof activeWrappedTransport.processMessageWithJacs === 'function') {
+                // Use our JACS processing method which handles string input
+                await activeWrappedTransport.processMessageWithJacs(rawBodyString);
+            } 
+            // Otherwise, if we're using the standard SDK transport
+            else if (activeWrappedTransport._rawSseTransport && 
+                     typeof activeWrappedTransport._rawSseTransport.handleMessage === 'function') {
+                // Parse the JSON string into an object before passing to handleMessage
+                const jsonObject = JSON.parse(rawBodyString);
+                await activeWrappedTransport._rawSseTransport.handleMessage(jsonObject);
+            } 
+            // Fall back to trying handleMessage on the wrapped transport
+            else if (typeof activeWrappedTransport.handleMessage === 'function') {
+                // Parse the JSON string into an object before passing to handleMessage
+                const jsonObject = JSON.parse(rawBodyString);
+                await activeWrappedTransport.handleMessage(jsonObject);
             }
-        } else {
-            console.error("JacsMcpServer (SSE POST): Wrapped transport has no onmessage handler for sessionId:", sessionIdFromQuery);
-            res.writeHead(500).end("Internal server error: transport misconfigured.");
+            // If none of the above methods are available
+            else {
+                throw new Error("No suitable message handling method found on the transport");
+            }
+            
+            if (!res.writableEnded) {
+               res.writeHead(202).end("Accepted"); 
+            }
+        } catch (processingError) { 
+            console.error("JacsMcpServer (SSE POST): Error processing message:", processingError);
+            if (!res.writableEnded) {
+                res.writeHead(500).end("Error processing message.");
+            }
         }
     }
 }
