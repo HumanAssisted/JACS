@@ -1,10 +1,17 @@
 import { JacsMcpClient } from '../mcp.js';
+import path from 'path'; // Import the path module
+import { fileURLToPath } from 'url'; // To get __dirname in ES modules
+
+// Get current directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // StdioClientTransport is not used if connecting via HTTP, so it can be removed if not needed for other purposes.
 // import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"; 
 
 // Define the password. In a real application, you might get this
 // from a more secure source or an environment variable in the client's own process.
-const JACS_SERVER_PRIVATE_KEY_PASSWORD = "hello"; // IMPORTANT: Use the correct password for the server's private key
+const JACS_SERVER_PRIVATE_KEY_PASSWORD = "hello"; // Ensure this is correct
 
 // Create a JACS-enabled MCP client for Stdio
 const client = new JacsMcpClient({
@@ -14,9 +21,12 @@ const client = new JacsMcpClient({
     args: ["mcp.server.js"], // Path to the server script, relative to client's CWD
                             // If running client from 'examples' dir, this is correct.
     configPath: "./jacs.client.config.json", // Path to JACS client config
-    stdioEnv: { // Pass environment variables to the spawned server process
-        "JACS_PRIVATE_KEY_PASSWORD": JACS_SERVER_PRIVATE_KEY_PASSWORD
-    }
+    stdioEnv: {
+        ...process.env, // Inherit all environment variables from the parent (client) process
+        "JACS_PRIVATE_KEY_PASSWORD": JACS_SERVER_PRIVATE_KEY_PASSWORD // Add/override specific variables
+    },
+    stdioCwd: __dirname // Set CWD to the directory of mcp.client.js (i.e., examples/)
+                       // This ensures mcp.server.js finds ./jacs.server.config.json
 });
 
 // Example usage
@@ -64,7 +74,7 @@ async function runExample() {
             });
             console.log(`Resource content for '${greetingResourceUri}':`, greetingResource);
         } catch (e) {
-            console.error(`Error reading resource '${greetingResourceUri}':`, e.message);
+            console.error(`Error reading resource '${greetingResourceUri}': ${e.message}`);
         }
 
 

@@ -89,11 +89,12 @@
 ## jacsnpm
 
 proof of concept
+
  - [x] scaffold
  - [x] use refactored agent trait instead of replicating
  - [x] typescript mcp client and server tests
  - []  test mcp client and server
- - []  node express middleware
+ - [x]  node express middleware
 
 
 --------------------

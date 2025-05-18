@@ -9,6 +9,8 @@
         "example": "node example.js",
         "mcp:server": "node mcp.server.js",
         "mcp:client": "node mcp.client.js",
+        "mcp:sse:server": "node mcp.sse.server.js",
+        "mcp:sse:client": "node mcp.sse.client.js",
         "test:mcp": "npm run server & sleep 2 && npm run client",
         "koa": "node koaserver.js",
         "express": "node expressmiddleware.js",
