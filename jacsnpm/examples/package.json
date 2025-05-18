@@ -18,9 +18,9 @@
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.11.4",
+        "express": "^5.0",
         "jacsnpm": "file:../jacsnpm",
-        "koa": "^3",
-        "express": "^5.0"
+        "koa": "^3"
     },
     "devDependencies": {
         "@types/node": "^22"

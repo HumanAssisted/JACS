@@ -10,8 +10,7 @@
       "types": "./index.d.ts"
     },
     "./mcp": {
-      "import": "./mcp.js",
-      "types": "./mcp.d.ts"
+      "import": "./mcp.ts"
     },
     "./http": {
       "import": "./http.js",
@@ -25,11 +24,11 @@
     "test": "node test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.11.2",
+    "@modelcontextprotocol/sdk": "^1.11.4",
     "@napi-rs/cli": "^2.16.3"
   },
   "devDependencies": {
-    "@types/node": "^22"
+    "@types/node": "^22.15"
   },
   "napi": {
     "name": "jacsnpm",
@@ -46,8 +45,7 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "mcp.js",
-    "mcp.d.ts",
+    "mcp.ts",
     "http.js",
     "http.d.ts"
   ]
