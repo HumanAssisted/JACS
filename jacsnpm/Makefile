@@ -22,7 +22,7 @@ install:
 dev:
 	cargo build --verbose
 	npm install
-	npm run build:debug
+	npm run build
 	@echo "Development build completed successfully"
 
 # Run tests

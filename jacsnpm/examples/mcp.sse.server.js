@@ -2,69 +2,43 @@
 // console.log(`SPAWNED_SERVER_LOG: Original mcp.server.js starting. CWD: ${process.cwd()}. Timestamp: ${new Date().toISOString()}`);
 // console.error(`SPAWNED_SERVER_ERROR_LOG: Original mcp.server.js starting. Timestamp: ${new Date().toISOString()}`);e
 
-import { JacsMcpServer } from '../mcp.js';
-// ResourceTemplate and z are not directly used here anymore,
-// as tools/resources are registered on the JacsMcpServer instance itself.
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { createJacsMiddleware } from '../mcp.js';
 import * as http from 'node:http';
-import { URL } from 'node:url'; // Ensure URL is imported
+import { URL } from 'node:url';
+import { z } from "zod";
+import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const serverConfigPath = "./jacs.server.config.json";
 const PORT = 3000;
-const SSE_PATH = "/sse"; // Path for initiating SSE connection
+const SSE_PATH = "/sse";
 
-// --- Create and configure a single JacsMcpServer instance ---
-const mcpServer = new JacsMcpServer({
+// Create a standard McpServer
+const server = new McpServer({
     name: "my-main-sse-server",
-    version: "1.0.0",
-    configPath: serverConfigPath,
-    transportType: 'sse', // Explicitly configure for SSE
-    sseConfig: {
-        // postEndpoint: '/mcp_message_handler' // Optional: if you want to customize the POST path.
-                                             // Default in JacsMcpServer.handleSseRequest is '/mcp-sse-post'
-                                             // Let's use the default from JacsMcpServer for now.
-    }
+    version: "1.0.0"
 });
 
-// --- Register tools and resources on this single server instance ---
-// (Copied from your previous JacsMcpServer instantiation in mcp.js)
-import { z } from "zod"; // Make sure zod is imported if not already
-import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-
-mcpServer.tool("add",
+// Register tools and resources
+server.tool("add",
     { a: z.number(), b: z.number() },
     async ({ a, b }) => ({ content: [{ type: "text", text: String(a + b) }] })
 );
 
-mcpServer.resource("greeting",
+server.resource("greeting",
     new ResourceTemplate("greeting://{name}", { list: undefined }),
     async (uri, { name }) => ({ contents: [{ uri: uri.href, text: `Hello, ${name}!` }] })
 );
 
-// --- Connect the main JacsMcpServer ---
-// For SSE mode where transports are dynamic per client,
-// this initial connect() call might primarily be for initializing
-// the server's internal router and JACS agent, not for a specific transport.
-// The JacsMcpServer.connect method needs to handle this gracefully if transportType is 'sse'.
-// Based on JacsMcpServer's current connect, it will try to load JACS.
-// If no default transport is found (which is the case for 'sse' type before handleSseRequest),
-// it might error if it expects one. Let's assume it's handled or we'll adjust JacsMcpServer.connect later.
-async function initializeServer() {
-    try {
-        console.log("Initializing main JacsMcpServer for SSE handling...");
-        await mcpServer.connect(); // Connects the server logic, loads JACS
-        console.log("Main JacsMcpServer initialized and connected (JACS loaded).");
-    } catch (error) {
-        console.error("Failed to initialize main JacsMcpServer:", error);
-        process.exit(1);
-    }
-}
+// Set up session mapping for SSE connections
+const sseTransports = new Map();
 
 const httpServer = http.createServer(async (req, res) => {
   console.log(`HTTP Server: Received ${req.method} request for ${req.url}`);
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
 
-  // CORS Preflight
+  // CORS setup
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*', 
@@ -76,28 +50,47 @@ const httpServer = http.createServer(async (req, res) => {
   }
   res.setHeader('Access-Control-Allow-Origin', '*');
 
+  // Handle GET request to establish SSE connection
   if (req.method === 'GET' && requestUrl.pathname === SSE_PATH) {
-    console.log(`HTTP Server: Routing GET to mcpServer.handleSseRequest for ${SSE_PATH}`);
-    await mcpServer.handleSseRequest(req, res);
+    const sseTransport = new SSEServerTransport("/mcp-sse-post", res);
+    
+    // Create middleware-wrapped transport
+    const secureTransport = createJacsMiddleware(sseTransport, serverConfigPath);
+    
+    // Store the transport for later POST requests
+    sseTransports.set(sseTransport.sessionId, secureTransport);
+    
+    // Connect server to this transport - this automatically starts the transport
+    await server.connect(secureTransport);
   } 
-  // Match the POST path that SSEServerTransport internally constructs and sends to client.
-  // Default in JacsMcpServer.handleSseRequest -> SSEServerTransport constructor is '/mcp-sse-post'.
-  else if (req.method === 'POST' && requestUrl.pathname === (mcpServer.sseConfig?.postEndpoint || '/mcp-sse-post')) {
-    console.log(`HTTP Server: Routing POST to mcpServer.handleSsePost for ${requestUrl.pathname}`);
-    await mcpServer.handleSsePost(req, res);
+  // Handle POST requests (messages from client)
+  else if (req.method === 'POST' && requestUrl.pathname === '/mcp-sse-post') {
+    const sessionId = requestUrl.searchParams.get('sessionId');
+    console.log(`Processing POST for session ${sessionId}, available sessions: ${Array.from(sseTransports.keys()).join(', ')}`);
+    
+    if (!sessionId || !sseTransports.has(sessionId)) {
+      console.error(`Session ${sessionId} not found`);
+      res.writeHead(404).end("Session not found");
+      return;
+    }
+    
+    const transport = sseTransports.get(sessionId);
+    console.log(`Found transport for session ${sessionId}, has handlePostMessage: ${typeof transport.handlePostMessage === 'function'}`);
+    
+    try {
+      await transport.handlePostMessage(req, res);
+      console.log(`Successfully processed POST message for session ${sessionId}`);
+    } catch (error) {
+      console.error(`Error processing POST: ${error.message}`);
+      res.writeHead(500).end(`Error: ${error.message}`);
+    }
   } else {
-    console.log(`HTTP Server: Unhandled request: ${req.method} ${requestUrl.pathname}`);
     res.writeHead(404).end("Not Found");
   }
 });
 
-initializeServer().then(() => {
-    httpServer.listen(PORT, () => {
-        console.log(`SSE MCP Server Example (using JacsMcpServer methods) listening on http://localhost:${PORT}`);
-        console.log(`Clients connect to SSE stream at http://localhost:${PORT}${SSE_PATH}`);
-        console.log(`Clients will be directed to POST messages to a path like /mcp-sse-post?sessionId=...`);
-    });
-}).catch(err => {
-    console.error("Failed to start HTTP server due to initialization error:", err);
-    process.exit(1);
+httpServer.listen(PORT, () => {
+  console.log(`SSE MCP Server with JACS middleware listening on http://localhost:${PORT}`);
+  console.log(`Clients connect to SSE stream at http://localhost:${PORT}${SSE_PATH}`);
+  console.log(`Clients will be directed to POST messages to /mcp-sse-post?sessionId=...`);
 });

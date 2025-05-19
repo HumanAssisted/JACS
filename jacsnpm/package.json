@@ -18,8 +18,9 @@
     }
   },
   "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
+    "build": "napi build --platform --release && npm run build:ts",
+    "build:debug": "napi build --platform && npm run build:ts",
+    "build:ts": "tsc",
     "install": "npm run build",
     "test": "node test"
   },

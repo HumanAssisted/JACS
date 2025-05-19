@@ -5,7 +5,7 @@
     "main": "example.js",
     "type": "module",
     "scripts": {
-        "setup": "cd ../ && make dev && npm install --upgrade && cd examples && npm install --upgrade",
+        "setup": "cd ../ && make dev && npm install --upgrade && cd examples && npm install --upgrade && tsc",
         "example": "node example.js",
         "mcp:server": "node mcp.server.js",
         "mcp:client": "node mcp.client.js",

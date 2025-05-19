@@ -1,40 +1,36 @@
-import { JacsMcpClient } from '../mcp.js';
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { createJacsMiddleware } from '../mcp.js';
 // No longer need path or fileURLToPath for stdio server spawning
 
 const SERVER_URL = "http://localhost:3000/sse"; // Matches the server's SSE path
+const CLIENT_CONFIG_PATH = "./jacs.client.config.json";
 
-// Create a JACS-enabled MCP client for SSE
-const client = new JacsMcpClient({
-    name: "example-sse-client",
-    version: "1.0.0",
-    // For SSE, we don't use command/args. The server must be running independently.
-    // configPath is still needed for JACS client-side configuration.
-    configPath: "./jacs.client.config.json",
-    // stdioEnv and stdioCwd are not applicable to SSE transport
-});
-
-// Example usage
 async function runExample() {
+    let client = null;
+    
     try {
-        const transport = new SSEClientTransport(new URL(SERVER_URL));
-        console.log("[mcp.sse.client.js] Created SSEClientTransport instance. Type:", typeof transport, "Instance:", transport);
-        if (transport) {
-            console.log("[mcp.sse.client.js] SSEClientTransport has .send method:", typeof transport.send === 'function');
-        }
+        // Create standard client
+        client = new Client({
+            name: "example-sse-client",
+            version: "1.0.0"
+        });
 
-        // Explicitly connect the client using the SSE transport.
-        console.log(`Attempting to connect client to SSE server at ${SERVER_URL}...`);
-        // The JacsMcpClient.connect method needs to accept a transport instance
-        await client.connect(transport);
-        console.log('Client connected to server via SSE.');
-
+        console.log(`Connecting to SSE server at ${SERVER_URL} with JACS middleware...`);
+        const baseTransport = new SSEClientTransport(new URL(SERVER_URL));
+        const secureTransport = createJacsMiddleware(baseTransport, CLIENT_CONFIG_PATH);
+        
+        // Connect with increased timeout for debugging
+        await client.connect(secureTransport, { timeout: 120000 });
+        console.log('Client connected successfully!');
+        
         // List tools
+        console.log('Requesting tools list...');
         const tools = await client.listTools();
         console.log('Available tools:', tools);
         
         if (tools.tools.find(t => t.name === 'add')) {
-            // Call the "add" tool
+            console.log('Calling add tool...');
             const addResult = await client.callTool({
                 name: "add",
                 arguments: {
@@ -48,6 +44,7 @@ async function runExample() {
         }
 
         // List resources
+        console.log('Requesting resources list...');
         const resources = await client.listResources();
         console.log('Available resources:', resources);
 
@@ -63,9 +60,9 @@ async function runExample() {
         }
 
     } catch (error) {
-        console.error('Client runExample Error:', error);
+        console.error('Client error:', error);
     } finally {
-        if (client.isConnected()) {
+        if (client && client.transport) {
             console.log("Closing client connection...");
             await client.close();
             console.log("Client connection closed.");
