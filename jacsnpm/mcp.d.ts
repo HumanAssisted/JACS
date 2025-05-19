@@ -21,6 +21,7 @@ export declare class TransportMiddleware implements Transport {
     }, res: ServerResponse, rawBodyString?: string): Promise<void>;
 }
 export declare function createJacsMiddleware(transport: Transport, configPath: string): TransportMiddleware;
+export declare function createJacsMiddlewareAsync(transport: Transport, configPath: string): Promise<TransportMiddleware>;
 /**
  *
  * great. I have what I need now in mcp.ts.

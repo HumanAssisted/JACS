@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createJacsMiddleware = exports.TransportMiddleware = void 0;
+exports.createJacsMiddlewareAsync = exports.createJacsMiddleware = exports.TransportMiddleware = void 0;
 const types_js_1 = require("@modelcontextprotocol/sdk/types.js");
 const index_js_1 = __importDefault(require("./index.js"));
 // Load JACS config only once
@@ -288,9 +288,25 @@ class TransportMiddleware {
                     wasJacsTransformed = true;
                 }
             }
+            // The payload for transport contains the JACS-transformed message or the original JSON-RPC message
             const payloadForTransport = transformedMessageString ?? JSON.stringify(messageForJacs);
-            console.log(`[UNCONDITIONAL] TransportMiddleware.send: ABOUT TO SEND. Was JACS: ${wasJacsTransformed}, Len: ${payloadForTransport.length}, Payload: ${payloadForTransport.substring(0, 100)}...`);
-            await this.transport.send(payloadForTransport);
+            console.log(`[UNCONDITIONAL] TransportMiddleware.send: ABOUT TO SEND. 
+        Was JACS: ${wasJacsTransformed}, Len: ${payloadForTransport.length}, Payload: ${payloadForTransport}...`);
+            // Check if the underlying transport is an SSE transport
+            if (typeof this.transport._sseResponse !== 'undefined') {
+                // This is an SSE transport - we need to format the message in SSE format
+                const sseResponse = this.transport._sseResponse;
+                if (!sseResponse) {
+                    throw new Error("SSE connection not established");
+                }
+                // Send the message using SSE event format
+                sseResponse.write(`event: message\ndata: ${payloadForTransport}\n\n`);
+                console.log(`[UNCONDITIONAL] TransportMiddleware.send: SENT AS SSE EVENT.`);
+            }
+            else {
+                // Standard transport, use the normal send method
+                await this.transport.send(payloadForTransport);
+            }
             console.log(`[UNCONDITIONAL] TransportMiddleware.send: SUCCESSFULLY SENT.`);
         }
         catch (error) {
@@ -390,6 +406,11 @@ function createJacsMiddleware(transport, configPath) {
     return new TransportMiddleware(transport, jacsSignTransform, jacsVerifyTransform, configPath);
 }
 exports.createJacsMiddleware = createJacsMiddleware;
+async function createJacsMiddlewareAsync(transport, configPath) {
+    await ensureJacsLoaded(configPath);
+    return new TransportMiddleware(transport, jacsSignTransform, jacsVerifyTransform, configPath);
+}
+exports.createJacsMiddlewareAsync = createJacsMiddlewareAsync;
 /**
  *
  * great. I have what I need now in mcp.ts.

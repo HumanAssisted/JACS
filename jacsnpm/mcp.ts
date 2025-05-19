@@ -310,12 +310,31 @@ export class TransportMiddleware implements Transport {
         }
       }
       
+      // The payload for transport contains the JACS-transformed message or the original JSON-RPC message
       const payloadForTransport = transformedMessageString ?? JSON.stringify(messageForJacs);
       
-      console.log(`[UNCONDITIONAL] TransportMiddleware.send: ABOUT TO SEND. Was JACS: ${wasJacsTransformed}, Len: ${payloadForTransport.length}, Payload: ${payloadForTransport.substring(0,100)}...`);
-      await this.transport.send(payloadForTransport as any);
+      console.log(`[UNCONDITIONAL] TransportMiddleware.send: ABOUT TO SEND. 
+        Was JACS: ${wasJacsTransformed}, Len: ${payloadForTransport.length}, Payload: ${payloadForTransport}...`);
+      
+      // Check if the underlying transport is an SSE transport
+      if (typeof (this.transport as any)._sseResponse !== 'undefined') {
+        // This is an SSE transport - we need to format the message in SSE format
+        const sseResponse = (this.transport as any)._sseResponse;
+        if (!sseResponse) {
+          throw new Error("SSE connection not established");
+        }
+        
+        // Send the message using SSE event format
+        sseResponse.write(
+          `event: message\ndata: ${payloadForTransport}\n\n`
+        );
+        console.log(`[UNCONDITIONAL] TransportMiddleware.send: SENT AS SSE EVENT.`);
+      } else {
+        // Standard transport, use the normal send method
+        await this.transport.send(payloadForTransport as any);
+      }
+      
       console.log(`[UNCONDITIONAL] TransportMiddleware.send: SUCCESSFULLY SENT.`);
-
     } catch (error) {
       const err = error as Error;
       console.error("[UNCONDITIONAL] TransportMiddleware.send: CAUGHT ERROR:", err.message, err.stack);
@@ -425,6 +444,20 @@ export function createJacsMiddleware(
     configPath
   );
 }
+
+export async function createJacsMiddlewareAsync(
+  transport: Transport,
+  configPath: string,
+): Promise<TransportMiddleware> {
+  await ensureJacsLoaded(configPath);    
+  return new TransportMiddleware(
+    transport,
+    jacsSignTransform,
+    jacsVerifyTransform,
+    configPath,
+  );
+}
+
 
 /**
  * 

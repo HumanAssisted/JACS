@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { createJacsMiddleware } from '../mcp.js';
+import { createJacsMiddlewareAsync } from '../mcp.js';
 // No longer need path or fileURLToPath for stdio server spawning
 
 const SERVER_URL = "http://localhost:3000/sse"; // Matches the server's SSE path
@@ -17,11 +17,17 @@ async function runExample() {
         });
 
         console.log(`Connecting to SSE server at ${SERVER_URL} with JACS middleware...`);
-        const baseTransport = new SSEClientTransport(new URL(SERVER_URL));
-        const secureTransport = createJacsMiddleware(baseTransport, CLIENT_CONFIG_PATH);
+
+        const baseTransport  = new SSEClientTransport(new URL(SERVER_URL));
+        console.log('1!');
+        const secureTransport = await createJacsMiddlewareAsync(
+            baseTransport,
+            CLIENT_CONFIG_PATH,
+        );      
         
-        // Connect with increased timeout for debugging
-        await client.connect(secureTransport, { timeout: 120000 });
+        console.log('2!'); 
+        await client.connect(secureTransport, { timeout: 120_000 });
+        console.log('3!'); 
         console.log('Client connected successfully!');
 
         // List tools
