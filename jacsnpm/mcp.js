@@ -288,6 +288,13 @@ class TransportMiddleware {
                     wasJacsTransformed = true;
                 }
             }
+            // inside TransportMiddleware.send(...) just *before* you build payloadForTransport
+            if (typeof message === "object" && message && "endpoint" in message) {
+                // Bypass JACS, bypass rename, and stream with the correct event type
+                this.transport._sseResponse
+                    .write(`event: endpoint\ndata: ${message.endpoint}\n\n`);
+                return; // ✅ client.connect() will now resolve
+            }
             // The payload for transport contains the JACS-transformed message or the original JSON-RPC message
             const payloadForTransport = transformedMessageString ?? JSON.stringify(messageForJacs);
             console.log(`[UNCONDITIONAL] TransportMiddleware.send: ABOUT TO SEND. 
