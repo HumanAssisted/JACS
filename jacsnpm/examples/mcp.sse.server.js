@@ -9,10 +9,12 @@ import * as http from 'node:http';
 import { URL } from 'node:url';
 import { z } from "zod";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import express from 'express'; // Import express
 
 const serverConfigPath = "./jacs.server.config.json";
 const PORT = 3000;
 const SSE_PATH = "/sse";
+const MCP_POST_PATH = '/mcp-sse-post'; // Define the post path
 
 // Create a standard McpServer
 const server = new McpServer({
@@ -34,8 +36,21 @@ server.resource("greeting",
 // Set up session mapping for SSE connections
 const sseTransports = new Map();
 
-const httpServer = http.createServer(async (req, res) => {
-  console.log(`HTTP Server: Received ${req.method} request for ${req.url}`);
+// Create an Express app to handle requests
+const app = express();
+
+// Middleware to get raw body as text for the JACS POST route
+// This MUST come before any other middleware that might parse JSON for this route.
+app.use(MCP_POST_PATH, express.text({ type: '*/*' })); // Ensures req.body is a string for JACS
+
+// If you need a global JSON parser for other routes, define it after specific text parser
+// app.use(express.json()); // For other non-JACS routes if needed
+
+const httpServer = http.createServer(app); // Use the Express app for the HTTP server
+
+app.use(async (req, res, next) => {
+  // This middleware function will wrap the original http.createServer callback logic
+  console.log(`HTTP Server (Express): Received ${req.method} request for ${req.url}`);
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
 
   // CORS setup
@@ -52,19 +67,20 @@ const httpServer = http.createServer(async (req, res) => {
 
   // Handle GET request to establish SSE connection
   if (req.method === 'GET' && requestUrl.pathname === SSE_PATH) {
-    const sseTransport = new SSEServerTransport("/mcp-sse-post", res);
+    // SSEServerTransport requires the raw response object, not an Express one if it modifies it too much.
+    // We might need to manually manage the response object for SSE if Express wrapping interferes.
+    // For now, let's assume SSEServerTransport can work with the Node `res` object even when passed through Express.
+    const sseTransport = new SSEServerTransport(MCP_POST_PATH, res); 
     
-    // Create middleware-wrapped transport
     const secureTransport = createJacsMiddleware(sseTransport, serverConfigPath);
     
-    // Store the transport for later POST requests
     sseTransports.set(sseTransport.sessionId, secureTransport);
     
-    // Connect server to this transport - this automatically starts the transport
     await server.connect(secureTransport);
+    // SSE transport handles keeping the connection open, so no `res.end()` here from Express.
   } 
   // Handle POST requests (messages from client)
-  else if (req.method === 'POST' && requestUrl.pathname === '/mcp-sse-post') {
+  else if (req.method === 'POST' && requestUrl.pathname === MCP_POST_PATH) {
     const sessionId = requestUrl.searchParams.get('sessionId');
     console.log(`Processing POST for session ${sessionId}, available sessions: ${Array.from(sseTransports.keys()).join(', ')}`);
     
@@ -74,23 +90,36 @@ const httpServer = http.createServer(async (req, res) => {
       return;
     }
     
-    const transport = sseTransports.get(sessionId);
-    console.log(`Found transport for session ${sessionId}, has handlePostMessage: ${typeof transport.handlePostMessage === 'function'}`);
+    const transportToUse = sseTransports.get(sessionId); // This is our TransportMiddleware instance
+    console.log(`Found transport for session ${sessionId}, has handlePostMessage: ${typeof transportToUse.handlePostMessage === 'function'}`);
     
     try {
-      await transport.handlePostMessage(req, res);
+      // req.body is now the raw string due to express.text() for this route.
+      // Pass it as the third argument to handlePostMessage.
+      await transportToUse.handlePostMessage(req, res, req.body); 
+      // handlePostMessage in TransportMiddleware will now call res.end() or res.writeHead().end()
       console.log(`Successfully processed POST message for session ${sessionId}`);
     } catch (error) {
       console.error(`Error processing POST: ${error.message}`);
-      res.writeHead(500).end(`Error: ${error.message}`);
+      if (!res.writableEnded) {
+        res.writeHead(500).end(`Error: ${error.message}`);
+      }
     }
   } else {
-    res.writeHead(404).end("Not Found");
+    // If not handled by SSE or MCP POST, let Express handle it or send 404
+    next();
+  }
+});
+
+// Fallback 404 for anything not caught by specific routes
+app.use((req, res) => {
+  if (!res.headersSent) {
+    res.status(404).send('Not Found. Try GET /sse or POST /mcp-sse-post?sessionId=...');
   }
 });
 
 httpServer.listen(PORT, () => {
   console.log(`SSE MCP Server with JACS middleware listening on http://localhost:${PORT}`);
   console.log(`Clients connect to SSE stream at http://localhost:${PORT}${SSE_PATH}`);
-  console.log(`Clients will be directed to POST messages to /mcp-sse-post?sessionId=...`);
+  console.log(`Clients will be directed to POST messages to ${MCP_POST_PATH}?sessionId=...`);
 });

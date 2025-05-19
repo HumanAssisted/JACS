@@ -23,7 +23,7 @@ async function runExample() {
         // Connect with increased timeout for debugging
         await client.connect(secureTransport, { timeout: 120000 });
         console.log('Client connected successfully!');
-        
+
         // List tools
         console.log('Requesting tools list...');
         const tools = await client.listTools();

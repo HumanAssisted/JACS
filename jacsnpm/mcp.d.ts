@@ -2,14 +2,13 @@
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { IncomingMessage, ServerResponse } from "node:http";
-export type RequestTransformer = (message: JSONRPCMessage) => JSONRPCMessage | Promise<JSONRPCMessage>;
-export type ResponseTransformer = (message: JSONRPCMessage) => JSONRPCMessage | string | Promise<JSONRPCMessage | string>;
 export declare class TransportMiddleware implements Transport {
     private transport;
-    private requestTransformer?;
-    private responseTransformer?;
+    private outgoingJacsTransformer?;
+    private incomingJacsTransformer?;
     private jacsConfigPath?;
-    constructor(transport: Transport, requestTransformer?: RequestTransformer | undefined, responseTransformer?: ResponseTransformer | undefined, jacsConfigPath?: string | undefined);
+    private jacsOperational;
+    constructor(transport: Transport, outgoingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<string>) | undefined, incomingJacsTransformer?: ((jacsString: string) => Promise<JSONRPCMessage>) | undefined, jacsConfigPath?: string | undefined);
     onclose?: () => void;
     onerror?: (error: Error) => void;
     onmessage?: (message: JSONRPCMessage) => void;
@@ -19,10 +18,8 @@ export declare class TransportMiddleware implements Transport {
     get sessionId(): string | undefined;
     handlePostMessage(req: IncomingMessage & {
         auth?: any;
-    }, res: ServerResponse, parsedBody?: unknown): Promise<void>;
+    }, res: ServerResponse, rawBodyString?: string): Promise<void>;
 }
-export declare function verifyRequest(message: JSONRPCMessage): Promise<JSONRPCMessage>;
-export declare function signResponse(message: JSONRPCMessage): Promise<JSONRPCMessage | string>;
 export declare function createJacsMiddleware(transport: Transport, configPath: string): TransportMiddleware;
 /**
  *
