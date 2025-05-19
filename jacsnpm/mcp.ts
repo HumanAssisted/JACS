@@ -27,7 +27,6 @@ async function ensureJacsLoaded(configPath: string): Promise<void> {
   }
 }
 
-// Renaming for clarity: this transforms an outgoing JSONRPCMessage to a JACS string
 async function jacsSignTransform(message: JSONRPCMessage): Promise<string> {
   if (!jacsLoaded) {
     console.error("jacsSignTransform: JACS not loaded. Cannot sign.");
@@ -176,55 +175,49 @@ export class TransportMiddleware implements Transport {
     private transport: Transport,
     // For outgoing messages: transform JSONRPCMessage to JACS string
     private outgoingJacsTransformer?: (msg: JSONRPCMessage) => Promise<string>,
-    // For incoming messages: transform JACS string to JSONRPCMessage
-    private incomingJacsTransformer?: (jacsString: string) => Promise<JSONRPCMessage>,
+    // For incoming messages: jacsInput can be JACS string (e.g. server POST) OR pre-parsed JACS object (e.g. client SSE)
+    private incomingJacsTransformer?: (jacsInput: string | object, direction: 'incoming' | 'outgoing', messageType: 'request' | 'response' | 'notification' | 'error' | 'unknown') => Promise<JSONRPCMessage>,
     private jacsConfigPath?: string
   ) {
     if (jacsConfigPath) {
       ensureJacsLoaded(jacsConfigPath)
         .then(() => {
-            this.jacsOperational = true; // Set true only on success
+            this.jacsOperational = true;
             console.log("TransportMiddleware: JACS loaded successfully via constructor call.");
         })
         .catch(err => {
             this.jacsOperational = false;
-            // This log clearly indicates that JACS is not operational DUE TO A LOADING FAILURE.
-            console.error("TransportMiddleware Constructor: ensureJacsLoaded FAILED, JACS will be NON-OPERATIONAL. Error:", err.message, err.stack);
-            // It's important that this failure is noted, as subsequent operations might depend on jacsOperational
+            console.error("TransportMiddleware Constructor: ensureJacsLoaded FAILED, JACS will be NON-OPERATIONAL. Error:", err.message);
         });
     } else {
-      this.jacsOperational = false; // Explicitly false if no path
+      this.jacsOperational = false;
       console.warn("TransportMiddleware: No JACS config path provided. JACS will be NON-OPERATIONAL.");
     }
 
-    this.transport.onmessage = async (message: string | JSONRPCMessage) => {
+    this.transport.onmessage = async (messageOrObjectFromTransport: string | JSONRPCMessage | object) => {
       let requestId: string | number | null = null;
       try {
-        console.log(`TransportMiddleware.onmessage: Raw incoming message type: ${typeof message}`);
-        if (!this.jacsOperational && this.incomingJacsTransformer) {
-             console.warn("TransportMiddleware.onmessage: JACS not operational, but incomingJacsTransformer is defined. This might lead to issues.");
+        console.log(`TransportMiddleware.onmessage: Raw incoming data type: ${typeof messageOrObjectFromTransport}`);
+        if (enableDiagnosticLogging) {
+             console.log(`TransportMiddleware.onmessage: Data sample: ${typeof messageOrObjectFromTransport === 'string' ? (messageOrObjectFromTransport as string).substring(0,150) : JSON.stringify(messageOrObjectFromTransport)?.substring(0,150)}...`);
         }
         
         let processedMessage: JSONRPCMessage;
 
         if (this.incomingJacsTransformer && this.jacsOperational) {
-          if (typeof message === 'string') {
-            console.log("TransportMiddleware.onmessage: Received string (expected for JACS SSE), applying incomingJacsTransformer.");
-            processedMessage = await this.incomingJacsTransformer(message);
-          } else {
-            // If JACS is active, 'message' from transport (esp. SSE) MUST be the JACS string.
-            // Receiving an object here means either it's not a JACS message, or a layer problem.
-            throw new Error(`TransportMiddleware.onmessage: CRITICAL - JACS is active but received a pre-parsed object (type: ${typeof message}) when a JACS string was expected from the transport. This indicates a layer mismatch or a non-JACS message.`);
-          }
-        } else { // No JACS transformer or JACS not operational
-          if (typeof message === 'string') {
+            console.log("TransportMiddleware.onmessage: JACS operational, applying incomingJacsTransformer.");
+            processedMessage = await this.incomingJacsTransformer(messageOrObjectFromTransport, 'incoming', 'unknown');
+        } else { 
+          if (typeof messageOrObjectFromTransport === 'string') {
             console.log("TransportMiddleware.onmessage: No JACS (or not operational). Parsing string as JSONRPCMessage.");
-            processedMessage = JSON.parse(message) as JSONRPCMessage;
-          } else if (typeof message === 'object' && message !== null) {
-            console.log("TransportMiddleware.onmessage: No JACS (or not operational). Assuming object is JSONRPCMessage.");
-            processedMessage = message as JSONRPCMessage;
+            processedMessage = JSON.parse(messageOrObjectFromTransport) as JSONRPCMessage;
+          } else if (typeof messageOrObjectFromTransport === 'object' && messageOrObjectFromTransport !== null) {
+            if (!('jsonrpc' in messageOrObjectFromTransport && messageOrObjectFromTransport.jsonrpc === '2.0') && enableDiagnosticLogging) {
+                console.warn("TransportMiddleware.onmessage: Received object that doesn't look like JSONRPC, but JACS not operational. Passing as is.");
+            }
+            processedMessage = messageOrObjectFromTransport as JSONRPCMessage;
           } else {
-            throw new Error(`Unexpected message type: ${typeof message}`);
+            throw new Error(`Unexpected message type: ${typeof messageOrObjectFromTransport}`);
           }
         }
         
@@ -260,17 +253,17 @@ export class TransportMiddleware implements Transport {
             } as any;
         }
         
-        try {
-          await this.send(errorResponse);
-        } catch (sendError) {
-           console.error("TransportMiddleware.onmessage: CRITICAL - Failed to send error response via this.send:", sendError);
-           try {
-            const errPayload = typeof errorResponse === 'string' ? errorResponse : JSON.stringify(errorResponse);
-            await this.transport.send(errPayload as any);
-           } catch (rawSendError) {
-            console.error("TransportMiddleware.onmessage: CRITICAL - Failed to send error response via direct transport.send:", rawSendError);
-           }
+        if (finalErrorId !== undefined && finalErrorId !== null) {
+            try {
+                console.warn(`TransportMiddleware.onmessage: Attempting to send error response for request ID ${finalErrorId}:`, errorResponse);
+                await this.send(errorResponse);
+            } catch (sendError) {
+                console.error("TransportMiddleware.onmessage: CRITICAL - Failed to send error response via this.send:", sendError);
+            }
+        } else {
+            console.warn("TransportMiddleware.onmessage: Error occurred, but no request ID available or it's a notification. Not sending JSONRPC error upstream.", errorResponse);
         }
+
         if (this.onerror) {
           this.onerror(err);
         }
@@ -291,22 +284,21 @@ export class TransportMiddleware implements Transport {
   async send(message: JSONRPCMessage): Promise<void> {
     let messageForJacs = message;
     let transformedMessageString: string | null = null;
-    let wasJacsTransformed = false; // Flag to know what was sent
+    let wasJacsTransformed = false;
 
     try {
       if (this.outgoingJacsTransformer && this.jacsOperational) {
         let skipJacsTransform = false;
         if (isJSONRPCResponse(messageForJacs) && 
             'error' in messageForJacs && 
-            messageForJacs.error && 
-            typeof messageForJacs.error === 'object' &&
-            'message' in messageForJacs.error &&
-            typeof messageForJacs.error.message === 'string'
+            messageForJacs.error && // Ensures error object exists
+            typeof (messageForJacs.error as any).message === 'string' // Check if error.message is a string
            ) {
-            if (messageForJacs.error.message.includes("JACS_NOT_LOADED") || 
-                messageForJacs.error.message.includes("JACS signing failed") ||
-                messageForJacs.error.message.includes("JACS_NOT_OPERATIONAL") ||
-                messageForJacs.error.message.includes("Native jacs.verifyResponse failed")) {
+            // Now it's safer to access messageForJacs.error.message
+            if ((messageForJacs.error as any).message.includes("JACS_NOT_LOADED") || 
+                (messageForJacs.error as any).message.includes("JACS signing failed") ||
+                (messageForJacs.error as any).message.includes("JACS_NOT_OPERATIONAL") ||
+                (messageForJacs.error as any).message.includes("Native jacs.verifyResponse failed")) {
                 console.warn("TransportMiddleware.send: Error message indicates JACS issue, sending error as plain JSON-RPC.");
                 skipJacsTransform = true;
             }
@@ -320,49 +312,36 @@ export class TransportMiddleware implements Transport {
       
       const payloadForTransport = transformedMessageString ?? JSON.stringify(messageForJacs);
       
-      // UNCONDITIONAL LOG
       console.log(`[UNCONDITIONAL] TransportMiddleware.send: ABOUT TO SEND. Was JACS: ${wasJacsTransformed}, Len: ${payloadForTransport.length}, Payload: ${payloadForTransport.substring(0,100)}...`);
-      
       await this.transport.send(payloadForTransport as any);
-      
-      // UNCONDITIONAL LOG
       console.log(`[UNCONDITIONAL] TransportMiddleware.send: SUCCESSFULLY SENT.`);
 
     } catch (error) {
       const err = error as Error;
-      // UNCONDITIONAL LOG
       console.error("[UNCONDITIONAL] TransportMiddleware.send: CAUGHT ERROR:", err.message, err.stack);
-      if (err.message?.includes("JACS_NOT_LOADED") || err.message?.includes("JACS signing failed") || !this.jacsOperational || err.message.includes("Native jacs.verifyResponse failed")) {
-          console.error("Error in TransportMiddleware.send (JACS related, will not attempt to send JACS error response):", err.message);
-          
-          let isSendingJacsNotLoadedError = false;
-          // Check if 'message' is an object and has an 'error' property.
-          // Also ensure 'message' itself is not null or undefined.
-          if (message && typeof message === 'object' && 'error' in message && message.error) { 
-            // Now TypeScript knows message has an 'error' property, 
-            // and we've checked message.error is truthy.
-            // We also need to ensure err.message is a string before calling .includes()
-            if (err.message && err.message.includes("JACS_NOT_LOADED")) {
-              isSendingJacsNotLoadedError = true;
-            }
-          }
+      
+      let isTryingToSendJacsNotLoadedError = false;
+      if (isJSONRPCResponse(message) && 
+          'error' in message && 
+          message.error && // Ensures error object exists
+          typeof (message.error as any).message === 'string' // Check if error.message is a string
+         ) {
+        // Now it's safer to access message.error.message
+        if ((message.error as any).message.includes("JACS_NOT_LOADED")) {
+            isTryingToSendJacsNotLoadedError = true;
+        }
+      }
 
-          if (!isSendingJacsNotLoadedError) { 
-             throw err;
-          }
-          // If it was an attempt to send a JACS_NOT_LOADED error, and signing that failed with JACS_NOT_LOADED,
-          // then don't rethrow, to prevent an infinite loop.
+      if (err.message?.includes("JACS_NOT_LOADED") && isTryingToSendJacsNotLoadedError) {
+          console.error("TransportMiddleware.send: Failed to sign a JACS_NOT_LOADED error (likely because JACS is still not loaded). Suppressing further error to prevent loop.");
       } else {
-        console.error("Error in TransportMiddleware.send (NON-JACS related):", err.message, err.stack); // Added stack for other errors
-        throw err; // Rethrow other errors
+        throw err;
       }
     }
   }
 
   get sessionId(): string | undefined { return (this.transport as any).sessionId; }
 
-  // handlePostMessage now takes an optional rawBodyString.
-  // The HTTP server part (e.g., mcp.sse.server.js) is responsible for providing this.
   async handlePostMessage(req: IncomingMessage & { auth?: any }, res: ServerResponse, rawBodyString?: string): Promise<void> {
     let bodyToProcess: string;
     let potentialRequestId: string | number | null = null;
@@ -371,7 +350,7 @@ export class TransportMiddleware implements Transport {
         console.log("TransportMiddleware.handlePostMessage: Using provided rawBodyString.");
         bodyToProcess = rawBodyString;
     } else {
-        console.warn("TransportMiddleware.handlePostMessage: rawBodyString not provided. Reading from request stream (ensure no prior JSON parsing middleware for this route).");
+        console.warn("TransportMiddleware.handlePostMessage: rawBodyString not provided by HTTP server. Attempting to read from request stream.");
         const bodyBuffer = [];
         for await (const chunk of req) { bodyBuffer.push(chunk); }
         bodyToProcess = Buffer.concat(bodyBuffer).toString();
@@ -382,28 +361,25 @@ export class TransportMiddleware implements Transport {
         }
     }
 
-    console.log(`TransportMiddleware.handlePostMessage: Raw POST body for JACS (length ${bodyToProcess?.length}): ${bodyToProcess?.substring(0, 150)}...`);
+    if (enableDiagnosticLogging) {
+        console.log(`TransportMiddleware.handlePostMessage: Raw POST body (length ${bodyToProcess?.length}): ${bodyToProcess?.substring(0, 150)}...`);
+    }
 
     try {
         let messageForSDK: JSONRPCMessage;
         if (this.jacsOperational && this.incomingJacsTransformer) {
-            console.log("TransportMiddleware.handlePostMessage: PRE-TRANSFORM. About to call incomingJacsTransformer. jacsOperational:", this.jacsOperational, "jacsLoaded:", jacsLoaded, "jacsLoadError:", jacsLoadError?.message);
+            console.log("TransportMiddleware.handlePostMessage: PRE-TRANSFORM. About to call incomingJacsTransformer with POST body. jacsOperational:", this.jacsOperational, "jacsLoaded:", jacsLoaded);
             
             if (!jacsLoaded || jacsLoadError) {
-                 const loadStateMsg = `JACS not ready (jacsLoaded: ${jacsLoaded}, jacsLoadError: ${jacsLoadError?.message}). Cannot apply JACS transform.`;
-                 console.error("TransportMiddleware.handlePostMessage: " + loadStateMsg);
-                 throw new Error(loadStateMsg); // Fail fast before calling transformer
+                 const loadStateMsg = `JACS not ready in handlePostMessage (jacsLoaded: ${jacsLoaded}, jacsLoadError: ${jacsLoadError?.message}). Cannot apply JACS transform.`;
+                 console.error(loadStateMsg);
+                 throw new Error(loadStateMsg);
             }
-            
-            messageForSDK = await this.incomingJacsTransformer(bodyToProcess);
+            messageForSDK = await this.incomingJacsTransformer(bodyToProcess, 'incoming', 'unknown');
             console.log("TransportMiddleware.handlePostMessage: POST-TRANSFORM. incomingJacsTransformer completed. Message for SDK:", JSON.stringify(messageForSDK).substring(0,100));
 
         } else {
-            if (!this.jacsOperational) {
-                console.log("TransportMiddleware.handlePostMessage: JACS not operational. Parsing as JSON directly.");
-            } else { // jacsOperational is true, but no incomingJacsTransformer
-                console.warn("TransportMiddleware.handlePostMessage: JACS is operational but no incomingJacsTransformer defined. Parsing as JSON directly.");
-            }
+            console.log("TransportMiddleware.handlePostMessage: JACS not operational or no transformer. Parsing POST body as JSON directly.");
             messageForSDK = JSON.parse(bodyToProcess) as JSONRPCMessage;
         }
         
@@ -414,40 +390,19 @@ export class TransportMiddleware implements Transport {
         if (this.onmessage) {
             this.onmessage(messageForSDK); 
         } else {
-            console.error("TransportMiddleware.handlePostMessage: No onmessage handler registered on middleware to pass the processed message.");
-            if (!res.writableEnded) res.writeHead(500).end("Server misconfiguration: no message handler");
+            console.error("TransportMiddleware.handlePostMessage: CRITICAL - No onmessage handler registered on middleware to pass the processed message from POST.");
+            if (!res.writableEnded) res.writeHead(500).end("Server error: no message handler for POSTed data");
             return;
         }
         
         if (!res.writableEnded) {
-            res.writeHead(202).end(); // Accepted
+            res.writeHead(202).end();
         }
 
     } catch (error) {
         const err = error as Error;
-        // Log the specific error received from the transformer or JSON.parse
-        console.error("TransportMiddleware.handlePostMessage: Error during message transformation or processing. Error message:", err.message);
-        console.error("TransportMiddleware.handlePostMessage: Full error stack:", err.stack); // Log the full stack
+        console.error("TransportMiddleware.handlePostMessage: Error during POST message transformation or processing. Error message:", err.message, "\nFull error stack:", err.stack);
         
-        // Check if it's a JACS-specific known error type from our throws
-        if (err.message.startsWith("Native jacs.verifyResponse failed:") || 
-            err.message.startsWith("jacsVerifyTransform:") ||
-            err.message.includes("JACS_NOT_LOADED")) {
-            console.error("TransportMiddleware.handlePostMessage: JACS-specific error caught:", err.message);
-        }
-
-        if (this.onmessage) {
-            const errorPayload: JSONRPCError["error"] = { code: ErrorCode.ParseError, message: `Failed to process POSTed JACS message: ${err.message}` };
-            let errorResponse: JSONRPCError;
-            const finalErrorId = potentialRequestId === undefined ? null : potentialRequestId;
-
-            errorResponse = {
-                jsonrpc: "2.0",
-                id: finalErrorId, 
-                error: errorPayload
-            } as any;
-        }
-
         if (!res.writableEnded) {
             res.writeHead(400).end(`Error processing request: ${err.message}`);
         }
@@ -462,13 +417,11 @@ export function createJacsMiddleware(
   transport: Transport, 
   configPath: string
 ): TransportMiddleware {
-  console.log("Creating JACS Middleware: Using jacsSignTransform (obj->str) and jacsVerifyTransform (str->obj).");
+  console.log("Creating JACS Middleware: Using jacsSignTransform (obj->JACS_str) and jacsVerifyTransform (JACS_str_or_obj->obj).");
   return new TransportMiddleware(
     transport,
     jacsSignTransform,
-    async (jacsString: string): Promise<JSONRPCMessage> => {
-        return jacsVerifyTransform(jacsString, 'incoming', 'unknown');
-    },
+    jacsVerifyTransform,
     configPath
   );
 }
