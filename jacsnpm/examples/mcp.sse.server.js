@@ -72,7 +72,7 @@ app.use(async (req, res, next) => {
     // For now, let's assume SSEServerTransport can work with the Node `res` object even when passed through Express.
     const sseTransport = new SSEServerTransport(MCP_POST_PATH, res); 
     
-    const secureTransport = createJacsMiddleware(sseTransport, serverConfigPath);
+    const secureTransport = createJacsMiddleware(sseTransport, serverConfigPath, "server");
     
     sseTransports.set(sseTransport.sessionId, secureTransport);
     

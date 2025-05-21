@@ -8,7 +8,8 @@ export declare class TransportMiddleware implements Transport {
     private incomingJacsTransformer?;
     private jacsConfigPath?;
     private jacsOperational;
-    constructor(transport: Transport, outgoingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<string>) | undefined, incomingJacsTransformer?: ((jacsInput: string | object, direction: 'incoming' | 'outgoing', messageType: 'request' | 'response' | 'notification' | 'error' | 'unknown') => Promise<JSONRPCMessage>) | undefined, jacsConfigPath?: string | undefined);
+    private middlewareId;
+    constructor(transport: Transport, role: "client" | "server", outgoingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<JSONRPCMessage>) | undefined, incomingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<JSONRPCMessage>) | undefined, jacsConfigPath?: string | undefined);
     onclose?: () => void;
     onerror?: (error: Error) => void;
     onmessage?: (message: JSONRPCMessage) => void;
@@ -20,8 +21,8 @@ export declare class TransportMiddleware implements Transport {
         auth?: any;
     }, res: ServerResponse, rawBodyString?: string): Promise<void>;
 }
-export declare function createJacsMiddleware(transport: Transport, configPath: string): TransportMiddleware;
-export declare function createJacsMiddlewareAsync(transport: Transport, configPath: string): Promise<TransportMiddleware>;
+export declare function createJacsMiddleware(transport: Transport, configPath: string, role: "client" | "server"): TransportMiddleware;
+export declare function createJacsMiddlewareAsync(transport: Transport, configPath: string, role: "client" | "server"): Promise<TransportMiddleware>;
 /**
  *
  * great. I have what I need now in mcp.ts.

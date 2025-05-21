@@ -23,6 +23,7 @@ async function runExample() {
         const secureTransport = await createJacsMiddlewareAsync(
             baseTransport,
             CLIENT_CONFIG_PATH,
+            "client"
         );      
         
         console.log('2!'); 
