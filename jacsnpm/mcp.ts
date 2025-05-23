@@ -207,9 +207,11 @@ export class TransportMiddleware implements Transport {
         
         // Pass to SDK handler
         if (this.onmessage) {
-          if (enableDiagnosticLogging) console.log(`${startLogPrefix}: Passing processed message to SDK's onmessage.`);
-          this.onmessage(processedMessage);
-          if (enableDiagnosticLogging) console.log(`${startLogPrefix}: SDK's onmessage returned successfully.`);
+          const messageIdForLog = 'id' in processedMessage ? processedMessage.id : ('method' in processedMessage ? processedMessage.method : 'unknown');
+          if (enableDiagnosticLogging) console.log(`${startLogPrefix}: Passing processed message to SDK's onmessage (for ID/method: ${messageIdForLog}).`);
+          // Await the SDK's onmessage handler if it's defined (it should be McpServer.handleRequest or similar, which is async)
+          await this.onmessage(processedMessage);
+          if (enableDiagnosticLogging) console.log(`${startLogPrefix}: SDK's onmessage returned successfully (for ID/method: ${messageIdForLog}).`);
         } else {
             console.error(`${startLogPrefix}: CRITICAL - No SDK onmessage handler!`);
         }
@@ -361,16 +363,19 @@ export class TransportMiddleware implements Transport {
         
         // Pass to SDK handler
         if (this.onmessage) {
-            if (enableDiagnosticLogging) console.log(`${logPrefix}: Passing message to SDK's onmessage handler.`);
-            this.onmessage(messageForSDK); 
-            if (enableDiagnosticLogging) console.log(`${logPrefix}: SDK's onmessage handler completed.`);
+            const messageIdForLog = 'id' in messageForSDK ? messageForSDK.id : ('method' in messageForSDK ? messageForSDK.method : 'unknown');
+            if (enableDiagnosticLogging) console.log(`${logPrefix}: Passing message to SDK's onmessage handler (for ID/method: ${messageIdForLog}).`);
+            // Await the SDK's onmessage handler (McpServer.handleRequest is async)
+            await this.onmessage(messageForSDK); 
+            if (enableDiagnosticLogging) console.log(`${logPrefix}: SDK's onmessage handler completed (for ID/method: ${messageIdForLog}).`);
         } else {
             console.error(`${logPrefix}: CRITICAL - No onmessage handler for POST.`);
             if (!res.writableEnded) res.writeHead(500).end("Server error: no handler");
             return;
         }
         
-        // Send acknowledgment
+        // Send acknowledgment for the HTTP POST request
+        // This happens *after* the McpServer has fully processed the message.
         if (!res.writableEnded) res.writeHead(202).end();
         if (enableDiagnosticLogging) console.log(`${logPrefix}: POST request processing completed successfully.`);
     } catch (error) {
