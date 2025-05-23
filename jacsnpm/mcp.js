@@ -5,18 +5,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createJacsMiddlewareAsync = exports.createJacsMiddleware = exports.TransportMiddleware = void 0;
 const types_js_1 = require("@modelcontextprotocol/sdk/types.js");
-const index_js_1 = __importDefault(require("./index.js")); // Assuming this has { signRequest: (data: any) => Promise<any>, verifyResponse: (data: any) => Promise<any> }
+const index_js_1 = __importDefault(require("./index.js"));
 // Load JACS config only once
 let jacsLoaded = false;
 let jacsLoadError = null;
 async function ensureJacsLoaded(configPath) {
     if (jacsLoaded)
-        return; // If successfully loaded, nothing to do.
+        return;
     if (jacsLoadError)
-        throw jacsLoadError; // If previously failed, re-throw the known error.
+        throw jacsLoadError;
     try {
         console.log(`ensureJacsLoaded: Attempting to load JACS config from: ${configPath}`);
-        // Reset jacsLoadError before attempting to load
         jacsLoadError = null;
         await index_js_1.default.load(configPath);
         jacsLoaded = true;
@@ -24,21 +23,18 @@ async function ensureJacsLoaded(configPath) {
     }
     catch (error) {
         jacsLoadError = error;
-        // Log the detailed error here immediately when it happens
         console.error(`ensureJacsLoaded: CRITICAL: Failed to load JACS config from '${configPath}'. Error:`, jacsLoadError.message, jacsLoadError.stack);
-        throw jacsLoadError; // Re-throw to ensure the failure propagates
+        throw jacsLoadError;
     }
 }
 const enableDiagnosticLogging = process.env.JACS_MCP_DEBUG === 'true';
-// Corrected JACS transforms based on actual JACS behavior and MCP transport requirements
-// Corrected JACS transforms based on actual JACS behavior and MCP transport requirements
 async function jacsSignTransform(message) {
     if (!jacsLoaded) {
         console.error("jacsSignTransform: JACS not loaded. Cannot sign.");
         throw new Error("JACS_NOT_LOADED_CANNOT_SIGN");
     }
     const original_message_id = ('id' in message && message.id !== null && typeof message.id !== 'undefined') ? message.id : undefined;
-    // Skip signing error responses - pass them through unchanged
+    // Skip signing error responses
     if ('error' in message) {
         if (enableDiagnosticLogging)
             console.log(`jacsSignTransform: JSON-RPC Error response (ID: ${original_message_id}). Passing through without JACS wrapper.`);
@@ -51,8 +47,7 @@ async function jacsSignTransform(message) {
         const jacs_artifact = await index_js_1.default.signRequest(message);
         if (enableDiagnosticLogging)
             console.log(`jacsSignTransform: Output FROM jacs.signRequest (type ${typeof jacs_artifact}): ${JSON.stringify(jacs_artifact).substring(0, 150)}...`);
-        // JACS returns a complete object structure, not just a string
-        // We need to wrap this in a JSON-RPC envelope that MCP transport can handle
+        // Create wrapped message
         const wrappedMessage = {
             jsonrpc: "2.0",
             method: "jacs/wrapped",
@@ -83,7 +78,7 @@ async function jacsVerifyTransform(message) {
     if (!('method' in message) || message.method !== 'jacs/wrapped' || !message.params || typeof message.params.jacs_artifact === 'undefined') {
         if (enableDiagnosticLogging)
             console.log(`jacsVerifyTransform: Not a JACS-wrapped message (ID: ${original_message_id}). Method: ${message.method || 'none'}. Passing through.`);
-        return message; // Not a JACS-wrapped message, pass through
+        return message;
     }
     const jacs_artifact = message.params.jacs_artifact;
     try {
@@ -101,21 +96,18 @@ async function jacsVerifyTransform(message) {
         }
         if (enableDiagnosticLogging)
             console.log(`jacsVerifyTransform: Input TO jacs.verifyResponse (type ${typeof artifactToVerify}, length ${artifactToVerify.length}): ${artifactToVerify.substring(0, 150)}...`);
-        // jacs.verifyResponse expects a string parameter according to TypeScript
         const verificationResult = await index_js_1.default.verifyResponse(artifactToVerify);
         if (enableDiagnosticLogging)
             console.log(`jacsVerifyTransform: Output FROM jacs.verifyResponse (type ${typeof verificationResult}): ${JSON.stringify(verificationResult).substring(0, 100)}...`);
         // Extract the original message from the verification result
         let originalMessage;
         if (verificationResult && typeof verificationResult === 'object') {
-            // Check if verifyResponse returns an object with a payload property
             if ('payload' in verificationResult) {
                 originalMessage = verificationResult.payload;
                 if (enableDiagnosticLogging)
                     console.log(`jacsVerifyTransform: Extracted from verificationResult.payload`);
             }
             else {
-                // If verifyResponse returns the payload directly
                 originalMessage = verificationResult;
                 if (enableDiagnosticLogging)
                     console.log(`jacsVerifyTransform: Using verificationResult directly`);
@@ -139,7 +131,11 @@ async function jacsVerifyTransform(message) {
         throw error;
     }
 }
-// Updated TransportMiddleware to handle JSON-RPC message objects (not strings)
+// Helper to detect if transport is SSE-based
+function isSSETransport(transport) {
+    const transportName = transport.constructor.name;
+    return transportName.includes('SSE') || transportName.includes('ServerSentEvents');
+}
 class TransportMiddleware {
     constructor(transport, role, outgoingJacsTransformer, incomingJacsTransformer, jacsConfigPath) {
         this.transport = transport;
@@ -148,7 +144,8 @@ class TransportMiddleware {
         this.jacsConfigPath = jacsConfigPath;
         this.jacsOperational = true;
         this.middlewareId = role === "client" ? "CLIENT_MIDDLEWARE" : "SERVER_MIDDLEWARE";
-        console.log(`[${this.middlewareId}] CONSTRUCTOR: Role: ${role}. JACS Config: ${jacsConfigPath}`);
+        this.isSSE = isSSETransport(transport);
+        console.log(`[${this.middlewareId}] CONSTRUCTOR: Role: ${role}. JACS Config: ${jacsConfigPath}. Transport type: ${transport.constructor.name}, isSSE: ${this.isSSE}`);
         if (jacsConfigPath) {
             ensureJacsLoaded(jacsConfigPath)
                 .then(() => { this.jacsOperational = true; console.log(`[${this.middlewareId}] JACS Loaded.`); })
@@ -158,12 +155,14 @@ class TransportMiddleware {
             this.jacsOperational = false;
             console.warn(`[${this.middlewareId}] No JACS config. JACS Non-Operational.`);
         }
+        // Set up message handler
         this.transport.onmessage = async (messageOrStringFromTransport) => {
             const startLogPrefix = `[${this.middlewareId}] ONMESSAGE_HANDLER (transport.onmessage)`;
             if (enableDiagnosticLogging)
                 console.log(`${startLogPrefix}: Received raw from transport. Type: ${typeof messageOrStringFromTransport}, Content: ${String(messageOrStringFromTransport).substring(0, 100)}...`);
             let messageObject;
             try {
+                // Parse the message to JSON-RPC object
                 if (typeof messageOrStringFromTransport === 'string') {
                     if (enableDiagnosticLogging)
                         console.log(`${startLogPrefix}: Parsing string as JSON.`);
@@ -181,6 +180,7 @@ class TransportMiddleware {
                 if (enableDiagnosticLogging)
                     console.log(`${startLogPrefix}: Parsed message object: ${JSON.stringify(messageObject).substring(0, 100)}...`);
                 let processedMessage = messageObject;
+                // Apply JACS verification if operational
                 if (this.incomingJacsTransformer && this.jacsOperational) {
                     if (enableDiagnosticLogging)
                         console.log(`${startLogPrefix}: JACS operational, applying incomingJacsTransformer (obj->obj).`);
@@ -194,6 +194,7 @@ class TransportMiddleware {
                 }
                 if (enableDiagnosticLogging)
                     console.log(`${startLogPrefix}: Final processed message: ${JSON.stringify(processedMessage).substring(0, 100)}...`);
+                // Pass to SDK handler
                 if (this.onmessage) {
                     if (enableDiagnosticLogging)
                         console.log(`${startLogPrefix}: Passing processed message to SDK's onmessage.`);
@@ -212,6 +213,7 @@ class TransportMiddleware {
                     this.onerror(err);
             }
         };
+        // Set up other event handlers
         this.transport.onclose = () => {
             console.log(`[${this.middlewareId}] Transport closed.`);
             if (this.onclose)
@@ -238,6 +240,7 @@ class TransportMiddleware {
             console.log(`${startLogPrefix}: ABOUT TO SEND. Original msg (ID: ${'id' in message ? message.id : 'N/A'}): ${JSON.stringify(message).substring(0, 100)}...`);
         try {
             let messageToSend = message;
+            // Apply JACS signing if operational
             if (this.outgoingJacsTransformer && this.jacsOperational) {
                 if ((0, types_js_1.isJSONRPCResponse)(message) && 'error' in message) {
                     if (enableDiagnosticLogging)
@@ -255,11 +258,11 @@ class TransportMiddleware {
                 if (enableDiagnosticLogging)
                     console.log(`${startLogPrefix}: JACS not operational, sending original message.`);
             }
+            // Handle special SSE endpoint event
             const endpointProperty = message.endpoint;
             if (this.middlewareId === "SERVER_MIDDLEWARE" && typeof endpointProperty === 'string') {
                 if (enableDiagnosticLogging)
                     console.log(`${startLogPrefix} (SSE Server): Detected 'endpoint' event. Value: ${endpointProperty}`);
-                // Ensure _sseResponse is available and a ServerResponse (or similar with .write)
                 const sseTransport = this.transport;
                 if (sseTransport._sseResponse && typeof sseTransport._sseResponse.write === 'function') {
                     sseTransport._sseResponse.write(`event: endpoint\ndata: ${endpointProperty}\n\n`);
@@ -271,7 +274,33 @@ class TransportMiddleware {
                 }
                 return;
             }
-            // Send to underlying transport - MCP SDK expects JSON-RPC objects
+            // Special handling for SSE server - ALL server messages should go through SSE stream
+            if (this.middlewareId === "SERVER_MIDDLEWARE" && this.isSSE) {
+                const sseTransport = this.transport;
+                if (enableDiagnosticLogging) {
+                    console.log(`${startLogPrefix}: SSE Server - checking transport properties:`);
+                    console.log(`  - Has _sseResponse: ${!!sseTransport._sseResponse}`);
+                    console.log(`  - Has res: ${!!sseTransport.res}`);
+                    console.log(`  - Transport keys: ${Object.keys(sseTransport).join(', ')}`);
+                    console.log(`  - Message to send: ${JSON.stringify(messageToSend).substring(0, 200)}`);
+                }
+                // For SSE server, ALL messages should go through the SSE stream
+                // Try to find the response object - check both _sseResponse and res
+                const res = sseTransport._sseResponse || sseTransport.res || sseTransport.response;
+                if (res && typeof res.write === 'function') {
+                    const sseData = `data: ${JSON.stringify(messageToSend)}\n\n`;
+                    if (enableDiagnosticLogging)
+                        console.log(`${startLogPrefix}: Writing directly to SSE stream: ${sseData.substring(0, 100)}...`);
+                    res.write(sseData);
+                    return; // Don't call transport.send() for SSE
+                }
+                else {
+                    console.warn(`${startLogPrefix}: Could not find SSE response object to write to! Will fall back to transport.send()`);
+                    // Fall through to transport.send() as a last resort
+                }
+            }
+            // Send to underlying transport
+            // The transport will handle SSE formatting if needed
             if (enableDiagnosticLogging)
                 console.log(`${startLogPrefix}: Calling underlying transport.send() with message type: ${typeof messageToSend}`);
             await this.transport.send(messageToSend);
@@ -288,6 +317,7 @@ class TransportMiddleware {
     async handlePostMessage(req, res, rawBodyString) {
         const logPrefix = `[${this.middlewareId} HTTP_POST_HANDLER]`;
         let bodyToProcess;
+        // Get the body content
         if (rawBodyString !== undefined && typeof rawBodyString === 'string') {
             bodyToProcess = rawBodyString;
         }
@@ -310,6 +340,7 @@ class TransportMiddleware {
             if (enableDiagnosticLogging)
                 console.log(`${logPrefix}: Parsed POST to object: ${JSON.stringify(messageObjectFromPost).substring(0, 100)}...`);
             let messageForSDK = messageObjectFromPost;
+            // Apply JACS verification if operational
             if (this.jacsOperational && this.incomingJacsTransformer) {
                 if ((0, types_js_1.isJSONRPCResponse)(messageObjectFromPost) && 'error' in messageObjectFromPost) {
                     if (enableDiagnosticLogging)
@@ -327,6 +358,7 @@ class TransportMiddleware {
                 if (enableDiagnosticLogging)
                     console.log(`${logPrefix}: JACS not operational or no transformer. Using parsed POST obj as-is.`);
             }
+            // Pass to SDK handler
             if (this.onmessage) {
                 if (enableDiagnosticLogging)
                     console.log(`${logPrefix}: Passing message to SDK's onmessage handler.`);
@@ -340,6 +372,7 @@ class TransportMiddleware {
                     res.writeHead(500).end("Server error: no handler");
                 return;
             }
+            // Send acknowledgment
             if (!res.writableEnded)
                 res.writeHead(202).end();
             if (enableDiagnosticLogging)

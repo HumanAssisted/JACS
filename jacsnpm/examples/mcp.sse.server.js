@@ -22,6 +22,44 @@ const server = new McpServer({
     version: "1.0.0"
 });
 
+server.onResponse = (response) => {
+  console.log('Server generating response:', JSON.stringify(response));
+};
+
+// After creating the server
+const originalConnect = server.connect.bind(server);
+server.connect = async (transport) => {
+  console.log('Server connecting to transport...');
+  
+  // Intercept messages at the server level
+  const originalOnMessage = transport.onmessage;
+  transport.onmessage = (msg) => {
+    console.log('Server transport received:', JSON.stringify(msg).substring(0, 200));
+    if (originalOnMessage) {
+      const result = originalOnMessage(msg);
+      console.log('Server processed message, result:', result);
+      return result;
+    }
+  };
+  
+  return originalConnect(transport);
+};
+
+// Override the server's request handler to log what's happening
+const originalHandler = server.handle?.bind(server) || server.handleRequest?.bind(server);
+if (originalHandler) {
+  server.handle = async (request) => {
+    console.log('Server.handle called with:', JSON.stringify(request));
+    const result = await originalHandler(request);
+    console.log('Server.handle returning:', JSON.stringify(result));
+    return result;
+  };
+}
+
+// Also check if there's a specific method we need to enable
+console.log('Server methods:', Object.getOwnPropertyNames(server));
+console.log('Server prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(server)));
+
 // Register tools and resources
 server.tool("add",
     { a: z.number(), b: z.number() },
@@ -77,6 +115,15 @@ app.use(async (req, res, next) => {
     sseTransports.set(sseTransport.sessionId, secureTransport);
     
     await server.connect(secureTransport);
+
+    try {
+      await server.setToolRequestHandlers();
+      await server.setResourceRequestHandlers();
+      console.log('Request handlers initialized for session');
+    } catch (error) {
+        console.error('Failed to initialize handlers:', error);
+    }
+
     // SSE transport handles keeping the connection open, so no `res.end()` here from Express.
   } 
   // Handle POST requests (messages from client)

@@ -9,6 +9,7 @@ export declare class TransportMiddleware implements Transport {
     private jacsConfigPath?;
     private jacsOperational;
     private middlewareId;
+    private isSSE;
     constructor(transport: Transport, role: "client" | "server", outgoingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<JSONRPCMessage>) | undefined, incomingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<JSONRPCMessage>) | undefined, jacsConfigPath?: string | undefined);
     onclose?: () => void;
     onerror?: (error: Error) => void;
