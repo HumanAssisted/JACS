@@ -43,6 +43,14 @@ async function createAndConfigureMcpServer() {
   );
   console.log('[MCP_SERVER_FACTORY] Tool "simpleTool" registered on new server instance.');
 
+  server.tool("add", {
+    a: { type: "number", description: "First number" },
+    b: { type: "number", description: "Second number" }
+  }, async ({ a, b }) => {
+    console.log(`[MCP_TOOL_CALL] Tool 'add' called with a=${a}, b=${b}`);
+    return { content: [{ type: "text", text: `${a} + ${b} = ${a + b}` }] };
+  });
+
   // Resource registration (optional for this test, can be kept commented)
   // console.log('[MCP_SERVER_FACTORY] Registering resource: greeting on new server instance');
   // server.resource("greeting", ...);
