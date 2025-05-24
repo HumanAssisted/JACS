@@ -44,6 +44,9 @@
  - [] integrate cli
 
 ### jacspy
+ - [] auto generate agent doc from MCP server list, auto versions (important for A2A as well)
+ - [] fastmcp client and server websocket
+ - [] BUG? demo fastmcp client and server stdio 
  - [] a2a integration
   - [] have jacs cli installed along with wheel
    - [] python based instructions for how to create - cli create agent 
@@ -52,6 +55,8 @@
  - [] github actions builder for linux varieties
 
 ### JACS core
+ - [] cli install instructions. a .sh command?
+ - [] expose logging function to jacspy and jacsnpm
  - [] create centralized logging output without file output  
  - [] CA for cert
  - [] register public key in d option 
@@ -73,19 +78,19 @@
  - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
  - [x] make cli utils available to other libs
+ - [] *** start effort to channel all logging to jacs -> open telemetry -> fs or elsewhere that doesn't write to stdio on 
+    1. the main traffic for sign and verify
+    2. all logs generated
 
 
 ### jacspy
 
-
  - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
-
- - [] fastmcp client and server stdio
- - [] fastmcp client and server websocket
  - [] publish jacspy to pypi
- - [] mcp make sure "list" request is signed
- - [] fastapi, django, flask, guvicorn 
- - [] auto generate agent doc from MCP server list, auto versions (important for A2A as well)
+ - [] mcp make sure "list" request is signed?
+ - [] some integration tests
+ - [] fastapi, django, flask, guvicorn specific pre-built middleware
+
 
 ## jacsnpm
 
