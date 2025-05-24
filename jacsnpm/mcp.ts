@@ -430,19 +430,12 @@ export class JACSTransportProxy implements Transport {
     }
   }
 
-  private removeNullValues(obj: any): any {
-    if (obj === null || obj === undefined) return undefined;
-    if (typeof obj !== 'object') return obj;
-    if (Array.isArray(obj)) return obj.map(item => this.removeNullValues(item));
-    
-    const cleaned: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      const cleanedValue = this.removeNullValues(value);
-      if (cleanedValue !== null && cleanedValue !== undefined) {
-        cleaned[key] = cleanedValue;
-      }
+  private removeNullValues(message: JSONRPCMessage): JSONRPCMessage {
+    const cleanedMessage = { ...message };
+    if ('params' in cleanedMessage && cleanedMessage.params === null) {
+      delete cleanedMessage.params;
     }
-    return cleaned;
+    return cleanedMessage;
   }
 }
 
