@@ -24,6 +24,8 @@ export declare class JACSTransportProxy implements Transport {
     handlePostMessage?(req: IncomingMessage & {
         auth?: any;
     }, res: ServerResponse, rawBodyString?: string): Promise<void>;
+    private handleIncomingMessage;
+    private removeNullValues;
 }
 export declare function createJACSTransportProxy(transport: Transport, configPath: string, role: "client" | "server"): JACSTransportProxy;
 export declare function createJACSTransportProxyAsync(transport: Transport, configPath: string, role: "client" | "server"): Promise<JACSTransportProxy>;

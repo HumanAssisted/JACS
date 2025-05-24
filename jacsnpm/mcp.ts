@@ -133,9 +133,14 @@ export class JACSTransportProxy implements Transport {
       const originalSend = this.transport.send.bind(this.transport);
       this.transport.send = async (data: any) => {
         if (typeof data === 'string') {
-          // Handle raw JACS strings directly
+          // Check if this is a server-side SSE transport
           const sseTransport = this.transport as any;
-          if (sseTransport._endpoint) {
+          if (sseTransport._sseResponse) {
+            // Server-side: write directly to SSE stream
+            sseTransport._sseResponse.write(`event: message\ndata: ${data}\n\n`);
+            return;
+          } else if (sseTransport._endpoint) {
+            // Client-side: use fetch (existing code)
             const headers = await (sseTransport._commonHeaders?.() || Promise.resolve({}));
             const response = await fetch(sseTransport._endpoint, {
               method: "POST",
@@ -152,9 +157,64 @@ export class JACSTransportProxy implements Transport {
             return;
           }
         }
-        // Fall back to original send for objects
         return originalSend(data);
       };
+    }
+
+    // Replace the client monkey patch section in the constructor with this:
+    if (role === "client") {
+      console.log(`[${this.proxyId}] Setting up EventSource interception for client...`);
+      
+      // Wait for the transport to be initialized, then intercept its EventSource
+      setTimeout(() => {
+        const sseTransport = this.transport as any;
+        if (sseTransport._eventSource) {
+          console.log(`[${this.proxyId}] Found EventSource, intercepting onmessage...`);
+          const originalOnMessage = sseTransport._eventSource.onmessage;
+          
+          sseTransport._eventSource.onmessage = async (event: MessageEvent) => {
+            console.log(`[${this.proxyId}] EventSource received message:`, event.data?.substring(0, 100));
+            
+            try {
+              // Try JACS verification first
+              if (this.jacsOperational) {
+                const verificationResult = await jacs.verifyResponse(event.data);
+                
+                let decryptedMessage: JSONRPCMessage;
+                if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
+                  decryptedMessage = verificationResult.payload as JSONRPCMessage;
+                } else {
+                  decryptedMessage = verificationResult as JSONRPCMessage;
+                }
+                
+                // Clean up JACS-added null values before passing to MCP SDK
+                const cleanedMessage = this.removeNullValues(decryptedMessage);
+                
+                console.log(`[${this.proxyId}] JACS verification successful, passing decrypted message to MCP SDK`);
+                const newEvent = new MessageEvent('message', {
+                  data: JSON.stringify(cleanedMessage)
+                });
+                originalOnMessage.call(sseTransport._eventSource, newEvent);
+                return;
+              }
+            } catch (jacsError) {
+              console.log(`[${this.proxyId}] Not a JACS artifact, passing original message to MCP SDK`);
+            }
+            
+            // Not JACS or JACS failed, use original handler
+            originalOnMessage.call(sseTransport._eventSource, event);
+          };
+        } else {
+          console.log(`[${this.proxyId}] EventSource not found, will retry...`);
+          // Retry after transport is fully initialized
+          setTimeout(() => {
+            if ((this.transport as any)._eventSource) {
+              console.log(`[${this.proxyId}] Found EventSource on retry, intercepting...`);
+              // Same logic as above
+            }
+          }, 100);
+        }
+      }, 50);
     }
   }
 
@@ -188,10 +248,16 @@ export class JACSTransportProxy implements Transport {
         } else {
           try {
             if (enableDiagnosticLogging) console.log(`${logPrefix}: Applying JACS encryption to message...`);
-            const jacsArtifact = await jacs.signRequest(message);
             
-            const jacsObject = JSON.parse(jacsArtifact);
-            await this.transport.send(jacsObject as any);
+            // Clean up the message before JACS signing - remove null params
+            const cleanMessage = { ...message };
+            if ('params' in cleanMessage && cleanMessage.params === null) {
+              delete cleanMessage.params;
+            }
+            
+            const jacsArtifact = await jacs.signRequest(cleanMessage);
+            await this.transport.send(jacsArtifact as any);  
+            
           } catch (jacsError) {
             console.error(`${logPrefix}: JACS encryption failed, sending plain message. Error:`, jacsError);
             await this.transport.send(message);
@@ -266,8 +332,15 @@ export class JACSTransportProxy implements Transport {
             decryptedMessage = verificationResult as JSONRPCMessage;
           }
           
-          // Convert back to JSON string for the underlying transport
-          processedBody = JSON.stringify(decryptedMessage);
+          // Clean up JACS-added null params before passing to MCP SDK
+          if ('params' in decryptedMessage && decryptedMessage.params === null) {
+            const cleanMessage = { ...decryptedMessage };
+            delete cleanMessage.params;
+            processedBody = JSON.stringify(cleanMessage);
+          } else {
+            processedBody = JSON.stringify(decryptedMessage);
+          }
+          
           if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
         } catch (parseError) {
           // If it's not valid JSON, try with original string
@@ -281,8 +354,15 @@ export class JACSTransportProxy implements Transport {
             decryptedMessage = verificationResult as JSONRPCMessage;
           }
           
-          // Convert back to JSON string for the underlying transport
-          processedBody = JSON.stringify(decryptedMessage);
+          // Clean up JACS-added null params before passing to MCP SDK
+          if ('params' in decryptedMessage && decryptedMessage.params === null) {
+            const cleanMessage = { ...decryptedMessage };
+            delete cleanMessage.params;
+            processedBody = JSON.stringify(cleanMessage);
+          } else {
+            processedBody = JSON.stringify(decryptedMessage);
+          }
+          
           if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
         }
       }
@@ -297,6 +377,72 @@ export class JACSTransportProxy implements Transport {
         res.writeHead(500).end(`Error: ${errorMessage}`);
       }
     }
+  }
+
+  private async handleIncomingMessage(incomingData: string | JSONRPCMessage | object): Promise<void> {
+    const logPrefix = `[${this.proxyId}] INCOMING`;
+    
+    try {
+      let messageForSDK: JSONRPCMessage;
+
+      if (typeof incomingData === 'string') {
+        if (enableDiagnosticLogging) console.log(`${logPrefix}: Received string from transport (len ${incomingData.length}): ${incomingData.substring(0,100)}...`);
+        
+        if (this.jacsOperational) {
+          try {
+            if (enableDiagnosticLogging) console.log(`${logPrefix}: Attempting JACS verification of string...`);
+            const verificationResult = await jacs.verifyResponse(incomingData);
+            
+            let decryptedMessage: JSONRPCMessage;
+            if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
+              decryptedMessage = verificationResult.payload as JSONRPCMessage;
+            } else {
+              decryptedMessage = verificationResult as JSONRPCMessage;
+            }
+            
+            if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS verification successful. Decrypted message: ${JSON.stringify(decryptedMessage).substring(0,100)}...`);
+            messageForSDK = decryptedMessage;
+          } catch (jacsError) {
+            const errorMessage = jacsError instanceof Error ? jacsError.message : "Unknown JACS error";
+            if (enableDiagnosticLogging) console.log(`${logPrefix}: Not a JACS artifact, parsing as plain JSON. JACS error was: ${errorMessage}`);
+            messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
+          }
+        } else {
+          if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS not operational, parsing as plain JSON.`);
+          messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
+        }
+      } else if (typeof incomingData === 'object' && incomingData !== null && 'jsonrpc' in incomingData) {
+        if (enableDiagnosticLogging) console.log(`${logPrefix}: Received object from transport, using as-is.`);
+        messageForSDK = incomingData as JSONRPCMessage;
+      } else {
+        console.error(`${logPrefix}: Unexpected data type from transport:`, typeof incomingData);
+        throw new Error("Invalid data type from transport");
+      }
+
+      if (enableDiagnosticLogging) console.log(`${logPrefix}: Passing to MCP SDK: ${JSON.stringify(messageForSDK).substring(0,100)}...`);
+      
+      if (this.onmessage) {
+        this.onmessage(messageForSDK);
+      }
+    } catch (error) {
+      console.error(`${logPrefix}: Error processing incoming message:`, error);
+      if (this.onerror) this.onerror(error as Error);
+    }
+  }
+
+  private removeNullValues(obj: any): any {
+    if (obj === null || obj === undefined) return undefined;
+    if (typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(item => this.removeNullValues(item));
+    
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const cleanedValue = this.removeNullValues(value);
+      if (cleanedValue !== null && cleanedValue !== undefined) {
+        cleaned[key] = cleanedValue;
+      }
+    }
+    return cleaned;
   }
 }
 
