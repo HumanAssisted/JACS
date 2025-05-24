@@ -7,9 +7,9 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { createJACSTransportProxy } from '../mcp.js';
 import * as http from 'node:http';
 import { URL } from 'node:url';
-// import { z } from "zod"; // Not needed for the simplified tool
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import express from 'express'; // Import express
+import { z } from 'zod';
 
 const serverConfigPath = "./jacs.server.config.json";
 const PORT = 3000;
@@ -43,19 +43,39 @@ async function createAndConfigureMcpServer() {
   );
   console.log('[MCP_SERVER_FACTORY] Tool "simpleTool" registered on new server instance.');
 
-  server.tool("add", {
-    a: { type: "number", description: "First number" },
-    b: { type: "number", description: "Second number" }
-  }, async ({ a, b }) => {
-    console.log(`[MCP_TOOL_CALL] Tool 'add' called with a=${a}, b=${b}`);
-    return { content: [{ type: "text", text: `${a} + ${b} = ${a + b}` }] };
-  });
+  console.log('[MCP_SERVER_FACTORY] Registering add tool on new server instance');
+  try {
+    server.registerTool("add", {
+      description: "Adds two numbers together",
+      inputSchema: {
+        a: z.number().describe("First number"),
+        b: z.number().describe("Second number")
+      }
+    }, async ({ a, b }) => {
+      console.log(`[MCP_TOOL_CALL] Tool 'add' called with a=${a}, b=${b}`);
+      return { content: [{ type: "text", text: `${a} + ${b} = ${a + b}` }] };
+    });
+    console.log('[MCP_SERVER_FACTORY] Tool "add" registered successfully on new server instance.');
+  } catch (error) {
+    console.error('[MCP_SERVER_FACTORY] ERROR registering add tool:', error);
+  }
 
-  // Resource registration (optional for this test, can be kept commented)
-  // console.log('[MCP_SERVER_FACTORY] Registering resource: greeting on new server instance');
-  // server.resource("greeting", ...);
-  // console.log('[MCP_SERVER_FACTORY] Resource "greeting" registered on new server instance.');
+  server.resource(
+    "greeting",
+    new ResourceTemplate("greeting://{name}", { list: undefined }),
+    async (uri, { name }) => {
+      console.log(`[MCP_RESOURCE_READ] Greeting resource read for user: ${name}`);
+      return {
+        contents: [{
+          uri: uri.href,
+          text: `Hello, ${name}! Welcome to the JACS-secured MCP server. 🎉`,
+          mimeType: "text/plain"
+        }]
+      };
+    }
+  );
 
+ 
   try {
     console.log('[MCP_SERVER_FACTORY] Setting tool request handlers on new server instance...');
     await server.setToolRequestHandlers();

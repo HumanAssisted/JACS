@@ -431,12 +431,21 @@ class JACSTransportProxy {
                 this.onerror(error);
         }
     }
-    removeNullValues(message) {
-        const cleanedMessage = { ...message };
-        if ('params' in cleanedMessage && cleanedMessage.params === null) {
-            delete cleanedMessage.params;
+    removeNullValues(obj) {
+        if (obj === null || obj === undefined)
+            return undefined;
+        if (typeof obj !== 'object')
+            return obj;
+        if (Array.isArray(obj))
+            return obj.map(item => this.removeNullValues(item));
+        const cleaned = {};
+        for (const [key, value] of Object.entries(obj)) {
+            const cleanedValue = this.removeNullValues(value);
+            if (cleanedValue !== null && cleanedValue !== undefined) {
+                cleaned[key] = cleanedValue;
+            }
         }
-        return cleanedMessage;
+        return cleaned;
     }
 }
 exports.JACSTransportProxy = JACSTransportProxy;
