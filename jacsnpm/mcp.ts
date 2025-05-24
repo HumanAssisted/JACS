@@ -281,19 +281,38 @@ export class JACSTransportProxy implements Transport {
   }
 
   // Handle HTTP POST for SSE transports (if applicable)
+  /**
+   * REQUIRED for SSE (Server-Sent Events) transport pattern in MCP.
+   * 
+   * WHY THIS EXISTS:
+   * SSE is inherently unidirectional (server→client), but MCP requires bidirectional communication.
+   * The MCP SSE implementation solves this with a hybrid approach:
+   * - Server→Client: Uses SSE stream for real-time messages  
+   * - Client→Server: Uses HTTP POST to a specific endpoint
+   * 
+   * This function intercepts those client POST requests, decrypts JACS payloads,
+   * and forwards the decrypted messages to the underlying SSE transport handler.
+   * 
+   * Without this, JACS-encrypted client messages would never reach the MCP server.
+   */
   async handlePostMessage?(req: IncomingMessage & { auth?: any }, res: ServerResponse, rawBodyString?: string): Promise<void> {
     const logPrefix = `[${this.proxyId}] HTTP_POST`;
     
+    // Verify the underlying transport actually supports POST handling
+    // (not all MCP transports do - only SSE transports need this)
     if (!('handlePostMessage' in this.transport) || typeof this.transport.handlePostMessage !== 'function') {
       console.error(`${logPrefix}: Underlying transport does not support handlePostMessage`);
       if (!res.writableEnded) res.writeHead(500).end("Transport does not support POST handling");
       return;
     }
 
+    // Extract the request body (which contains the JACS-encrypted payload)
     let bodyToProcess: string;
     if (rawBodyString !== undefined) {
+      // Body already provided (likely from Express middleware)
       bodyToProcess = rawBodyString;
     } else {
+      // Manually read the request body from the HTTP stream
       const bodyBuffer = [];
       for await (const chunk of req) { bodyBuffer.push(chunk); }
       bodyToProcess = Buffer.concat(bodyBuffer).toString();
@@ -430,6 +449,23 @@ export class JACSTransportProxy implements Transport {
     }
   }
 
+  /**
+   * Removes null and undefined values from JSON objects to prevent MCP schema validation failures.
+   * 
+   * WORKAROUND for MCP JSON Schema validation issues:
+   * - Addresses strict validators (like Anthropic's API) that reject schemas with null values
+   * - Handles edge cases where tools have null inputSchema causing client validation errors
+   * - Prevents "invalid_type: expected object, received undefined" errors in TypeScript SDK v1.9.0
+   * - Cleans up malformed schemas before transmission to avoid -32602 JSON-RPC errors
+   * 
+   * Related issues:
+   * - https://github.com/modelcontextprotocol/typescript-sdk/issues/400 (null schema tools)
+   * - https://github.com/anthropics/claude-code/issues/586 (Anthropic strict Draft 2020-12)
+   * - https://github.com/agno-agi/agno/issues/2791 (missing type field)
+   * 
+   * @param obj - The object to clean (typically MCP tool/resource schemas)
+   * @returns A new object with all null/undefined values recursively removed
+   */
   private removeNullValues(obj: any): any {
     if (obj === null || obj === undefined) return undefined;
     if (typeof obj !== 'object') return obj;
