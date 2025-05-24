@@ -11,6 +11,8 @@
         "mcp:client": "node mcp.client.js",
         "mcp:sse:server": "JACS_PRIVATE_KEY_PASSWORD=hello node mcp.sse.server.js",
         "mcp:sse:client": "JACS_PRIVATE_KEY_PASSWORD=hello node mcp.sse.client.js",
+        "mcp:stdio:server": "JACS_PRIVATE_KEY_PASSWORD=hello node mcp.stdio.server.js",
+        "mcp:stdio:client": "JACS_PRIVATE_KEY_PASSWORD=hello node mcp.stdio.client.js",
         "test:mcp": "npm run server & sleep 2 && npm run client",
         "koa": "node koaserver.js",
         "express": "node expressmiddleware.js",

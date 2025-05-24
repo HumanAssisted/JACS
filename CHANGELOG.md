@@ -36,6 +36,8 @@
 
 ### jacsnpm
 
+ - [] BUG with STDIO in general
+      fix issues with Stdio mcp client and server log noise - relates to open telemetry being used at rust layer.
  - [] github actions builder for linux varieties
  - [] npm install jacs (cli and available to plugin)
  - [] a2a integration
@@ -67,7 +69,6 @@
 
 ### JACS core
 
-
  - [] don't store  "jacs_private_key_password":  in config, don't display
  - [x] add timestamp to prevent replay attacks to request/response features
  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
@@ -93,7 +94,7 @@ proof of concept
  - [x] scaffold
  - [x] use refactored agent trait instead of replicating
  - [x] typescript mcp client and server tests
- - []  test mcp client and server
+ - [x]  test sse mcp client and server
  - [x]  node express middleware
 
 

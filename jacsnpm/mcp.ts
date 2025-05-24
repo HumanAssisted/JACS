@@ -4,6 +4,17 @@ import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import jacs from './index.js';
 import { IncomingMessage, ServerResponse } from "node:http";
 
+// Add near the top, after imports:
+const isStdioTransport = (transport: any): boolean => {
+  return transport.constructor.name === 'StdioServerTransport' || 
+         transport.constructor.name === 'StdioClientTransport';
+};
+let enableDiagnosticLogging = false;
+
+function jacslog(...args: any[]): void {
+  console.error(...args);
+}
+
 // Load JACS config only once
 let jacsLoaded = false;
 let jacsLoadError: Error | null = null;
@@ -13,19 +24,17 @@ async function ensureJacsLoaded(configPath: string): Promise<void> {
   if (jacsLoadError) throw jacsLoadError;
 
   try {
-    console.log(`ensureJacsLoaded: Attempting to load JACS config from: ${configPath}`);
+    jacslog(`ensureJacsLoaded: Attempting to load JACS config from: ${configPath}`);
     jacsLoadError = null; 
     await jacs.load(configPath);
     jacsLoaded = true;
-    console.log(`ensureJacsLoaded: JACS agent loaded successfully from ${configPath}.`);
+    jacslog(`ensureJacsLoaded: JACS agent loaded successfully from ${configPath}.`);
   } catch (error) {
     jacsLoadError = error as Error;
     console.error(`ensureJacsLoaded: CRITICAL: Failed to load JACS config from '${configPath}'. Error:`, jacsLoadError.message); 
     throw jacsLoadError;
   }
 }
-
-const enableDiagnosticLogging = process.env.JACS_MCP_DEBUG === 'true';
 
 /**
  * JACS Transport Proxy - Wraps any transport with JACS encryption
@@ -43,13 +52,22 @@ export class JACSTransportProxy implements Transport {
     private jacsConfigPath?: string
   ) {
     this.proxyId = `JACS_${role.toUpperCase()}_PROXY`;
-    console.log(`[${this.proxyId}] CONSTRUCTOR: Wrapping transport with JACS. Config: ${jacsConfigPath}`);
+    
+    // Disable JACS debugging for STDIO transports to prevent stdout contamination
+    const suppressDebugForStdio = isStdioTransport(transport);
+    const enableDiagnosticLogging = process.env.JACS_MCP_DEBUG === 'true' && !suppressDebugForStdio;
+    
+    if (suppressDebugForStdio) {
+      console.error(`[${this.proxyId}] STDIO transport detected, suppressing debug output`);
+    }
+    
+    jacslog(`[${this.proxyId}] CONSTRUCTOR: Wrapping transport with JACS. Config: ${jacsConfigPath}`);
 
     if (jacsConfigPath) {
       ensureJacsLoaded(jacsConfigPath)
         .then(() => { 
           this.jacsOperational = true; 
-          console.log(`[${this.proxyId}] JACS Loaded and operational.`); 
+          jacslog(`[${this.proxyId}] JACS Loaded and operational.`); 
         })
         .catch(err => { 
           this.jacsOperational = false; 
@@ -68,12 +86,12 @@ export class JACSTransportProxy implements Transport {
         let messageForSDK: JSONRPCMessage;
 
         if (typeof incomingData === 'string') {
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: Received string from transport (len ${incomingData.length}): ${incomingData.substring(0,100)}...`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received string from transport (len ${incomingData.length}): ${incomingData.substring(0,100)}...`);
           
           if (this.jacsOperational) {
             // Try to decrypt/verify the string as a JACS artifact
             try {
-              if (enableDiagnosticLogging) console.log(`${logPrefix}: Attempting JACS verification of string...`);
+              if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification of string...`);
               const verificationResult = await jacs.verifyResponse(incomingData);
               
               let decryptedMessage: JSONRPCMessage;
@@ -83,28 +101,28 @@ export class JACSTransportProxy implements Transport {
                 decryptedMessage = verificationResult as JSONRPCMessage;
               }
               
-              if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS verification successful. Decrypted message: ${JSON.stringify(decryptedMessage).substring(0,100)}...`);
+              if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted message: ${JSON.stringify(decryptedMessage).substring(0,100)}...`);
               messageForSDK = decryptedMessage;
             } catch (jacsError) {
               // Not a JACS artifact, treat as plain JSON
               const errorMessage = jacsError instanceof Error ? jacsError.message : "Unknown JACS error";
-              if (enableDiagnosticLogging) console.log(`${logPrefix}: Not a JACS artifact, parsing as plain JSON. JACS error was: ${errorMessage}`);
+              if (enableDiagnosticLogging) jacslog(`${logPrefix}: Not a JACS artifact, parsing as plain JSON. JACS error was: ${errorMessage}`);
               messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
             }
           } else {
             // JACS not operational, parse as plain JSON
-            if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS not operational, parsing as plain JSON.`);
+            if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS not operational, parsing as plain JSON.`);
             messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
           }
         } else if (typeof incomingData === 'object' && incomingData !== null && 'jsonrpc' in incomingData) {
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: Received object from transport, using as-is.`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received object from transport, using as-is.`);
           messageForSDK = incomingData as JSONRPCMessage;
         } else {
           console.error(`${logPrefix}: Unexpected data type from transport:`, typeof incomingData);
           throw new Error("Invalid data type from transport");
         }
 
-        if (enableDiagnosticLogging) console.log(`${logPrefix}: Passing to MCP SDK: ${JSON.stringify(messageForSDK).substring(0,100)}...`);
+        if (enableDiagnosticLogging) jacslog(`${logPrefix}: Passing to MCP SDK: ${JSON.stringify(messageForSDK).substring(0,100)}...`);
         
         // Pass the clean JSON-RPC message to the MCP SDK
         if (this.onmessage) {
@@ -118,7 +136,7 @@ export class JACSTransportProxy implements Transport {
 
     // Forward transport events
     this.transport.onclose = () => { 
-      console.log(`[${this.proxyId}] Transport closed.`);
+      jacslog(`[${this.proxyId}] Transport closed.`);
       if (this.onclose) this.onclose(); 
     };
     
@@ -127,7 +145,7 @@ export class JACSTransportProxy implements Transport {
       if (this.onerror) this.onerror(error); 
     };
 
-    console.log(`[${this.proxyId}] CONSTRUCTOR: Transport proxy initialized.`);
+    jacslog(`[${this.proxyId}] CONSTRUCTOR: Transport proxy initialized.`);
 
     if ('send' in this.transport && typeof this.transport.send === 'function') {
       const originalSend = this.transport.send.bind(this.transport);
@@ -163,17 +181,17 @@ export class JACSTransportProxy implements Transport {
 
     // Replace the client monkey patch section in the constructor with this:
     if (role === "client") {
-      console.log(`[${this.proxyId}] Setting up EventSource interception for client...`);
+      jacslog(`[${this.proxyId}] Setting up EventSource interception for client...`);
       
       // Wait for the transport to be initialized, then intercept its EventSource
       setTimeout(() => {
         const sseTransport = this.transport as any;
         if (sseTransport._eventSource) {
-          console.log(`[${this.proxyId}] Found EventSource, intercepting onmessage...`);
+          jacslog(`[${this.proxyId}] Found EventSource, intercepting onmessage...`);
           const originalOnMessage = sseTransport._eventSource.onmessage;
           
           sseTransport._eventSource.onmessage = async (event: MessageEvent) => {
-            console.log(`[${this.proxyId}] EventSource received message:`, event.data?.substring(0, 100));
+            jacslog(`[${this.proxyId}] EventSource received message:`, event.data?.substring(0, 100));
             
             try {
               // Try JACS verification first
@@ -190,7 +208,7 @@ export class JACSTransportProxy implements Transport {
                 // Clean up JACS-added null values before passing to MCP SDK
                 const cleanedMessage = this.removeNullValues(decryptedMessage);
                 
-                console.log(`[${this.proxyId}] JACS verification successful, passing decrypted message to MCP SDK`);
+                jacslog(`[${this.proxyId}] JACS verification successful, passing decrypted message to MCP SDK`);
                 const newEvent = new MessageEvent('message', {
                   data: JSON.stringify(cleanedMessage)
                 });
@@ -198,18 +216,18 @@ export class JACSTransportProxy implements Transport {
                 return;
               }
             } catch (jacsError) {
-              console.log(`[${this.proxyId}] Not a JACS artifact, passing original message to MCP SDK`);
+              jacslog(`[${this.proxyId}] Not a JACS artifact, passing original message to MCP SDK`);
             }
             
             // Not JACS or JACS failed, use original handler
             originalOnMessage.call(sseTransport._eventSource, event);
           };
         } else {
-          console.log(`[${this.proxyId}] EventSource not found, will retry...`);
+          jacslog(`[${this.proxyId}] EventSource not found, will retry...`);
           // Retry after transport is fully initialized
           setTimeout(() => {
             if ((this.transport as any)._eventSource) {
-              console.log(`[${this.proxyId}] Found EventSource on retry, intercepting...`);
+              jacslog(`[${this.proxyId}] Found EventSource on retry, intercepting...`);
               // Same logic as above
             }
           }, 100);
@@ -224,12 +242,12 @@ export class JACSTransportProxy implements Transport {
   onmessage?: (message: JSONRPCMessage) => void;
 
   async start(): Promise<void> { 
-    console.log(`[${this.proxyId}] Starting underlying transport...`);
+    jacslog(`[${this.proxyId}] Starting underlying transport...`);
     return this.transport.start(); 
   }
   
   async close(): Promise<void> { 
-    console.log(`[${this.proxyId}] Closing underlying transport...`);
+    jacslog(`[${this.proxyId}] Closing underlying transport...`);
     return this.transport.close(); 
   }
 
@@ -238,16 +256,16 @@ export class JACSTransportProxy implements Transport {
     const logPrefix = `[${this.proxyId}] OUTGOING`;
     
     try {
-      if (enableDiagnosticLogging) console.log(`${logPrefix}: MCP SDK sending message: ${JSON.stringify(message).substring(0,100)}...`);
+      if (enableDiagnosticLogging) jacslog(`${logPrefix}: MCP SDK sending message: ${JSON.stringify(message).substring(0,100)}...`);
 
       if (this.jacsOperational) {
         // Skip JACS for error responses
         if ('error' in message) {
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: Error response, skipping JACS encryption.`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Error response, skipping JACS encryption.`);
           await this.transport.send(message);
         } else {
           try {
-            if (enableDiagnosticLogging) console.log(`${logPrefix}: Applying JACS encryption to message...`);
+            if (enableDiagnosticLogging) jacslog(`${logPrefix}: Applying JACS encryption to message...`);
             
             // Clean up the message before JACS signing - remove null params
             const cleanMessage = { ...message };
@@ -264,11 +282,11 @@ export class JACSTransportProxy implements Transport {
           }
         }
       } else {
-        if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS not operational, sending plain message.`);
+        if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS not operational, sending plain message.`);
         await this.transport.send(message);
       }
       
-      if (enableDiagnosticLogging) console.log(`${logPrefix}: Successfully sent to transport.`);
+      if (enableDiagnosticLogging) jacslog(`${logPrefix}: Successfully sent to transport.`);
     } catch (error) {
       console.error(`${logPrefix}: Error sending message:`, error);
       throw error;
@@ -322,12 +340,12 @@ export class JACSTransportProxy implements Transport {
       }
     }
 
-    if (enableDiagnosticLogging) console.log(`${logPrefix}: Raw body (len ${bodyToProcess.length}): ${bodyToProcess.substring(0,100)}...`);
+    if (enableDiagnosticLogging) jacslog(`${logPrefix}: Raw body (len ${bodyToProcess.length}): ${bodyToProcess.substring(0,100)}...`);
 
     // Add this debug line before calling jacs.verifyResponse:
-    console.log(`${logPrefix}: JACS Debug - Body type: ${typeof bodyToProcess}`);
-    console.log(`${logPrefix}: JACS Debug - First 200 chars:`, JSON.stringify(bodyToProcess.substring(0, 200)));
-    console.log(`${logPrefix}: JACS Debug - Is valid JSON?`, (() => {
+    jacslog(`${logPrefix}: JACS Debug - Body type: ${typeof bodyToProcess}`);
+    jacslog(`${logPrefix}: JACS Debug - First 200 chars:`, JSON.stringify(bodyToProcess.substring(0, 200)));
+    jacslog(`${logPrefix}: JACS Debug - Is valid JSON?`, (() => {
       try { JSON.parse(bodyToProcess); return true; } catch { return false; }
     })());
 
@@ -341,7 +359,7 @@ export class JACSTransportProxy implements Transport {
           const parsedJson = JSON.parse(bodyToProcess);
           const normalizedJsonString = JSON.stringify(parsedJson);
           
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: Attempting JACS verification with normalized JSON...`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification with normalized JSON...`);
           const verificationResult = await jacs.verifyResponse(normalizedJsonString);
           
           let decryptedMessage: JSONRPCMessage;
@@ -360,10 +378,10 @@ export class JACSTransportProxy implements Transport {
             processedBody = JSON.stringify(decryptedMessage);
           }
           
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
         } catch (parseError) {
           // If it's not valid JSON, try with original string
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: JSON normalization failed, trying original string...`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JSON normalization failed, trying original string...`);
           const verificationResult = await jacs.verifyResponse(bodyToProcess);
           
           let decryptedMessage: JSONRPCMessage;
@@ -382,7 +400,7 @@ export class JACSTransportProxy implements Transport {
             processedBody = JSON.stringify(decryptedMessage);
           }
           
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
         }
       }
 
@@ -405,11 +423,11 @@ export class JACSTransportProxy implements Transport {
       let messageForSDK: JSONRPCMessage;
 
       if (typeof incomingData === 'string') {
-        if (enableDiagnosticLogging) console.log(`${logPrefix}: Received string from transport (len ${incomingData.length}): ${incomingData.substring(0,100)}...`);
+        if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received string from transport (len ${incomingData.length}): ${incomingData.substring(0,100)}...`);
         
         if (this.jacsOperational) {
           try {
-            if (enableDiagnosticLogging) console.log(`${logPrefix}: Attempting JACS verification of string...`);
+            if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification of string...`);
             const verificationResult = await jacs.verifyResponse(incomingData);
             
             let decryptedMessage: JSONRPCMessage;
@@ -419,26 +437,26 @@ export class JACSTransportProxy implements Transport {
               decryptedMessage = verificationResult as JSONRPCMessage;
             }
             
-            if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS verification successful. Decrypted message: ${JSON.stringify(decryptedMessage).substring(0,100)}...`);
+            if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted message: ${JSON.stringify(decryptedMessage).substring(0,100)}...`);
             messageForSDK = decryptedMessage;
           } catch (jacsError) {
             const errorMessage = jacsError instanceof Error ? jacsError.message : "Unknown JACS error";
-            if (enableDiagnosticLogging) console.log(`${logPrefix}: Not a JACS artifact, parsing as plain JSON. JACS error was: ${errorMessage}`);
+            if (enableDiagnosticLogging) jacslog(`${logPrefix}: Not a JACS artifact, parsing as plain JSON. JACS error was: ${errorMessage}`);
             messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
           }
         } else {
-          if (enableDiagnosticLogging) console.log(`${logPrefix}: JACS not operational, parsing as plain JSON.`);
+          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS not operational, parsing as plain JSON.`);
           messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
         }
       } else if (typeof incomingData === 'object' && incomingData !== null && 'jsonrpc' in incomingData) {
-        if (enableDiagnosticLogging) console.log(`${logPrefix}: Received object from transport, using as-is.`);
+        if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received object from transport, using as-is.`);
         messageForSDK = incomingData as JSONRPCMessage;
       } else {
         console.error(`${logPrefix}: Unexpected data type from transport:`, typeof incomingData);
         throw new Error("Invalid data type from transport");
       }
 
-      if (enableDiagnosticLogging) console.log(`${logPrefix}: Passing to MCP SDK: ${JSON.stringify(messageForSDK).substring(0,100)}...`);
+      if (enableDiagnosticLogging) jacslog(`${logPrefix}: Passing to MCP SDK: ${JSON.stringify(messageForSDK).substring(0,100)}...`);
       
       if (this.onmessage) {
         this.onmessage(messageForSDK);
@@ -488,7 +506,7 @@ export function createJACSTransportProxy(
   configPath: string,
   role: "client" | "server"
 ): JACSTransportProxy {
-  console.log(`Creating JACS Transport Proxy for role: ${role}`);
+  jacslog(`Creating JACS Transport Proxy for role: ${role}`);
   return new JACSTransportProxy(transport, role, configPath);
 }
 
@@ -497,7 +515,7 @@ export async function createJACSTransportProxyAsync(
   configPath: string,
   role: "client" | "server"
 ): Promise<JACSTransportProxy> {
-  console.log(`Creating JACS Transport Proxy (async) for role: ${role}`);
+  jacslog(`Creating JACS Transport Proxy (async) for role: ${role}`);
   await ensureJacsLoaded(configPath);
   return new JACSTransportProxy(transport, role, configPath);
 }
