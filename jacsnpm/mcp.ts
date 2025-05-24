@@ -128,6 +128,34 @@ export class JACSTransportProxy implements Transport {
     };
 
     console.log(`[${this.proxyId}] CONSTRUCTOR: Transport proxy initialized.`);
+
+    if ('send' in this.transport && typeof this.transport.send === 'function') {
+      const originalSend = this.transport.send.bind(this.transport);
+      this.transport.send = async (data: any) => {
+        if (typeof data === 'string') {
+          // Handle raw JACS strings directly
+          const sseTransport = this.transport as any;
+          if (sseTransport._endpoint) {
+            const headers = await (sseTransport._commonHeaders?.() || Promise.resolve({}));
+            const response = await fetch(sseTransport._endpoint, {
+              method: "POST",
+              headers: {
+                ...headers,
+                "content-type": "application/json",
+              },
+              body: data, // Send raw string without JSON.stringify()
+            });
+            if (!response.ok) {
+              const text = await response.text().catch(() => null);
+              throw new Error(`Error POSTing to endpoint (HTTP ${response.status}): ${text}`);
+            }
+            return;
+          }
+        }
+        // Fall back to original send for objects
+        return originalSend(data);
+      };
+    }
   }
 
   // MCP SDK will set these
