@@ -2,15 +2,18 @@
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { IncomingMessage, ServerResponse } from "node:http";
-export declare class TransportMiddleware implements Transport {
+/**
+ * JACS Transport Proxy - Wraps any transport with JACS encryption
+ *
+ * This proxy sits between the MCP SDK and the actual transport,
+ * intercepting serialized JSON strings (not JSON-RPC objects)
+ */
+export declare class JACSTransportProxy implements Transport {
     private transport;
-    private outgoingJacsTransformer?;
-    private incomingJacsTransformer?;
     private jacsConfigPath?;
     private jacsOperational;
-    private middlewareId;
-    private isSSE;
-    constructor(transport: Transport, role: "client" | "server", outgoingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<JSONRPCMessage>) | undefined, incomingJacsTransformer?: ((msg: JSONRPCMessage) => Promise<JSONRPCMessage>) | undefined, jacsConfigPath?: string | undefined);
+    private proxyId;
+    constructor(transport: Transport, role: "client" | "server", jacsConfigPath?: string | undefined);
     onclose?: () => void;
     onerror?: (error: Error) => void;
     onmessage?: (message: JSONRPCMessage) => void;
@@ -18,9 +21,9 @@ export declare class TransportMiddleware implements Transport {
     close(): Promise<void>;
     send(message: JSONRPCMessage): Promise<void>;
     get sessionId(): string | undefined;
-    handlePostMessage(req: IncomingMessage & {
+    handlePostMessage?(req: IncomingMessage & {
         auth?: any;
     }, res: ServerResponse, rawBodyString?: string): Promise<void>;
 }
-export declare function createJacsMiddleware(transport: Transport, configPath: string, role: "client" | "server"): TransportMiddleware;
-export declare function createJacsMiddlewareAsync(transport: Transport, configPath: string, role: "client" | "server"): Promise<TransportMiddleware>;
+export declare function createJACSTransportProxy(transport: Transport, configPath: string, role: "client" | "server"): JACSTransportProxy;
+export declare function createJACSTransportProxyAsync(transport: Transport, configPath: string, role: "client" | "server"): Promise<JACSTransportProxy>;

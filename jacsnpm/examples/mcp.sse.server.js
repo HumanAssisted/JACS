@@ -4,10 +4,10 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { createJacsMiddleware } from '../mcp.js';
+import { createJACSTransportProxy } from '../mcp.js';
 import * as http from 'node:http';
 import { URL } from 'node:url';
-import { z } from "zod";
+// import { z } from "zod"; // Not needed for the simplified tool
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import express from 'express'; // Import express
 
@@ -16,63 +16,54 @@ const PORT = 3000;
 const SSE_PATH = "/sse";
 const MCP_POST_PATH = '/mcp-sse-post'; // Define the post path
 
-// Create a standard McpServer
-const server = new McpServer({
-    name: "my-main-sse-server",
+// Function to create and configure a new McpServer instance
+async function createAndConfigureMcpServer() {
+  console.log('[MCP_SERVER_FACTORY] Creating new McpServer instance...');
+  const server = new McpServer({
+    name: "my-main-sse-server", // Name can be the same
     version: "1.0.0"
-});
+  });
+  console.log('[MCP_SERVER_FACTORY] McpServer instance created.');
 
-server.onResponse = (response) => {
-  console.log('Server generating response:', JSON.stringify(response));
-};
-
-// After creating the server
-const originalConnect = server.connect.bind(server);
-server.connect = async (transport) => {
-  console.log('Server connecting to transport...');
-  
-  // Intercept messages at the server level
-  const originalOnMessage = transport.onmessage;
-  transport.onmessage = (msg) => {
-    console.log('Server transport received:', JSON.stringify(msg).substring(0, 200));
-    if (originalOnMessage) {
-      const result = originalOnMessage(msg);
-      console.log('Server processed message, result:', result);
-      return result;
-    }
+  server.onResponse = (response) => {
+    const responseId = response && typeof response === 'object' && 'id' in response ? response.id : 'N/A';
+    // Add a way to know WHICH server instance this is if debugging multiple concurrent connections
+    console.log(`[MCP_SERVER_EVENT] server.onResponse: ID=${responseId}, Full Response: ${JSON.stringify(response).substring(0, 300)}...`);
   };
-  
-  return originalConnect(transport);
-};
 
-// Override the server's request handler to log what's happening
-const originalHandler = server.handle?.bind(server) || server.handleRequest?.bind(server);
-if (originalHandler) {
-  server.handle = async (request) => {
-    console.log('Server.handle called with:', JSON.stringify(request));
-    const result = await originalHandler(request);
-    console.log('Server.handle returning:', JSON.stringify(result));
-    return result;
-  };
+  // Register tools and resources
+  console.log('[MCP_SERVER_FACTORY] Registering simplified tool: simpleTool on new server instance');
+  server.tool(
+      "simpleTool",
+      {}, 
+      async () => {
+        console.log(`[MCP_TOOL_CALL] Tool 'simpleTool' called`);
+        return { content: [{ type: "text", text: "Simple tool executed" }] };
+      }
+  );
+  console.log('[MCP_SERVER_FACTORY] Tool "simpleTool" registered on new server instance.');
+
+  // Resource registration (optional for this test, can be kept commented)
+  // console.log('[MCP_SERVER_FACTORY] Registering resource: greeting on new server instance');
+  // server.resource("greeting", ...);
+  // console.log('[MCP_SERVER_FACTORY] Resource "greeting" registered on new server instance.');
+
+  try {
+    console.log('[MCP_SERVER_FACTORY] Setting tool request handlers on new server instance...');
+    await server.setToolRequestHandlers();
+    console.log('[MCP_SERVER_FACTORY] Tool request handlers SET on new server instance.');
+
+    console.log('[MCP_SERVER_FACTORY] Setting resource request handlers on new server instance...');
+    await server.setResourceRequestHandlers();
+    console.log('[MCP_SERVER_FACTORY] Resource request handlers SET on new server instance.');
+  } catch (error) {
+    console.error('[MCP_SERVER_FACTORY] CRITICAL ERROR during handler setup on new server instance:', error);
+    throw error; // Rethrow to prevent use of misconfigured server
+  }
+  return server;
 }
 
-// Also check if there's a specific method we need to enable
-console.log('Server methods:', Object.getOwnPropertyNames(server));
-console.log('Server prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(server)));
-
-// Register tools and resources
-server.tool("add",
-    { a: z.number(), b: z.number() },
-    async ({ a, b }) => ({ content: [{ type: "text", text: String(a + b) }] })
-);
-
-server.resource("greeting",
-    new ResourceTemplate("greeting://{name}", { list: undefined }),
-    async (uri, { name }) => ({ contents: [{ uri: uri.href, text: `Hello, ${name}!` }] })
-);
-
-// Set up session mapping for SSE connections
-const sseTransports = new Map();
+const sseTransportsAndServers = new Map(); // Store { transport, mcpServerInstance }
 
 // Create an Express app to handle requests
 const app = express();
@@ -88,7 +79,7 @@ const httpServer = http.createServer(app); // Use the Express app for the HTTP s
 
 app.use(async (req, res, next) => {
   // This middleware function will wrap the original http.createServer callback logic
-  console.log(`HTTP Server (Express): Received ${req.method} request for ${req.url}`);
+  console.log(`[HTTP_ROUTER] Received ${req.method} request for ${req.url}`);
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
 
   // CORS setup
@@ -96,7 +87,7 @@ app.use(async (req, res, next) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*', 
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, mcp-session-id, last-event-id',
       'Access-Control-Max-Age': '86400'
     });
     return res.end();
@@ -105,23 +96,51 @@ app.use(async (req, res, next) => {
 
   // Handle GET request to establish SSE connection
   if (req.method === 'GET' && requestUrl.pathname === SSE_PATH) {
-    // SSEServerTransport requires the raw response object, not an Express one if it modifies it too much.
-    // We might need to manually manage the response object for SSE if Express wrapping interferes.
-    // For now, let's assume SSEServerTransport can work with the Node `res` object even when passed through Express.
+    console.log(`[HTTP_ROUTER] SSE connection request for ${SSE_PATH}`);
     const sseTransport = new SSEServerTransport(MCP_POST_PATH, res); 
+    const currentSessionId = sseTransport.sessionId;
+    console.log(`[HTTP_ROUTER] SSEServerTransport created for session: ${currentSessionId}`);
     
-    const secureTransport = createJacsMiddleware(sseTransport, serverConfigPath, "server");
+    console.log(`[HTTP_ROUTER] Creating JACS middleware for session: ${currentSessionId}`);
+    // Use the synchronous factory for JACS transport
+    const secureJacsTransport = createJACSTransportProxy(sseTransport, serverConfigPath, "server");
+    console.log(`[HTTP_ROUTER] JACS middleware created for session: ${currentSessionId}`);
     
-    sseTransports.set(sseTransport.sessionId, secureTransport);
-    
-    await server.connect(secureTransport);
-
     try {
-      await server.setToolRequestHandlers();
-      await server.setResourceRequestHandlers();
-      console.log('Request handlers initialized for session');
+      // Create a NEW McpServer instance for this session
+      const mcpServerInstance = await createAndConfigureMcpServer();
+      
+      // The originalConnect override needs to be on this specific instance if we want its logging
+      // This is tricky because createAndConfigureMcpServer already makes 'server'.
+      // For now, the global 'server.onResponse' will catch responses if they happen.
+
+      console.log(`[HTTP_ROUTER] Connecting new McpServer instance to JACS middleware for session: ${currentSessionId}`);
+      // Ensure the onmessage of the JACS transport is set to the mcpServerInstance's handler.
+      // The JACS middleware constructor sets `this.transport.onmessage` to its own wrapper,
+      // which then calls `this.onmessage`. So, `secureJacsTransport.onmessage` (the SDK's handler)
+      // needs to be set to the `mcpServerInstance.handleRequest` (or equivalent).
+      // The `mcpServerInstance.connect(secureJacsTransport)` should handle this by setting
+      // `secureJacsTransport.onmessage` to its internal request processing logic.
+
+      await mcpServerInstance.connect(secureJacsTransport); 
+      console.log(`[HTTP_ROUTER] New McpServer instance connected to JACS middleware for session: ${currentSessionId}`);
+      
+      sseTransportsAndServers.set(currentSessionId, { transport: secureJacsTransport, server: mcpServerInstance });
+      console.log(`[HTTP_ROUTER] Stored JACS middleware and McpServer for session: ${currentSessionId}. Total sessions: ${sseTransportsAndServers.size}`);
+      console.log(`[HTTP_ROUTER] Session ${currentSessionId} is ready.`);
+
+      // Clean up when client disconnects
+      sseTransport.onclose = () => { // Note: using underlying sseTransport.onclose
+        console.log(`[HTTP_ROUTER] SSE transport closed for session ${currentSessionId}. Cleaning up.`);
+        sseTransportsAndServers.delete(currentSessionId);
+        // We might want to call mcpServerInstance.close() if it has resources
+      };
+
     } catch (error) {
-        console.error('Failed to initialize handlers:', error);
+        console.error(`[HTTP_ROUTER] CRITICAL ERROR during McpServer instantiation, handler setup, or connect for session ${currentSessionId}:`, error);
+        if (!res.headersSent && !res.writableEnded) {
+            res.writeHead(500).end("Server setup error");
+        }
     }
 
     // SSE transport handles keeping the connection open, so no `res.end()` here from Express.
@@ -129,31 +148,30 @@ app.use(async (req, res, next) => {
   // Handle POST requests (messages from client)
   else if (req.method === 'POST' && requestUrl.pathname === MCP_POST_PATH) {
     const sessionId = requestUrl.searchParams.get('sessionId');
-    console.log(`Processing POST for session ${sessionId}, available sessions: ${Array.from(sseTransports.keys()).join(', ')}`);
+    console.log(`[HTTP_ROUTER] POST request for session ${sessionId}. Path: ${MCP_POST_PATH}. Available sessions: ${Array.from(sseTransportsAndServers.keys()).join(', ')}`);
     
-    if (!sessionId || !sseTransports.has(sessionId)) {
-      console.error(`Session ${sessionId} not found`);
+    const sessionData = sseTransportsAndServers.get(sessionId);
+    if (!sessionData || !sessionData.transport) {
+      console.error(`[HTTP_ROUTER] Session ${sessionId} or its transport NOT FOUND for POST request.`);
       res.writeHead(404).end("Session not found");
       return;
     }
     
-    const transportToUse = sseTransports.get(sessionId); // This is our TransportMiddleware instance
-    console.log(`Found transport for session ${sessionId}, has handlePostMessage: ${typeof transportToUse.handlePostMessage === 'function'}`);
+    const transportToUse = sessionData.transport; // This is the JACS TransportMiddleware instance
+    console.log(`[HTTP_ROUTER] Found JACS middleware for POST to session ${sessionId}. Has handlePostMessage: ${typeof transportToUse.handlePostMessage === 'function'}`);
     
     try {
-      // req.body is now the raw string due to express.text() for this route.
-      // Pass it as the third argument to handlePostMessage.
+      // The JACS TransportMiddleware's onmessage is already wired to the specific McpServer instance's handler by mcpServerInstance.connect()
       await transportToUse.handlePostMessage(req, res, req.body); 
-      // handlePostMessage in TransportMiddleware will now call res.end() or res.writeHead().end()
-      console.log(`Successfully processed POST message for session ${sessionId}`);
+      console.log(`[HTTP_ROUTER] Successfully processed POST message via JACS middleware for session ${sessionId}`);
     } catch (error) {
-      console.error(`Error processing POST: ${error.message}`);
+      console.error(`[HTTP_ROUTER] Error processing POST via JACS middleware for session ${sessionId}: ${error.message}`, error);
       if (!res.writableEnded) {
         res.writeHead(500).end(`Error: ${error.message}`);
       }
     }
   } else {
-    // If not handled by SSE or MCP POST, let Express handle it or send 404
+    console.log(`[HTTP_ROUTER] Unhandled path: ${req.method} ${requestUrl.pathname}. Passing to next().`);
     next();
   }
 });
