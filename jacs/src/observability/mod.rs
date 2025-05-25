@@ -1,14 +1,16 @@
-use opentelemetry::global;
-use opentelemetry::metrics::MeterProvider;
-use opentelemetry_otlp::{MetricExporter, WithExportConfig};
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry::{KeyValue, global};
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{
+    Resource, error::OTelSdkResult, logs::SdkLoggerProvider, metrics::SdkMeterProvider,
+};
 use prometheus::{Counter, Encoder, Gauge, Histogram, Registry, TextEncoder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use tracing::{debug, error, info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{Layer, filter::EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 // "observability": {
 //     "logs": {
@@ -30,11 +32,22 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 //   }
 // }
 
-// Simple global state
+static INIT_ONCE: Once = Once::new();
 static METRICS_COLLECTOR: Mutex<Option<Arc<MetricsCollector>>> = Mutex::new(None);
 
 // Add near the top with other statics
 static LOG_CONFIG: Mutex<Option<LogConfig>> = Mutex::new(None);
+
+// Global state for providers
+static PROVIDERS: Mutex<Option<ObservabilityProviders>> = Mutex::new(None);
+
+// Store metrics config globally for file writing
+static METRICS_CONFIG: Mutex<Option<MetricsConfig>> = Mutex::new(None);
+
+struct ObservabilityProviders {
+    logger_provider: Option<SdkLoggerProvider>,
+    meter_provider: Option<SdkMeterProvider>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservabilityConfig {
@@ -84,6 +97,9 @@ pub enum MetricsDestination {
 
 pub struct MetricsCollector {
     config: MetricsConfig,
+    // OpenTelemetry metrics
+    otel_meter: Option<opentelemetry::metrics::Meter>,
+    // Prometheus metrics
     prometheus_registry: Option<Registry>,
     prometheus_counters: Arc<Mutex<HashMap<String, Counter>>>,
     prometheus_gauges: Arc<Mutex<HashMap<String, Gauge>>>,
@@ -92,13 +108,19 @@ pub struct MetricsCollector {
 
 impl MetricsCollector {
     fn new(config: MetricsConfig) -> Self {
-        let prometheus_registry = match &config.destination {
-            MetricsDestination::Prometheus { .. } => Some(Registry::new()),
-            _ => None,
+        let (otel_meter, prometheus_registry) = match &config.destination {
+            MetricsDestination::Otlp { endpoint } => {
+                // Initialize OpenTelemetry OTLP exporter
+                let meter = global::meter("jacs");
+                (Some(meter), None)
+            }
+            MetricsDestination::Prometheus { .. } => (None, Some(Registry::new())),
+            _ => (None, None),
         };
 
         Self {
             config,
+            otel_meter,
             prometheus_registry,
             prometheus_counters: Arc::new(Mutex::new(HashMap::new())),
             prometheus_gauges: Arc::new(Mutex::new(HashMap::new())),
@@ -128,10 +150,39 @@ impl MetricsCollector {
     }
 
     fn export_counter(&self, name: &str, value: u64, tags: Option<HashMap<String, String>>) {
-        let tags_str = tags.map(|t| format!(" {:?}", t)).unwrap_or_default();
-
         match &self.config.destination {
+            MetricsDestination::Otlp { .. } => {
+                if let Some(meter) = &self.otel_meter {
+                    let counter = meter
+                        .u64_counter(name.to_string())
+                        .with_description("Counter metric")
+                        .with_unit("1")
+                        .build();
+                    // Convert tags to OpenTelemetry attributes
+                    let attributes: Vec<opentelemetry::KeyValue> = tags
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|(k, v)| opentelemetry::KeyValue::new(k, v))
+                        .collect();
+                    counter.add(value, &attributes);
+                }
+            }
+            MetricsDestination::Prometheus { .. } => {
+                // Use Prometheus registry
+                if let Some(registry) = &self.prometheus_registry {
+                    let mut counters = self.prometheus_counters.lock().unwrap();
+                    let counter = counters.entry(name.to_string()).or_insert_with(|| {
+                        let opts = prometheus::Opts::new(name, format!("Counter metric: {}", name));
+                        let counter = Counter::with_opts(opts).unwrap();
+                        registry.register(Box::new(counter.clone())).unwrap();
+                        counter
+                    });
+                    counter.inc_by(value as f64);
+                }
+            }
             MetricsDestination::File { path } => {
+                // Custom file format
+                let tags_str = tags.map(|t| format!(" {:?}", t)).unwrap_or_default();
                 let line = format!("COUNTER: {} += {}{}\n", name, value, tags_str);
                 let _ = std::fs::OpenOptions::new()
                     .create(true)
@@ -143,9 +194,7 @@ impl MetricsCollector {
                     });
             }
             MetricsDestination::Stdout => {
-                println!("COUNTER: {} += {}{}", name, value, tags_str);
-            }
-            _ => {
+                let tags_str = tags.map(|t| format!(" {:?}", t)).unwrap_or_default();
                 println!("COUNTER: {} += {}{}", name, value, tags_str);
             }
         }
@@ -200,55 +249,304 @@ impl MetricsCollector {
     }
 }
 
-pub fn init_observability(config: ObservabilityConfig) -> Result<(), Box<dyn std::error::Error>> {
-    // Store log config for later use
-    if config.logs.enabled {
-        if let Ok(mut guard) = LOG_CONFIG.lock() {
-            *guard = Some(config.logs.clone());
-        }
-        println!(
-            "Logging enabled: level={}, destination={:?}",
-            config.logs.level, config.logs.destination
-        );
+fn get_resource() -> Resource {
+    Resource::builder()
+        .with_service_name("jacs")
+        .with_attributes([KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))])
+        .build()
+}
+
+fn init_logs(config: &LogConfig) -> Result<Option<SdkLoggerProvider>, Box<dyn std::error::Error>> {
+    if !config.enabled {
+        return Ok(None);
     }
 
-    // Initialize metrics
-    if config.metrics.enabled {
-        let collector = Arc::new(MetricsCollector::new(config.metrics.clone()));
-        if let Ok(mut guard) = METRICS_COLLECTOR.lock() {
-            *guard = Some(collector);
+    let logger_provider = match &config.destination {
+        LogDestination::Otlp { endpoint } => {
+            let exporter = opentelemetry_otlp::LogExporter::builder()
+                .with_http()
+                .with_endpoint(endpoint)
+                .build()?;
+
+            SdkLoggerProvider::builder()
+                .with_resource(get_resource())
+                .with_batch_exporter(exporter)
+                .build()
         }
+        LogDestination::File { path } => {
+            // For file output, we'll use a custom exporter that writes to file
+            let exporter = FileLogExporter::new(path.clone());
+            SdkLoggerProvider::builder()
+                .with_resource(get_resource())
+                .with_simple_exporter(exporter)
+                .build()
+        }
+        LogDestination::Stderr | LogDestination::Null => {
+            let exporter = opentelemetry_stdout::LogExporter::default();
+            SdkLoggerProvider::builder()
+                .with_resource(get_resource())
+                .with_simple_exporter(exporter)
+                .build()
+        }
+    };
+
+    // Set up tracing subscriber with OpenTelemetry bridge
+    let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
+
+    let level_filter = match config.level.as_str() {
+        "debug" => "debug",
+        "info" => "info",
+        "warn" => "warn",
+        "error" => "error",
+        _ => "info",
+    };
+
+    let filter = EnvFilter::new(level_filter)
+        .add_directive("hyper=off".parse().unwrap())
+        .add_directive("tonic=off".parse().unwrap())
+        .add_directive("h2=off".parse().unwrap())
+        .add_directive("reqwest=off".parse().unwrap());
+
+    let otel_layer = otel_layer.with_filter(filter);
+
+    // Only add stdout layer if not writing to file
+    match &config.destination {
+        LogDestination::File { .. } => {
+            tracing_subscriber::registry()
+                .with(otel_layer)
+                .try_init()
+                .ok(); // Ignore error if already initialized
+        }
+        _ => {
+            let fmt_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+
+            tracing_subscriber::registry()
+                .with(otel_layer)
+                .with(fmt_layer)
+                .try_init()
+                .ok(); // Ignore error if already initialized
+        }
+    }
+
+    Ok(Some(logger_provider))
+}
+
+fn init_metrics(
+    config: &MetricsConfig,
+) -> Result<Option<SdkMeterProvider>, Box<dyn std::error::Error>> {
+    // Store config for our custom file writing
+    if let Ok(mut stored_config) = METRICS_CONFIG.lock() {
+        *stored_config = Some(config.clone());
+    }
+
+    if !config.enabled {
+        return Ok(None);
+    }
+
+    let meter_provider = match &config.destination {
+        MetricsDestination::Otlp { endpoint } => {
+            let exporter = opentelemetry_otlp::MetricExporter::builder()
+                .with_http()
+                .with_endpoint(endpoint)
+                .build()?;
+
+            SdkMeterProvider::builder()
+                .with_periodic_exporter(exporter)
+                .with_resource(get_resource())
+                .build()
+        }
+        MetricsDestination::Prometheus { .. } => {
+            // Use stdout exporter for now - Prometheus integration is complex
+            let exporter = opentelemetry_stdout::MetricExporter::default();
+            SdkMeterProvider::builder()
+                .with_periodic_exporter(exporter)
+                .with_resource(get_resource())
+                .build()
+        }
+        MetricsDestination::File { path } => {
+            // Create a custom file-writing metrics setup
+            // We need to handle this in our public API functions instead
+            let exporter = opentelemetry_stdout::MetricExporter::default();
+            // Store the file path for our custom file writing
+            // ...
+            SdkMeterProvider::builder()
+                .with_periodic_exporter(exporter)
+                .with_resource(get_resource())
+                .build()
+        }
+        MetricsDestination::Stdout => {
+            let exporter = opentelemetry_stdout::MetricExporter::default();
+            SdkMeterProvider::builder()
+                .with_periodic_exporter(exporter)
+                .with_resource(get_resource())
+                .build()
+        }
+    };
+
+    // Set as global provider
+    global::set_meter_provider(meter_provider.clone());
+
+    Ok(Some(meter_provider))
+}
+
+// Simplified file log exporter
+#[derive(Debug)]
+struct FileLogExporter {
+    path: String,
+}
+
+impl FileLogExporter {
+    fn new(path: String) -> Self {
+        Self { path }
+    }
+}
+
+impl opentelemetry_sdk::logs::LogExporter for FileLogExporter {
+    async fn export(
+        &self,
+        batch: opentelemetry_sdk::logs::LogBatch<'_>,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        for (log_record, _instrumentation) in batch.iter() {
+            // Extract the actual log message from the body
+            let message = if let Some(body) = log_record.body() {
+                format!("{:?}", body)
+            } else {
+                "".to_string()
+            };
+
+            // Extract severity level
+            let level = log_record.severity_text().unwrap_or("INFO");
+
+            // Format as a proper log line
+            let log_line = format!("{} {}\n", level, message);
+
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)
+                .and_then(|mut f| {
+                    f.write_all(log_line.as_bytes())?;
+                    f.flush()
+                });
+        }
+        Ok(())
+    }
+}
+
+pub fn init_observability(config: ObservabilityConfig) -> Result<(), Box<dyn std::error::Error>> {
+    let logger_provider = init_logs(&config.logs)?;
+    let meter_provider = init_metrics(&config.metrics)?;
+
+    // Store providers for shutdown
+    if let Ok(mut providers) = PROVIDERS.lock() {
+        *providers = Some(ObservabilityProviders {
+            logger_provider,
+            meter_provider,
+        });
     }
 
     Ok(())
 }
 
-// Public API
+// Public API for metrics using OpenTelemetry
 pub fn increment_counter(name: &str, value: u64, tags: Option<HashMap<String, String>>) {
-    if let Ok(guard) = METRICS_COLLECTOR.lock() {
-        if let Some(collector) = guard.as_ref() {
-            collector.increment_counter(name, value, tags);
+    // OpenTelemetry path
+    let meter = global::meter("jacs");
+    let counter = meter.u64_counter(name.to_string()).build();
+    let attributes: Vec<KeyValue> = tags
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| KeyValue::new(k, v))
+        .collect();
+    counter.add(value, &attributes);
+
+    // File writing path
+    if let Ok(config) = METRICS_CONFIG.lock() {
+        if let Some(config) = config.as_ref() {
+            if let MetricsDestination::File { path } = &config.destination {
+                let tags_str = tags.map(|t| format!(" {:?}", t)).unwrap_or_default();
+                let line = format!("COUNTER: {} += {}{}\n", name, value, tags_str);
+                let _ = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .and_then(|mut f| {
+                        f.write_all(line.as_bytes())?;
+                        f.flush()
+                    });
+            }
         }
     }
 }
 
 pub fn set_gauge(name: &str, value: f64, tags: Option<HashMap<String, String>>) {
-    if let Ok(guard) = METRICS_COLLECTOR.lock() {
-        if let Some(collector) = guard.as_ref() {
-            collector.set_gauge(name, value, tags);
+    // OpenTelemetry path
+    let meter = global::meter("jacs");
+    let gauge = meter.f64_gauge(name.to_string()).build();
+
+    let attributes: Vec<KeyValue> = tags
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| KeyValue::new(k, v))
+        .collect();
+
+    gauge.record(value, &attributes);
+
+    // File writing path
+    if let Ok(config) = METRICS_CONFIG.lock() {
+        if let Some(config) = config.as_ref() {
+            if let MetricsDestination::File { path } = &config.destination {
+                let tags_str = tags.map(|t| format!(" {:?}", t)).unwrap_or_default();
+                let line = format!("GAUGE: {} = {}{}\n", name, value, tags_str);
+                let _ = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .and_then(|mut f| {
+                        f.write_all(line.as_bytes())?;
+                        f.flush()
+                    });
+            }
         }
     }
 }
 
 pub fn record_histogram(name: &str, value: f64, tags: Option<HashMap<String, String>>) {
-    if let Ok(guard) = METRICS_COLLECTOR.lock() {
-        if let Some(collector) = guard.as_ref() {
-            collector.record_histogram(name, value, tags);
+    // OpenTelemetry path
+    let meter = global::meter("jacs");
+    let histogram = meter.f64_histogram(name.to_string()).build();
+
+    let attributes: Vec<KeyValue> = tags
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| KeyValue::new(k, v))
+        .collect();
+
+    histogram.record(value, &attributes);
+
+    // File writing path
+    if let Ok(config) = METRICS_CONFIG.lock() {
+        if let Some(config) = config.as_ref() {
+            if let MetricsDestination::File { path } = &config.destination {
+                let tags_str = tags.map(|t| format!(" {:?}", t)).unwrap_or_default();
+                let line = format!("HISTOGRAM: {} = {}{}\n", name, value, tags_str);
+                let _ = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .and_then(|mut f| {
+                        f.write_all(line.as_bytes())?;
+                        f.flush()
+                    });
+            }
         }
     }
 }
 
-// Convenience functions
+// Convenience functions using proper tracing
 pub fn record_agent_operation(operation: &str, agent_id: &str, success: bool, duration_ms: u64) {
     let mut tags = HashMap::new();
     tags.insert("operation".to_string(), operation.to_string());
@@ -262,17 +560,20 @@ pub fn record_agent_operation(operation: &str, agent_id: &str, success: bool, du
         Some(tags),
     );
 
-    let log_msg = format!(
-        "Agent operation: {} {} {} {}ms",
-        operation,
-        agent_id,
-        if success { "SUCCESS" } else { "FAILED" },
-        duration_ms
-    );
     if success {
-        write_log("INFO", &log_msg);
+        info!(
+            operation = operation,
+            agent_id = agent_id,
+            duration_ms = duration_ms,
+            "Agent operation completed successfully"
+        );
     } else {
-        write_log("ERROR", &log_msg);
+        error!(
+            operation = operation,
+            agent_id = agent_id,
+            duration_ms = duration_ms,
+            "Agent operation failed"
+        );
     }
 }
 
@@ -282,12 +583,20 @@ pub fn record_document_validation(doc_id: &str, schema_version: &str, valid: boo
     tags.insert("valid".to_string(), valid.to_string());
 
     increment_counter("jacs_document_validations_total", 1, Some(tags));
-    println!(
-        "Document validation: {} {} {}",
-        doc_id,
-        schema_version,
-        if valid { "VALID" } else { "INVALID" }
-    );
+
+    if valid {
+        debug!(
+            document_id = doc_id,
+            schema_version = schema_version,
+            "Document validation passed"
+        );
+    } else {
+        warn!(
+            document_id = doc_id,
+            schema_version = schema_version,
+            "Document validation failed"
+        );
+    }
 }
 
 pub fn record_signature_verification(agent_id: &str, success: bool, algorithm: &str) {
@@ -297,22 +606,24 @@ pub fn record_signature_verification(agent_id: &str, success: bool, algorithm: &
 
     increment_counter("jacs_signature_verifications_total", 1, Some(tags));
 
-    let log_msg = format!(
-        "Signature verification: {} {} {}",
-        agent_id,
-        algorithm,
-        if success { "SUCCESS" } else { "FAILED" }
-    );
     if success {
-        write_log("DEBUG", &log_msg);
+        debug!(
+            agent_id = agent_id,
+            algorithm = algorithm,
+            "Signature verification successful"
+        );
     } else {
-        write_log("ERROR", &log_msg);
+        error!(
+            agent_id = agent_id,
+            algorithm = algorithm,
+            "Signature verification failed"
+        );
     }
 }
 
 pub fn reset_observability() {
-    if let Ok(mut guard) = METRICS_COLLECTOR.lock() {
-        *guard = None;
+    if let Ok(mut providers) = PROVIDERS.lock() {
+        *providers = None;
     }
 }
 
@@ -320,35 +631,11 @@ pub fn flush_observability() {
     std::thread::sleep(std::time::Duration::from_millis(10));
 }
 
-// Add a simple log function
-fn write_log(level: &str, message: &str) {
-    if let Ok(guard) = LOG_CONFIG.lock() {
-        if let Some(config) = guard.as_ref() {
-            match &config.destination {
-                LogDestination::File { path } => {
-                    let log_line = format!("{} {}\n", level, message);
-                    let _ = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(path)
-                        .and_then(|mut f| {
-                            f.write_all(log_line.as_bytes())?;
-                            f.flush()
-                        });
-                }
-                _ => {
-                    println!("{} {}", level, message);
-                }
-            }
-        }
-    }
-}
-
-// Add these public functions for the tests
+// For test compatibility
 pub fn info(message: &str) {
-    write_log("INFO", message);
+    info!("{}", message);
 }
 
 pub fn warn(message: &str) {
-    write_log("WARN", message);
+    warn!("{}", message);
 }
