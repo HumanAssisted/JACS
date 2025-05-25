@@ -1,6 +1,5 @@
 import jacs from '../index.js';
 import http from 'http';  
-import assert from 'assert';
 
 
 async function makeHttpRequest(jacsRequestString, targetHost, targetPort, targetPath) {

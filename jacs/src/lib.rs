@@ -16,6 +16,7 @@ use std::path::Path;
 pub mod agent;
 pub mod config;
 pub mod crypt;
+pub mod observability;
 pub mod schema;
 pub mod shared;
 pub mod storage;

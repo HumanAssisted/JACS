@@ -1,3 +1,4 @@
+use crate::observability::ObservabilityConfig;
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
 use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var, set_env_var_override};
 use getset::Getters;
@@ -57,6 +58,7 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default = "default_storage")]
     jacs_default_storage: Option<String>,
+    pub observability: Option<ObservabilityConfig>,
 }
 
 fn default_schema() -> String {
@@ -138,6 +140,7 @@ impl Config {
             jacs_private_key_password,
             jacs_agent_id_and_version,
             jacs_default_storage,
+            observability: None,
         }
     }
 
