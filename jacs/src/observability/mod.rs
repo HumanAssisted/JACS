@@ -32,17 +32,20 @@ use tracing_subscriber::{Layer, filter::EnvFilter, layer::SubscriberExt, util::S
 //   }
 // }
 
-static INIT_ONCE: Once = Once::new();
-static METRICS_COLLECTOR: Mutex<Option<Arc<MetricsCollector>>> = Mutex::new(None);
+// static INIT_ONCE: Once = Once::new();
+// static METRICS_COLLECTOR: Mutex<Option<Arc<MetricsCollector>>> = Mutex::new(None);
 
 // Add near the top with other statics
-static LOG_CONFIG: Mutex<Option<LogConfig>> = Mutex::new(None);
+// static LOG_CONFIG: Mutex<Option<LogConfig>> = Mutex::new(None);
 
 // Global state for providers
 static PROVIDERS: Mutex<Option<ObservabilityProviders>> = Mutex::new(None);
 
 // Store metrics config globally for file writing
 static METRICS_CONFIG: Mutex<Option<MetricsConfig>> = Mutex::new(None);
+
+// Add this back near the top with other statics
+static METRICS_COLLECTOR: Mutex<Option<Arc<MetricsCollector>>> = Mutex::new(None);
 
 struct ObservabilityProviders {
     logger_provider: Option<SdkLoggerProvider>,
@@ -334,6 +337,12 @@ fn init_logs(config: &LogConfig) -> Result<Option<SdkLoggerProvider>, Box<dyn st
 fn init_metrics(
     config: &MetricsConfig,
 ) -> Result<Option<SdkMeterProvider>, Box<dyn std::error::Error>> {
+    // Create and store the collector
+    let collector = MetricsCollector::new(config.clone());
+    if let Ok(mut stored_collector) = METRICS_COLLECTOR.lock() {
+        *stored_collector = Some(Arc::new(collector));
+    }
+
     // Store config for our custom file writing
     if let Ok(mut stored_config) = METRICS_CONFIG.lock() {
         *stored_config = Some(config.clone());
@@ -407,18 +416,15 @@ impl opentelemetry_sdk::logs::LogExporter for FileLogExporter {
         batch: opentelemetry_sdk::logs::LogBatch<'_>,
     ) -> opentelemetry_sdk::error::OTelSdkResult {
         for (log_record, _instrumentation) in batch.iter() {
-            // Extract the actual log message from the body
-            let message = if let Some(body) = log_record.body() {
-                format!("{:?}", body).trim_matches('"').to_string()
-            } else {
-                "".to_string()
-            };
-
-            // Extract severity level
-            let level = log_record.severity_text().unwrap_or("INFO");
-
-            // Format as a proper log line
-            let log_line = format!("{} {}\n", level, message);
+            let message = log_record
+                .body()
+                .map(|b| format!("{:?}", b))
+                .unwrap_or_default();
+            let log_line = format!(
+                "{} {}\n",
+                log_record.severity_text().unwrap_or("INFO"),
+                message
+            );
 
             let _ = std::fs::OpenOptions::new()
                 .create(true)
@@ -450,32 +456,9 @@ pub fn init_observability(config: ObservabilityConfig) -> Result<(), Box<dyn std
 
 // Public API for metrics using OpenTelemetry
 pub fn increment_counter(name: &str, value: u64, tags: Option<HashMap<String, String>>) {
-    // OpenTelemetry path
-    let meter = global::meter("jacs");
-    let counter = meter.u64_counter(name.to_string()).build();
-    let attributes: Vec<KeyValue> = tags
-        .clone()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(k, v)| KeyValue::new(k, v))
-        .collect();
-    counter.add(value, &attributes);
-
-    // File writing path
-    if let Ok(config) = METRICS_CONFIG.lock() {
-        if let Some(config) = config.as_ref() {
-            if let MetricsDestination::File { path } = &config.destination {
-                let tags_str = tags.map(|t| format!(" {:?}", t)).unwrap_or_default();
-                let line = format!("COUNTER: {} += {}{}\n", name, value, tags_str);
-                let _ = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                    .and_then(|mut f| {
-                        f.write_all(line.as_bytes())?;
-                        f.flush()
-                    });
-            }
+    if let Ok(collector) = METRICS_COLLECTOR.lock() {
+        if let Some(collector) = collector.as_ref() {
+            collector.increment_counter(name, value, tags);
         }
     }
 }
@@ -630,13 +613,4 @@ pub fn reset_observability() {
 pub fn flush_observability() {
     // Simple approach - just wait a bit longer for async operations
     std::thread::sleep(std::time::Duration::from_millis(200));
-}
-
-// For test compatibility
-pub fn info(message: &str) {
-    info!("{}", message);
-}
-
-pub fn warn(message: &str) {
-    warn!("{}", message);
 }
