@@ -409,7 +409,7 @@ impl opentelemetry_sdk::logs::LogExporter for FileLogExporter {
         for (log_record, _instrumentation) in batch.iter() {
             // Extract the actual log message from the body
             let message = if let Some(body) = log_record.body() {
-                format!("{:?}", body)
+                format!("{:?}", body).trim_matches('"').to_string()
             } else {
                 "".to_string()
             };
@@ -628,7 +628,8 @@ pub fn reset_observability() {
 }
 
 pub fn flush_observability() {
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    // Simple approach - just wait a bit longer for async operations
+    std::thread::sleep(std::time::Duration::from_millis(200));
 }
 
 // For test compatibility
