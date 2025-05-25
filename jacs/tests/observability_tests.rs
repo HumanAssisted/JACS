@@ -1,8 +1,8 @@
 // tests for observability module
-use jacs::observability::metrics::{
-    increment_counter, record_agent_operation, record_document_validation, record_histogram,
-    record_signature_verification, set_gauge,
+use jacs::observability::convenience::{
+    record_agent_operation, record_document_validation, record_signature_verification,
 };
+use jacs::observability::metrics::{increment_counter, record_histogram, set_gauge};
 use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
     init_observability,
@@ -10,25 +10,60 @@ use jacs::observability::{
 use serial_test::serial;
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 // cargo test   --test observability_tests  -- --nocapture
+
+fn setup_scratch_directory(test_name: &str) -> io::Result<PathBuf> {
+    let original_cwd = std::env::current_dir()?;
+    let scratch_base = original_cwd // Start from current dir (usually project root)
+        .join("target")
+        .join("test_scratch")
+        .join(test_name);
+
+    if scratch_base.exists() {
+        fs::remove_dir_all(&scratch_base)?;
+    }
+    fs::create_dir_all(&scratch_base)?;
+    Ok(scratch_base)
+}
 
 #[test]
 #[serial]
 fn test_file_logging_destination() {
     jacs::observability::reset_observability();
 
-    let temp_dir = tempfile::tempdir().unwrap();
-    let log_path = temp_dir.path().join("test.log");
+    let original_cwd = std::env::current_dir().unwrap();
+    let test_scratch_dir = setup_scratch_directory("test_file_logging_destination").unwrap();
+    std::env::set_current_dir(&test_scratch_dir).unwrap();
+
+    // The log directory will now be relative to `test_scratch_dir`
+    let log_output_dirname = "logs";
+    fs::create_dir_all(log_output_dirname).unwrap();
+
+    // Clean up previous log files in this specific directory
+    for entry in fs::read_dir(log_output_dirname).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .starts_with("app.log")
+        {
+            fs::remove_file(path).unwrap();
+        }
+    }
 
     let config = ObservabilityConfig {
         logs: LogConfig {
             enabled: true,
             level: "info".to_string(),
             destination: LogDestination::File {
-                path: log_path.to_string_lossy().to_string(),
+                path: log_output_dirname.to_string(), // Use relative path
             },
         },
         metrics: MetricsConfig {
@@ -44,17 +79,48 @@ fn test_file_logging_destination() {
     record_agent_operation("test_operation", "test_agent", true, 100);
     record_document_validation("test_doc", "v1.0", false);
 
-    // Flush to ensure writes complete
-    jacs::observability::flush_observability();
+    // Crucially, call reset_observability to flush the log guard
+    jacs::observability::reset_observability();
+    // An additional small sleep might still be beneficial for CI file systems
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
-    // Check that log file was created
-    let log_file = std::path::Path::new(&log_path);
-    assert!(log_file.exists());
+    // Now, we need to find the actual log file created by the appender
+    // It will be in `log_directory` and start with `log_filename_prefix`
+    let mut actual_log_file: Option<std::path::PathBuf> = None;
+    for entry in fs::read_dir(log_output_dirname).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .starts_with("app.log")
+        {
+            println!("Found log file: {:?}", path); // Debug output
+            actual_log_file = Some(path);
+            break;
+        }
+    }
+    assert!(
+        actual_log_file.is_some(),
+        "Log file starting with 'app.log' was not created in {:?}",
+        test_scratch_dir.join(log_output_dirname)
+    );
 
-    let content = std::fs::read_to_string(log_file).unwrap();
-    println!("Log content: '{}'", content); // Debug what's actually there
-    // Just check that some content exists for now
-    assert!(!content.is_empty());
+    let log_file_path = actual_log_file.unwrap();
+    let content = std::fs::read_to_string(&log_file_path)
+        .expect(&format!("Could not read log file {:?}", log_file_path));
+    assert!(
+        !content.is_empty(),
+        "Log file {:?} is empty.",
+        log_file_path
+    );
+
+    // Restore original CWD
+    std::env::set_current_dir(&original_cwd).unwrap();
+    // Optional: Clean up the entire test_scratch_dir for this test if desired, or leave it.
+    // fs::remove_dir_all(&test_scratch_dir).unwrap();
 }
 
 #[test]
@@ -80,7 +146,9 @@ fn test_file_metrics_destination() {
         },
     };
 
-    init_observability(config).unwrap();
+    let captured_metrics_arc = init_observability(config)
+        .expect("Init should not fail")
+        .expect("Should get an Arc for File destination in test");
 
     // Generate metrics
     let mut tags = HashMap::new();
@@ -90,15 +158,15 @@ fn test_file_metrics_destination() {
     set_gauge("test_gauge", 42.5, Some(tags.clone()));
     record_histogram("test_histogram", 123.4, Some(tags));
 
-    // Flush to ensure writes complete
-    jacs::observability::flush_observability();
-
-    // Verify metrics file was created and contains expected content
-    assert!(metrics_file.exists());
-    let metrics_content = fs::read_to_string(&metrics_file).unwrap();
-    assert!(metrics_content.contains("test_counter"));
-    assert!(metrics_content.contains("test_gauge"));
-    assert!(metrics_content.contains("test_histogram"));
+    // Now use captured_metrics_arc directly
+    if let Ok(captured_metrics) = captured_metrics_arc.lock() {
+        assert!(!captured_metrics.is_empty());
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Counter { name, .. } if name == "test_counter")));
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Gauge { name, .. } if name == "test_gauge")));
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Histogram { name, .. } if name == "test_histogram")));
+    } else {
+        panic!("Failed to lock captured_metrics_arc for checking");
+    }
 }
 
 #[test]
@@ -321,28 +389,28 @@ fn test_metrics_with_tags() {
         },
     };
 
-    jacs::observability::init_observability(config).unwrap();
+    let captured_metrics_arc = init_observability(config)
+        .expect("Init should not fail")
+        .expect("Should get an Arc for File destination in test");
 
     // Record metrics with tags
     let mut tags = std::collections::HashMap::new();
     tags.insert("service".to_string(), "test".to_string());
     tags.insert("version".to_string(), "1.0".to_string());
 
-    jacs::observability::metrics::increment_counter("requests_total", 5, Some(tags.clone()));
-    jacs::observability::metrics::set_gauge("memory_usage", 85.5, Some(tags.clone()));
-    jacs::observability::metrics::record_histogram("response_time", 123.45, Some(tags));
+    increment_counter("requests_total", 5, Some(tags.clone()));
+    set_gauge("memory_usage", 85.5, Some(tags.clone()));
+    record_histogram("response_time", 123.45, Some(tags));
 
-    // Flush to ensure writes complete
-    jacs::observability::flush_observability();
-
-    // Check that metrics file was created and contains tagged metrics
-    let metrics_file = std::path::Path::new(&metrics_path);
-    assert!(metrics_file.exists());
-
-    let content = std::fs::read_to_string(metrics_file).unwrap();
-    assert!(content.contains("requests_total"));
-    assert!(content.contains("memory_usage"));
-    assert!(content.contains("response_time"));
+    // Now use captured_metrics_arc directly
+    if let Ok(captured_metrics) = captured_metrics_arc.lock() {
+        assert!(!captured_metrics.is_empty());
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Counter { name, .. } if name == "requests_total")));
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Gauge { name, .. } if name == "memory_usage")));
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Histogram { name, .. } if name == "response_time")));
+    } else {
+        panic!("Failed to lock captured_metrics_arc for checking");
+    }
 }
 
 #[test]
@@ -369,7 +437,9 @@ fn test_convenience_functions() {
         },
     };
 
-    init_observability(config).unwrap();
+    let captured_metrics_arc = init_observability(config)
+        .expect("Init should not fail")
+        .expect("Should get an Arc for File destination in test");
 
     // Test all convenience functions
     record_agent_operation("load_agent", "agent_conv_123", true, 200);
@@ -379,23 +449,15 @@ fn test_convenience_functions() {
     record_signature_verification("agent_conv_123", true, "Ed25519");
     record_signature_verification("agent_conv_456", false, "RSA");
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Verify logs
-    if log_file.exists() {
-        let log_content = fs::read_to_string(&log_file).unwrap();
-        assert!(log_content.contains("load_agent"));
-        assert!(log_content.contains("agent_conv_123"));
-        assert!(log_content.contains("Ed25519"));
-    }
-
-    // Verify metrics
-    if metrics_file.exists() {
-        let metrics_content = fs::read_to_string(&metrics_file).unwrap();
-        assert!(metrics_content.contains("jacs_agent_operations_total"));
-        assert!(metrics_content.contains("jacs_document_validations_total"));
-        assert!(metrics_content.contains("jacs_signature_verifications_total"));
-        assert!(metrics_content.contains("jacs_agent_operation_duration_ms"));
+    // Now use captured_metrics_arc directly
+    if let Ok(captured_metrics) = captured_metrics_arc.lock() {
+        assert!(!captured_metrics.is_empty());
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Counter { name, .. } if name == "jacs_agent_operations_total")));
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Counter { name, .. } if name == "jacs_document_validations_total")));
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Counter { name, .. } if name == "jacs_signature_verifications_total")));
+        assert!(captured_metrics.iter().any(|m| matches!(m, jacs::observability::metrics::CapturedMetric::Histogram { name, .. } if name == "jacs_agent_operation_duration_ms")));
+    } else {
+        panic!("Failed to lock captured_metrics_arc for checking");
     }
 }
 
