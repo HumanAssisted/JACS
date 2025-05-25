@@ -73,6 +73,19 @@ pub struct MetricsConfig {
     pub export_interval_seconds: Option<u64>,
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum LogDestination {
+    #[serde(rename = "http")]
+    Http { endpoint: String },
+    #[serde(rename = "console")]
+    Console,
+    #[serde(rename = "null")]
+    Null,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum LogDestination {
