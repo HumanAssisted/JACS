@@ -1,8 +1,11 @@
 // tests for observability module
+use jacs::observability::metrics::{
+    increment_counter, record_agent_operation, record_document_validation, record_histogram,
+    record_signature_verification, set_gauge,
+};
 use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-    increment_counter, init_observability, record_agent_operation, record_document_validation,
-    record_histogram, record_signature_verification, set_gauge,
+    init_observability,
 };
 use serial_test::serial;
 use std::collections::HashMap;
@@ -325,9 +328,9 @@ fn test_metrics_with_tags() {
     tags.insert("service".to_string(), "test".to_string());
     tags.insert("version".to_string(), "1.0".to_string());
 
-    jacs::observability::increment_counter("requests_total", 5, Some(tags.clone()));
-    jacs::observability::set_gauge("memory_usage", 85.5, Some(tags.clone()));
-    jacs::observability::record_histogram("response_time", 123.45, Some(tags));
+    jacs::observability::metrics::increment_counter("requests_total", 5, Some(tags.clone()));
+    jacs::observability::metrics::set_gauge("memory_usage", 85.5, Some(tags.clone()));
+    jacs::observability::metrics::record_histogram("response_time", 123.45, Some(tags));
 
     // Flush to ensure writes complete
     jacs::observability::flush_observability();
