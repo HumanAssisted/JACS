@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::sync::{Mutex, Once};
+use std::sync::{Arc, Mutex};
 
 pub mod convenience;
 pub mod logs;
@@ -9,7 +8,6 @@ pub mod metrics;
 #[cfg(not(target_arch = "wasm32"))]
 use tracing_appender::non_blocking::WorkerGuard;
 
-static INIT: Once = Once::new();
 static CONFIG: Mutex<Option<ObservabilityConfig>> = Mutex::new(None);
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -77,64 +75,82 @@ pub enum MetricsDestination {
 pub fn init_observability(
     config: ObservabilityConfig,
 ) -> Result<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>, Box<dyn std::error::Error>> {
-    INIT.call_once(|| {
-        // This block runs only once. Store the first config that triggered initialization.
-        if let Ok(mut stored_config) = CONFIG.lock() {
-            *stored_config = Some(config.clone());
-        }
+    if let Ok(mut stored_config) = CONFIG.lock() {
+        *stored_config = Some(config.clone());
+    } else {
+        return Err("CONFIG lock poisoned".into());
+    }
 
-        // Initialize logs using the config from the *first* call.
-        match logs::init_logs(&config.logs) {
-            Ok(guard_option) =>
-            {
-                #[cfg(not(target_arch = "wasm32"))]
-                if let Some(guard) = guard_option {
-                    if let Ok(mut global_guard_handle) = LOG_WORKER_GUARD.lock() {
-                        *global_guard_handle = Some(guard);
-                    } else {
-                        eprintln!("Error: LOG_WORKER_GUARD lock poisoned during init.");
+    // Attempt to initialize logs.
+    // `tracing_subscriber::...try_init()` has its own `Once`.
+    // Only the first *successful* call to `try_init` sets the global subscriber.
+    match logs::init_logs(&config.logs) {
+        Ok(guard_option) => {
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(new_guard) = guard_option {
+                if let Ok(mut global_guard_handle) = LOG_WORKER_GUARD.lock() {
+                    if let Some(old_guard) = global_guard_handle.take() {
+                        drop(old_guard); // Ensure previous guard is flushed and dropped
                     }
+                    *global_guard_handle = Some(new_guard);
+                } else {
+                    eprintln!(
+                        "Warning: LOG_WORKER_GUARD lock poisoned during init, cannot store new guard."
+                    );
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to initialize logging: {}", e);
-            }
         }
-
-        // Initialize metrics using the config from the *first* call.
-        match metrics::init_metrics(&config.metrics) {
-            Ok(captured_arc_option) => {
-                // If metrics init returns an Arc (i.e., for File destination), store it globally.
-                if captured_arc_option.is_some() {
-                    if let Ok(mut global_metrics_handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
-                        *global_metrics_handle = captured_arc_option;
-                    } else {
-                        eprintln!("Error: TEST_METRICS_RECORDER_HANDLE lock poisoned during init.");
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Failed to initialize metrics: {}", e);
-            }
-        }
-    });
-
-    // After `call_once` (i.e., for every call to `init_observability`):
-    // If the *current* call's config asks for File metrics, return the stored handle.
-    if config.metrics.enabled
-        && matches!(config.metrics.destination, MetricsDestination::File { .. })
-    {
-        if let Ok(handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
-            return Ok(handle.clone());
-        } else {
+        Err(e) => {
+            // This error often means a global subscriber was already set.
+            // This is okay if the existing subscriber is compatible or if this config doesn't need to be the primary.
             eprintln!(
-                "Error: TEST_METRICS_RECORDER_HANDLE lock poisoned when trying to return handle."
+                "Info: logs::init_logs reported: {} (possibly already initialized or incompatible re-init)",
+                e
             );
-            // Fallthrough to Ok(None) or return specific error. For tests, Ok(None) will cause .expect() to fail.
         }
     }
 
-    Ok(None) // Default: not File metrics, or handle somehow not available.
+    // Attempt to initialize metrics.
+    // `metrics::set_global_recorder` also has `Once` semantics.
+    let mut metrics_handle_for_return: Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>> = None;
+
+    match metrics::init_metrics(&config.metrics) {
+        Ok(captured_arc_option) => {
+            if let Ok(mut global_metrics_handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
+                *global_metrics_handle = captured_arc_option.clone(); // Store Arc if File, or None otherwise
+                metrics_handle_for_return = captured_arc_option;
+            } else {
+                eprintln!(
+                    "Warning: TEST_METRICS_RECORDER_HANDLE lock poisoned, cannot store metrics Arc."
+                );
+            }
+        }
+        Err(e) => {
+            // This error often means a global recorder was already set.
+            eprintln!(
+                "Info: metrics::init_metrics reported: {} (possibly already initialized or incompatible re-init)",
+                e
+            );
+
+            // For File destination, still try to return existing handle if available
+            if config.metrics.enabled
+                && matches!(config.metrics.destination, MetricsDestination::File { .. })
+            {
+                if let Ok(handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
+                    metrics_handle_for_return = handle.clone();
+                }
+            }
+        }
+    }
+
+    // Return handle for InMemoryMetricsRecorder if configured for File destination
+    if config.metrics.enabled
+        && matches!(config.metrics.destination, MetricsDestination::File { .. })
+    {
+        return Ok(metrics_handle_for_return);
+    }
+
+    Ok(None)
 }
 
 pub fn get_config() -> Option<ObservabilityConfig> {
@@ -142,49 +158,43 @@ pub fn get_config() -> Option<ObservabilityConfig> {
 }
 
 pub fn reset_observability() {
-    // Clear the stored global configuration.
     if let Ok(mut config_handle) = CONFIG.lock() {
         *config_handle = None;
-    } else {
-        eprintln!("Error: CONFIG lock poisoned during reset.");
     }
 
-    // For the metrics test handle, if it exists, clear the *contents* (the Vec).
-    // The Arc itself remains in TEST_METRICS_RECORDER_HANDLE for subsequent tests.
     if let Ok(handle_option) = TEST_METRICS_RECORDER_HANDLE.lock() {
         if let Some(arc) = handle_option.as_ref() {
-            // Borrow to check Some
             if let Ok(mut captured_metrics_vec) = arc.lock() {
                 captured_metrics_vec.clear();
-            } else {
-                eprintln!(
-                    "Error: TEST_METRICS_RECORDER_HANDLE's inner Arc<Mutex<Vec>> lock poisoned during reset."
-                );
             }
         }
-    } else {
-        eprintln!("Error: TEST_METRICS_RECORDER_HANDLE outer lock poisoned during reset check.");
     }
 
-    // For file logging, take and drop the worker guard.
-    // This ensures logs from the previous test are flushed and the worker is shut down.
-    // The `INIT: Once` ensures `logs::init_logs` isn't called again to create a new guard
-    // unless it's a new program run. For serial tests, this guard is setup once.
     #[cfg(not(target_arch = "wasm32"))]
     {
         if let Ok(mut guard_opt_handle) = LOG_WORKER_GUARD.lock() {
             if let Some(guard) = guard_opt_handle.take() {
                 drop(guard); // Explicitly drop to shut down worker and flush.
             }
-        } else {
-            eprintln!("Error: LOG_WORKER_GUARD lock poisoned during reset.");
         }
     }
 }
 
+/// Force reset for tests - clears global state more aggressively
+pub fn force_reset_for_tests() {
+    reset_observability();
+
+    // Clear the global metrics recorder handle
+    if let Ok(mut handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
+        *handle = None;
+    }
+
+    // Give time for async operations to complete
+    std::thread::sleep(std::time::Duration::from_millis(100));
+}
+
 pub fn flush_observability() {
-    // The main flushing for file logs is handled by dropping the LOG_WORKER_GUARD in `reset_observability`.
-    // This function can remain as a small safety delay for any other truly async operations
-    // not managed by explicit guards or flush mechanisms.
+    // Primarily, flushing is handled by dropping LOG_WORKER_GUARD in reset_observability.
+    // A small explicit sleep can help ensure file system operations complete in CI.
     std::thread::sleep(std::time::Duration::from_millis(50));
 }
