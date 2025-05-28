@@ -72,6 +72,8 @@
 
 ## 0.3.5
 
+Update documentation.
+
 ### JACS core
 
  - [] don't store  "jacs_private_key_password":  in config, don't display
@@ -81,6 +83,7 @@
  - [] *** start effort to channel all logging to jacs -> open telemetry -> fs or elsewhere that doesn't write to stdio on 
     1. the main traffic for sign and verify
     2. all logs generated
+    [] ensure if a user wants standard logging they can use that
 
 
 ### jacspy

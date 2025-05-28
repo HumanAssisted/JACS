@@ -1,0 +1,717 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Basic Usage - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">4.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">5.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">6.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">7.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">8.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">9.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">10.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">11.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">12.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">13.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">14.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">15.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">16.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">17.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html" class="active"><strong aria-hidden="true">18.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">19.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">20.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">21.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">22.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">23.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">24.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">25.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">26.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">27.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">28.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">29.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">30.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">31.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">32.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">33.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">34.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">35.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">36.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">37.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">38.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">39.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">40.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">41.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h1>
+<p>This guide covers the fundamental operations you can perform with JACS in Python, from creating agents to managing tasks and documents.</p>
+<h2 id="quick-start-example"><a class="header" href="#quick-start-example">Quick Start Example</a></h2>
+<p>Here's a complete example that demonstrates the core JACS workflow:</p>
+<pre><code class="language-python">import jacs
+import json
+import os
+
+# Configuration
+config = {
+    "jacs_data_directory": "./jacs_data",
+    "jacs_key_directory": "./jacs_keys",
+    "jacs_default_storage": "fs",
+    "jacs_agent_key_algorithm": "Ed25519"
+}
+
+# Ensure directories exist
+os.makedirs(config["jacs_data_directory"], exist_ok=True)
+os.makedirs(config["jacs_key_directory"], exist_ok=True)
+
+# Create agent
+agent = jacs.Agent(config)
+
+# Generate keys and create agent document
+agent.generate_keys()
+agent_doc = agent.create_agent({
+    "name": "My Python Agent",
+    "description": "A JACS agent for Python workflows",
+    "type": "automation"
+})
+
+print(f"Created agent: {agent_doc['name']}")
+print(f"Agent ID: {agent_doc['jacsId']}")
+
+# Create a task
+task_doc = agent.create_task({
+    "title": "Process Data",
+    "description": "Analyze customer data and generate report",
+    "priority": "high",
+    "status": "pending"
+})
+
+print(f"Created task: {task_doc['title']}")
+print(f"Task ID: {task_doc['jacsId']}")
+
+# Update task status
+updated_task = agent.update_task(task_doc['jacsId'], {
+    "status": "in_progress",
+    "progress": 25
+})
+
+print(f"Updated task status: {updated_task['status']}")
+</code></pre>
+<h2 id="agent-management"><a class="header" href="#agent-management">Agent Management</a></h2>
+<h3 id="creating-an-agent"><a class="header" href="#creating-an-agent">Creating an Agent</a></h3>
+<pre><code class="language-python">import jacs
+
+# Basic agent creation
+config = {
+    "jacs_data_directory": "./jacs_data",
+    "jacs_key_directory": "./jacs_keys",
+    "jacs_default_storage": "fs",
+    "jacs_agent_key_algorithm": "Ed25519"
+}
+
+agent = jacs.Agent(config)
+
+# Generate cryptographic keys
+agent.generate_keys()
+
+# Create agent document
+agent_doc = agent.create_agent({
+    "name": "Data Processor",
+    "description": "Agent specialized in data processing tasks",
+    "type": "data_processor",
+    "capabilities": ["data_analysis", "report_generation"],
+    "version": "1.0.0"
+})
+
+print(f"Agent created with ID: {agent_doc['jacsId']}")
+</code></pre>
+<h3 id="loading-an-existing-agent"><a class="header" href="#loading-an-existing-agent">Loading an Existing Agent</a></h3>
+<pre><code class="language-python"># If you have an existing agent, specify it in config
+config = {
+    "jacs_data_directory": "./jacs_data",
+    "jacs_key_directory": "./jacs_keys",
+    "jacs_default_storage": "fs",
+    "jacs_agent_key_algorithm": "Ed25519",
+    "jacs_agent_id_and_version": "agent_123:1"  # Load existing agent
+}
+
+agent = jacs.Agent(config)
+
+# Agent is now loaded and ready to use
+print("Existing agent loaded successfully")
+</code></pre>
+<h3 id="agent-information"><a class="header" href="#agent-information">Agent Information</a></h3>
+<pre><code class="language-python"># Get agent information
+agent_info = agent.get_agent_info()
+print(f"Agent Name: {agent_info['name']}")
+print(f"Agent Type: {agent_info['type']}")
+print(f"Capabilities: {agent_info.get('capabilities', [])}")
+</code></pre>
+<h2 id="task-management"><a class="header" href="#task-management">Task Management</a></h2>
+<h3 id="creating-tasks"><a class="header" href="#creating-tasks">Creating Tasks</a></h3>
+<pre><code class="language-python"># Simple task
+task = agent.create_task({
+    "title": "Data Analysis",
+    "description": "Analyze sales data for Q4",
+    "status": "pending"
+})
+
+# Detailed task with metadata
+detailed_task = agent.create_task({
+    "title": "Generate Monthly Report",
+    "description": "Create comprehensive monthly performance report",
+    "priority": "high",
+    "status": "pending",
+    "assignee": "data_team",
+    "due_date": "2024-02-01",
+    "tags": ["reporting", "monthly", "performance"],
+    "metadata": {
+        "department": "analytics",
+        "report_type": "performance",
+        "data_sources": ["sales", "marketing", "support"]
+    }
+})
+
+print(f"Created task: {detailed_task['jacsId']}")
+</code></pre>
+<h3 id="updating-tasks"><a class="header" href="#updating-tasks">Updating Tasks</a></h3>
+<pre><code class="language-python"># Update task status
+updated_task = agent.update_task(task['jacsId'], {
+    "status": "in_progress",
+    "progress": 50,
+    "notes": "Data collection completed, starting analysis"
+})
+
+# Add results to completed task
+completed_task = agent.update_task(task['jacsId'], {
+    "status": "completed",
+    "progress": 100,
+    "results": {
+        "total_sales": 1250000,
+        "growth_rate": 15.3,
+        "top_products": ["Product A", "Product B", "Product C"]
+    },
+    "completion_date": "2024-01-15"
+})
+</code></pre>
+<h3 id="querying-tasks"><a class="header" href="#querying-tasks">Querying Tasks</a></h3>
+<pre><code class="language-python"># Get all tasks
+all_tasks = agent.list_tasks()
+print(f"Total tasks: {len(all_tasks)}")
+
+# Filter tasks by status
+pending_tasks = [task for task in all_tasks if task.get('status') == 'pending']
+print(f"Pending tasks: {len(pending_tasks)}")
+
+# Get specific task
+task_details = agent.get_task(task['jacsId'])
+print(f"Task: {task_details['title']}")
+</code></pre>
+<h2 id="document-management"><a class="header" href="#document-management">Document Management</a></h2>
+<h3 id="creating-documents"><a class="header" href="#creating-documents">Creating Documents</a></h3>
+<pre><code class="language-python"># Create a generic document
+document = agent.create_document({
+    "type": "report",
+    "title": "Q4 Sales Analysis",
+    "content": {
+        "summary": "Sales increased by 15% in Q4",
+        "details": {
+            "total_revenue": 1250000,
+            "units_sold": 5000,
+            "average_order_value": 250
+        }
+    },
+    "author": "analytics_team",
+    "created_date": "2024-01-15"
+})
+
+print(f"Document created: {document['jacsId']}")
+</code></pre>
+<h3 id="document-versioning"><a class="header" href="#document-versioning">Document Versioning</a></h3>
+<pre><code class="language-python"># Update document (creates new version)
+updated_document = agent.update_document(document['jacsId'], {
+    "content": {
+        "summary": "Sales increased by 15.3% in Q4 (revised)",
+        "details": {
+            "total_revenue": 1253000,  # Corrected figure
+            "units_sold": 5012,
+            "average_order_value": 250.1
+        }
+    },
+    "revision_notes": "Corrected revenue figures"
+})
+
+print(f"Document updated to version: {updated_document['jacsVersion']}")
+</code></pre>
+<h3 id="document-verification"><a class="header" href="#document-verification">Document Verification</a></h3>
+<pre><code class="language-python"># Verify document signature
+is_valid = agent.verify_document(document['jacsId'])
+print(f"Document signature valid: {is_valid}")
+
+# Get document history
+history = agent.get_document_history(document['jacsId'])
+print(f"Document has {len(history)} versions")
+</code></pre>
+<h2 id="agreement-management"><a class="header" href="#agreement-management">Agreement Management</a></h2>
+<h3 id="creating-agreements"><a class="header" href="#creating-agreements">Creating Agreements</a></h3>
+<pre><code class="language-python"># Create a multi-party agreement
+agreement = agent.create_agreement({
+    "title": "Data Sharing Agreement",
+    "description": "Agreement for sharing customer data between departments",
+    "parties": ["analytics_team", "marketing_team", "legal_team"],
+    "terms": {
+        "data_types": ["customer_demographics", "purchase_history"],
+        "usage_restrictions": ["no_external_sharing", "anonymization_required"],
+        "duration": "12_months"
+    },
+    "status": "draft"
+})
+
+print(f"Agreement created: {agreement['jacsId']}")
+</code></pre>
+<h3 id="agreement-workflow"><a class="header" href="#agreement-workflow">Agreement Workflow</a></h3>
+<pre><code class="language-python"># Submit agreement for approval
+submitted_agreement = agent.update_agreement(agreement['jacsId'], {
+    "status": "pending_approval",
+    "submitted_by": "analytics_team",
+    "submitted_date": "2024-01-15"
+})
+
+# Approve agreement (would be done by each party)
+approved_agreement = agent.approve_agreement(agreement['jacsId'], {
+    "approver": "legal_team",
+    "approval_date": "2024-01-16",
+    "notes": "Approved with standard terms"
+})
+
+# Finalize agreement
+final_agreement = agent.finalize_agreement(agreement['jacsId'])
+print(f"Agreement status: {final_agreement['status']}")
+</code></pre>
+<h2 id="working-with-json-schemas"><a class="header" href="#working-with-json-schemas">Working with JSON Schemas</a></h2>
+<h3 id="schema-validation"><a class="header" href="#schema-validation">Schema Validation</a></h3>
+<pre><code class="language-python"># Define a custom schema for your documents
+task_schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
+        "priority": {"type": "string", "enum": ["low", "medium", "high"]},
+        "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]},
+        "assignee": {"type": "string"},
+        "due_date": {"type": "string", "format": "date"}
+    },
+    "required": ["title", "description", "status"]
+}
+
+# Create task with schema validation
+try:
+    validated_task = agent.create_task({
+        "title": "Validated Task",
+        "description": "This task follows the schema",
+        "priority": "high",
+        "status": "pending",
+        "assignee": "john_doe",
+        "due_date": "2024-02-01"
+    }, schema=task_schema)
+    print("Task created and validated successfully")
+except Exception as e:
+    print(f"Schema validation failed: {e}")
+</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<h3 id="common-error-patterns"><a class="header" href="#common-error-patterns">Common Error Patterns</a></h3>
+<pre><code class="language-python">import jacs
+
+try:
+    agent = jacs.Agent(config)
+    
+    # Attempt to create agent
+    agent.generate_keys()
+    agent_doc = agent.create_agent({
+        "name": "Test Agent",
+        "description": "Testing error handling"
+    })
+    
+except jacs.ConfigurationError as e:
+    print(f"Configuration error: {e}")
+    # Handle configuration issues
+    
+except jacs.CryptographicError as e:
+    print(f"Cryptographic error: {e}")
+    # Handle key generation or signing issues
+    
+except jacs.ValidationError as e:
+    print(f"Validation error: {e}")
+    # Handle schema validation failures
+    
+except jacs.StorageError as e:
+    print(f"Storage error: {e}")
+    # Handle file system or cloud storage issues
+    
+except Exception as e:
+    print(f"Unexpected error: {e}")
+    # Handle any other errors
+</code></pre>
+<h3 id="robust-error-handling"><a class="header" href="#robust-error-handling">Robust Error Handling</a></h3>
+<pre><code class="language-python">def create_agent_safely(config):
+    """Create agent with comprehensive error handling"""
+    try:
+        agent = jacs.Agent(config)
+        
+        # Check if keys exist
+        if not agent.has_keys():
+            print("Generating new keys...")
+            agent.generate_keys()
+        
+        # Check if agent document exists
+        if not config.get("jacs_agent_id_and_version"):
+            print("Creating new agent...")
+            agent_doc = agent.create_agent({
+                "name": "Robust Agent",
+                "description": "Agent with error handling"
+            })
+            return agent, agent_doc
+        else:
+            print("Loading existing agent...")
+            return agent, None
+            
+    except Exception as e:
+        print(f"Failed to create agent: {e}")
+        return None, None
+
+# Usage
+agent, agent_doc = create_agent_safely(config)
+if agent:
+    print("Agent ready for use")
+else:
+    print("Failed to initialize agent")
+</code></pre>
+<h2 id="configuration-management"><a class="header" href="#configuration-management">Configuration Management</a></h2>
+<h3 id="environment-based-configuration"><a class="header" href="#environment-based-configuration">Environment-Based Configuration</a></h3>
+<pre><code class="language-python">import os
+import json
+
+def load_config():
+    """Load configuration from environment or file"""
+    
+    # Try environment variables first
+    if os.getenv("JACS_DATA_DIRECTORY"):
+        return {
+            "jacs_data_directory": os.getenv("JACS_DATA_DIRECTORY"),
+            "jacs_key_directory": os.getenv("JACS_KEY_DIRECTORY"),
+            "jacs_default_storage": os.getenv("JACS_DEFAULT_STORAGE", "fs"),
+            "jacs_agent_key_algorithm": os.getenv("JACS_AGENT_KEY_ALGORITHM", "Ed25519")
+        }
+    
+    # Fall back to config file
+    try:
+        with open("jacs.config.json", "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # Default configuration
+        return {
+            "jacs_data_directory": "./jacs_data",
+            "jacs_key_directory": "./jacs_keys",
+            "jacs_default_storage": "fs",
+            "jacs_agent_key_algorithm": "Ed25519"
+        }
+
+# Usage
+config = load_config()
+agent = jacs.Agent(config)
+</code></pre>
+<h3 id="configuration-validation"><a class="header" href="#configuration-validation">Configuration Validation</a></h3>
+<pre><code class="language-python">def validate_config(config):
+    """Validate JACS configuration"""
+    required_fields = [
+        "jacs_data_directory",
+        "jacs_key_directory", 
+        "jacs_default_storage",
+        "jacs_agent_key_algorithm"
+    ]
+    
+    for field in required_fields:
+        if field not in config:
+            raise ValueError(f"Missing required configuration field: {field}")
+    
+    # Validate algorithm
+    valid_algorithms = ["Ed25519", "RSA", "Dilithium"]
+    if config["jacs_agent_key_algorithm"] not in valid_algorithms:
+        raise ValueError(f"Invalid algorithm: {config['jacs_agent_key_algorithm']}")
+    
+    # Validate storage
+    valid_storage = ["fs", "s3", "azure"]
+    if config["jacs_default_storage"] not in valid_storage:
+        raise ValueError(f"Invalid storage backend: {config['jacs_default_storage']}")
+    
+    return True
+
+# Usage
+try:
+    validate_config(config)
+    agent = jacs.Agent(config)
+except ValueError as e:
+    print(f"Configuration error: {e}")
+</code></pre>
+<h2 id="performance-tips"><a class="header" href="#performance-tips">Performance Tips</a></h2>
+<h3 id="batch-operations"><a class="header" href="#batch-operations">Batch Operations</a></h3>
+<pre><code class="language-python"># Create multiple tasks efficiently
+tasks_data = [
+    {"title": f"Task {i}", "description": f"Description {i}", "status": "pending"}
+    for i in range(10)
+]
+
+created_tasks = []
+for task_data in tasks_data:
+    task = agent.create_task(task_data)
+    created_tasks.append(task)
+
+print(f"Created {len(created_tasks)} tasks")
+</code></pre>
+<h3 id="caching-agent-instance"><a class="header" href="#caching-agent-instance">Caching Agent Instance</a></h3>
+<pre><code class="language-python"># Cache agent instance for reuse
+class JACSManager:
+    def __init__(self, config):
+        self.config = config
+        self._agent = None
+    
+    @property
+    def agent(self):
+        if self._agent is None:
+            self._agent = jacs.Agent(self.config)
+        return self._agent
+    
+    def create_task(self, task_data):
+        return self.agent.create_task(task_data)
+    
+    def get_task(self, task_id):
+        return self.agent.get_task(task_id)
+
+# Usage
+manager = JACSManager(config)
+task = manager.create_task({"title": "Cached Task", "status": "pending"})
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Now that you understand the basics:</p>
+<ol>
+<li><strong><a href="mcp.html">MCP Integration</a></strong> - Add Model Context Protocol support</li>
+<li><strong><a href="fastmcp.html">FastMCP Integration</a></strong> - Build advanced MCP servers</li>
+<li><strong><a href="api.html">API Reference</a></strong> - Complete API documentation</li>
+<li><strong><a href="../examples/python.html">Examples</a></strong> - More complex examples</li>
+</ol>
+<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
+<h3 id="task-pipeline"><a class="header" href="#task-pipeline">Task Pipeline</a></h3>
+<pre><code class="language-python">def process_data_pipeline(agent, data_source):
+    """Example data processing pipeline using JACS tasks"""
+    
+    # Create extraction task
+    extract_task = agent.create_task({
+        "title": "Extract Data",
+        "description": f"Extract data from {data_source}",
+        "status": "pending",
+        "type": "extraction"
+    })
+    
+    # Simulate extraction
+    agent.update_task(extract_task['jacsId'], {
+        "status": "completed",
+        "results": {"records_extracted": 1000}
+    })
+    
+    # Create transformation task
+    transform_task = agent.create_task({
+        "title": "Transform Data", 
+        "description": "Clean and transform extracted data",
+        "status": "pending",
+        "type": "transformation",
+        "depends_on": [extract_task['jacsId']]
+    })
+    
+    # Continue pipeline...
+    return [extract_task, transform_task]
+
+# Usage
+pipeline_tasks = process_data_pipeline(agent, "customer_database")
+print(f"Created pipeline with {len(pipeline_tasks)} tasks")
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../python/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../python/mcp.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../python/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../python/mcp.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
