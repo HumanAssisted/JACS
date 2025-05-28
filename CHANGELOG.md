@@ -44,6 +44,10 @@
  - [] integrate cli
 
 ### jacspy
+ - [] publish jacspy to pypi
+ - [] mcp make sure "list" request is signed?
+ - [] some integration tests
+ - [] fastapi, django, flask, guvicorn specific pre-built middleware
  - [] auto generate agent doc from MCP server list, auto versions (important for A2A as well)
  - [] fastmcp client and server websocket
  - [] BUG? demo fastmcp client and server stdio 
@@ -55,6 +59,7 @@
  - [] github actions builder for linux varieties
 
 ### JACS core
+ - [] ensure if a user wants standard logging they can use that
  - [] cli install instructions. a .sh command?
  - [] expose logging function to jacspy and jacsnpm
  - [] create centralized logging output without file output  
@@ -67,33 +72,26 @@
  - [] bucket integration
  - [] RBAC integration with header
  - [] clean io prepping for config of io
+  - [] don't store  "jacs_private_key_password":  in config, don't display
+  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
 
 --------------------
 
 ## 0.3.5
 
-Update documentation.
+- [x] Update documentation.
 
 ### JACS core
 
- - [] don't store  "jacs_private_key_password":  in config, don't display
  - [x] add timestamp to prevent replay attacks to request/response features
- - [] minor feature - no_save = false should save document and still return json string instead of message on create document
  - [x] make cli utils available to other libs
- - [] *** start effort to channel all logging to jacs -> open telemetry -> fs or elsewhere that doesn't write to stdio on 
+ - [x] *** start effort to channel all logging to jacs -> open telemetry -> fs or elsewhere that doesn't write to stdio on 
     1. the main traffic for sign and verify
     2. all logs generated
-    [] ensure if a user wants standard logging they can use that
-
 
 ### jacspy
 
  - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
- - [] publish jacspy to pypi
- - [] mcp make sure "list" request is signed?
- - [] some integration tests
- - [] fastapi, django, flask, guvicorn specific pre-built middleware
-
 
 ## jacsnpm
 
