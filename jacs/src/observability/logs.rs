@@ -1,5 +1,6 @@
 use crate::observability::{LogConfig, LogDestination};
 use std::io;
+use tracing::warn;
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,7 +44,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             Ok(None)
         }
         LogDestination::Otlp { endpoint: _ } => {
-            eprintln!("Warning: OTLP logging configured but using Stderr fallback for now.");
+            warn!("Warning: OTLP logging configured but using Stderr fallback for now.");
             Registry::default()
                 .with(filter)
                 .with(fmt::layer().with_writer(io::stderr))
@@ -74,7 +75,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<()>, Box<dyn std::error::E
                 .try_init()?;
         }
         LogDestination::Http { endpoint: _ } => {
-            eprintln!("Warning: HTTP logging for WASM configured but using Console fallback.");
+            warn!("Warning: HTTP logging for WASM configured but using Console fallback.");
             Registry::default()
                 .with(filter)
                 .with(fmt::layer())

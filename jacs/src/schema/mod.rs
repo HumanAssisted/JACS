@@ -161,7 +161,6 @@ impl Schema {
         }
 
         // Extract fields from the document that are not present in the schema
-        //  println!("processed_fields {:?}", processed_fields);
         if let Some(document_object) = document.as_object() {
             for (field_name, field_value) in document_object {
                 if !processed_fields.contains(field_name)
@@ -186,7 +185,7 @@ impl Schema {
         if let Value::Object(properties_map) = properties {
             for (field_name, field_schema) in properties_map {
                 if field_name == "jacsTaskMessages" || field_name == "attachments" {
-                    println!(
+                    debug!(
                         "\n\n attachments field_name  in items {} {:?}\n\n\n\n",
                         field_name, field_schema
                     );

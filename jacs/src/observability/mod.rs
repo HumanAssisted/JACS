@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tracing::warn;
 
 pub mod convenience;
 pub mod logs;
@@ -94,7 +95,7 @@ pub fn init_observability(
                     }
                     *global_guard_handle = Some(new_guard);
                 } else {
-                    eprintln!(
+                    warn!(
                         "Warning: LOG_WORKER_GUARD lock poisoned during init, cannot store new guard."
                     );
                 }
@@ -103,7 +104,7 @@ pub fn init_observability(
         Err(e) => {
             // This error often means a global subscriber was already set.
             // This is okay if the existing subscriber is compatible or if this config doesn't need to be the primary.
-            eprintln!(
+            warn!(
                 "Info: logs::init_logs reported: {} (possibly already initialized or incompatible re-init)",
                 e
             );
@@ -120,14 +121,14 @@ pub fn init_observability(
                 *global_metrics_handle = captured_arc_option.clone(); // Store Arc if File, or None otherwise
                 metrics_handle_for_return = captured_arc_option;
             } else {
-                eprintln!(
+                warn!(
                     "Warning: TEST_METRICS_RECORDER_HANDLE lock poisoned, cannot store metrics Arc."
                 );
             }
         }
         Err(e) => {
             // This error often means a global recorder was already set.
-            eprintln!(
+            warn!(
                 "Info: metrics::init_metrics reported: {} (possibly already initialized or incompatible re-init)",
                 e
             );

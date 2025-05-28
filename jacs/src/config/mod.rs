@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::fs;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 pub mod constants;
@@ -338,7 +338,7 @@ pub fn set_env_vars(
     if !jacs_agent_id_and_version.is_empty() {
         let (id, version) = split_id(&jacs_agent_id_and_version).unwrap_or(("", ""));
         if !Uuid::parse_str(id).is_ok() || !Uuid::parse_str(version).is_ok() {
-            println!("ID and Version must be in the form UUID:UUID");
+            warn!("ID and Version must be in the form UUID:UUID");
         }
     }
 
