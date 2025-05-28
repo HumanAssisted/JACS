@@ -5,9 +5,8 @@ use crate::agent::TASK_START_AGREEMENT_FIELDNAME;
 use crate::agent::agreement::Agreement;
 use crate::agent::document::DocumentTraits;
 use crate::agent::document::JACSDocument;
-use log::debug;
-use log::info;
 use std::error::Error;
+use tracing::{debug, info};
 
 pub fn document_create(
     agent: &mut Agent,

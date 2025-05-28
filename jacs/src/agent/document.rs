@@ -11,7 +11,6 @@ use crate::schema::utils::ValueExt;
 use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
-use log::error;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,6 +21,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
+use tracing::error;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

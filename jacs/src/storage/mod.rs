@@ -2,7 +2,6 @@
 use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
-use log::debug;
 use object_store::PutPayload;
 use object_store::{
     Error as ObjectStoreError, ObjectStore,
@@ -16,6 +15,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::{AsRefStr, Display, EnumString};
+use tracing::debug;
 use url::Url;
 
 pub mod jenv;

@@ -1,11 +1,11 @@
 use crate::storage::MultiStorage;
 use jsonschema::Retrieve;
-use log::debug;
 use phf::phf_map;
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
+use tracing::debug;
 
 pub const ACCEPT_INVALID_CERTS: bool = true;
 pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
