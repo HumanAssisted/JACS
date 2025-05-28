@@ -1,9 +1,9 @@
 use crate::agent::Agent;
 use crate::agent::FileLoader;
 use crate::error;
-use log::info;
 use std::error::Error;
 use std::fs;
+use tracing::info;
 
 use std::fs::Permissions;
 #[cfg(not(target_arch = "wasm32"))]

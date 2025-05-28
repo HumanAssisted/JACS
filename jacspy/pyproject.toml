@@ -30,11 +30,13 @@ dependencies = []
 Homepage = "https://github.com/HumanAssisted/JACS" 
 Issues = "https://github.com/HumanAssisted/JACS/issues"  
 
+# scripts.jacs = "jacs.cli_runner:main"
+
 [tool.maturin]
 features = ["pyo3/extension-module"] 
 module-name = "jacs"  
+python-source = "python" 
 binding = "pyo3"  
 # binaries = ["jacs"]
 
-# [project.scripts]
-# jacs = "jacs.cli:main"
+ 

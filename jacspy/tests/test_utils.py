@@ -1,5 +1,5 @@
 import pytest
-import jacs  #
+import jacs   
 import os
 import pathlib
 os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "hello"

@@ -1,5 +1,6 @@
 # PLANNED
 -  machine fingerprinting v2
+- passkey-client integration
 - encrypt files at rest
 - refine schema usage
 - more getters and setters for documents recognized by schemas
@@ -8,6 +9,8 @@
 - use rcgen to sign certs, and register with ACME
  https://opentelemetry.io/docs/languages/rust/
 . ai.pydantic.dev
+- secure storage of private key for shared server envs https://crates.io/crates/tss-esapi, https://docs.rs/cryptoki/latest/cryptoki/
+
 
 ## 0.4.0
 - Domain integration
@@ -18,6 +21,7 @@
    - pass document string or document id - with optional version instead of string
    - load document whatever storage config is
    - function test output metadata about current config and current agent
+
 ## jacs-mcp 0.1.0
 
  - [] use rmcp
@@ -26,47 +30,79 @@
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
 
+--------------------
+
+## 0.3.6
+
+### jacsnpm
+
+ - [] BUG with STDIO in general
+      fix issues with Stdio mcp client and server log noise - relates to open telemetry being used at rust layer.
+ - [] github actions builder for linux varieties
+ - [] npm install jacs (cli and available to plugin)
+ - [] a2a integration
+ - [] integrate cli
+
+### jacspy
+ - [] publish jacspy to pypi
+ - [] mcp make sure "list" request is signed?
+ - [] some integration tests
+ - [] fastapi, django, flask, guvicorn specific pre-built middleware
+ - [] auto generate agent doc from MCP server list, auto versions (important for A2A as well)
+ - [] fastmcp client and server websocket
+ - [] BUG? demo fastmcp client and server stdio 
+ - [] a2a integration
+  - [] have jacs cli installed along with wheel
+   - [] python based instructions for how to create - cli create agent 
+      1. cli create agent 
+      2. config jacspy to load each agent
+ - [] github actions builder for linux varieties
+
+### JACS core
+ - [] ensure if a user wants standard logging they can use that
+ - [] cli install instructions. a .sh command?
+ - [] expose logging function to jacspy and jacsnpm
+ - [] create centralized logging output without file output  
+ - [] CA for cert
+ - [] register public key in d option 
+ - [] register agent
+ - [] remove requirement to store public key type
+ - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
+ - [] diff versions
+ - [] bucket integration
+ - [] RBAC integration with header
+ - [] clean io prepping for config of io
+  - [] don't store  "jacs_private_key_password":  in config, don't display
+  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
 
 --------------------
 
 ## 0.3.5
 
-### Register agent
+- [x] Update documentation.
 
- - [] register agent
-    - [] remove requirement to store public key type
+### JACS core
 
- - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
- - [] RBAC integration with header
- - [] diff versions
- - [] bucket integration
- - [] don't store  "jacs_private_key_password":  in config, don't display
- - [] register public key 
- - [] CA for cert
- - [] add timestamp to prevent timing attacks to request/response features
- - [] no_save = false should save document and still return json string instead of message on create document
- - 
+ - [x] add timestamp to prevent replay attacks to request/response features
+ - [x] make cli utils available to other libs
+ - [x] *** start effort to channel all logging to jacs -> open telemetry -> fs or elsewhere that doesn't write to stdio on 
+    1. the main traffic for sign and verify
+    2. all logs generated
 
-## jacspy
- - [] install jacs cli with the python wheel
- - [] python based instructions for how to create - cli create agent 
-      1. cli create agent 
-      2. config jacspy to load each agent
+### jacspy
 
- - [] auto generate agent doc from MCP server list, auto versions
- - [] traceable, verifiable request logs
- - [] fastmcp client and server stdio
- - [] fastmcp client and server websocket
- - [] publish jacspy to pypi
- - [] github actions builder for linux
- - [] mcp make decorator for @resource
- - [] mcp make sure "list" request is signed
+ - [x] install python mcp libs with the python wheel, use python loader to extend/export jacs.so
 
 ## jacsnpm
+
 proof of concept
 
- - [] typescript mcp client and server
- - [] npm install jacs (cli and available to plugin)
+ - [x] scaffold
+ - [x] use refactored agent trait instead of replicating
+ - [x] typescript mcp client and server tests
+ - [x]  test sse mcp client and server
+ - [x]  node express middleware
+
 
 --------------------
 
@@ -86,7 +122,7 @@ proof of concept
 
  - [x] make decorator for easy use in @tools
  - [x] new local builder
- - [] fastmcp client and server sse
+ - [x] fastmcp client and server sse
  - [x] jacspy test -  sign(content) -> (signature, agentid, agentversion, documentid, documentversion)
  - [x] jacspy test - verify(content, signature, agentid, agentversion) -> bool, error
 

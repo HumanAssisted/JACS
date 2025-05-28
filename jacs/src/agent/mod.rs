@@ -2,6 +2,7 @@ pub mod agreement;
 pub mod boilerplate;
 pub mod document;
 pub mod loaders;
+pub mod payloads;
 pub mod security;
 
 use crate::agent::boilerplate::BoilerPlate;
@@ -15,17 +16,18 @@ use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
 use crate::crypt::KeyManager;
 
+use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
 use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
 use chrono::prelude::*;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
-use log::{debug, error};
 use serde_json::{Value, json, to_value};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use secrecy::SecretBox;
@@ -76,6 +78,7 @@ pub struct Agent {
     value: Option<Value>,
     /// use getter
     pub config: Option<Config>,
+    //  todo make read commands public but not write commands
     storage: MultiStorage,
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
@@ -127,10 +130,27 @@ impl Agent {
     }
 
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
+        let start_time = std::time::Instant::now();
+
         self.config = Some(find_config("./".to_string())?);
         debug!("load_by_id config {:?}", self.config);
+
         let agent_string = self.fs_agent_load(&lookup_id)?;
-        return self.load(&agent_string);
+        let result = self.load(&agent_string);
+
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        let success = result.is_ok();
+
+        // Record the agent operation
+        record_agent_operation("load_by_id", &lookup_id, success, duration_ms);
+
+        if success {
+            info!("Successfully loaded agent by ID: {}", lookup_id);
+        } else {
+            error!("Failed to load agent by ID: {}", lookup_id);
+        }
+
+        result
     }
 
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
@@ -201,11 +221,11 @@ impl Agent {
                     || !Uuid::parse_str(&self.version.clone().expect("string expected").to_string())
                         .is_ok()
                 {
-                    println!("ID and Version must be UUID");
+                    warn!("ID and Version must be UUID");
                 }
             }
             Err(e) => {
-                error!("ERROR document ERROR {}", e);
+                error!("Agent validation failed: {}", e);
                 return Err(e.to_string().into());
             }
         }
@@ -216,7 +236,7 @@ impl Agent {
             if self.public_key.is_none() || self.private_key.is_none() {
                 self.fs_load_keys()?;
             } else {
-                println!("keys already loaded for agent");
+                info!("Keys already loaded for agent");
             }
 
             self.verify_self_signature()?;
@@ -298,6 +318,8 @@ impl Agent {
         original_public_key_hash: Option<String>,
         signature: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
+        let start_time = std::time::Instant::now();
+
         let (document_values_string, _) =
             Agent::get_values_as_string(&json_value, fields.cloned(), signature_key_from)?;
         debug!(
@@ -327,6 +349,11 @@ impl Agent {
                 public_key_rehash, public_key_hash
             );
             error!("{}", error_message);
+
+            let duration_ms = start_time.elapsed().as_millis() as u64;
+            let algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+            record_signature_verification("unknown_agent", false, algorithm);
+
             return Err(error_message.into());
         }
 
@@ -350,12 +377,30 @@ impl Agent {
             signature_base64
         );
 
-        self.verify_string(
+        let result = self.verify_string(
             &document_values_string,
             &signature_base64,
             public_key,
-            public_key_enc_type,
-        )
+            public_key_enc_type.clone(),
+        );
+
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        let success = result.is_ok();
+        let algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+        let agent_id = json_value
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown_agent");
+
+        record_signature_verification(agent_id, success, algorithm);
+
+        if success {
+            info!("Signature verification successful for agent: {}", agent_id);
+        } else {
+            error!("Signature verification failed for agent: {}", agent_id);
+        }
+
+        result
     }
 
     /// Generates a signature JSON fragment for the specified JSON value.

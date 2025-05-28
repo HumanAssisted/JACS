@@ -1,14 +1,15 @@
+use crate::observability::ObservabilityConfig;
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
 use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var, set_env_var_override};
 use getset::Getters;
 use jsonschema::{Draft, Validator};
-use log::{error, info};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::fs;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 pub mod constants;
@@ -57,6 +58,7 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default = "default_storage")]
     jacs_default_storage: Option<String>,
+    pub observability: Option<ObservabilityConfig>,
 }
 
 fn default_schema() -> String {
@@ -138,6 +140,7 @@ impl Config {
             jacs_private_key_password,
             jacs_agent_id_and_version,
             jacs_default_storage,
+            observability: None,
         }
     }
 
@@ -335,7 +338,7 @@ pub fn set_env_vars(
     if !jacs_agent_id_and_version.is_empty() {
         let (id, version) = split_id(&jacs_agent_id_and_version).unwrap_or(("", ""));
         if !Uuid::parse_str(id).is_ok() || !Uuid::parse_str(version).is_ok() {
-            println!("ID and Version must be in the form UUID:UUID");
+            warn!("ID and Version must be in the form UUID:UUID");
         }
     }
 

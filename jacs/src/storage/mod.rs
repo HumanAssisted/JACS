@@ -2,7 +2,6 @@
 use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
-use log::debug;
 use object_store::PutPayload;
 use object_store::{
     Error as ObjectStoreError, ObjectStore,
@@ -16,6 +15,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::{AsRefStr, Display, EnumString};
+use tracing::debug;
 use url::Url;
 
 pub mod jenv;
@@ -328,7 +328,7 @@ impl MultiStorage {
         // --- Debugging Start ---
         let current_process_cwd =
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("unknown_cwd"));
-        println!(
+        debug!(
             "[MultiStorage::file_exists DEBUG]\n  - Input Path: '{}'\n  - Clean Path: '{}'\n  - Object Path: '{}'\n  - Process CWD: {:?}\n  - Attempting storage.head...",
             path, clean, object_path, current_process_cwd
         );
@@ -336,15 +336,15 @@ impl MultiStorage {
 
         match block_on(storage.head(&object_path)) {
             Ok(_) => {
-                println!("  - storage.head: OK (Found)"); // Log success
+                debug!("  - storage.head: OK (Found)"); // Log success
                 Ok(true)
             }
             Err(ObjectStoreError::NotFound { path: _, source: _ }) => {
-                println!("  - storage.head: Err (NotFound)"); // Log not found
+                debug!("  - storage.head: Err (NotFound)"); // Log not found
                 Ok(false)
             }
             Err(e) => {
-                println!("  - storage.head: Err ({:?})", e); // Log other errors
+                debug!("  - storage.head: Err ({:?})", e); // Log other errors
                 Err(e)
             }
         }

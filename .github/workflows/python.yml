@@ -47,7 +47,8 @@ jobs:
               cd /workspace/jacspy && \
               /opt/python/cp311-cp311/bin/python3.11 -m venv .venv && \
               source .venv/bin/activate && \
-              pip install pytest && \
+              pip install maturin pytest && \
+              pip install fastmcp mcp starlette && \
               make test-python"
 
   # Job to build wheels, runs ONLY on push to main

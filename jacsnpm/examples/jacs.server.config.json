@@ -1,0 +1,12 @@
+{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_agent_id_and_version": "8534d13d-4532-4e81-a804-495ec93e7db8:33cc65dc-e5ff-41fc-9922-e1858ccaef35",
+  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_agent_private_key_filename": "jacs.private.pem.enc",
+  "jacs_agent_public_key_filename": "jacs.public.pem",
+  "jacs_data_directory": "./jacs",
+  "jacs_default_storage": "fs",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_private_key_password": "hello",
+  "jacs_use_security": "false"
+}

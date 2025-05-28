@@ -33,8 +33,9 @@ fn request_string(message: &str, default: &str) -> String {
 }
 
 // Function to handle the 'config create' logic
-pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dyn Error>> {
+pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     println!("Welcome to the JACS Config Generator!");
+    let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
 
     println!("Enter the path to the agent file if it already exists (leave empty to skip):");
     let mut agent_filename = String::new();
@@ -43,8 +44,8 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
 
     let jacs_agent_id_and_version = if !agent_filename.is_empty() {
         // Use storage to check and read the agent file
-        match storage.as_ref().unwrap().file_exists(&agent_filename, None) {
-            Ok(true) => match storage.as_ref().unwrap().get_file(&agent_filename, None) {
+        match storage.file_exists(&agent_filename, None) {
+            Ok(true) => match storage.get_file(&agent_filename, None) {
                 Ok(agent_content_bytes) => match String::from_utf8(agent_content_bytes) {
                     Ok(agent_content) => match serde_json::from_str::<Value>(&agent_content) {
                         Ok(agent_json) => {
@@ -195,14 +196,11 @@ pub fn handle_config_create(storage: &Option<MultiStorage>) -> Result<(), Box<dy
 
 // Function to handle the 'agent create' logic
 pub fn handle_agent_create(
-    storage: &Option<MultiStorage>,
     filename: Option<&String>,
     create_keys: bool,
 ) -> Result<(), Box<dyn Error>> {
+    let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
     // Initialize storage using MultiStorage::new - Note: storage is passed in now
-    let storage = storage
-        .as_ref()
-        .ok_or("Storage must be initialized before creating an agent")?;
 
     // Try to load config file and set environment variables from it
     let config_path_str = "jacs.config.json";

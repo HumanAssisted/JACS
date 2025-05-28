@@ -9,10 +9,8 @@ use crate::agent::security::SecurityTraits;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
 use chrono::{DateTime, Local, Utc};
-use core::hash;
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
-use log::error;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,6 +21,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
+use tracing::error;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -228,7 +227,10 @@ pub trait DocumentTraits {
     fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
     fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>>;
     fn get_document_keys(&mut self) -> Vec<String>;
-
+    fn get_document_signature_date(
+        &mut self,
+        document_key: &String,
+    ) -> Result<String, Box<dyn Error>>;
     fn get_document_signature_agent_id(
         &mut self,
         document_key: &String,
@@ -783,6 +785,21 @@ impl DocumentTraits for Agent {
 
         let agent_id_version = format!("{}:{}", angent_id, angent_version);
         Ok(agent_id_version)
+    }
+
+    fn get_document_signature_date(
+        &mut self,
+        document_key: &String,
+    ) -> Result<String, Box<dyn Error>> {
+        let document = self.get_document(document_key).unwrap();
+        let json_value = document.getvalue();
+        let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+        let date: String = json_value[signature_key_from]["date"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+        Ok(date)
     }
 
     fn verify_document_signature(

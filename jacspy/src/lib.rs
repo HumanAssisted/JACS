@@ -1,6 +1,20 @@
 use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
+use jacs_core::agent::payloads::PayloadTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
+// use jacs_core::cli_utils::create::handle_agent_create;
+// use jacs_core::cli_utils::create::handle_config_create;
+// use jacs_core::cli_utils::default_set_file_list;
+// use jacs_core::cli_utils::document::{
+//     check_agreement as cli_check_agreement, create_agreement as cli_create_agreement,
+//     create_documents as cli_create_documents, extract_documents as cli_extract_documents,
+//     sign_documents as cli_sign_documents, update_documents as cli_update_documents,
+//     verify_documents as cli_verify_documents,
+// };
+// use jacs_core::config::find_config;
+// use pyo3::types::PyDict;
+// use pyo3::types::PyDateTime;
+
 use jacs_core::crypt::KeyManager;
 use jacs_core::crypt::hash::hash_string as jacs_hash_string;
 use lazy_static::lazy_static;
@@ -9,7 +23,6 @@ use pyo3::wrap_pyfunction;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
-// use pyo3::types::PyDateTime;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
@@ -472,125 +485,37 @@ fn sign_request(py: Python, params_obj: PyObject) -> PyResult<String> {
 
     let bound_params = params_obj.bind(py);
     let payload_value = conversion_utils::pyany_to_value(py, bound_params)?;
-
-    let wrapper_value = serde_json::json!({
-        "jacs_payload": payload_value
-    });
-
-    let wrapper_string = serde_json::to_string(&wrapper_value).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to serialize wrapper JSON: {}",
-            e
-        ))
+    let payload_string = agent.sign_payload(payload_value).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign payload: {}", e))
     })?;
-
-    let outputfilename: Option<String> = None;
-    let attachments: Option<String> = None;
-    let no_save = true;
-    let docresult = jacs_core::shared::document_create(
-        &mut agent,
-        &wrapper_string,
-        None,
-        outputfilename,
-        no_save,
-        attachments.as_ref(),
-        Some(false),
-    )
-    .map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to create document: {}",
-            e
-        ))
-    })?;
-
-    Ok(docresult)
+    Ok(payload_string)
 }
 
 /**
- *
  * a jacs document is verified and then the payload is returned in the type is was first created as
- *
  */
-
 #[pyfunction]
 fn verify_response(py: Python, document_string: String) -> PyResult<PyObject> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
-
-    let doc = agent.load_document(&document_string).map_err(|e| {
+    let payload = agent.verify_payload(document_string, None).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load document: {}", e))
     })?;
 
-    let document_key = doc.getkey();
-    let value = doc.getvalue();
-
-    agent.verify_hash(value).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to verify document hash: {}",
-            e
-        ))
-    })?;
-
-    agent
-        .verify_external_document_signature(&document_key)
-        .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to verify document signature: {}",
-                e
-            ))
-        })?;
-
-    let payload = value.get("jacs_payload").ok_or_else(|| {
-        PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-            "'jacs_payload' field not found in document value",
-        )
-    })?;
-
-    conversion_utils::value_to_pyobject(py, payload)
+    conversion_utils::value_to_pyobject(py, &payload)
 }
 
 #[pyfunction]
 fn verify_response_with_agent_id(py: Python, document_string: String) -> PyResult<PyObject> {
     let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
-
-    let doc = agent.load_document(&document_string).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load document: {}", e))
-    })?;
-
-    let document_key = doc.getkey();
-    let value = doc.getvalue();
-
-    agent.verify_hash(value).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to verify document hash: {}",
-            e
-        ))
-    })?;
-
-    agent
-        .verify_external_document_signature(&document_key)
+    let (payload, agent_id) = agent
+        .verify_payload_with_agent_id(document_string, None)
         .map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to verify document signature: {}",
+                "Failed to load document: {}",
                 e
             ))
         })?;
-
-    let payload = value.get("jacs_payload").ok_or_else(|| {
-        PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-            "'jacs_payload' field not found in document value",
-        )
-    })?;
-
-    let agent_id = agent
-        .get_document_signature_agent_id(&document_key)
-        .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to get agent id: {}",
-                e
-            ))
-        })?;
-
-    let py_payload = conversion_utils::value_to_pyobject(py, payload)?;
+    let py_payload = conversion_utils::value_to_pyobject(py, &payload)?;
     let py_agent_id: Py<pyo3::types::PyString> =
         pyo3::types::PyString::new_bound(py, &agent_id).into();
 
@@ -599,6 +524,150 @@ fn verify_response_with_agent_id(py: Python, document_string: String) -> PyResul
     let py_object_tuple = tuple_bound_ref.to_object(py);
 
     Ok(py_object_tuple)
+}
+
+#[pyfunction]
+fn handle_agent_create_py(filename: Option<String>, create_keys: bool) -> PyResult<()> {
+    jacs_core::cli_utils::create::handle_agent_create(filename.as_ref(), create_keys)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn handle_config_create_py() -> PyResult<()> {
+    jacs_core::cli_utils::create::handle_config_create()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn create_documents_py(
+    filename: Option<String>,
+    directory: Option<String>,
+    outputfilename: Option<String>,
+    attachments: Option<String>,
+    embed: Option<bool>,
+    no_save: bool,
+    schema: Option<String>,
+) -> PyResult<()> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    jacs_core::cli_utils::document::create_documents(
+        &mut agent,
+        filename.as_ref(),
+        directory.as_ref(),
+        outputfilename.as_ref(),
+        attachments.as_ref(),
+        embed,
+        no_save,
+        schema.as_ref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn update_documents_py(
+    new_filename: String,
+    original_filename: String,
+    outputfilename: Option<String>,
+    attachment_links: Option<Vec<String>>,
+    embed: Option<bool>,
+    no_save: bool,
+    schema: Option<String>,
+) -> PyResult<()> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    jacs_core::cli_utils::document::update_documents(
+        &mut agent,
+        &new_filename,
+        &original_filename,
+        outputfilename.as_ref(),
+        attachment_links,
+        embed,
+        no_save,
+        schema.as_ref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn create_agreement_py(
+    agentids: Vec<String>,
+    filename: Option<String>,
+    schema: Option<String>,
+    no_save: bool,
+    directory: Option<String>,
+) -> PyResult<()> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    jacs_core::cli_utils::document::create_agreement(
+        &mut agent,
+        agentids,
+        filename.as_ref(),
+        schema.as_ref(),
+        no_save,
+        directory.as_ref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn check_agreement_py(
+    schema: Option<String>,
+    filename: Option<String>,
+    directory: Option<String>,
+) -> PyResult<()> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    jacs_core::cli_utils::document::check_agreement(
+        &mut agent, // Clone the dereferenced Agent
+        schema.as_ref(),
+        filename.as_ref(),
+        directory.as_ref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn sign_documents_py(
+    schema: Option<String>,
+    filename: Option<String>,
+    directory: Option<String>,
+) -> PyResult<()> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    jacs_core::cli_utils::document::sign_documents(
+        &mut agent,
+        schema.as_ref(),
+        filename.as_ref(),
+        directory.as_ref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn verify_documents_py(
+    schema: Option<String>,
+    filename: Option<String>,
+    directory: Option<String>,
+) -> PyResult<()> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    jacs_core::cli_utils::document::verify_documents(
+        &mut agent,
+        schema.as_ref(),
+        filename.as_ref(),
+        directory.as_ref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn extract_documents_py(
+    schema: Option<String>,
+    filename: Option<String>,
+    directory: Option<String>,
+) -> PyResult<()> {
+    let mut agent = JACS_AGENT.lock().expect("JACS_AGENT lock");
+    jacs_core::cli_utils::document::extract_documents(
+        &mut agent,
+        schema.as_ref(),
+        filename.as_ref(),
+        directory.as_ref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pymodule]
@@ -631,6 +700,17 @@ fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(sign_request, m)?)?;
     m.add_function(wrap_pyfunction!(verify_response, m)?)?;
+
+    //cli functions
+    // m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(create_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(update_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(create_agreement_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(check_agreement_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(sign_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(verify_documents_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(extract_documents_py, m)?)?;
 
     Ok(())
 }

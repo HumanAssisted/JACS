@@ -1,5 +1,4 @@
 use base64::{decode, encode};
-use log::debug;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
@@ -8,7 +7,8 @@ use rsa::pss::{BlindedSigningKey, Signature};
 use rsa::rand_core::OsRng;
 use rsa::sha2::Sha256;
 use rsa::{RsaPrivateKey, RsaPublicKey};
-use signature::{RandomizedSigner, SignatureEncoding, Verifier}; // Correctly import VerifyingKey
+use signature::{RandomizedSigner, SignatureEncoding, Verifier};
+use tracing::debug; // Correctly import VerifyingKey
 
 /// best for pure Rust, least secure
 

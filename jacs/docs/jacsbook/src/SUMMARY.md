@@ -1,25 +1,66 @@
-
 [Introduction](README.md)
 
 # User Guide
 
+## Getting Started
+- [What is JACS?](getting-started/what-is-jacs.md)
+- [Core Concepts](getting-started/concepts.md)
+- [Quick Start](getting-started/quick-start.md)
 
-## cli
+## Rust CLI & Library
+- [Installation](rust/installation.md)
+- [CLI Usage](rust/cli.md)
+- [Creating an Agent](rust/agent.md)
+- [Working with Documents](rust/documents.md)
+- [Creating and Using Agreements](rust/agreements.md)
+- [Rust Library API](rust/library.md)
+- [Observability](rust/observability.md)
 
-- [Installation](cli/installation.md)
-- [Creating an Agent](cli/agent.md)
-- [Working with documents](cli/documents.md)
-- [Creating and using agreements](cli/agreements.md)
+## Node.js (jacsnpm)
+- [Installation](nodejs/installation.md)
+- [Basic Usage](nodejs/basic-usage.md)
+- [MCP Integration](nodejs/mcp.md)
+- [HTTP Server](nodejs/http.md)
+- [Express Middleware](nodejs/express.md)
+- [API Reference](nodejs/api.md)
 
-## wasm
+## Python (jacspy)
+- [Installation](python/installation.md)
+- [Basic Usage](python/basic-usage.md)
+- [MCP Integration](python/mcp.md)
+<!-- - [FastMCP Integration](python/fastmcp.md) -->
+- [API Reference](python/api.md)
 
-- [building](wasm/building.md)
+## Schemas & Configuration
+- [JSON Schemas](schemas/overview.md)
+- [Agent Schema](schemas/agent.md)
+- [Document Schema](schemas/document.md)
+- [Task Schema](schemas/task.md)
+- [Configuration](schemas/configuration.md)
 
-# Design
+## Advanced Topics
+- [Security Model](advanced/security.md)
+- [Cryptographic Algorithms](advanced/crypto.md)
+- [Storage Backends](advanced/storage.md)
+- [Custom Schemas](advanced/custom-schemas.md)
+- [Testing](advanced/testing.md)
 
-- [JSON schemas](design/schemas.md)
-- [Security](design/security.md)
-- [JSON schemas](design/schemas.md)
+## Integrations
+- [Model Context Protocol (MCP)](integrations/mcp.md)
+- [Web Servers](integrations/web-servers.md)
+- [Databases](integrations/databases.md)
+
+## Examples
+- [CLI Examples](examples/cli.md)
+- [Node.js Examples](examples/nodejs.md)
+- [Python Examples](examples/python.md)
+- [Integration Examples](examples/integrations.md)
+
+# Reference
+- [CLI Command Reference](reference/cli-commands.md)
+- [Configuration Reference](reference/configuration.md)
+- [Error Codes](reference/errors.md)
+- [Migration Guide](reference/migration.md)
 
 -----------
 

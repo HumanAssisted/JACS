@@ -6,7 +6,7 @@ rust-version = "1.85"
 resolver = "3"
 
 [lib]
-name = "jacspy"
+name = "jacs"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -20,8 +20,3 @@ base64 = "0.22.1"
 
 [build-dependencies]
 pyo3-build-config = "0.24.2"
-
-# [[bin]]
-# name = "jacs"
-# path = "../jacs/src/bin/cli.rs"
-

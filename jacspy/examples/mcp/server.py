@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import logging
 from mcp.server.fastmcp import FastMCP  # Make sure to import FastMCP
-from middleware import JACSMCPServer 
+from jacs.mcp import JACSMCPServer 
 import uvicorn
 
 logger = logging.getLogger(__name__)
@@ -19,10 +19,7 @@ jacs.load(str(jacs_config_path))
 
 
 # Create original FastMCP server first
-original_mcp = FastMCP("Authenticated Echo Server")
-
-# Then wrap it with JACSMCPServer
-mcp = JACSMCPServer(original_mcp)
+mcp = JACSMCPServer(FastMCP("Authenticated Echo Server"))
 
 
 @mcp.tool()

@@ -12,12 +12,12 @@ use crate::agent::{
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
-use log::debug;
 use serde::ser::StdError;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashSet;
 use std::error::Error;
+use tracing::debug;
 
 pub trait Agreement {
     /// given a document id and a list of agents, return an updated document with an agreement field

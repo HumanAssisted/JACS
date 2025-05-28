@@ -1,0 +1,519 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Installation - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">4.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">5.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">6.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">7.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">8.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">9.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">10.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html" class="active"><strong aria-hidden="true">11.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">12.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">13.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">14.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">15.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">16.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">17.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">18.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">19.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">20.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">21.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">22.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">23.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">24.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">25.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">26.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">27.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">28.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">29.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">30.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">31.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">32.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">33.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">34.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">35.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">36.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">37.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">38.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">39.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">40.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">41.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="nodejs-installation"><a class="header" href="#nodejs-installation">Node.js Installation</a></h1>
+<p>The JACS Node.js package (<code>jacsnpm</code>) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.</p>
+<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<ul>
+<li><strong>Node.js</strong>: Version 16.0 or higher</li>
+<li><strong>npm</strong> or <strong>yarn</strong>: For package management</li>
+<li><strong>Operating System</strong>: macOS, Linux, or Windows with WSL</li>
+</ul>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<h3 id="using-npm"><a class="header" href="#using-npm">Using npm</a></h3>
+<pre><code class="language-bash">npm install jacsnpm
+</code></pre>
+<h3 id="using-yarn"><a class="header" href="#using-yarn">Using yarn</a></h3>
+<pre><code class="language-bash">yarn add jacsnpm
+</code></pre>
+<h3 id="using-pnpm"><a class="header" href="#using-pnpm">Using pnpm</a></h3>
+<pre><code class="language-bash">pnpm add jacsnpm
+</code></pre>
+<h2 id="verify-installation"><a class="header" href="#verify-installation">Verify Installation</a></h2>
+<p>Create a simple test to verify everything is working:</p>
+<pre><code class="language-javascript">// test.js
+import { JacsAgent } from 'jacsnpm';
+
+console.log('JACS Node.js bindings loaded successfully!');
+
+// Test basic functionality
+try {
+  const config = {
+    jacs_data_directory: "./test_data",
+    jacs_key_directory: "./test_keys",
+    jacs_default_storage: "fs",
+    jacs_agent_key_algorithm: "Ed25519"
+  };
+  
+  const agent = new JacsAgent(config);
+  console.log('Agent created successfully!');
+} catch (error) {
+  console.error('Error creating agent:', error);
+}
+</code></pre>
+<p>Run the test:</p>
+<pre><code class="language-bash">node test.js
+</code></pre>
+<h2 id="package-structure"><a class="header" href="#package-structure">Package Structure</a></h2>
+<p>The <code>jacsnpm</code> package includes several modules:</p>
+<h3 id="core-module-jacsnpm"><a class="header" href="#core-module-jacsnpm">Core Module (<code>jacsnpm</code>)</a></h3>
+<pre><code class="language-javascript">import { 
+  JacsAgent,
+  JacsConfig,
+  JacsDocument,
+  JacsError
+} from 'jacsnpm';
+</code></pre>
+<h3 id="mcp-integration-jacsnpmmcp"><a class="header" href="#mcp-integration-jacsnpmmcp">MCP Integration (<code>jacsnpm/mcp</code>)</a></h3>
+<pre><code class="language-javascript">import { 
+  JacsMcpServer,
+  createJacsMiddleware 
+} from 'jacsnpm/mcp';
+</code></pre>
+<h3 id="http-server-jacsnpmhttp"><a class="header" href="#http-server-jacsnpmhttp">HTTP Server (<code>jacsnpm/http</code>)</a></h3>
+<pre><code class="language-javascript">import { 
+  JacsHttpServer,
+  createJacsRouter 
+} from 'jacsnpm/http';
+</code></pre>
+<h2 id="typescript-support"><a class="header" href="#typescript-support">TypeScript Support</a></h2>
+<p>The package includes full TypeScript definitions:</p>
+<pre><code class="language-typescript">import { 
+  JacsAgent, 
+  JacsConfig, 
+  AgentDocument, 
+  TaskDocument,
+  AgreementDocument 
+} from 'jacsnpm';
+
+interface MyConfig extends JacsConfig {
+  custom_field?: string;
+}
+
+const config: MyConfig = {
+  jacs_data_directory: "./data",
+  jacs_key_directory: "./keys",
+  jacs_default_storage: "fs",
+  jacs_agent_key_algorithm: "Ed25519",
+  custom_field: "value"
+};
+
+const agent: JacsAgent = new JacsAgent(config);
+</code></pre>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<h3 id="basic-configuration"><a class="header" href="#basic-configuration">Basic Configuration</a></h3>
+<pre><code class="language-javascript">const config = {
+  // Required fields
+  jacs_data_directory: "./jacs_data",      // Where documents are stored
+  jacs_key_directory: "./jacs_keys",       // Where keys are stored
+  jacs_default_storage: "fs",              // Storage backend
+  jacs_agent_key_algorithm: "Ed25519",     // Signing algorithm
+  
+  // Optional fields
+  jacs_agent_id_and_version: null,         // Existing agent to load
+  jacs_agent_private_key_filename: "private.pem",
+  jacs_agent_public_key_filename: "public.pem"
+};
+</code></pre>
+<h3 id="configuration-file"><a class="header" href="#configuration-file">Configuration File</a></h3>
+<p>You can also use a JSON configuration file:</p>
+<pre><code class="language-json">{
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys", 
+  "jacs_default_storage": "fs",
+  "jacs_agent_key_algorithm": "Ed25519"
+}
+</code></pre>
+<p>Load the configuration:</p>
+<pre><code class="language-javascript">import fs from 'fs';
+
+const config = JSON.parse(fs.readFileSync('./jacs.config.json', 'utf8'));
+const agent = new JacsAgent(config);
+</code></pre>
+<h3 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h3>
+<p>You can override configuration with environment variables:</p>
+<pre><code class="language-bash">export JACS_DATA_DIRECTORY="./production_data"
+export JACS_KEY_DIRECTORY="./production_keys"
+export JACS_AGENT_KEY_ALGORITHM="RSA"
+</code></pre>
+<pre><code class="language-javascript">const config = {
+  jacs_data_directory: process.env.JACS_DATA_DIRECTORY || "./jacs_data",
+  jacs_key_directory: process.env.JACS_KEY_DIRECTORY || "./jacs_keys",
+  jacs_default_storage: "fs",
+  jacs_agent_key_algorithm: process.env.JACS_AGENT_KEY_ALGORITHM || "Ed25519"
+};
+</code></pre>
+<h2 id="storage-backends"><a class="header" href="#storage-backends">Storage Backends</a></h2>
+<h3 id="file-system-default"><a class="header" href="#file-system-default">File System (Default)</a></h3>
+<pre><code class="language-javascript">const config = {
+  jacs_default_storage: "fs",
+  jacs_data_directory: "./jacs_data",
+  jacs_key_directory: "./jacs_keys"
+};
+</code></pre>
+<h3 id="s3-storage"><a class="header" href="#s3-storage">S3 Storage</a></h3>
+<pre><code class="language-javascript">const config = {
+  jacs_default_storage: "s3",
+  jacs_s3_bucket: "my-jacs-bucket",
+  jacs_s3_region: "us-west-2",
+  jacs_s3_prefix: "jacs/"
+};
+</code></pre>
+<h3 id="azure-blob-storage"><a class="header" href="#azure-blob-storage">Azure Blob Storage</a></h3>
+<pre><code class="language-javascript">const config = {
+  jacs_default_storage: "azure",
+  jacs_azure_account: "myaccount",
+  jacs_azure_container: "jacs",
+  jacs_azure_key: process.env.AZURE_STORAGE_KEY
+};
+</code></pre>
+<h2 id="cryptographic-algorithms"><a class="header" href="#cryptographic-algorithms">Cryptographic Algorithms</a></h2>
+<h3 id="ed25519-recommended"><a class="header" href="#ed25519-recommended">Ed25519 (Recommended)</a></h3>
+<pre><code class="language-javascript">const config = {
+  jacs_agent_key_algorithm: "Ed25519"
+};
+</code></pre>
+<p><strong>Pros</strong>: Fast, secure, small signatures
+<strong>Cons</strong>: Newer standard, less universal support</p>
+<h3 id="rsa-pss"><a class="header" href="#rsa-pss">RSA-PSS</a></h3>
+<pre><code class="language-javascript">const config = {
+  jacs_agent_key_algorithm: "RSA"
+};
+</code></pre>
+<p><strong>Pros</strong>: Widely supported, proven security
+<strong>Cons</strong>: Larger signatures, slower</p>
+<h3 id="post-quantum-experimental"><a class="header" href="#post-quantum-experimental">Post-Quantum (Experimental)</a></h3>
+<pre><code class="language-javascript">const config = {
+  jacs_agent_key_algorithm: "Dilithium"
+};
+</code></pre>
+<p><strong>Pros</strong>: Quantum-resistant
+<strong>Cons</strong>: Experimental, large signatures</p>
+<h2 id="development-setup"><a class="header" href="#development-setup">Development Setup</a></h2>
+<h3 id="project-structure"><a class="header" href="#project-structure">Project Structure</a></h3>
+<pre><code>my-jacs-project/
+├── package.json
+├── jacs.config.json
+├── src/
+│   ├── agent.js
+│   ├── tasks.js
+│   └── agreements.js
+├── jacs_data/
+│   ├── agents/
+│   ├── tasks/
+│   └── documents/
+└── jacs_keys/
+    ├── private.pem
+    └── public.pem
+</code></pre>
+<h3 id="packagejson-setup"><a class="header" href="#packagejson-setup">Package.json Setup</a></h3>
+<pre><code class="language-json">{
+  "name": "my-jacs-app",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "jacsnpm": "^0.1.0",
+    "express": "^4.18.0"
+  },
+  "scripts": {
+    "start": "node src/app.js",
+    "test": "node test/test.js",
+    "dev": "nodemon src/app.js"
+  }
+}
+</code></pre>
+<h3 id="basic-application"><a class="header" href="#basic-application">Basic Application</a></h3>
+<pre><code class="language-javascript">// src/app.js
+import { JacsAgent } from 'jacsnpm';
+import fs from 'fs';
+
+// Load configuration
+const config = JSON.parse(fs.readFileSync('./jacs.config.json', 'utf8'));
+
+// Create agent
+const agent = new JacsAgent(config);
+
+// Initialize if needed
+if (!config.jacs_agent_id_and_version) {
+  await agent.generateKeys();
+  const agentDoc = await agent.createAgent({
+    name: "My JACS Agent",
+    description: "Example Node.js JACS agent"
+  });
+  
+  // Update config with agent ID
+  config.jacs_agent_id_and_version = `${agentDoc.jacsId}:${agentDoc.jacsVersion}`;
+  fs.writeFileSync('./jacs.config.json', JSON.stringify(config, null, 2));
+}
+
+console.log('JACS agent ready!');
+</code></pre>
+<h2 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h2>
+<h3 id="module-not-found"><a class="header" href="#module-not-found">Module Not Found</a></h3>
+<p>If you get <code>Module not found</code> errors:</p>
+<pre><code class="language-bash"># Check Node.js version
+node --version  # Should be 16+
+
+# Clear node_modules and reinstall
+rm -rf node_modules package-lock.json
+npm install
+</code></pre>
+<h3 id="permission-errors"><a class="header" href="#permission-errors">Permission Errors</a></h3>
+<p>If you get permission errors accessing files:</p>
+<pre><code class="language-bash"># Check directory permissions
+ls -la jacs_data/ jacs_keys/
+
+# Fix permissions
+chmod 755 jacs_data/ jacs_keys/
+chmod 600 jacs_keys/*.pem
+</code></pre>
+<h3 id="binary-compatibility"><a class="header" href="#binary-compatibility">Binary Compatibility</a></h3>
+<p>If you get binary compatibility errors:</p>
+<pre><code class="language-bash"># Rebuild native modules
+npm rebuild
+
+# Or reinstall
+npm uninstall jacsnpm
+npm install jacsnpm
+</code></pre>
+<h3 id="typescript-issues"><a class="header" href="#typescript-issues">TypeScript Issues</a></h3>
+<p>If TypeScript can't find definitions:</p>
+<pre><code class="language-json">// tsconfig.json
+{
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  }
+}
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Now that you have JACS installed:</p>
+<ol>
+<li><strong><a href="basic-usage.html">Basic Usage</a></strong> - Learn core JACS operations</li>
+<li><strong><a href="mcp.html">MCP Integration</a></strong> - Add Model Context Protocol support</li>
+<li><strong><a href="http.html">HTTP Server</a></strong> - Create JACS HTTP APIs</li>
+<li><strong><a href="express.html">Express Middleware</a></strong> - Integrate with Express.js</li>
+<li><strong><a href="api.html">API Reference</a></strong> - Complete API documentation</li>
+</ol>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<p>Check out the complete examples in the <a href="../examples/nodejs.html">examples directory</a>:</p>
+<ul>
+<li>Basic agent creation and task management</li>
+<li>Express.js middleware integration</li>
+<li>MCP server implementation</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../rust/observability.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../nodejs/basic-usage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../rust/observability.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../nodejs/basic-usage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

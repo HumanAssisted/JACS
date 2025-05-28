@@ -10,10 +10,10 @@ use secrecy::ExposeSecret;
 
 use crate::storage::jenv::{get_env_var, get_required_env_var};
 use chrono::Utc;
-use log::{debug, error, warn};
 use std::error::Error;
 use std::io::Write;
 use std::path::Path;
+use tracing::{debug, error, info, warn};
 
 /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
@@ -272,11 +272,11 @@ impl FileLoader for Agent {
 
     fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
         // Expects logical agentid (no .json)
-        println!("[fs_agent_load] Loading using agent ID: {}", agentid);
+        info!("[fs_agent_load] Loading using agent ID: {}", agentid);
 
         // Construct the relative path for storage lookup
         let relative_path = format!("agent/{}.json", agentid);
-        println!(
+        info!(
             "[fs_agent_load] Attempting to get file from relative path: {}",
             relative_path
         );
@@ -290,7 +290,7 @@ impl FileLoader for Agent {
             e
         })?;
 
-        println!("[fs_agent_load] Successfully loaded file content.");
+        info!("[fs_agent_load] Successfully loaded file content.");
         String::from_utf8(contents).map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
@@ -299,12 +299,12 @@ impl FileLoader for Agent {
         agentid: &String,
         agent_string: &String,
     ) -> Result<String, Box<dyn Error>> {
-        println!("[fs_agent_save] Starting save for agent ID: {}", agentid);
+        info!("[fs_agent_save] Starting save for agent ID: {}", agentid);
 
         // Construct the relative path for storage operations
         let relative_path_str = format!("agent/{}.json", agentid);
         let absolute_path_str = self.make_data_directory_path(&relative_path_str)?;
-        println!(
+        info!(
             "[fs_agent_save] Calculated relative path for storage ops: {}",
             absolute_path_str
         );
@@ -322,7 +322,7 @@ impl FileLoader for Agent {
                     .storage
                     .rename_file(&absolute_path_str, &absolute_backup_path)
                 {
-                    Ok(_) => println!("[fs_agent_save] Backup successful (using relative paths)."),
+                    Ok(_) => info!("[fs_agent_save] Backup successful (using relative paths)."),
                     Err(e) => {
                         error!(
                             "[fs_agent_save] Backup rename failed (relative paths): {}. Continuing save attempt.",
@@ -332,9 +332,7 @@ impl FileLoader for Agent {
                 }
             }
             Ok(false) => {
-                println!(
-                    "[fs_agent_save] No existing file found at relative path. No backup needed."
-                );
+                info!("[fs_agent_save] No existing file found at relative path. No backup needed.");
             }
             Err(e) => {
                 error!(
@@ -345,7 +343,7 @@ impl FileLoader for Agent {
         }
 
         // Actual save operation using RELATIVE path
-        println!(
+        info!(
             "[fs_agent_save] Calling storage.save_file with relative path: {}",
             absolute_path_str
         );
@@ -359,7 +357,7 @@ impl FileLoader for Agent {
                 Box::new(e) as Box<dyn Error>
             })?;
 
-        println!(
+        info!(
             "[fs_agent_save] Save successful. Returning absolute path: {}",
             absolute_path_str
         );
@@ -487,7 +485,7 @@ impl FileLoader for Agent {
     }
 
     fn make_data_directory_path(&self, filename: &String) -> Result<String, Box<dyn Error>> {
-        println!("config!: {:?}", self.config);
+        info!("config!: {:?}", self.config);
         // Fail if config or specific directory is missing
         let mut data_dir = self
             .config

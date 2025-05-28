@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2024"
 rust-version = "1.85"
 resolver = "3"
@@ -63,7 +63,6 @@ strum = "0.27.1"
 strum_macros = "0.27.0"
 secrecy = "0.10.3"
 aes-gcm = "0.10.3"
-clap = { version = "4.5.4", features = ["derive", "cargo"] }
 regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
@@ -74,10 +73,26 @@ validator = "0.20.0"
 uuid = { version = "1.16.0", features = ["v4", "v7", "js"] }
 env_logger = "0.11.8"
 futures-util = "0.3.31"
-referencing = "0.29.1"
+referencing = "0.30.0"
 futures-executor = "0.3.31"
 update = "0.0.0"
 getset = "0.1.5"
+clap = { version = "4.5.4", features = ["derive", "cargo"], optional = true }
+ratatui = { version = "0.29.0", optional = true }
+
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+tracing-opentelemetry = "0.30.0"
+opentelemetry = { version = "0.30.0", features = [] }
+opentelemetry-otlp = { version = "0.30.0", features = ["http-proto", "reqwest-client"] }
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
+metrics = "0.24.2"
+metrics-exporter-prometheus = "0.17"
+
+# opentelemetry-prometheus = "0.29.1"
+ 
 
 # libp2p = "0.55.0"
 # [target.'cfg(target_os = "macos")'.dependencies]
@@ -89,12 +104,12 @@ getset = "0.1.5"
 
 [dev-dependencies]
 color-eyre = "0.6"
-criterion = "0.5.1"
+criterion = "0.6.0"
 mdbook = "0.4.48"
 assert_cmd = "2.0"
 predicates = "3.1"
 tempfile = "3.19.1"
-serial_test = "0.6.0"
+serial_test = "3.2.0"
 futures = "0.3"
 
 [lib]
@@ -109,13 +124,17 @@ reqwest = {  version ="0.12.12", features = ["blocking", "json"] }
 walkdir = "2.5.0"
 object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "http"] }
 
- [target.'cfg(target_arch = "wasm32")'.dependencies]
- wasm-bindgen = "0.2.100"
- web-sys = { version = "0.3", features = ["Storage", "Window"] }
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3", features = ["Storage", "Window"] }
 
 [[bin]]
 name = "jacs"
 path = "src/bin/cli.rs"
+required-features = ["cli"]
+
+[features]
+cli = ["dep:clap", "dep:ratatui"]
 
 [[bench]]
 name = "sign_and_check_sig"
@@ -123,3 +142,4 @@ harness = false
 
 [package.metadata.cargo-install]
 bin = ["jacs"]
+
