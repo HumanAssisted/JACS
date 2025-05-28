@@ -89,7 +89,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="cli/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="cli/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="cli/documents.html"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="cli/agreements.html"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded "><a href="wasm/building.html"><strong aria-hidden="true">5.</strong> building</a></li><li class="chapter-item expanded affix "><li class="part-title">Design</li><li class="chapter-item expanded "><a href="design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="design/security.html"><strong aria-hidden="true">7.</strong> Security</a></li><li class="chapter-item expanded "><a href="design/schemas.html"><strong aria-hidden="true">8.</strong> JSON schemas</a></li><li class="spacer"></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="cli/installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="cli/agent.html"><strong aria-hidden="true">2.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="cli/documents.html"><strong aria-hidden="true">3.</strong> Working with documents</a></li><li class="chapter-item expanded "><a href="cli/agreements.html"><strong aria-hidden="true">4.</strong> Creating and using agreements</a></li><li class="chapter-item expanded "><a href="wasm/building.html"><strong aria-hidden="true">5.</strong> building</a></li><li class="chapter-item expanded affix "><li class="part-title">Design</li><li class="chapter-item expanded "><a href="design/schemas.html"><strong aria-hidden="true">6.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="design/security.html"><strong aria-hidden="true">7.</strong> Security</a></li><li class="chapter-item expanded "><a href="design/schemas.html"><strong aria-hidden="true">8.</strong> JSON schemas</a></li><li class="chapter-item expanded "><a href="design/observability.html"><strong aria-hidden="true">9.</strong> Observability</a></li><li class="spacer"></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -387,6 +387,200 @@ Until then, use for self signing only, or exchange public keys only with trusted
 <li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/signature.md">Signatures</a> - cryptographically signed signature of the version of the document</li>
 <li><a href="https://github.com/HumanAssisted/JACS/tree/main/docs/schema/components/files.md">Files</a> - documents you can sign and "attach"</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="jacs-observability-guide"><a class="header" href="#jacs-observability-guide">JACS Observability Guide</a></h1>
+<p>The JACS library includes a comprehensive observability system built on <code>tracing</code> and <code>metrics</code> crates, providing structured logging and metrics collection for agent operations.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<h3 id="1-initialize-observability"><a class="header" href="#1-initialize-observability">1. Initialize Observability</a></h3>
+<p>The easiest way to get started is to use the default configuration:</p>
+<pre><pre class="playground"><code class="language-rust">use jacs::init_default_observability;
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    // Initialize with sensible defaults
+    init_default_observability()?;
+    
+    // Your application code here...
+    
+    Ok(())
+}</code></pre></pre>
+<p>This sets up:</p>
+<ul>
+<li>File-based logging at INFO level in <code>./logs/app.log.*</code></li>
+<li>File-based metrics in <code>./metrics.txt</code></li>
+<li>60-second metrics export interval</li>
+</ul>
+<h3 id="2-custom-configuration"><a class="header" href="#2-custom-configuration">2. Custom Configuration</a></h3>
+<p>For more control, use custom configuration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::{init_custom_observability, ObservabilityConfig, LogConfig, MetricsConfig, LogDestination, MetricsDestination};
+
+let config = ObservabilityConfig {
+    logs: LogConfig {
+        enabled: true,
+        level: "debug".to_string(),
+        destination: LogDestination::File {
+            path: "./custom_logs".to_string(),
+        },
+    },
+    metrics: MetricsConfig {
+        enabled: true,
+        destination: MetricsDestination::Prometheus {
+            endpoint: "http://localhost:9090".to_string(),
+        },
+        export_interval_seconds: Some(30),
+    },
+};
+
+init_custom_observability(config)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="logging"><a class="header" href="#logging">Logging</a></h2>
+<h3 id="standard-tracing-macros"><a class="header" href="#standard-tracing-macros">Standard Tracing Macros</a></h3>
+<p>Use standard <code>tracing</code> macros for general application logging:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use tracing::{info, debug, warn, error};
+
+info!("Agent operation completed successfully");
+debug!("Processing document: {}", document_id);
+warn!("Configuration value missing, using default");
+error!("Failed to validate signature: {}", error);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="domain-specific-convenience-functions"><a class="header" href="#domain-specific-convenience-functions">Domain-Specific Convenience Functions</a></h3>
+<p>JACS provides convenience functions for common operations:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::observability::convenience::{
+    record_agent_operation,
+    record_document_validation, 
+    record_signature_verification,
+};
+
+// Record agent operations (load, save, sign, etc.)
+record_agent_operation("load_agent", "agent_123", true, 150);
+
+// Record document validation events
+record_document_validation("doc_456", "v1.0", false);
+
+// Record signature verification events
+record_signature_verification("agent_123", true, "Ed25519");
+<span class="boring">}</span></code></pre></pre>
+<h2 id="metrics"><a class="header" href="#metrics">Metrics</a></h2>
+<p>The system automatically records metrics for:</p>
+<ul>
+<li>Agent operation counts and durations</li>
+<li>Document validation success/failure rates</li>
+<li>Signature verification success/failure rates</li>
+</ul>
+<h3 id="manual-metrics"><a class="header" href="#manual-metrics">Manual Metrics</a></h3>
+<p>You can also record custom metrics:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::observability::metrics::{increment_counter, set_gauge, record_histogram};
+use std::collections::HashMap;
+
+let mut tags = HashMap::new();
+tags.insert("service".to_string(), "my_service".to_string());
+
+increment_counter("requests_total", 1, Some(tags.clone()));
+set_gauge("memory_usage_bytes", 1024.0, Some(tags.clone()));
+record_histogram("response_time_ms", 123.4, Some(tags));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="destinations"><a class="header" href="#destinations">Destinations</a></h2>
+<h3 id="log-destinations"><a class="header" href="#log-destinations">Log Destinations</a></h3>
+<ul>
+<li><strong>File</strong>: Logs to rotating daily files</li>
+<li><strong>Stderr</strong>: Logs to standard error</li>
+<li><strong>OTLP</strong>: Exports to OpenTelemetry Protocol endpoint</li>
+<li><strong>Null</strong>: Disables logging</li>
+</ul>
+<h3 id="metrics-destinations"><a class="header" href="#metrics-destinations">Metrics Destinations</a></h3>
+<ul>
+<li><strong>File</strong>: Exports metrics to text file</li>
+<li><strong>Prometheus</strong>: Exports to Prometheus endpoint</li>
+<li><strong>OTLP</strong>: Exports to OpenTelemetry Protocol endpoint</li>
+<li><strong>Stdout</strong>: Prints metrics to standard output</li>
+</ul>
+<h2 id="example-configuration-for-different-environments"><a class="header" href="#example-configuration-for-different-environments">Example Configuration for Different Environments</a></h2>
+<h3 id="development"><a class="header" href="#development">Development</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>ObservabilityConfig {
+    logs: LogConfig {
+        enabled: true,
+        level: "debug".to_string(),
+        destination: LogDestination::Stderr,
+    },
+    metrics: MetricsConfig {
+        enabled: true,
+        destination: MetricsDestination::Stdout,
+        export_interval_seconds: None,
+    },
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="production"><a class="header" href="#production">Production</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>ObservabilityConfig {
+    logs: LogConfig {
+        enabled: true,
+        level: "info".to_string(),
+        destination: LogDestination::OTLP {
+            endpoint: "http://jaeger:4317".to_string(),
+        },
+    },
+    metrics: MetricsConfig {
+        enabled: true,
+        destination: MetricsDestination::Prometheus {
+            endpoint: "http://prometheus:9090".to_string(),
+        },
+        export_interval_seconds: Some(60),
+    },
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="testing"><a class="header" href="#testing">Testing</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>ObservabilityConfig {
+    logs: LogConfig {
+        enabled: true,
+        level: "trace".to_string(),
+        destination: LogDestination::File {
+            path: "./test_logs".to_string(),
+        },
+    },
+    metrics: MetricsConfig {
+        enabled: false,
+        destination: MetricsDestination::Stdout,
+        export_interval_seconds: None,
+    },
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Initialize Early</strong>: Call the initialization function as early as possible in your application</li>
+<li><strong>Use Appropriate Log Levels</strong>:
+<ul>
+<li><code>error!</code> for actual errors</li>
+<li><code>warn!</code> for concerning but non-fatal issues</li>
+<li><code>info!</code> for important application events</li>
+<li><code>debug!</code> for detailed diagnostic information</li>
+</ul>
+</li>
+<li><strong>Include Context</strong>: Add relevant context to your logs (agent IDs, operation types, etc.)</li>
+<li><strong>Use Convenience Functions</strong>: Prefer the domain-specific convenience functions for agent operations</li>
+<li><strong>Tag Your Metrics</strong>: Always include relevant tags for better filtering and aggregation</li>
+</ol>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<ul>
+<li><strong>Global Subscriber Already Set</strong>: If you see this error, it means observability was already initialized. This is usually fine in production.</li>
+<li><strong>File Permission Errors</strong>: Ensure the application has write permissions to the log/metrics directories</li>
+<li><strong>Missing Log Output</strong>: Check that the log level is appropriate for your messages</li>
+<li><strong>Empty Metrics File</strong>: Ensure sufficient time has passed for the export interval, or call flush explicitly</li>
+</ul>
+<h2 id="run-the-example"><a class="header" href="#run-the-example">Run the Example</a></h2>
+<pre><code class="language-bash">cargo run --example observability_demo
+</code></pre>
+<p>This will create log files in <code>./logs/</code> and metrics in <code>./metrics.txt</code> that you can inspect.</p>
 
                     </main>
 

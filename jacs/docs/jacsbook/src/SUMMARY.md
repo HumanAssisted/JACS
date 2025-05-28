@@ -20,6 +20,7 @@
 - [JSON schemas](design/schemas.md)
 - [Security](design/security.md)
 - [JSON schemas](design/schemas.md)
+- [Observability](design/observability.md)
 
 -----------
 

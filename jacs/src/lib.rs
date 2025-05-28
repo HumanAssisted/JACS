@@ -1,6 +1,6 @@
 use crate::agent::document::DocumentTraits;
 use crate::shared::save_document;
-use log::error;
+use tracing::error;
 
 use crate::agent::Agent;
 use crate::agent::loaders::FileLoader;
@@ -8,10 +8,10 @@ use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
-use log::debug;
 use serde_json::Value;
 use std::error::Error;
 use std::path::Path;
+use tracing::debug;
 
 pub mod agent;
 pub mod config;
@@ -23,6 +23,43 @@ pub mod storage;
 
 // #[cfg(feature = "cli")]
 pub mod cli_utils;
+
+// Re-export observability types for convenience
+pub use observability::{
+    LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
+    init_observability,
+};
+
+/// Initialize observability with a default configuration suitable for most applications.
+/// This sets up file-based logging and metrics in the current directory.
+pub fn init_default_observability() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ObservabilityConfig {
+        logs: observability::LogConfig {
+            enabled: true,
+            level: "info".to_string(),
+            destination: observability::LogDestination::File {
+                path: "./logs".to_string(),
+            },
+        },
+        metrics: observability::MetricsConfig {
+            enabled: true,
+            destination: observability::MetricsDestination::File {
+                path: "./metrics.txt".to_string(),
+            },
+            export_interval_seconds: Some(60),
+        },
+    };
+
+    init_observability(config).map(|_| ())
+}
+
+/// Initialize observability with custom configuration.
+/// This is useful when you need specific logging/metrics destinations.
+pub fn init_custom_observability(
+    config: ObservabilityConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    init_observability(config).map(|_| ())
+}
 
 /// Creates an empty agent struct with default schema versions.
 pub fn get_empty_agent() -> Agent {
@@ -37,7 +74,7 @@ pub fn get_empty_agent() -> Agent {
 
 /// Load agent using specific path
 fn load_path_agent(filepath: String) -> Agent {
-    println!("[load_path_agent] Loading from path: {}", filepath);
+    debug!("[load_path_agent] Loading from path: {}", filepath);
     let mut agent = get_empty_agent(); // Assuming get_empty_agent() returns Agent directly
 
     // Extract filename (e.g., "ID:VERSION.json") from the full path
@@ -52,7 +89,7 @@ fn load_path_agent(filepath: String) -> Agent {
         .strip_suffix(".json")
         .expect("Agent filename does not end with .json");
 
-    println!("[load_path_agent] Extracted agent ID: {}", agent_id);
+    debug!("[load_path_agent] Extracted agent ID: {}", agent_id);
 
     // Pass ONLY the logical ID (without .json) to fs_agent_load
     let agent_string = agent
@@ -63,7 +100,7 @@ fn load_path_agent(filepath: String) -> Agent {
     agent
         .load(&agent_string)
         .expect("agent loading from string failed");
-    println!(
+    debug!(
         "[load_path_agent] Agent loaded and validated successfully using ID: {}",
         agent_id
     );
