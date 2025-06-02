@@ -3188,6 +3188,244 @@ async def efficient_mcp_usage():
 <div style="break-before: page; page-break-before: always;"></div><h1 id="python-examples"><a class="header" href="#python-examples">Python Examples</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="integration-examples"><a class="header" href="#integration-examples">Integration Examples</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="cli-command-reference"><a class="header" href="#cli-command-reference">CLI Command Reference</a></h1>
+<p>This page provides a comprehensive reference for all JACS command-line interface commands.</p>
+<h2 id="global-commands"><a class="header" href="#global-commands">Global Commands</a></h2>
+<h3 id="jacs-version"><a class="header" href="#jacs-version"><code>jacs version</code></a></h3>
+<p>Prints version and build information for the JACS installation.</p>
+<pre><code class="language-bash">jacs version
+</code></pre>
+<h3 id="jacs-init"><a class="header" href="#jacs-init"><code>jacs init</code></a></h3>
+<p>Initialize JACS by creating both configuration and agent (with cryptographic keys). This is typically the first command run when setting up JACS.</p>
+<pre><code class="language-bash">jacs init
+</code></pre>
+<h3 id="jacs-help"><a class="header" href="#jacs-help"><code>jacs help</code></a></h3>
+<p>Print help information for JACS commands.</p>
+<pre><code class="language-bash">jacs help [COMMAND]
+</code></pre>
+<h2 id="configuration-commands"><a class="header" href="#configuration-commands">Configuration Commands</a></h2>
+<h3 id="jacs-config"><a class="header" href="#jacs-config"><code>jacs config</code></a></h3>
+<p>Work with JACS configuration settings.</p>
+<pre><code class="language-bash">jacs config [SUBCOMMAND]
+</code></pre>
+<p><em>Note: Specific subcommands for config are not detailed in the current help output.</em></p>
+<h2 id="agent-commands"><a class="header" href="#agent-commands">Agent Commands</a></h2>
+<h3 id="jacs-agent"><a class="header" href="#jacs-agent"><code>jacs agent</code></a></h3>
+<p>Work with JACS agents - the cryptographic identities that sign and verify documents.</p>
+<pre><code class="language-bash">jacs agent [SUBCOMMAND]
+</code></pre>
+<p><em>Note: Specific subcommands for agent management are not detailed in the current help output.</em></p>
+<h2 id="task-commands"><a class="header" href="#task-commands">Task Commands</a></h2>
+<h3 id="jacs-task"><a class="header" href="#jacs-task"><code>jacs task</code></a></h3>
+<p>Work with JACS agent tasks - structured workflows between agents.</p>
+<pre><code class="language-bash">jacs task [SUBCOMMAND]
+</code></pre>
+<p><em>Note: Specific subcommands for task management are not detailed in the current help output.</em></p>
+<h2 id="document-commands"><a class="header" href="#document-commands">Document Commands</a></h2>
+<p>The <code>jacs document</code> command provides comprehensive document management capabilities.</p>
+<h3 id="jacs-document-create"><a class="header" href="#jacs-document-create"><code>jacs document create</code></a></h3>
+<p>Create a new JACS document, either by embedding or parsing a document with optional file attachments.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">jacs document create [OPTIONS]
+</code></pre>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>-a &lt;agent-file&gt;</code> - Path to the agent file. If not specified, uses config <code>jacs_agent_id_and_version</code></li>
+<li><code>-f &lt;filename&gt;</code> - Path to input file. Must be JSON format</li>
+<li><code>-o &lt;output&gt;</code> - Output filename for the created document</li>
+<li><code>-d &lt;directory&gt;</code> - Path to directory of files. Files should end with <code>.json</code></li>
+<li><code>-v, --verbose</code> - Enable verbose output</li>
+<li><code>-n, --no-save</code> - Instead of saving files, print to stdout</li>
+<li><code>-s, --schema &lt;schema&gt;</code> - Path to JSON schema file to use for validation</li>
+<li><code>--attach &lt;attach&gt;</code> - Path to file or directory for file attachments</li>
+<li><code>-e, --embed &lt;embed&gt;</code> - Embed documents or keep them external [possible values: true, false]</li>
+<li><code>-h, --help</code> - Print help information</li>
+</ul>
+<p><strong>Examples:</strong></p>
+<pre><code class="language-bash"># Create document from JSON file
+jacs document create -f my-document.json
+
+# Create document with embedded attachment
+jacs document create -f document.json --attach ./image.jpg --embed true
+
+# Create document with referenced attachment
+jacs document create -f document.json --attach ./data.csv --embed false
+
+# Create from directory of JSON files
+jacs document create -d ./documents/
+
+# Create with custom schema validation
+jacs document create -f document.json -s custom-schema.json
+
+# Print to stdout instead of saving
+jacs document create -f document.json --no-save
+</code></pre>
+<h3 id="jacs-document-update"><a class="header" href="#jacs-document-update"><code>jacs document update</code></a></h3>
+<p>Create a new version of an existing document. Requires both the original JACS file and the modified JACS metadata.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">jacs document update [OPTIONS]
+</code></pre>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>-a &lt;agent-file&gt;</code> - Path to the agent file</li>
+<li><code>-f &lt;filename&gt;</code> - Path to original document file</li>
+<li><code>-n &lt;new-file&gt;</code> - Path to new/modified document file</li>
+<li><code>-o &lt;output&gt;</code> - Output filename for updated document</li>
+<li><code>-v, --verbose</code> - Enable verbose output</li>
+<li><code>-n, --no-save</code> - Print to stdout instead of saving</li>
+<li><code>-s, --schema &lt;schema&gt;</code> - Path to JSON schema file for validation</li>
+<li><code>--attach &lt;attach&gt;</code> - Path to file or directory for additional attachments</li>
+<li><code>-e, --embed &lt;embed&gt;</code> - Embed new attachments or keep them external</li>
+<li><code>-h, --help</code> - Print help information</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash"># Update document with new version
+jacs document update -f original.json -n modified.json -o updated.json
+
+# Update and add new attachments
+jacs document update -f original.json -n modified.json --attach ./new-file.pdf --embed false
+</code></pre>
+<h3 id="jacs-document-verify"><a class="header" href="#jacs-document-verify"><code>jacs document verify</code></a></h3>
+<p>Verify a document's hash, signatures, and schema compliance.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">jacs document verify [OPTIONS]
+</code></pre>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>-a &lt;agent-file&gt;</code> - Path to the agent file</li>
+<li><code>-f &lt;filename&gt;</code> - Path to input file. Must be JSON format</li>
+<li><code>-d &lt;directory&gt;</code> - Path to directory of files. Files should end with <code>.json</code></li>
+<li><code>-v, --verbose</code> - Enable verbose output</li>
+<li><code>-s, --schema &lt;schema&gt;</code> - Path to JSON schema file to use for validation</li>
+<li><code>-h, --help</code> - Print help information</li>
+</ul>
+<p><strong>Examples:</strong></p>
+<pre><code class="language-bash"># Verify single document
+jacs document verify -f signed-document.json
+
+# Verify all documents in directory
+jacs document verify -d ./documents/
+
+# Verify with custom schema
+jacs document verify -f document.json -s custom-schema.json
+</code></pre>
+<p><strong>Verification Process:</strong></p>
+<ol>
+<li><strong>Hash verification</strong> - Confirms document integrity</li>
+<li><strong>Signature verification</strong> - Validates cryptographic signatures</li>
+<li><strong>Schema validation</strong> - Ensures document structure compliance</li>
+<li><strong>File integrity</strong> - Checks SHA256 checksums of attached files</li>
+</ol>
+<h3 id="jacs-document-extract"><a class="header" href="#jacs-document-extract"><code>jacs document extract</code></a></h3>
+<p>Extract embedded file contents from documents back to the filesystem.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">jacs document extract [OPTIONS]
+</code></pre>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>-a &lt;agent-file&gt;</code> - Path to the agent file</li>
+<li><code>-f &lt;filename&gt;</code> - Path to input file containing embedded files</li>
+<li><code>-d &lt;directory&gt;</code> - Path to directory of files to process</li>
+<li><code>-s, --schema &lt;schema&gt;</code> - Path to JSON schema file for validation</li>
+<li><code>-h, --help</code> - Print help information</li>
+</ul>
+<p><strong>Examples:</strong></p>
+<pre><code class="language-bash"># Extract embedded files from single document
+jacs document extract -f document-with-embedded-files.json
+
+# Extract from all documents in directory  
+jacs document extract -d ./documents/
+</code></pre>
+<p><strong>Extract Process:</strong></p>
+<ol>
+<li>Reads embedded file contents from document</li>
+<li>Decodes base64-encoded data</li>
+<li>Writes files to their original paths</li>
+<li>Creates backup of existing files (with timestamp)</li>
+</ol>
+<h3 id="agreement-commands"><a class="header" href="#agreement-commands">Agreement Commands</a></h3>
+<p>JACS provides specialized commands for managing multi-agent agreements.</p>
+<h4 id="jacs-document-check-agreement"><a class="header" href="#jacs-document-check-agreement"><code>jacs document check-agreement</code></a></h4>
+<p>Given a document, provide a list of agents that should sign the document.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">jacs document check-agreement [OPTIONS]
+</code></pre>
+<h4 id="jacs-document-create-agreement"><a class="header" href="#jacs-document-create-agreement"><code>jacs document create-agreement</code></a></h4>
+<p>Create an agreement structure for a document that requires multiple agent signatures.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">jacs document create-agreement [OPTIONS]
+</code></pre>
+<h4 id="jacs-document-sign-agreement"><a class="header" href="#jacs-document-sign-agreement"><code>jacs document sign-agreement</code></a></h4>
+<p>Sign the agreement section of a document with the current agent's cryptographic signature.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">jacs document sign-agreement [OPTIONS]
+</code></pre>
+<h2 id="common-patterns-1"><a class="header" href="#common-patterns-1">Common Patterns</a></h2>
+<h3 id="basic-document-lifecycle"><a class="header" href="#basic-document-lifecycle">Basic Document Lifecycle</a></h3>
+<pre><code class="language-bash"># 1. Initialize JACS
+jacs init
+
+# 2. Create document with attachments
+jacs document create -f document.json --attach ./files/ --embed true
+
+# 3. Verify document integrity
+jacs document verify -f created-document.json
+
+# 4. Update document if needed
+jacs document update -f original.json -n modified.json
+
+# 5. Extract embedded files when needed
+jacs document extract -f document.json
+</code></pre>
+<h3 id="working-with-attachments"><a class="header" href="#working-with-attachments">Working with Attachments</a></h3>
+<pre><code class="language-bash"># Embed small files for portability
+jacs document create -f doc.json --attach ./small-image.png --embed true
+
+# Reference large files to save space
+jacs document create -f doc.json --attach ./large-video.mp4 --embed false
+
+# Attach multiple files from directory
+jacs document create -f doc.json --attach ./attachments/ --embed false
+</code></pre>
+<h3 id="schema-validation-workflow"><a class="header" href="#schema-validation-workflow">Schema Validation Workflow</a></h3>
+<pre><code class="language-bash"># Create with schema validation
+jacs document create -f document.json -s schema.json
+
+# Verify against specific schema
+jacs document verify -f document.json -s schema.json
+</code></pre>
+<h2 id="global-options"><a class="header" href="#global-options">Global Options</a></h2>
+<p>Most commands support these common options:</p>
+<ul>
+<li><code>-h, --help</code> - Show help information</li>
+<li><code>-v, --verbose</code> - Enable verbose output for debugging</li>
+<li><code>-a &lt;agent-file&gt;</code> - Specify custom agent file (overrides config default)</li>
+</ul>
+<h2 id="exit-codes"><a class="header" href="#exit-codes">Exit Codes</a></h2>
+<ul>
+<li><code>0</code> - Success</li>
+<li><code>1</code> - General error (invalid arguments, file not found, etc.)</li>
+<li><code>2</code> - Verification failure (hash mismatch, invalid signature, etc.)</li>
+<li><code>3</code> - Schema validation failure</li>
+</ul>
+<h2 id="environment-variables-2"><a class="header" href="#environment-variables-2">Environment Variables</a></h2>
+<ul>
+<li><code>JACS_CONFIG_PATH</code> - Override default configuration file location</li>
+<li><code>JACS_DATA_DIR</code> - Override default data directory location</li>
+<li><code>JACS_AGENT_FILE</code> - Default agent file to use (if not specified with <code>-a</code>)</li>
+</ul>
+<h2 id="file-formats"><a class="header" href="#file-formats">File Formats</a></h2>
+<h3 id="input-files"><a class="header" href="#input-files">Input Files</a></h3>
+<ul>
+<li><strong>JSON documents</strong> - Must be valid JSON format</li>
+<li><strong>Schema files</strong> - JSON Schema format (draft-07 compatible)</li>
+<li><strong>Agent files</strong> - JACS agent format with cryptographic keys</li>
+<li><strong>Attachments</strong> - Any file type (automatically detected MIME type)</li>
+</ul>
+<h3 id="output-files"><a class="header" href="#output-files">Output Files</a></h3>
+<ul>
+<li><strong>JACS documents</strong> - JSON format with JACS metadata, signatures, and checksums</li>
+<li><strong>Extracted files</strong> - Original format of embedded attachments</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="configuration-reference"><a class="header" href="#configuration-reference">Configuration Reference</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="error-codes"><a class="header" href="#error-codes">Error Codes</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="migration-guide"><a class="header" href="#migration-guide">Migration Guide</a></h1>

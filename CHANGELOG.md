@@ -59,6 +59,7 @@
  - [] github actions builder for linux varieties
 
 ### JACS core
+ - [] a2a integration
  - [] ensure if a user wants standard logging they can use that
  - [] cli install instructions. a .sh command?
  - [] expose logging function to jacspy and jacsnpm
@@ -72,8 +73,8 @@
  - [] bucket integration
  - [] RBAC integration with header
  - [] clean io prepping for config of io
-  - [] don't store  "jacs_private_key_password":  in config, don't display
-  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
+- [] don't store  "jacs_private_key_password":  in config, don't display
+- [] minor feature - no_save = false should save document and still return json string instead of message on create document
 
 --------------------
 
