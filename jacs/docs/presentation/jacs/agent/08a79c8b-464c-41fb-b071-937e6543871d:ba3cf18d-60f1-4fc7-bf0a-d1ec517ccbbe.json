@@ -1,0 +1,39 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "jacsAgentType": "ai",
+  "jacsId": "08a79c8b-464c-41fb-b071-937e6543871d",
+  "jacsLevel": "config",
+  "jacsOriginalDate": "2025-06-05T04:46:27.813204+00:00",
+  "jacsOriginalVersion": "ba3cf18d-60f1-4fc7-bf0a-d1ec517ccbbe",
+  "jacsServices": [
+    {
+      "failureDescription": "demo",
+      "serviceDescription": "demo",
+      "successDescription": "demo"
+    }
+  ],
+  "jacsSha256": "c51bb43c7e7f13597f28bae0354ce7617f1f71d9d7a4ca9d7cf497cfd9b8382a",
+  "jacsSignature": {
+    "agentID": "08a79c8b-464c-41fb-b071-937e6543871d",
+    "agentVersion": "ba3cf18d-60f1-4fc7-bf0a-d1ec517ccbbe",
+    "date": "2025-06-05T04:46:27.813620+00:00",
+    "fields": [
+      "$schema",
+      "jacsAgentType",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsServices",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "d2dd77f1f5dbb74aff213e0fd26d4e0558bb27e4aec7cffc51b9d95ddb121a7d",
+    "signature": "X4Vf3S5IC27t9g2kj70vxV0I6NjvUhPY8PBhYMmLqhKFUduak7g8Sg0Xt0N5wlzzXs26dY3XyCA+xnSBErc1Cg==",
+    "signingAlgorithm": "ring-Ed25519"
+  },
+  "jacsType": "agent",
+  "jacsVersion": "ba3cf18d-60f1-4fc7-bf0a-d1ec517ccbbe",
+  "jacsVersionDate": "2025-06-05T04:46:27.813204+00:00"
+}

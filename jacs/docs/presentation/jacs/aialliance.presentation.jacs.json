@@ -1,0 +1,38 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "jacsFiles": [
+    {
+      "embed": false,
+      "mimetype": "application/pdf",
+      "path": "aialliance.presentation.pdf",
+      "sha256": "beed699427be3750813ab9aea908937df43c992ae22153664ee32d0e655a107f"
+    }
+  ],
+  "jacsId": "6260022a-e070-4af4-a8d5-2ac1b8d5c890",
+  "jacsLevel": "raw",
+  "jacsOriginalDate": "2025-06-05T06:00:39.332290+00:00",
+  "jacsOriginalVersion": "ce94dfe1-e246-4e46-b3fc-f05a8b8f9f7e",
+  "jacsSha256": "d7030271292610a91835673384728cac131ba88e29f307f813c3ee2dbbc55910",
+  "jacsSignature": {
+    "agentID": "08a79c8b-464c-41fb-b071-937e6543871d",
+    "agentVersion": "ba3cf18d-60f1-4fc7-bf0a-d1ec517ccbbe",
+    "date": "2025-06-05T06:00:39.340871+00:00",
+    "fields": [
+      "$schema",
+      "jacsFiles",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "d2dd77f1f5dbb74aff213e0fd26d4e0558bb27e4aec7cffc51b9d95ddb121a7d",
+    "signature": "KZBRHTANFc3QsCruNXLYUJYhq2IyALa8m7qhiaEO6TLsODKzgrOAoWbWI/drDi8LwI+TwP0iSLOO+OkAUa35AQ==",
+    "signingAlgorithm": "ring-Ed25519"
+  },
+  "jacsType": "header",
+  "jacsVersion": "ce94dfe1-e246-4e46-b3fc-f05a8b8f9f7e",
+  "jacsVersionDate": "2025-06-05T06:00:39.332290+00:00"
+}

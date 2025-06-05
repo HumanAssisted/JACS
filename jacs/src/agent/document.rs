@@ -6,6 +6,7 @@ use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
 use crate::agent::security::SecurityTraits;
+
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
 use chrono::{DateTime, Local, Utc};
@@ -376,15 +377,18 @@ impl DocumentTraits for Agent {
         if let Some(attachment_list) = attachments {
             let mut files_array: Vec<Value> = Vec::new();
 
-            // Iterate over each attachment
-            for attachment_path in attachment_list {
-                let final_embed = embed.unwrap_or(false);
-                let file_json = self
-                    .create_file_json(&attachment_path, final_embed)
-                    .unwrap();
+            // Convert the single attachment string to a list of files
+            for attachment_string in &attachment_list {
+                if let Some(file_paths) = self.parse_attachement_arg(Some(attachment_string)) {
+                    // iterate over attachment files
+                    for file in &file_paths {
+                        let final_embed = embed.unwrap_or(false);
+                        let file_json = self.create_file_json(&file, final_embed).unwrap();
 
-                // Add the file JSON to the files array
-                files_array.push(file_json);
+                        // Add the file JSON to the files array
+                        files_array.push(file_json);
+                    }
+                }
             }
 
             // Create a new "files" field in the document
