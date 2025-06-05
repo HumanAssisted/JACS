@@ -10,7 +10,7 @@
  https://opentelemetry.io/docs/languages/rust/
 . ai.pydantic.dev
 - secure storage of private key for shared server envs https://crates.io/crates/tss-esapi, https://docs.rs/cryptoki/latest/cryptoki/
-
+- qr code integration
 
 ## 0.4.0
 - Domain integration
@@ -59,21 +59,25 @@
  - [] github actions builder for linux varieties
 
 ### JACS core
+ - [] acp integration
+ - [] brew installer, review installation instrucitons,  cli install instructions. a .sh command?
+ - [] a2a integration
  - [] ensure if a user wants standard logging they can use that
- - [] cli install instructions. a .sh command?
  - [] expose logging function to jacspy and jacsnpm
  - [] create centralized logging output without file output  
- - [] CA for cert
+ - [] CA for cert or other PKI
  - [] register public key in d option 
  - [] register agent
- - [] remove requirement to store public key type
+ - [] remove requirement to store public key type? if detectable
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
  - [] diff versions
  - [] bucket integration
  - [] RBAC integration with header
  - [] clean io prepping for config of io
-  - [] don't store  "jacs_private_key_password":  in config, don't display
-  - [] minor feature - no_save = false should save document and still return json string instead of message on create document
+
+ ### minor ccore
+- [] don't store  "jacs_private_key_password":  in config, don't display
+- [] minor feature - no_save = false should save document and still return json string instead of message on create document
 
 --------------------
 
