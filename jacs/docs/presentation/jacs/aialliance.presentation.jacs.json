@@ -5,18 +5,18 @@
       "embed": false,
       "mimetype": "application/pdf",
       "path": "aialliance.presentation.pdf",
-      "sha256": "beed699427be3750813ab9aea908937df43c992ae22153664ee32d0e655a107f"
+      "sha256": "b201e39547e0050b2d1ea7d71c6f7a48bcdcade127b6291b18036899110d5df3"
     }
   ],
-  "jacsId": "6260022a-e070-4af4-a8d5-2ac1b8d5c890",
+  "jacsId": "a0981605-e7de-4651-a500-962f71313212",
   "jacsLevel": "raw",
-  "jacsOriginalDate": "2025-06-05T06:00:39.332290+00:00",
-  "jacsOriginalVersion": "ce94dfe1-e246-4e46-b3fc-f05a8b8f9f7e",
-  "jacsSha256": "d7030271292610a91835673384728cac131ba88e29f307f813c3ee2dbbc55910",
+  "jacsOriginalDate": "2025-06-05T06:12:39.203392+00:00",
+  "jacsOriginalVersion": "41c4ec45-0cf9-4fd0-9e9e-d1c077f1b63e",
+  "jacsSha256": "fcd6886bdb671f38268670465156c77064da54c21e54ac5bc8cb7065237688b4",
   "jacsSignature": {
     "agentID": "08a79c8b-464c-41fb-b071-937e6543871d",
     "agentVersion": "ba3cf18d-60f1-4fc7-bf0a-d1ec517ccbbe",
-    "date": "2025-06-05T06:00:39.340871+00:00",
+    "date": "2025-06-05T06:12:39.213305+00:00",
     "fields": [
       "$schema",
       "jacsFiles",
@@ -29,10 +29,10 @@
       "jacsVersionDate"
     ],
     "publicKeyHash": "d2dd77f1f5dbb74aff213e0fd26d4e0558bb27e4aec7cffc51b9d95ddb121a7d",
-    "signature": "KZBRHTANFc3QsCruNXLYUJYhq2IyALa8m7qhiaEO6TLsODKzgrOAoWbWI/drDi8LwI+TwP0iSLOO+OkAUa35AQ==",
+    "signature": "lk8/HoDAvrHNUFmF93qTIt+rn3VM1bB6SDgT1dsHNbj2azi2/7ip0yaLS9jDVC0Jxp4bnxA4EhsaWy1o4aGFBA==",
     "signingAlgorithm": "ring-Ed25519"
   },
   "jacsType": "header",
-  "jacsVersion": "ce94dfe1-e246-4e46-b3fc-f05a8b8f9f7e",
-  "jacsVersionDate": "2025-06-05T06:00:39.332290+00:00"
+  "jacsVersion": "41c4ec45-0cf9-4fd0-9e9e-d1c077f1b63e",
+  "jacsVersionDate": "2025-06-05T06:12:39.203392+00:00"
 }
