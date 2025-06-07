@@ -32,19 +32,21 @@
 
 --------------------
 
-## 0.3.6
+## 0.3.7
+
+### devrel
+- [] github actions builder for auto deploy of versions
 
 ### jacsnpm
 
  - [] BUG with STDIO in general
       fix issues with Stdio mcp client and server log noise - relates to open telemetry being used at rust layer.
- - [] github actions builder for linux varieties
+
  - [] npm install jacs (cli and available to plugin)
  - [] a2a integration
  - [] integrate cli
 
 ### jacspy
- - [] publish jacspy to pypi
  - [] mcp make sure "list" request is signed?
  - [] some integration tests
  - [] fastapi, django, flask, guvicorn specific pre-built middleware
@@ -63,10 +65,8 @@
  - [] brew installer, review installation instrucitons,  cli install instructions. a .sh command?
  - [] a2a integration
  - [] ensure if a user wants standard logging they can use that
- - [] expose logging function to jacspy and jacsnpm
- - [] create centralized logging output without file output  
- - [] CA for cert or other PKI
- - [] register public key in d option 
+
+ 
  - [] register agent
  - [] remove requirement to store public key type? if detectable
  - [] upgrade pqcrypto https://github.com/rustpq/pqcrypto/issues/79
@@ -75,9 +75,53 @@
  - [] RBAC integration with header
  - [] clean io prepping for config of io
 
- ### minor ccore
+ ### minor core
 - [] don't store  "jacs_private_key_password":  in config, don't display
 - [] minor feature - no_save = false should save document and still return json string instead of message on create document
+
+--------------------
+
+## 0.3.6
+
+
+### devex
+
+
+- [] a2a integration
+- [] acp integration
+- [] add updates to book
+- [] cli install for brew
+- [] cli install via shell script
+- [] open license
+- [] crew.ai
+- [] langchain
+
+### jacs
+
+ - [] redesign api for easier bootstrapping
+ - [] PKI choice (dkim, ke)
+ - [] private key bootstrapping with vault, kerberos - filesystem
+ - [] api for easier integratios data processing 
+ - [] add observability to configuration
+ - [] add more feature flags for integrations
+ - [] test centralized logging output without file output 
+
+### jacsmcp
+
+ - [] prototype
+
+### jacspy
+
+- [] refactor api
+- [] publish to pipy 
+- [] tracing and logging integration tests
+- [] switch to uv from pip/etc
+
+### jacsnpm
+
+- [] publish to npm
+- [] tracing and logging integration tests
+
 
 --------------------
 
