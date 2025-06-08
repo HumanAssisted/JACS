@@ -12,7 +12,8 @@ test-jacs:
 test-jacs-cli:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features cli  --test cli_tests  -- --nocapture
 
-
+test-jacs-observability:
+	RUST_BACKTRACE=1 cargo test --features cli  --test observability_tests  -- --nocapture
 
 publish-jacs:
 	cargo publish --features cli  --dry-run -p jacs

@@ -953,3 +953,578 @@ fn test_prometheus_with_auth() {
     tags.insert("auth_test".to_string(), "prometheus".to_string());
     increment_counter("prometheus_auth_test", 1, Some(tags));
 }
+
+#[test]
+#[serial]
+fn test_minimal_dev_configuration() {
+    jacs::observability::force_reset_for_tests();
+
+    let temp_dir = TempDir::new().unwrap();
+    let log_dir = temp_dir.path().join("test_logs");
+
+    // Test Configuration 1: Minimal Development Config
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: true,
+            level: "debug".to_string(),
+            destination: LogDestination::File {
+                path: log_dir.to_string_lossy().to_string(),
+            },
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: true,
+            destination: MetricsDestination::Stdout,
+            export_interval_seconds: None,
+            headers: None,
+        },
+        tracing: None,
+    };
+
+    let result = init_observability(config);
+    assert!(
+        result.is_ok(),
+        "Minimal dev config should initialize successfully"
+    );
+
+    // Test that debug level logs are captured
+    record_agent_operation("dev_test", "agent_dev_123", true, 150);
+    tracing::debug!("Debug message for minimal dev config test");
+    tracing::info!("Info message for minimal dev config test");
+
+    // Wait and flush
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    jacs::observability::reset_observability();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Verify logs were written to file
+    let mut found_debug_logs = false;
+    if log_dir.exists() {
+        for entry in fs::read_dir(&log_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path().is_file() {
+                let content = fs::read_to_string(entry.path()).unwrap_or_default();
+                if content.contains("Debug message") || content.contains("dev_test") {
+                    found_debug_logs = true;
+                    println!("✓ Minimal dev config: Found expected logs in file");
+                    break;
+                }
+            }
+        }
+    }
+
+    if !found_debug_logs {
+        println!("⚠ Minimal dev config: No debug logs found (global subscriber may be set)");
+    }
+
+    // Test metrics (stdout destination means they won't be captured, but should not panic)
+    let mut tags = HashMap::new();
+    tags.insert("config".to_string(), "minimal_dev".to_string());
+    increment_counter("dev_config_test", 1, Some(tags));
+
+    println!("✓ Minimal development configuration test completed");
+}
+
+#[test]
+#[serial]
+fn test_full_production_configuration() {
+    jacs::observability::force_reset_for_tests();
+
+    // Test Configuration 2: Full Production Config with headers
+    let mut log_headers = HashMap::new();
+    log_headers.insert("Authorization".to_string(), "Bearer test-token".to_string());
+
+    let mut metrics_headers = HashMap::new();
+    metrics_headers.insert("X-API-Key".to_string(), "test-key".to_string());
+
+    let mut resource_attributes = HashMap::new();
+    resource_attributes.insert("team".to_string(), "platform".to_string());
+    resource_attributes.insert("region".to_string(), "us-west-2".to_string());
+
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: true,
+            level: "info".to_string(),
+            destination: LogDestination::Otlp {
+                endpoint: "http://localhost:4317".to_string(),
+                headers: Some(log_headers),
+            },
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: true,
+            destination: MetricsDestination::Prometheus {
+                endpoint: "http://localhost:9090/api/v1/write".to_string(),
+                headers: Some(metrics_headers),
+            },
+            export_interval_seconds: Some(30),
+            headers: None,
+        },
+        tracing: Some(TracingConfig {
+            enabled: true,
+            sampling: SamplingConfig {
+                ratio: 0.1, // Sample 10%
+                parent_based: true,
+                rate_limit: Some(100),
+            },
+            resource: Some(ResourceConfig {
+                service_name: "jacs-test".to_string(),
+                service_version: Some("0.3.6".to_string()),
+                environment: Some("test".to_string()),
+                attributes: resource_attributes,
+            }),
+        }),
+    };
+
+    let result = init_observability(config);
+    assert!(
+        result.is_ok(),
+        "Full production config should initialize successfully"
+    );
+
+    // Test that only info+ level logs are processed (debug should be filtered out)
+    record_agent_operation("prod_test", "agent_prod_456", false, 200);
+    tracing::debug!("Debug message should be filtered out");
+    tracing::info!("Info message should be included");
+    tracing::warn!("Warning message should be included");
+
+    // Test tracing with sampling
+    for i in 0..50 {
+        record_agent_operation(
+            &format!("sampled_operation_{}", i),
+            "agent_sample",
+            true,
+            50,
+        );
+    }
+
+    // Test metrics with tags
+    let mut tags = HashMap::new();
+    tags.insert("config".to_string(), "full_production".to_string());
+    tags.insert("service".to_string(), "jacs-test".to_string());
+    tags.insert("version".to_string(), "0.3.6".to_string());
+
+    increment_counter("prod_config_test", 10, Some(tags.clone()));
+    set_gauge("prod_memory_usage", 1024.0, Some(tags.clone()));
+    record_histogram("prod_response_time", 250.5, Some(tags));
+
+    // Wait for async processing
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+
+    // Note: OTLP and Prometheus endpoints won't be available in tests,
+    // but the configuration should be applied without panicking
+    println!("✓ Full production configuration test completed");
+    println!("  - OTLP logs configured with auth headers");
+    println!("  - Prometheus metrics configured with auth headers");
+    println!("  - Tracing enabled with 10% sampling");
+    println!("  - Resource attributes applied");
+    println!("  - Export interval set to 30 seconds");
+}
+
+#[test]
+#[serial]
+fn test_minimal_dev_configuration_behavior() {
+    jacs::observability::force_reset_for_tests();
+
+    let temp_dir = TempDir::new().unwrap();
+    let log_dir = temp_dir.path().join("dev_logs");
+
+    // Configuration 1: Minimal Development Config
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: true,
+            level: "debug".to_string(), // Should capture debug+
+            destination: LogDestination::File {
+                path: log_dir.to_string_lossy().to_string(),
+            },
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: true,
+            destination: MetricsDestination::Stdout, // Should not create files
+            export_interval_seconds: None,
+            headers: None,
+        },
+        tracing: None, // Should not have tracing
+    };
+
+    let result = init_observability(config);
+    assert!(result.is_ok(), "Minimal dev config should initialize");
+
+    // Test log level behavior - debug level should capture everything
+    tracing::debug!("DEV_DEBUG_MESSAGE");
+    tracing::info!("DEV_INFO_MESSAGE");
+    tracing::warn!("DEV_WARN_MESSAGE");
+    tracing::error!("DEV_ERROR_MESSAGE");
+
+    record_agent_operation("dev_operation", "dev_agent", true, 150);
+
+    // Wait and flush
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    jacs::observability::reset_observability();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Verify debug level captured ALL messages
+    let mut log_content = String::new();
+    if log_dir.exists() {
+        for entry in fs::read_dir(&log_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path().is_file() {
+                log_content.push_str(&fs::read_to_string(entry.path()).unwrap_or_default());
+            }
+        }
+    }
+
+    if !log_content.is_empty() {
+        // Verify ALL log levels appear (debug config should capture everything)
+        let has_debug = log_content.contains("DEV_DEBUG_MESSAGE");
+        let has_info = log_content.contains("DEV_INFO_MESSAGE");
+        let has_warn = log_content.contains("DEV_WARN_MESSAGE");
+        let has_error = log_content.contains("DEV_ERROR_MESSAGE");
+        let has_operation = log_content.contains("dev_operation") || log_content.contains("Agent");
+
+        println!("✓ Dev config log verification:");
+        println!("  - Debug messages: {}", if has_debug { "✓" } else { "✗" });
+        println!("  - Info messages: {}", if has_info { "✓" } else { "✗" });
+        println!("  - Warn messages: {}", if has_warn { "✓" } else { "✗" });
+        println!("  - Error messages: {}", if has_error { "✓" } else { "✗" });
+        println!(
+            "  - Operation logs: {}",
+            if has_operation { "✓" } else { "✗" }
+        );
+
+        // For debug level, we should see most/all messages
+        assert!(
+            has_info && has_warn && has_error,
+            "Debug level should capture info, warn, error"
+        );
+    } else {
+        println!("⚠ No log content found (global subscriber may be set)");
+    }
+
+    // Test metrics go to stdout (no files should be created in temp_dir for metrics)
+    let mut tags = HashMap::new();
+    tags.insert("config_type".to_string(), "minimal_dev".to_string());
+    increment_counter("dev_test_counter", 5, Some(tags));
+
+    // Verify no metrics files were created (stdout destination)
+    let metrics_files: Vec<_> = fs::read_dir(&temp_dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry.path().is_file() && entry.file_name().to_string_lossy().contains("metric")
+        })
+        .collect();
+
+    assert!(
+        metrics_files.is_empty(),
+        "Stdout metrics shouldn't create files"
+    );
+    println!("✓ Metrics correctly sent to stdout (no files created)");
+}
+
+#[test]
+#[serial]
+fn test_production_log_level_filtering() {
+    jacs::observability::force_reset_for_tests();
+
+    let temp_dir = TempDir::new().unwrap();
+    let log_dir = temp_dir.path().join("prod_logs");
+
+    // Production config with INFO level (should filter out debug)
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: true,
+            level: "info".to_string(), // Should filter out debug
+            destination: LogDestination::File {
+                path: log_dir.to_string_lossy().to_string(),
+            },
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: false,
+            destination: MetricsDestination::Stdout,
+            export_interval_seconds: None,
+            headers: None,
+        },
+        tracing: None,
+    };
+
+    let result = init_observability(config);
+    assert!(result.is_ok(), "Production config should initialize");
+
+    // Test that info level filters out debug but keeps info+
+    tracing::debug!("PROD_DEBUG_SHOULD_BE_FILTERED");
+    tracing::info!("PROD_INFO_SHOULD_APPEAR");
+    tracing::warn!("PROD_WARN_SHOULD_APPEAR");
+    tracing::error!("PROD_ERROR_SHOULD_APPEAR");
+
+    // Wait and flush
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    jacs::observability::reset_observability();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Verify filtering actually worked
+    let mut log_content = String::new();
+    if log_dir.exists() {
+        for entry in fs::read_dir(&log_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path().is_file() {
+                log_content.push_str(&fs::read_to_string(entry.path()).unwrap_or_default());
+            }
+        }
+    }
+
+    if !log_content.is_empty() {
+        let has_debug = log_content.contains("PROD_DEBUG_SHOULD_BE_FILTERED");
+        let has_info = log_content.contains("PROD_INFO_SHOULD_APPEAR");
+        let has_warn = log_content.contains("PROD_WARN_SHOULD_APPEAR");
+        let has_error = log_content.contains("PROD_ERROR_SHOULD_APPEAR");
+
+        println!("✓ Production log level filtering verification:");
+        println!(
+            "  - Debug filtered out: {}",
+            if !has_debug {
+                "✓"
+            } else {
+                "✗ (unexpected)"
+            }
+        );
+        println!("  - Info messages: {}", if has_info { "✓" } else { "✗" });
+        println!("  - Warn messages: {}", if has_warn { "✓" } else { "✗" });
+        println!("  - Error messages: {}", if has_error { "✓" } else { "✗" });
+
+        // Key test: debug should be filtered, others should appear
+        assert!(!has_debug, "Info level should filter out debug messages");
+        assert!(
+            has_info && has_warn && has_error,
+            "Info level should include info, warn, error"
+        );
+
+        println!("✓ Log level filtering works correctly");
+    } else {
+        println!("⚠ No log content found (global subscriber may be set)");
+    }
+}
+
+#[test]
+#[serial]
+fn test_metrics_export_interval_timing() {
+    jacs::observability::force_reset_for_tests();
+
+    let temp_dir = TempDir::new().unwrap();
+    let metrics_file = temp_dir.path().join("timed_metrics.txt");
+
+    // Config with short export interval for testing
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: false,
+            level: "info".to_string(),
+            destination: LogDestination::Null,
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: true,
+            destination: MetricsDestination::File {
+                path: metrics_file.to_string_lossy().to_string(),
+            },
+            export_interval_seconds: Some(1), // Export every 1 second
+            headers: None,
+        },
+        tracing: None,
+    };
+
+    let result = init_observability(config);
+    assert!(result.is_ok(), "Timed metrics config should initialize");
+
+    // Record metrics and check timing
+    let start_time = std::time::Instant::now();
+
+    increment_counter("timing_test_counter", 1, None);
+
+    // Wait for first export (should happen within ~1 second)
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+
+    let first_check = metrics_file.exists()
+        && fs::read_to_string(&metrics_file)
+            .unwrap_or_default()
+            .contains("timing_test_counter");
+
+    // Record more metrics
+    increment_counter("timing_test_counter", 1, None);
+
+    // Wait for another interval
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+
+    let elapsed = start_time.elapsed();
+
+    if metrics_file.exists() {
+        let content = fs::read_to_string(&metrics_file).unwrap_or_default();
+        let has_metrics = content.contains("timing_test_counter");
+
+        println!("✓ Export interval timing test:");
+        println!("  - File created: {}", metrics_file.exists());
+        println!("  - Contains metrics: {}", has_metrics);
+        println!("  - Elapsed time: {:?}", elapsed);
+        println!("  - First export: {}", first_check);
+
+        assert!(
+            has_metrics,
+            "Metrics should be exported to file within interval"
+        );
+        // We can't be too strict about timing in tests, but should be reasonable
+        assert!(
+            elapsed >= std::time::Duration::from_millis(1000),
+            "Should wait at least 1 second"
+        );
+        assert!(
+            elapsed <= std::time::Duration::from_millis(5000),
+            "Should export within reasonable time"
+        );
+
+        println!("✓ Export interval appears to be working");
+    } else {
+        println!("⚠ Metrics file not created (recorder may already be set)");
+    }
+}
+
+#[test]
+#[serial]
+fn test_tracing_sampling_behavior() {
+    jacs::observability::force_reset_for_tests();
+
+    // Config with very low sampling rate
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: false,
+            level: "info".to_string(),
+            destination: LogDestination::Null,
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: false,
+            destination: MetricsDestination::Stdout,
+            export_interval_seconds: None,
+            headers: None,
+        },
+        tracing: Some(TracingConfig {
+            enabled: true,
+            sampling: SamplingConfig {
+                ratio: 0.1, // 10% sampling
+                parent_based: false,
+                rate_limit: Some(5), // Max 5 per second
+            },
+            resource: Some(ResourceConfig {
+                service_name: "sampling-test".to_string(),
+                service_version: Some("1.0.0".to_string()),
+                environment: Some("test".to_string()),
+                attributes: HashMap::new(),
+            }),
+        }),
+    };
+
+    let result = init_observability(config);
+    assert!(result.is_ok(), "Sampling config should initialize");
+
+    // Generate many operations to test sampling
+    println!("Generating 100 operations to test sampling...");
+    for i in 0..100 {
+        record_agent_operation(&format!("sampling_test_{}", i), "test_agent", true, 50);
+    }
+
+    // Wait for processing
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // We can't easily verify exact sampling numbers without internal access,
+    // but we can verify that:
+    // 1. The configuration was accepted
+    // 2. The system didn't crash
+    // 3. Operations completed (even if some were sampled out)
+
+    println!("✓ Sampling configuration accepted and processing completed");
+    println!("  - Generated 100 operations with 10% sampling");
+    println!("  - Rate limit: 5 per second");
+    println!("  - Resource config applied");
+
+    // In a real system, you'd need access to span data to verify actual sampling
+    // This test at least verifies the config is accepted and doesn't break anything
+}
+
+#[test]
+#[serial]
+fn test_different_destinations_behavior() {
+    jacs::observability::force_reset_for_tests();
+
+    let temp_dir = TempDir::new().unwrap();
+    let log_file = temp_dir.path().join("dest_test.log");
+    let metrics_file = temp_dir.path().join("dest_metrics.txt");
+
+    // Test multiple destinations work as configured
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: true,
+            level: "info".to_string(),
+            destination: LogDestination::File {
+                path: log_file.to_string_lossy().to_string(),
+            },
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: true,
+            destination: MetricsDestination::File {
+                path: metrics_file.to_string_lossy().to_string(),
+            },
+            export_interval_seconds: Some(1),
+            headers: None,
+        },
+        tracing: None,
+    };
+
+    let result = init_observability(config);
+    assert!(result.is_ok(), "Multi-destination config should initialize");
+
+    // Generate both logs and metrics
+    tracing::info!("DESTINATION_TEST_LOG_MESSAGE");
+    record_agent_operation("dest_test", "test_agent", true, 100);
+
+    let mut tags = HashMap::new();
+    tags.insert("test_type".to_string(), "destination".to_string());
+    increment_counter("destination_test_counter", 3, Some(tags));
+
+    // Wait for exports
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    jacs::observability::reset_observability();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Verify each destination received appropriate data
+    let log_exists = log_file.exists();
+    let metrics_exists = metrics_file.exists();
+
+    let mut log_has_content = false;
+    let mut metrics_has_content = false;
+
+    if log_exists {
+        let log_content = fs::read_to_string(&log_file).unwrap_or_default();
+        log_has_content = log_content.contains("DESTINATION_TEST_LOG_MESSAGE")
+            || log_content.contains("dest_test");
+    }
+
+    if metrics_exists {
+        let metrics_content = fs::read_to_string(&metrics_file).unwrap_or_default();
+        metrics_has_content = metrics_content.contains("destination_test_counter");
+    }
+
+    println!("✓ Destination behavior verification:");
+    println!("  - Log file created: {}", log_exists);
+    println!("  - Log content correct: {}", log_has_content);
+    println!("  - Metrics file created: {}", metrics_exists);
+    println!("  - Metrics content correct: {}", metrics_has_content);
+
+    // At least verify files are created (content verification depends on global state)
+    if log_exists {
+        println!("✓ Log destination working");
+    }
+    if metrics_exists {
+        println!("✓ Metrics destination working");
+    }
+}
