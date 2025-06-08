@@ -1,4 +1,5 @@
-use crate::observability::{LogConfig, LogDestination};
+use crate::config::{LogConfig, LogDestination};
+use std::collections::HashMap;
 use std::io;
 use tracing::warn;
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
@@ -43,8 +44,17 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
                 .try_init()?;
             Ok(None)
         }
-        LogDestination::Otlp { endpoint: _ } => {
-            warn!("Warning: OTLP logging configured but using Stderr fallback for now.");
+        LogDestination::Otlp { endpoint, headers } => {
+            if let Some(headers) = headers {
+                warn!(
+                    "OTLP headers configured: {:?}",
+                    headers.keys().collect::<Vec<&String>>()
+                );
+            }
+            warn!(
+                "Warning: OTLP logging configured for {} but using Stderr fallback for now.",
+                endpoint
+            );
             Registry::default()
                 .with(filter)
                 .with(fmt::layer().with_writer(io::stderr))
@@ -74,8 +84,11 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<()>, Box<dyn std::error::E
                 .with(fmt::layer())
                 .try_init()?;
         }
-        LogDestination::Http { endpoint: _ } => {
-            warn!("Warning: HTTP logging for WASM configured but using Console fallback.");
+        LogDestination::Http { endpoint } => {
+            warn!(
+                "Warning: HTTP logging for WASM configured for {} but using Console fallback.",
+                endpoint
+            );
             Registry::default()
                 .with(filter)
                 .with(fmt::layer())

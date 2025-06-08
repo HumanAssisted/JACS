@@ -1,10 +1,15 @@
-use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tracing::warn;
 
 pub mod convenience;
 pub mod logs;
 pub mod metrics;
+
+// Re-export config types so existing imports still work
+pub use crate::config::{
+    LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
+    ResourceConfig, SamplingConfig, TracingConfig,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 use tracing_appender::non_blocking::WorkerGuard;
@@ -16,62 +21,6 @@ static LOG_WORKER_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 
 static TEST_METRICS_RECORDER_HANDLE: Mutex<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>> =
     Mutex::new(None);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObservabilityConfig {
-    pub logs: LogConfig,
-    pub metrics: MetricsConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LogConfig {
-    pub enabled: bool,
-    pub level: String,
-    pub destination: LogDestination,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MetricsConfig {
-    pub enabled: bool,
-    pub destination: MetricsDestination,
-    pub export_interval_seconds: Option<u64>,
-}
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum LogDestination {
-    #[serde(rename = "http")]
-    Http { endpoint: String },
-    #[serde(rename = "console")]
-    Console,
-    #[serde(rename = "null")]
-    Null,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum LogDestination {
-    #[serde(rename = "stderr")]
-    Stderr,
-    #[serde(rename = "file")]
-    File { path: String },
-    #[serde(rename = "otlp")]
-    Otlp { endpoint: String },
-    #[serde(rename = "null")]
-    Null,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum MetricsDestination {
-    #[serde(rename = "otlp")]
-    Otlp { endpoint: String },
-    #[serde(rename = "prometheus")]
-    Prometheus { endpoint: String },
-    #[serde(rename = "file")]
-    File { path: String },
-    #[serde(rename = "stdout")]
-    Stdout,
-}
 
 pub fn init_observability(
     config: ObservabilityConfig,

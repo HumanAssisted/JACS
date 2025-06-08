@@ -274,6 +274,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let base_cmd = || -> Command {
         let mut cmd = Command::cargo_bin("jacs").unwrap();
         cmd.env("JACS_PRIVATE_KEY_PASSWORD", dummy_password);
+        cmd.env("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
         cmd.current_dir(&scratch_dir); // Use scratch dir as CWD
         cmd
     };

@@ -43,12 +43,15 @@ fn test_actual_log_output() {
             destination: LogDestination::File {
                 path: scratch_dir.to_string_lossy().to_string(),
             },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: false,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     // Initialize observability - this should work since it's a fresh process

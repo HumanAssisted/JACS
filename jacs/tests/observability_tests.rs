@@ -7,6 +7,7 @@ use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
     init_observability,
 };
+use jacs::observability::{ResourceConfig, SamplingConfig, TracingConfig};
 use serial_test::serial;
 use std::collections::HashMap;
 use std::fs;
@@ -65,12 +66,15 @@ fn test_file_logging_destination() {
             destination: LogDestination::File {
                 path: log_output_subdir_name.to_string(),
             },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: false,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     // Try to initialize observability - it may fail if global subscriber already set
@@ -152,6 +156,7 @@ fn test_file_metrics_destination() {
             enabled: false,
             level: "info".to_string(),
             destination: LogDestination::Null,
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
@@ -159,7 +164,9 @@ fn test_file_metrics_destination() {
                 path: metrics_file.to_string_lossy().to_string(),
             },
             export_interval_seconds: Some(1),
+            headers: None,
         },
+        tracing: None,
     };
 
     // Initialize observability - we don't care if we get the Arc or not
@@ -216,12 +223,15 @@ fn main() {
             enabled: false,
             level: "info".to_string(),
             destination: LogDestination::Null,
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
     
     jacs::observability::init_observability(config).unwrap();
@@ -244,12 +254,15 @@ fn main() {
             enabled: false,
             level: "info".to_string(),
             destination: LogDestination::Null,
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     init_observability(config).unwrap();
@@ -273,14 +286,18 @@ fn test_prometheus_format_output() {
             enabled: false,
             level: "info".to_string(),
             destination: LogDestination::Null,
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
             destination: MetricsDestination::Prometheus {
                 endpoint: "http://localhost:9090".to_string(),
+                headers: None,
             },
             export_interval_seconds: Some(30),
+            headers: None,
         },
+        tracing: None,
     };
 
     init_observability(config).unwrap();
@@ -307,15 +324,20 @@ fn test_otlp_destination() {
             level: "debug".to_string(),
             destination: LogDestination::Otlp {
                 endpoint: "http://localhost:4317".to_string(),
+                headers: None,
             },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
             destination: MetricsDestination::Otlp {
                 endpoint: "http://localhost:4317".to_string(),
+                headers: None,
             },
             export_interval_seconds: Some(10),
+            headers: None,
         },
+        tracing: None,
     };
 
     // This should not panic even if OTLP endpoint is not available
@@ -340,12 +362,15 @@ fn test_disabled_observability() {
             enabled: false,
             level: "info".to_string(),
             destination: LogDestination::Null,
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: false,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     init_observability(config).unwrap();
@@ -373,12 +398,15 @@ fn test_log_levels() {
             destination: LogDestination::File {
                 path: log_file.to_string_lossy().to_string(),
             },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: false,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     init_observability(config).unwrap();
@@ -438,6 +466,7 @@ fn test_metrics_with_tags() {
             enabled: false,
             level: "info".to_string(),
             destination: LogDestination::Null,
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
@@ -445,7 +474,9 @@ fn test_metrics_with_tags() {
                 path: metrics_path.to_string_lossy().to_string(),
             },
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     // Initialize observability - we don't care if we get the Arc or not
@@ -500,6 +531,7 @@ fn test_convenience_functions() {
             destination: LogDestination::File {
                 path: log_file.to_string_lossy().to_string(),
             },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
@@ -507,7 +539,9 @@ fn test_convenience_functions() {
                 path: metrics_file.to_string_lossy().to_string(),
             },
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     // Initialize observability - we don't care if we get the Arc or not
@@ -619,12 +653,15 @@ fn test_logs_to_scratch_file() {
             destination: LogDestination::File {
                 path: scratch_dir.to_string_lossy().to_string(),
             },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: false,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     // Try to initialize observability
@@ -731,12 +768,15 @@ fn main() {
             destination: LogDestination::File {
                 path: "./tests/scratch".to_string(),
             },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: false,
             destination: MetricsDestination::Stdout,
             export_interval_seconds: None,
+            headers: None,
         },
+        tracing: None,
     };
 
     if let Err(e) = init_observability(config) {
@@ -790,4 +830,126 @@ fn main() {
         test_file.exists(),
         "Isolated test program should be created"
     );
+}
+
+#[test]
+#[serial]
+fn test_otlp_with_headers() {
+    let mut headers = HashMap::new();
+    headers.insert("Authorization".to_string(), "Bearer token123".to_string());
+    headers.insert("X-API-Key".to_string(), "secret-key".to_string());
+
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: true,
+            level: "info".to_string(),
+            destination: LogDestination::Otlp {
+                endpoint: "http://localhost:4317".to_string(),
+                headers: Some(headers.clone()),
+            },
+            headers: Some(headers.clone()),
+        },
+        metrics: MetricsConfig {
+            enabled: true,
+            destination: MetricsDestination::Otlp {
+                endpoint: "http://localhost:4317".to_string(),
+                headers: Some(headers),
+            },
+            export_interval_seconds: Some(10),
+            headers: None,
+        },
+        tracing: None,
+    };
+
+    // Should not panic even if OTLP endpoint is not available
+    let result = init_observability(config);
+    assert!(
+        result.is_ok(),
+        "Observability initialization should succeed"
+    );
+
+    // Generate some telemetry to test headers are processed
+    record_agent_operation("header_test", "agent_header", true, 250);
+    increment_counter("header_test_counter", 1, None);
+}
+
+#[test]
+#[serial]
+fn test_sampling_configuration() {
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: false,
+            level: "info".to_string(),
+            destination: LogDestination::Null,
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: false,
+            destination: MetricsDestination::Stdout,
+            export_interval_seconds: None,
+            headers: None,
+        },
+        tracing: Some(TracingConfig {
+            enabled: true,
+            sampling: SamplingConfig {
+                ratio: 0.5, // Sample 50%
+                parent_based: false,
+                rate_limit: Some(10), // Max 10 samples per second
+            },
+            resource: Some(ResourceConfig {
+                service_name: "jacs-sampling-test".to_string(),
+                service_version: Some("0.3.6".to_string()),
+                environment: Some("test".to_string()),
+                attributes: HashMap::new(),
+            }),
+        }),
+    };
+
+    let result = init_observability(config);
+    assert!(
+        result.is_ok(),
+        "Observability with sampling should initialize"
+    );
+
+    // Test that sampling configuration is applied (functions don't panic)
+    for i in 0..20 {
+        record_agent_operation(&format!("sampling_test_{}", i), "agent_sample", true, 50);
+    }
+}
+
+#[test]
+#[serial]
+fn test_prometheus_with_auth() {
+    let mut headers = HashMap::new();
+    headers.insert(
+        "Authorization".to_string(),
+        "Basic dXNlcjpwYXNz".to_string(),
+    ); // user:pass in base64
+
+    let config = ObservabilityConfig {
+        logs: LogConfig {
+            enabled: false,
+            level: "info".to_string(),
+            destination: LogDestination::Null,
+            headers: None,
+        },
+        metrics: MetricsConfig {
+            enabled: true,
+            destination: MetricsDestination::Prometheus {
+                endpoint: "http://localhost:9090/api/v1/write".to_string(),
+                headers: Some(headers),
+            },
+            export_interval_seconds: Some(30),
+            headers: None,
+        },
+        tracing: None,
+    };
+
+    let result = init_observability(config);
+    assert!(result.is_ok(), "Prometheus with auth should initialize");
+
+    // Generate metrics to test auth headers are processed
+    let mut tags = HashMap::new();
+    tags.insert("auth_test".to_string(), "prometheus".to_string());
+    increment_counter("prometheus_auth_test", 1, Some(tags));
 }

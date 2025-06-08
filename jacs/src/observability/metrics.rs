@@ -1,4 +1,4 @@
-use crate::observability::{MetricsConfig, MetricsDestination};
+use crate::config::{MetricsConfig, MetricsDestination};
 use metrics::{
     CounterFn, GaugeFn, HistogramFn, counter, describe_counter, describe_gauge, describe_histogram,
     gauge, histogram,
@@ -198,14 +198,32 @@ pub fn init_metrics(
 
     match &config.destination {
         #[cfg(not(target_arch = "wasm32"))]
-        MetricsDestination::Prometheus { endpoint: _ } => {
+        MetricsDestination::Prometheus { endpoint, headers } => {
             let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
+
+            if let Some(headers) = headers {
+                tracing::info!(
+                    "Prometheus headers configured: {:?}",
+                    headers.keys().collect::<Vec<&String>>()
+                );
+            }
+            tracing::info!("Prometheus endpoint configured: {}", endpoint);
+
             builder.install()?;
         }
 
         #[cfg(not(target_arch = "wasm32"))]
-        MetricsDestination::Otlp { endpoint: _ } => {
-            // OTLP metrics support requires complex setup - skip for now
+        MetricsDestination::Otlp { endpoint, headers } => {
+            if let Some(headers) = headers {
+                tracing::info!(
+                    "OTLP metrics headers configured: {:?}",
+                    headers.keys().collect::<Vec<&String>>()
+                );
+            }
+            tracing::warn!(
+                "OTLP metrics configured for {} but not yet implemented",
+                endpoint
+            );
         }
 
         MetricsDestination::File { path: _ } => {

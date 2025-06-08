@@ -174,6 +174,388 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="configuration-reference"><a class="header" href="#configuration-reference">Configuration Reference</a></h1>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<h2 id="complete-example-configuration"><a class="header" href="#complete-example-configuration">Complete Example Configuration</a></h2>
+<pre><code class="language-json">{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_use_security": "false",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_agent_private_key_filename": "jacs.private.pem.enc",
+  "jacs_agent_public_key_filename": "jacs.public.pem",
+  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_default_storage": "fs",
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "level": "info",
+      "destination": {
+        "type": "file",
+        "path": "./logs"
+      },
+      "headers": {
+        "Authorization": "Bearer token",
+        "X-API-Key": "secret"
+      }
+    },
+    "metrics": {
+      "enabled": true,
+      "destination": {
+        "type": "prometheus",
+        "endpoint": "http://localhost:9090/api/v1/write",
+        "headers": {
+          "Authorization": "Basic dXNlcjpwYXNz"
+        }
+      },
+      "export_interval_seconds": 60,
+      "headers": {
+        "X-Service": "jacs"
+      }
+    },
+    "tracing": {
+      "enabled": true,
+      "sampling": {
+        "ratio": 0.1,
+        "parent_based": true,
+        "rate_limit": 100
+      },
+      "resource": {
+        "service_name": "jacs",
+        "service_version": "0.3.6",
+        "environment": "production",
+        "attributes": {
+          "team": "platform",
+          "region": "us-west-2"
+        }
+      }
+    }
+  }
+}
+</code></pre>
+<h2 id="observability-configuration"><a class="header" href="#observability-configuration">Observability Configuration</a></h2>
+<p>JACS supports comprehensive observability through configurable logging, metrics, and tracing. All observability features are optional and can be configured in the <code>jacs.config.json</code> file.</p>
+<h3 id="logs-configuration"><a class="header" href="#logs-configuration">Logs Configuration</a></h3>
+<p>Controls how JACS generates and outputs log messages.</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>enabled</code></td><td>boolean</td><td>Yes</td><td>Whether logging is enabled</td></tr>
+<tr><td><code>level</code></td><td>string</td><td>Yes</td><td>Minimum log level: <code>trace</code>, <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code></td></tr>
+<tr><td><code>destination</code></td><td>object</td><td>Yes</td><td>Where logs are sent (see destinations below)</td></tr>
+<tr><td><code>headers</code></td><td>object</td><td>No</td><td>Additional headers for remote destinations</td></tr>
+</tbody></table>
+</div>
+<h4 id="log-destinations"><a class="header" href="#log-destinations">Log Destinations</a></h4>
+<p><strong>File Logging</strong></p>
+<pre><code class="language-json">{
+  "type": "file",
+  "path": "./logs"
+}
+</code></pre>
+<p>Writes logs to rotating files in the specified directory.</p>
+<p><strong>Console Logging (stderr)</strong></p>
+<pre><code class="language-json">{
+  "type": "stderr"
+}
+</code></pre>
+<p>Outputs logs to standard error stream.</p>
+<p><strong>OpenTelemetry Protocol (OTLP)</strong></p>
+<pre><code class="language-json">{
+  "type": "otlp",
+  "endpoint": "http://localhost:4317",
+  "headers": {
+    "Authorization": "Bearer token"
+  }
+}
+</code></pre>
+<p>Sends logs to an OTLP-compatible endpoint (like Jaeger, Grafana Cloud).</p>
+<p><strong>Null (disabled)</strong></p>
+<pre><code class="language-json">{
+  "type": "null"
+}
+</code></pre>
+<p>Discards all log output.</p>
+<h3 id="metrics-configuration"><a class="header" href="#metrics-configuration">Metrics Configuration</a></h3>
+<p>Controls collection and export of application metrics.</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>enabled</code></td><td>boolean</td><td>Yes</td><td>Whether metrics collection is enabled</td></tr>
+<tr><td><code>destination</code></td><td>object</td><td>Yes</td><td>Where metrics are exported (see destinations below)</td></tr>
+<tr><td><code>export_interval_seconds</code></td><td>integer</td><td>No</td><td>How often to export metrics (default: 60)</td></tr>
+<tr><td><code>headers</code></td><td>object</td><td>No</td><td>Additional headers for remote destinations</td></tr>
+</tbody></table>
+</div>
+<h4 id="metrics-destinations"><a class="header" href="#metrics-destinations">Metrics Destinations</a></h4>
+<p><strong>Prometheus Remote Write</strong></p>
+<pre><code class="language-json">{
+  "type": "prometheus",
+  "endpoint": "http://localhost:9090/api/v1/write",
+  "headers": {
+    "Authorization": "Basic dXNlcjpwYXNz"
+  }
+}
+</code></pre>
+<p>Exports metrics in Prometheus format to a remote write endpoint.</p>
+<p><strong>OpenTelemetry Protocol (OTLP)</strong></p>
+<pre><code class="language-json">{
+  "type": "otlp",
+  "endpoint": "http://localhost:4317",
+  "headers": {
+    "Authorization": "Bearer token"
+  }
+}
+</code></pre>
+<p>Exports metrics to an OTLP-compatible endpoint.</p>
+<p><strong>File Export</strong></p>
+<pre><code class="language-json">{
+  "type": "file",
+  "path": "./metrics.txt"
+}
+</code></pre>
+<p>Writes metrics to a local file.</p>
+<p><strong>Console Output (stdout)</strong></p>
+<pre><code class="language-json">{
+  "type": "stdout"
+}
+</code></pre>
+<p>Prints metrics to standard output.</p>
+<h3 id="tracing-configuration"><a class="header" href="#tracing-configuration">Tracing Configuration</a></h3>
+<p>Controls distributed tracing for request flows.</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>enabled</code></td><td>boolean</td><td>Yes</td><td>Whether tracing is enabled</td></tr>
+<tr><td><code>sampling</code></td><td>object</td><td>No</td><td>Sampling configuration (see below)</td></tr>
+<tr><td><code>resource</code></td><td>object</td><td>No</td><td>Service identification (see below)</td></tr>
+</tbody></table>
+</div>
+<h4 id="sampling-configuration"><a class="header" href="#sampling-configuration">Sampling Configuration</a></h4>
+<p>Controls which traces are collected to manage overhead.</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>ratio</code></td><td>number</td><td>1.0</td><td>Fraction of traces to sample (0.0-1.0)</td></tr>
+<tr><td><code>parent_based</code></td><td>boolean</td><td>true</td><td>Whether to respect parent trace sampling decisions</td></tr>
+<tr><td><code>rate_limit</code></td><td>integer</td><td>none</td><td>Maximum traces per second</td></tr>
+</tbody></table>
+</div>
+<p><strong>Examples:</strong></p>
+<ul>
+<li><code>"ratio": 1.0</code> - Sample all traces (100%)</li>
+<li><code>"ratio": 0.1</code> - Sample 10% of traces</li>
+<li><code>"ratio": 0.01</code> - Sample 1% of traces</li>
+<li><code>"rate_limit": 10</code> - Maximum 10 traces per second</li>
+</ul>
+<h4 id="resource-configuration"><a class="header" href="#resource-configuration">Resource Configuration</a></h4>
+<p>Identifies the service in distributed tracing systems.</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>service_name</code></td><td>string</td><td>Yes</td><td>Name of the service</td></tr>
+<tr><td><code>service_version</code></td><td>string</td><td>No</td><td>Version of the service</td></tr>
+<tr><td><code>environment</code></td><td>string</td><td>No</td><td>Environment (dev, staging, prod)</td></tr>
+<tr><td><code>attributes</code></td><td>object</td><td>No</td><td>Custom key-value attributes</td></tr>
+</tbody></table>
+</div>
+<h2 id="authentication--headers"><a class="header" href="#authentication--headers">Authentication &amp; Headers</a></h2>
+<p>For remote destinations (OTLP, Prometheus), you can specify authentication headers:</p>
+<p><strong>Bearer Token Authentication:</strong></p>
+<pre><code class="language-json">"headers": {
+  "Authorization": "Bearer your-token-here"
+}
+</code></pre>
+<p><strong>Basic Authentication:</strong></p>
+<pre><code class="language-json">"headers": {
+  "Authorization": "Basic dXNlcjpwYXNz"
+}
+</code></pre>
+<p><strong>API Key Authentication:</strong></p>
+<pre><code class="language-json">"headers": {
+  "X-API-Key": "your-api-key",
+  "X-Auth-Token": "your-auth-token"
+}
+</code></pre>
+<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
+<h3 id="development-configuration"><a class="header" href="#development-configuration">Development Configuration</a></h3>
+<pre><code class="language-json">"observability": {
+  "logs": {
+    "enabled": true,
+    "level": "debug",
+    "destination": { "type": "stderr" }
+  },
+  "metrics": {
+    "enabled": true,
+    "destination": { "type": "stdout" }
+  }
+}
+</code></pre>
+<h3 id="production-configuration"><a class="header" href="#production-configuration">Production Configuration</a></h3>
+<pre><code class="language-json">"observability": {
+  "logs": {
+    "enabled": true,
+    "level": "info",
+    "destination": {
+      "type": "otlp",
+      "endpoint": "https://logs.example.com:4317",
+      "headers": {
+        "Authorization": "Bearer prod-token"
+      }
+    }
+  },
+  "metrics": {
+    "enabled": true,
+    "destination": {
+      "type": "prometheus",
+      "endpoint": "https://metrics.example.com/api/v1/write"
+    },
+    "export_interval_seconds": 30
+  },
+  "tracing": {
+    "enabled": true,
+    "sampling": {
+      "ratio": 0.05,
+      "rate_limit": 100
+    },
+    "resource": {
+      "service_name": "jacs",
+      "service_version": "0.3.6",
+      "environment": "production"
+    }
+  }
+}
+</code></pre>
+<h3 id="file-based-configuration"><a class="header" href="#file-based-configuration">File-based Configuration</a></h3>
+<pre><code class="language-json">"observability": {
+  "logs": {
+    "enabled": true,
+    "level": "info",
+    "destination": {
+      "type": "file",
+      "path": "/var/log/jacs"
+    }
+  },
+  "metrics": {
+    "enabled": true,
+    "destination": {
+      "type": "file",
+      "path": "/var/log/jacs/metrics.txt"
+    },
+    "export_interval_seconds": 60
+  }
+}
+</code></pre>
+<h2 id="environment-variable-integration"><a class="header" href="#environment-variable-integration">Environment Variable Integration</a></h2>
+<p>The observability configuration works alongside JACS's core configuration system.</p>
+<h3 id="required-environment-variable"><a class="header" href="#required-environment-variable">Required Environment Variable</a></h3>
+<p>Only <strong>one</strong> environment variable is truly required:</p>
+<ul>
+<li><code>JACS_PRIVATE_KEY_PASSWORD</code> - Password for encrypting/decrypting private keys (required for cryptographic operations)</li>
+</ul>
+<h3 id="configuration-based-settings"><a class="header" href="#configuration-based-settings">Configuration-Based Settings</a></h3>
+<p>All other JACS settings are <strong>configuration file fields</strong> that have sensible defaults:</p>
+<ul>
+<li><code>jacs_data_directory</code> - Where agent/document data is stored (default: <code>./jacs_data</code>)</li>
+<li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
+<li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>RSA-PSS</code>)</li>
+<li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
+<li><code>jacs_use_security</code> - Enable security features (default: <code>false</code>)</li>
+</ul>
+<p>These can be overridden by environment variables if needed, but they are primarily configured through the <code>jacs.config.json</code> file.</p>
+<p>The observability configuration is completely optional - JACS will work without any observability configuration.</p>
+<h2 id="storage-configuration"><a class="header" href="#storage-configuration">Storage Configuration</a></h2>
+<p>The <code>jacs_default_storage</code> field determines where JACS stores agent data, documents, and keys. This is a critical configuration that affects how your data is persisted and accessed.</p>
+<h3 id="available-storage-backends"><a class="header" href="#available-storage-backends">Available Storage Backends</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Value</th><th>Description</th><th>Use Case</th></tr></thead><tbody>
+<tr><td><strong>Filesystem</strong></td><td><code>"fs"</code></td><td>Local file system storage</td><td>Development, single-node deployments</td></tr>
+<tr><td><strong>AWS S3</strong></td><td><code>"aws"</code></td><td>Amazon S3 object storage</td><td>Production, cloud deployments</td></tr>
+<tr><td><strong>HAI Remote</strong></td><td><code>"hai"</code></td><td>HAI.ai remote storage service</td><td>HAI.ai platform integration</td></tr>
+<tr><td><strong>Memory</strong></td><td><code>"memory"</code></td><td>In-memory storage (non-persistent)</td><td>Testing, temporary data</td></tr>
+<tr><td><strong>Web Local</strong></td><td><code>"local"</code></td><td>Browser local storage (WASM only)</td><td>Web applications</td></tr>
+</tbody></table>
+</div>
+<h3 id="backend-specific-configuration"><a class="header" href="#backend-specific-configuration">Backend-Specific Configuration</a></h3>
+<h4 id="filesystem-storage-fs"><a class="header" href="#filesystem-storage-fs">Filesystem Storage (<code>"fs"</code>)</a></h4>
+<pre><code class="language-json">{
+  "jacs_default_storage": "fs",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
+}
+</code></pre>
+<p><strong>Requirements:</strong> None - works out of the box
+<strong>Data location:</strong> Local directories as specified in config
+<strong>Best for:</strong> Development, local testing, single-machine deployments</p>
+<h4 id="aws-s3-storage-aws"><a class="header" href="#aws-s3-storage-aws">AWS S3 Storage (<code>"aws"</code>)</a></h4>
+<pre><code class="language-json">{
+  "jacs_default_storage": "aws"
+}
+</code></pre>
+<p><strong>Required Environment Variables:</strong></p>
+<ul>
+<li><code>JACS_ENABLE_AWS_BUCKET_NAME</code> - S3 bucket name</li>
+<li><code>AWS_ACCESS_KEY_ID</code> - AWS access key</li>
+<li><code>AWS_SECRET_ACCESS_KEY</code> - AWS secret key</li>
+<li><code>AWS_REGION</code> - AWS region (optional, defaults to us-east-1)</li>
+</ul>
+<p><strong>Best for:</strong> Production deployments, distributed systems, cloud-native applications</p>
+<h4 id="hai-remote-storage-hai"><a class="header" href="#hai-remote-storage-hai">HAI Remote Storage (<code>"hai"</code>)</a></h4>
+<pre><code class="language-json">{
+  "jacs_default_storage": "hai"
+}
+</code></pre>
+<p><strong>Required Environment Variables:</strong></p>
+<ul>
+<li><code>HAI_STORAGE_URL</code> - HAI.ai storage service endpoint</li>
+</ul>
+<p><strong>Best for:</strong> Integration with HAI.ai platform services</p>
+<h4 id="memory-storage-memory"><a class="header" href="#memory-storage-memory">Memory Storage (<code>"memory"</code>)</a></h4>
+<pre><code class="language-json">{
+  "jacs_default_storage": "memory"
+}
+</code></pre>
+<p><strong>Requirements:</strong> None
+<strong>Data persistence:</strong> None - data is lost when application stops
+<strong>Best for:</strong> Unit testing, temporary operations, development scenarios</p>
+<h3 id="storage-behavior"><a class="header" href="#storage-behavior">Storage Behavior</a></h3>
+<ul>
+<li><strong>Agent data</strong> (agent definitions, signatures) are stored using the configured backend</li>
+<li><strong>Documents</strong> are stored using the configured backend</li>
+<li><strong>Cryptographic keys</strong> are stored using the configured backend</li>
+<li><strong>Observability data</strong> (logs, metrics) can use separate storage via observability configuration</li>
+</ul>
+<h3 id="configuration-examples"><a class="header" href="#configuration-examples">Configuration Examples</a></h3>
+<p><strong>Development Setup (Filesystem)</strong></p>
+<pre><code class="language-json">{
+  "jacs_default_storage": "fs",
+  "jacs_data_directory": "./dev_data",
+  "jacs_key_directory": "./dev_keys"
+}
+</code></pre>
+<p><strong>Production Setup (AWS S3)</strong></p>
+<pre><code class="language-json">{
+  "jacs_default_storage": "aws"
+}
+</code></pre>
+<p>With environment variables:</p>
+<pre><code class="language-bash">export JACS_ENABLE_AWS_BUCKET_NAME="my-jacs-production-bucket"
+export AWS_ACCESS_KEY_ID="AKIA..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_REGION="us-west-2"
+</code></pre>
+<p><strong>HAI Platform Integration</strong></p>
+<pre><code class="language-json">{
+  "jacs_default_storage": "hai"
+}
+</code></pre>
+<p>With environment variable:</p>
+<pre><code class="language-bash">export HAI_STORAGE_URL="https://storage.hai.ai/v1"
+</code></pre>
+<h3 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h3>
+<ul>
+<li><strong>AWS S3</strong>: Ensure proper IAM permissions for bucket access</li>
+<li><strong>HAI Remote</strong>: Secure the <code>HAI_STORAGE_URL</code> endpoint and any required authentication</li>
+<li><strong>Filesystem</strong>: Ensure proper file system permissions for data and key directories</li>
+<li><strong>Keys</strong>: Regardless of storage backend, always set <code>JACS_PRIVATE_KEY_PASSWORD</code> for key encryption</li>
+</ul>
+<h3 id="migration-between-storage-backends"><a class="header" href="#migration-between-storage-backends">Migration Between Storage Backends</a></h3>
+<p>When changing storage backends, you'll need to:</p>
+<ol>
+<li>Export existing data from the current backend</li>
+<li>Update the <code>jacs_default_storage</code> configuration</li>
+<li>Set any required environment variables for the new backend</li>
+<li>Import data into the new backend</li>
+</ol>
+<p>JACS doesn't automatically migrate data between storage backends - this must be done manually or via custom scripts.</p>
 
                     </main>
 

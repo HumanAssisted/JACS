@@ -29,6 +29,7 @@ Jacs Configuration File
 | [jacs\_signature\_schema\_version](#jacs_signature_schema_version)      | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_signature_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version")     |
 | [jacs\_private\_key\_password](#jacs_private_key_password)              | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_private_key_password.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_private_key_password")             |
 | [jacs\_default\_storage](#jacs_default_storage)                         | `string` | Required | cannot be null | [Config](jacs-properties-jacs_default_storage.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_default_storage")                       |
+| [observability](#observability)                                         | `object` | Optional | cannot be null | [Config](jacs-properties-observability.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/observability")                                     |
 
 ## jacs\_use\_security
 
@@ -247,3 +248,21 @@ default storage to use
 | `"fs"`  |             |
 | `"aws"` |             |
 | `"hai"` |             |
+
+## observability
+
+Observability configuration for logging, metrics, and tracing
+
+`observability`
+
+* is optional
+
+* Type: `object` ([Details](jacs-properties-observability.md))
+
+* cannot be null
+
+* defined in: [Config](jacs-properties-observability.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/observability")
+
+### observability Type
+
+`object` ([Details](jacs-properties-observability.md))

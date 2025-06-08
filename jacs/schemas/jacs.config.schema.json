@@ -56,8 +56,160 @@
       "enum": [
         "fs", "aws", "hai"
       ]
+    },
+    "observability": {
+      "description": "Observability configuration for logging, metrics, and tracing",
+      "type": "object",
+      "properties": {
+        "logs": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "level": {
+              "type": "string",
+              "enum": ["trace", "debug", "info", "warn", "error"]
+            },
+            "destination": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "stderr" }
+                  },
+                  "required": ["type"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "file" },
+                    "path": { "type": "string" }
+                  },
+                  "required": ["type", "path"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "otlp" },
+                    "endpoint": { "type": "string" },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  },
+                  "required": ["type", "endpoint"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "null" }
+                  },
+                  "required": ["type"]
+                }
+              ]
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["enabled", "level", "destination"]
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "destination": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "prometheus" },
+                    "endpoint": { "type": "string" },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  },
+                  "required": ["type", "endpoint"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "otlp" },
+                    "endpoint": { "type": "string" },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  },
+                  "required": ["type", "endpoint"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "file" },
+                    "path": { "type": "string" }
+                  },
+                  "required": ["type", "path"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "stdout" }
+                  },
+                  "required": ["type"]
+                }
+              ]
+            },
+            "export_interval_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["enabled", "destination"]
+        },
+        "tracing": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "sampling": {
+              "type": "object",
+              "properties": {
+                "ratio": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0
+                },
+                "parent_based": { "type": "boolean" },
+                "rate_limit": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "resource": {
+              "type": "object",
+              "properties": {
+                "service_name": { "type": "string" },
+                "service_version": { "type": "string" },
+                "environment": { "type": "string" },
+                "attributes": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                }
+              },
+              "required": ["service_name"]
+            }
+          },
+          "required": ["enabled"]
+        }
+      },
+      "required": ["logs", "metrics"]
     }
-
   },
   "required": [
     "jacs_data_directory",
