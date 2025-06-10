@@ -8,7 +8,6 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
-  jaeger_data:
 
 services:
   # Jaeger - Distributed Tracing
@@ -89,7 +88,6 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
-      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -99,9 +97,12 @@ services:
 
   # JACS Agent
   jacs-agent:
+    platform: linux/amd64  # Force x86_64 to avoid ARM build issues
     build:
       context: .
       dockerfile: Dockerfile.jacs
+      platforms:
+        - linux/amd64
     container_name: jacs-agent
     volumes:
       - ./config/jacs.config.json:/app/jacs.config.json
@@ -110,7 +111,6 @@ services:
     environment:
       - RUST_LOG=debug
     depends_on:
-      - otel-collector
       - prometheus
     networks:
       - observability
