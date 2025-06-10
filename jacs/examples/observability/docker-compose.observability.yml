@@ -94,4 +94,17 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     networks:
       - observability
+
+  # JACS Agent - Data Generator
+  jacs-agent:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.jacs
+    container_name: jacs-agent
+    depends_on:
+      - otel-collector
+      - prometheus
+    networks:
+      - observability
  

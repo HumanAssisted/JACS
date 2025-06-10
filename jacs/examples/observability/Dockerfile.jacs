@@ -1,0 +1,29 @@
+FROM --platform=linux/amd64 rust:1.75 as builder
+
+WORKDIR /app
+COPY ../../ ./
+WORKDIR /app/examples/observability
+RUN cargo build --release
+
+FROM --platform=linux/amd64 debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /app/examples/observability/target/release/jacs-observability-demo ./jacs-agent
+
+# Create required directories
+RUN mkdir -p /app/logs /app/metrics /app/jacs_data /app/jacs_keys
+
+# Set required environment variables for JACS
+ENV JACS_USE_SECURITY=false
+ENV JACS_DATA_DIRECTORY=/app/jacs_data
+ENV JACS_KEY_DIRECTORY=/app/jacs_keys
+ENV JACS_AGENT_PRIVATE_KEY_FILENAME=rsa_pss_private.pem
+ENV JACS_AGENT_PUBLIC_KEY_FILENAME=rsa_pss_public.pem
+ENV JACS_AGENT_KEY_ALGORITHM=RSA-PSS
+ENV JACS_DEFAULT_STORAGE=fs
+ENV JACS_AGENT_ID_AND_VERSION=demo-agent:demo-version
+ENV DOCKER_MODE=true
+
+CMD ["./jacs-agent"]

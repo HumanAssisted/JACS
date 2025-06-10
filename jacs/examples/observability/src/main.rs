@@ -16,38 +16,77 @@ use std::thread;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting JACS Observability Demo...");
 
-    let config = ObservabilityConfig {
-        logs: LogConfig {
-            enabled: true,
-            level: "info".to_string(),
-            destination: LogDestination::File { path: "./logs".to_string() },
-            headers: None,
-        },
-        metrics: MetricsConfig {
-            enabled: true,
-            destination: MetricsDestination::Stdout,
-            export_interval_seconds: Some(1),
-            headers: None,
-        },
-        tracing: None,
+    // Create directories
+    std::fs::create_dir_all("./logs")?;
+    std::fs::create_dir_all("./metrics")?;
+
+    // For Docker: send to Prometheus and OTLP
+    // For local testing: use File destinations
+    let config = if std::env::var("DOCKER_MODE").is_ok() {
+        ObservabilityConfig {
+            logs: LogConfig {
+                enabled: true,
+                level: "info".to_string(),
+                destination: LogDestination::Otlp {
+                    endpoint: "http://otel-collector:4318".to_string(),
+                    headers: None,
+                },
+                headers: None,
+            },
+            metrics: MetricsConfig {
+                enabled: true,
+                destination: MetricsDestination::Prometheus {
+                    endpoint: "http://prometheus:9090".to_string(),
+                    headers: None,
+                },
+                export_interval_seconds: Some(5),
+                headers: None,
+            },
+            tracing: None,
+        }
+    } else {
+        // Local mode - use files so we can see output
+        ObservabilityConfig {
+            logs: LogConfig {
+                enabled: true,
+                level: "info".to_string(),
+                destination: LogDestination::File { path: "./logs".to_string() },
+                headers: None,
+            },
+            metrics: MetricsConfig {
+                enabled: true,
+                destination: MetricsDestination::File { path: "./metrics/metrics.txt".to_string() },
+                export_interval_seconds: Some(2),
+                headers: None,
+            },
+            tracing: None,
+        }
     };
 
     init_observability(config)?;
 
     // Generate sample data
-    for i in 1..=10 {
+    for i in 1u64..=20u64 {
         record_agent_operation("test_op", &format!("agent_{}", i % 3), i % 5 != 0, 100 + i % 200);
         record_signature_verification(&format!("agent_{}", i % 3), i % 7 != 0, "RSA-PSS");
         
-        println!("Generated sample {} of 10", i);
-        thread::sleep(Duration::from_secs(2));
+        // Add some variety
+        if i % 3 == 0 {
+            record_agent_operation("load_agent", &format!("agent_{}", i % 4), true, 50 + i % 100);
+        }
+        if i % 4 == 0 {
+            record_signature_verification(&format!("agent_{}", i % 2), false, "Ed25519");
+        }
+
+        println!("Generated sample {} - agent operations and signatures", i);
+        thread::sleep(Duration::from_millis(1000));
     }
 
     println!("Flushing observability data...");
     jacs::observability::reset_observability();
     thread::sleep(Duration::from_secs(2));
+    println!("Demo complete! Check ./logs/ and ./metrics/metrics.txt");
 
-    println!("Demo complete! Check ./logs/ and ./metrics.txt");
     Ok(())
 }
 
