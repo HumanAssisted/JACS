@@ -21,7 +21,7 @@ processors:
     limit_mib: 512
 
 exporters:
-  jaeger:
+  otlp/jaeger:
     endpoint: jaeger:14250
     tls:
       insecure: true
@@ -32,16 +32,24 @@ exporters:
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1888
+  zpages:
+    endpoint: 0.0.0.0:55679
+
 service:
   extensions: [health_check, pprof, zpages]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
     
     metrics:
-      receivers: [otlp, prometheus]
+      receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [prometheusremotewrite]
     

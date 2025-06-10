@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   observability:
     driver: bridge
@@ -92,19 +90,6 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
-    networks:
-      - observability
-
-  # JACS Agent - Data Generator
-  jacs-agent:
-    platform: linux/amd64
-    build:
-      context: ../../  # Build from the root workspace
-      dockerfile: examples/observability/Dockerfile.jacs
-    container_name: jacs-agent
-    depends_on:
-      - otel-collector
-      - prometheus
     networks:
       - observability
  

@@ -1,69 +1,39 @@
 # JACS Observability Demo
 
-Run the observability stack:
+## Quick Start
 
+1. **Start the observability stack:**
 ```bash
 docker compose -f docker-compose.observability.yml up -d
 ```
 
-## Access the Services
-
-- **Grafana Dashboard**: http://localhost:3000 (admin/admin)
-- **Prometheus**: http://localhost:9090
-- **Jaeger Tracing**: http://localhost:16686
-- **Loki Logs**: http://localhost:3100
-- **OpenTelemetry Collector**: http://localhost:8888 (metrics)
-
-## Local Testing
-
-Run locally without Docker:
+2. **Run the JACS demo:**
 ```bash
 cargo run
 ```
 
-This will create `./logs/` and `./metrics/metrics.txt` files locally.
+3. **View the results:**
+- **Grafana**: http://localhost:3000 (admin/admin)
+- **Prometheus**: http://localhost:9090  
+- **Jaeger**: http://localhost:16686
 
-## Configuration
+## What it does
 
-The observability configuration uses:
-- Docker mode: sends to OTLP collector and Prometheus
-- Local mode: writes to local files
+The demo runs locally and sends:
+- Metrics → Prometheus (via localhost:9090)
+- Logs → OpenTelemetry Collector (via localhost:4318) → Loki
+- Traces → Jaeger (via OTLP collector)
 
-Set `DOCKER_MODE=1` environment variable to use Docker endpoints.
+The demo will run for 50 iterations (~2 minutes) then exit.
 
-Observability section
+## Cleanup
 
-    "observability": {
-        "logs": {
-        "enabled": true,
-        "level": "debug",
-        "destination": {
-            "type": "otlp",
-            "endpoint": "http://otel-collector:4318",
-            "headers": {
-            "Content-Type": "application/json"
-            }
-        }
-        },
-        "metrics": {
-        "enabled": true,
-        "destination": {
-            "type": "prometheus",
-            "endpoint": "http://prometheus:9090",
-            "headers": {}
-        },
-        "export_interval_seconds": 15
-        },
-        "tracing": {
-        "enabled": true,
-        "sampling": {
-            "ratio": 1.0,
-            "parent_based": true
-        },
-        "resource": {
-            "service_name": "jacs-agent",
-            "service_version": "1.0.0",
-            "environment": "development"
-        }
-        }
-    }
+```bash
+docker compose -f docker-compose.observability.yml down
+```
+```
+
+Now you can:
+1. `docker compose -f docker-compose.observability.yml up -d`
+2. `cargo run` 
+3. Check Grafana at http://localhost:3000 to see your data!
