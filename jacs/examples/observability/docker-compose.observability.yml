@@ -99,8 +99,8 @@ services:
   jacs-agent:
     platform: linux/amd64
     build:
-      context: .
-      dockerfile: Dockerfile.jacs
+      context: ../../  # Build from the root workspace
+      dockerfile: examples/observability/Dockerfile.jacs
     container_name: jacs-agent
     depends_on:
       - otel-collector
