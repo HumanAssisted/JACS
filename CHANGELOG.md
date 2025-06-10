@@ -35,7 +35,7 @@
 ## 0.3.7
 
 ### devrel
-- [] github actions builder for auto deploy of versions
+- [] github actions builder for auto build/deploy of platform specific versions
 
 ### jacsnpm
 

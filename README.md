@@ -4,6 +4,9 @@ Welcome to JACS (JSON Agent Communication Standard).
 
 JACS is used by agents to validate the source and identity of data. The data may be ephemeral, changing, or idempotent such as files, identities, logs, http requests. 
 
+JACS is for data provenance. JACS is a set of JSON Schema definitions that provide headers for cryptographic signatures. The library is used to wrap data in an JSON envelope that can be used in a variety of untrusted where contexts every new or modified payload (web request, email, document, etc) needs to be verified. 
+
+
 Example uses:
 
   1. A document is sitting on a server. Where did it come from? Who has access to it?
