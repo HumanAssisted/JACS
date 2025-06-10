@@ -14,72 +14,40 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting JACS Observability Server...");
+    println!("Starting JACS Observability Demo...");
 
-    // Configure observability for local development
     let config = ObservabilityConfig {
         logs: LogConfig {
             enabled: true,
             level: "info".to_string(),
-            destination: LogDestination::File {
-                path: "./logs".to_string(),
-                headers: None,
-            },
+            destination: LogDestination::File { path: "./logs".to_string() },
+            headers: None,
         },
         metrics: MetricsConfig {
             enabled: true,
-            destination: MetricsDestination::File {
-                path: "./metrics.txt".to_string(),
-                headers: None,
-            },
-            export_interval_seconds: Some(10),
+            destination: MetricsDestination::Stdout,
+            export_interval_seconds: Some(1),
+            headers: None,
         },
         tracing: None,
     };
 
-    // Initialize observability
-    let _metrics_handle = init_observability(config)?;
-    
-    info!("JACS Observability Server started successfully");
+    init_observability(config)?;
 
-    // Create shutdown flag
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    // Handle Ctrl+C
-    ctrlc::set_handler(move || {
-        println!("Received Ctrl+C, shutting down...");
-        r.store(false, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
-
-    // Start HTTP server in background thread
-    let server_running = running.clone();
-    let server_handle = thread::spawn(move || {
-        start_http_server(server_running);
-    });
-
-    // Start metrics generation loop
-    let metrics_running = running.clone();
-    let metrics_handle = thread::spawn(move || {
-        observability_loop(metrics_running);
-    });
-
-    // Wait for shutdown signal
-    while running.load(Ordering::SeqCst) {
-        thread::sleep(Duration::from_millis(100));
+    // Generate sample data
+    for i in 1..=10 {
+        record_agent_operation("test_op", &format!("agent_{}", i % 3), i % 5 != 0, 100 + i % 200);
+        record_signature_verification(&format!("agent_{}", i % 3), i % 7 != 0, "RSA-PSS");
+        
+        println!("Generated sample {} of 10", i);
+        thread::sleep(Duration::from_secs(2));
     }
 
-    println!("Shutting down gracefully...");
-    
-    // Wait for threads to finish (they should exit when running becomes false)
-    let _ = server_handle.join();
-    let _ = metrics_handle.join();
-
-    // Flush observability
+    println!("Flushing observability data...");
     jacs::observability::reset_observability();
-    thread::sleep(Duration::from_millis(500));
+    thread::sleep(Duration::from_secs(2));
 
-    println!("Server stopped.");
+    println!("Demo complete! Check ./logs/ and ./metrics.txt");
     Ok(())
 }
 
