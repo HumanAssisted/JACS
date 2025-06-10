@@ -20,17 +20,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = ObservabilityConfig {
         logs: LogConfig {
             enabled: true,
-            level: "debug".to_string(),
+            level: "info".to_string(),
             destination: LogDestination::File {
                 path: "./logs".to_string(),
+                headers: None,
             },
         },
         metrics: MetricsConfig {
             enabled: true,
             destination: MetricsDestination::File {
-                path: "./metrics/metrics.txt".to_string(),
+                path: "./metrics.txt".to_string(),
+                headers: None,
             },
-            export_interval_seconds: Some(15),
+            export_interval_seconds: Some(10),
         },
         tracing: None,
     };
@@ -115,7 +117,7 @@ fn observability_loop(running: Arc<AtomicBool>) {
         simulate_agent_operations(counter);
         
         // Wait 10 seconds before next iteration
-        thread::sleep(Duration::from_secs(10));
+        thread::sleep(Duration::from_secs(5));
     }
 }
 

@@ -94,23 +94,4 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     networks:
       - observability
-
-  # JACS Agent
-  jacs-agent:
-    platform: linux/amd64  # Force x86_64 to avoid ARM build issues
-    build:
-      context: .
-      dockerfile: Dockerfile.jacs
-      platforms:
-        - linux/amd64
-    container_name: jacs-agent
-    volumes:
-      - ./config/jacs.config.json:/app/jacs.config.json
-      - ./logs:/app/logs
-      - ./metrics:/app/metrics
-    environment:
-      - RUST_LOG=debug
-    depends_on:
-      - prometheus
-    networks:
-      - observability
+ 

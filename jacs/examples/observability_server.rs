@@ -1,15 +1,16 @@
 // Long-running JACS agent for observability demonstration
 // Run with: cargo run --example observability_server
 
+use jacs::init_custom_observability;
 use jacs::observability::convenience::{
-    record_agent_operation, record_signature_verification, record_network_request, record_memory_usage
+    record_agent_operation, record_memory_usage, record_network_request,
+    record_signature_verification,
 };
 use jacs::{LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig};
-use jacs::{init_custom_observability};
-use tracing::{debug, error, info, warn};
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time;
-use std::collections::HashMap;
+use tracing::{debug, error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     init_custom_observability(custom_config)?;
-    
+
     info!("JACS Observability Server started successfully");
 
     // Start a simple HTTP server for health checks and metrics endpoint
@@ -63,12 +64,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn start_http_server() {
     use std::net::SocketAddr;
-    use tokio::net::TcpListener;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     let addr: SocketAddr = "0.0.0.0:8080".parse().unwrap();
     let listener = TcpListener::bind(addr).await.unwrap();
-    
+
     info!("HTTP server listening on {}", addr);
 
     loop {
@@ -96,13 +97,13 @@ async fn start_http_server() {
 
 async fn observability_loop() {
     let mut counter = 0u64;
-    
+
     loop {
         counter += 1;
-        
+
         // Simulate various agent operations
         simulate_agent_operations(counter).await;
-        
+
         // Wait 10 seconds before next iteration
         time::sleep(Duration::from_secs(10)).await;
     }
@@ -113,14 +114,24 @@ async fn simulate_agent_operations(iteration: u64) {
 
     // Simulate successful agent load operation
     if iteration % 3 == 0 {
-        record_agent_operation("load_agent", &format!("agent_{}", iteration % 5), true, 150 + (iteration % 100));
+        record_agent_operation(
+            "load_agent",
+            &format!("agent_{}", iteration % 5),
+            true,
+            150 + (iteration % 100),
+        );
         debug!("Simulated successful agent load");
     }
 
     // Simulate agent save operation (occasionally fails)
     let save_success = iteration % 7 != 0;
-    record_agent_operation("save_agent", &format!("agent_{}", iteration % 3), save_success, 200 + (iteration % 50));
-    
+    record_agent_operation(
+        "save_agent",
+        &format!("agent_{}", iteration % 3),
+        save_success,
+        200 + (iteration % 50),
+    );
+
     if save_success {
         debug!("Simulated successful agent save");
     } else {
@@ -132,9 +143,12 @@ async fn simulate_agent_operations(iteration: u64) {
     let algorithms = ["RSA-PSS", "Ed25519", "ECDSA"];
     let algorithm = algorithms[(iteration % 3) as usize];
     record_signature_verification(&format!("agent_{}", iteration % 4), sig_success, algorithm);
-    
+
     if sig_success {
-        debug!("Simulated successful signature verification with {}", algorithm);
+        debug!(
+            "Simulated successful signature verification with {}",
+            algorithm
+        );
     } else {
         error!("Simulated failed signature verification with {}", algorithm);
     }
@@ -143,15 +157,17 @@ async fn simulate_agent_operations(iteration: u64) {
     let status_codes = [200, 201, 400, 404, 500];
     let endpoints = ["/api/agents", "/api/documents", "/api/signatures"];
     let methods = ["GET", "POST", "PUT"];
-    
+
     let endpoint = endpoints[(iteration % 3) as usize];
     let method = methods[(iteration % 3) as usize];
     let status = status_codes[(iteration % 5) as usize];
     let duration = 50 + (iteration % 200);
-    
+
     record_network_request(endpoint, method, status, duration);
-    info!("Simulated {} {} request to {} - Status: {}, Duration: {}ms", 
-          method, endpoint, endpoint, status, duration);
+    info!(
+        "Simulated {} {} request to {} - Status: {}, Duration: {}ms",
+        method, endpoint, endpoint, status, duration
+    );
 
     // Simulate memory usage
     let components = ["agent_cache", "document_store", "key_manager"];
@@ -165,7 +181,7 @@ async fn simulate_agent_operations(iteration: u64) {
     if iteration % 20 == 0 {
         warn!("Simulated periodic warning - high memory usage detected");
     }
-    
+
     if iteration % 50 == 0 {
         error!("Simulated rare error condition");
     }
