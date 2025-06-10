@@ -12,7 +12,7 @@
 
 ## Features
 
-JACS provides middleware applicable to http, email, mpc (json-rpc), a2a,
+JACS provides middleware applicable to http, email, mpc, a2a,
 
 - **Cryptographic Security**: RSA, Ed25519, and post-quantum algorithms
 - **JSON Schema Validation**: Enforced document structure

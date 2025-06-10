@@ -86,7 +86,7 @@
 
 ### devex
 
-
+- [] add more feature flags for modular integrations
 - [] a2a integration
 - [] acp integration
 - [] add updates to book
@@ -102,8 +102,8 @@
  - [] PKI choice (dkim, ke)
  - [] private key bootstrapping with vault, kerberos - filesystem
  - [] api for easier integratios data processing 
- - [] add observability to configuration
- - [] add more feature flags for integrations
+ - [x] add observability to configuration
+
  - [] test centralized logging output without file output 
 
 ### jacsmcp
