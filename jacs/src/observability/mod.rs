@@ -36,7 +36,15 @@ pub fn init_observability(
     // Initialize tracing FIRST (before logs!)
     if let Some(tracing_config) = &config.tracing {
         if tracing_config.enabled {
-            init_tracing(tracing_config)?;
+            match init_tracing(tracing_config) {
+                Ok(_) => {}
+                Err(e) => {
+                    warn!(
+                        "Info: init_tracing reported: {} (possibly already initialized)",
+                        e
+                    );
+                }
+            }
         }
     }
 
