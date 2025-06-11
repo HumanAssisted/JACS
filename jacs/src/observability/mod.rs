@@ -1,10 +1,17 @@
-use serde::{Deserialize, Serialize};
+use opentelemetry::{KeyValue, global, trace::TracerProvider};
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::{Arc, Mutex};
 use tracing::warn;
 
 pub mod convenience;
 pub mod logs;
 pub mod metrics;
+
+// Re-export config types so existing imports still work
+pub use crate::config::{
+    LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
+    ResourceConfig, SamplingConfig, TracingConfig, TracingDestination,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 use tracing_appender::non_blocking::WorkerGuard;
@@ -17,62 +24,6 @@ static LOG_WORKER_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static TEST_METRICS_RECORDER_HANDLE: Mutex<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>> =
     Mutex::new(None);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObservabilityConfig {
-    pub logs: LogConfig,
-    pub metrics: MetricsConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LogConfig {
-    pub enabled: bool,
-    pub level: String,
-    pub destination: LogDestination,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MetricsConfig {
-    pub enabled: bool,
-    pub destination: MetricsDestination,
-    pub export_interval_seconds: Option<u64>,
-}
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum LogDestination {
-    #[serde(rename = "http")]
-    Http { endpoint: String },
-    #[serde(rename = "console")]
-    Console,
-    #[serde(rename = "null")]
-    Null,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum LogDestination {
-    #[serde(rename = "stderr")]
-    Stderr,
-    #[serde(rename = "file")]
-    File { path: String },
-    #[serde(rename = "otlp")]
-    Otlp { endpoint: String },
-    #[serde(rename = "null")]
-    Null,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum MetricsDestination {
-    #[serde(rename = "otlp")]
-    Otlp { endpoint: String },
-    #[serde(rename = "prometheus")]
-    Prometheus { endpoint: String },
-    #[serde(rename = "file")]
-    File { path: String },
-    #[serde(rename = "stdout")]
-    Stdout,
-}
-
 pub fn init_observability(
     config: ObservabilityConfig,
 ) -> Result<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>, Box<dyn std::error::Error>> {
@@ -82,76 +33,62 @@ pub fn init_observability(
         return Err("CONFIG lock poisoned".into());
     }
 
-    // Attempt to initialize logs.
-    // `tracing_subscriber::...try_init()` has its own `Once`.
-    // Only the first *successful* call to `try_init` sets the global subscriber.
-    match logs::init_logs(&config.logs) {
-        Ok(guard_option) => {
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Some(new_guard) = guard_option {
-                if let Ok(mut global_guard_handle) = LOG_WORKER_GUARD.lock() {
-                    if let Some(old_guard) = global_guard_handle.take() {
-                        drop(old_guard); // Ensure previous guard is flushed and dropped
-                    }
-                    *global_guard_handle = Some(new_guard);
-                } else {
+    // Initialize tracing FIRST (before logs!)
+    if let Some(tracing_config) = &config.tracing {
+        if tracing_config.enabled {
+            match init_tracing(tracing_config) {
+                Ok(_) => {}
+                Err(e) => {
                     warn!(
-                        "Warning: LOG_WORKER_GUARD lock poisoned during init, cannot store new guard."
+                        "Info: init_tracing reported: {} (possibly already initialized)",
+                        e
                     );
                 }
             }
         }
-        Err(e) => {
-            // This error often means a global subscriber was already set.
-            // This is okay if the existing subscriber is compatible or if this config doesn't need to be the primary.
-            warn!(
-                "Info: logs::init_logs reported: {} (possibly already initialized or incompatible re-init)",
-                e
-            );
-        }
     }
 
-    // Attempt to initialize metrics.
-    // `metrics::set_global_recorder` also has `Once` semantics.
-    let mut metrics_handle_for_return: Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>> = None;
-
-    match metrics::init_metrics(&config.metrics) {
-        Ok(captured_arc_option) => {
-            if let Ok(mut global_metrics_handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
-                *global_metrics_handle = captured_arc_option.clone(); // Store Arc if File, or None otherwise
-                metrics_handle_for_return = captured_arc_option;
-            } else {
-                warn!(
-                    "Warning: TEST_METRICS_RECORDER_HANDLE lock poisoned, cannot store metrics Arc."
-                );
-            }
-        }
-        Err(e) => {
-            // This error often means a global recorder was already set.
-            warn!(
-                "Info: metrics::init_metrics reported: {} (possibly already initialized or incompatible re-init)",
-                e
-            );
-
-            // For File destination, still try to return existing handle if available
-            if config.metrics.enabled
-                && matches!(config.metrics.destination, MetricsDestination::File { .. })
-            {
-                if let Ok(handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
-                    metrics_handle_for_return = handle.clone();
+    // Initialize logs SECOND - but modify logs.rs to NOT call try_init if subscriber exists
+    match logs::init_logs(&config.logs) {
+        Ok(guard_option) =>
+        {
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(new_guard) = guard_option {
+                if let Ok(mut global_guard_handle) = LOG_WORKER_GUARD.lock() {
+                    if let Some(old_guard) = global_guard_handle.take() {
+                        drop(old_guard);
+                    }
+                    *global_guard_handle = Some(new_guard);
                 }
             }
         }
+        Err(e) => {
+            warn!(
+                "Info: logs::init_logs reported: {} (possibly already initialized)",
+                e
+            );
+        }
     }
 
-    // Return handle for InMemoryMetricsRecorder if configured for File destination
-    if config.metrics.enabled
-        && matches!(config.metrics.destination, MetricsDestination::File { .. })
-    {
-        return Ok(metrics_handle_for_return);
+    // Initialize metrics last
+    let mut metrics_handle_for_return: Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>> = None;
+
+    match metrics::init_metrics(&config.metrics) {
+        Ok((captured_arc_option, _meter_provider)) => {
+            if let Ok(mut global_metrics_handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
+                *global_metrics_handle = captured_arc_option.clone();
+                metrics_handle_for_return = captured_arc_option;
+            }
+        }
+        Err(e) => {
+            warn!(
+                "Info: metrics::init_metrics reported: {} (possibly already initialized)",
+                e
+            );
+        }
     }
 
-    Ok(None)
+    Ok(metrics_handle_for_return)
 }
 
 pub fn get_config() -> Option<ObservabilityConfig> {
@@ -198,4 +135,94 @@ pub fn flush_observability() {
     // Primarily, flushing is handled by dropping LOG_WORKER_GUARD in reset_observability.
     // A small explicit sleep can help ensure file system operations complete in CI.
     std::thread::sleep(std::time::Duration::from_millis(50));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>> {
+    use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
+    use opentelemetry_sdk::{
+        Resource,
+        trace::{Sampler, SdkTracerProvider},
+    };
+    use tracing_subscriber::{Registry, layer::SubscriberExt};
+
+    // Get endpoint and ensure it has the correct path for HTTP OTLP
+    let endpoint = config
+        .destination
+        .as_ref()
+        .map(|dest| match dest {
+            crate::config::TracingDestination::Otlp { endpoint, .. } => {
+                // Ensure endpoint has /v1/traces path for HTTP OTLP
+                if endpoint.ends_with("/v1/traces") {
+                    endpoint.clone()
+                } else if endpoint.ends_with("/") {
+                    format!("{}v1/traces", endpoint)
+                } else {
+                    format!("{}/v1/traces", endpoint)
+                }
+            }
+            crate::config::TracingDestination::Jaeger { endpoint, .. } => endpoint.clone(),
+        })
+        .unwrap_or_else(|| "http://localhost:4318/v1/traces".to_string());
+
+    println!("DEBUG: Using OTLP endpoint: {}", endpoint);
+
+    // Use blocking HTTP client (enabled by "reqwest-blocking-client" feature)
+    let exporter = SpanExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(endpoint)
+        .build()?;
+
+    println!("DEBUG: SpanExporter built successfully with blocking client");
+
+    // Build provider (your existing code)
+    let service_name = config
+        .resource
+        .as_ref()
+        .map(|r| r.service_name.clone())
+        .unwrap_or_else(|| "jacs-demo".to_string());
+
+    let mut resource_builder = Resource::builder().with_service_name(service_name.clone());
+
+    if let Some(resource_config) = &config.resource {
+        if let Some(version) = &resource_config.service_version {
+            resource_builder =
+                resource_builder.with_attribute(KeyValue::new("service.version", version.clone()));
+        }
+        if let Some(env) = &resource_config.environment {
+            resource_builder =
+                resource_builder.with_attribute(KeyValue::new("environment", env.clone()));
+        }
+        for (k, v) in &resource_config.attributes {
+            resource_builder = resource_builder.with_attribute(KeyValue::new(k.clone(), v.clone()));
+        }
+    }
+
+    let resource = resource_builder.build();
+
+    let sampler = if config.sampling.ratio < 1.0 {
+        Sampler::TraceIdRatioBased(config.sampling.ratio)
+    } else {
+        Sampler::AlwaysOn
+    };
+
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(resource)
+        .with_sampler(sampler)
+        .build();
+
+    let tracer = provider.tracer(service_name);
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+
+    let subscriber = Registry::default()
+        .with(telemetry)
+        .with(tracing_subscriber::fmt::layer());
+
+    tracing::subscriber::set_global_default(subscriber)?;
+    global::set_tracer_provider(provider);
+
+    println!("DEBUG: OpenTelemetry tracing initialized with blocking HTTP client");
+    Ok(())
 }

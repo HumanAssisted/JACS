@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Remove this - jacs-agent doesn't exist
+  # - job_name: 'jacs-agent'
+  #   static_configs:
+  #     - targets: ['jacs-agent:8080']
+
+  - job_name: 'otel-collector-internal'
+    static_configs:
+      - targets: ['otel-collector:8888']  # Collector's internal metrics
+
+  # ADD THIS - Your JACS metrics via OTLP → Prometheus exporter
+  - job_name: 'jacs-metrics'
+    static_configs:
+      - targets: ['otel-collector:8889']  # Your app metrics
+    scrape_interval: 5s

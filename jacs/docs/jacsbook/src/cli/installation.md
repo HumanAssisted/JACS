@@ -37,6 +37,7 @@ See pre-commit
  - install `jq` e.g. `brew install jq` or use your package manager (e.g., `apt install jq` for Debian/Ubuntu)
  - for documentation    `npm install -g @adobe/jsonschema2md`
  - cargo install mdbook
+ 
 
 Otherwise, it's a standard Rust project.
 

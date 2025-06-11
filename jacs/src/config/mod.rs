@@ -1,4 +1,3 @@
-use crate::observability::ObservabilityConfig;
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
 use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var, set_env_var_override};
 use getset::Getters;
@@ -6,6 +5,7 @@ use jsonschema::{Draft, Validator};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -58,6 +58,7 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default = "default_storage")]
     jacs_default_storage: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
 }
 
@@ -235,11 +236,12 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
 
 pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
     let config: Config = match fs::read_to_string(format!("{}jacs.config.json", path)) {
-        Ok(content) => serde_json::from_value(validate_config(&content).unwrap_or_default())
-            .unwrap_or_default(),
+        Ok(content) => {
+            let validated_value = validate_config(&content)?;
+            serde_json::from_value(validated_value)?
+        }
         Err(_) => Config::default(),
     };
-
     Ok(config)
 }
 
@@ -250,8 +252,10 @@ pub fn set_env_vars(
     ignore_agent_id: bool,
 ) -> Result<String, Box<dyn Error>> {
     let config: Config = match config_json {
-        Some(json_str) => serde_json::from_value(validate_config(json_str).unwrap_or_default())
-            .unwrap_or_default(),
+        Some(json_str) => {
+            let validated_value = validate_config(json_str)?;
+            serde_json::from_value(validated_value)?
+        }
         None => find_config(".".to_string())?,
     };
     // debug!("configs from file {:?}", config);
@@ -407,4 +411,182 @@ pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
     }
 
     Ok(message)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ObservabilityConfig {
+    #[serde(default)]
+    pub logs: LogConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
+    #[serde(default)]
+    pub tracing: Option<TracingConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_log_level")]
+    pub level: String,
+    #[serde(default = "default_log_destination")]
+    pub destination: LogDestination,
+    #[serde(default)]
+    pub headers: Option<HashMap<String, String>>,
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            level: "info".to_string(),
+            destination: LogDestination::Stderr,
+            headers: None,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_log_level() -> String {
+    "info".to_string()
+}
+fn default_log_destination() -> LogDestination {
+    LogDestination::Stderr
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub destination: MetricsDestination,
+    pub export_interval_seconds: Option<u64>,
+    #[serde(default)]
+    pub headers: Option<HashMap<String, String>>,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            destination: MetricsDestination::Stdout,
+            export_interval_seconds: None,
+            headers: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TracingConfig {
+    pub enabled: bool,
+    #[serde(default)]
+    pub sampling: SamplingConfig,
+    #[serde(default)]
+    pub resource: Option<ResourceConfig>,
+    #[serde(default)]
+    pub destination: Option<TracingDestination>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamplingConfig {
+    #[serde(default = "default_sampling_ratio")]
+    pub ratio: f64,
+    #[serde(default)]
+    pub parent_based: bool,
+    #[serde(default)]
+    pub rate_limit: Option<u32>, // samples per second
+}
+
+impl Default for SamplingConfig {
+    fn default() -> Self {
+        Self {
+            ratio: 1.0, // Sample everything by default
+            parent_based: true,
+            rate_limit: None,
+        }
+    }
+}
+
+fn default_sampling_ratio() -> f64 {
+    1.0
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceConfig {
+    pub service_name: String,
+    pub service_version: Option<String>,
+    pub environment: Option<String>,
+    #[serde(default)]
+    pub attributes: HashMap<String, String>,
+}
+
+// Update the destination enums to support headers
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum LogDestination {
+    #[serde(rename = "stderr")]
+    Stderr,
+    #[serde(rename = "file")]
+    File { path: String },
+    #[serde(rename = "otlp")]
+    Otlp {
+        endpoint: String,
+        #[serde(default)]
+        headers: Option<HashMap<String, String>>,
+    },
+    #[serde(rename = "null")]
+    Null,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum MetricsDestination {
+    #[serde(rename = "otlp")]
+    Otlp {
+        endpoint: String,
+        #[serde(default)]
+        headers: Option<HashMap<String, String>>,
+    },
+    #[serde(rename = "prometheus")]
+    Prometheus {
+        endpoint: String,
+        #[serde(default)]
+        headers: Option<HashMap<String, String>>,
+    },
+    #[serde(rename = "file")]
+    File { path: String },
+    #[serde(rename = "stdout")]
+    Stdout,
+}
+
+impl Default for MetricsDestination {
+    fn default() -> Self {
+        MetricsDestination::Stdout
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TracingDestination {
+    #[serde(rename = "otlp")]
+    Otlp {
+        endpoint: String,
+        #[serde(default)]
+        headers: Option<HashMap<String, String>>,
+    },
+    #[serde(rename = "jaeger")]
+    Jaeger {
+        endpoint: String,
+        #[serde(default)]
+        headers: Option<HashMap<String, String>>,
+    },
+}
+
+impl Default for TracingDestination {
+    fn default() -> Self {
+        TracingDestination::Otlp {
+            endpoint: "http://localhost:4318".to_string(),
+            headers: None,
+        }
+    }
 }

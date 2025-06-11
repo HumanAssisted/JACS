@@ -9,6 +9,7 @@ use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 use tracing::debug;
@@ -23,31 +24,38 @@ pub mod storage;
 
 // #[cfg(feature = "cli")]
 pub mod cli_utils;
-
 // Re-export observability types for convenience
 pub use observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-    init_observability,
+    ResourceConfig, SamplingConfig, TracingConfig, TracingDestination, init_observability,
 };
 
 /// Initialize observability with a default configuration suitable for most applications.
 /// This sets up file-based logging and metrics in the current directory.
 pub fn init_default_observability() -> Result<(), Box<dyn std::error::Error>> {
     let config = ObservabilityConfig {
-        logs: observability::LogConfig {
+        logs: LogConfig {
             enabled: true,
             level: "info".to_string(),
-            destination: observability::LogDestination::File {
+            destination: LogDestination::File {
                 path: "./logs".to_string(),
             },
+            headers: None,
         },
-        metrics: observability::MetricsConfig {
+        metrics: MetricsConfig {
             enabled: true,
-            destination: observability::MetricsDestination::File {
+            destination: MetricsDestination::File {
                 path: "./metrics.txt".to_string(),
             },
             export_interval_seconds: Some(60),
+            headers: None,
         },
+        tracing: Some(TracingConfig {
+            enabled: false, // Disabled by default
+            sampling: SamplingConfig::default(),
+            resource: None,
+            destination: None,
+        }),
     };
 
     init_observability(config).map(|_| ())

@@ -42,6 +42,46 @@
 
 * [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1`
 
+* [Untitled object in Config](./jacs-properties-observability.md "Observability configuration for logging, metrics, and tracing") – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-logs.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-logs-properties-destination-oneof-0.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs/properties/destination/oneOf/0`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-logs-properties-destination-oneof-1.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs/properties/destination/oneOf/1`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-logs-properties-destination-oneof-2.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs/properties/destination/oneOf/2`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-logs-properties-destination-oneof-2-properties-headers.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs/properties/destination/oneOf/2/properties/headers`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-logs-properties-destination-oneof-3.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs/properties/destination/oneOf/3`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-logs-properties-headers.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs/properties/headers`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics-properties-destination-oneof-0.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics/properties/destination/oneOf/0`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics-properties-destination-oneof-0-properties-headers.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics/properties/destination/oneOf/0/properties/headers`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics-properties-destination-oneof-1.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics/properties/destination/oneOf/1`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics-properties-destination-oneof-1-properties-headers.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics/properties/destination/oneOf/1/properties/headers`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics-properties-destination-oneof-2.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics/properties/destination/oneOf/2`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics-properties-destination-oneof-3.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics/properties/destination/oneOf/3`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-metrics-properties-headers.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/metrics/properties/headers`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-tracing.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/tracing`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-tracing-properties-sampling.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/tracing/properties/sampling`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-tracing-properties-resource.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/tracing/properties/resource`
+
+* [Untitled object in Config](./jacs-properties-observability-properties-tracing-properties-resource-properties-attributes.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/tracing/properties/resource/properties/attributes`
+
 * [Untitled object in Message](./message-allof-1.md) – `https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1`
 
 * [Untitled object in Message](./message-allof-1-properties-content.md "body , subject etc") – `https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/content`
