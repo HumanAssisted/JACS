@@ -138,15 +138,26 @@ fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>
     };
     use tracing_subscriber::{Registry, layer::SubscriberExt};
 
-    // Get endpoint
+    // Get endpoint and ensure it has the correct path for HTTP OTLP
     let endpoint = config
         .destination
         .as_ref()
         .map(|dest| match dest {
-            crate::config::TracingDestination::Otlp { endpoint, .. } => endpoint.clone(),
+            crate::config::TracingDestination::Otlp { endpoint, .. } => {
+                // Ensure endpoint has /v1/traces path for HTTP OTLP
+                if endpoint.ends_with("/v1/traces") {
+                    endpoint.clone()
+                } else if endpoint.ends_with("/") {
+                    format!("{}v1/traces", endpoint)
+                } else {
+                    format!("{}/v1/traces", endpoint)
+                }
+            }
             crate::config::TracingDestination::Jaeger { endpoint, .. } => endpoint.clone(),
         })
-        .unwrap_or_else(|| "http://localhost:4318".to_string());
+        .unwrap_or_else(|| "http://localhost:4318/v1/traces".to_string());
+
+    println!("DEBUG: Using OTLP endpoint: {}", endpoint);
 
     // Build exporter in async context using tokio::task::block_in_place
     let exporter = tokio::task::block_in_place(|| {
@@ -158,6 +169,8 @@ fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>
                 .build()
         })
     })?;
+
+    println!("DEBUG: SpanExporter built successfully");
 
     // Build provider (your existing code)
     let service_name = config
