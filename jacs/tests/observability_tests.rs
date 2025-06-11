@@ -7,7 +7,7 @@ use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
     init_observability,
 };
-use jacs::observability::{ResourceConfig, SamplingConfig, TracingConfig};
+use jacs::observability::{ResourceConfig, SamplingConfig, TracingConfig, TracingDestination};
 use serial_test::serial;
 use std::collections::HashMap;
 use std::fs;
@@ -892,9 +892,9 @@ fn test_sampling_configuration() {
         tracing: Some(TracingConfig {
             enabled: true,
             sampling: SamplingConfig {
-                ratio: 0.5, // Sample 50%
+                ratio: 0.5,
                 parent_based: false,
-                rate_limit: Some(10), // Max 10 samples per second
+                rate_limit: Some(10),
             },
             resource: Some(ResourceConfig {
                 service_name: "jacs-sampling-test".to_string(),
@@ -902,6 +902,7 @@ fn test_sampling_configuration() {
                 environment: Some("test".to_string()),
                 attributes: HashMap::new(),
             }),
+            destination: None,
         }),
     };
 
@@ -1073,6 +1074,7 @@ fn test_full_production_configuration() {
                 environment: Some("test".to_string()),
                 attributes: resource_attributes,
             }),
+            destination: None,
         }),
     };
 
@@ -1420,6 +1422,7 @@ fn test_tracing_sampling_behavior() {
                 environment: Some("test".to_string()),
                 attributes: HashMap::new(),
             }),
+            destination: None,
         }),
     };
 

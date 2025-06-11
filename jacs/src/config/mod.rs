@@ -485,6 +485,8 @@ pub struct TracingConfig {
     pub sampling: SamplingConfig,
     #[serde(default)]
     pub resource: Option<ResourceConfig>,
+    #[serde(default)]
+    pub destination: Option<TracingDestination>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -561,5 +563,30 @@ pub enum MetricsDestination {
 impl Default for MetricsDestination {
     fn default() -> Self {
         MetricsDestination::Stdout
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TracingDestination {
+    #[serde(rename = "otlp")]
+    Otlp {
+        endpoint: String,
+        #[serde(default)]
+        headers: Option<HashMap<String, String>>,
+    },
+    #[serde(rename = "jaeger")]
+    Jaeger {
+        endpoint: String,
+        #[serde(default)]
+        headers: Option<HashMap<String, String>>,
+    },
+}
+
+impl Default for TracingDestination {
+    fn default() -> Self {
+        TracingDestination::Otlp {
+            endpoint: "http://localhost:4318".to_string(),
+            headers: None,
+        }
     }
 }

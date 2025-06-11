@@ -12,6 +12,9 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 #[cfg(not(target_arch = "wasm32"))]
 use opentelemetry_otlp::WithExportConfig;
 
+#[cfg(not(target_arch = "wasm32"))]
+use opentelemetry::metrics::MeterProvider;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CapturedMetric {
     Counter {
@@ -200,30 +203,30 @@ pub fn init_metrics(
         #[cfg(not(target_arch = "wasm32"))]
         MetricsDestination::Prometheus { endpoint, headers } => {
             let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
-
-            if let Some(headers) = headers {
-                tracing::info!(
-                    "Prometheus headers configured: {:?}",
-                    headers.keys().collect::<Vec<&String>>()
-                );
-            }
-            tracing::info!("Prometheus endpoint configured: {}", endpoint);
-
             builder.install()?;
+            tracing::info!("Prometheus metrics configured for {}", endpoint);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         MetricsDestination::Otlp { endpoint, headers } => {
-            if let Some(headers) = headers {
-                tracing::info!(
-                    "OTLP metrics headers configured: {:?}",
-                    headers.keys().collect::<Vec<&String>>()
-                );
-            }
-            tracing::warn!(
-                "OTLP metrics configured for {} but not yet implemented",
-                endpoint
-            );
+            use opentelemetry::{KeyValue, global};
+            use opentelemetry_otlp::{MetricExporter, Protocol, WithExportConfig};
+            use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
+
+            let exporter = MetricExporter::builder()
+                .with_http()
+                .with_endpoint(endpoint)
+                .with_protocol(Protocol::HttpBinary)
+                .build()?;
+
+            let meter_provider = SdkMeterProvider::builder()
+                .with_periodic_exporter(exporter)
+                .with_resource(Resource::builder().with_service_name("jacs-demo").build())
+                .build();
+
+            global::set_meter_provider(meter_provider);
+
+            tracing::info!("OTLP metrics export configured for {}", endpoint);
         }
 
         MetricsDestination::File { path: _ } => {
@@ -233,7 +236,10 @@ pub fn init_metrics(
         }
 
         MetricsDestination::Stdout => {
-            // No-op for now
+            // Use stdout metrics for debugging
+            let recorder = InMemoryMetricsRecorder::new();
+            captured_metrics_arc_for_test = Some(recorder.captured.clone());
+            metrics::set_global_recorder(Box::new(recorder))?;
         }
     }
 

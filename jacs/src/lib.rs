@@ -27,7 +27,7 @@ pub mod cli_utils;
 // Re-export observability types for convenience
 pub use observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-    ResourceConfig, SamplingConfig, TracingConfig, init_observability,
+    ResourceConfig, SamplingConfig, TracingConfig, TracingDestination, init_observability,
 };
 
 /// Initialize observability with a default configuration suitable for most applications.
@@ -54,6 +54,7 @@ pub fn init_default_observability() -> Result<(), Box<dyn std::error::Error>> {
             enabled: false, // Disabled by default
             sampling: SamplingConfig::default(),
             resource: None,
+            destination: None,
         }),
     };
 
