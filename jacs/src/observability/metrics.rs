@@ -1,13 +1,8 @@
 use crate::config::{MetricsConfig, MetricsDestination};
-use metrics::{
-    CounterFn, GaugeFn, HistogramFn, counter, describe_counter, describe_gauge, describe_histogram,
-    gauge, histogram,
-};
+use opentelemetry::{KeyValue, global};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
-#[cfg(not(target_arch = "wasm32"))]
-use metrics_exporter_prometheus::PrometheusBuilder;
+use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use opentelemetry_otlp::WithExportConfig;
@@ -15,6 +10,10 @@ use opentelemetry_otlp::WithExportConfig;
 #[cfg(not(target_arch = "wasm32"))]
 use opentelemetry::metrics::MeterProvider;
 
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+
+// For testing - capture metrics calls
 #[derive(Debug, Clone, PartialEq)]
 pub enum CapturedMetric {
     Counter {
@@ -34,182 +33,22 @@ pub enum CapturedMetric {
     },
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct InMemoryMetricsRecorder {
-    pub captured: Arc<Mutex<Vec<CapturedMetric>>>,
-}
-
-impl InMemoryMetricsRecorder {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-// Newtypes to implement the Fn traits
-struct InMemoryCounter {
-    name: String,
-    labels: Vec<(String, String)>,
-    captured: Arc<Mutex<Vec<CapturedMetric>>>,
-}
-impl CounterFn for InMemoryCounter {
-    fn increment(&self, value: u64) {
-        if let Ok(mut guard) = self.captured.lock() {
-            guard.push(CapturedMetric::Counter {
-                name: self.name.clone(),
-                value,
-                labels: self.labels.clone(),
-            });
-        }
-    }
-
-    fn absolute(&self, value: u64) {
-        // For InMemory recorder, treat absolute as an increment for simplicity in testing.
-        // Or, if you need to distinguish, add a new variant to CapturedMetric.
-        if let Ok(mut guard) = self.captured.lock() {
-            // For now, let's assume absolute also just "adds" to the captured events for testing.
-            // A real counter might reset or set to this value.
-            guard.push(CapturedMetric::Counter {
-                name: self.name.clone(),
-                value,
-                labels: self.labels.clone(),
-            });
-        }
-    }
-}
-
-struct InMemoryGauge {
-    name: String,
-    labels: Vec<(String, String)>,
-    captured: Arc<Mutex<Vec<CapturedMetric>>>,
-}
-impl GaugeFn for InMemoryGauge {
-    fn increment(&self, value: f64) { /* Optional: or panic, gauge usually uses set */
-    }
-    fn decrement(&self, value: f64) { /* Optional: or panic, gauge usually uses set */
-    }
-    fn set(&self, value: f64) {
-        if let Ok(mut guard) = self.captured.lock() {
-            guard.push(CapturedMetric::Gauge {
-                name: self.name.clone(),
-                value,
-                labels: self.labels.clone(),
-            });
-        }
-    }
-}
-
-struct InMemoryHistogram {
-    name: String,
-    labels: Vec<(String, String)>,
-    captured: Arc<Mutex<Vec<CapturedMetric>>>,
-}
-impl HistogramFn for InMemoryHistogram {
-    fn record(&self, value: f64) {
-        if let Ok(mut guard) = self.captured.lock() {
-            guard.push(CapturedMetric::Histogram {
-                name: self.name.clone(),
-                value,
-                labels: self.labels.clone(),
-            });
-        }
-    }
-}
-
-impl metrics::Recorder for InMemoryMetricsRecorder {
-    fn describe_counter(
-        &self,
-        _key: metrics::KeyName,
-        _unit: Option<metrics::Unit>,
-        _description: metrics::SharedString,
-    ) {
-    }
-    fn describe_gauge(
-        &self,
-        _key: metrics::KeyName,
-        _unit: Option<metrics::Unit>,
-        _description: metrics::SharedString,
-    ) {
-    }
-    fn describe_histogram(
-        &self,
-        _key: metrics::KeyName,
-        _unit: Option<metrics::Unit>,
-        _description: metrics::SharedString,
-    ) {
-    }
-
-    fn register_counter(
-        &self,
-        key: &metrics::Key,
-        _metadata: &metrics::Metadata<'_>,
-    ) -> metrics::Counter {
-        let name = key.name().to_string();
-        let labels: Vec<(String, String)> = key
-            .labels()
-            .map(|lbl| (lbl.key().to_string(), lbl.value().to_string()))
-            .collect();
-        metrics::Counter::from_arc(Arc::new(InMemoryCounter {
-            name,
-            labels,
-            captured: self.captured.clone(),
-        }))
-    }
-
-    fn register_gauge(
-        &self,
-        key: &metrics::Key,
-        _metadata: &metrics::Metadata<'_>,
-    ) -> metrics::Gauge {
-        let name = key.name().to_string();
-        let labels: Vec<(String, String)> = key
-            .labels()
-            .map(|lbl| (lbl.key().to_string(), lbl.value().to_string()))
-            .collect();
-        metrics::Gauge::from_arc(Arc::new(InMemoryGauge {
-            name,
-            labels,
-            captured: self.captured.clone(),
-        }))
-    }
-
-    fn register_histogram(
-        &self,
-        key: &metrics::Key,
-        _metadata: &metrics::Metadata<'_>,
-    ) -> metrics::Histogram {
-        let name = key.name().to_string();
-        let labels: Vec<(String, String)> = key
-            .labels()
-            .map(|lbl| (lbl.key().to_string(), lbl.value().to_string()))
-            .collect();
-        metrics::Histogram::from_arc(Arc::new(InMemoryHistogram {
-            name,
-            labels,
-            captured: self.captured.clone(),
-        }))
-    }
-}
-
 pub fn init_metrics(
     config: &MetricsConfig,
-) -> Result<Option<Arc<Mutex<Vec<CapturedMetric>>>>, Box<dyn std::error::Error>> {
+) -> Result<
+    (
+        Option<Arc<Mutex<Vec<CapturedMetric>>>>,
+        Option<SdkMeterProvider>,
+    ),
+    Box<dyn std::error::Error>,
+> {
     if !config.enabled {
-        return Ok(None);
+        return Ok((None, None));
     }
-
-    let mut captured_metrics_arc_for_test: Option<Arc<Mutex<Vec<CapturedMetric>>>> = None;
 
     match &config.destination {
         #[cfg(not(target_arch = "wasm32"))]
-        MetricsDestination::Prometheus { endpoint, headers } => {
-            let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
-            builder.install()?;
-            tracing::info!("Prometheus metrics configured for {}", endpoint);
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
         MetricsDestination::Otlp { endpoint, headers } => {
-            use opentelemetry::{KeyValue, global};
             use opentelemetry_otlp::{MetricExporter, Protocol, WithExportConfig};
             use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 
@@ -219,66 +58,92 @@ pub fn init_metrics(
                 .with_protocol(Protocol::HttpBinary)
                 .build()?;
 
+            let reader = PeriodicReader::builder(exporter)
+                .with_interval(Duration::from_secs(5))
+                .build();
+
             let meter_provider = SdkMeterProvider::builder()
-                .with_periodic_exporter(exporter)
+                .with_reader(reader)
                 .with_resource(Resource::builder().with_service_name("jacs-demo").build())
                 .build();
 
-            global::set_meter_provider(meter_provider);
-
+            global::set_meter_provider(meter_provider.clone());
             tracing::info!("OTLP metrics export configured for {}", endpoint);
+
+            Ok((None, Some(meter_provider)))
         }
 
         MetricsDestination::File { path: _ } => {
-            let recorder = InMemoryMetricsRecorder::new();
-            captured_metrics_arc_for_test = Some(recorder.captured.clone());
-            metrics::set_global_recorder(Box::new(recorder))?;
+            // For file destination, return captured metrics for testing
+            Ok((Some(Arc::new(Mutex::new(Vec::new()))), None))
         }
 
         MetricsDestination::Stdout => {
-            // Use stdout metrics for debugging
-            let recorder = InMemoryMetricsRecorder::new();
-            captured_metrics_arc_for_test = Some(recorder.captured.clone());
-            metrics::set_global_recorder(Box::new(recorder))?;
+            // For stdout destination, return captured metrics for testing
+            Ok((Some(Arc::new(Mutex::new(Vec::new()))), None))
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        MetricsDestination::Prometheus { endpoint, headers } => {
+            // For pure OTLP setup, we don't support direct Prometheus
+            // You'd need to use the OTLP -> Collector -> Prometheus path
+            Err("Direct Prometheus export not supported in OTLP-only mode. Use OTLP destination with collector.".into())
         }
     }
-
-    Ok(captured_metrics_arc_for_test)
 }
 
-// Public API functions using the metrics crate
+// Direct OpenTelemetry metrics functions
 pub fn increment_counter(name: &str, value: u64, tags: Option<HashMap<String, String>>) {
-    match tags {
-        Some(tags) => {
-            let labels: Vec<(String, String)> = tags.into_iter().collect();
-            counter!(name.to_string(), &labels).increment(value);
-        }
-        None => {
-            counter!(name.to_string()).increment(value);
-        }
-    }
+    let meter = global::meter("jacs-demo");
+    let counter = meter.u64_counter(name.to_string()).build();
+
+    let attributes: Vec<KeyValue> = tags
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| KeyValue::new(k, v))
+        .collect();
+
+    counter.add(value, &attributes);
+
+    tracing::debug!(
+        "Incremented counter: {} = {}, tags: {:?}",
+        name,
+        value,
+        attributes
+    );
 }
 
 pub fn set_gauge(name: &str, value: f64, tags: Option<HashMap<String, String>>) {
-    match tags {
-        Some(tags) => {
-            let labels: Vec<(String, String)> = tags.into_iter().collect();
-            gauge!(name.to_string(), &labels).set(value);
-        }
-        None => {
-            gauge!(name.to_string()).set(value);
-        }
-    }
+    let meter = global::meter("jacs-demo");
+    let gauge = meter.f64_gauge(name.to_string()).build();
+
+    let attributes: Vec<KeyValue> = tags
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| KeyValue::new(k, v))
+        .collect();
+
+    gauge.record(value, &attributes);
+
+    tracing::debug!("Set gauge: {} = {}, tags: {:?}", name, value, attributes);
 }
 
 pub fn record_histogram(name: &str, value: f64, tags: Option<HashMap<String, String>>) {
-    match tags {
-        Some(tags) => {
-            let labels: Vec<(String, String)> = tags.into_iter().collect();
-            histogram!(name.to_string(), &labels).record(value);
-        }
-        None => {
-            histogram!(name.to_string()).record(value);
-        }
-    }
+    let meter = global::meter("jacs-demo");
+    let histogram = meter.f64_histogram(name.to_string()).build();
+
+    let attributes: Vec<KeyValue> = tags
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| KeyValue::new(k, v))
+        .collect();
+
+    histogram.record(value, &attributes);
+
+    tracing::debug!(
+        "Recorded histogram: {} = {}, tags: {:?}",
+        name,
+        value,
+        attributes
+    );
 }

@@ -7,9 +7,11 @@ use jacs::observability::{
     TracingConfig, SamplingConfig, ResourceConfig, init_observability,
     TracingDestination,
 };
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, debug};
 use tokio::time::{sleep, Duration};
 use std::collections::HashMap;
+use opentelemetry::global;
+use jacs::observability::metrics;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +55,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     };
     
-    let _metrics_handle = init_observability(config)?;
+    let _metrics_handle = init_observability(config.clone())?;
+    
+    // Store the meter provider
+    let (_, meter_provider) = metrics::init_metrics(&config.metrics)?;
     
     // NOW start logging (after OpenTelemetry is connected)
     println!("Starting JACS Observability Demo...");
@@ -86,13 +91,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         
         sleep(Duration::from_millis(100)).await;
+
+        if i == 0 {  // Only debug first iteration
+            debug!("Called convenience functions - metrics should be generated");
+        }
     }
 
     error!("Demo error message");
     info!("Demo completed successfully");
 
+    debug!("Metrics should be sent now - checking collector...");
+    tokio::time::sleep(Duration::from_secs(2)).await; // Give time for export
+
     sleep(Duration::from_secs(5)).await;
     
     println!("JACS Observability Demo completed!");
+
+    println!("Manually exporting metrics...");
+    // Force flush is not available on the global provider trait
+    // The 100ms interval should handle this automatically
+    tokio::time::sleep(Duration::from_millis(200)).await; // Wait for export
+
+    if let Some(provider) = meter_provider {
+        println!("Forcing metrics export...");
+        let _ = provider.shutdown();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
     Ok(())
 }

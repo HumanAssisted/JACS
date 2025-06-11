@@ -66,7 +66,7 @@ pub fn init_observability(
     let mut metrics_handle_for_return: Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>> = None;
 
     match metrics::init_metrics(&config.metrics) {
-        Ok(captured_arc_option) => {
+        Ok((captured_arc_option, _meter_provider)) => {
             if let Ok(mut global_metrics_handle) = TEST_METRICS_RECORDER_HANDLE.lock() {
                 *global_metrics_handle = captured_arc_option.clone();
                 metrics_handle_for_return = captured_arc_option;
