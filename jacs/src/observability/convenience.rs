@@ -4,6 +4,16 @@ use tracing::{debug, error, info, warn};
 
 /// Record an agent operation with both metrics and structured logging
 pub fn record_agent_operation(operation: &str, agent_id: &str, success: bool, duration_ms: u64) {
+    // Create a tracing span for this operation
+    let span = tracing::info_span!(
+        "agent_operation",
+        operation = operation,
+        agent_id = agent_id,
+        success = success,
+        duration_ms = duration_ms
+    );
+    let _enter = span.enter();
+
     let mut tags = HashMap::new();
     tags.insert("operation".to_string(), operation.to_string());
     tags.insert("agent_id".to_string(), agent_id.to_string());
@@ -17,7 +27,7 @@ pub fn record_agent_operation(operation: &str, agent_id: &str, success: bool, du
         Some(tags),
     );
 
-    // Structured logging
+    // Structured logging WITH ALL ORIGINAL METADATA
     if success {
         info!(
             operation = operation,
@@ -62,6 +72,15 @@ pub fn record_document_validation(doc_id: &str, schema_version: &str, valid: boo
 
 /// Record signature verification with metrics and logging
 pub fn record_signature_verification(agent_id: &str, success: bool, algorithm: &str) {
+    // Create a tracing span for signature verification
+    let span = tracing::debug_span!(
+        "signature_verification",
+        agent_id = agent_id,
+        algorithm = algorithm,
+        success = success
+    );
+    let _enter = span.enter();
+
     let mut tags = HashMap::new();
     tags.insert("algorithm".to_string(), algorithm.to_string());
     tags.insert("success".to_string(), success.to_string());
@@ -71,22 +90,24 @@ pub fn record_signature_verification(agent_id: &str, success: bool, algorithm: &
 
     // Structured logging
     if success {
-        debug!(
-            agent_id = agent_id,
-            algorithm = algorithm,
-            "Signature verification successful"
-        );
+        debug!("Signature verification successful");
     } else {
-        error!(
-            agent_id = agent_id,
-            algorithm = algorithm,
-            "Signature verification failed"
-        );
+        error!("Signature verification failed");
     }
 }
 
 /// Record network communication metrics
 pub fn record_network_request(endpoint: &str, method: &str, status_code: u16, duration_ms: u64) {
+    // Create a tracing span for network request
+    let span = tracing::info_span!(
+        "network_request",
+        endpoint = endpoint,
+        method = method,
+        status_code = status_code,
+        duration_ms = duration_ms
+    );
+    let _enter = span.enter();
+
     let mut tags = HashMap::new();
     tags.insert("endpoint".to_string(), endpoint.to_string());
     tags.insert("method".to_string(), method.to_string());
@@ -99,13 +120,7 @@ pub fn record_network_request(endpoint: &str, method: &str, status_code: u16, du
         Some(tags),
     );
 
-    info!(
-        endpoint = endpoint,
-        method = method,
-        status_code = status_code,
-        duration_ms = duration_ms,
-        "Network request completed"
-    );
+    info!("Network request completed");
 }
 
 /// Record memory usage metrics

@@ -86,7 +86,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.31"
 opentelemetry = "0.30.0"
-opentelemetry-otlp = { version = "0.30.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-client", "reqwest-rustls"] }
+opentelemetry-otlp = { version = "0.30.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
 opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "experimental_metrics_custom_reader"] }
 opentelemetry-semantic-conventions = "0.30.0"
 opentelemetry-appender-tracing = "0.30.1"

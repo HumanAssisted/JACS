@@ -159,18 +159,14 @@ fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>
 
     println!("DEBUG: Using OTLP endpoint: {}", endpoint);
 
-    // Build exporter in async context using tokio::task::block_in_place
-    let exporter = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(async {
-            SpanExporter::builder()
-                .with_http()
-                .with_protocol(Protocol::HttpBinary)
-                .with_endpoint(endpoint)
-                .build()
-        })
-    })?;
+    // Use blocking HTTP client (enabled by "reqwest-blocking-client" feature)
+    let exporter = SpanExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(endpoint)
+        .build()?;
 
-    println!("DEBUG: SpanExporter built successfully");
+    println!("DEBUG: SpanExporter built successfully with blocking client");
 
     // Build provider (your existing code)
     let service_name = config
@@ -204,7 +200,7 @@ fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>
     };
 
     let provider = SdkTracerProvider::builder()
-        .with_simple_exporter(exporter)
+        .with_batch_exporter(exporter)
         .with_resource(resource)
         .with_sampler(sampler)
         .build();
@@ -219,6 +215,6 @@ fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>
     tracing::subscriber::set_global_default(subscriber)?;
     global::set_tracer_provider(provider);
 
-    println!("DEBUG: OpenTelemetry tracing initialized with async HTTP client");
+    println!("DEBUG: OpenTelemetry tracing initialized with blocking HTTP client");
     Ok(())
 }

@@ -12,6 +12,7 @@ use tokio::time::{sleep, Duration};
 use std::collections::HashMap;
 use opentelemetry::global;
 use jacs::observability::metrics;
+use reqwest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -57,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let _metrics_handle = init_observability(config.clone())?;
     
-    // Store the meter provider
+    // Store the meter provider for later use
     let (_, meter_provider) = metrics::init_metrics(&config.metrics)?;
     
     // NOW start logging (after OpenTelemetry is connected)
@@ -112,8 +113,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The 100ms interval should handle this automatically
     tokio::time::sleep(Duration::from_millis(200)).await; // Wait for export
 
-    if let Some(provider) = meter_provider {
+    if let Some(ref provider) = meter_provider {  // Use 'ref' to borrow
         println!("Forcing metrics export...");
+        let _ = provider.shutdown();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    // Add verification step
+    println!("\n🔍 Verification URLs:");
+    println!("📊 Prometheus: http://localhost:9090/graph?g0.expr=jacs_agent_operations_total");
+    println!("🔍 Jaeger: http://localhost:16686/search?service=jacs-demo");
+    println!("📈 Grafana: http://localhost:3000");
+    println!("🏥 Collector Health: http://localhost:13133");
+    
+    // Optional: Query Prometheus to verify metrics
+    if let Ok(response) = tokio::task::spawn_blocking(|| {
+        reqwest::blocking::get("http://localhost:9090/api/v1/query?query=jacs_agent_operations_total")
+    }).await? {
+        if response.status().is_success() {
+            println!("✅ Metrics successfully queryable in Prometheus");
+        } else {
+            println!("❌ Could not query metrics from Prometheus");
+        }
+    }
+
+    // Force final export
+    if let Some(ref provider) = meter_provider {  // Use 'ref' to borrow
+        println!("Forcing final metrics export...");
         let _ = provider.shutdown();
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
