@@ -57,6 +57,10 @@
         "fs", "aws", "hai"
       ]
     },
+    "jacs_agent_domain": {
+      "description": "Optional domain used for DNSSEC-validated public key fingerprint (_v1.agent.jacs.<domain>.)",
+      "type": "string"
+    },
     "observability": {
       "description": "Observability configuration for logging, metrics, and tracing",
       "type": "object",

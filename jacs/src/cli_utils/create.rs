@@ -106,8 +106,8 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     let jacs_agent_public_key_filename =
         request_string("Enter the public key filename:", "jacs.public.pem");
     let jacs_agent_key_algorithm = request_string(
-        "Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS)",
-        "RSA-PSS",
+        "Enter the agent key algorithm (pq-dilithium, ring-Ed25519, or RSA-PSS)",
+        "pq-dilithium",
     );
     let jacs_default_storage = request_string("Enter the default storage (fs, aws, hai)", "fs");
 
@@ -159,8 +159,12 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     let jacs_use_security = request_string("Use experimental security features", "false");
     let jacs_data_directory = request_string("Directory for data storage", "./jacs");
     let jacs_key_directory = request_string("Directory for keys", "./jacs_keys");
+    let jacs_agent_domain = request_string(
+        "Agent domain for DNSSEC fingerprint (optional, e.g., example.com)",
+        "",
+    );
 
-    let config = Config::new(
+    let mut config = Config::new(
         Some(jacs_use_security),
         Some(jacs_data_directory),
         Some(jacs_key_directory),
@@ -171,6 +175,19 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
         Some(jacs_agent_id_and_version),
         Some(jacs_default_storage),
     );
+
+    // insert optional domain if provided
+    if !jacs_agent_domain.trim().is_empty() {
+        // Serialize to Value, add field, then write
+        let mut v = serde_json::to_value(&config).unwrap_or(serde_json::json!({}));
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert(
+                "jacs_agent_domain".to_string(),
+                serde_json::Value::String(jacs_agent_domain.trim().to_string()),
+            );
+        }
+        config = serde_json::from_value(v).unwrap_or(config);
+    }
 
     let serialized = serde_json::to_string_pretty(&config).unwrap();
 

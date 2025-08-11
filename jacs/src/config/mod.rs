@@ -58,6 +58,9 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default = "default_storage")]
     jacs_default_storage: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default)]
+    jacs_agent_domain: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
 }

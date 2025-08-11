@@ -29,6 +29,7 @@ Jacs Configuration File
 | [jacs\_signature\_schema\_version](#jacs_signature_schema_version)      | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_signature_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version")     |
 | [jacs\_private\_key\_password](#jacs_private_key_password)              | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_private_key_password.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_private_key_password")             |
 | [jacs\_default\_storage](#jacs_default_storage)                         | `string` | Required | cannot be null | [Config](jacs-properties-jacs_default_storage.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_default_storage")                       |
+| [jacs\_agent\_domain](#jacs_agent_domain)                               | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_agent_domain.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_domain")                             |
 | [observability](#observability)                                         | `object` | Optional | cannot be null | [Config](jacs-properties-observability.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/observability")                                     |
 
 ## jacs\_use\_security
@@ -248,6 +249,24 @@ default storage to use
 | `"fs"`  |             |
 | `"aws"` |             |
 | `"hai"` |             |
+
+## jacs\_agent\_domain
+
+Optional domain used for DNSSEC-validated public key fingerprint (\_v1.agent.jacs.<domain>.)
+
+`jacs_agent_domain`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Config](jacs-properties-jacs_agent_domain.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_domain")
+
+### jacs\_agent\_domain Type
+
+`string`
 
 ## observability
 
