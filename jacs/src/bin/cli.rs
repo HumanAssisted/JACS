@@ -12,6 +12,7 @@ use jacs::cli_utils::document::{
 };
 use jacs::config::find_config;
 use jacs::create_task;
+use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::load_agent;
 
 use std::env;
@@ -40,6 +41,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         .subcommand(
             Command::new("agent")
                 .about(" work with a JACS agent")
+                .subcommand(
+                    Command::new("dns")
+                        .about("emit DNS TXT commands for publishing agent fingerprint")
+                        .arg(Arg::new("domain").long("domain").value_parser(value_parser!(String)))
+                        .arg(Arg::new("agent-id").long("agent-id").value_parser(value_parser!(String)))
+                        .arg(Arg::new("ttl").long("ttl").value_parser(value_parser!(u32)).default_value("3600"))
+                        .arg(Arg::new("encoding").long("encoding").value_parser(["base64","hex"]).default_value("base64"))
+                        .arg(Arg::new("provider").long("provider").value_parser(["plain","aws","azure","cloudflare"]).default_value("plain"))
+                )
                 .subcommand(
                     Command::new("create")
                         .about(" create an agent")
@@ -472,6 +482,74 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => println!("please enter subcommand see jacs config --help"),
         },
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
+            Some(("dns", sub_m)) => {
+                let domain = sub_m.get_one::<String>("domain").cloned();
+                let agent_id_arg = sub_m.get_one::<String>("agent-id").cloned();
+                let ttl = *sub_m.get_one::<u32>("ttl").unwrap();
+                let enc = sub_m
+                    .get_one::<String>("encoding")
+                    .map(|s| s.as_str())
+                    .unwrap_or("base64");
+                let provider = sub_m
+                    .get_one::<String>("provider")
+                    .map(|s| s.as_str())
+                    .unwrap_or("plain");
+
+                // Load agent from config (existing flow)
+                let mut agent: Agent = load_agent(None).expect("load agent");
+                let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
+                let pk = agent.get_public_key().expect("public key");
+                let digest = match enc {
+                    "hex" => dns_bootstrap::pubkey_digest_hex(&pk),
+                    _ => dns_bootstrap::pubkey_digest_b64(&pk),
+                };
+                let domain_final = domain
+                    .or_else(|| {
+                        agent
+                            .config
+                            .as_ref()
+                            .and_then(|c| c.jacs_agent_domain().clone())
+                    })
+                    .expect("domain required via --domain or jacs_agent_domain in config");
+
+                let rr = dns_bootstrap::build_dns_record(
+                    &domain_final,
+                    ttl,
+                    &agent_id,
+                    &digest,
+                    if enc == "hex" {
+                        dns_bootstrap::DigestEncoding::Hex
+                    } else {
+                        dns_bootstrap::DigestEncoding::Base64
+                    },
+                );
+
+                println!("Plain/BIND:\n{}", dns_bootstrap::emit_plain_bind(&rr));
+                match provider {
+                    "aws" => println!(
+                        "\nRoute53 change-batch JSON:\n{}",
+                        dns_bootstrap::emit_route53_change_batch(&rr)
+                    ),
+                    "azure" => println!(
+                        "\nAzure CLI:\n{}",
+                        dns_bootstrap::emit_azure_cli(
+                            &rr,
+                            "$RESOURCE_GROUP",
+                            &domain_final,
+                            "_v1.agent.jacs"
+                        )
+                    ),
+                    "cloudflare" => println!(
+                        "\nCloudflare curl:\n{}",
+                        dns_bootstrap::emit_cloudflare_curl(&rr, "$ZONE_ID")
+                    ),
+                    _ => {}
+                }
+                println!(
+                    "\nChecklist: Ensure DNSSEC is enabled for {domain} and DS is published at registrar.",
+                    domain = domain_final
+                );
+            }
             Some(("create", create_matches)) => {
                 // Parse args for the specific agent create command
                 let filename = create_matches.get_one::<String>("filename");

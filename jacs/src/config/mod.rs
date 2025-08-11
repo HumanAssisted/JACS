@@ -144,6 +144,7 @@ impl Config {
             jacs_private_key_password,
             jacs_agent_id_and_version,
             jacs_default_storage,
+            jacs_agent_domain: None,
             observability: None,
         }
     }

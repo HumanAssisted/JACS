@@ -196,3 +196,42 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, String> {
     }
     Ok(s)
 }
+
+pub fn verify_pubkey_via_dns_or_embedded(
+    agent_public_key: &[u8],
+    agent_id: &str,
+    jacs_agent_domain: Option<&str>,
+    embedded_fingerprint: Option<&str>,
+) -> Result<(), String> {
+    let local_b64 = pubkey_digest_b64(agent_public_key);
+    let local_hex = pubkey_digest_hex(agent_public_key);
+
+    if let Some(domain) = jacs_agent_domain {
+        let owner = record_owner(domain);
+        let txt = resolve_txt_dnssec(&owner)?;
+        let f = parse_agent_txt(&txt)?;
+        if f.v != "hai.ai" {
+            return Err(format!("unexpected v field: {}", f.v));
+        }
+        if f.jacs_agent_id != agent_id {
+            return Err("agent id mismatch".to_string());
+        }
+        let ok = match f.enc {
+            DigestEncoding::Base64 => f.digest == local_b64,
+            DigestEncoding::Hex => f.digest.eq_ignore_ascii_case(&local_hex),
+        };
+        if !ok {
+            return Err("DNS fingerprint mismatch".to_string());
+        }
+        return Ok(());
+    }
+
+    if let Some(embed) = embedded_fingerprint {
+        if embed == local_b64 || embed.eq_ignore_ascii_case(&local_hex) {
+            return Ok(());
+        }
+        return Err("embedded fingerprint mismatch".to_string());
+    }
+
+    Err("no DNS or embedded fingerprint available".to_string())
+}

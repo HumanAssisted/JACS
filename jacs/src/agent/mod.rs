@@ -16,6 +16,7 @@ use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 
 use crate::crypt::KeyManager;
 
+use crate::dns::bootstrap::verify_pubkey_via_dns_or_embedded;
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
 use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
@@ -341,20 +342,50 @@ impl Agent {
                 .to_string(),
         };
 
-        let public_key_rehash = hash_public_key(public_key.clone());
+        // Prefer DNS fingerprint validation when a domain is available
+        let maybe_domain = self
+            .value
+            .as_ref()
+            .and_then(|v| v.get("jacsAgentDomain").and_then(|x| x.as_str()))
+            .map(|s| s.to_string())
+            .or_else(|| {
+                self.config
+                    .as_ref()
+                    .and_then(|c| c.jacs_agent_domain().clone())
+            });
 
-        if public_key_rehash != public_key_hash {
-            let error_message = format!(
-                "Incorrect public key used to verify signature public_key_rehash {} public_key_hash {} ",
-                public_key_rehash, public_key_hash
-            );
-            error!("{}", error_message);
+        let maybe_agent_id = json_value
+            .get(signature_key_from)
+            .and_then(|sig| sig.get("agentID"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
-            let duration_ms = start_time.elapsed().as_millis() as u64;
-            let algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
-            record_signature_verification("unknown_agent", false, algorithm);
+        if let (Some(domain), Some(agent_id_for_dns)) =
+            (maybe_domain.clone(), maybe_agent_id.clone())
+        {
+            // Require DNSSEC-validated binding when domain is configured
+            verify_pubkey_via_dns_or_embedded(
+                &public_key,
+                &agent_id_for_dns,
+                Some(&domain),
+                Some(&public_key_hash),
+            )?;
+        } else {
+            // Fallback: embedded fingerprint check
+            let public_key_rehash = hash_public_key(public_key.clone());
+            if public_key_rehash != public_key_hash {
+                let error_message = format!(
+                    "Incorrect public key used to verify signature public_key_rehash {} public_key_hash {} ",
+                    public_key_rehash, public_key_hash
+                );
+                error!("{}", error_message);
 
-            return Err(error_message.into());
+                let duration_ms = start_time.elapsed().as_millis() as u64;
+                let algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+                record_signature_verification("unknown_agent", false, algorithm);
+
+                return Err(error_message.into());
+            }
         }
 
         let signature_base64 = match signature.clone() {
