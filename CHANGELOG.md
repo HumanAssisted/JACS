@@ -95,6 +95,7 @@
 - [] open license
 - [] crew.ai
 - [] langchain
+- [x] add observability demo
 
 ### jacs
 
