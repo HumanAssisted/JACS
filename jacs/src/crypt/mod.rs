@@ -14,6 +14,7 @@ use crate::agent::loaders::FileLoader;
 use strum_macros::{AsRefStr, Display, EnumString};
 
 use crate::crypt::aes_encrypt::decrypt_private_key;
+use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone)]
 pub enum CryptoSigningAlgorithm {
@@ -109,31 +110,13 @@ impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
-        let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
-        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
-        match algo {
-            CryptoSigningAlgorithm::RsaPss => {
-                (private_key, public_key) =
-                    rsawrapper::generate_keys().map_err(|e| e.to_string())?;
-            }
-            CryptoSigningAlgorithm::RingEd25519 => {
-                (private_key, public_key) =
-                    ringwrapper::generate_keys().map_err(|e| e.to_string())?;
-            }
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                (private_key, public_key) = pq::generate_keys().map_err(|e| e.to_string())?;
-            }
-            _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
-            }
-        }
-
-        let _ = self.set_keys(private_key, public_key, &key_algorithm);
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = self.fs_save_keys();
-
+        let ks = FsEncryptedStore;
+        let spec = KeySpec {
+            algorithm: key_algorithm.clone(),
+            key_id: None,
+        };
+        let (private_key, public_key) = ks.generate(&spec)?;
+        self.set_keys(private_key, public_key, &key_algorithm)?;
         Ok(())
     }
 
@@ -141,25 +124,11 @@ impl KeyManager for Agent {
         let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
         let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
         match algo {
-            CryptoSigningAlgorithm::RsaPss => {
-                let binding = self.get_private_key()?;
-                let key_vec = decrypt_private_key(binding.expose_secret())?;
-                return rsawrapper::sign_string(key_vec, data);
-            }
-            CryptoSigningAlgorithm::RingEd25519 => {
-                let binding = self.get_private_key()?;
-                let key_vec = decrypt_private_key(binding.expose_secret())?;
-                return ringwrapper::sign_string(key_vec, data);
-            }
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                let binding = self.get_private_key()?;
-                let key_vec = decrypt_private_key(binding.expose_secret())?;
-                return pq::sign_string(key_vec, data);
-            }
             _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
+                // Delegate to keystore; we expect detached signature bytes, return base64
+                let ks = FsEncryptedStore;
+                let sig_bytes = ks.sign_detached(data.as_bytes())?;
+                return Ok(base64::encode(sig_bytes));
             }
         }
     }
