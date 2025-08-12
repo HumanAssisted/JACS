@@ -176,9 +176,15 @@
                         <h3 id="dns-verification-errors"><a class="header" href="#dns-verification-errors">DNS verification errors</a></h3>
 <ul>
 <li>
-<p>"DNS TXT lookup failed for domain"</p>
+<p>"strict DNSSEC validation failed for <owner> (TXT not authenticated). Enable DNSSEC and publish DS at registrar"</p>
 <ul>
-<li>The resolver could not fetch <code>_v1.agent.jacs.&lt;domain&gt;.</code> with DNSSEC. Check that DNSSEC is enabled, records are published, and DS is at registrar. Use <code>dig +dnssec</code>, <code>delv</code>, <code>kdig</code>, or <code>drill</code> to inspect.</li>
+<li>DNSSEC mode was requested but the TXT response wasn’t authenticated. Enable DNSSEC for the zone and publish the DS at the registrar.</li>
+</ul>
+</li>
+<li>
+<p>"DNS TXT lookup failed for <owner> (record missing or not yet propagated)"</p>
+<ul>
+<li>Non-strict lookup could not fetch the TXT. Wait for propagation or confirm the record name/value.</li>
 </ul>
 </li>
 <li>

@@ -198,18 +198,44 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, String> {
     Ok(s)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn resolve_txt_insecure(owner: &str) -> Result<String, String> {
+    use hickory_resolver::Resolver;
+    use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+    let mut opts = ResolverOpts::default();
+    opts.validate = false; // allow unsigned answers
+    let resolver = Resolver::new(ResolverConfig::default(), opts)
+        .map_err(|e| format!("resolver init: {e}"))?;
+    let resp = resolver
+        .txt_lookup(owner)
+        .map_err(|e| format!("lookup: {e}"))?;
+    let mut s = String::new();
+    for rr in resp.iter() {
+        for part in rr.txt_data() {
+            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| format!("utf8: {e}"))?);
+        }
+    }
+    Ok(s)
+}
+
 pub fn verify_pubkey_via_dns_or_embedded(
     agent_public_key: &[u8],
     agent_id: &str,
     jacs_agent_domain: Option<&str>,
     embedded_fingerprint: Option<&str>,
+    strict_dns: bool,
 ) -> Result<(), String> {
     let local_b64 = pubkey_digest_b64(agent_public_key);
     let local_hex = pubkey_digest_hex(agent_public_key);
 
     if let Some(domain) = jacs_agent_domain {
         let owner = record_owner(domain);
-        match resolve_txt_dnssec(&owner) {
+        let lookup = if strict_dns {
+            resolve_txt_dnssec(&owner)
+        } else {
+            resolve_txt_insecure(&owner)
+        };
+        match lookup {
             Ok(txt) => {
                 let f = parse_agent_txt(&txt)?;
                 if f.v != "hai.ai" {
@@ -242,7 +268,17 @@ pub fn verify_pubkey_via_dns_or_embedded(
                     return Err("embedded fingerprint mismatch (embedded present but does not match local public key)".to_string());
                 }
                 // Neither DNS nor embedded available
-                return Err("DNS TXT lookup failed for domain".to_string());
+                if strict_dns {
+                    return Err(format!(
+                        "strict DNSSEC validation failed for {} (TXT not authenticated). Enable DNSSEC and publish DS at registrar",
+                        owner
+                    ));
+                } else {
+                    return Err(format!(
+                        "DNS TXT lookup failed for {} (record missing or not yet propagated)",
+                        owner
+                    ));
+                }
             }
         }
     }

@@ -133,7 +133,7 @@ impl Agent {
             key_algorithm: None,
             public_key: None,
             private_key: None,
-            dns_strict: true,
+            dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
         })
@@ -365,7 +365,7 @@ impl Agent {
                 .to_string(),
         };
 
-        // Prefer DNS fingerprint validation when a domain is available
+        // DNS policy resolution
         let maybe_domain = self
             .value
             .as_ref()
@@ -383,26 +383,37 @@ impl Agent {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        if let (Some(domain), Some(agent_id_for_dns)) =
-            (maybe_domain.clone(), maybe_agent_id.clone())
-        {
-            // Prefer DNS; if strict, do not allow fallback to embedded
-            let embedded = if self.dns_strict {
-                None
-            } else {
-                Some(&public_key_hash)
-            };
-            if let Err(e) = verify_pubkey_via_dns_or_embedded(
-                &public_key,
-                &agent_id_for_dns,
-                Some(&domain),
-                embedded.map(|s| s.as_str()),
-            ) {
-                error!("public key identity check failed: {}", e);
-                return Err(e.into());
+        // Effective policy
+        let domain_present = maybe_domain.is_some();
+        let validate = self.dns_validate_enabled.unwrap_or(domain_present);
+        let strict = self.dns_strict;
+        let required = self.dns_required.unwrap_or(domain_present);
+
+        if validate && domain_present {
+            if let (Some(domain), Some(agent_id_for_dns)) =
+                (maybe_domain.clone(), maybe_agent_id.clone())
+            {
+                // Allow embedded fallback only if not required
+                let embedded = if required {
+                    None
+                } else {
+                    Some(&public_key_hash)
+                };
+                if let Err(e) = verify_pubkey_via_dns_or_embedded(
+                    &public_key,
+                    &agent_id_for_dns,
+                    Some(&domain),
+                    embedded.map(|s| s.as_str()),
+                    strict,
+                ) {
+                    error!("public key identity check failed: {}", e);
+                    return Err(e.into());
+                }
+            } else if required {
+                return Err("domain required for DNS validation".into());
             }
         } else {
-            // Fallback: embedded fingerprint check
+            // DNS not validated -> rely on embedded fingerprint
             let public_key_rehash = hash_public_key(public_key.clone());
             if public_key_rehash != public_key_hash {
                 let error_message = format!(

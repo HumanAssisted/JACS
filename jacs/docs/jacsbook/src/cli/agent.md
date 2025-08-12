@@ -96,9 +96,9 @@ During DNS propagation (allow embedded fallback):
 
 ```bash
 jacs agent dns --agent-file ./jacs/agent/<ID:VERSION>.json --domain <example.com> \
-  --provider cloudflare --encoding base64 --non-strict-dns
+  --provider cloudflare --encoding base64 --no-dns
 
-jacs agent verify -a ./jacs/agent/<ID:VERSION>.json --non-strict-dns
+jacs agent verify -a ./jacs/agent/<ID:VERSION>.json --no-dns
 ```
 
 Troubleshooting (DNSSEC):

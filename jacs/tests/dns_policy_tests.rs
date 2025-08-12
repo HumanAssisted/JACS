@@ -15,7 +15,7 @@ fn dns_fails_strict_returns_err() {
     let agent_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     let domain = "nonexistent-subdomain.invalid-tld"; // ensure lookup fails
 
-    let res = dns::verify_pubkey_via_dns_or_embedded(&pk, agent_id, Some(domain), None);
+    let res = dns::verify_pubkey_via_dns_or_embedded(&pk, agent_id, Some(domain), None, true);
     assert!(res.is_err());
 }
 
@@ -25,7 +25,8 @@ fn dns_fails_non_strict_with_embedded_b64_ok() {
     let agent_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     let domain = "nonexistent-subdomain.invalid-tld";
     let b64 = dns::pubkey_digest_b64(&pk);
-    let res = dns::verify_pubkey_via_dns_or_embedded(&pk, agent_id, Some(domain), Some(&b64));
+    let res =
+        dns::verify_pubkey_via_dns_or_embedded(&pk, agent_id, Some(domain), Some(&b64), false);
     assert!(res.is_ok());
 }
 
@@ -35,7 +36,8 @@ fn dns_fails_non_strict_with_embedded_hex_ok() {
     let agent_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     let domain = "nonexistent-subdomain.invalid-tld";
     let hex = dns::pubkey_digest_hex(&pk);
-    let res = dns::verify_pubkey_via_dns_or_embedded(&pk, agent_id, Some(domain), Some(&hex));
+    let res =
+        dns::verify_pubkey_via_dns_or_embedded(&pk, agent_id, Some(domain), Some(&hex), false);
     assert!(res.is_ok());
 }
 
@@ -45,7 +47,12 @@ fn dns_fails_non_strict_with_legacy_hex_ok() {
     let agent_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     let domain = "nonexistent-subdomain.invalid-tld";
     let legacy_hex = jacs::crypt::hash::hash_public_key(pk.clone());
-    let res =
-        dns::verify_pubkey_via_dns_or_embedded(&pk, agent_id, Some(domain), Some(&legacy_hex));
+    let res = dns::verify_pubkey_via_dns_or_embedded(
+        &pk,
+        agent_id,
+        Some(domain),
+        Some(&legacy_hex),
+        false,
+    );
     assert!(res.is_ok());
 }

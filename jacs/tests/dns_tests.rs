@@ -5,12 +5,12 @@ fn test_pubkey_digest_encoding() {
     let pk: Vec<u8> = b"test-public-key-bytes".to_vec();
     let b64 = dns::pubkey_digest_b64(&pk);
     let hex = dns::pubkey_digest_hex(&pk);
-    // Precomputed SHA-256 for input
+    // Precomputed SHA-256 for input (raw bytes)
     assert_eq!(
         hex,
-        "2cf216e19b7c9b9275cb764097b367dbb4334a80586788d9ecc17f5e951461a2"
+        "5f48189c30fe3e016110848e1370efcb956db36fa1f9621889e3e95fa683a9ff"
     );
-    assert_eq!(b64, "LPIW4Zt8m5J1y3ZAl7Nn27QzSoBYZ4jZ7MF/XpUUYaI=");
+    assert_eq!(b64, "X0gYnDD+PgFhEIROE3Dvy5Vts2+h+WIYiePpX6aDqf8=");
 }
 
 #[test]
@@ -85,6 +85,7 @@ fn test_verify_pubkey_via_embedded_fallback() {
         "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         None,
         Some(&hex),
+        false,
     )
     .expect("embedded ok");
 
@@ -94,6 +95,7 @@ fn test_verify_pubkey_via_embedded_fallback() {
         "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         None,
         Some("deadbeef"),
+        false,
     )
     .unwrap_err();
     assert!(err.contains("embedded fingerprint mismatch"));

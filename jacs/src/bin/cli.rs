@@ -52,9 +52,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                 .help("Path to agent JSON (optional; defaults via config)"),
                         )
                         .arg(
-                            Arg::new("non-strict-dns")
-                                .long("non-strict-dns")
-                                .help("Allow fallback to embedded fingerprint if DNS lookup fails (for DNS propagation)")
+                            Arg::new("no-dns")
+                                .long("no-dns")
+                                .help("Disable DNS validation; rely on embedded fingerprint")
                                 .action(ArgAction::SetTrue),
                         )
                         .arg(
@@ -108,9 +108,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             .value_parser(value_parser!(String)),
                     )
                     .arg(
-                        Arg::new("non-strict-dns")
-                            .long("non-strict-dns")
-                            .help("Allow fallback to embedded fingerprint if DNS lookup fails (for DNS propagation)")
+                        Arg::new("no-dns")
+                            .long("no-dns")
+                            .help("Disable DNS validation; rely on embedded fingerprint")
                             .action(ArgAction::SetTrue),
                     )
                     .arg(
@@ -552,7 +552,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 // Load agent from optional path, supporting non-strict DNS for propagation
                 let agent_file = sub_m.get_one::<String>("agent-file").cloned();
-                let non_strict = *sub_m.get_one::<bool>("non-strict-dns").unwrap_or(&false);
+                let non_strict = *sub_m.get_one::<bool>("no-dns").unwrap_or(&false);
                 let mut agent: Agent = if let Some(path) = agent_file.clone() {
                     if non_strict {
                         load_agent_with_dns_strict(path, false)
