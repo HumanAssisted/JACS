@@ -1,3 +1,4 @@
+use crate::crypt::hash::hash_public_key;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use sha2::{Digest, Sha256};
 
@@ -230,7 +231,12 @@ pub fn verify_pubkey_via_dns_or_embedded(
             Err(_e) => {
                 // Fallback to embedded if provided
                 if let Some(embed) = embedded_fingerprint {
-                    if embed == local_b64 || embed.eq_ignore_ascii_case(&local_hex) {
+                    // Accept either the new byte-based digest or the legacy normalized-string hex
+                    let legacy_hex = hash_public_key(agent_public_key.to_vec());
+                    if embed == local_b64
+                        || embed.eq_ignore_ascii_case(&local_hex)
+                        || embed.eq_ignore_ascii_case(&legacy_hex)
+                    {
                         return Ok(());
                     }
                     return Err("embedded fingerprint mismatch".to_string());
@@ -242,7 +248,11 @@ pub fn verify_pubkey_via_dns_or_embedded(
     }
 
     if let Some(embed) = embedded_fingerprint {
-        if embed == local_b64 || embed.eq_ignore_ascii_case(&local_hex) {
+        let legacy_hex = hash_public_key(agent_public_key.to_vec());
+        if embed == local_b64
+            || embed.eq_ignore_ascii_case(&local_hex)
+            || embed.eq_ignore_ascii_case(&legacy_hex)
+        {
             return Ok(());
         }
         return Err("embedded fingerprint mismatch".to_string());
