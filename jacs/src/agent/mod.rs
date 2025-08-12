@@ -91,6 +91,8 @@ pub struct Agent {
     public_key: Option<Vec<u8>>,
     private_key: Option<SecretPrivateKey>,
     key_algorithm: Option<String>,
+    /// control DNS strictness for public key verification
+    dns_strict: bool,
 }
 
 impl fmt::Display for Agent {
@@ -127,7 +129,12 @@ impl Agent {
             key_algorithm: None,
             public_key: None,
             private_key: None,
+            dns_strict: true,
         })
+    }
+
+    pub fn set_dns_strict(&mut self, strict: bool) {
+        self.dns_strict = strict;
     }
 
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
@@ -363,12 +370,17 @@ impl Agent {
         if let (Some(domain), Some(agent_id_for_dns)) =
             (maybe_domain.clone(), maybe_agent_id.clone())
         {
-            // Prefer DNS; fallback to embedded if DNS not yet available
+            // Prefer DNS; if strict, do not allow fallback to embedded
+            let embedded = if self.dns_strict {
+                None
+            } else {
+                Some(&public_key_hash)
+            };
             if let Err(e) = verify_pubkey_via_dns_or_embedded(
                 &public_key,
                 &agent_id_for_dns,
                 Some(&domain),
-                Some(&public_key_hash),
+                embedded.map(|s| s.as_str()),
             ) {
                 error!("public key identity check failed: {}", e);
                 return Err(e.into());

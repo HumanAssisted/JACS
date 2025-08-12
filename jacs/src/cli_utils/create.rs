@@ -355,7 +355,8 @@ pub fn handle_agent_create(
                 .as_deref()
                 .unwrap_or_default()
         );
-        // If a domain is configured, emit DNS fingerprint instructions
+        // If a domain is configured, emit DNS fingerprint instructions (non-strict at creation time)
+        agent.set_dns_strict(false);
         if let Some(domain) = agent
             .config
             .as_ref()
