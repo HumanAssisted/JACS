@@ -363,13 +363,16 @@ impl Agent {
         if let (Some(domain), Some(agent_id_for_dns)) =
             (maybe_domain.clone(), maybe_agent_id.clone())
         {
-            // Require DNSSEC-validated binding when domain is configured
-            verify_pubkey_via_dns_or_embedded(
+            // Prefer DNS; fallback to embedded if DNS not yet available
+            if let Err(e) = verify_pubkey_via_dns_or_embedded(
                 &public_key,
                 &agent_id_for_dns,
                 Some(&domain),
                 Some(&public_key_hash),
-            )?;
+            ) {
+                error!("public key identity check failed: {}", e);
+                return Err(e.into());
+            }
         } else {
             // Fallback: embedded fingerprint check
             let public_key_rehash = hash_public_key(public_key.clone());

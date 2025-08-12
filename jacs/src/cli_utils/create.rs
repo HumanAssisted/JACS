@@ -2,6 +2,7 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::config::{Config, check_env_vars, set_env_vars};
 use crate::create_minimal_blank_agent;
 use crate::crypt::KeyManager;
+use crate::dns::bootstrap as dns_bootstrap;
 use crate::get_empty_agent;
 use crate::storage::MultiStorage;
 use crate::storage::jenv::{get_required_env_var, set_env_var};
@@ -189,7 +190,15 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
         config = serde_json::from_value(v).unwrap_or(config);
     }
 
-    let serialized = serde_json::to_string_pretty(&config).unwrap();
+    // Serialize, but ensure we omit any null fields that may have slipped through
+    let mut value = serde_json::to_value(&config).unwrap_or(serde_json::json!({}));
+    if let Some(obj) = value.as_object_mut() {
+        // Remove optional domain if it ended up as null
+        if obj.get("jacs_agent_domain").is_some_and(|v| v.is_null()) {
+            obj.remove("jacs_agent_domain");
+        }
+    }
+    let serialized = serde_json::to_string_pretty(&value).unwrap();
 
     // Keep using std::fs for config file backup and writing
     // The check and backup logic below is no longer needed as we exit earlier if the file exists.
@@ -345,7 +354,32 @@ pub fn handle_agent_create(
                 .jacs_key_directory()
                 .as_deref()
                 .unwrap_or_default()
-        )
+        );
+        // If a domain is configured, emit DNS fingerprint instructions
+        if let Some(domain) = agent
+            .config
+            .as_ref()
+            .and_then(|c| c.jacs_agent_domain().clone())
+            .filter(|s| !s.is_empty())
+        {
+            if let Ok(pk) = agent.get_public_key() {
+                let agent_id = agent.get_id().unwrap_or_else(|_| "".to_string());
+                let digest = dns_bootstrap::pubkey_digest_b64(&pk);
+                let rr = dns_bootstrap::build_dns_record(
+                    &domain,
+                    3600,
+                    &agent_id,
+                    &digest,
+                    dns_bootstrap::DigestEncoding::Base64,
+                );
+                println!("\nDNS (BIND):\n{}\n", dns_bootstrap::emit_plain_bind(&rr));
+                println!(
+                    "Use 'jacs agent dns --domain {} --provider <plain|aws|azure|cloudflare>' for provider-specific commands.",
+                    domain
+                );
+                println!("Reminder: enable DNSSEC for the zone and publish DS at the registrar.");
+            }
+        }
     }
 
     // Use the modified agent string here
