@@ -22,7 +22,12 @@ pub trait KeyStore: Send + Sync {
     fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>>;
     fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>>;
     fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>>;
-    fn sign_detached(&self, _message: &[u8]) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn sign_detached(
+        &self,
+        _private_key: &[u8],
+        _message: &[u8],
+        algorithm: &str,
+    ) -> Result<Vec<u8>, Box<dyn Error>>;
 }
 
 // Default filesystem-encrypted backend placeholder.
@@ -49,8 +54,7 @@ impl KeyStore for FsEncryptedStore {
                 crypt::pq::generate_keys()?
             }
         };
-
-        // Save using MultiStorage paths, mirroring Agent fs behavior
+        // Persist using MultiStorage
         let storage = MultiStorage::default_new()?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
         let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
@@ -59,7 +63,6 @@ impl KeyStore for FsEncryptedStore {
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
 
-        // Encrypt private key if password is present
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)?.unwrap_or_default();
         if !password.is_empty() {
             let enc = encrypt_private_key(&priv_key)?;
@@ -100,21 +103,28 @@ impl KeyStore for FsEncryptedStore {
         Ok(bytes)
     }
 
-    fn sign_detached(&self, message: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
-        let algo_str = get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)?;
-        let algo = match algo_str.as_str() {
+    fn sign_detached(
+        &self,
+        private_key: &[u8],
+        message: &[u8],
+        algorithm: &str,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
             other => return Err(format!("Unsupported algorithm: {}", other).into()),
         };
-        let sk = self.load_private()?;
         let data = std::str::from_utf8(message).unwrap_or("").to_string();
         let sig_b64 = match algo {
-            CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::sign_string(sk, &data)?,
-            CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::sign_string(sk, &data)?,
+            CryptoSigningAlgorithm::RsaPss => {
+                crypt::rsawrapper::sign_string(private_key.to_vec(), &data)?
+            }
+            CryptoSigningAlgorithm::RingEd25519 => {
+                crypt::ringwrapper::sign_string(private_key.to_vec(), &data)?
+            }
             CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                crypt::pq::sign_string(sk, &data)?
+                crypt::pq::sign_string(private_key.to_vec(), &data)?
             }
         };
         Ok(base64::decode(sig_b64)?)
@@ -134,7 +144,12 @@ macro_rules! unimplemented_store {
             fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
-            fn sign_detached(&self, _message: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+            fn sign_detached(
+                &self,
+                _private_key: &[u8],
+                _message: &[u8],
+                _algorithm: &str,
+            ) -> Result<Vec<u8>, Box<dyn Error>> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
         }

@@ -647,9 +647,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let non_strict = *verify_matches
-                    .get_one::<bool>("non-strict-dns")
-                    .unwrap_or(&false);
+                let non_strict = *verify_matches.get_one::<bool>("no-dns").unwrap_or(&false);
                 let require_dns = *verify_matches
                     .get_one::<bool>("require-dns")
                     .unwrap_or(&false);

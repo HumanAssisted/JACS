@@ -1,13 +1,25 @@
 // tests for observability module
+#[cfg(feature = "observability-convenience")]
 use jacs::observability::convenience::{
     record_agent_operation, record_document_validation, record_signature_verification,
 };
+// When the convenience feature isn't compiled, provide no-op shims so this test file still compiles
+#[cfg(not(feature = "observability-convenience"))]
+mod no_convenience_shims {
+    pub fn record_agent_operation(_op: &str, _agent: &str, _success: bool, _duration_ms: u64) {}
+    pub fn record_document_validation(_doc: &str, _version: &str, _valid: bool) {}
+    pub fn record_signature_verification(_agent: &str, _success: bool, _algorithm: &str) {}
+}
 use jacs::observability::metrics::{increment_counter, record_histogram, set_gauge};
 use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
     init_observability,
 };
 use jacs::observability::{ResourceConfig, SamplingConfig, TracingConfig, TracingDestination};
+#[cfg(not(feature = "observability-convenience"))]
+use no_convenience_shims::{
+    record_agent_operation, record_document_validation, record_signature_verification,
+};
 use serial_test::serial;
 use std::collections::HashMap;
 use std::fs;

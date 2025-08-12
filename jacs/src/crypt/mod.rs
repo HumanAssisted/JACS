@@ -127,7 +127,10 @@ impl KeyManager for Agent {
             _ => {
                 // Delegate to keystore; we expect detached signature bytes, return base64
                 let ks = FsEncryptedStore;
-                let sig_bytes = ks.sign_detached(data.as_bytes())?;
+                let binding = self.get_private_key()?;
+                let decrypted =
+                    crate::crypt::aes_encrypt::decrypt_private_key(binding.expose_secret())?;
+                let sig_bytes = ks.sign_detached(&decrypted, data.as_bytes(), &key_algorithm)?;
                 return Ok(base64::encode(sig_bytes));
             }
         }

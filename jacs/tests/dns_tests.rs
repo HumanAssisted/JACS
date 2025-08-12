@@ -10,7 +10,7 @@ fn test_pubkey_digest_encoding() {
         hex,
         "5f48189c30fe3e016110848e1370efcb956db36fa1f9621889e3e95fa683a9ff"
     );
-    assert_eq!(b64, "X0gYnDD+PgFhEIROE3Dvy5Vts2+h+WIYiePpX6aDqf8=");
+    assert_eq!(b64, "X0gYnDD+PgFhEISOE3Dvy5Vts2+h+WIYiePpX6aDqf8=");
 }
 
 #[test]
