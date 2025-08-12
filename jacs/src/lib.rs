@@ -17,6 +17,7 @@ pub mod agent;
 pub mod config;
 pub mod crypt;
 pub mod dns;
+pub mod keystore;
 pub mod observability;
 pub mod schema;
 pub mod shared;
