@@ -61,6 +61,16 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     jacs_agent_domain: Option<String>,
+    // DNS policy
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_dns_validate: Option<bool>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_dns_strict: Option<bool>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_dns_required: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
 }
@@ -145,6 +155,9 @@ impl Config {
             jacs_agent_id_and_version,
             jacs_default_storage,
             jacs_agent_domain: None,
+            jacs_dns_validate: None,
+            jacs_dns_strict: None,
+            jacs_dns_required: None,
             observability: None,
         }
     }

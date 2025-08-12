@@ -57,6 +57,24 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                 .help("Allow fallback to embedded fingerprint if DNS lookup fails (for DNS propagation)")
                                 .action(ArgAction::SetTrue),
                         )
+                        .arg(
+                            Arg::new("require-dns")
+                                .long("require-dns")
+                                .help("Require DNS validation; if domain missing, fail. Not strict (no DNSSEC required).")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("require-strict-dns")
+                                .long("require-strict-dns")
+                                .help("Require strict DNSSEC validation; if domain missing, fail.")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("ignore-dns")
+                                .long("ignore-dns")
+                                .help("Ignore DNS validation entirely.")
+                                .action(ArgAction::SetTrue),
+                        )
                         .arg(Arg::new("domain").long("domain").value_parser(value_parser!(String)))
                         .arg(Arg::new("agent-id").long("agent-id").value_parser(value_parser!(String)))
                         .arg(Arg::new("ttl").long("ttl").value_parser(value_parser!(u32)).default_value("3600"))
@@ -93,6 +111,24 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         Arg::new("non-strict-dns")
                             .long("non-strict-dns")
                             .help("Allow fallback to embedded fingerprint if DNS lookup fails (for DNS propagation)")
+                            .action(ArgAction::SetTrue),
+                    )
+                    .arg(
+                        Arg::new("require-dns")
+                            .long("require-dns")
+                            .help("Require DNS validation; if domain missing, fail. Not strict (no DNSSEC required).")
+                            .action(ArgAction::SetTrue),
+                    )
+                    .arg(
+                        Arg::new("require-strict-dns")
+                            .long("require-strict-dns")
+                            .help("Require strict DNSSEC validation; if domain missing, fail.")
+                            .action(ArgAction::SetTrue),
+                    )
+                    .arg(
+                        Arg::new("ignore-dns")
+                            .long("ignore-dns")
+                            .help("Ignore DNS validation entirely.")
                             .action(ArgAction::SetTrue),
                     ),
                 ),
@@ -528,6 +564,26 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     load_agent(None)
                         .expect("Provide --agent-file or ensure config points to a readable agent")
                 };
+                if *sub_m.get_one::<bool>("ignore-dns").unwrap_or(&false) {
+                    agent.set_dns_validate(false);
+                    agent.set_dns_required(false);
+                    agent.set_dns_strict(false);
+                } else if *sub_m
+                    .get_one::<bool>("require-strict-dns")
+                    .unwrap_or(&false)
+                {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(true);
+                } else if *sub_m.get_one::<bool>("require-dns").unwrap_or(&false) {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(false);
+                } else if non_strict {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(false);
+                    agent.set_dns_strict(false);
+                }
                 let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
                 let pk = agent.get_public_key().expect("public key");
                 let digest = match enc {
@@ -594,6 +650,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let non_strict = *verify_matches
                     .get_one::<bool>("non-strict-dns")
                     .unwrap_or(&false);
+                let require_dns = *verify_matches
+                    .get_one::<bool>("require-dns")
+                    .unwrap_or(&false);
+                let require_strict = *verify_matches
+                    .get_one::<bool>("require-strict-dns")
+                    .unwrap_or(&false);
+                let ignore_dns = *verify_matches
+                    .get_one::<bool>("ignore-dns")
+                    .unwrap_or(&false);
                 let mut agent: Agent = if let Some(path) = agentfile.cloned() {
                     if non_strict {
                         load_agent_with_dns_strict(path, false).expect("agent file")
@@ -604,7 +669,21 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     // No path provided; use default loader
                     load_agent(None).expect("agent file")
                 };
-                if non_strict {
+                if ignore_dns {
+                    agent.set_dns_validate(false);
+                    agent.set_dns_required(false);
+                    agent.set_dns_strict(false);
+                } else if require_strict {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(true);
+                } else if require_dns {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(false);
+                } else if non_strict {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(false);
                     agent.set_dns_strict(false);
                 }
                 agent

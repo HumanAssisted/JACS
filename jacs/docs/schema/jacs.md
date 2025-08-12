@@ -16,21 +16,24 @@ Jacs Configuration File
 
 # Config Properties
 
-| Property                                                                | Type     | Required | Nullable       | Defined by                                                                                                                                                |
-| :---------------------------------------------------------------------- | :------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [jacs\_use\_security](#jacs_use_security)                               | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_use_security.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_use_security")                             |
-| [jacs\_data\_directory](#jacs_data_directory)                           | `string` | Required | cannot be null | [Config](jacs-properties-jacs_data_directory.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_data_directory")                         |
-| [jacs\_key\_directory](#jacs_key_directory)                             | `string` | Required | cannot be null | [Config](jacs-properties-jacs_key_directory.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_key_directory")                           |
-| [jacs\_agent\_private\_key\_filename](#jacs_agent_private_key_filename) | `string` | Required | cannot be null | [Config](jacs-properties-jacs_agent_private_key_filename.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_private_key_filename") |
-| [jacs\_agent\_public\_key\_filename](#jacs_agent_public_key_filename)   | `string` | Required | cannot be null | [Config](jacs-properties-jacs_agent_public_key_filename.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_public_key_filename")   |
-| [jacs\_agent\_key\_algorithm](#jacs_agent_key_algorithm)                | `string` | Required | cannot be null | [Config](jacs-properties-jacs_agent_key_algorithm.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_key_algorithm")               |
-| [jacs\_agent\_schema\_version](#jacs_agent_schema_version)              | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_agent_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_schema_version")             |
-| [jacs\_header\_schema\_version](#jacs_header_schema_version)            | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_header_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_header_schema_version")           |
-| [jacs\_signature\_schema\_version](#jacs_signature_schema_version)      | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_signature_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version")     |
-| [jacs\_private\_key\_password](#jacs_private_key_password)              | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_private_key_password.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_private_key_password")             |
-| [jacs\_default\_storage](#jacs_default_storage)                         | `string` | Required | cannot be null | [Config](jacs-properties-jacs_default_storage.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_default_storage")                       |
-| [jacs\_agent\_domain](#jacs_agent_domain)                               | `string` | Optional | cannot be null | [Config](jacs-properties-jacs_agent_domain.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_domain")                             |
-| [observability](#observability)                                         | `object` | Optional | cannot be null | [Config](jacs-properties-observability.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/observability")                                     |
+| Property                                                                | Type      | Required | Nullable       | Defined by                                                                                                                                                |
+| :---------------------------------------------------------------------- | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [jacs\_use\_security](#jacs_use_security)                               | `string`  | Optional | cannot be null | [Config](jacs-properties-jacs_use_security.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_use_security")                             |
+| [jacs\_data\_directory](#jacs_data_directory)                           | `string`  | Required | cannot be null | [Config](jacs-properties-jacs_data_directory.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_data_directory")                         |
+| [jacs\_key\_directory](#jacs_key_directory)                             | `string`  | Required | cannot be null | [Config](jacs-properties-jacs_key_directory.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_key_directory")                           |
+| [jacs\_agent\_private\_key\_filename](#jacs_agent_private_key_filename) | `string`  | Required | cannot be null | [Config](jacs-properties-jacs_agent_private_key_filename.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_private_key_filename") |
+| [jacs\_agent\_public\_key\_filename](#jacs_agent_public_key_filename)   | `string`  | Required | cannot be null | [Config](jacs-properties-jacs_agent_public_key_filename.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_public_key_filename")   |
+| [jacs\_agent\_key\_algorithm](#jacs_agent_key_algorithm)                | `string`  | Required | cannot be null | [Config](jacs-properties-jacs_agent_key_algorithm.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_key_algorithm")               |
+| [jacs\_agent\_schema\_version](#jacs_agent_schema_version)              | `string`  | Optional | cannot be null | [Config](jacs-properties-jacs_agent_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_schema_version")             |
+| [jacs\_header\_schema\_version](#jacs_header_schema_version)            | `string`  | Optional | cannot be null | [Config](jacs-properties-jacs_header_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_header_schema_version")           |
+| [jacs\_signature\_schema\_version](#jacs_signature_schema_version)      | `string`  | Optional | cannot be null | [Config](jacs-properties-jacs_signature_schema_version.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_signature_schema_version")     |
+| [jacs\_private\_key\_password](#jacs_private_key_password)              | `string`  | Optional | cannot be null | [Config](jacs-properties-jacs_private_key_password.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_private_key_password")             |
+| [jacs\_default\_storage](#jacs_default_storage)                         | `string`  | Required | cannot be null | [Config](jacs-properties-jacs_default_storage.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_default_storage")                       |
+| [jacs\_agent\_domain](#jacs_agent_domain)                               | `string`  | Optional | cannot be null | [Config](jacs-properties-jacs_agent_domain.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_agent_domain")                             |
+| [jacs\_dns\_validate](#jacs_dns_validate)                               | `boolean` | Optional | cannot be null | [Config](jacs-properties-jacs_dns_validate.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_validate")                             |
+| [jacs\_dns\_strict](#jacs_dns_strict)                                   | `boolean` | Optional | cannot be null | [Config](jacs-properties-jacs_dns_strict.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_strict")                                 |
+| [jacs\_dns\_required](#jacs_dns_required)                               | `boolean` | Optional | cannot be null | [Config](jacs-properties-jacs_dns_required.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_required")                             |
+| [observability](#observability)                                         | `object`  | Optional | cannot be null | [Config](jacs-properties-observability.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/observability")                                     |
 
 ## jacs\_use\_security
 
@@ -267,6 +270,60 @@ Optional domain used for DNSSEC-validated public key fingerprint (\_v1.agent.jac
 ### jacs\_agent\_domain Type
 
 `string`
+
+## jacs\_dns\_validate
+
+If true, attempt DNS TXT fingerprint validation when a domain is present (default true if domain present).
+
+`jacs_dns_validate`
+
+* is optional
+
+* Type: `boolean`
+
+* cannot be null
+
+* defined in: [Config](jacs-properties-jacs_dns_validate.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_validate")
+
+### jacs\_dns\_validate Type
+
+`boolean`
+
+## jacs\_dns\_strict
+
+If true, require DNSSEC-validated TXT and disallow embedded fallback when validating.
+
+`jacs_dns_strict`
+
+* is optional
+
+* Type: `boolean`
+
+* cannot be null
+
+* defined in: [Config](jacs-properties-jacs_dns_strict.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_strict")
+
+### jacs\_dns\_strict Type
+
+`boolean`
+
+## jacs\_dns\_required
+
+If true, require a domain and DNS validation to be present; fail validation if missing.
+
+`jacs_dns_required`
+
+* is optional
+
+* Type: `boolean`
+
+* cannot be null
+
+* defined in: [Config](jacs-properties-jacs_dns_required.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_required")
+
+### jacs\_dns\_required Type
+
+`boolean`
 
 ## observability
 

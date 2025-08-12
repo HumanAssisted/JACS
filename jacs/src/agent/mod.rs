@@ -93,6 +93,10 @@ pub struct Agent {
     key_algorithm: Option<String>,
     /// control DNS strictness for public key verification
     dns_strict: bool,
+    /// whether DNS validation is enabled (None means derive from config/domain presence)
+    dns_validate_enabled: Option<bool>,
+    /// whether DNS validation is required (must have domain and successful DNS check)
+    dns_required: Option<bool>,
 }
 
 impl fmt::Display for Agent {
@@ -130,11 +134,23 @@ impl Agent {
             public_key: None,
             private_key: None,
             dns_strict: true,
+            dns_validate_enabled: None,
+            dns_required: None,
         })
     }
 
     pub fn set_dns_strict(&mut self, strict: bool) {
         self.dns_strict = strict;
+    }
+
+    pub fn set_dns_validate(&mut self, enabled: bool) {
+        self.dns_validate_enabled = Some(enabled);
+        if !enabled {
+            self.dns_strict = false;
+        }
+    }
+    pub fn set_dns_required(&mut self, required: bool) {
+        self.dns_required = Some(required);
     }
 
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
