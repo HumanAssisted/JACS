@@ -17,6 +17,7 @@ use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::KeyManager;
 
 use crate::dns::bootstrap::verify_pubkey_via_dns_or_embedded;
+#[cfg(feature = "observability-convenience")]
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
 use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
@@ -165,8 +166,11 @@ impl Agent {
         let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
 
-        // Record the agent operation
-        record_agent_operation("load_by_id", &lookup_id, success, duration_ms);
+        #[cfg(feature = "observability-convenience")]
+        {
+            // Record the agent operation
+            record_agent_operation("load_by_id", &lookup_id, success, duration_ms);
+        }
 
         if success {
             info!("Successfully loaded agent by ID: {}", lookup_id);
@@ -424,7 +428,10 @@ impl Agent {
 
                 let duration_ms = start_time.elapsed().as_millis() as u64;
                 let algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
-                record_signature_verification("unknown_agent", false, algorithm);
+                #[cfg(feature = "observability-convenience")]
+                {
+                    record_signature_verification("unknown_agent", false, algorithm);
+                }
 
                 return Err(error_message.into());
             }
@@ -465,7 +472,10 @@ impl Agent {
             .and_then(|v| v.as_str())
             .unwrap_or("unknown_agent");
 
-        record_signature_verification(agent_id, success, algorithm);
+        #[cfg(feature = "observability-convenience")]
+        {
+            record_signature_verification(agent_id, success, algorithm);
+        }
 
         if success {
             info!("Signature verification successful for agent: {}", agent_id);

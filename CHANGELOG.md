@@ -99,12 +99,13 @@
 
 ### jacs
 
+ - [] default to dnssec if domain is present - or WARN
  - [] redesign api for easier bootstrapping
- - [] PKI choice (dkim, ke)
  - [] private key bootstrapping with vault, kerberos - filesystem
  - [] api for easier integratios data processing 
  - [x] add observability to configuration
-
+ - [x] dns verification of pubic key hash
+ - [] clickhous demo
  - [] test centralized logging output without file output 
 
 ### jacsmcp

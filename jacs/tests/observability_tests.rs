@@ -873,6 +873,7 @@ fn test_otlp_with_headers() {
     increment_counter("header_test_counter", 1, None);
 }
 
+#[cfg(feature = "otlp-tracing")]
 #[test]
 #[serial]
 fn test_sampling_configuration() {
@@ -1026,6 +1027,7 @@ fn test_minimal_dev_configuration() {
     println!("✓ Minimal development configuration test completed");
 }
 
+#[cfg(feature = "otlp-tracing")]
 #[test]
 #[serial]
 fn test_full_production_configuration() {
@@ -1390,6 +1392,7 @@ fn test_metrics_export_interval_timing() {
     }
 }
 
+#[cfg(feature = "otlp-tracing")]
 #[test]
 #[serial]
 fn test_tracing_sampling_behavior() {

@@ -1,8 +1,11 @@
+#[cfg(feature = "otlp-tracing")]
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
+#[cfg(feature = "otlp-tracing")]
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::{Arc, Mutex};
 use tracing::warn;
 
+#[cfg(feature = "observability-convenience")]
 pub mod convenience;
 pub mod logs;
 pub mod metrics;
@@ -36,14 +39,24 @@ pub fn init_observability(
     // Initialize tracing FIRST (before logs!)
     if let Some(tracing_config) = &config.tracing {
         if tracing_config.enabled {
-            match init_tracing(tracing_config) {
-                Ok(_) => {}
-                Err(e) => {
-                    warn!(
-                        "Info: init_tracing reported: {} (possibly already initialized)",
-                        e
-                    );
+            #[cfg(feature = "otlp-tracing")]
+            {
+                match init_tracing(tracing_config) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        warn!(
+                            "Info: init_tracing reported: {} (possibly already initialized)",
+                            e
+                        );
+                    }
                 }
+            }
+            #[cfg(not(feature = "otlp-tracing"))]
+            {
+                return Err(
+                    "otlp-tracing feature is not enabled; rebuild with --features otlp-tracing"
+                        .into(),
+                );
             }
         }
     }
@@ -137,7 +150,7 @@ pub fn flush_observability() {
     std::thread::sleep(std::time::Duration::from_millis(50));
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "otlp-tracing"))]
 fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>> {
     use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
     use opentelemetry_sdk::{

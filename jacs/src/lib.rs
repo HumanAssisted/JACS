@@ -9,7 +9,6 @@ use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 use tracing::debug;
@@ -44,19 +43,14 @@ pub fn init_default_observability() -> Result<(), Box<dyn std::error::Error>> {
             headers: None,
         },
         metrics: MetricsConfig {
-            enabled: true,
+            enabled: false,
             destination: MetricsDestination::File {
                 path: "./metrics.txt".to_string(),
             },
             export_interval_seconds: Some(60),
             headers: None,
         },
-        tracing: Some(TracingConfig {
-            enabled: false, // Disabled by default
-            sampling: SamplingConfig::default(),
-            resource: None,
-            destination: None,
-        }),
+        tracing: None,
     };
 
     init_observability(config).map(|_| ())

@@ -86,13 +86,13 @@ hickory-resolver = { version = "0.24", features = ["dnssec-ring"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
-tracing-opentelemetry = "0.31"
-opentelemetry = "0.30.0"
-opentelemetry-otlp = { version = "0.30.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
-opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "experimental_metrics_custom_reader"] }
-opentelemetry-semantic-conventions = "0.30.0"
-opentelemetry-appender-tracing = "0.30.1"
-tokio = { version = "1.0", features = ["rt-multi-thread"] }
+tracing-opentelemetry = { version = "0.31", optional = true }
+opentelemetry = { version = "0.30.0", optional = true }
+opentelemetry-otlp = { version = "0.30.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"], optional = true }
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "experimental_metrics_custom_reader"], optional = true }
+opentelemetry-semantic-conventions = { version = "0.30.0", optional = true }
+opentelemetry-appender-tracing = { version = "0.30.1", optional = true }
+tokio = { version = "1.0", features = ["rt-multi-thread"], optional = true }
 
 # opentelemetry-prometheus = "0.29.1"
 
@@ -137,6 +137,33 @@ required-features = ["cli"]
 
 [features]
 cli = ["dep:clap", "dep:ratatui"]
+
+# Optional convenience helpers (metrics/log wrappers)
+observability-convenience = []
+
+# Observability backends are gated behind compile-time features.
+# Default is a minimal core: stderr/file logs only, no remote backends.
+# Enable these features to activate OTLP-based backends and pull in deps.
+otlp-logs = [
+  "dep:opentelemetry",
+  "dep:opentelemetry-otlp",
+  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-appender-tracing",
+  "dep:tokio",
+]
+otlp-metrics = [
+  "dep:opentelemetry",
+  "dep:opentelemetry-otlp",
+  "dep:opentelemetry_sdk",
+  "dep:tokio",
+]
+otlp-tracing = [
+  "dep:opentelemetry",
+  "dep:opentelemetry-otlp",
+  "dep:opentelemetry_sdk",
+  "dep:tracing-opentelemetry",
+  "dep:tokio",
+]
 
 [[bench]]
 name = "sign_and_check_sig"
