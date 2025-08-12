@@ -13,7 +13,7 @@ use jacs::cli_utils::document::{
 use jacs::config::find_config;
 use jacs::create_task;
 use jacs::dns::bootstrap as dns_bootstrap;
-use jacs::load_agent;
+use jacs::{load_agent, load_agent_with_dns_strict};
 
 use std::env;
 use std::error::Error;
@@ -44,6 +44,19 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 .subcommand(
                     Command::new("dns")
                         .about("emit DNS TXT commands for publishing agent fingerprint")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .long("agent-file")
+                                .value_parser(value_parser!(String))
+                                .help("Path to agent JSON (optional; defaults via config)"),
+                        )
+                        .arg(
+                            Arg::new("non-strict-dns")
+                                .long("non-strict-dns")
+                                .help("Allow fallback to embedded fingerprint if DNS lookup fails (for DNS propagation)")
+                                .action(ArgAction::SetTrue),
+                        )
                         .arg(Arg::new("domain").long("domain").value_parser(value_parser!(String)))
                         .arg(Arg::new("agent-id").long("agent-id").value_parser(value_parser!(String)))
                         .arg(Arg::new("ttl").long("ttl").value_parser(value_parser!(u32)).default_value("3600"))
@@ -75,6 +88,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             .short('a')
                             .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
                             .value_parser(value_parser!(String)),
+                    )
+                    .arg(
+                        Arg::new("non-strict-dns")
+                            .long("non-strict-dns")
+                            .help("Allow fallback to embedded fingerprint if DNS lookup fails (for DNS propagation)")
+                            .action(ArgAction::SetTrue),
                     ),
                 ),
         )
@@ -495,8 +514,20 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str())
                     .unwrap_or("plain");
 
-                // Load agent from config (existing flow)
-                let mut agent: Agent = load_agent(None).expect("load agent");
+                // Load agent from optional path, supporting non-strict DNS for propagation
+                let agent_file = sub_m.get_one::<String>("agent-file").cloned();
+                let non_strict = *sub_m.get_one::<bool>("non-strict-dns").unwrap_or(&false);
+                let mut agent: Agent = if let Some(path) = agent_file.clone() {
+                    if non_strict {
+                        load_agent_with_dns_strict(path, false)
+                            .expect("failed to load agent (non-strict)")
+                    } else {
+                        load_agent(Some(path)).expect("failed to load agent")
+                    }
+                } else {
+                    load_agent(None)
+                        .expect("Provide --agent-file or ensure config points to a readable agent")
+                };
                 let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
                 let pk = agent.get_public_key().expect("public key");
                 let digest = match enc {
@@ -560,8 +591,22 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
-
+                let non_strict = *verify_matches
+                    .get_one::<bool>("non-strict-dns")
+                    .unwrap_or(&false);
+                let mut agent: Agent = if let Some(path) = agentfile.cloned() {
+                    if non_strict {
+                        load_agent_with_dns_strict(path, false).expect("agent file")
+                    } else {
+                        load_agent(Some(path)).expect("agent file")
+                    }
+                } else {
+                    // No path provided; use default loader
+                    load_agent(None).expect("agent file")
+                };
+                if non_strict {
+                    agent.set_dns_strict(false);
+                }
                 agent
                     .verify_self_signature()
                     .expect("signature verification");

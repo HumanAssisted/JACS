@@ -125,6 +125,31 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
     }
 }
 
+/// Load an agent from a file path while controlling DNS strictness before validation runs.
+pub fn load_agent_with_dns_strict(
+    agentfile: String,
+    dns_strict: bool,
+) -> Result<agent::Agent, Box<dyn Error>> {
+    let mut agent = get_empty_agent();
+    agent.set_dns_strict(dns_strict);
+
+    // Extract logical ID from provided path (expects .../agent/ID:VERSION.json)
+    let agent_filename = std::path::Path::new(&agentfile)
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or("Could not extract filename from agent path")?;
+    let agent_id = agent_filename
+        .strip_suffix(".json")
+        .ok_or("Agent filename does not end with .json")?;
+
+    let agent_string = agent
+        .fs_agent_load(&agent_id.to_string())
+        .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))?;
+
+    agent.load(&agent_string)?;
+    Ok(agent)
+}
+
 /// Creates a minimal agent JSON string with a default service.
 /// Optionally accepts descriptions for the default service.
 pub fn create_minimal_blank_agent(

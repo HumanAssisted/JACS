@@ -1,7 +1,7 @@
 {
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_agent_domain": "hai.io",
-  "jacs_agent_id_and_version": "233bfff0-8c83-425d-ade5-59f48c2ae312:27df5b26-5cae-4974-9f49-95628061b425",
+  "jacs_agent_id_and_version": "85058eed-81b0-4eb3-878e-c58e7902c4fd:6b2c5ddf-a07b-4e0a-af1b-b081f1b8cb32",
   "jacs_agent_key_algorithm": "pq-dilithium",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
   "jacs_agent_public_key_filename": "jacs.public.pem",

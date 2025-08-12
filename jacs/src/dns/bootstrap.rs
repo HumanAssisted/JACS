@@ -239,10 +239,10 @@ pub fn verify_pubkey_via_dns_or_embedded(
                     {
                         return Ok(());
                     }
-                    return Err("embedded fingerprint mismatch".to_string());
+                    return Err("embedded fingerprint mismatch (embedded present but does not match local public key)".to_string());
                 }
                 // Neither DNS nor embedded available
-                return Err("no DNS or embedded fingerprint available".to_string());
+                return Err("DNS TXT lookup failed for domain".to_string());
             }
         }
     }
@@ -255,8 +255,11 @@ pub fn verify_pubkey_via_dns_or_embedded(
         {
             return Ok(());
         }
-        return Err("embedded fingerprint mismatch".to_string());
+        return Err(
+            "embedded fingerprint mismatch (embedded present but does not match local public key)"
+                .to_string(),
+        );
     }
 
-    Err("no DNS or embedded fingerprint available".to_string())
+    Err("DNS TXT lookup required (domain configured) or provide embedded fingerprint".to_string())
 }
