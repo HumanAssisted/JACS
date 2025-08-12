@@ -78,7 +78,7 @@
  ### minor core
 - [] don't store  "jacs_private_key_password":  in config, don't display
 - [] minor feature - no_save = false should save document and still return json string instead of message on create document
-
+ - [] default to dnssec if domain is present - or WARN
 --------------------
 
 ## 0.3.6
@@ -99,11 +99,13 @@
 
 ### jacs
 
- - [] default to dnssec if domain is present - or WARN
+- Observability: added feature-gated backends (`otlp-logs`, `otlp-metrics`, `otlp-tracing`) and optional `observability-convenience`. Default build is minimal (stderr/file logs only), no tokio/OpenTelemetry; clear runtime errors if a requested backend isn’t compiled. Docs now include a feature matrix and compile recipes. Tests updated and all pass with features.
+
+- DNS: implemented fingerprint-in-DNS (TXT under `_v1.agent.jacs.<domain>.`), CLI emitters for BIND/Route53/Azure/Cloudflare, DNSSEC validation with non-strict fallback, and config flags (`jacs_agent_domain`, `jacs_dns_validate`, `jacs_dns_strict`, `jacs_dns_required`). Added CLI flags `--require-dns`, `--require-strict-dns`, `--ignore-dns`, and `--no-dns` (alias preserved). Improved error messages, updated docs, and added policy/encoding tests.
+
  - [] redesign api for easier bootstrapping
  - [] private key bootstrapping with vault, kerberos - filesystem
  - [] api for easier integratios data processing 
- - [x] add observability to configuration
  - [x] dns verification of pubic key hash
  - [] clickhous demo
  - [] test centralized logging output without file output 
