@@ -11,13 +11,13 @@ use jacs::cli_utils::document::{
     update_documents, verify_documents,
 };
 use jacs::config::find_config;
-use jacs::create_task;
+// use jacs::create_task; // unused
 use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::{load_agent, load_agent_with_dns_strict};
 
 use std::env;
 use std::error::Error;
-use std::os::unix::fs::DirBuilderExt;
+// use std::os::unix::fs::DirBuilderExt; // unused
 use std::process;
 
 pub fn main() -> Result<(), Box<dyn Error>> {

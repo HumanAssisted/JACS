@@ -1,4 +1,4 @@
-use base64::{decode, encode};
+use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
@@ -41,7 +41,7 @@ pub fn sign_string(
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut OsRng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
-    let signature_base64 = encode(&signature_bytes);
+    let signature_base64 = B64.encode(&signature_bytes);
     // TODO
     // assert_ne!(signature.to_bytes().as_ref(), data);
     debug!(
@@ -77,7 +77,7 @@ pub fn verify_string(
         signature_base64, data
     );
 
-    let signature_bytes = decode(signature_base64)?;
+    let signature_bytes = B64.decode(signature_base64)?;
     debug!("Decoded signature bytes: {:?}", signature_bytes);
 
     let signature = Signature::try_from(signature_bytes.as_slice())?;
