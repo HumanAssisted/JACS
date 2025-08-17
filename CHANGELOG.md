@@ -22,6 +22,11 @@
    - load document whatever storage config is
    - function test output metadata about current config and current agent
 
+- [] add more feature flags for modular integrations
+- [] a2a integration
+- [] acp integration
+
+
 ## jacs-mcp 0.1.0
 
  - [] use rmcp
@@ -33,6 +38,8 @@
 --------------------
 
 ## 0.3.7
+
+
 
 ### devrel
 - [] github actions builder for auto build/deploy of platform specific versions
@@ -59,6 +66,7 @@
       1. cli create agent 
       2. config jacspy to load each agent
  - [] github actions builder for linux varieties
+ - [] switch to uv from pip/etc
 
 ### JACS core
  - [] acp integration
@@ -86,10 +94,8 @@
 
 ### devex
 
-- [] add more feature flags for modular integrations
-- [] a2a integration
-- [] acp integration
-- [] add updates to book
+
+- [x] add updates to book
 - [] cli install for brew
 - [] cli install via shell script
 - [] open license
@@ -121,7 +127,7 @@
 - [] refactor api
 - [] publish to pipy 
 - [] tracing and logging integration tests
-- [] switch to uv from pip/etc
+
 
 ### jacsnpm
 
