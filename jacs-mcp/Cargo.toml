@@ -3,4 +3,15 @@ name = "jacs-mcp"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["mcp"]
+mcp = ["dep:rmcp", "dep:tokio", "jacs/mcp-server"]
+http = []
+
 [dependencies]
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+jacs = { path = "../jacs", default-features = true }

@@ -141,6 +141,9 @@ cli = ["dep:clap", "dep:ratatui"]
 # Optional convenience helpers (metrics/log wrappers)
 observability-convenience = []
 
+# Server integration surfaces (no deps by default; used by sibling binaries)
+mcp-server = []
+
 # Observability backends are gated behind compile-time features.
 # Default is a minimal core: stderr/file logs only, no remote backends.
 # Enable these features to activate OTLP-based backends and pull in deps.
