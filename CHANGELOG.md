@@ -12,6 +12,7 @@
 - secure storage of private key for shared server envs https://crates.io/crates/tss-esapi, https://docs.rs/cryptoki/latest/cryptoki/
 - qr code integration
 
+
 ## 0.4.0
 - Domain integration
 - [] sign config
