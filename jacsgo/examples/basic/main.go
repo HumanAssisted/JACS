@@ -18,10 +18,10 @@ func main() {
 	keyDir := "./jacs_keys"
 	privateKeyFile := "jacs.private.pem.enc"
 	publicKeyFile := "jacs.public.pem"
-	keyAlgorithm := "RSA"
+	keyAlgorithm := "RSA-PSS"
 	password := "test_password"
 	agentID := "example-agent:v0.1.0"
-	storage := "local"
+	storage := "fs"
 
 	config := jacs.Config{
 		UseSecurity:         &useSecurity,

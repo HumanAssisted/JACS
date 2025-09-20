@@ -3,7 +3,7 @@ use jacs_core::agent::document::DocumentTraits;
 use jacs_core::agent::payloads::PayloadTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
 use jacs_core::crypt::KeyManager;
-use jacs_core::crypt::hash::hash_string as jacs_hash_string;
+use jacs_core::crypt::hash::hash_string as core_hash_string;
 use lazy_static::lazy_static;
 use libc::{c_char, c_int, size_t};
 use serde_json::Value;
@@ -15,7 +15,7 @@ use std::sync::Mutex;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
-use conversion_utils::{json_to_c_string, c_string_to_json};
+use conversion_utils::json_to_c_string;
 
 lazy_static! {
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
@@ -25,7 +25,7 @@ lazy_static! {
 }
 
 /// Load JACS configuration from the specified path
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_load(config_path: *const c_char) -> c_int {
     if config_path.is_null() {
         return -1;
@@ -48,7 +48,7 @@ pub extern "C" fn jacs_load(config_path: *const c_char) -> c_int {
 }
 
 /// Free a string allocated by Rust
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_free_string(s: *mut c_char) {
     if s.is_null() {
         return;
@@ -60,7 +60,7 @@ pub extern "C" fn jacs_free_string(s: *mut c_char) {
 }
 
 /// Sign a string and return the signature
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_sign_string(data: *const c_char) -> *mut c_char {
     if data.is_null() {
         return ptr::null_mut();
@@ -86,7 +86,7 @@ pub extern "C" fn jacs_sign_string(data: *const c_char) -> *mut c_char {
 }
 
 /// Hash a string using JACS hashing
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_hash_string(data: *const c_char) -> *mut c_char {
     if data.is_null() {
         return ptr::null_mut();
@@ -97,7 +97,7 @@ pub extern "C" fn jacs_hash_string(data: *const c_char) -> *mut c_char {
         Err(_) => return ptr::null_mut(),
     };
 
-    let hash = jacs_hash_string(&data_str.to_string());
+    let hash = core_hash_string(&data_str.to_string());
     
     match CString::new(hash) {
         Ok(c_string) => c_string.into_raw(),
@@ -106,7 +106,7 @@ pub extern "C" fn jacs_hash_string(data: *const c_char) -> *mut c_char {
 }
 
 /// Verify a string signature
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_string(
     data: *const c_char,
     signature_base64: *const c_char,
@@ -114,7 +114,11 @@ pub extern "C" fn jacs_verify_string(
     public_key_len: size_t,
     public_key_enc_type: *const c_char,
 ) -> c_int {
-    if data.is_null() || signature_base64.is_null() || public_key.is_null() || public_key_enc_type.is_null() {
+    if data.is_null()
+        || signature_base64.is_null()
+        || public_key.is_null()
+        || public_key_enc_type.is_null()
+    {
         return -1;
     }
 
@@ -152,7 +156,7 @@ pub extern "C" fn jacs_verify_string(
 }
 
 /// Sign an agent
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_sign_agent(
     agent_string: *const c_char,
     public_key: *const u8,
@@ -217,7 +221,7 @@ pub extern "C" fn jacs_sign_agent(
 }
 
 /// Create a JACS configuration
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_create_config(
     jacs_use_security: *const c_char,
     jacs_data_directory: *const c_char,
@@ -251,7 +255,7 @@ pub extern "C" fn jacs_create_config(
 }
 
 /// Verify an agent
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_agent(agentfile: *const c_char) -> c_int {
     let mut agent = match JACS_AGENT.lock() {
         Ok(agent) => agent,
@@ -285,7 +289,7 @@ pub extern "C" fn jacs_verify_agent(agentfile: *const c_char) -> c_int {
 }
 
 /// Update an agent
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_update_agent(new_agent_string: *const c_char) -> *mut c_char {
     if new_agent_string.is_null() {
         return ptr::null_mut();
@@ -301,7 +305,7 @@ pub extern "C" fn jacs_update_agent(new_agent_string: *const c_char) -> *mut c_c
         Err(_) => return ptr::null_mut(),
     };
 
-    match agent.update_self(agent_str) {
+    match agent.update_self(&agent_str.to_string()) {
         Ok(updated) => match CString::new(updated) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
@@ -311,7 +315,7 @@ pub extern "C" fn jacs_update_agent(new_agent_string: *const c_char) -> *mut c_c
 }
 
 /// Verify a document
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int {
     if document_string.is_null() {
         return -1;
@@ -327,7 +331,7 @@ pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int 
         Err(_) => return -3,
     };
 
-    let doc = match agent.load_document(doc_str) {
+    let doc = match agent.load_document(&doc_str.to_string()) {
         Ok(doc) => doc,
         Err(_) => return -4,
     };
@@ -346,7 +350,7 @@ pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int 
 }
 
 /// Update a document
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_update_document(
     document_key: *const c_char,
     new_document_string: *const c_char,
@@ -386,7 +390,7 @@ pub extern "C" fn jacs_update_document(
         Err(_) => return ptr::null_mut(),
     };
 
-    match agent.update_document(key_str, doc_str, attachments, embed_opt) {
+    match agent.update_document(&key_str.to_string(), &doc_str.to_string(), attachments, embed_opt) {
         Ok(doc) => match CString::new(doc.to_string()) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
@@ -396,7 +400,7 @@ pub extern "C" fn jacs_update_document(
 }
 
 /// Create a document
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_create_document(
     document_string: *const c_char,
     custom_schema: *const c_char,
@@ -419,11 +423,17 @@ pub extern "C" fn jacs_create_document(
         Err(_) => return ptr::null_mut(),
     };
 
-    let embed_opt = if embed > 0 { Some(true) } else if embed < 0 { Some(false) } else { None };
+    let embed_opt = if embed > 0 {
+        Some(true)
+    } else if embed < 0 {
+        Some(false)
+    } else {
+        None
+    };
 
     match jacs_core::shared::document_create(
         &mut agent,
-        doc_str,
+        &doc_str.to_string(),
         c_string_to_option(custom_schema),
         c_string_to_option(outputfilename),
         no_save != 0,
@@ -439,7 +449,7 @@ pub extern "C" fn jacs_create_document(
 }
 
 /// Create an agreement
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_create_agreement(
     document_string: *const c_char,
     agentids_json: *const c_char,
@@ -473,7 +483,7 @@ pub extern "C" fn jacs_create_agreement(
 
     match jacs_core::shared::document_add_agreement(
         &mut agent,
-        doc_str,
+        &doc_str.to_string(),
         agentids,
         None,
         None,
@@ -493,7 +503,7 @@ pub extern "C" fn jacs_create_agreement(
 }
 
 /// Sign an agreement
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_sign_agreement(
     document_string: *const c_char,
     agreement_fieldname: *const c_char,
@@ -514,7 +524,7 @@ pub extern "C" fn jacs_sign_agreement(
 
     match jacs_core::shared::document_sign_agreement(
         &mut agent,
-        doc_str,
+        &doc_str.to_string(),
         None,
         None,
         None,
@@ -531,7 +541,7 @@ pub extern "C" fn jacs_sign_agreement(
 }
 
 /// Check an agreement
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_check_agreement(
     document_string: *const c_char,
     agreement_fieldname: *const c_char,
@@ -552,7 +562,7 @@ pub extern "C" fn jacs_check_agreement(
 
     match jacs_core::shared::document_check_agreement(
         &mut agent,
-        doc_str,
+        &doc_str.to_string(),
         None,
         c_string_to_option(agreement_fieldname),
     ) {
@@ -565,7 +575,7 @@ pub extern "C" fn jacs_check_agreement(
 }
 
 /// Sign a request (for MCP)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_sign_request(payload_json: *const c_char) -> *mut c_char {
     if payload_json.is_null() {
         return ptr::null_mut();
@@ -596,7 +606,7 @@ pub extern "C" fn jacs_sign_request(payload_json: *const c_char) -> *mut c_char 
 }
 
 /// Verify a response (for MCP)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_response(document_string: *const c_char) -> *mut c_char {
     if document_string.is_null() {
         return ptr::null_mut();
@@ -619,7 +629,7 @@ pub extern "C" fn jacs_verify_response(document_string: *const c_char) -> *mut c
 }
 
 /// Verify a response with agent ID (for MCP)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_response_with_agent_id(
     document_string: *const c_char,
     agent_id_out: *mut *mut c_char,
@@ -645,7 +655,7 @@ pub extern "C" fn jacs_verify_response_with_agent_id(
                 Ok(c_string) => unsafe { *agent_id_out = c_string.into_raw() },
                 Err(_) => unsafe { *agent_id_out = ptr::null_mut() },
             }
-            
+
             // Return the payload
             json_to_c_string(&payload)
         }
@@ -657,7 +667,7 @@ pub extern "C" fn jacs_verify_response_with_agent_id(
 }
 
 /// Verify a signature on a document
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_signature(
     document_string: *const c_char,
     signature_field: *const c_char,
@@ -676,7 +686,7 @@ pub extern "C" fn jacs_verify_signature(
         Err(_) => return -3,
     };
 
-    let doc = match agent.load_document(doc_str) {
+    let doc = match agent.load_document(&doc_str.to_string()) {
         Ok(doc) => doc,
         Err(_) => return -4,
     };
@@ -695,6 +705,9 @@ fn c_string_to_option(c_str: *const c_char) -> Option<String> {
     if c_str.is_null() {
         None
     } else {
-        unsafe { CStr::from_ptr(c_str) }.to_str().ok().map(|s| s.to_string())
+        unsafe { CStr::from_ptr(c_str) }
+            .to_str()
+            .ok()
+            .map(|s| s.to_string())
     }
 }

@@ -12,7 +12,7 @@ build-rust:
 	@echo "Building Rust library..."
 	cd lib && cargo build --release
 	@mkdir -p build
-	@cp lib/target/release/libjacsgo.* build/ 2>/dev/null || true
+	@cp ../target/release/libjacsgo.* build/ 2>/dev/null || true
 	@echo "Rust library built successfully"
 
 # Build Go module (mainly for verification)
@@ -56,7 +56,7 @@ dev:
 examples: build
 	@echo "Building examples..."
 	cd examples/basic && go build -v
-	cd examples/http && go build -v
+	cd examples/http && go build -o server server.go && go build -o client client.go
 	cd examples/mcp && go build -v || echo "MCP example skipped (may require additional dependencies)"
 	@echo "Examples built successfully"
 

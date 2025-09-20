@@ -33,7 +33,7 @@ pub fn c_string_to_json(c_str: *const c_char) -> Result<Value, String> {
 /// Encode binary data with type information for cross-language compatibility
 pub fn encode_binary_data(data: &[u8]) -> Value {
     let base64_str = general_purpose::STANDARD.encode(data);
-    
+
     let mut map = JsonMap::new();
     map.insert("__type__".to_string(), Value::String("bytes".to_string()));
     map.insert("data".to_string(), Value::String(base64_str));
@@ -63,10 +63,10 @@ mod tests {
     fn test_encode_decode_binary() {
         let data = b"Hello, World!";
         let encoded = encode_binary_data(data);
-        
+
         assert!(encoded.is_object());
         assert_eq!(encoded["__type__"], "bytes");
-        
+
         let decoded = decode_binary_data(&encoded).unwrap();
         assert_eq!(decoded, data);
     }
