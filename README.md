@@ -26,6 +26,7 @@ This repo includes JACS available in several languages:
   1. the main [rust jacs lib](./jacs/) and cli to bootstrap an agent or documents 
   2. [Python library](./jacspy/) for use as middleware in any http and with MCP
   3. [Node JS library](./jacsnpm) cli, middleware, and use with MCP
+  4. [Go library](./jacsgo) for use in Go applications with CGO bindings
 
 ## Python quickstart
 
@@ -66,6 +67,37 @@ if __name__ == "__main__":
 
 ```
 
+## Go
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    jacs "github.com/HumanAssisted/JACS/jacsgo"
+)
+
+func main() {
+    // Load JACS configuration
+    err := jacs.Load("jacs.config.json")
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Create and sign a document
+    doc := map[string]interface{}{
+        "content": "Hello from Go!",
+    }
+    
+    signed, err := jacs.SignRequest(doc)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    fmt.Println(signed)
+}
+```
 
 ## Rust
 

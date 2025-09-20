@@ -1,0 +1,30 @@
+# Build artifacts
+/build/
+/lib/target/
+
+# Go build cache
+*.test
+*.out
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+/examples/basic/basic
+/examples/http/client
+/examples/http/server
+/examples/mcp/mcp
+jacs.config.json
+jacs.*.config.json
+
+# Temporary files
+*.tmp
+*.log

@@ -3,7 +3,8 @@ members = [
     "jacs",   
     "jacsnpm",           
     "jacspy",          
-    "jacs-mcp"
+    "jacs-mcp",
+    "jacsgo/lib"
 ]
 resolver = "3"
 rust-version = "1.85"
