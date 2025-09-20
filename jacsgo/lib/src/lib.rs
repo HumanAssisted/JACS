@@ -98,7 +98,7 @@ pub extern "C" fn jacs_hash_string(data: *const c_char) -> *mut c_char {
     };
 
     let hash = core_hash_string(&data_str.to_string());
-    
+
     match CString::new(hash) {
         Ok(c_string) => c_string.into_raw(),
         Err(_) => ptr::null_mut(),
@@ -390,7 +390,12 @@ pub extern "C" fn jacs_update_document(
         Err(_) => return ptr::null_mut(),
     };
 
-    match agent.update_document(&key_str.to_string(), &doc_str.to_string(), attachments, embed_opt) {
+    match agent.update_document(
+        &key_str.to_string(),
+        &doc_str.to_string(),
+        attachments,
+        embed_opt,
+    ) {
         Ok(doc) => match CString::new(doc.to_string()) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),

@@ -56,7 +56,7 @@ dev:
 examples: build
 	@echo "Building examples..."
 	cd examples/basic && go build -v
-	cd examples/http && go build -o server server.go && go build -o client client.go
+	cd examples/http && go build -tags server -o server && go build -tags client -o client
 	cd examples/mcp && go build -v || echo "MCP example skipped (may require additional dependencies)"
 	@echo "Examples built successfully"
 
