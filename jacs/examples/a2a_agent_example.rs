@@ -8,6 +8,7 @@
 
 use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*};
 use jacs::{create_minimal_blank_agent, get_empty_agent};
+use jacs::agent::boilerplate::BoilerPlate;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -30,10 +31,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let agent_value = agent.create_agent_and_load(&agent_json, true, None)?;
-    println!("   ✓ Agent created with ID: {}", agent.id.as_ref().unwrap());
+    println!("   ✓ Agent created with ID: {}", agent.get_id()?);
     println!(
         "   ✓ Using algorithm: {}",
-        agent.key_algorithm.as_ref().unwrap()
+        agent.get_key_algorithm().unwrap_or(&"unknown".to_string())
     );
 
     // Step 2: Generate dual keys for JACS and A2A
@@ -57,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &agent_card,
         &dual_keys.a2a_private_key,
         &dual_keys.a2a_algorithm,
-        agent.id.as_ref().unwrap(),
+        &agent.get_id()?,
     )?;
     println!("   ✓ Agent Card signed (JWS format)");
     println!("   - Signature: {}...", &jws_signature[..50]);
