@@ -12,7 +12,41 @@ JACS is for data provenance. JACS is a set of JSON Schema definitions that provi
 MCP standardizes how a client exposes tools/resources/prompts over JSON-RPC, but it’s intentionally light on identity and artifact-level provenance. JACS fills that gap by making every artifact (tasks, messages, agreements, files) a signed, self-verifiable record with stable schemas and audit trails—orthogonal to whether you call it via MCP or not. 
 
 ##  In relation to A2A
-A2A solves agent discovery and inter-agent messaging via the Agent Card and JSON-RPC, plus extensibility for auth and features. JACS complements this by binding actions and artifacts to cryptographic proofs and versioned history. Net: publish an A2A Agent Card (optionally JWS-signed), advertise a JACS-descriptor extension, and keep using JACS for signing/verification of the actual work products agents exchange.
+
+JACS provides cryptographic document provenance for Google's A2A (Agent-to-Agent) protocol. While A2A handles agent discovery and communication, JACS adds document-level signatures with post-quantum support.
+
+### Quick Start with A2A
+
+```python
+# Python
+from jacs.a2a import JACSA2AIntegration
+a2a = JACSA2AIntegration("jacs.config.json")
+agent_card = a2a.export_agent_card(agent_data)
+wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
+```
+
+```javascript
+// Node.js
+const { JACSA2AIntegration } = require('jacsnpm');
+const a2a = new JACSA2AIntegration();
+const agentCard = a2a.exportAgentCard(agentData);
+const wrapped = a2a.wrapArtifactWithProvenance(artifact, 'task');
+```
+
+```rust
+// Rust
+use jacs::a2a::{agent_card::*, provenance::*};
+let agent_card = export_agent_card(&agent)?;
+let wrapped = wrap_artifact_with_provenance(&mut agent, artifact, "task", None)?;
+```
+
+JACS extends A2A with:
+- **Document signatures** that persist with data (not just transport security)
+- **Post-quantum cryptography** for future-proof security
+- **Chain of custody** tracking for multi-agent workflows
+- **Self-verifying artifacts** that work offline
+
+See [jacs/src/a2a/README.md](./jacs/src/a2a/README.md) for full integration guide
 
 
 Example uses:

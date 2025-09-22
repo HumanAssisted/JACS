@@ -211,6 +211,16 @@ impl Agent {
         true
     }
 
+    /// Get the agent's JSON value
+    pub fn get_value(&self) -> Option<&Value> {
+        self.value.as_ref()
+    }
+
+    /// Get the agent's key algorithm
+    pub fn get_key_algorithm(&self) -> Option<&String> {
+        self.key_algorithm.as_ref()
+    }
+
     pub fn set_keys(
         &mut self,
         private_key: Vec<u8>,

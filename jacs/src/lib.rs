@@ -13,6 +13,7 @@ use std::error::Error;
 use std::path::Path;
 use tracing::debug;
 
+pub mod a2a;
 pub mod agent;
 pub mod config;
 pub mod crypt;

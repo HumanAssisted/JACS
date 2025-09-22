@@ -20,6 +20,7 @@ JACS provides middleware applicable to http, email, mpc, a2a,
 - **Full Audit Trail**: Complete versioning and modification history
 - **Multiple Languages**: Rust, Node.js, and Python implementations
 - **MCP Integration**: Native Model Context Protocol support
+- **A2A Integration**: Google's Agent-to-Agent protocol support
 - **Observable**: Meta data available as OpenTelemetry
 
 ## About
@@ -88,6 +89,25 @@ If you are working in Rust, add the rust lib to your project
     cargo add jacs
 
 For development you may want `cargo install cargo-outdated` and `cargo install cargo-edit`
+
+## A2A Protocol Integration
+
+JACS provides native support for Google's A2A (Agent-to-Agent) protocol:
+
+```rust
+use jacs::a2a::{agent_card::*, keys::*, extension::*, provenance::*};
+
+// Export JACS agent to A2A Agent Card
+let agent_card = export_agent_card(&agent)?;
+
+// Generate dual keys (PQC for JACS, RSA/ECDSA for A2A)  
+let dual_keys = create_jwk_keys(Some("dilithium"), Some("rsa"))?;
+
+// Wrap A2A artifacts with JACS provenance
+let wrapped = wrap_artifact_with_provenance(&mut agent, artifact, "task", None)?;
+```
+
+See [src/a2a/README.md](./src/a2a/README.md) for complete integration guide
 
 ---
 
