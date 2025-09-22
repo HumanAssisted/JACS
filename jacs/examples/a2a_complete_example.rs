@@ -1,5 +1,5 @@
 //! Complete example: JACS agent with A2A protocol integration
-//! 
+//!
 //! This example demonstrates:
 //! 1. Loading a JACS agent from configuration
 //! 2. Exporting to A2A Agent Card format
@@ -7,12 +7,12 @@
 //! 4. Signing Agent Cards with JWS
 //! 5. Wrapping A2A artifacts with JACS provenance
 
-use jacs::a2a::{*, agent_card::*, keys::*, extension::*, provenance::*};
+use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*, *};
 use jacs::agent::{Agent, boilerplate::BoilerPlate};
 use serde_json::json;
+use std::env;
 use std::fs;
 use std::path::Path;
-use std::env;
 
 // Example configuration for a JACS agent
 const EXAMPLE_CONFIG: &str = r#"{
@@ -40,12 +40,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 1: Set up example environment
     println!("1. Setting up example environment...");
     setup_example_environment()?;
-    
+
     // Step 2: Create or load a JACS agent
     println!("\n2. Creating JACS agent...");
     let mut agent = create_example_agent()?;
     println!("   ✓ Agent created with ID: {}", agent.get_id()?);
-    println!("   ✓ Using algorithm: {}", agent.get_key_algorithm().unwrap_or(&"unknown".to_string()));
+    println!(
+        "   ✓ Using algorithm: {}",
+        agent.get_key_algorithm().unwrap_or(&"unknown".to_string())
+    );
 
     // Step 3: Export agent as A2A Agent Card
     println!("\n3. Exporting to A2A Agent Card...");
@@ -56,8 +59,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n4. Generating dual keys for A2A...");
     setup_key_env_vars();
     let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa"))?;
-    println!("   ✓ JACS key generated: {} ({} bytes)", dual_keys.jacs_algorithm, dual_keys.jacs_private_key.len());
-    println!("   ✓ A2A key generated: {} ({} bytes)", dual_keys.a2a_algorithm, dual_keys.a2a_private_key.len());
+    println!(
+        "   ✓ JACS key generated: {} ({} bytes)",
+        dual_keys.jacs_algorithm,
+        dual_keys.jacs_private_key.len()
+    );
+    println!(
+        "   ✓ A2A key generated: {} ({} bytes)",
+        dual_keys.a2a_algorithm,
+        dual_keys.a2a_private_key.len()
+    );
     cleanup_key_env_vars();
 
     // Step 5: Sign Agent Card with JWS
@@ -82,11 +93,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &dual_keys.a2a_algorithm,
         &jws_signature,
     )?;
-    
+
     // Save well-known documents
     let well_known_dir = Path::new("example_output/.well-known");
     fs::create_dir_all(well_known_dir)?;
-    
+
     for (path, content) in &well_known_docs {
         let file_path = format!("example_output{}", path);
         let parent = Path::new(&file_path).parent().unwrap();
@@ -97,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 7: Demonstrate wrapping A2A artifacts
     println!("\n7. Wrapping A2A artifacts with JACS provenance...");
-    
+
     // Example: A2A task request
     let a2a_task = json!({
         "taskId": "analyze-doc-001",
@@ -111,17 +122,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 
-    let wrapped_task = wrap_artifact_with_provenance(
-        &mut agent,
-        a2a_task.clone(),
-        "task",
-        None,
-    )?;
-    
+    let wrapped_task = wrap_artifact_with_provenance(&mut agent, a2a_task.clone(), "task", None)?;
+
     println!("   ✓ Task wrapped with JACS signature");
     println!("   - JACS ID: {}", wrapped_task["jacsId"]);
     println!("   - Type: {}", wrapped_task["jacsType"]);
-    
+
     // Save wrapped task
     fs::write(
         "example_output/wrapped-task.json",
@@ -131,21 +137,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 8: Demonstrate verification
     println!("\n8. Verifying wrapped artifact...");
     let verification = verify_wrapped_artifact(&agent, &wrapped_task)?;
-    println!("   ✓ Verification: {}", if verification.valid { "PASSED" } else { "FAILED" });
+    println!(
+        "   ✓ Verification: {}",
+        if verification.valid {
+            "PASSED"
+        } else {
+            "FAILED"
+        }
+    );
     println!("   - Signer: {}", verification.signer_id);
     println!("   - Timestamp: {}", verification.timestamp);
 
     // Step 9: Create a workflow with chain of custody
     println!("\n9. Creating multi-step workflow with chain of custody...");
     let workflow = create_example_workflow(&mut agent)?;
-    
+
     // Save workflow
     fs::write(
         "example_output/workflow-chain.json",
         serde_json::to_string_pretty(&workflow)?,
     )?;
-    
-    println!("   ✓ Workflow created with {} steps", workflow["totalArtifacts"]);
+
+    println!(
+        "   ✓ Workflow created with {} steps",
+        workflow["totalArtifacts"]
+    );
 
     println!("\n=== Example completed successfully! ===");
     println!("\nOutputs saved to: example_output/");
@@ -170,21 +186,21 @@ fn setup_example_environment() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all("example_data/agent")?;
     fs::create_dir_all("example_keys")?;
     fs::create_dir_all("example_output")?;
-    
+
     // Create config file
     fs::write("example_jacs.config.json", EXAMPLE_CONFIG)?;
-    
+
     // Set environment variables
     unsafe {
         env::set_var("JACS_PRIVATE_KEY_PASSWORD", "example_password");
     }
-    
+
     Ok(())
 }
 
 fn create_example_agent() -> Result<Agent, Box<dyn std::error::Error>> {
     let mut agent = jacs::get_empty_agent();
-    
+
     // Create a minimal agent with A2A-compatible services
     let agent_json = json!({
         "jacsName": "Example A2A Agent",
@@ -224,10 +240,10 @@ fn create_example_agent() -> Result<Agent, Box<dyn std::error::Error>> {
             "description": "Administrator contact"
         }]
     });
-    
+
     agent.create_agent_and_load(&agent_json.to_string(), true, None)?;
     agent.save()?;
-    
+
     Ok(agent)
 }
 
@@ -237,11 +253,11 @@ fn display_agent_card_info(agent_card: &AgentCard) {
     println!("   - URL: {}", agent_card.url);
     println!("   - Protocol: {}", agent_card.protocol_version);
     println!("   - Skills: {} defined", agent_card.skills.len());
-    
+
     for skill in &agent_card.skills {
         println!("     • {}: {}", skill.name, skill.description);
     }
-    
+
     if let Some(extensions) = &agent_card.capabilities.extensions {
         println!("   - Extensions: {} configured", extensions.len());
         for ext in extensions {
@@ -250,9 +266,11 @@ fn display_agent_card_info(agent_card: &AgentCard) {
     }
 }
 
-fn create_example_workflow(agent: &mut Agent) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+fn create_example_workflow(
+    agent: &mut Agent,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let mut artifacts = Vec::new();
-    
+
     // Step 1: Document receipt
     let receipt = json!({
         "step": "document-receipt",
@@ -262,7 +280,7 @@ fn create_example_workflow(agent: &mut Agent) -> Result<serde_json::Value, Box<d
     });
     let wrapped_receipt = wrap_artifact_with_provenance(agent, receipt, "workflow-step", None)?;
     artifacts.push(wrapped_receipt);
-    
+
     // Step 2: OCR processing
     let ocr = json!({
         "step": "ocr-processing",
@@ -278,7 +296,7 @@ fn create_example_workflow(agent: &mut Agent) -> Result<serde_json::Value, Box<d
         Some(vec![artifacts.last().unwrap().clone()]),
     )?;
     artifacts.push(wrapped_ocr);
-    
+
     // Step 3: Entity extraction
     let entities = json!({
         "step": "entity-extraction",
@@ -297,7 +315,7 @@ fn create_example_workflow(agent: &mut Agent) -> Result<serde_json::Value, Box<d
         Some(vec![artifacts.last().unwrap().clone()]),
     )?;
     artifacts.push(wrapped_entities);
-    
+
     // Create chain of custody
     create_chain_of_custody(artifacts)
 }
@@ -324,10 +342,10 @@ fn cleanup_example_environment() -> Result<(), Box<dyn std::error::Error>> {
     if Path::new("example_jacs.config.json").exists() {
         fs::remove_file("example_jacs.config.json")?;
     }
-    
+
     unsafe {
         env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
     }
-    
+
     Ok(())
 }

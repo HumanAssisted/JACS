@@ -1,11 +1,11 @@
 //! Simple example demonstrating A2A integration without full agent setup
-//! 
+//!
 //! This example shows how to:
 //! 1. Create an A2A Agent Card manually
 //! 2. Export JACS extension descriptor
 //! 3. Sign with JWS for A2A compatibility
 
-use jacs::a2a::{*, agent_card::*, keys::*, extension::*};
+use jacs::a2a::{agent_card::*, extension::*, keys::*, *};
 use serde_json::json;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 1: Create an A2A Agent Card manually
     println!("1. Creating A2A Agent Card...");
-    
+
     let agent_card = AgentCard {
         protocol_version: A2A_PROTOCOL_VERSION.to_string(),
         url: "https://example-agent.com".to_string(),
@@ -59,28 +59,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output_schema: None,
             },
         ],
-        security_schemes: vec![
-            SecurityScheme {
-                r#type: "http".to_string(),
-                scheme: "bearer".to_string(),
-                bearer_format: Some("JWT".to_string()),
-            },
-        ],
+        security_schemes: vec![SecurityScheme {
+            r#type: "http".to_string(),
+            scheme: "bearer".to_string(),
+            bearer_format: Some("JWT".to_string()),
+        }],
         capabilities: Capabilities {
-            extensions: Some(vec![
-                Extension {
-                    uri: JACS_EXTENSION_URI.to_string(),
-                    description: "JACS cryptographic document signing and verification".to_string(),
-                    required: false,
-                    params: json!({
-                        "jacsDescriptorUrl": "https://example-agent.com/.well-known/jacs-agent.json",
-                        "signatureType": "JACS_PQC",
-                        "supportedAlgorithms": ["dilithium", "rsa", "ecdsa"],
-                        "verificationEndpoint": "/jacs/verify",
-                        "signatureEndpoint": "/jacs/sign",
-                    }),
-                },
-            ]),
+            extensions: Some(vec![Extension {
+                uri: JACS_EXTENSION_URI.to_string(),
+                description: "JACS cryptographic document signing and verification".to_string(),
+                required: false,
+                params: json!({
+                    "jacsDescriptorUrl": "https://example-agent.com/.well-known/jacs-agent.json",
+                    "signatureType": "JACS_PQC",
+                    "supportedAlgorithms": ["dilithium", "rsa", "ecdsa"],
+                    "verificationEndpoint": "/jacs/verify",
+                    "signatureEndpoint": "/jacs/sign",
+                }),
+            }]),
         },
         metadata: Some(json!({
             "version": "1.0.0",
@@ -113,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 5: Example A2A artifact wrapped with JACS provenance
     println!("\n5. Example JACS-wrapped A2A artifact:");
-    
+
     let a2a_task = json!({
         "taskId": "task-789",
         "type": "document-analysis",

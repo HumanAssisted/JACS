@@ -1,13 +1,13 @@
 //! Example: Creating a JACS agent with A2A protocol support
-//! 
+//!
 //! This example demonstrates:
 //! 1. Creating a JACS agent with post-quantum cryptography
 //! 2. Exporting the agent as an A2A Agent Card
 //! 3. Signing the Agent Card with JWS for A2A compatibility
 //! 4. Wrapping A2A artifacts with JACS provenance
 
-use jacs::a2a::{agent_card::*, keys::*, extension::*, provenance::*};
-use jacs::{get_empty_agent, create_minimal_blank_agent};
+use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*};
+use jacs::{create_minimal_blank_agent, get_empty_agent};
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 1: Create a JACS agent
     println!("1. Creating JACS agent...");
     let mut agent = get_empty_agent();
-    
+
     let agent_json = create_minimal_blank_agent(
         "ai".to_string(),
         Some("Advanced Document Processing Service".to_string()),
@@ -31,7 +31,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let agent_value = agent.create_agent_and_load(&agent_json, true, None)?;
     println!("   ✓ Agent created with ID: {}", agent.id.as_ref().unwrap());
-    println!("   ✓ Using algorithm: {}", agent.key_algorithm.as_ref().unwrap());
+    println!(
+        "   ✓ Using algorithm: {}",
+        agent.key_algorithm.as_ref().unwrap()
+    );
 
     // Step 2: Generate dual keys for JACS and A2A
     println!("\n2. Generating dual keys...");
@@ -68,14 +71,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &dual_keys.a2a_algorithm,
         &jws_signature,
     )?;
-    
+
     for (path, _) in &well_known_docs {
         println!("   ✓ {}", path);
     }
 
     // Step 6: Demonstrate wrapping A2A artifacts
     println!("\n6. Wrapping A2A artifacts with JACS provenance...");
-    
+
     // Example A2A task
     let a2a_task = json!({
         "taskId": "extract-entities-001",
@@ -88,12 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 
-    let wrapped_task = wrap_artifact_with_provenance(
-        &mut agent,
-        a2a_task,
-        "task",
-        None,
-    )?;
+    let wrapped_task = wrap_artifact_with_provenance(&mut agent, a2a_task, "task", None)?;
     println!("   ✓ Task wrapped with JACS signature");
     println!("   - JACS ID: {}", wrapped_task["jacsId"]);
     println!("   - Type: {}", wrapped_task["jacsType"]);
@@ -101,7 +99,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 7: Verify the wrapped artifact
     println!("\n7. Verifying wrapped artifact...");
     let verification = verify_wrapped_artifact(&agent, &wrapped_task)?;
-    println!("   ✓ Verification: {}", if verification.valid { "PASSED" } else { "FAILED" });
+    println!(
+        "   ✓ Verification: {}",
+        if verification.valid {
+            "PASSED"
+        } else {
+            "FAILED"
+        }
+    );
     println!("   - Signer: {}", verification.signer_id);
     println!("   - Type: {}", verification.artifact_type);
     println!("   - Timestamp: {}", verification.timestamp);
@@ -109,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 8: Create a multi-step workflow with chain of custody
     println!("\n8. Creating workflow with chain of custody...");
     let mut workflow_artifacts = Vec::new();
-    
+
     // Step 1: OCR
     let ocr_result = json!({
         "step": "ocr",
@@ -119,12 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "confidence": 0.98
         }
     });
-    let wrapped_ocr = wrap_artifact_with_provenance(
-        &mut agent,
-        ocr_result,
-        "workflow-step",
-        None,
-    )?;
+    let wrapped_ocr = wrap_artifact_with_provenance(&mut agent, ocr_result, "workflow-step", None)?;
     workflow_artifacts.push(wrapped_ocr);
 
     // Step 2: Entity Extraction (with reference to previous step)
@@ -155,35 +155,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", serde_json::to_string_pretty(&descriptor)?);
 
     println!("\n=== Example completed successfully! ===");
-    
+
     // Save example outputs
     let output_dir = Path::new("a2a_example_output");
     fs::create_dir_all(output_dir)?;
-    
+
     // Save Agent Card
     fs::write(
         output_dir.join("agent-card.json"),
         serde_json::to_string_pretty(&agent_card)?,
     )?;
-    
+
     // Save signed Agent Card
-    fs::write(
-        output_dir.join("agent-card-signed.jws"),
-        &jws_signature,
-    )?;
-    
+    fs::write(output_dir.join("agent-card-signed.jws"), &jws_signature)?;
+
     // Save wrapped task
     fs::write(
         output_dir.join("wrapped-task.json"),
         serde_json::to_string_pretty(&wrapped_task)?,
     )?;
-    
+
     // Save chain of custody
     fs::write(
         output_dir.join("chain-of-custody.json"),
         serde_json::to_string_pretty(&chain)?,
     )?;
-    
+
     println!("\nOutputs saved to: a2a_example_output/");
 
     Ok(())
