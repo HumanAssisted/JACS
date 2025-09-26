@@ -7,7 +7,7 @@ use serde_json::json;
 use std::env;
 
 mod utils;
-use utils::{load_test_agent_one, set_min_test_env_vars};
+use utils::load_test_agent_one;
 
 #[test]
 fn test_export_agent_to_a2a_agent_card() {
@@ -36,15 +36,7 @@ fn test_export_agent_to_a2a_agent_card() {
 
 #[test]
 fn test_dual_key_generation() {
-    // Set up the required environment variables for key generation
-    unsafe {
-        env::set_var("JACS_KEY_DIRECTORY", "tests/fixtures/keys");
-        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test.private.pem");
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test.public.pem");
-        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "test");
-    }
-
-    // Generate dual keys
+    // No environment setup needed - keys are ephemeral
     let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa")).expect("Failed to create dual keys");
 
     // Verify both keys were generated
@@ -55,14 +47,6 @@ fn test_dual_key_generation() {
     assert!(!dual_keys.a2a_private_key.is_empty());
     assert!(!dual_keys.a2a_public_key.is_empty());
     assert_eq!(dual_keys.a2a_algorithm, "rsa");
-
-    // Clean up env vars
-    unsafe {
-        env::remove_var("JACS_KEY_DIRECTORY");
-        env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
-        env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
-        env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
-    }
 }
 
 #[test]
@@ -73,7 +57,7 @@ fn test_agent_card_jws_signing() {
     // Export agent card
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
 
-    // Generate A2A-compatible keys
+    // Generate A2A-compatible keys (ephemeral - no env vars needed)
     let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa")).expect("Failed to create keys");
 
     // Sign the agent card with JWS
@@ -189,7 +173,7 @@ fn test_well_known_endpoints_generation() {
     // Export agent card
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
 
-    // Generate dual keys
+    // Generate dual keys (ephemeral - no env vars needed)
     let dual_keys = create_jwk_keys(Some("dilithium"), Some("rsa")).expect("Failed to create keys");
 
     // Sign agent card

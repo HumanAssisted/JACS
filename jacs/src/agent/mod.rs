@@ -6,7 +6,7 @@ pub mod payloads;
 pub mod security;
 
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::{DocumentTraits, JACSDocument};
+use crate::agent::document::DocumentTraits;
 use crate::crypt::hash::hash_public_key;
 use crate::storage::MultiStorage;
 
@@ -85,7 +85,6 @@ pub struct Agent {
     /// custom schemas that can be loaded to check documents
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
-    documents: Arc<Mutex<HashMap<String, JACSDocument>>>,
     /// everything needed for the agent to sign things
     id: Option<String>,
     version: Option<String>,
@@ -120,7 +119,6 @@ impl Agent {
     ) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
-        let document_map = Arc::new(Mutex::new(HashMap::new()));
         let config = Some(find_config("./".to_string())?);
         Ok(Self {
             schema,
@@ -128,7 +126,6 @@ impl Agent {
             config: config,
             storage: MultiStorage::default_new()?,
             document_schemas: document_schemas_map,
-            documents: document_map,
             id: None,
             version: None,
             key_algorithm: None,

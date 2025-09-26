@@ -6,6 +6,7 @@ use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
 use crate::agent::security::SecurityTraits;
+use crate::storage::StorageDocumentTraits;
 
 use crate::crypt::hash::hash_string;
 use crate::schema::utils::ValueExt;
@@ -500,7 +501,6 @@ impl DocumentTraits for Agent {
     }
 
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
-        let mut documents = self.documents.lock().expect("JACSDocument lock");
         // Use ok_or_else for mandatory fields
         let id = value
             .get_str("jacsId")
@@ -521,31 +521,29 @@ impl DocumentTraits for Agent {
             value: value.clone(), // No into() needed for Value
             jacs_type,
         };
-        let key = doc.getkey();
-        documents.insert(key.clone(), doc.clone());
+
+        // Use storage to persist the document
+        self.storage.store_document(&doc)?;
+
         Ok(doc)
     }
 
     fn get_document(&self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
-        let documents = self.documents.lock().expect("JACSDocument lock");
-        match documents.get(document_key) {
-            Some(document) => Ok(document.clone()),
-            None => Err(format!("Document not found for key: {}", document_key).into()),
-        }
+        // Use storage to retrieve the document
+        self.storage.get_document(document_key)
     }
 
     fn remove_document(&mut self, document_key: &String) -> Result<JACSDocument, Box<dyn Error>> {
-        let mut documents = self.documents.lock().expect("JACSDocument lock");
-        match documents.remove(document_key) {
-            Some(document) => Ok(document),
-            None => Err(format!("Document not found for key: {}", document_key).into()),
-        }
+        // Use storage to remove and archive the document
+        self.storage.remove_document(document_key)
     }
 
     // used to see if key is already in index
     fn get_document_keys(&mut self) -> Vec<String> {
-        let documents = self.documents.lock().expect("documents lock");
-        return documents.keys().map(|k| k.to_string()).collect();
+        // Use storage to list all document keys
+        self.storage
+            .list_documents("")
+            .unwrap_or_else(|_| Vec::new())
     }
 
     /// pass in modified doc
@@ -648,11 +646,8 @@ impl DocumentTraits for Agent {
         original_document: &JACSDocument,
     ) -> Result<(), Box<dyn Error>> {
         let lookup_key = original_document.getkey();
-        // remove from hashmap
-        let mut documents = self.documents.lock().expect("JACSDocument lock");
-        documents.remove(&lookup_key);
-        // move file to archive
-        let _ = self.fs_document_archive(&lookup_key)?;
+        // Use storage to remove/archive the document
+        self.storage.remove_document(&lookup_key)?;
         Ok(())
     }
 

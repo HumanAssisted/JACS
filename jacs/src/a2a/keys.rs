@@ -1,7 +1,6 @@
 //! Key management for A2A integration
 //! Handles dual key generation (PQC for JACS, RSA/ECDSA for A2A)
 
-use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -38,6 +37,7 @@ pub struct DualKeyPair {
 }
 
 /// Create dual keys for both JACS (PQC) and A2A (RSA/ECDSA) compatibility
+/// These keys are ephemeral (in-memory only) - they are NOT persisted to disk
 pub fn create_jwk_keys(
     jacs_algorithm: Option<&str>,
     a2a_algorithm: Option<&str>,
@@ -46,37 +46,24 @@ pub fn create_jwk_keys(
     let jacs_alg = jacs_algorithm.unwrap_or("dilithium");
     let a2a_alg = a2a_algorithm.unwrap_or("rsa");
 
-    info!("Generating dual keys: JACS={}, A2A={}", jacs_alg, a2a_alg);
+    info!(
+        "Generating ephemeral dual keys: JACS={}, A2A={}",
+        jacs_alg, a2a_alg
+    );
 
-    let ks = FsEncryptedStore;
-
-    // Map algorithms to KeyStore format
-    let jacs_algo_mapped = match jacs_alg {
-        "dilithium" => "pq-dilithium",
-        "rsa" => "RSA-PSS",
-        "ecdsa" | "es256" => "ring-Ed25519", // Using Ed25519 for ECDSA equivalent
-        _ => jacs_alg,
+    // Generate keys directly in memory without file persistence
+    let (jacs_private, jacs_public) = match jacs_alg {
+        "dilithium" | "pq-dilithium" => crate::crypt::pq::generate_keys()?,
+        "rsa" => crate::crypt::rsawrapper::generate_keys()?,
+        "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
+        _ => return Err(format!("Unsupported JACS algorithm: {}", jacs_alg).into()),
     };
 
-    let a2a_algo_mapped = match a2a_alg {
-        "rsa" => "RSA-PSS",
-        "ecdsa" | "es256" => "ring-Ed25519", // Using Ed25519 for ECDSA equivalent
+    let (a2a_private, a2a_public) = match a2a_alg {
+        "rsa" => crate::crypt::rsawrapper::generate_keys()?,
+        "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
         _ => return Err(format!("Unsupported A2A algorithm: {}", a2a_alg).into()),
     };
-
-    // Generate JACS key (post-quantum or traditional)
-    let jacs_spec = KeySpec {
-        algorithm: jacs_algo_mapped.to_string(),
-        key_id: None,
-    };
-    let (jacs_private, jacs_public) = ks.generate(&jacs_spec)?;
-
-    // Generate A2A-compatible key (RSA or ECDSA)
-    let a2a_spec = KeySpec {
-        algorithm: a2a_algo_mapped.to_string(),
-        key_id: None,
-    };
-    let (a2a_private, a2a_public) = ks.generate(&a2a_spec)?;
 
     Ok(DualKeyPair {
         jacs_private_key: jacs_private,
@@ -91,12 +78,17 @@ pub fn create_jwk_keys(
 /// Export RSA public key as JWK
 pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn Error>> {
     use rsa::traits::PublicKeyParts;
-    use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey};
+    use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
 
     // Parse PEM-encoded RSA public key
     let pem_str = std::str::from_utf8(public_key)?;
     let pem = pem::parse(pem_str)?;
-    let rsa_key = RsaPublicKey::from_pkcs1_der(&pem.contents())?;
+
+    // Try PKCS#1 first; if it fails, fall back to PKCS#8 SubjectPublicKeyInfo
+    let rsa_key = match RsaPublicKey::from_pkcs1_der(&pem.contents()) {
+        Ok(k) => k,
+        Err(_) => RsaPublicKey::from_public_key_der(&pem.contents())?,
+    };
 
     // Extract modulus and exponent
     let n = rsa_key.n();
@@ -183,15 +175,20 @@ pub fn sign_jws(
     // Create signing input
     let signing_input = format!("{}.{}", header_b64, payload_b64);
 
-    // Sign using the appropriate algorithm
-    let ks = FsEncryptedStore;
-    let algo_mapped = match algorithm {
-        "rsa" => "RSA-PSS",
-        "ecdsa" | "es256" => "ring-Ed25519",
+    // Sign directly using the crypto wrappers
+    let signature = match algorithm {
+        "rsa" => {
+            let sig_b64 =
+                crate::crypt::rsawrapper::sign_string(private_key.to_vec(), &signing_input)?;
+            general_purpose::STANDARD.decode(&sig_b64)?
+        }
+        "ecdsa" | "es256" => {
+            let sig_b64 =
+                crate::crypt::ringwrapper::sign_string(private_key.to_vec(), &signing_input)?;
+            general_purpose::STANDARD.decode(&sig_b64)?
+        }
         _ => return Err(format!("Unsupported algorithm: {}", algorithm).into()),
     };
-
-    let signature = ks.sign_detached(private_key, signing_input.as_bytes(), algo_mapped)?;
 
     // Base64url encode signature
     let signature_b64 = general_purpose::URL_SAFE_NO_PAD.encode(&signature);
@@ -203,16 +200,6 @@ pub fn sign_jws(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_create_dual_keys() {
-        let result = create_jwk_keys(Some("rsa"), Some("rsa"));
-        assert!(result.is_ok());
-
-        let keys = result.unwrap();
-        assert!(!keys.jacs_private_key.is_empty());
-        assert!(!keys.a2a_private_key.is_empty());
-    }
 
     #[test]
     fn test_create_jwk_set() {
