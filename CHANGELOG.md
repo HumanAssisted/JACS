@@ -35,15 +35,36 @@
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
+### devrel
+- [] github actions builder for auto build/deploy of platform specific versions
+--------------------
 
+- [] cli install for brew
+- [] cli install via shell script
+- [] open license
+ - [] api for easier integratios data processing 
+
+ - [] clickhous demo
+ - [] test centralized logging output without file output 
+ 
 --------------------
 
 ## 0.3.7
 
+### internals
 
+- [] remove in memory map if users don't request it. Refactor and DRY storage to prep for DB storage
+- [] test a2a across libraries
+- [] store in database
+- [] awareness of branch, merge, latest for documents. 
 
-### devrel
-- [] github actions builder for auto build/deploy of platform specific versions
+### hai.ai
+
+- integration with 
+
+ 1. register
+ 2. 
+
 
 ### jacsnpm
 
@@ -88,15 +109,7 @@
 - [] don't store  "jacs_private_key_password":  in config, don't display
 - [] minor feature - no_save = false should save document and still return json string instead of message on create document
  - [] default to dnssec if domain is present - or WARN
---------------------
 
-- [] cli install for brew
-- [] cli install via shell script
-- [] open license
- - [] api for easier integratios data processing 
-
- - [] clickhous demo
- - [] test centralized logging output without file output 
 ### jacsmcp
 
  - [] prototype
