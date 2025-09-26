@@ -28,8 +28,12 @@ pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, Box<dyn Error>> {
         .and_then(|v| v.as_str())
         .ok_or("Agent ID not found")?;
 
-    // Determine agent URL from config or use a default
-    let url = format!("https://agent-{}.example.com", agent_id);
+    // Determine agent URL from jacsAgentDomain or use agent ID
+    let url = if let Some(domain) = agent_value.get("jacsAgentDomain").and_then(|d| d.as_str()) {
+        format!("https://{}/agent/{}", domain, agent_id)
+    } else {
+        format!("https://agent-{}.jacs.localhost", agent_id)
+    };
 
     // Convert JACS services to A2A skills
     let skills = convert_services_to_skills(agent_value)?;

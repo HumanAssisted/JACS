@@ -102,7 +102,7 @@ mod tests {
     fn test_agent_card_serialization() {
         let agent_card = AgentCard {
             protocol_version: A2A_PROTOCOL_VERSION.to_string(),
-            url: "https://agent.example.com".to_string(),
+            url: "https://agent.jacs.localhost".to_string(),
             name: "Example Agent".to_string(),
             description: "An example JACS-enabled agent".to_string(),
             skills: vec![],

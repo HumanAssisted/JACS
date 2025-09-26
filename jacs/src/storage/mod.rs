@@ -2,9 +2,8 @@
 use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
-use object_store::PutPayload;
 use object_store::{
-    Error as ObjectStoreError, ObjectStore,
+    Error as ObjectStoreError, ObjectStore, PutPayload,
     aws::{AmazonS3, AmazonS3Builder},
     http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,

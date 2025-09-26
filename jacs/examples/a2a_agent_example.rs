@@ -7,8 +7,8 @@
 //! 4. Wrapping A2A artifacts with JACS provenance
 
 use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*};
-use jacs::{create_minimal_blank_agent, get_empty_agent};
 use jacs::agent::boilerplate::BoilerPlate;
+use jacs::{create_minimal_blank_agent, get_empty_agent};
 use serde_json::json;
 use std::fs;
 use std::path::Path;

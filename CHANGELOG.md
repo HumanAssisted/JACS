@@ -70,9 +70,9 @@
  - [] switch to uv from pip/etc
 
 ### JACS core
- - [] acp integration
+ 
  - [] brew installer, review installation instrucitons,  cli install instructions. a .sh command?
- - [] a2a integration
+ - [] more a2a tests
  - [] ensure if a user wants standard logging they can use that
 
  
@@ -90,35 +90,13 @@
  - [] default to dnssec if domain is present - or WARN
 --------------------
 
-## 0.3.6
-
-
-### devex
-
-
-- [x] add updates to book
 - [] cli install for brew
 - [] cli install via shell script
 - [] open license
-- [] crew.ai
-- [] langchain
-- [x] add observability demo
-
-### jacs
-
-- [x] clean up observability
-   - Observability: added feature-gated backends (`otlp-logs`, `otlp-metrics`, `otlp-tracing`) and optional `observability-convenience`. Default build is minimal (stderr/file logs only), no tokio/OpenTelemetry; clear runtime errors if a requested backend isn’t compiled. Docs now include a feature matrix and compile recipes. Tests updated and all pass with features.
-
- - [x] dns verification of pubic key hash
-      - DNS: implemented fingerprint-in-DNS (TXT under `_v1.agent.jacs.<domain>.`), CLI emitters for BIND/Route53/Azure/Cloudflare, DNSSEC validation with non-strict fallback, and config flags (`jacs_agent_domain`, `jacs_dns_validate`, `jacs_dns_strict`, `jacs_dns_required`). Added CLI flags `--require-dns`, `--require-strict-dns`, `--ignore-dns`, and `--no-dns` (alias preserved). Improved error messages, updated docs, and added policy/encoding tests.
-
- 
- - [x] scaffold private key bootstrapping with vault, kerberos - filesystem
  - [] api for easier integratios data processing 
 
  - [] clickhous demo
  - [] test centralized logging output without file output 
-
 ### jacsmcp
 
  - [] prototype
@@ -134,6 +112,29 @@
 
 - [] publish to npm
 - [] tracing and logging integration tests
+
+
+==== 
+## 0.3.6
+
+
+### devex
+- [x] add updates to book
+- [x] add observability demo
+
+### jacs
+ - [x] a2a integration
+- [x] clean up observability
+   - Observability: added feature-gated backends (`otlp-logs`, `otlp-metrics`, `otlp-tracing`) and optional `observability-convenience`. Default build is minimal (stderr/file logs only), no tokio/OpenTelemetry; clear runtime errors if a requested backend isn’t compiled. Docs now include a feature matrix and compile recipes. Tests updated and all pass with features.
+
+ - [x] dns verification of pubic key hash
+      - DNS: implemented fingerprint-in-DNS (TXT under `_v1.agent.jacs.<domain>.`), CLI emitters for BIND/Route53/Azure/Cloudflare, DNSSEC validation with non-strict fallback, and config flags (`jacs_agent_domain`, `jacs_dns_validate`, `jacs_dns_strict`, `jacs_dns_required`). Added CLI flags `--require-dns`, `--require-strict-dns`, `--ignore-dns`, and `--no-dns` (alias preserved). Improved error messages, updated docs, and added policy/encoding tests.
+
+ 
+ - [x] scaffold private key bootstrapping with vault, kerberos - filesystem
+
+
+
 
 
 --------------------
