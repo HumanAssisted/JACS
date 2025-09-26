@@ -2,7 +2,7 @@
 name = "jacsgo"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.90"
 resolver = "3"
 
 [lib]
