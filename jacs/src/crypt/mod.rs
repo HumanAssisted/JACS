@@ -5,6 +5,8 @@ pub mod ringwrapper;
 pub mod rsawrapper;
 // pub mod private_key;
 pub mod aes_encrypt;
+pub mod kem;
+pub mod pq2025; // ML-DSA signatures // ML-KEM encryption
 
 use crate::agent::Agent;
 use std::str::FromStr;
@@ -26,6 +28,8 @@ pub enum CryptoSigningAlgorithm {
     PqDilithium,
     #[strum(serialize = "pq-dilithium-alt")]
     PqDilithiumAlt, // Alternative version with different signature size
+    #[strum(serialize = "pq2025")]
+    Pq2025, // ML-DSA-87 (FIPS-204)
 }
 
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
@@ -167,10 +171,10 @@ impl KeyManager for Agent {
 
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                return rsawrapper::verify_string(public_key, data, signature_base64);
+                rsawrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return ringwrapper::verify_string(public_key, data, signature_base64);
+                ringwrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 // Try the standard PQ verification first
@@ -196,8 +200,8 @@ impl KeyManager for Agent {
                 // Return the original error
                 result
             }
-            _ => {
-                return Err(format!("{} is not a known or implemented algorithm.", algo).into());
+            CryptoSigningAlgorithm::Pq2025 => {
+                pq2025::verify_string(public_key, data, signature_base64)
             }
         }
     }

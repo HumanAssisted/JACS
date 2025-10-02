@@ -152,6 +152,7 @@ algorithm to use for creating and using keys
 | `"RSA-PSS"`      |             |
 | `"ring-Ed25519"` |             |
 | `"pq-dilithium"` |             |
+| `"pq2025"`       |             |
 
 ## jacs\_agent\_schema\_version
 

@@ -45,6 +45,7 @@ impl KeyStore for FsEncryptedStore {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
+            "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => return Err(format!("Unsupported algorithm: {}", other).into()),
         };
         let (priv_key, pub_key) = match algo {
@@ -53,6 +54,7 @@ impl KeyStore for FsEncryptedStore {
             CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 crypt::pq::generate_keys()?
             }
+            CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
         // Persist using MultiStorage
         let storage = MultiStorage::default_new()?;
@@ -113,6 +115,7 @@ impl KeyStore for FsEncryptedStore {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
+            "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => return Err(format!("Unsupported algorithm: {}", other).into()),
         };
         let data = std::str::from_utf8(message).unwrap_or("").to_string();
@@ -125,6 +128,9 @@ impl KeyStore for FsEncryptedStore {
             }
             CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 crypt::pq::sign_string(private_key.to_vec(), &data)?
+            }
+            CryptoSigningAlgorithm::Pq2025 => {
+                crypt::pq2025::sign_string(private_key.to_vec(), &data)?
             }
         };
         Ok(base64::decode(sig_b64)?)

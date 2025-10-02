@@ -140,6 +140,64 @@ The core library is used in all other implementations.
 `cargo install jacs` is useful for it's cli, but to develop `cargo add jacs` is all that's needed. 
 
 
+## Post-Quantum Cryptography (2025)
+
+JACS now supports the NIST-standardized post-quantum algorithms for quantum-resistant security:
+
+### Algorithms
+
+- **ML-DSA (FIPS-204)**: Module-Lattice Digital Signature Algorithm using ML-DSA-87 (NIST Security Level 5)
+  - Post-quantum signatures with ~2592 byte public keys and ~4595 byte signatures
+  - Provides strong security against both classical and quantum computers
+  
+- **ML-KEM (FIPS-203)**: Module-Lattice Key Encapsulation Mechanism using ML-KEM-768 (NIST Security Level 3)
+  - Post-quantum key encapsulation for secure communication
+  - Used with HKDF + AES-256-GCM for authenticated encryption
+
+### Usage
+
+Set `jacs_agent_key_algorithm: "pq2025"` in your `jacs.config.json`:
+
+```json
+{
+  "jacs_agent_key_algorithm": "pq2025",
+  "jacs_agent_private_key_filename": "agent.private.pem.enc",
+  "jacs_agent_public_key_filename": "agent.public.pem",
+  "jacs_private_key_password": "your-secure-password"
+}
+```
+
+Or use the CLI:
+
+```bash
+jacs config create
+# Select "pq2025" when prompted for algorithm
+
+jacs agent create --create-keys
+# Keys will be generated using ML-DSA-87
+```
+
+### Backward Compatibility
+
+The original `pq-dilithium` (Dilithium5) algorithm remains fully supported for backward compatibility. All existing signatures and keys continue to work. You can:
+
+- Verify old `pq-dilithium` signatures with new code
+- Gradually migrate agents to `pq2025` 
+- Run mixed environments with both algorithms
+
+### Migration Path
+
+1. **New agents**: Use `pq2025` by default (it's the new default in CLI prompts)
+2. **Existing agents**: Continue using current algorithm, or regenerate keys with `pq2025`
+3. **Verification**: Both algorithms can verify each other's documents (if signed with respective keys)
+
+### Security Considerations
+
+- ML-DSA-87 provides the highest post-quantum security level standardized by NIST
+- Keys are encrypted at rest using AES-256-GCM with password-derived keys
+- ML-KEM-768 provides quantum-resistant key establishment for future encrypted communications
+- Both algorithms are designed to be secure against Grover's and Shor's quantum algorithms
+
 
 ## License
 

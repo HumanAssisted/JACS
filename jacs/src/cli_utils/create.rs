@@ -107,8 +107,8 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     let jacs_agent_public_key_filename =
         request_string("Enter the public key filename:", "jacs.public.pem");
     let jacs_agent_key_algorithm = request_string(
-        "Enter the agent key algorithm (pq-dilithium, ring-Ed25519, or RSA-PSS)",
-        "pq-dilithium",
+        "Enter the agent key algorithm (pq2025, pq-dilithium, ring-Ed25519, or RSA-PSS)",
+        "pq2025",
     );
     let jacs_default_storage = request_string("Enter the default storage (fs, aws, hai)", "fs");
 

@@ -31,7 +31,8 @@
       "enum": [
             "RSA-PSS",
             "ring-Ed25519",
-            "pq-dilithium"
+            "pq-dilithium",
+            "pq2025"
           ]
     },
      "jacs_agent_schema_version": {
