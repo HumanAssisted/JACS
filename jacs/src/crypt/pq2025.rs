@@ -10,7 +10,14 @@ use std::error::Error;
 /// Returns (private_key_bytes, public_key_bytes)
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let (pk, sk) = ml_dsa_87::KG::try_keygen()?;
-    Ok((sk.into_bytes().to_vec(), pk.into_bytes().to_vec()))
+    let sk_bytes = sk.into_bytes().to_vec();
+    let pk_bytes = pk.into_bytes().to_vec();
+    eprintln!(
+        "[pq2025::generate_keys] Generated key sizes: sk={} bytes, pk={} bytes",
+        sk_bytes.len(),
+        pk_bytes.len()
+    );
+    Ok((sk_bytes, pk_bytes))
 }
 
 /// Sign string data with ML-DSA-87 private key

@@ -41,6 +41,10 @@ use crate::storage::jenv::{get_env_var, get_required_env_var};
 pub struct FsEncryptedStore;
 impl KeyStore for FsEncryptedStore {
     fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+        eprintln!(
+            "[FsEncryptedStore::generate] Called with algorithm: {}",
+            spec.algorithm
+        );
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -48,14 +52,23 @@ impl KeyStore for FsEncryptedStore {
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => return Err(format!("Unsupported algorithm: {}", other).into()),
         };
+        eprintln!("[FsEncryptedStore::generate] Matched to enum: {:?}", algo);
         let (priv_key, pub_key) = match algo {
             CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::generate_keys()?,
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
             CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 crypt::pq::generate_keys()?
             }
-            CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
+            CryptoSigningAlgorithm::Pq2025 => {
+                eprintln!("[FsEncryptedStore::generate] Calling pq2025::generate_keys()");
+                crypt::pq2025::generate_keys()?
+            }
         };
+        eprintln!(
+            "[FsEncryptedStore::generate] Generated keys: priv={} bytes, pub={} bytes",
+            priv_key.len(),
+            pub_key.len()
+        );
         // Persist using MultiStorage
         let storage = MultiStorage::default_new()?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;

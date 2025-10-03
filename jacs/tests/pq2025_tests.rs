@@ -9,22 +9,40 @@ use utils::*;
 fn setup_pq2025_env() {
     unsafe {
         env::set_var("JACS_USE_SECURITY", "false");
-        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch");
-        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/jacs_keys");
-        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "pq2025_private.pem.enc");
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "pq2025_public.pem");
+        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch/pq2025_data");
+        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/pq2025_keys");
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "pq2025_private.bin.enc");
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "pq2025_public.bin");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq2025");
         env::set_var("JACS_PRIVATE_KEY_PASSWORD", "test_pq2025_password");
     }
 }
 
 fn get_test_agent() -> jacs::agent::Agent {
+    use jacs::config::Config;
+
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
     let signature_version = "v1".to_string();
 
-    jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated")
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
+        .expect("Agent schema should have instantiated");
+
+    // Override config with env vars for testing
+    let config = Config::new(
+        Some("false".to_string()), // jacs_use_security
+        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_default()),
+        Some(std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default()),
+        None,                   // jacs_agent_id_and_version
+        Some("fs".to_string()), // jacs_default_storage
+    );
+    agent.config = Some(config);
+
+    agent
 }
 
 #[test]
@@ -177,20 +195,38 @@ fn test_pq2025_kem_wrong_aad() {
 // Interop test: verify old signatures still work
 #[test]
 fn test_legacy_pq_dilithium_still_works() {
+    use jacs::config::Config;
+
     unsafe {
         env::set_var("JACS_USE_SECURITY", "false");
-        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch");
-        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/jacs_keys");
-        env::set_var(
-            "JACS_AGENT_PRIVATE_KEY_FILENAME",
-            "dilithium_private.pem.enc",
-        );
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "dilithium_public.pem");
+        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch/dilithium_data");
+        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/dilithium_keys");
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "dilithium_private.bin");
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "dilithium_public.bin");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
         env::set_var("JACS_PRIVATE_KEY_PASSWORD", "test_dilithium_password");
     }
 
-    let mut agent = get_test_agent();
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let signature_version = "v1".to_string();
+
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
+        .expect("Agent schema should have instantiated");
+
+    // Override config with dilithium-specific env vars
+    let config = Config::new(
+        Some("false".to_string()),
+        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
+        Some("pq-dilithium".to_string()), // Explicit
+        Some(std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default()),
+        None,
+        Some("fs".to_string()),
+    );
+    agent.config = Some(config);
     let gen_result = agent.generate_keys();
     assert!(
         gen_result.is_ok(),
