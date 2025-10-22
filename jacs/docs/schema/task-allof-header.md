@@ -21,6 +21,7 @@ The basis for a JACS document
 | [jacsId](#jacsid)                           | `string` | Required | cannot be null | [Header](header-properties-jacsid.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsId")                                 |
 | [jacsVersion](#jacsversion)                 | `string` | Required | cannot be null | [Header](header-properties-jacsversion.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersion")                       |
 | [jacsVersionDate](#jacsversiondate)         | `string` | Required | cannot be null | [Header](header-properties-jacsversiondate.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVersionDate")               |
+| [jacsBranch](#jacsbranch)                   | `string` | Optional | cannot be null | [Header](header-properties-jacsbranch.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsBranch")                         |
 | [jacsType](#jacstype)                       | `string` | Required | cannot be null | [Header](header-properties-jacstype.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsType")                             |
 | [jacsSignature](#jacssignature)             | `object` | Optional | cannot be null | [Header](header-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsSignature")      |
 | [jacsRegistration](#jacsregistration)       | `object` | Optional | cannot be null | [Header](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jacsRegistration") |
@@ -99,6 +100,28 @@ Date
 ### jacsVersionDate Constraints
 
 **date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+
+## jacsBranch
+
+For supporting JACS databases using branch names
+
+`jacsBranch`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Header](header-properties-jacsbranch.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsBranch")
+
+### jacsBranch Type
+
+`string`
+
+### jacsBranch Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
 ## jacsType
 

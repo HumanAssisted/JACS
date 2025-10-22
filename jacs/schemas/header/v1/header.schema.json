@@ -23,6 +23,12 @@
       "type": "string",
       "hai": "meta"
     },
+    "jacsBranch": {
+      "description": "For supporting JACS databases using branch names ",
+      "type": "string",
+      "format": "uuid",
+      "hai": "meta"
+    },
     "jacsType": {
       "description": "Type of the document",
       "type": "string",

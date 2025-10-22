@@ -13,18 +13,6 @@
 - qr code integration
 
 
-## 0.3.7 (Unreleased)
-
-### Post-Quantum Cryptography (pq2025)
-- Added ML-DSA-87 (FIPS-204) signature support as "pq2025" algorithm
-- Added ML-KEM-768 (FIPS-203) key encapsulation mechanism
-- New modules: `crypt/pq2025.rs` (signatures), `crypt/kem.rs` (KEM+AEAD)
-- Updated config schema to include "pq2025" algorithm option
-- Changed CLI default algorithm to "pq2025" for new agents
-- Full backward compatibility: all existing algorithms (RSA-PSS, ring-Ed25519, pq-dilithium) continue to work
-- Comprehensive test suite: 8 new tests covering keygen, sign/verify, KEM seal/open, and legacy interop
-- Dependencies: fips203 v0.4.3, fips204 v0.4.3, hkdf v0.12, zeroize v1.8
-
 ## 0.4.0
 - Domain integration
 - [] sign config
