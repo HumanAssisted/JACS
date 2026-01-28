@@ -1,5 +1,5 @@
 dist
 target
 build
-!.so
+*.so
 __pycache__
