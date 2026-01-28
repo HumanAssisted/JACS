@@ -442,7 +442,7 @@ pub extern "C" fn jacs_create_document(
         c_string_to_option(custom_schema),
         c_string_to_option(outputfilename),
         no_save != 0,
-        c_string_to_option(attachments).as_ref(),
+        c_string_to_option(attachments).as_deref(),
         embed_opt,
     ) {
         Ok(result) => match CString::new(result) {

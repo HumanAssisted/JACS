@@ -452,7 +452,7 @@ fn create_document(
         custom_schema,
         outputfilename,
         no_save.unwrap_or(false),
-        attachments.as_ref(),
+        attachments.as_deref(),
         embed,
     ) {
         Ok(result) => Ok(result),
@@ -560,7 +560,7 @@ fn create_documents_py(
         filename.as_ref(),
         directory.as_ref(),
         outputfilename.as_ref(),
-        attachments.as_ref(),
+        attachments.as_deref(),
         embed,
         no_save,
         schema.as_ref(),

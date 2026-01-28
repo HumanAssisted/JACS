@@ -457,7 +457,7 @@ fn create_document(
         custom_schema,
         outputfilename,
         no_save.unwrap_or(false),
-        attachments.as_ref(),
+        attachments.as_deref(),
         embed,
     ) {
         Ok(result) => Ok(result),
@@ -522,7 +522,7 @@ fn sign_request(env: Env, params_obj: JsObject) -> Result<String> {
         None,
         outputfilename,
         no_save,
-        attachments.as_ref(),
+        attachments.as_deref(),
         Some(false),
     )
     .map_err(|e| {

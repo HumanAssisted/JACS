@@ -53,6 +53,7 @@
 
 ### internals
 
+- [x] Updated A2A integration to protocol v0.4.0: rewrote AgentCard schema (protocolVersions array, supportedInterfaces, embedded JWS signatures, SecurityScheme enum, AgentSkill with id/tags), updated well-known path to agent-card.json, and aligned Rust, Python, and Node.js bindings with passing tests across all three.
 - [] remove in memory map if users don't request it. Refactor and DRY storage to prep for DB storage
 - [] test a2a across libraries
 - [] store in database

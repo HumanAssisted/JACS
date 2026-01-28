@@ -15,7 +15,7 @@ const {
   A2A_PROTOCOL_VERSION,
   JACS_EXTENSION_URI
 } = require('../src/a2a');
-const jacs = require('../src/index');
+const jacs = require('../index');
 
 describe('JACS A2A Integration (v0.4.0)', () => {
   let a2aIntegration;
