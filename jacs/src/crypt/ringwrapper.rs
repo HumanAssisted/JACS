@@ -27,8 +27,8 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn
 
 pub fn verify_string(
     public_key: Vec<u8>,
-    data: &String,
-    signature_base64: &String,
+    data: &str,
+    signature_base64: &str,
 ) -> Result<(), Box<dyn Error>> {
     let signature_bytes = STANDARD.decode(signature_base64)?;
     let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);

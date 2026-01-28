@@ -163,7 +163,7 @@ impl FileLoader for Agent {
             .map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
-    fn fs_load_public_key_type(&self, hash: &String) -> Result<String, Box<dyn Error>> {
+    fn fs_load_public_key_type(&self, hash: &str) -> Result<String, Box<dyn Error>> {
         let public_key_path = format!("public_keys/{}.enc_type", hash);
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
         let bytes = self.storage.get_file(&absolute_public_key_path, None)?;

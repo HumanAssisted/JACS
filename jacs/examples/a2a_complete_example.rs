@@ -253,8 +253,7 @@ fn display_agent_card_info(agent_card: &AgentCard) {
     println!("   - Protocol: {:?}", agent_card.protocol_versions);
     println!(
         "   - Interfaces: {} ({})",
-        agent_card.supported_interfaces[0].url,
-        agent_card.supported_interfaces[0].protocol_binding
+        agent_card.supported_interfaces[0].url, agent_card.supported_interfaces[0].protocol_binding
     );
     println!("   - Skills: {} defined", agent_card.skills.len());
 

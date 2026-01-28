@@ -34,14 +34,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             protocol_binding: "jsonrpc".to_string(),
             tenant: None,
         }],
-        default_input_modes: vec![
-            "text/plain".to_string(),
-            "application/json".to_string(),
-        ],
-        default_output_modes: vec![
-            "text/plain".to_string(),
-            "application/json".to_string(),
-        ],
+        default_input_modes: vec!["text/plain".to_string(), "application/json".to_string()],
+        default_output_modes: vec!["text/plain".to_string(), "application/json".to_string()],
         skills: vec![
             AgentSkill {
                 id: "verify-document".to_string(),

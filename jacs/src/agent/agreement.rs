@@ -201,13 +201,11 @@ impl Agreement for Agent {
         if let Some(jacs_agreement) = value.get_mut(agreement_fieldname_key) {
             if let Some(agents) = jacs_agreement.get_mut("agentIDs") {
                 if let Some(agents_array) = agents.as_array_mut() {
-                    let merged_agents = subtract_vecs(
-                        &agents_array
-                            .iter()
-                            .map(|v| v.as_str().unwrap().to_string())
-                            .collect(),
-                        agentids,
-                    );
+                    let agents_vec: Vec<String> = agents_array
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_string())
+                        .collect();
+                    let merged_agents = subtract_vecs(&agents_vec, agentids);
                     *agents = json!(merged_agents);
                 } else {
                     return Err("no agreement  agents  present".into());
@@ -411,7 +409,7 @@ impl Agreement for Agent {
     /// get human readable fields
     fn agreement_get_question_and_context(
         &self,
-        document_key: &std::string::String,
+        document_key: &str,
         agreement_fieldname: Option<String>,
     ) -> Result<(String, String), Box<dyn Error>> {
         let agreement_fieldname_key = match agreement_fieldname {
@@ -447,7 +445,7 @@ impl Agreement for Agent {
     /// if the document hashes don't match or there are unsigned, it will fail
     fn check_agreement(
         &self,
-        document_key: &std::string::String,
+        document_key: &str,
         agreement_fieldname: Option<String>,
     ) -> Result<String, Box<dyn StdError + 'static>> {
         let agreement_fieldname_key: String = match agreement_fieldname {
@@ -540,7 +538,7 @@ impl Agreement for Agent {
     }
 }
 
-pub fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
+pub fn merge_without_duplicates(vec1: &[String], vec2: &[String]) -> Vec<String> {
     let mut set: HashSet<String> = HashSet::new();
 
     for item in vec1 {
@@ -552,7 +550,7 @@ pub fn merge_without_duplicates(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<S
     set.into_iter().collect()
 }
 
-pub fn subtract_vecs(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
+pub fn subtract_vecs(vec1: &[String], vec2: &[String]) -> Vec<String> {
     debug!("subtract_vecs A {:?} {:?} ", vec1, vec2);
 
     let to_remove: HashSet<&String> = vec2.iter().collect();

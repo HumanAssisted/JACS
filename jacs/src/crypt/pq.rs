@@ -23,8 +23,8 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn
 
 pub fn verify_string(
     public_key: Vec<u8>,
-    data: &String,
-    signature_base64: &String,
+    data: &str,
+    signature_base64: &str,
 ) -> Result<(), Box<dyn Error>> {
     let signature_bytes = B64.decode(signature_base64)?;
     let signature = DetachedSignature::from_bytes(&signature_bytes)?;

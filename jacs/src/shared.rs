@@ -17,7 +17,7 @@ pub fn document_create(
     attachments: Option<&String>,
     embed: Option<bool>,
 ) -> Result<String, Box<dyn Error>> {
-    let attachment_links = agent.parse_attachement_arg(attachments);
+    let attachment_links = agent.parse_attachement_arg(attachments.map(|s| s.as_str()));
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
         agent.load_custom_schemas(&schemas)?;
@@ -303,8 +303,8 @@ pub fn document_add_agreement(
     let unsigned_doc = agent.create_agreement(
         &document_key,
         &agentids,
-        question.as_ref(),
-        context.as_ref(),
+        question.as_deref(),
+        context.as_deref(),
         agreement_fieldname,
     )?;
 

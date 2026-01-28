@@ -34,8 +34,8 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn
 /// Verify ML-DSA-87 signature
 pub fn verify_string(
     public_key: Vec<u8>,
-    data: &String,
-    signature_base64: &String,
+    data: &str,
+    signature_base64: &str,
 ) -> Result<(), Box<dyn Error>> {
     // Convert Vec<u8> to fixed-size array
     let pk_array: [u8; 2592] = public_key

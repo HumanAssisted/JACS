@@ -50,8 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   - Protocol versions: {:?}", agent_card.protocol_versions);
     println!(
         "   - Interfaces: {} ({})",
-        agent_card.supported_interfaces[0].url,
-        agent_card.supported_interfaces[0].protocol_binding
+        agent_card.supported_interfaces[0].url, agent_card.supported_interfaces[0].protocol_binding
     );
     println!("   - Skills: {} defined", agent_card.skills.len());
     println!("   - Extensions: JACS provenance enabled");

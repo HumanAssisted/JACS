@@ -293,7 +293,7 @@ impl DocumentTraits for Agent {
         embed: bool,
     ) -> Result<serde_json::Value, Box<dyn Error>> {
         // Get the file contents as base64
-        let base64_contents = self.fs_get_document_content(filepath.clone())?;
+        let base64_contents = self.fs_get_document_content(filepath.to_string())?;
 
         // Determine the MIME type using a Rust library (e.g., mime_guess)
         let mime_type = mime_guess::from_path(filepath)
@@ -788,9 +788,9 @@ impl DocumentTraits for Agent {
 
     fn verify_document_signature(
         &mut self,
-        document_key: &String,
-        signature_key_from: Option<&String>,
-        fields: Option<&Vec<String>>,
+        document_key: &str,
+        signature_key_from: Option<&str>,
+        fields: Option<&[String]>,
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
@@ -831,7 +831,7 @@ impl DocumentTraits for Agent {
         }
     }
 
-    fn parse_attachement_arg(&mut self, attachments: Option<&String>) -> Option<Vec<String>> {
+    fn parse_attachement_arg(&mut self, attachments: Option<&str>) -> Option<Vec<String>> {
         match attachments {
             Some(path_str) => {
                 // Use the agent's existing storage

@@ -353,8 +353,11 @@ impl Agent {
     ) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
 
-        let (document_values_string, _) =
-            Agent::get_values_as_string(json_value, fields.cloned(), signature_key_from)?;
+        let (document_values_string, _) = Agent::get_values_as_string(
+            json_value,
+            fields.map(|s| s.to_vec()),
+            signature_key_from,
+        )?;
         debug!(
             "signature_verification_procedure document_values_string:\n{}",
             document_values_string
@@ -532,7 +535,7 @@ impl Agent {
     ) -> Result<Value, Box<dyn Error>> {
         debug!("placement_key:\n{}", placement_key);
         let (document_values_string, accepted_fields) =
-            Agent::get_values_as_string(json_value, fields.cloned(), placement_key)?;
+            Agent::get_values_as_string(json_value, fields.map(|s| s.to_vec()), placement_key)?;
         debug!(
             "signing_procedure document_values_string:\n\n{}\n\n",
             document_values_string

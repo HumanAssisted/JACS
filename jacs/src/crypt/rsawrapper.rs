@@ -53,8 +53,8 @@ pub fn sign_string(
 
 pub fn verify_string(
     public_key_content: Vec<u8>,
-    data: &String,
-    signature_base64: &String,
+    data: &str,
+    signature_base64: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let public_key_content_converted =
         std::str::from_utf8(&public_key_content).expect("Failed to convert bytes to string");

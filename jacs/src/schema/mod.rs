@@ -283,9 +283,9 @@ impl Schema {
     }
 
     pub fn new(
-        agentversion: &String,
-        headerversion: &String,
-        signatureversion: &String,
+        agentversion: &str,
+        headerversion: &str,
+        signatureversion: &str,
     ) -> Result<Self, Box<dyn std::error::Error + 'static>> {
         // let current_dir = env::current_dir()?;
         // TODO let the agent, header, and signature versions for verifying being flexible
