@@ -699,7 +699,8 @@ pub extern "C" fn jacs_verify_signature(
     let document_key = doc.getkey();
     let sig_field_opt = c_string_to_option(signature_field);
 
-    match agent.verify_document_signature(&document_key, sig_field_opt.as_ref(), None, None, None) {
+    match agent.verify_document_signature(&document_key, sig_field_opt.as_deref(), None, None, None)
+    {
         Ok(_) => 0,
         Err(_) => -5,
     }

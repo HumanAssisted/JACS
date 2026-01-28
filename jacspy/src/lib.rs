@@ -360,7 +360,13 @@ fn verify_signature(
 
     // Verify signature using the DocumentTraits trait method
     // FIXME get the public key from the document
-    match agent.verify_document_signature(&document_key, sig_field_ref, None, None, None) {
+    match agent.verify_document_signature(
+        &document_key,
+        sig_field_ref.map(|s| s.as_str()),
+        None,
+        None,
+        None,
+    ) {
         Ok(_) => Ok(true),
         Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "Failed to verify signature: {}",

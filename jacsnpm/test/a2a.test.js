@@ -1,22 +1,23 @@
 /**
- * Tests for JACS A2A (Agent-to-Agent) Protocol Integration
+ * Tests for JACS A2A (Agent-to-Agent) Protocol Integration (v0.4.0)
  */
 
 const { expect } = require('chai');
 const sinon = require('sinon');
 const {
   JACSA2AIntegration,
-  A2ASkill,
-  A2ASecurityScheme,
-  A2AExtension,
-  A2ACapabilities,
+  A2AAgentSkill,
+  A2AAgentExtension,
+  A2AAgentCapabilities,
   A2AAgentCard,
+  A2AAgentInterface,
+  A2AAgentCardSignature,
   A2A_PROTOCOL_VERSION,
   JACS_EXTENSION_URI
 } = require('../src/a2a');
 const jacs = require('../src/index');
 
-describe('JACS A2A Integration', () => {
+describe('JACS A2A Integration (v0.4.0)', () => {
   let a2aIntegration;
   let sandbox;
 
@@ -30,7 +31,7 @@ describe('JACS A2A Integration', () => {
   });
 
   describe('exportAgentCard', () => {
-    it('should export JACS agent to A2A Agent Card', () => {
+    it('should export JACS agent to A2A Agent Card (v0.4.0)', () => {
       const agentData = {
         jacsId: 'test-agent-123',
         jacsVersion: 'v1.0.0',
@@ -61,32 +62,42 @@ describe('JACS A2A Integration', () => {
 
       const agentCard = a2aIntegration.exportAgentCard(agentData);
 
-      // Verify basic properties
-      expect(agentCard.protocolVersion).to.equal('1.0');
+      // Verify v0.4.0 properties
+      expect(agentCard.protocolVersions).to.deep.equal(['0.4.0']);
       expect(agentCard.name).to.equal('Test Agent');
       expect(agentCard.description).to.equal('A test agent for A2A integration');
-      expect(agentCard.url).to.equal('https://agent-test-agent-123.example.com');
+      expect(agentCard.version).to.equal('v1.0.0');
 
-      // Verify skills
+      // Verify supported interfaces (replaces top-level url)
+      expect(agentCard.supportedInterfaces).to.have.lengthOf(1);
+      expect(agentCard.supportedInterfaces[0].url).to.equal('https://agent-test-agent-123.example.com');
+      expect(agentCard.supportedInterfaces[0].protocolBinding).to.equal('jsonrpc');
+
+      // Verify default I/O modes
+      expect(agentCard.defaultInputModes).to.include('text/plain');
+      expect(agentCard.defaultOutputModes).to.include('application/json');
+
+      // Verify skills have v0.4.0 fields (id, tags, no endpoint/schemas)
       expect(agentCard.skills).to.have.lengthOf(1);
       const skill = agentCard.skills[0];
       expect(skill.name).to.equal('test_function');
       expect(skill.description).to.equal('A test function');
-      expect(skill.endpoint).to.equal('/api/test');
-      expect(skill.input_schema).to.exist;
+      expect(skill.id).to.equal('test-function');
+      expect(skill.tags).to.be.an('array');
+      expect(skill.tags).to.include('jacs');
 
-      // Verify security schemes
-      expect(agentCard.securitySchemes).to.have.lengthOf(2);
-      expect(agentCard.securitySchemes[0].type).to.equal('http');
-      expect(agentCard.securitySchemes[0].scheme).to.equal('bearer');
-      expect(agentCard.securitySchemes[1].type).to.equal('apiKey');
+      // Verify security schemes as keyed map (v0.4.0)
+      expect(agentCard.securitySchemes).to.be.an('object');
+      expect(agentCard.securitySchemes).to.have.property('bearer-jwt');
+      expect(agentCard.securitySchemes).to.have.property('api-key');
+      expect(agentCard.securitySchemes['bearer-jwt'].type).to.equal('http');
+      expect(agentCard.securitySchemes['api-key'].type).to.equal('apiKey');
 
-      // Verify JACS extension
+      // Verify JACS extension (no params in v0.4.0)
       expect(agentCard.capabilities.extensions).to.have.lengthOf(1);
       const extension = agentCard.capabilities.extensions[0];
       expect(extension.uri).to.equal(JACS_EXTENSION_URI);
       expect(extension.required).to.be.false;
-      expect(extension.params.supportedAlgorithms).to.include.members(['dilithium', 'rsa', 'ecdsa']);
 
       // Verify metadata
       expect(agentCard.metadata).to.exist;
@@ -102,15 +113,16 @@ describe('JACS A2A Integration', () => {
 
       const agentCard = a2aIntegration.exportAgentCard(minimalAgent);
 
-      // Should have default verification skill
+      // Should have default verification skill with v0.4.0 fields
       expect(agentCard.skills).to.have.lengthOf(1);
       expect(agentCard.skills[0].name).to.equal('verify_signature');
-      expect(agentCard.skills[0].endpoint).to.equal('/jacs/verify');
+      expect(agentCard.skills[0].id).to.equal('verify-signature');
+      expect(agentCard.skills[0].tags).to.be.an('array');
     });
   });
 
   describe('_convertServicesToSkills', () => {
-    it('should convert multiple services with tools to skills', () => {
+    it('should convert multiple services with tools to skills (v0.4.0)', () => {
       const services = [
         {
           name: 'Service 1',
@@ -139,9 +151,17 @@ describe('JACS A2A Integration', () => {
 
       expect(skills).to.have.lengthOf(3); // 2 tools + 1 service
       expect(skills[0].name).to.equal('tool1');
+      expect(skills[0].id).to.equal('tool1');
       expect(skills[1].name).to.equal('tool2');
+      expect(skills[1].id).to.equal('tool2');
       expect(skills[2].name).to.equal('Service 2');
-      expect(skills[2].endpoint).to.equal('/api/service/service_2');
+      expect(skills[2].id).to.equal('service-2');
+
+      // All skills should have tags
+      for (const skill of skills) {
+        expect(skill.tags).to.be.an('array');
+        expect(skill.tags).to.include('jacs');
+      }
     });
   });
 
@@ -152,6 +172,7 @@ describe('JACS A2A Integration', () => {
       expect(descriptor.uri).to.equal(JACS_EXTENSION_URI);
       expect(descriptor.name).to.equal('JACS Document Provenance');
       expect(descriptor.version).to.equal('1.0');
+      expect(descriptor.a2aProtocolVersion).to.equal('0.4.0');
 
       // Verify capabilities
       expect(descriptor.capabilities).to.have.all.keys('documentSigning', 'documentVerification', 'postQuantumCrypto');
@@ -227,7 +248,7 @@ describe('JACS A2A Integration', () => {
         }
       };
 
-      sandbox.stub(jacs, 'verifyRequest').returns(true);
+      sandbox.stub(jacs, 'verifyResponse').returns(true);
 
       const result = a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 
@@ -237,7 +258,7 @@ describe('JACS A2A Integration', () => {
       expect(result.artifactType).to.equal('a2a-task');
       expect(result.timestamp).to.equal('2024-01-15T10:00:00Z');
       expect(result.originalArtifact).to.deep.equal({ data: 'test' });
-      expect(jacs.verifyRequest.calledWith(wrappedArtifact)).to.be.true;
+      expect(jacs.verifyResponse.calledWith(wrappedArtifact)).to.be.true;
     });
 
     it('should handle artifacts with parent signatures', () => {
@@ -247,7 +268,7 @@ describe('JACS A2A Integration', () => {
         a2aArtifact: {}
       };
 
-      sandbox.stub(jacs, 'verifyRequest').returns(true);
+      sandbox.stub(jacs, 'verifyResponse').returns(true);
 
       const result = a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 
@@ -297,15 +318,19 @@ describe('JACS A2A Integration', () => {
   });
 
   describe('generateWellKnownDocuments', () => {
-    it('should generate all well-known documents', () => {
+    it('should generate all well-known documents (v0.4.0)', () => {
       const agentCard = new A2AAgentCard({
-        protocolVersion: '1.0',
-        url: 'https://example.com',
         name: 'Test',
         description: 'Test',
-        skills: [],
-        securitySchemes: [],
-        capabilities: new A2ACapabilities()
+        version: '1.0.0',
+        protocolVersions: ['0.4.0'],
+        supportedInterfaces: [
+          new A2AAgentInterface('https://example.com', 'jsonrpc')
+        ],
+        defaultInputModes: ['text/plain'],
+        defaultOutputModes: ['text/plain'],
+        capabilities: new A2AAgentCapabilities(),
+        skills: []
       });
 
       const agentData = {
@@ -315,7 +340,7 @@ describe('JACS A2A Integration', () => {
         keyAlgorithm: 'RSA-PSS'
       };
 
-      sandbox.stub(jacs, 'hashPublicKey').returns('mocked-hash');
+      sandbox.stub(jacs, 'hashString').returns('mocked-hash');
 
       const documents = a2aIntegration.generateWellKnownDocuments(
         agentCard,
@@ -324,19 +349,18 @@ describe('JACS A2A Integration', () => {
         agentData
       );
 
-      // Verify all required documents are generated
+      // Verify v0.4.0 well-known path (agent-card.json, not agent.json)
       expect(documents).to.have.all.keys(
-        '/.well-known/agent.json',
+        '/.well-known/agent-card.json',
         '/.well-known/jacs-agent.json',
         '/.well-known/jacs-pubkey.json',
         '/.well-known/jacs-extension.json'
       );
 
-      // Verify agent card document
-      const agentDoc = documents['/.well-known/agent.json'];
-      expect(agentDoc.agentCard).to.equal(agentCard);
-      expect(agentDoc.signature).to.equal('mock-jws-signature');
-      expect(agentDoc.signatureFormat).to.equal('JWS');
+      // Verify agent card document has embedded signature (v0.4.0)
+      const agentDoc = documents['/.well-known/agent-card.json'];
+      expect(agentDoc.signatures).to.exist;
+      expect(agentDoc.signatures[0].jws).to.equal('mock-jws-signature');
 
       // Verify JACS descriptor
       const jacsDesc = documents['/.well-known/jacs-agent.json'];
@@ -352,58 +376,88 @@ describe('JACS A2A Integration', () => {
   });
 });
 
-describe('A2A Data Classes', () => {
-  it('should create A2ASkill instance', () => {
-    const skill = new A2ASkill(
-      'test_skill',
-      'A test skill',
-      '/api/test',
-      { type: 'object' },
-      { type: 'object' }
-    );
+describe('A2A v0.4.0 Data Classes', () => {
+  it('should create A2AAgentSkill instance (v0.4.0)', () => {
+    const skill = new A2AAgentSkill({
+      id: 'test-skill',
+      name: 'test_skill',
+      description: 'A test skill',
+      tags: ['jacs', 'test'],
+      examples: ['Example usage'],
+      inputModes: ['application/json'],
+      outputModes: ['application/json'],
+    });
 
+    expect(skill.id).to.equal('test-skill');
     expect(skill.name).to.equal('test_skill');
     expect(skill.description).to.equal('A test skill');
-    expect(skill.endpoint).to.equal('/api/test');
-    expect(skill.input_schema).to.exist;
-    expect(skill.output_schema).to.exist;
+    expect(skill.tags).to.deep.equal(['jacs', 'test']);
+    expect(skill.examples).to.deep.equal(['Example usage']);
+    expect(skill.inputModes).to.deep.equal(['application/json']);
+    expect(skill.outputModes).to.deep.equal(['application/json']);
   });
 
-  it('should create A2ASecurityScheme instance', () => {
-    const scheme = new A2ASecurityScheme('http', 'bearer', 'JWT');
-
-    expect(scheme.type).to.equal('http');
-    expect(scheme.scheme).to.equal('bearer');
-    expect(scheme.bearer_format).to.equal('JWT');
-  });
-
-  it('should create A2AExtension instance', () => {
-    const extension = new A2AExtension(
+  it('should create A2AAgentExtension instance (v0.4.0 - no params)', () => {
+    const extension = new A2AAgentExtension(
       'test:extension',
       'Test extension',
-      true,
-      { param1: 'value1' }
+      true
     );
 
     expect(extension.uri).to.equal('test:extension');
+    expect(extension.description).to.equal('Test extension');
     expect(extension.required).to.be.true;
-    expect(extension.params.param1).to.equal('value1');
   });
 
-  it('should create A2AAgentCard instance', () => {
+  it('should create A2AAgentCard instance (v0.4.0)', () => {
     const agentCard = new A2AAgentCard({
-      protocolVersion: '1.0',
-      url: 'https://example.com',
       name: 'Test Agent',
       description: 'Test description',
+      version: '1.0.0',
+      protocolVersions: ['0.4.0'],
+      supportedInterfaces: [
+        new A2AAgentInterface('https://example.com', 'jsonrpc')
+      ],
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      capabilities: new A2AAgentCapabilities(),
       skills: [],
-      securitySchemes: [],
-      capabilities: new A2ACapabilities(),
       metadata: { version: '1.0' }
     });
 
-    expect(agentCard.protocolVersion).to.equal('1.0');
     expect(agentCard.name).to.equal('Test Agent');
+    expect(agentCard.protocolVersions).to.deep.equal(['0.4.0']);
+    expect(agentCard.supportedInterfaces).to.have.lengthOf(1);
+    expect(agentCard.supportedInterfaces[0].url).to.equal('https://example.com');
     expect(agentCard.metadata.version).to.equal('1.0');
+  });
+
+  it('should create A2AAgentInterface instance', () => {
+    const iface = new A2AAgentInterface('https://example.com', 'jsonrpc', 'tenant-123');
+
+    expect(iface.url).to.equal('https://example.com');
+    expect(iface.protocolBinding).to.equal('jsonrpc');
+    expect(iface.tenant).to.equal('tenant-123');
+  });
+
+  it('should create A2AAgentCardSignature instance', () => {
+    const sig = new A2AAgentCardSignature('eyJhbGciOiJSUzI1NiJ9.payload.signature', 'key-123');
+
+    expect(sig.jws).to.equal('eyJhbGciOiJSUzI1NiJ9.payload.signature');
+    expect(sig.keyId).to.equal('key-123');
+  });
+
+  it('should create A2AAgentCapabilities instance (v0.4.0)', () => {
+    const caps = new A2AAgentCapabilities({
+      streaming: true,
+      pushNotifications: false,
+      extendedAgentCard: true,
+      extensions: [new A2AAgentExtension('test:ext', 'Test')]
+    });
+
+    expect(caps.streaming).to.be.true;
+    expect(caps.pushNotifications).to.be.false;
+    expect(caps.extendedAgentCard).to.be.true;
+    expect(caps.extensions).to.have.lengthOf(1);
   });
 });

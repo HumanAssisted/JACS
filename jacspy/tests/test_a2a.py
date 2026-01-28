@@ -1,5 +1,5 @@
 """
-Tests for JACS A2A (Agent-to-Agent) Protocol Integration
+Tests for JACS A2A (Agent-to-Agent) Protocol Integration (v0.4.0)
 """
 
 import pytest
@@ -10,22 +10,23 @@ from unittest.mock import patch, MagicMock
 
 from jacs.a2a import (
     JACSA2AIntegration,
-    A2ASkill,
-    A2ASecurityScheme,
-    A2AExtension,
-    A2ACapabilities,
-    A2AAgentCard
+    A2AAgentSkill,
+    A2AAgentExtension,
+    A2AAgentCapabilities,
+    A2AAgentCard,
+    A2AAgentInterface,
+    A2AAgentCardSignature,
 )
 
 
 class TestJACSA2AIntegration:
-    """Test suite for JACS A2A integration"""
-    
+    """Test suite for JACS A2A integration (v0.4.0)"""
+
     @pytest.fixture
     def a2a_integration(self):
         """Create A2A integration instance"""
         return JACSA2AIntegration()
-    
+
     @pytest.fixture
     def sample_agent_data(self):
         """Sample JACS agent data"""
@@ -56,59 +57,72 @@ class TestJACSA2AIntegration:
                 }]
             }]
         }
-    
+
     def test_export_agent_card(self, a2a_integration, sample_agent_data):
-        """Test exporting JACS agent to A2A Agent Card"""
+        """Test exporting JACS agent to A2A Agent Card (v0.4.0)"""
         agent_card = a2a_integration.export_agent_card(sample_agent_data)
-        
-        # Verify basic properties
-        assert agent_card.protocol_version == "1.0"
+
+        # Verify v0.4.0 properties
+        assert agent_card.protocol_versions == ["0.4.0"]
         assert agent_card.name == "Test Agent"
         assert agent_card.description == "A test agent for A2A integration"
-        assert agent_card.url == "https://agent-test-agent-123.example.com"
-        
-        # Verify skills
+        assert agent_card.version == "v1.0.0"
+
+        # Verify supported interfaces (replaces top-level url)
+        assert len(agent_card.supported_interfaces) == 1
+        iface = agent_card.supported_interfaces[0]
+        assert iface.url == "https://agent-test-agent-123.example.com"
+        assert iface.protocol_binding == "jsonrpc"
+
+        # Verify default I/O modes
+        assert "text/plain" in agent_card.default_input_modes
+        assert "application/json" in agent_card.default_output_modes
+
+        # Verify skills have v0.4.0 fields (id, tags, no endpoint/schemas)
         assert len(agent_card.skills) == 1
         skill = agent_card.skills[0]
         assert skill.name == "test_function"
         assert skill.description == "A test function"
-        assert skill.endpoint == "/api/test"
-        assert skill.input_schema is not None
-        
-        # Verify security schemes
-        assert len(agent_card.security_schemes) == 2
-        assert any(s.type == "http" and s.scheme == "bearer" for s in agent_card.security_schemes)
-        assert any(s.type == "apiKey" for s in agent_card.security_schemes)
-        
-        # Verify JACS extension
+        assert skill.id == "test-function"
+        assert isinstance(skill.tags, list)
+        assert "jacs" in skill.tags
+
+        # Verify security schemes as keyed map (v0.4.0)
+        assert isinstance(agent_card.security_schemes, dict)
+        assert "bearer-jwt" in agent_card.security_schemes
+        assert "api-key" in agent_card.security_schemes
+        assert agent_card.security_schemes["bearer-jwt"]["type"] == "http"
+        assert agent_card.security_schemes["api-key"]["type"] == "apiKey"
+
+        # Verify JACS extension (no params field in v0.4.0)
         assert agent_card.capabilities.extensions is not None
         assert len(agent_card.capabilities.extensions) == 1
         extension = agent_card.capabilities.extensions[0]
         assert extension.uri == "urn:hai.ai:jacs-provenance-v1"
         assert extension.required is False
-        assert "supportedAlgorithms" in extension.params
-        
+
         # Verify metadata
         assert agent_card.metadata is not None
         assert agent_card.metadata["jacsId"] == "test-agent-123"
         assert agent_card.metadata["jacsVersion"] == "v1.0.0"
-    
+
     def test_export_agent_card_minimal(self, a2a_integration):
         """Test exporting minimal agent without services"""
         minimal_agent = {
             "jacsId": "minimal-agent",
             "jacsAgentType": "ai"
         }
-        
+
         agent_card = a2a_integration.export_agent_card(minimal_agent)
-        
-        # Should have default verification skill
+
+        # Should have default verification skill with v0.4.0 fields
         assert len(agent_card.skills) == 1
         assert agent_card.skills[0].name == "verify_signature"
-        assert agent_card.skills[0].endpoint == "/jacs/verify"
-    
+        assert agent_card.skills[0].id == "verify-signature"
+        assert isinstance(agent_card.skills[0].tags, list)
+
     def test_convert_services_to_skills(self, a2a_integration):
-        """Test converting JACS services to A2A skills"""
+        """Test converting JACS services to A2A skills (v0.4.0)"""
         services = [
             {
                 "name": "Service 1",
@@ -132,33 +146,41 @@ class TestJACSA2AIntegration:
                 "serviceDescription": "Second service without tools"
             }
         ]
-        
+
         skills = a2a_integration._convert_services_to_skills(services)
-        
+
         assert len(skills) == 3  # 2 tools from service 1 + 1 service skill from service 2
         assert skills[0].name == "tool1"
+        assert skills[0].id == "tool1"
         assert skills[1].name == "tool2"
+        assert skills[1].id == "tool2"
         assert skills[2].name == "Service 2"
-        assert skills[2].endpoint == "/api/service/service_2"
-    
+        assert skills[2].id == "service-2"
+
+        # All skills should have tags
+        for skill in skills:
+            assert isinstance(skill.tags, list)
+            assert "jacs" in skill.tags
+
     def test_create_extension_descriptor(self, a2a_integration):
         """Test creating JACS extension descriptor"""
         descriptor = a2a_integration.create_extension_descriptor()
-        
+
         assert descriptor["uri"] == "urn:hai.ai:jacs-provenance-v1"
         assert descriptor["name"] == "JACS Document Provenance"
         assert descriptor["version"] == "1.0"
-        
+        assert descriptor["a2aProtocolVersion"] == "0.4.0"
+
         # Verify capabilities
         assert "documentSigning" in descriptor["capabilities"]
         assert "documentVerification" in descriptor["capabilities"]
         assert "postQuantumCrypto" in descriptor["capabilities"]
-        
+
         # Verify endpoints
         assert "sign" in descriptor["endpoints"]
         assert "verify" in descriptor["endpoints"]
         assert "publicKey" in descriptor["endpoints"]
-    
+
     @patch('jacs.sign_request')
     def test_wrap_artifact_with_provenance(self, mock_sign, a2a_integration):
         """Test wrapping A2A artifact with JACS provenance"""
@@ -167,7 +189,7 @@ class TestJACSA2AIntegration:
             "operation": "test",
             "data": {"key": "value"}
         }
-        
+
         # Mock the sign_request to return a signed document
         mock_sign.return_value = {
             "jacsId": "wrapped-123",
@@ -179,35 +201,35 @@ class TestJACSA2AIntegration:
                 "signature": "mock-signature"
             }
         }
-        
+
         wrapped = a2a_integration.wrap_artifact_with_provenance(artifact, "task")
-        
+
         assert wrapped["jacsType"] == "a2a-task"
         assert wrapped["a2aArtifact"] == artifact
         assert "jacsSignature" in wrapped
         mock_sign.assert_called_once()
-    
+
     @patch('jacs.sign_request')
     def test_wrap_artifact_with_parent_signatures(self, mock_sign, a2a_integration):
         """Test wrapping artifact with parent signatures for chain of custody"""
         artifact = {"step": "step2"}
         parent_sig = {"jacsId": "parent-123", "jacsSignature": {"agentID": "parent-agent"}}
-        
+
         mock_sign.return_value = {
             "jacsId": "wrapped-456",
             "a2aArtifact": artifact,
             "jacsParentSignatures": [parent_sig],
             "jacsSignature": {"agentID": "test-agent"}
         }
-        
+
         wrapped = a2a_integration.wrap_artifact_with_provenance(
             artifact, "workflow-step", [parent_sig]
         )
-        
+
         assert "jacsParentSignatures" in wrapped
         assert wrapped["jacsParentSignatures"] == [parent_sig]
-    
-    @patch('jacs.verify_request')
+
+    @patch('jacs.verify_response')
     def test_verify_wrapped_artifact(self, mock_verify, a2a_integration):
         """Test verifying JACS-wrapped artifact"""
         wrapped_artifact = {
@@ -221,11 +243,11 @@ class TestJACSA2AIntegration:
                 "publicKeyHash": "abc123"
             }
         }
-        
+
         mock_verify.return_value = True
-        
+
         result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
-        
+
         assert result["valid"] is True
         assert result["signer_id"] == "signer-agent"
         assert result["signer_version"] == "v1.0"
@@ -233,8 +255,8 @@ class TestJACSA2AIntegration:
         assert result["timestamp"] == "2024-01-15T10:00:00Z"
         assert result["original_artifact"] == {"data": "test"}
         mock_verify.assert_called_once_with(wrapped_artifact)
-    
-    @patch('jacs.verify_request')
+
+    @patch('jacs.verify_response')
     def test_verify_wrapped_artifact_with_parents(self, mock_verify, a2a_integration):
         """Test verifying artifact with parent signatures"""
         wrapped_artifact = {
@@ -242,14 +264,14 @@ class TestJACSA2AIntegration:
             "jacsParentSignatures": [{"sig": 1}, {"sig": 2}],
             "a2aArtifact": {}
         }
-        
+
         mock_verify.return_value = True
-        
+
         result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
-        
+
         assert result["parent_signatures_count"] == 2
         assert result["parent_signatures_valid"] is True
-    
+
     def test_create_chain_of_custody(self, a2a_integration):
         """Test creating chain of custody document"""
         artifacts = [
@@ -274,104 +296,123 @@ class TestJACSA2AIntegration:
                 }
             }
         ]
-        
+
         chain = a2a_integration.create_chain_of_custody(artifacts)
-        
+
         assert "chainOfCustody" in chain
         assert "created" in chain
         assert chain["totalArtifacts"] == 2
-        
+
         custody = chain["chainOfCustody"]
         assert len(custody) == 2
         assert custody[0]["artifactId"] == "step1"
         assert custody[0]["agentId"] == "agent1"
         assert custody[1]["artifactId"] == "step2"
         assert custody[1]["agentId"] == "agent2"
-    
+
     def test_agent_card_to_dict(self, a2a_integration):
-        """Test converting AgentCard to dictionary"""
+        """Test converting AgentCard to dictionary (v0.4.0)"""
         agent_card = A2AAgentCard(
-            protocol_version="1.0",
-            url="https://example.com",
             name="Test",
             description="Test agent",
-            skills=[
-                A2ASkill(name="skill1", description="Skill 1", endpoint="/skill1")
+            version="1.0.0",
+            protocol_versions=["0.4.0"],
+            supported_interfaces=[
+                A2AAgentInterface(
+                    url="https://example.com",
+                    protocol_binding="jsonrpc",
+                )
             ],
-            security_schemes=[
-                A2ASecurityScheme(type="http", scheme="bearer")
-            ],
-            capabilities=A2ACapabilities(
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=A2AAgentCapabilities(
                 extensions=[
-                    A2AExtension(
+                    A2AAgentExtension(
                         uri="test:ext",
                         description="Test extension",
                         required=False,
-                        params={"key": "value"}
                     )
                 ]
             ),
-            metadata={"version": "1.0"}
+            skills=[
+                A2AAgentSkill(
+                    id="skill-1",
+                    name="skill1",
+                    description="Skill 1",
+                    tags=["jacs", "test"],
+                )
+            ],
+            metadata={"version": "1.0"},
         )
-        
+
         result = a2a_integration.agent_card_to_dict(agent_card)
-        
+
         assert isinstance(result, dict)
-        assert result["protocol_version"] == "1.0"
         assert result["name"] == "Test"
+        assert result["protocolVersions"] == ["0.4.0"]
+        assert len(result["supportedInterfaces"]) == 1
+        assert result["supportedInterfaces"][0]["url"] == "https://example.com"
+        assert result["supportedInterfaces"][0]["protocolBinding"] == "jsonrpc"
         assert len(result["skills"]) == 1
         assert result["skills"][0]["name"] == "skill1"
-        assert len(result["security_schemes"]) == 1
+        assert result["skills"][0]["id"] == "skill-1"
+        assert result["skills"][0]["tags"] == ["jacs", "test"]
         assert result["capabilities"]["extensions"][0]["uri"] == "test:ext"
         assert result["metadata"]["version"] == "1.0"
-    
-    @patch('jacs.hash_public_key')
+
+    @patch('jacs.hash_string')
     def test_generate_well_known_documents(self, mock_hash, a2a_integration):
-        """Test generating well-known documents"""
+        """Test generating well-known documents (v0.4.0)"""
         mock_hash.return_value = "mocked-hash"
-        
+
         agent_card = A2AAgentCard(
-            protocol_version="1.0",
-            url="https://example.com",
             name="Test",
             description="Test",
+            version="1.0.0",
+            protocol_versions=["0.4.0"],
+            supported_interfaces=[
+                A2AAgentInterface(
+                    url="https://example.com",
+                    protocol_binding="jsonrpc",
+                )
+            ],
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=A2AAgentCapabilities(),
             skills=[],
-            security_schemes=[],
-            capabilities=A2ACapabilities()
         )
-        
+
         agent_data = {
             "jacsId": "agent-123",
             "jacsVersion": "v1",
             "jacsAgentType": "ai",
             "keyAlgorithm": "RSA-PSS"
         }
-        
+
         documents = a2a_integration.generate_well_known_documents(
             agent_card,
             "mock-jws-signature",
             "mock-public-key-b64",
             agent_data
         )
-        
-        # Verify all required documents are generated
-        assert "/.well-known/agent.json" in documents
+
+        # Verify v0.4.0 well-known path (agent-card.json, not agent.json)
+        assert "/.well-known/agent-card.json" in documents
         assert "/.well-known/jacs-agent.json" in documents
         assert "/.well-known/jacs-pubkey.json" in documents
         assert "/.well-known/jacs-extension.json" in documents
-        
-        # Verify agent card document
-        agent_doc = documents["/.well-known/agent.json"]
-        assert "agentCard" in agent_doc
-        assert agent_doc["signature"] == "mock-jws-signature"
-        assert agent_doc["signatureFormat"] == "JWS"
-        
+
+        # Verify agent card document has embedded signature (v0.4.0)
+        agent_doc = documents["/.well-known/agent-card.json"]
+        assert "signatures" in agent_doc
+        assert agent_doc["signatures"][0]["jws"] == "mock-jws-signature"
+
         # Verify JACS descriptor
         jacs_desc = documents["/.well-known/jacs-agent.json"]
         assert jacs_desc["agentId"] == "agent-123"
         assert jacs_desc["keyAlgorithm"] == "RSA-PSS"
         assert jacs_desc["publicKeyHash"] == "mocked-hash"
-        
+
         # Verify public key document
         pubkey_doc = documents["/.well-known/jacs-pubkey.json"]
         assert pubkey_doc["publicKey"] == "mock-public-key-b64"
@@ -379,48 +420,103 @@ class TestJACSA2AIntegration:
 
 
 class TestA2ADataClasses:
-    """Test A2A data classes"""
-    
+    """Test A2A v0.4.0 data classes"""
+
     def test_a2a_skill_creation(self):
-        """Test A2ASkill dataclass"""
-        skill = A2ASkill(
+        """Test A2AAgentSkill dataclass (v0.4.0)"""
+        skill = A2AAgentSkill(
+            id="test-skill",
             name="test_skill",
             description="A test skill",
-            endpoint="/api/test",
-            input_schema={"type": "object"},
-            output_schema={"type": "object"}
+            tags=["jacs", "test"],
+            examples=["Example usage"],
+            input_modes=["application/json"],
+            output_modes=["application/json"],
         )
-        
+
+        assert skill.id == "test-skill"
         assert skill.name == "test_skill"
         assert skill.description == "A test skill"
-        assert skill.endpoint == "/api/test"
-        assert skill.input_schema is not None
-        assert skill.output_schema is not None
-    
-    def test_a2a_security_scheme(self):
-        """Test A2ASecurityScheme dataclass"""
-        scheme = A2ASecurityScheme(
-            type="http",
-            scheme="bearer",
-            bearer_format="JWT"
-        )
-        
-        assert scheme.type == "http"
-        assert scheme.scheme == "bearer"
-        assert scheme.bearer_format == "JWT"
-    
-    def test_a2a_extension(self):
-        """Test A2AExtension dataclass"""
-        extension = A2AExtension(
+        assert skill.tags == ["jacs", "test"]
+        assert skill.examples == ["Example usage"]
+        assert skill.input_modes == ["application/json"]
+        assert skill.output_modes == ["application/json"]
+
+    def test_a2a_agent_extension(self):
+        """Test A2AAgentExtension dataclass (v0.4.0 - no params)"""
+        extension = A2AAgentExtension(
             uri="test:extension",
             description="Test extension",
             required=True,
-            params={"param1": "value1"}
         )
-        
+
         assert extension.uri == "test:extension"
+        assert extension.description == "Test extension"
         assert extension.required is True
-        assert extension.params["param1"] == "value1"
+
+    def test_a2a_agent_card_creation(self):
+        """Test A2AAgentCard dataclass (v0.4.0)"""
+        agent_card = A2AAgentCard(
+            name="Test Agent",
+            description="Test description",
+            version="1.0.0",
+            protocol_versions=["0.4.0"],
+            supported_interfaces=[
+                A2AAgentInterface(
+                    url="https://example.com",
+                    protocol_binding="jsonrpc",
+                )
+            ],
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=A2AAgentCapabilities(),
+            skills=[],
+            metadata={"version": "1.0"},
+        )
+
+        assert agent_card.name == "Test Agent"
+        assert agent_card.protocol_versions == ["0.4.0"]
+        assert len(agent_card.supported_interfaces) == 1
+        assert agent_card.supported_interfaces[0].url == "https://example.com"
+        assert agent_card.metadata["version"] == "1.0"
+
+    def test_a2a_agent_interface(self):
+        """Test A2AAgentInterface dataclass"""
+        iface = A2AAgentInterface(
+            url="https://example.com",
+            protocol_binding="jsonrpc",
+            tenant="tenant-123",
+        )
+
+        assert iface.url == "https://example.com"
+        assert iface.protocol_binding == "jsonrpc"
+        assert iface.tenant == "tenant-123"
+
+    def test_a2a_agent_card_signature(self):
+        """Test A2AAgentCardSignature dataclass"""
+        sig = A2AAgentCardSignature(
+            jws="eyJhbGciOiJSUzI1NiJ9.payload.signature",
+            key_id="key-123",
+        )
+
+        assert sig.jws == "eyJhbGciOiJSUzI1NiJ9.payload.signature"
+        assert sig.key_id == "key-123"
+
+    def test_a2a_agent_capabilities(self):
+        """Test A2AAgentCapabilities dataclass (v0.4.0)"""
+        caps = A2AAgentCapabilities(
+            streaming=True,
+            push_notifications=False,
+            extended_agent_card=True,
+            extensions=[
+                A2AAgentExtension(uri="test:ext", description="Test")
+            ],
+        )
+
+        assert caps.streaming is True
+        assert caps.push_notifications is False
+        assert caps.extended_agent_card is True
+        assert len(caps.extensions) == 1
 
 
 if __name__ == "__main__":

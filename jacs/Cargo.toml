@@ -2,7 +2,7 @@
 name = "jacs"
 version = "0.3.6"
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.93"
 resolver = "3"
 
 include = [
@@ -75,7 +75,6 @@ env_logger = "0.11.8"
 futures-util = "0.3.31"
 referencing = "0.33.0"
 futures-executor = "0.3.31"
-update = "0.0.0"
 getset = "0.1.5"
 clap = { version = "4.5.4", features = ["derive", "cargo"], optional = true }
 ratatui = { version = "0.29.0", optional = true }

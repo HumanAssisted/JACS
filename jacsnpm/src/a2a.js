@@ -8,7 +8,7 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
-const jacs = require('./index');
+const jacs = require('../index');
 
 /**
  * A2A protocol version (v0.4.0)
@@ -340,7 +340,7 @@ class JACSA2AIntegration {
    * @returns {Object} Verification result
    */
   verifyWrappedArtifact(wrappedArtifact) {
-    const isValid = jacs.verifyRequest(wrappedArtifact);
+    const isValid = jacs.verifyResponse(wrappedArtifact);
     const signatureInfo = wrappedArtifact.jacsSignature || {};
 
     const result = {
@@ -411,7 +411,7 @@ class JACSA2AIntegration {
       agentId: agentData.jacsId,
       agentVersion: agentData.jacsVersion,
       agentType: agentData.jacsAgentType,
-      publicKeyHash: jacs.hashPublicKey(Buffer.from(publicKeyB64, 'base64')),
+      publicKeyHash: jacs.hashString(publicKeyB64),
       keyAlgorithm: agentData.keyAlgorithm || 'RSA-PSS',
       capabilities: {
         signing: true,
@@ -433,7 +433,7 @@ class JACSA2AIntegration {
     // 3. JACS Public Key
     documents['/.well-known/jacs-pubkey.json'] = {
       publicKey: publicKeyB64,
-      publicKeyHash: jacs.hashPublicKey(Buffer.from(publicKeyB64, 'base64')),
+      publicKeyHash: jacs.hashString(publicKeyB64),
       algorithm: agentData.keyAlgorithm || 'RSA-PSS',
       agentId: agentData.jacsId,
       agentVersion: agentData.jacsVersion,
