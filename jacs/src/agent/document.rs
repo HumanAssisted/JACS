@@ -395,11 +395,8 @@ impl DocumentTraits for Agent {
         }
 
         // sign document
-        instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &instance,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
+        instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&instance, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
         // hash document
         let document_hash = self.hash_doc(&instance)?;
         instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
@@ -615,11 +612,8 @@ impl DocumentTraits for Agent {
         new_document["jacsVersion"] = json!(format!("{}", new_version));
         new_document["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // get all fields but reserved
-        new_document[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &new_document,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
+        new_document[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&new_document, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
 
         // hash new version
         let document_hash = self.hash_doc(&new_document)?;
@@ -656,11 +650,8 @@ impl DocumentTraits for Agent {
         value["jacsVersion"] = json!(format!("{}", new_version));
         value["jacsVersionDate"] = json!(format!("{}", versioncreated));
         // sign new version
-        value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = self.signing_procedure(
-            &value,
-            None,
-            &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string(),
-        )?;
+        value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&value, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
         // hash new version
         let document_hash = self.hash_doc(&value)?;
         value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));

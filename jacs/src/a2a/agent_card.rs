@@ -263,8 +263,7 @@ pub fn create_extension_descriptor() -> Value {
 /// Convert a name to a URL-friendly slug for skill IDs.
 fn slugify(name: &str) -> String {
     name.to_lowercase()
-        .replace(' ', "-")
-        .replace('_', "-")
+        .replace([' ', '_'], "-")
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-')
         .collect()

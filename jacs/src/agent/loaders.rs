@@ -220,7 +220,7 @@ impl FileLoader for Agent {
         let mut documents: Vec<String> = Vec::new();
 
         // Handle Result from make_data_directory_path manually
-        let agent_path = match self.make_data_directory_path(&"agent".to_string()) {
+        let agent_path = match self.make_data_directory_path("agent") {
             Ok(path) => path,
             Err(e) => {
                 errors.push(e);
@@ -228,7 +228,7 @@ impl FileLoader for Agent {
                 return Err(errors);
             }
         };
-        let documents_path = match self.make_data_directory_path(&"documents".to_string()) {
+        let documents_path = match self.make_data_directory_path("documents") {
             Ok(path) => path,
             Err(e) => {
                 errors.push(e);

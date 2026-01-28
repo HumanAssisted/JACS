@@ -3,6 +3,7 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use std::env;
 mod utils;
+use utils::*;
 
 fn setup_pq2025_env() {
     unsafe {

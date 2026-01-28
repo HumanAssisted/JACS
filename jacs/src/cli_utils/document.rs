@@ -16,7 +16,7 @@ pub fn create_documents(
     filename: Option<&String>,
     directory: Option<&String>,
     outputfilename: Option<&String>,
-    attachments: Option<&String>,
+    attachments: Option<&str>,
     embed: Option<bool>,
     no_save: bool,
     schema: Option<&String>,

@@ -6,7 +6,7 @@ use std::error::Error;
 pub fn default_set_file_list(
     filename: Option<&String>,
     directory: Option<&String>,
-    attachments: Option<&String>,
+    attachments: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let storage: MultiStorage = get_storage_default_for_cli()?;
     set_file_list(&storage, filename, directory, attachments)
@@ -16,7 +16,7 @@ fn set_file_list(
     storage: &MultiStorage,
     filename: Option<&String>,
     directory: Option<&String>,
-    attachments: Option<&String>,
+    attachments: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     if let Some(file) = filename {
         // If filename is provided, return it as a single item list.

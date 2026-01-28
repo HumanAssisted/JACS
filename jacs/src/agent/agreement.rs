@@ -142,15 +142,9 @@ impl Agreement for Agent {
         let document = self.get_document(document_key)?;
         let mut value = document.value;
 
-        let context_string = match context {
-            Some(cstring) => cstring,
-            _ => "",
-        };
+        let context_string = context.unwrap_or_default();
 
-        let question_string = match question {
-            Some(qstring) => qstring,
-            _ => "",
-        };
+        let question_string = question.unwrap_or_default();
         // todo error if value[AGENT_AGREEMENT_FIELDNAME] exists.validate
         let agreement_hash_value =
             json!(self.agreement_hash(value.clone(), &agreement_fieldname_key)?);
@@ -348,7 +342,7 @@ impl Agreement for Agent {
         let agent_complete_document = if !agent_already_in_agreement {
             self.add_agents_to_agreement(
                 document_key,
-                &vec![normalized_agent_id.clone()],
+                &[normalized_agent_id.clone()],
                 agreement_fieldname.clone(),
             )?
         } else {

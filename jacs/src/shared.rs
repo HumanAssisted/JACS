@@ -10,14 +10,14 @@ use tracing::{debug, info};
 
 pub fn document_create(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
     outputfilename: Option<String>,
     no_save: bool,
-    attachments: Option<&String>,
+    attachments: Option<&str>,
     embed: Option<bool>,
 ) -> Result<String, Box<dyn Error>> {
-    let attachment_links = agent.parse_attachement_arg(attachments.map(|s| s.as_str()));
+    let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
         agent.load_custom_schemas(&schemas)?;
@@ -48,7 +48,7 @@ pub fn document_create(
 
 pub fn document_load_and_save(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
     save_filename: Option<String>,
     export_embedded: Option<bool>,
@@ -76,7 +76,7 @@ pub fn document_load_and_save(
 
 fn create_task_start(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     agentids: Vec<String>,
     custom_schema: Option<String>,
     save_filename: Option<String>,
@@ -105,7 +105,7 @@ fn create_task_start(
 
 fn create_task_complete(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     agentids: Vec<String>,
     custom_schema: Option<String>,
     save_filename: Option<String>,
@@ -133,7 +133,7 @@ fn create_task_complete(
 
 fn agree_task_start(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
     save_filename: Option<String>,
     export_embedded: Option<bool>,
@@ -155,7 +155,7 @@ fn agree_task_start(
 
 fn agree_task_complete(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
     save_filename: Option<String>,
     export_embedded: Option<bool>,
@@ -177,7 +177,7 @@ fn agree_task_complete(
 
 fn check_task_complete(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
@@ -191,7 +191,7 @@ fn check_task_complete(
 
 fn check_task_start(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
@@ -206,7 +206,7 @@ fn check_task_start(
 // todo do start and end for task
 pub fn document_check_agreement(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
     agreement_fieldname: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
@@ -241,7 +241,7 @@ pub fn document_check_agreement(
 
 pub fn document_sign_agreement(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     custom_schema: Option<String>,
     save_filename: Option<String>,
     export_embedded: Option<bool>,
@@ -278,7 +278,7 @@ pub fn document_sign_agreement(
 
 pub fn document_add_agreement(
     agent: &mut Agent,
-    document_string: &String,
+    document_string: &str,
     agentids: Vec<String>,
     custom_schema: Option<String>,
     save_filename: Option<String>,

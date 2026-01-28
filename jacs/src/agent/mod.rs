@@ -197,7 +197,7 @@ impl Agent {
             .unwrap_or("");
         self.storage = MultiStorage::new(storage_type.to_string())?;
         if !lookup_id.is_empty() {
-            let agent_string = self.fs_agent_load(&lookup_id.to_string())?;
+            let agent_string = self.fs_agent_load(lookup_id)?;
             self.load(&agent_string)
         } else {
             Ok(())
@@ -697,7 +697,7 @@ impl Agent {
         // generate new keys?
         // sign new version
         new_self[AGENT_SIGNATURE_FIELDNAME] =
-            self.signing_procedure(&new_self, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;
+            self.signing_procedure(&new_self, None, AGENT_SIGNATURE_FIELDNAME)?;
         // hash new version
         let document_hash = self.hash_doc(&new_self)?;
         new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
@@ -799,7 +799,7 @@ impl Agent {
         instance["jacsLevel"] = json!("config");
         instance["$schema"] = json!("https://hai.ai/schemas/agent/v1/agent.schema.json");
         instance[AGENT_SIGNATURE_FIELDNAME] =
-            self.signing_procedure(&instance, None, &AGENT_SIGNATURE_FIELDNAME.to_string())?;
+            self.signing_procedure(&instance, None, AGENT_SIGNATURE_FIELDNAME)?;
         // write  file to disk at [jacs]/agents/
         // run as agent
         // validate the agent schema now

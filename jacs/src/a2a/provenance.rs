@@ -37,11 +37,7 @@ pub fn wrap_artifact_with_provenance(
     }
 
     // Sign the wrapped artifact
-    let signature = agent.signing_procedure(
-        &wrapped_artifact,
-        None,
-        &AGENT_SIGNATURE_FIELDNAME.to_string(),
-    )?;
+    let signature = agent.signing_procedure(&wrapped_artifact, None, AGENT_SIGNATURE_FIELDNAME)?;
     wrapped_artifact[AGENT_SIGNATURE_FIELDNAME] = signature;
 
     // Add SHA256 hash
@@ -105,7 +101,7 @@ pub fn verify_wrapped_artifact(
         agent.signature_verification_procedure(
             wrapped_artifact,
             None,
-            &AGENT_SIGNATURE_FIELDNAME.to_string(),
+            AGENT_SIGNATURE_FIELDNAME,
             public_key,
             agent.get_key_algorithm().cloned(),
             None,

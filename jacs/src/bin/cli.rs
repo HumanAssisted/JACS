@@ -719,7 +719,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
-                let attachments = create_matches.get_one::<String>("attach");
+                let attachments = create_matches
+                    .get_one::<String>("attach")
+                    .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
@@ -746,7 +748,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
-                let attachments = create_matches.get_one::<String>("attach");
+                let attachments = create_matches
+                    .get_one::<String>("attach")
+                    .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");

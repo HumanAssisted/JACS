@@ -70,9 +70,9 @@ pub fn init_custom_observability(
 pub fn get_empty_agent() -> Agent {
     // Use expect as Result handling happens elsewhere or isn't needed here.
     Agent::new(
-        &config::constants::JACS_AGENT_SCHEMA_VERSION.to_string(),
-        &config::constants::JACS_HEADER_SCHEMA_VERSION.to_string(),
-        &config::constants::JACS_SIGNATURE_SCHEMA_VERSION.to_string(),
+        config::constants::JACS_AGENT_SCHEMA_VERSION,
+        config::constants::JACS_HEADER_SCHEMA_VERSION,
+        config::constants::JACS_SIGNATURE_SCHEMA_VERSION,
     )
     .expect("Failed to init Agent in get_empty_agent") // Panic if Agent::new fails
 }
@@ -98,7 +98,7 @@ fn load_path_agent(filepath: String) -> Agent {
 
     // Pass ONLY the logical ID (without .json) to fs_agent_load
     let agent_string = agent
-        .fs_agent_load(&agent_id.to_string()) // Pass ID string
+        .fs_agent_load(agent_id) // Pass ID string
         .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))
         .expect("Agent file loading failed");
 
@@ -139,7 +139,7 @@ pub fn load_agent_with_dns_strict(
         .ok_or("Agent filename does not end with .json")?;
 
     let agent_string = agent
-        .fs_agent_load(&agent_id.to_string())
+        .fs_agent_load(agent_id)
         .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))?;
 
     agent.load(&agent_string)?;
@@ -192,8 +192,7 @@ pub fn create_task(
     let action = create_minimal_action(&name, &description, None, None);
     actions.push(action);
     let mut task = create_minimal_task(Some(actions), None, None, None)?;
-    task["jacsTaskCustomer"] =
-        agent.signing_procedure(&task, None, &"jacsTaskCustomer".to_string())?;
+    task["jacsTaskCustomer"] = agent.signing_procedure(&task, None, "jacsTaskCustomer")?;
 
     // create document
     let embed = None;
@@ -201,9 +200,7 @@ pub fn create_task(
 
     save_document(agent, docresult, None, None, None, None)?;
 
-    let task_value = agent
-        .get_document(&task["id"].as_str().unwrap().to_string())?
-        .value;
+    let task_value = agent.get_document(task["id"].as_str().unwrap())?.value;
     let validation_result = agent.schema.taskschema.validate(&task_value);
     match validation_result {
         Ok(_) => Ok(task_value.to_string()),
