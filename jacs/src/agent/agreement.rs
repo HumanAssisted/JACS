@@ -26,41 +26,41 @@ pub trait Agreement {
     /// overwrites previous agreements
     fn create_agreement(
         &mut self,
-        document_key: &String,
-        agentids: &Vec<String>,
-        question: Option<&String>,
-        context: Option<&String>,
+        document_key: &str,
+        agentids: &[String],
+        question: Option<&str>,
+        context: Option<&str>,
         agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id and a list of agents, return an updated document
     fn add_agents_to_agreement(
         &mut self,
-        document_key: &String,
-        agentids: &Vec<String>,
+        document_key: &str,
+        agentids: &[String],
         agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id and a list of agents, return an updated document
     fn remove_agents_from_agreement(
         &mut self,
-        document_key: &String,
-        agentids: &Vec<String>,
+        document_key: &str,
+        agentids: &[String],
         agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id sign a document, return an updated document
     fn sign_agreement(
         &mut self,
-        document_key: &String,
+        document_key: &str,
         agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document, check all agreement signatures
     fn check_agreement(
         &self,
-        document_key: &String,
+        document_key: &str,
         agreement_fieldname: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
 
     /// given a document, check all agreement signatures
-    fn has_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>>;
+    fn has_agreement(&self, document_key: &str) -> Result<bool, Box<dyn Error>>;
 
     /// agreements update documents
     /// however this updates the document, which updates, version, lastversion and version date
@@ -70,19 +70,19 @@ pub trait Agreement {
     fn agreement_hash(
         &self,
         value: Value,
-        agreement_fieldname: &String,
+        agreement_fieldname: &str,
     ) -> Result<String, Box<dyn Error>>;
 
     /// remove fields that should not be used for agreement signature
     fn trim_fields_for_hashing_and_signing(
         &self,
         value: Value,
-        agreement_fieldname: &String,
+        agreement_fieldname: &str,
     ) -> Result<(String, Vec<String>), Box<dyn Error>>;
 
     fn agreement_get_question_and_context(
         &self,
-        document_key: &std::string::String,
+        document_key: &str,
         agreement_fieldname: Option<String>,
     ) -> Result<(String, String), Box<dyn Error>>;
 }
@@ -91,7 +91,7 @@ impl Agreement for Agent {
     fn agreement_hash(
         &self,
         value: Value,
-        agreement_fieldname: &String,
+        agreement_fieldname: &str,
     ) -> Result<String, Box<dyn Error>> {
         let (values_as_string, _fields) =
             self.trim_fields_for_hashing_and_signing(value, agreement_fieldname)?;
@@ -99,42 +99,42 @@ impl Agreement for Agent {
     }
 
     /// ineffienct because it doesn't pull from the document
-    fn has_agreement(&self, document_key: &String) -> Result<bool, Box<dyn Error>> {
+    fn has_agreement(&self, document_key: &str) -> Result<bool, Box<dyn Error>> {
         let document = self.get_document(document_key)?;
         let agreement_fieldname_key = AGENT_AGREEMENT_FIELDNAME.to_string();
         let agreement_field = document.value.get(&agreement_fieldname_key);
         if agreement_field.is_some() {
             return Ok(true);
         }
-        return Ok(false);
+        Ok(false)
     }
     // ignore these extra fields will change
     fn trim_fields_for_hashing_and_signing(
         &self,
         value: Value,
-        agreement_fieldname: &String,
+        agreement_fieldname: &str,
     ) -> Result<(String, Vec<String>), Box<dyn Error>> {
         let mut new_obj: Value = value.clone();
         new_obj.as_object_mut().map(|obj| {
             obj.remove(DOCUMENT_AGREEMENT_HASH_FIELDNAME);
             obj.remove(JACS_PREVIOUS_VERSION_FIELDNAME);
             obj.remove(JACS_VERSION_FIELDNAME);
-            return obj.remove(JACS_VERSION_DATE_FIELDNAME);
+            obj.remove(JACS_VERSION_DATE_FIELDNAME)
         });
 
         let (values_as_string, fields) =
-            Agent::get_values_as_string(&new_obj, None, &agreement_fieldname)?;
-        return Ok((values_as_string, fields));
+            Agent::get_values_as_string(&new_obj, None, agreement_fieldname)?;
+        Ok((values_as_string, fields))
     }
 
     fn create_agreement(
         &mut self,
-        document_key: &std::string::String,
-        agentids: &Vec<String>,
-        question: Option<&String>,
-        context: Option<&String>,
+        document_key: &str,
+        agentids: &[String],
+        question: Option<&str>,
+        context: Option<&str>,
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
+    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -186,10 +186,10 @@ impl Agreement for Agent {
     /// TODO also remove their signature
     fn remove_agents_from_agreement(
         &mut self,
-        document_key: &std::string::String,
-        agentids: &Vec<String>,
+        document_key: &str,
+        agentids: &[String],
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
+    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -227,10 +227,10 @@ impl Agreement for Agent {
 
     fn add_agents_to_agreement(
         &mut self,
-        document_key: &std::string::String,
-        agentids: &Vec<String>,
+        document_key: &str,
+        agentids: &[String],
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<(dyn StdError + 'static)>> {
+    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -294,7 +294,7 @@ impl Agreement for Agent {
     // if not ???
     fn sign_agreement(
         &mut self,
-        document_key: &std::string::String,
+        document_key: &str,
         agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn Error>> {
         let agreement_fieldname_key = match agreement_fieldname {
@@ -328,21 +328,20 @@ impl Agreement for Agent {
 
         // Check if agent ID (normalized) is already in the agreement
         let mut agent_already_in_agreement = false;
-        if let Some(jacs_agreement) = value.get(agreement_fieldname_key.clone()) {
-            if let Some(agents) = jacs_agreement.get("agentIDs") {
-                if let Some(agents_array) = agents.as_array() {
-                    for agent in agents_array {
-                        let agent_str = agent.as_str().unwrap_or("");
-                        let agent_normalized = if let Some(pos) = agent_str.find(':') {
-                            agent_str[0..pos].to_string()
-                        } else {
-                            agent_str.to_string()
-                        };
-                        if agent_normalized == normalized_agent_id {
-                            agent_already_in_agreement = true;
-                            break;
-                        }
-                    }
+        if let Some(jacs_agreement) = value.get(agreement_fieldname_key.clone())
+            && let Some(agents) = jacs_agreement.get("agentIDs")
+            && let Some(agents_array) = agents.as_array()
+        {
+            for agent in agents_array {
+                let agent_str = agent.as_str().unwrap_or("");
+                let agent_normalized = if let Some(pos) = agent_str.find(':') {
+                    agent_str[0..pos].to_string()
+                } else {
+                    agent_str.to_string()
+                };
+                if agent_normalized == normalized_agent_id {
+                    agent_already_in_agreement = true;
+                    break;
                 }
             }
         }
@@ -441,7 +440,7 @@ impl Agreement for Agent {
 
             return Ok((question.to_string(), context.to_string()));
         }
-        return Err("check_agreement: document has no agreement".into());
+        Err("check_agreement: document has no agreement".into())
     }
 
     /// checking agreements requires you have the public key of each signatory
@@ -450,7 +449,7 @@ impl Agreement for Agent {
         &self,
         document_key: &std::string::String,
         agreement_fieldname: Option<String>,
-    ) -> Result<String, Box<(dyn StdError + 'static)>> {
+    ) -> Result<String, Box<dyn StdError + 'static>> {
         let agreement_fieldname_key: String = match agreement_fieldname {
             Some(ref key) => key.to_string(),
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -469,7 +468,7 @@ impl Agreement for Agent {
         }
 
         let unsigned = document.agreement_unsigned_agents(agreement_fieldname.clone())?;
-        if unsigned.len() > 0 {
+        if !unsigned.is_empty() {
             return Err(format!(
                 "not all agents have signed: {:?} {:?}",
                 unsigned,
@@ -478,70 +477,66 @@ impl Agreement for Agent {
             .into());
         }
 
-        if let Some(jacs_agreement) = document.value.get(agreement_fieldname_key.clone()) {
-            if let Some(signatures) = jacs_agreement.get("signatures") {
-                if let Some(signatures_array) = signatures.as_array() {
-                    for signature in signatures_array {
-                        // todo validate each signature
-                        let agent_id_and_version = format!(
-                            "{}:{}",
-                            signature
-                                .get_str("agentID")
-                                .expect("REASON agreement signature agentID")
-                                .to_string(),
-                            signature
-                                .get_str("agentVersion")
-                                .expect("REASON agreement signature agentVersion")
-                                .to_string()
-                        )
-                        .to_string();
+        if let Some(jacs_agreement) = document.value.get(agreement_fieldname_key.clone())
+            && let Some(signatures) = jacs_agreement.get("signatures")
+            && let Some(signatures_array) = signatures.as_array()
+        {
+            for signature in signatures_array {
+                // todo validate each signature
+                let agent_id_and_version = format!(
+                    "{}:{}",
+                    signature
+                        .get_str("agentID")
+                        .expect("REASON agreement signature agentID"),
+                    signature
+                        .get_str("agentVersion")
+                        .expect("REASON agreement signature agentVersion")
+                )
+                .to_string();
 
-                        let noted_hash = signature
-                            .get_str("publicKeyHash")
-                            .expect("REASON noted_hash")
-                            .to_string();
+                let noted_hash = signature
+                    .get_str("publicKeyHash")
+                    .expect("REASON noted_hash")
+                    .to_string();
 
-                        let public_key_enc_type = signature
-                            .get_str("signingAlgorithm")
-                            .expect("REASON public_key_enc_type")
-                            .to_string();
-                        let agents_signature = signature
-                            .get_str("signature")
-                            .expect("REASON public_key_enc_type")
-                            .to_string();
-                        let agents_public_key = self.fs_load_public_key(&noted_hash)?;
-                        let new_hash = hash_public_key(agents_public_key.clone());
-                        if new_hash != noted_hash {
-                            return Err(format!(
-                                "wrong public key for {} , {}",
-                                agent_id_and_version, noted_hash
-                            )
-                            .into());
-                        }
-                        debug!(
-                            "testing agreement sig agent_id_and_version {} {} {} ",
-                            agent_id_and_version, noted_hash, public_key_enc_type
-                        );
-                        let (_values_as_string, fields) = self
-                            .trim_fields_for_hashing_and_signing(
-                                local_doc_value.clone(),
-                                &agreement_fieldname_key,
-                            )?;
-                        let _ = self.signature_verification_procedure(
-                            &document.value,
-                            Some(&fields),
-                            &agreement_fieldname_key.to_string(),
-                            agents_public_key,
-                            Some(public_key_enc_type.clone()),
-                            Some(noted_hash.clone()),
-                            Some(agents_signature),
-                        )?;
-                    }
-                    return Ok("All signatures passed".to_string());
+                let public_key_enc_type = signature
+                    .get_str("signingAlgorithm")
+                    .expect("REASON public_key_enc_type")
+                    .to_string();
+                let agents_signature = signature
+                    .get_str("signature")
+                    .expect("REASON public_key_enc_type")
+                    .to_string();
+                let agents_public_key = self.fs_load_public_key(&noted_hash)?;
+                let new_hash = hash_public_key(agents_public_key.clone());
+                if new_hash != noted_hash {
+                    return Err(format!(
+                        "wrong public key for {} , {}",
+                        agent_id_and_version, noted_hash
+                    )
+                    .into());
                 }
+                debug!(
+                    "testing agreement sig agent_id_and_version {} {} {} ",
+                    agent_id_and_version, noted_hash, public_key_enc_type
+                );
+                let (_values_as_string, fields) = self.trim_fields_for_hashing_and_signing(
+                    local_doc_value.clone(),
+                    &agreement_fieldname_key,
+                )?;
+                self.signature_verification_procedure(
+                    &document.value,
+                    Some(&fields),
+                    &agreement_fieldname_key.to_string(),
+                    agents_public_key,
+                    Some(public_key_enc_type.clone()),
+                    Some(noted_hash.clone()),
+                    Some(agents_signature),
+                )?;
             }
+            return Ok("All signatures passed".to_string());
         }
-        return Err("check_agreement: document has no agreement".into());
+        Err("check_agreement: document has no agreement".into())
     }
 }
 
@@ -567,5 +562,5 @@ pub fn subtract_vecs(vec1: &Vec<String>, vec2: &Vec<String>) -> Vec<String> {
         .cloned()
         .collect();
     debug!("subtract_vecs B {:?}- {:?} = {:?}", vec1, vec2, return_vec1);
-    return return_vec1;
+    return_vec1
 }

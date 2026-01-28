@@ -1,5 +1,6 @@
-//! Provenance wrapping for A2A artifacts
+//! Provenance wrapping for A2A artifacts (v0.4.0)
 
+use crate::a2a::{A2AArtifact, A2AMessage};
 use crate::agent::{
     AGENT_SIGNATURE_FIELDNAME, Agent, boilerplate::BoilerPlate, document::DocumentTraits,
 };
@@ -49,6 +50,26 @@ pub fn wrap_artifact_with_provenance(
 
     info!("Successfully wrapped A2A artifact with JACS provenance");
     Ok(wrapped_artifact)
+}
+
+/// Wrap a typed A2A Artifact (v0.4.0) with JACS provenance signature.
+pub fn wrap_a2a_artifact_with_provenance(
+    agent: &mut Agent,
+    artifact: &A2AArtifact,
+    parent_signatures: Option<Vec<Value>>,
+) -> Result<Value, Box<dyn Error>> {
+    let artifact_value = serde_json::to_value(artifact)?;
+    wrap_artifact_with_provenance(agent, artifact_value, "artifact", parent_signatures)
+}
+
+/// Wrap a typed A2A Message (v0.4.0) with JACS provenance signature.
+pub fn wrap_a2a_message_with_provenance(
+    agent: &mut Agent,
+    message: &A2AMessage,
+    parent_signatures: Option<Vec<Value>>,
+) -> Result<Value, Box<dyn Error>> {
+    let message_value = serde_json::to_value(message)?;
+    wrap_artifact_with_provenance(agent, message_value, "message", parent_signatures)
 }
 
 /// Verify a JACS-wrapped A2A artifact

@@ -50,10 +50,10 @@ pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {
     let id: String = jacs_document
         .get_str("$id")
         .unwrap_or((&"document").to_string());
-    return Ok(SCHEMA_SHORT_NAME
+    Ok(SCHEMA_SHORT_NAME
         .get(&id)
         .unwrap_or(&"document")
-        .to_string());
+        .to_string())
 }
 
 pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
@@ -97,6 +97,12 @@ impl ValueExt for Value {
 /// and remote URLs.
 pub struct EmbeddedSchemaResolver {}
 
+impl Default for EmbeddedSchemaResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EmbeddedSchemaResolver {
     pub fn new() -> Self {
         EmbeddedSchemaResolver {}
@@ -111,8 +117,7 @@ impl Retrieve for EmbeddedSchemaResolver {
         let path = uri.path().as_str();
         resolve_schema(path).map(|arc| (*arc).clone()).map_err(|e| {
             let err_msg = e.to_string();
-            Box::new(std::io::Error::new(std::io::ErrorKind::Other, err_msg))
-                as Box<dyn Error + Send + Sync>
+            Box::new(std::io::Error::other(err_msg)) as Box<dyn Error + Send + Sync>
         })
     }
 }
@@ -189,9 +194,9 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
                 let schema_value: Value = serde_json::from_str(schema_json)?;
                 return Ok(Arc::new(schema_value));
             }
-            return Err("Schema not found".into());
+            Err("Schema not found".into())
         } else {
-            return get_remote_schema(path);
+            get_remote_schema(path)
         }
     } else {
         // check filesystem
@@ -199,7 +204,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
         if storage.file_exists(path, None)? {
             let schema_json = String::from_utf8(storage.get_file(path, None)?)?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;
-            return Ok(Arc::new(schema_value));
+            Ok(Arc::new(schema_value))
         } else {
             Err(format!("Schema file not found: {}", path).into())
         }

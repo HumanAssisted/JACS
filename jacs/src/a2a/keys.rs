@@ -85,9 +85,9 @@ pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn
     let pem = pem::parse(pem_str)?;
 
     // Try PKCS#1 first; if it fails, fall back to PKCS#8 SubjectPublicKeyInfo
-    let rsa_key = match RsaPublicKey::from_pkcs1_der(&pem.contents()) {
+    let rsa_key = match RsaPublicKey::from_pkcs1_der(pem.contents()) {
         Ok(k) => k,
-        Err(_) => RsaPublicKey::from_public_key_der(&pem.contents())?,
+        Err(_) => RsaPublicKey::from_public_key_der(pem.contents())?,
     };
 
     // Extract modulus and exponent

@@ -1,10 +1,7 @@
-//! Integration tests for A2A protocol support in JACS
+//! Integration tests for A2A protocol support in JACS (v0.4.0)
 
-use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*};
-use jacs::agent::Agent;
-use jacs::agent::boilerplate::BoilerPlate;
+use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*, *};
 use serde_json::json;
-use std::env;
 
 mod utils;
 use utils::load_test_agent_one;
@@ -17,12 +14,31 @@ fn test_export_agent_to_a2a_agent_card() {
     // Export to A2A Agent Card
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
 
-    // Verify the agent card has required fields
-    assert_eq!(agent_card.protocol_version, "1.0");
-    assert!(!agent_card.url.is_empty());
+    // Verify the agent card has required fields (v0.4.0)
+    assert!(agent_card.protocol_versions.contains(&"0.4.0".to_string()));
     assert!(!agent_card.name.is_empty());
+    assert!(!agent_card.version.is_empty());
+    assert!(!agent_card.supported_interfaces.is_empty());
+    assert_eq!(
+        agent_card.supported_interfaces[0].protocol_binding,
+        "jsonrpc"
+    );
+    assert!(!agent_card.default_input_modes.is_empty());
+    assert!(!agent_card.default_output_modes.is_empty());
     assert!(!agent_card.skills.is_empty());
-    assert!(!agent_card.security_schemes.is_empty());
+
+    // Verify skills have required v0.4.0 fields
+    for skill in &agent_card.skills {
+        assert!(!skill.id.is_empty());
+        assert!(!skill.name.is_empty());
+        assert!(!skill.tags.is_empty());
+    }
+
+    // Verify security schemes is a map (not array)
+    assert!(agent_card.security_schemes.is_some());
+    let schemes = agent_card.security_schemes.as_ref().unwrap();
+    assert!(schemes.contains_key("bearer-jwt"));
+    assert!(schemes.contains_key("api-key"));
 
     // Check JACS extension is present
     assert!(agent_card.capabilities.extensions.is_some());
@@ -72,6 +88,31 @@ fn test_agent_card_jws_signing() {
     // Verify JWS format (header.payload.signature)
     let parts: Vec<&str> = jws_signature.split('.').collect();
     assert_eq!(parts.len(), 3);
+}
+
+#[test]
+fn test_embed_signature_in_agent_card() {
+    let agent = load_test_agent_one();
+    let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
+    let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa")).expect("Failed to create keys");
+
+    let jws_signature = sign_agent_card_jws(
+        &agent_card,
+        &dual_keys.a2a_private_key,
+        &dual_keys.a2a_algorithm,
+        "test-key-id",
+    )
+    .expect("Failed to sign agent card");
+
+    // Embed the signature (v0.4.0 approach)
+    let signed_card =
+        embed_signature_in_agent_card(&agent_card, &jws_signature, Some("test-key-id"));
+
+    assert!(signed_card.signatures.is_some());
+    let sigs = signed_card.signatures.as_ref().unwrap();
+    assert_eq!(sigs.len(), 1);
+    assert_eq!(sigs[0].jws, jws_signature);
+    assert_eq!(sigs[0].key_id, Some("test-key-id".to_string()));
 }
 
 #[test]
@@ -195,12 +236,20 @@ fn test_well_known_endpoints_generation() {
     )
     .expect("Failed to generate well-known documents");
 
-    // Verify all expected documents are present
+    // Verify all expected documents are present (v0.4.0 path)
     let paths: Vec<String> = documents.iter().map(|(path, _)| path.clone()).collect();
-    assert!(paths.contains(&"/.well-known/agent.json".to_string()));
+    assert!(paths.contains(&"/.well-known/agent-card.json".to_string()));
     assert!(paths.contains(&"/.well-known/jwks.json".to_string()));
     assert!(paths.contains(&"/.well-known/jacs-agent.json".to_string()));
     assert!(paths.contains(&"/.well-known/jacs-pubkey.json".to_string()));
+
+    // Verify the agent card document has embedded signatures
+    let card_doc = documents
+        .iter()
+        .find(|(p, _)| p == "/.well-known/agent-card.json")
+        .unwrap();
+    assert!(card_doc.1.get("signatures").is_some());
+    assert!(card_doc.1.get("protocolVersions").is_some());
 }
 
 #[test]
@@ -210,8 +259,51 @@ fn test_create_extension_descriptor() {
     // Verify descriptor structure
     assert_eq!(descriptor["uri"], "urn:hai.ai:jacs-provenance-v1");
     assert_eq!(descriptor["name"], "JACS Document Provenance");
+    assert_eq!(descriptor["a2aProtocolVersion"], "0.4.0");
     assert!(descriptor["capabilities"]["documentSigning"].is_object());
     assert!(descriptor["capabilities"]["postQuantumCrypto"].is_object());
     assert!(descriptor["endpoints"]["sign"].is_object());
     assert!(descriptor["endpoints"]["verify"].is_object());
+}
+
+#[test]
+fn test_agent_card_json_shape() {
+    let agent = load_test_agent_one();
+    let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
+
+    // Serialize to JSON and verify the shape matches A2A v0.4.0
+    let json_value = serde_json::to_value(&agent_card).unwrap();
+
+    // Required fields exist
+    assert!(json_value.get("name").is_some());
+    assert!(json_value.get("description").is_some());
+    assert!(json_value.get("version").is_some());
+    assert!(json_value.get("protocolVersions").is_some());
+    assert!(json_value.get("supportedInterfaces").is_some());
+    assert!(json_value.get("defaultInputModes").is_some());
+    assert!(json_value.get("defaultOutputModes").is_some());
+    assert!(json_value.get("capabilities").is_some());
+    assert!(json_value.get("skills").is_some());
+
+    // Removed fields do NOT exist
+    assert!(json_value.get("url").is_none());
+    assert!(json_value.get("protocolVersion").is_none());
+
+    // protocolVersions is an array
+    assert!(json_value["protocolVersions"].is_array());
+
+    // supportedInterfaces items have url and protocolBinding
+    let iface = &json_value["supportedInterfaces"][0];
+    assert!(iface.get("url").is_some());
+    assert!(iface.get("protocolBinding").is_some());
+
+    // securitySchemes is a map (object), not an array
+    assert!(json_value["securitySchemes"].is_object());
+
+    // Skills have id and tags
+    let skill = &json_value["skills"][0];
+    assert!(skill.get("id").is_some());
+    assert!(skill.get("name").is_some());
+    assert!(skill.get("tags").is_some());
+    assert!(skill["tags"].is_array());
 }

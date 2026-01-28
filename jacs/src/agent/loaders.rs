@@ -8,7 +8,7 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use secrecy::ExposeSecret;
 
-use crate::storage::jenv::{get_env_var, get_required_env_var};
+use crate::storage::jenv::get_env_var;
 use chrono::Utc;
 use std::error::Error;
 use std::io::Write;
@@ -27,14 +27,14 @@ pub trait FileLoader {
     // utils
 
     fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>>;
-    fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>>;
+    fn fs_agent_load(&self, agentid: &str) -> Result<String, Box<dyn Error>>;
     // fn fs_agent_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
     // fn fs_document_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
     // fn fs_document_load(&self, document_id: &String) -> Result<String, Box<dyn Error>>;
     fn fs_preload_keys(
         &mut self,
-        private_key_filename: &String,
-        public_key_filename: &String,
+        private_key_filename: &str,
+        public_key_filename: &str,
         custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>>;
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>>;
@@ -42,52 +42,46 @@ pub trait FileLoader {
 
     // save
     // fn fs_docs_save_all(&mut self) -> Result<Vec<String>, Box<dyn Error>>;
-    fn fs_agent_save(
-        &self,
-        agentid: &String,
-        agent_string: &String,
-    ) -> Result<String, Box<dyn Error>>;
+    fn fs_agent_save(&self, agentid: &str, agent_string: &str) -> Result<String, Box<dyn Error>>;
     fn fs_document_save(
         &self,
-        document_id: &String,
-        document_string: &String,
+        document_id: &str,
+        document_string: &str,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
 
-    fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn Error>>;
-    fn load_public_key_file(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>>;
-    fn load_private_key(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn fs_document_archive(&self, lookup_key: &str) -> Result<(), Box<dyn Error>>;
+    fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn load_private_key(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>>;
     fn save_private_key(
         &self,
-        filename: &String,
+        filename: &str,
         private_key: &[u8],
     ) -> Result<String, Box<dyn Error>>;
     fn create_backup(&self, file_path: &str) -> Result<String, Box<dyn Error>>;
     /// used to get base64 content from a filepath
     fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
-    fn fs_load_public_key(&self, hash: &String) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn fs_load_public_key(&self, hash: &str) -> Result<Vec<u8>, Box<dyn Error>>;
     fn use_filesystem(&self) -> bool;
-    fn fs_load_public_key_type(
-        &self,
-        agent_id_and_version: &String,
-    ) -> Result<String, Box<dyn Error>>;
+    fn fs_load_public_key_type(&self, agent_id_and_version: &str)
+    -> Result<String, Box<dyn Error>>;
     fn fs_save_remote_public_key(
         &self,
-        agent_id_and_version: &String,
+        agent_id_and_version: &str,
         public_key: &[u8],
         public_key_enc_type: &[u8],
     ) -> Result<(), Box<dyn Error>>;
-    fn make_data_directory_path(&self, filename: &String) -> Result<String, Box<dyn Error>>;
-    fn make_key_directory_path(&self, filename: &String) -> Result<String, Box<dyn Error>>;
+    fn make_data_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>>;
+    fn make_key_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileLoader for Agent {
     fn use_filesystem(&self) -> bool {
         // Handle Option<Config> and Option<String> from getter
-        self.config.as_ref().map_or(false, |conf| {
-            conf.jacs_default_storage().as_deref() == Some("fs")
-        })
+        self.config
+            .as_ref()
+            .is_some_and(|conf| conf.jacs_default_storage().as_deref() == Some("fs"))
     }
 
     fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
@@ -161,7 +155,7 @@ impl FileLoader for Agent {
     }
 
     /// in JACS the public keys need to be added manually
-    fn fs_load_public_key(&self, hash: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn fs_load_public_key(&self, hash: &str) -> Result<Vec<u8>, Box<dyn Error>> {
         let public_key_path = format!("public_keys/{}.pem", hash);
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
         self.storage
@@ -179,7 +173,7 @@ impl FileLoader for Agent {
     /// in JACS the public keys need to be added manually
     fn fs_save_remote_public_key(
         &self,
-        agent_id_and_version: &String,
+        agent_id_and_version: &str,
         public_key: &[u8],
         public_key_enc_type: &[u8],
     ) -> Result<(), Box<dyn Error>> {
@@ -198,12 +192,12 @@ impl FileLoader for Agent {
     /// a way to load keys that aren't default
     fn fs_preload_keys(
         &mut self,
-        private_key_filename: &String,
-        public_key_filename: &String,
+        private_key_filename: &str,
+        public_key_filename: &str,
         custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let private_path = self.make_key_directory_path(&private_key_filename)?;
-        let public_path = self.make_key_directory_path(&public_key_filename)?;
+        let private_path = self.make_key_directory_path(private_key_filename)?;
+        let public_path = self.make_key_directory_path(public_key_filename)?;
 
         let private_key = self.storage.get_file(&private_path, None)?;
         let public_key = self.storage.get_file(&public_path, None)?;
@@ -270,7 +264,7 @@ impl FileLoader for Agent {
         }
     }
 
-    fn fs_agent_load(&self, agentid: &String) -> Result<String, Box<dyn Error>> {
+    fn fs_agent_load(&self, agentid: &str) -> Result<String, Box<dyn Error>> {
         // Expects logical agentid (no .json)
         info!("[fs_agent_load] Loading using agent ID: {}", agentid);
 
@@ -294,11 +288,7 @@ impl FileLoader for Agent {
         String::from_utf8(contents).map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
-    fn fs_agent_save(
-        &self,
-        agentid: &String,
-        agent_string: &String,
-    ) -> Result<String, Box<dyn Error>> {
+    fn fs_agent_save(&self, agentid: &str, agent_string: &str) -> Result<String, Box<dyn Error>> {
         info!("[fs_agent_save] Starting save for agent ID: {}", agentid);
 
         // Construct the relative path for storage operations
@@ -364,7 +354,7 @@ impl FileLoader for Agent {
         Ok(absolute_path_str)
     }
 
-    fn fs_document_archive(&self, lookup_key: &String) -> Result<(), Box<dyn Error>> {
+    fn fs_document_archive(&self, lookup_key: &str) -> Result<(), Box<dyn Error>> {
         let document_filename = format!("{}.json", lookup_key);
         let old_path = format!("documents/{}", document_filename);
         let new_path = format!("documents/archive/{}", document_filename);
@@ -378,8 +368,8 @@ impl FileLoader for Agent {
 
     fn fs_document_save(
         &self,
-        document_id: &String,
-        document_string: &String,
+        document_id: &str,
+        document_string: &str,
         output_filename: Option<String>,
     ) -> Result<String, Box<dyn Error>> {
         if let Err(e) = self.check_data_directory() {
@@ -413,15 +403,15 @@ impl FileLoader for Agent {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn load_public_key_file(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
         self.storage
-            .get_file(&filename, None)
+            .get_file(filename, None)
             .map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn load_private_key(&self, filename: &String) -> Result<Vec<u8>, Box<dyn Error>> {
-        let filepath = self.make_key_directory_path(&filename)?;
+    fn load_private_key(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        let filepath = self.make_key_directory_path(filename)?;
         let loaded_key = self.load_public_key_file(&filepath)?;
         if filename.ends_with(".enc") {
             Ok(decrypt_private_key(&loaded_key)?)
@@ -433,7 +423,7 @@ impl FileLoader for Agent {
     #[cfg(not(target_arch = "wasm32"))]
     fn save_private_key(
         &self,
-        full_filepath: &String,
+        full_filepath: &str,
         private_key: &[u8],
     ) -> Result<String, Box<dyn Error>> {
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
@@ -464,12 +454,7 @@ impl FileLoader for Agent {
         let file_stem = path
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .ok_or_else(|| {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Failed to read file stem",
-                ))
-            })?;
+            .ok_or_else(|| Box::new(std::io::Error::other("Failed to read file stem")))?;
         let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
 
         // Create the backup path
@@ -484,7 +469,7 @@ impl FileLoader for Agent {
         Ok(backup_path)
     }
 
-    fn make_data_directory_path(&self, filename: &String) -> Result<String, Box<dyn Error>> {
+    fn make_data_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>> {
         info!("config!: {:?}", self.config);
         // Fail if config or specific directory is missing
         let mut data_dir = self
@@ -500,7 +485,7 @@ impl FileLoader for Agent {
         debug!("Data directory path: {}", path);
         Ok(path)
     }
-    fn make_key_directory_path(&self, filename: &String) -> Result<String, Box<dyn Error>> {
+    fn make_key_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>> {
         // Fail if config or specific directory is missing
         let mut key_dir = self
             .config

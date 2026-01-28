@@ -37,7 +37,7 @@ pub fn sign_string(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let private_key_content_converted =
         std::str::from_utf8(&private_key_content).expect("Failed to convert bytes to string");
-    let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_content_converted)?;
+    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_content_converted)?;
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut OsRng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
@@ -64,7 +64,7 @@ pub fn verify_string(
         public_key_content_converted
     );
 
-    let public_key = RsaPublicKey::from_public_key_pem(&public_key_content_converted)?;
+    let public_key = RsaPublicKey::from_public_key_pem(public_key_content_converted)?;
 
     debug!("public_key_content_converted pem {:?}", public_key);
 
@@ -93,10 +93,7 @@ pub fn verify_string(
         Err(e) => {
             let error_message = format!("Signature verification failed: {}", e);
             eprintln!("{}", error_message);
-            Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                error_message,
-            )))
+            Err(Box::new(std::io::Error::other(error_message)))
         }
     }
 }

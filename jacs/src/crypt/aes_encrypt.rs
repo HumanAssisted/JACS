@@ -20,7 +20,7 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
     let mut key = [0u8; 32];
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
-    hasher.update(&salt);
+    hasher.update(salt);
     let hash = hasher.finalize();
     key.copy_from_slice(&hash[..32]);
 
@@ -73,7 +73,7 @@ pub fn decrypt_private_key(
 
     // Decrypt private key
     let decrypted_data = cipher
-        .decrypt(&Nonce::from_slice(nonce), encrypted_data)
+        .decrypt(Nonce::from_slice(nonce), encrypted_data)
         .expect("decryption failure!");
 
     Ok(decrypted_data)

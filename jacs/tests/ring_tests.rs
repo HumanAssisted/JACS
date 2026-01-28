@@ -37,7 +37,7 @@ fn test_ring_Ed25519_create() {
     agent.load_by_config(get_ring_config()).unwrap();
     let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
         .expect("REASON");
-    let result = agent.create_agent_and_load(&json_data, false, None);
+    let _result = agent.create_agent_and_load(&json_data, false, None);
     // does this modify the agent sig?
     agent.generate_keys().expect("Reason");
 }
@@ -53,22 +53,31 @@ fn test_ring_Ed25519_create_and_verify_signature() {
     agent.load_by_config(get_ring_config()).unwrap();
     let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
         .expect("REASON");
-    let result = agent.create_agent_and_load(&json_data, false, None);
+    let _result = agent.create_agent_and_load(&json_data, false, None);
 
     // Explicitly load keys before trying to access them
     #[cfg(not(target_arch = "wasm32"))]
     agent.fs_load_keys().expect("Failed to load keys");
 
-    let private = agent.get_private_key().unwrap();
+    let _private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();
 
     let binding = agent.get_private_key().unwrap();
     let borrowed_key = binding.expose_secret();
     let key_vec = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
 
-    println!(
-        "loaded keys:\nPrivate key (hex): {}\nPublic key (hex): {}",
-        bytes_to_hex(&key_vec),
-        bytes_to_hex(&public)
+    // Assert private and public keys are non-empty
+    assert!(
+        !key_vec.is_empty(),
+        "Decrypted private key should be non-empty"
+    );
+    assert!(!public.is_empty(), "Public key should be non-empty");
+
+    // Assert Ed25519 public key length (32 bytes)
+    assert_eq!(
+        public.len(),
+        32,
+        "Ed25519 public key should be 32 bytes, got {}",
+        public.len()
     );
 }

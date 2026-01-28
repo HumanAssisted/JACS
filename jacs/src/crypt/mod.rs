@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use secrecy::ExposeSecret;
 pub mod hash;
 pub mod pq;
@@ -11,11 +12,8 @@ pub mod pq2025; // ML-DSA signatures // ML-KEM encryption
 use crate::agent::Agent;
 use std::str::FromStr;
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::agent::loaders::FileLoader;
 use strum_macros::{AsRefStr, Display, EnumString};
 
-use crate::crypt::aes_encrypt::decrypt_private_key;
 use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone)]
@@ -100,11 +98,11 @@ pub fn detect_algorithm_from_signature(
 
 pub trait KeyManager {
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>>;
+    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>>;
     fn verify_string(
         &self,
-        data: &String,
-        signature_base64: &String,
+        data: &str,
+        signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>>;
@@ -124,31 +122,29 @@ impl KeyManager for Agent {
         Ok(())
     }
 
-    fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>> {
+    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
         let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
-        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
-        match algo {
-            _ => {
-                // Delegate to keystore; we expect detached signature bytes, return base64
-                let ks = FsEncryptedStore;
-                let binding = self.get_private_key()?;
-                let decrypted =
-                    crate::crypt::aes_encrypt::decrypt_private_key(binding.expose_secret())?;
-                let sig_bytes = ks.sign_detached(&decrypted, data.as_bytes(), &key_algorithm)?;
-                return Ok(base64::encode(sig_bytes));
-            }
+        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        {
+            // Delegate to keystore; we expect detached signature bytes, return base64
+            let ks = FsEncryptedStore;
+            let binding = self.get_private_key()?;
+            let decrypted =
+                crate::crypt::aes_encrypt::decrypt_private_key(binding.expose_secret())?;
+            let sig_bytes = ks.sign_detached(&decrypted, data.as_bytes(), &key_algorithm)?;
+            Ok(STANDARD.encode(sig_bytes))
         }
     }
 
     fn verify_string(
         &self,
-        data: &String,
-        signature_base64: &String,
+        data: &str,
+        signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Get the signature bytes for analysis
-        let signature_bytes = base64::decode(signature_base64)?;
+        let signature_bytes = STANDARD.decode(signature_base64)?;
 
         // Determine the algorithm type
         let algo = match public_key_enc_type {
@@ -186,15 +182,14 @@ impl KeyManager for Agent {
 
                 // If we encounter a signature length error and we're using PqDilithiumAlt,
                 // we could implement a special handling here for the alternative format
-                if let Err(e) = &result {
-                    if e.to_string().contains("BadLength")
-                        && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
-                    {
-                        // Here we would add special handling for the alternative format
-                        // For now, we'll just log it and fail with a more descriptive error
-                        return Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}", 
+                if let Err(e) = &result
+                    && e.to_string().contains("BadLength")
+                    && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
+                {
+                    // Here we would add special handling for the alternative format
+                    // For now, we'll just log it and fail with a more descriptive error
+                    return Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}", 
                             signature_bytes.len(), e).into());
-                    }
                 }
 
                 // Return the original error

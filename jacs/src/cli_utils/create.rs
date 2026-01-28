@@ -5,7 +5,7 @@ use crate::crypt::KeyManager;
 use crate::dns::bootstrap as dns_bootstrap;
 use crate::get_empty_agent;
 use crate::storage::MultiStorage;
-use crate::storage::jenv::{get_required_env_var, set_env_var};
+use crate::storage::jenv::set_env_var;
 use rpassword::read_password;
 use serde_json::{Value, json};
 use std::env;
@@ -362,24 +362,23 @@ pub fn handle_agent_create(
             .as_ref()
             .and_then(|c| c.jacs_agent_domain().clone())
             .filter(|s| !s.is_empty())
+            && let Ok(pk) = agent.get_public_key()
         {
-            if let Ok(pk) = agent.get_public_key() {
-                let agent_id = agent.get_id().unwrap_or_else(|_| "".to_string());
-                let digest = dns_bootstrap::pubkey_digest_b64(&pk);
-                let rr = dns_bootstrap::build_dns_record(
-                    &domain,
-                    3600,
-                    &agent_id,
-                    &digest,
-                    dns_bootstrap::DigestEncoding::Base64,
-                );
-                println!("\nDNS (BIND):\n{}\n", dns_bootstrap::emit_plain_bind(&rr));
-                println!(
-                    "Use 'jacs agent dns --domain {} --provider <plain|aws|azure|cloudflare>' for provider-specific commands.",
-                    domain
-                );
-                println!("Reminder: enable DNSSEC for the zone and publish DS at the registrar.");
-            }
+            let agent_id = agent.get_id().unwrap_or_else(|_| "".to_string());
+            let digest = dns_bootstrap::pubkey_digest_b64(&pk);
+            let rr = dns_bootstrap::build_dns_record(
+                &domain,
+                3600,
+                &agent_id,
+                &digest,
+                dns_bootstrap::DigestEncoding::Base64,
+            );
+            println!("\nDNS (BIND):\n{}\n", dns_bootstrap::emit_plain_bind(&rr));
+            println!(
+                "Use 'jacs agent dns --domain {} --provider <plain|aws|azure|cloudflare>' for provider-specific commands.",
+                domain
+            );
+            println!("Reminder: enable DNSSEC for the zone and publish DS at the registrar.");
         }
     }
 

@@ -1,5 +1,5 @@
 mod utils;
-use base64;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
@@ -48,7 +48,7 @@ fn test_pq_create() {
     agent.load_by_config(get_pq_config()).unwrap();
     let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
         .expect("REASON");
-    let result = agent.create_agent_and_load(&json_data, false, None);
+    let _result = agent.create_agent_and_load(&json_data, false, None);
     //set_enc_to_pq();
     // does this modify the agent sig?
     agent.generate_keys().expect("Reason");
@@ -77,7 +77,7 @@ fn test_pq_create_and_verify_signature() {
     // we'll create the agent without loading keys (using `true` to create keys)
     println!("Creating agent with new keys...");
     let create_keys = false;
-    let result = agent.create_agent_and_load(&json_data, create_keys, None);
+    let _result = agent.create_agent_and_load(&json_data, create_keys, None);
 
     #[cfg(not(target_arch = "wasm32"))]
     agent.fs_load_keys().expect("Failed to load keys");
@@ -143,7 +143,9 @@ fn test_pq_create_and_verify_signature() {
             );
 
             // Print signature details to understand the mismatch
-            let signature_bytes = base64::decode(&signature).expect("Failed to decode signature");
+            let signature_bytes = STANDARD
+                .decode(&signature)
+                .expect("Failed to decode signature");
             println!("Signature length: {} bytes", signature_bytes.len());
             println!("Auto-detection passed if you see this message!");
         }

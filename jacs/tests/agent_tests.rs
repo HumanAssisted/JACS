@@ -1,10 +1,8 @@
-use env_logger;
 use jacs::agent::boilerplate::BoilerPlate;
 use std::fs;
 use std::path::Path;
 
 mod utils;
-use std::env;
 use utils::load_local_document;
 const CONFIG_CONTENT: &str = r#"{
     "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
@@ -103,7 +101,7 @@ fn test_validate_agent_json_raw() {
         .expect("Agent schema should have instantiated");
     let result = agent.load(&json_data);
     assert!(
-        !result.is_ok(),
+        result.is_err(),
         "Correctly failed to validate myagent.json: {}",
         result.unwrap_err()
     );

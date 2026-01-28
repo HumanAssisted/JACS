@@ -1,13 +1,16 @@
-//! JACS extension management for A2A protocol
+//! JACS extension management for A2A protocol (v0.4.0)
 
-use crate::a2a::AgentCard;
 use crate::a2a::keys::{create_jwk_set, export_as_jwk, sign_jws};
+use crate::a2a::{AgentCard, AgentCardSignature};
 use crate::agent::{Agent, boilerplate::BoilerPlate};
 use serde_json::{Value, json};
 use std::error::Error;
 use tracing::info;
 
-/// Sign an A2A Agent Card using JWS
+/// Sign an A2A Agent Card using JWS and embed the signature.
+///
+/// Returns a clone of the AgentCard with the JWS signature appended to
+/// its `signatures` field (per A2A v0.4.0).
 pub fn sign_agent_card_jws(
     agent_card: &AgentCard,
     private_key: &[u8],
@@ -24,14 +27,24 @@ pub fn sign_agent_card_jws(
     Ok(jws)
 }
 
-/// Create a complete A2A Agent Card document with JWS signature
-pub fn create_signed_agent_card_document(agent_card: &AgentCard, jws_signature: &str) -> Value {
-    json!({
-        "agentCard": agent_card,
-        "signature": jws_signature,
-        "signatureFormat": "JWS",
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-    })
+/// Embed a JWS signature into an AgentCard's `signatures` field (v0.4.0).
+///
+/// Returns a new AgentCard with the signature appended.
+pub fn embed_signature_in_agent_card(
+    agent_card: &AgentCard,
+    jws_signature: &str,
+    key_id: Option<&str>,
+) -> AgentCard {
+    let mut card = agent_card.clone();
+    let sig = AgentCardSignature {
+        jws: jws_signature.to_string(),
+        key_id: key_id.map(|k| k.to_string()),
+    };
+    match card.signatures.as_mut() {
+        Some(sigs) => sigs.push(sig),
+        None => card.signatures = Some(vec![sig]),
+    }
+    card
 }
 
 /// Generate the .well-known endpoints for A2A integration
@@ -45,7 +58,7 @@ pub struct WellKnownEndpoints {
 impl Default for WellKnownEndpoints {
     fn default() -> Self {
         Self {
-            agent_card_path: "/.well-known/agent.json".to_string(),
+            agent_card_path: "/.well-known/agent-card.json".to_string(),
             jwks_path: "/.well-known/jwks.json".to_string(),
             jacs_descriptor_path: "/.well-known/jacs-agent.json".to_string(),
             jacs_pubkey_path: "/.well-known/jacs-pubkey.json".to_string(),
@@ -53,7 +66,10 @@ impl Default for WellKnownEndpoints {
     }
 }
 
-/// Generate all .well-known documents for A2A integration
+/// Generate all .well-known documents for A2A integration (v0.4.0).
+///
+/// The agent card is returned with the JWS signature embedded in its
+/// `signatures` field rather than wrapped in a separate document.
 pub fn generate_well_known_documents(
     agent: &Agent,
     agent_card: &AgentCard,
@@ -64,9 +80,10 @@ pub fn generate_well_known_documents(
     let mut documents = Vec::new();
     let endpoints = WellKnownEndpoints::default();
 
-    // 1. Agent Card (signed)
-    let signed_card = create_signed_agent_card_document(agent_card, jws_signature);
-    documents.push((endpoints.agent_card_path, signed_card));
+    // 1. Agent Card with embedded signature (v0.4.0)
+    let signed_card = embed_signature_in_agent_card(agent_card, jws_signature, None);
+    let card_json = serde_json::to_value(&signed_card)?;
+    documents.push((endpoints.agent_card_path, card_json));
 
     // 2. JWK Set for A2A
     let agent_id = agent.get_id()?;
@@ -150,7 +167,7 @@ mod tests {
     #[test]
     fn test_well_known_endpoints() {
         let endpoints = WellKnownEndpoints::default();
-        assert_eq!(endpoints.agent_card_path, "/.well-known/agent.json");
+        assert_eq!(endpoints.agent_card_path, "/.well-known/agent-card.json");
         assert_eq!(endpoints.jwks_path, "/.well-known/jwks.json");
     }
 }

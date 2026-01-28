@@ -45,7 +45,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             Ok(None)
         }
         LogDestination::Otlp {
-            endpoint,
+            endpoint: _,
             headers: _,
         } => {
             #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
@@ -75,9 +75,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             }
             #[cfg(any(target_arch = "wasm32", not(feature = "otlp-logs")))]
             {
-                return Err(
-                    "otlp-logs feature is not enabled; rebuild with --features otlp-logs".into(),
-                );
+                Err("otlp-logs feature is not enabled; rebuild with --features otlp-logs".into())
             }
         }
         LogDestination::Null => Ok(None),

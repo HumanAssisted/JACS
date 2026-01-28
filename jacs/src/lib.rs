@@ -115,9 +115,9 @@ fn load_path_agent(filepath: String) -> Agent {
 pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Error>> {
     debug!("load_agent agentfile = {:?}", agentfile);
     if let Some(file) = agentfile {
-        return Ok(load_path_agent(file.to_string()));
+        Ok(load_path_agent(file.to_string()))
     } else {
-        return Err("No agent file provided".into());
+        Err("No agent file provided".into())
     }
 }
 
@@ -219,7 +219,7 @@ pub fn create_task(
 pub fn update_task(_: String) -> Result<String, Box<dyn Error>> {
     // update document
     // validate
-    return Ok("".to_string());
+    Ok("".to_string())
 }
 
 // lets move these here

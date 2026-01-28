@@ -1,10 +1,8 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
-use secrecy::ExposeSecret;
 use std::env;
 mod utils;
-use utils::*;
 
 fn setup_pq2025_env() {
     unsafe {
@@ -159,7 +157,7 @@ fn test_pq2025_kem_seal_open() {
 fn test_pq2025_kem_wrong_key() {
     use jacs::crypt::kem::{generate_kem_keys, open, seal};
 
-    let (sk1, pk1) = generate_kem_keys().expect("KEM keygen 1 failed");
+    let (_sk1, pk1) = generate_kem_keys().expect("KEM keygen 1 failed");
     let (sk2, _pk2) = generate_kem_keys().expect("KEM keygen 2 failed");
 
     let plaintext = b"Secret message";

@@ -35,7 +35,7 @@ fn test_actual_log_output() {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_file()
-                && (path.extension().map_or(false, |ext| ext == "log")
+                && (path.extension().is_some_and(|ext| ext == "log")
                     || path
                         .file_name()
                         .unwrap_or_default()
@@ -104,7 +104,7 @@ fn test_actual_log_output() {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_file()
-                && (path.extension().map_or(false, |ext| ext == "log")
+                && (path.extension().is_some_and(|ext| ext == "log")
                     || path
                         .file_name()
                         .unwrap_or_default()

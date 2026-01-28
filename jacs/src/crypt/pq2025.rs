@@ -28,7 +28,7 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn
         .map_err(|_| "Invalid private key length for ML-DSA-87")?;
     let sk = ml_dsa_87::PrivateKey::try_from_bytes(sk_array)?;
     let sig = sk.try_sign(data.as_bytes(), b"")?; // empty context - returns [u8; 4627]
-    Ok(B64.encode(&sig))
+    Ok(B64.encode(sig))
 }
 
 /// Verify ML-DSA-87 signature

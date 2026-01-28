@@ -20,23 +20,23 @@ pub fn document_create(
     let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        agent.load_custom_schemas(&schemas)?;
     }
 
     // let loading_filename_string = loading_filename.to_string();
     let export_embedded = None;
     let extract_only = None;
     let docresult =
-        agent.create_document_and_load(&document_string, attachment_links.clone(), embed);
+        agent.create_document_and_load(document_string, attachment_links.clone(), embed);
     if !no_save {
-        return save_document(
+        save_document(
             agent,
             docresult,
             custom_schema,
             outputfilename,
             export_embedded,
             extract_only,
-        );
+        )
     } else {
         return Ok(docresult?.value.to_string());
     }
@@ -57,18 +57,18 @@ pub fn document_load_and_save(
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        agent.load_custom_schemas(&schemas)?;
     }
-    let docresult = agent.load_document(&document_string);
+    let docresult = agent.load_document(document_string);
     if !load_only {
-        return save_document(
+        save_document(
             agent,
             docresult,
             custom_schema,
             save_filename,
             export_embedded,
             extract_only,
-        );
+        )
     } else {
         return Ok(docresult?.to_string());
     }
@@ -88,7 +88,7 @@ fn create_task_start(
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
 
-    return document_add_agreement(
+    document_add_agreement(
         agent,
         document_string,
         agentids,
@@ -100,7 +100,7 @@ fn create_task_start(
         extract_only,
         load_only,
         Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    );
+    )
 }
 
 fn create_task_complete(
@@ -116,7 +116,7 @@ fn create_task_complete(
     load_only: bool,
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
-    return document_add_agreement(
+    document_add_agreement(
         agent,
         document_string,
         agentids,
@@ -128,7 +128,7 @@ fn create_task_complete(
         extract_only,
         load_only,
         Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    );
+    )
 }
 
 fn agree_task_start(
@@ -141,7 +141,7 @@ fn agree_task_start(
     load_only: bool,
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
-    return document_sign_agreement(
+    document_sign_agreement(
         agent,
         document_string,
         custom_schema,
@@ -150,7 +150,7 @@ fn agree_task_start(
         extract_only,
         load_only,
         Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    );
+    )
 }
 
 fn agree_task_complete(
@@ -163,7 +163,7 @@ fn agree_task_complete(
     load_only: bool,
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
-    return document_sign_agreement(
+    document_sign_agreement(
         agent,
         document_string,
         custom_schema,
@@ -172,7 +172,7 @@ fn agree_task_complete(
         extract_only,
         load_only,
         Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    );
+    )
 }
 
 fn check_task_complete(
@@ -181,12 +181,12 @@ fn check_task_complete(
     custom_schema: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
-    return document_check_agreement(
+    document_check_agreement(
         agent,
         document_string,
         custom_schema,
         Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    );
+    )
 }
 
 fn check_task_start(
@@ -195,12 +195,12 @@ fn check_task_start(
     custom_schema: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
     let _ = agent.schema.validate_task(document_string)?;
-    return document_check_agreement(
+    document_check_agreement(
         agent,
         document_string,
         custom_schema,
         Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    );
+    )
 }
 
 // todo do start and end for task
@@ -212,32 +212,30 @@ pub fn document_check_agreement(
 ) -> Result<String, Box<dyn Error>> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        agent.load_custom_schemas(&schemas)?;
     }
     let agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
     };
 
-    let docresult = agent.load_document(&document_string)?;
+    let docresult = agent.load_document(document_string)?;
     let document_key = docresult.getkey();
     let result = agent.check_agreement(&document_key, Some(agreement_fieldname_key));
     match result {
         Err(err) => Err(format!("{}", err).into()),
-        Ok(_) => {
-            return Ok(format!(
-                "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
-                docresult
-                    .agreement_requested_agents(agreement_fieldname.clone())
-                    .unwrap(),
-                docresult
-                    .agreement_unsigned_agents(agreement_fieldname.clone())
-                    .unwrap(),
-                docresult
-                    .agreement_signed_agents(agreement_fieldname)
-                    .unwrap()
-            ));
-        }
+        Ok(_) => Ok(format!(
+            "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
+            docresult
+                .agreement_requested_agents(agreement_fieldname.clone())
+                .unwrap(),
+            docresult
+                .agreement_unsigned_agents(agreement_fieldname.clone())
+                .unwrap(),
+            docresult
+                .agreement_signed_agents(agreement_fieldname)
+                .unwrap()
+        )),
     }
 }
 
@@ -257,24 +255,24 @@ pub fn document_sign_agreement(
     };
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        agent.load_custom_schemas(&schemas);
+        agent.load_custom_schemas(&schemas)?;
     }
-    let docresult = agent.load_document(&document_string)?;
+    let docresult = agent.load_document(document_string)?;
     let document_key = docresult.getkey();
 
     let signed_document = agent.sign_agreement(&document_key, Some(agreement_fieldname_key))?;
-    let signed_document_key = signed_document.getkey();
+    let _signed_document_key = signed_document.getkey();
     if !load_only {
-        return save_document(
+        save_document(
             agent,
             Ok(signed_document),
             custom_schema,
             save_filename,
             export_embedded,
             extract_only,
-        );
+        )
     } else {
-        return Ok(signed_document.value.to_string());
+        Ok(signed_document.value.to_string())
     }
 }
 
@@ -291,15 +289,15 @@ pub fn document_add_agreement(
     load_only: bool,
     agreement_fieldname: Option<String>,
 ) -> Result<String, Box<dyn Error>> {
-    let agreement_fieldname_key = match agreement_fieldname {
+    let _agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
     };
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
-        let _ = agent.load_custom_schemas(&schemas);
+        agent.load_custom_schemas(&schemas)?;
     }
-    let docresult = agent.load_document(&document_string)?;
+    let docresult = agent.load_document(document_string)?;
     let document_key = docresult.getkey();
     // agent one creates agreement document
     let unsigned_doc = agent.create_agreement(
@@ -313,16 +311,16 @@ pub fn document_add_agreement(
     let _unsigned_doc_key = unsigned_doc.getkey();
 
     if !load_only {
-        return save_document(
+        save_document(
             agent,
             Ok(unsigned_doc),
             custom_schema,
             save_filename,
             export_embedded,
             extract_only,
-        );
+        )
     } else {
-        return Ok(unsigned_doc.value.to_string());
+        Ok(unsigned_doc.value.to_string())
     }
 }
 
@@ -345,7 +343,7 @@ pub fn save_document(
                 // todo don't unwrap but warn instead
                 let document_key = document.getkey();
                 let result =
-                    agent.validate_document_with_custom_schema(&schema_file, &document.getvalue());
+                    agent.validate_document_with_custom_schema(&schema_file, document.getvalue());
                 match result {
                     Ok(_) => {
                         info!("document specialised schema {} validated", document_key);
@@ -361,10 +359,8 @@ pub fn save_document(
             }
             //after validation do export of contents
             agent.save_document(&document_key, save_filename, export_embedded, extract_only)?;
-            return Ok(format!("saved  {}", document_key));
+            Ok(format!("saved  {}", document_key))
         }
-        Err(ref e) => {
-            return Err(format!("document  validation failed {}", e).into());
-        }
+        Err(ref e) => Err(format!("document  validation failed {}", e).into()),
     }
 }

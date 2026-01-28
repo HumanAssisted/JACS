@@ -37,42 +37,40 @@ pub fn init_observability(
     }
 
     // Initialize tracing FIRST (before logs!)
-    if let Some(tracing_config) = &config.tracing {
-        if tracing_config.enabled {
-            #[cfg(feature = "otlp-tracing")]
-            {
-                match init_tracing(tracing_config) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        warn!(
-                            "Info: init_tracing reported: {} (possibly already initialized)",
-                            e
-                        );
-                    }
+    if let Some(tracing_config) = &config.tracing
+        && tracing_config.enabled
+    {
+        #[cfg(feature = "otlp-tracing")]
+        {
+            match init_tracing(tracing_config) {
+                Ok(_) => {}
+                Err(e) => {
+                    warn!(
+                        "Info: init_tracing reported: {} (possibly already initialized)",
+                        e
+                    );
                 }
             }
-            #[cfg(not(feature = "otlp-tracing"))]
-            {
-                return Err(
-                    "otlp-tracing feature is not enabled; rebuild with --features otlp-tracing"
-                        .into(),
-                );
-            }
+        }
+        #[cfg(not(feature = "otlp-tracing"))]
+        {
+            return Err(
+                "otlp-tracing feature is not enabled; rebuild with --features otlp-tracing".into(),
+            );
         }
     }
 
     // Initialize logs SECOND - but modify logs.rs to NOT call try_init if subscriber exists
     match logs::init_logs(&config.logs) {
-        Ok(guard_option) =>
-        {
+        Ok(guard_option) => {
             #[cfg(not(target_arch = "wasm32"))]
-            if let Some(new_guard) = guard_option {
-                if let Ok(mut global_guard_handle) = LOG_WORKER_GUARD.lock() {
-                    if let Some(old_guard) = global_guard_handle.take() {
-                        drop(old_guard);
-                    }
-                    *global_guard_handle = Some(new_guard);
+            if let Some(new_guard) = guard_option
+                && let Ok(mut global_guard_handle) = LOG_WORKER_GUARD.lock()
+            {
+                if let Some(old_guard) = global_guard_handle.take() {
+                    drop(old_guard);
                 }
+                *global_guard_handle = Some(new_guard);
             }
         }
         Err(e) => {
@@ -113,20 +111,19 @@ pub fn reset_observability() {
         *config_handle = None;
     }
 
-    if let Ok(handle_option) = TEST_METRICS_RECORDER_HANDLE.lock() {
-        if let Some(arc) = handle_option.as_ref() {
-            if let Ok(mut captured_metrics_vec) = arc.lock() {
-                captured_metrics_vec.clear();
-            }
-        }
+    if let Ok(handle_option) = TEST_METRICS_RECORDER_HANDLE.lock()
+        && let Some(arc) = handle_option.as_ref()
+        && let Ok(mut captured_metrics_vec) = arc.lock()
+    {
+        captured_metrics_vec.clear();
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        if let Ok(mut guard_opt_handle) = LOG_WORKER_GUARD.lock() {
-            if let Some(guard) = guard_opt_handle.take() {
-                drop(guard); // Explicitly drop to shut down worker and flush.
-            }
+        if let Ok(mut guard_opt_handle) = LOG_WORKER_GUARD.lock()
+            && let Some(guard) = guard_opt_handle.take()
+        {
+            drop(guard); // Explicitly drop to shut down worker and flush.
         }
     }
 }

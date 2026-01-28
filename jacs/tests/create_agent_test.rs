@@ -47,7 +47,7 @@ fn test_validate_agent_creation() {
 }
 
 #[test]
-fn test_temp_validate_agent_creation() {
+fn test_validate_single_agent_creation() {
     utils::set_min_test_env_vars();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -69,7 +69,7 @@ fn test_temp_validate_agent_creation() {
 }
 
 #[test]
-fn test_temp_validate_agent_creation_save_and_load() {
+fn test_validate_agent_creation_save_and_load() {
     utils::set_min_test_env_vars();
     let agent_version = "v1".to_string();
     let header_version = "v1".to_string();
@@ -88,7 +88,7 @@ fn test_temp_validate_agent_creation_save_and_load() {
     };
 
     println!(
-        "test_temp_validate_agent_creation_save_and_load Agent Created\n\n\n {} ",
+        "test_validate_agent_creation_save_and_load Agent Created\n\n\n {} ",
         agent
     );
 

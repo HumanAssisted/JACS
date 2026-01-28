@@ -1,17 +1,19 @@
 /**
  * JACS A2A (Agent-to-Agent) Protocol Integration for Node.js
- * 
+ *
  * This module provides Node.js bindings for JACS's A2A protocol integration,
- * enabling JACS agents to participate in Google's Agent-to-Agent communication protocol.
+ * enabling JACS agents to participate in the Agent-to-Agent communication protocol.
+ *
+ * Implements A2A protocol v0.4.0 (September 2025).
  */
 
 const { v4: uuidv4 } = require('uuid');
 const jacs = require('./index');
 
 /**
- * A2A protocol version
+ * A2A protocol version (v0.4.0)
  */
-const A2A_PROTOCOL_VERSION = '1.0';
+const A2A_PROTOCOL_VERSION = '0.4.0';
 
 /**
  * JACS extension URI for A2A
@@ -19,83 +21,112 @@ const A2A_PROTOCOL_VERSION = '1.0';
 const JACS_EXTENSION_URI = 'urn:hai.ai:jacs-provenance-v1';
 
 /**
- * A2A Skill representation
+ * A2A Agent Interface (v0.4.0)
  */
-class A2ASkill {
-  constructor(name, description, endpoint, inputSchema = null, outputSchema = null) {
+class A2AAgentInterface {
+  constructor(url, protocolBinding, tenant = null) {
+    this.url = url;
+    this.protocolBinding = protocolBinding;
+    if (tenant) {
+      this.tenant = tenant;
+    }
+  }
+}
+
+/**
+ * A2A Agent Skill (v0.4.0)
+ */
+class A2AAgentSkill {
+  constructor({ id, name, description, tags, examples = null, inputModes = null, outputModes = null, security = null }) {
+    this.id = id;
     this.name = name;
     this.description = description;
-    this.endpoint = endpoint;
-    this.input_schema = inputSchema;
-    this.output_schema = outputSchema;
+    this.tags = tags;
+    if (examples) this.examples = examples;
+    if (inputModes) this.inputModes = inputModes;
+    if (outputModes) this.outputModes = outputModes;
+    if (security) this.security = security;
   }
 }
 
 /**
- * A2A Security Scheme
+ * A2A Agent Extension (v0.4.0)
  */
-class A2ASecurityScheme {
-  constructor(type, scheme, bearerFormat = null) {
-    this.type = type;
-    this.scheme = scheme;
-    if (bearerFormat) {
-      this.bearer_format = bearerFormat;
-    }
-  }
-}
-
-/**
- * A2A Extension
- */
-class A2AExtension {
-  constructor(uri, description, required, params) {
+class A2AAgentExtension {
+  constructor(uri, description = null, required = null) {
     this.uri = uri;
-    this.description = description;
-    this.required = required;
-    this.params = params;
+    if (description !== null) this.description = description;
+    if (required !== null) this.required = required;
   }
 }
 
 /**
- * A2A Capabilities
+ * A2A Agent Capabilities (v0.4.0)
  */
-class A2ACapabilities {
-  constructor(extensions = null) {
-    if (extensions) {
-      this.extensions = extensions;
-    }
+class A2AAgentCapabilities {
+  constructor({ streaming = null, pushNotifications = null, extendedAgentCard = null, extensions = null } = {}) {
+    if (streaming !== null) this.streaming = streaming;
+    if (pushNotifications !== null) this.pushNotifications = pushNotifications;
+    if (extendedAgentCard !== null) this.extendedAgentCard = extendedAgentCard;
+    if (extensions) this.extensions = extensions;
   }
 }
 
 /**
- * A2A Agent Card
+ * A2A Agent Card Signature (v0.4.0)
+ */
+class A2AAgentCardSignature {
+  constructor(jws, keyId = null) {
+    this.jws = jws;
+    if (keyId) this.keyId = keyId;
+  }
+}
+
+/**
+ * A2A Agent Card (v0.4.0)
+ *
+ * Published at /.well-known/agent-card.json for zero-config discovery.
  */
 class A2AAgentCard {
   constructor({
-    protocolVersion,
-    url,
     name,
     description,
-    skills,
-    securitySchemes,
+    version,
+    protocolVersions,
+    supportedInterfaces,
+    defaultInputModes,
+    defaultOutputModes,
     capabilities,
+    skills,
+    provider = null,
+    documentationUrl = null,
+    iconUrl = null,
+    securitySchemes = null,
+    security = null,
+    signatures = null,
     metadata = null
   }) {
-    this.protocolVersion = protocolVersion;
-    this.url = url;
     this.name = name;
     this.description = description;
-    this.skills = skills;
-    this.securitySchemes = securitySchemes;
+    this.version = version;
+    this.protocolVersions = protocolVersions;
+    this.supportedInterfaces = supportedInterfaces;
+    this.defaultInputModes = defaultInputModes;
+    this.defaultOutputModes = defaultOutputModes;
     this.capabilities = capabilities;
-    if (metadata) {
-      this.metadata = metadata;
-    }
+    this.skills = skills;
+    if (provider) this.provider = provider;
+    if (documentationUrl) this.documentationUrl = documentationUrl;
+    if (iconUrl) this.iconUrl = iconUrl;
+    if (securitySchemes) this.securitySchemes = securitySchemes;
+    if (security) this.security = security;
+    if (signatures) this.signatures = signatures;
+    if (metadata) this.metadata = metadata;
   }
 }
 
 /**
- * JACS A2A Integration class
+ * JACS A2A Integration class (v0.4.0)
  */
 class JACSA2AIntegration {
   constructor(jacsConfigPath = null) {
@@ -105,41 +136,53 @@ class JACSA2AIntegration {
   }
 
   /**
-   * Export a JACS agent as an A2A Agent Card
+   * Export a JACS agent as an A2A Agent Card (v0.4.0)
    * @param {Object} agentData - JACS agent data
    * @returns {A2AAgentCard} A2A Agent Card
    */
   exportAgentCard(agentData) {
-    // Extract agent information
     const agentId = agentData.jacsId || 'unknown';
     const agentName = agentData.jacsName || 'Unnamed JACS Agent';
     const agentDescription = agentData.jacsDescription || 'JACS-enabled agent';
+    const agentVersion = agentData.jacsVersion || '1';
+
+    // Build supported interfaces from jacsAgentDomain or agent ID
+    const domain = agentData.jacsAgentDomain;
+    const baseUrl = domain
+      ? `https://${domain}/agent/${agentId}`
+      : `https://agent-${agentId}.example.com`;
+
+    const supportedInterfaces = [
+      new A2AAgentInterface(baseUrl, 'jsonrpc')
+    ];
 
     // Convert JACS services to A2A skills
     const skills = this._convertServicesToSkills(agentData.jacsServices || []);
 
-    // Create security schemes
-    const securitySchemes = [
-      new A2ASecurityScheme('http', 'bearer', 'JWT'),
-      new A2ASecurityScheme('apiKey', 'X-API-Key')
-    ];
+    // Define security schemes as a keyed map
+    const securitySchemes = {
+      'bearer-jwt': {
+        type: 'http',
+        scheme: 'Bearer',
+        bearerFormat: 'JWT'
+      },
+      'api-key': {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-API-Key'
+      }
+    };
 
     // Create JACS extension
-    const jacsExtension = new A2AExtension(
+    const jacsExtension = new A2AAgentExtension(
       JACS_EXTENSION_URI,
       'JACS cryptographic document signing and verification',
-      false,
-      {
-        jacsDescriptorUrl: `https://agent-${agentId}.example.com/.well-known/jacs-agent.json`,
-        signatureType: 'JACS_PQC',
-        supportedAlgorithms: ['dilithium', 'rsa', 'ecdsa'],
-        verificationEndpoint: '/jacs/verify',
-        signatureEndpoint: '/jacs/sign',
-        publicKeyEndpoint: '/.well-known/jacs-pubkey.json'
-      }
+      false
     );
 
-    const capabilities = new A2ACapabilities([jacsExtension]);
+    const capabilities = new A2AAgentCapabilities({
+      extensions: [jacsExtension]
+    });
 
     // Create metadata
     const metadata = {
@@ -148,21 +191,23 @@ class JACSA2AIntegration {
       jacsVersion: agentData.jacsVersion
     };
 
-    // Create Agent Card
     return new A2AAgentCard({
-      protocolVersion: A2A_PROTOCOL_VERSION,
-      url: `https://agent-${agentId}.example.com`,
       name: agentName,
       description: agentDescription,
+      version: String(agentVersion),
+      protocolVersions: [A2A_PROTOCOL_VERSION],
+      supportedInterfaces,
+      defaultInputModes: ['text/plain', 'application/json'],
+      defaultOutputModes: ['text/plain', 'application/json'],
+      capabilities,
       skills,
       securitySchemes,
-      capabilities,
       metadata
     });
   }
 
   /**
-   * Convert JACS services to A2A skills
+   * Convert JACS services to A2A skills (v0.4.0)
    * @private
    */
   _convertServicesToSkills(services) {
@@ -172,62 +217,45 @@ class JACSA2AIntegration {
       const serviceName = service.name || service.serviceDescription || 'unnamed_service';
       const serviceDesc = service.serviceDescription || 'No description';
 
-      // Convert tools to skills
       const tools = service.tools || [];
       if (tools.length > 0) {
         for (const tool of tools) {
           if (tool.function) {
-            const skill = new A2ASkill(
-              tool.function.name || serviceName,
-              tool.function.description || serviceDesc,
-              tool.url || '/api/tool',
-              tool.function.parameters || null,
-              null // JACS doesn't define output schemas
-            );
-            skills.push(skill);
+            const fnName = tool.function.name || serviceName;
+            const fnDesc = tool.function.description || serviceDesc;
+
+            skills.push(new A2AAgentSkill({
+              id: this._slugify(fnName),
+              name: fnName,
+              description: fnDesc,
+              tags: this._deriveTags(serviceName, fnName),
+            }));
           }
         }
       } else {
-        // Create a skill for the service itself
-        const skill = new A2ASkill(
-          serviceName,
-          serviceDesc,
-          `/api/service/${serviceName.toLowerCase().replace(/\s+/g, '_')}`
-        );
-        skills.push(skill);
+        skills.push(new A2AAgentSkill({
+          id: this._slugify(serviceName),
+          name: serviceName,
+          description: serviceDesc,
+          tags: this._deriveTags(serviceName, serviceName),
+        }));
       }
     }
 
     // Add default verification skill if none exist
     if (skills.length === 0) {
-      skills.push(new A2ASkill(
-        'verify_signature',
-        'Verify JACS document signatures',
-        '/jacs/verify',
-        {
-          type: 'object',
-          properties: {
-            document: {
-              type: 'object',
-              description: 'The JACS document to verify'
-            }
-          },
-          required: ['document']
-        },
-        {
-          type: 'object',
-          properties: {
-            valid: {
-              type: 'boolean',
-              description: 'Whether the signature is valid'
-            },
-            signerInfo: {
-              type: 'object',
-              description: 'Information about the signer'
-            }
-          }
-        }
-      ));
+      skills.push(new A2AAgentSkill({
+        id: 'verify-signature',
+        name: 'verify_signature',
+        description: 'Verify JACS document signatures',
+        tags: ['jacs', 'verification', 'cryptography'],
+        examples: [
+          'Verify a signed JACS document',
+          'Check document signature integrity'
+        ],
+        inputModes: ['application/json'],
+        outputModes: ['application/json'],
+      }));
     }
 
     return skills;
@@ -242,6 +270,7 @@ class JACSA2AIntegration {
       uri: JACS_EXTENSION_URI,
       name: 'JACS Document Provenance',
       version: '1.0',
+      a2aProtocolVersion: A2A_PROTOCOL_VERSION,
       description: 'Provides cryptographic document signing and verification with post-quantum support',
       specification: 'https://hai.ai/jacs/specs/a2a-extension',
       capabilities: {
@@ -288,7 +317,6 @@ class JACSA2AIntegration {
    * @returns {Object} JACS-wrapped artifact with signature
    */
   wrapArtifactWithProvenance(artifact, artifactType, parentSignatures = null) {
-    // Create JACS header
     const wrapped = {
       jacsId: uuidv4(),
       jacsVersion: uuidv4(),
@@ -299,12 +327,10 @@ class JACSA2AIntegration {
       a2aArtifact: artifact
     };
 
-    // Add parent signatures if provided
     if (parentSignatures) {
       wrapped.jacsParentSignatures = parentSignatures;
     }
 
-    // Sign with JACS
     return jacs.signRequest(wrapped);
   }
 
@@ -314,10 +340,7 @@ class JACSA2AIntegration {
    * @returns {Object} Verification result
    */
   verifyWrappedArtifact(wrappedArtifact) {
-    // Verify JACS signature
     const isValid = jacs.verifyRequest(wrappedArtifact);
-
-    // Extract signature info
     const signatureInfo = wrappedArtifact.jacsSignature || {};
 
     const result = {
@@ -329,10 +352,8 @@ class JACSA2AIntegration {
       originalArtifact: wrappedArtifact.a2aArtifact || {}
     };
 
-    // Check parent signatures if present
     if (wrappedArtifact.jacsParentSignatures) {
       result.parentSignaturesCount = wrappedArtifact.jacsParentSignatures.length;
-      // In a full implementation, we would verify each parent
       result.parentSignaturesValid = true;
     }
 
@@ -369,7 +390,7 @@ class JACSA2AIntegration {
   }
 
   /**
-   * Generate .well-known documents for A2A integration
+   * Generate .well-known documents for A2A integration (v0.4.0)
    * @param {A2AAgentCard} agentCard - The A2A Agent Card
    * @param {string} jwsSignature - JWS signature of the Agent Card
    * @param {string} publicKeyB64 - Base64-encoded public key
@@ -379,13 +400,10 @@ class JACSA2AIntegration {
   generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData) {
     const documents = {};
 
-    // 1. Agent Card (signed)
-    documents['/.well-known/agent.json'] = {
-      agentCard: agentCard,
-      signature: jwsSignature,
-      signatureFormat: 'JWS',
-      timestamp: new Date().toISOString()
-    };
+    // 1. Agent Card with embedded signature (v0.4.0)
+    const cardObj = JSON.parse(JSON.stringify(agentCard));
+    cardObj.signatures = [{ jws: jwsSignature }];
+    documents['/.well-known/agent-card.json'] = cardObj;
 
     // 2. JACS Agent Descriptor
     documents['/.well-known/jacs-agent.json'] = {
@@ -398,7 +416,7 @@ class JACSA2AIntegration {
       capabilities: {
         signing: true,
         verification: true,
-        postQuantum: false // Update based on algorithm
+        postQuantum: false
       },
       schemas: {
         agent: 'https://hai.ai/schemas/agent/v1/agent.schema.json',
@@ -427,15 +445,42 @@ class JACSA2AIntegration {
 
     return documents;
   }
+
+  /**
+   * Convert a name to a URL-friendly slug for skill IDs.
+   * @private
+   */
+  _slugify(name) {
+    return name
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+  }
+
+  /**
+   * Derive tags from service/function context.
+   * @private
+   */
+  _deriveTags(serviceName, fnName) {
+    const tags = ['jacs'];
+    const serviceSlug = this._slugify(serviceName);
+    const fnSlug = this._slugify(fnName);
+    if (serviceSlug !== fnSlug) {
+      tags.push(serviceSlug);
+    }
+    tags.push(fnSlug);
+    return tags;
+  }
 }
 
 // Export classes and functions
 module.exports = {
   JACSA2AIntegration,
-  A2ASkill,
-  A2ASecurityScheme,
-  A2AExtension,
-  A2ACapabilities,
+  A2AAgentInterface,
+  A2AAgentSkill,
+  A2AAgentExtension,
+  A2AAgentCapabilities,
+  A2AAgentCardSignature,
   A2AAgentCard,
   A2A_PROTOCOL_VERSION,
   JACS_EXTENSION_URI

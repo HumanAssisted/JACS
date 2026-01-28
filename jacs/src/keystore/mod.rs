@@ -37,6 +37,7 @@ use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
 use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
 use crate::storage::jenv::{get_env_var, get_required_env_var};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 pub struct FsEncryptedStore;
 impl KeyStore for FsEncryptedStore {
@@ -104,7 +105,7 @@ impl KeyStore for FsEncryptedStore {
             .get_file(&priv_path, None)
             .or_else(|_| storage.get_file(&format!("{}.enc", priv_path), None))?;
         if priv_path.ends_with(".enc") || bytes.len() > 16 + 12 {
-            return Ok(decrypt_private_key(&bytes)?);
+            return decrypt_private_key(&bytes);
         }
         Ok(bytes)
     }
@@ -146,7 +147,7 @@ impl KeyStore for FsEncryptedStore {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data)?
             }
         };
-        Ok(base64::decode(sig_b64)?)
+        Ok(STANDARD.decode(sig_b64)?)
     }
 }
 

@@ -43,7 +43,7 @@ fn set_file_list(
 }
 
 pub fn get_storage_default_for_cli() -> Result<MultiStorage, Box<dyn Error>> {
-    let mut storage: Option<MultiStorage> =
+    let storage: Option<MultiStorage> =
         Some(MultiStorage::default_new().expect("Failed to initialize storage"));
     if let Some(storage) = storage {
         Ok(storage)

@@ -79,7 +79,7 @@ impl Schema {
             .as_str()
             .unwrap_or("schemas/header/v1/header.schema.json");
         let mut processed_fields: Vec<String> = Vec::new();
-        return self._extract_hai_fields(document, &schema_url, level, &mut processed_fields);
+        self._extract_hai_fields(document, schema_url, level, &mut processed_fields)
     }
 
     fn _extract_hai_fields(
@@ -120,19 +120,19 @@ impl Schema {
 
                     if let Value::Array(all_of_array) = all_of {
                         for item in all_of_array {
-                            if let Some(ref_url) = item.get("$ref") {
-                                if let Some(ref_schema_url) = ref_url.as_str() {
-                                    let child_result = self._extract_hai_fields(
-                                        document,
-                                        ref_schema_url,
-                                        level,
-                                        processed_fields,
-                                    )?;
-                                    result
-                                        .as_object_mut()
-                                        .unwrap()
-                                        .extend(child_result.as_object().unwrap().clone());
-                                }
+                            if let Some(ref_url) = item.get("$ref")
+                                && let Some(ref_schema_url) = ref_url.as_str()
+                            {
+                                let child_result = self._extract_hai_fields(
+                                    document,
+                                    ref_schema_url,
+                                    level,
+                                    processed_fields,
+                                )?;
+                                result
+                                    .as_object_mut()
+                                    .unwrap()
+                                    .extend(child_result.as_object().unwrap().clone());
                             }
 
                             if let Some(properties) = item.get("properties") {
@@ -194,7 +194,7 @@ impl Schema {
                 Self::process_field_value(
                     level,
                     result,
-                    &field_name,
+                    field_name,
                     field_schema.clone(),
                     document.clone(),
                 );
@@ -202,47 +202,44 @@ impl Schema {
                 processed_fields.push(field_name.clone());
 
                 if let Some(ref_url) = field_schema.get("$ref") {
-                    if let Some(ref_schema_url) = ref_url.as_str() {
-                        if let Some(field_value) = document.get(field_name.clone()) {
-                            let mut new_processed_fields = Vec::new();
-                            let child_result = self._extract_hai_fields(
-                                field_value,
-                                ref_schema_url,
-                                level,
-                                &mut new_processed_fields,
-                            )?;
-                            if !child_result.is_null() {
-                                result[field_name] = child_result;
-                            }
+                    if let Some(ref_schema_url) = ref_url.as_str()
+                        && let Some(field_value) = document.get(field_name.clone())
+                    {
+                        let mut new_processed_fields = Vec::new();
+                        let child_result = self._extract_hai_fields(
+                            field_value,
+                            ref_schema_url,
+                            level,
+                            &mut new_processed_fields,
+                        )?;
+                        if !child_result.is_null() {
+                            result[field_name] = child_result;
                         }
                     }
-                } else if let Some(items) = field_schema.get("items") {
-                    if let Some(ref_url) = items.get("$ref") {
-                        if let Some(ref_schema_url) = ref_url.as_str() {
-                            if let Some(Value::Array(field_value_array)) = document.get(field_name)
-                            {
-                                let mut items_result = Vec::new();
-                                for item_value in field_value_array {
-                                    let mut new_processed_fields = Vec::new();
-                                    let child_result = self._extract_hai_fields(
-                                        item_value,
-                                        ref_schema_url,
-                                        level,
-                                        &mut new_processed_fields,
-                                    )?;
-                                    items_result.push(child_result);
-                                }
-                                result[field_name] = Value::Array(items_result);
-                            }
-                        }
+                } else if let Some(items) = field_schema.get("items")
+                    && let Some(ref_url) = items.get("$ref")
+                    && let Some(ref_schema_url) = ref_url.as_str()
+                    && let Some(Value::Array(field_value_array)) = document.get(field_name)
+                {
+                    let mut items_result = Vec::new();
+                    for item_value in field_value_array {
+                        let mut new_processed_fields = Vec::new();
+                        let child_result = self._extract_hai_fields(
+                            item_value,
+                            ref_schema_url,
+                            level,
+                            &mut new_processed_fields,
+                        )?;
+                        items_result.push(child_result);
                     }
+                    result[field_name] = Value::Array(items_result);
                 }
             }
 
             return Ok(());
         }
 
-        return Err("properies map failed".into());
+        Err("properies map failed".into())
     }
 
     fn process_field_value(
@@ -259,17 +256,17 @@ impl Schema {
         debug!("properties hai_level {} {}", hai_level, field_name);
         match level {
             "agent" => {
-                if hai_level == "agent" {
-                    if let Some(field_value) = document.get(field_name) {
-                        result[field_name] = field_value.clone();
-                    }
+                if hai_level == "agent"
+                    && let Some(field_value) = document.get(field_name)
+                {
+                    result[field_name] = field_value.clone();
                 }
             }
             "meta" => {
-                if hai_level == "agent" || hai_level == "meta" {
-                    if let Some(field_value) = document.get(field_name) {
-                        result[field_name] = field_value.clone();
-                    }
+                if (hai_level == "agent" || hai_level == "meta")
+                    && let Some(field_value) = document.get(field_name)
+                {
+                    result[field_name] = field_value.clone();
                 }
             }
             "base" => {
@@ -356,22 +353,22 @@ impl Schema {
         let nodedata = DEFAULT_SCHEMA_STRINGS.get(&node_path).unwrap();
         let embeddingdata = DEFAULT_SCHEMA_STRINGS.get(&embedding_path).unwrap();
 
-        let agentschema_result: Value = serde_json::from_str(&agentdata)?;
-        let headerchema_result: Value = serde_json::from_str(&headerdata)?;
-        let agreementschema_result: Value = serde_json::from_str(&agreementdata)?;
-        let signatureschema_result: Value = serde_json::from_str(&signaturedata)?;
-        let jacsconfigschema_result: Value = serde_json::from_str(&CONFIG_SCHEMA_STRING)?;
-        let serviceschema_result: Value = serde_json::from_str(&servicedata)?;
-        let unitschema_result: Value = serde_json::from_str(&unitdata)?;
-        let actionschema_result: Value = serde_json::from_str(&actiondata)?;
-        let toolschema_result: Value = serde_json::from_str(&tooldata)?;
-        let contactschema_result: Value = serde_json::from_str(&contactdata)?;
-        let taskschema_result: Value = serde_json::from_str(&taskdata)?;
-        let messageschema_result: Value = serde_json::from_str(&messagedata)?;
-        let evalschema_result: Value = serde_json::from_str(&evaldata)?;
-        let nodeschema_result: Value = serde_json::from_str(&nodedata)?;
-        let programschema_result: Value = serde_json::from_str(&programdata)?;
-        let embeddingschema_result: Value = serde_json::from_str(&embeddingdata)?;
+        let agentschema_result: Value = serde_json::from_str(agentdata)?;
+        let headerchema_result: Value = serde_json::from_str(headerdata)?;
+        let agreementschema_result: Value = serde_json::from_str(agreementdata)?;
+        let signatureschema_result: Value = serde_json::from_str(signaturedata)?;
+        let jacsconfigschema_result: Value = serde_json::from_str(CONFIG_SCHEMA_STRING)?;
+        let serviceschema_result: Value = serde_json::from_str(servicedata)?;
+        let unitschema_result: Value = serde_json::from_str(unitdata)?;
+        let actionschema_result: Value = serde_json::from_str(actiondata)?;
+        let toolschema_result: Value = serde_json::from_str(tooldata)?;
+        let contactschema_result: Value = serde_json::from_str(contactdata)?;
+        let taskschema_result: Value = serde_json::from_str(taskdata)?;
+        let messageschema_result: Value = serde_json::from_str(messagedata)?;
+        let evalschema_result: Value = serde_json::from_str(evaldata)?;
+        let nodeschema_result: Value = serde_json::from_str(nodedata)?;
+        let programschema_result: Value = serde_json::from_str(programdata)?;
+        let embeddingschema_result: Value = serde_json::from_str(embeddingdata)?;
 
         let agentschema = Validator::options()
             .with_draft(Draft::Draft7)
@@ -591,7 +588,7 @@ impl Schema {
         &self,
         signature: &Value,
     ) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        let validation_result = self.signatureschema.validate(&signature);
+        let validation_result = self.signatureschema.validate(signature);
 
         match validation_result {
             Ok(_) => Ok(()),
@@ -639,12 +636,12 @@ impl Schema {
 
     pub fn getschema(&self, value: Value) -> Result<String, Box<dyn Error>> {
         let schemafield = "$schema";
-        if let Some(schema) = value.get(schemafield) {
-            if let Some(schema_str) = schema.as_str() {
-                return Ok(schema_str.to_string());
-            }
+        if let Some(schema) = value.get(schemafield)
+            && let Some(schema_str) = schema.as_str()
+        {
+            return Ok(schema_str.to_string());
         }
-        return Err("no schema in doc or schema is not a string".into());
+        Err("no schema in doc or schema is not a string".into())
     }
 
     /// use this to get the name of the
@@ -652,10 +649,10 @@ impl Schema {
         let longschema = self.getschema(value)?;
         let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
 
-        if let Some(caps) = re.captures(&longschema) {
-            if let Some(matched) = caps.get(1) {
-                return Ok(matched.as_str().to_string());
-            }
+        if let Some(caps) = re.captures(&longschema)
+            && let Some(matched) = caps.get(1)
+        {
+            return Ok(matched.as_str().to_string());
         }
         Err("Failed to extract schema name from URL".into())
     }
@@ -703,12 +700,12 @@ impl Schema {
                 .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string())
         );
         // if no schema is present insert standard header version
-        if !instance.get_str("$schema").is_some() {
+        if instance.get_str("$schema").is_none() {
             instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));
         }
 
         // if no type is present look for $schema and extract the name
-        if !instance.get_str("jacsType").is_some() {
+        if instance.get_str("jacsType").is_none() {
             let cloned_instance = instance.clone();
             instance["jacsType"] = match self.getshortschema(cloned_instance) {
                 Ok(schema) => json!(schema),

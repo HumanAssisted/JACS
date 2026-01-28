@@ -4,7 +4,6 @@ use pqcrypto_dilithium::dilithium5::{
 use pqcrypto_traits::sign::DetachedSignature as DetachedSignatureTrait;
 use pqcrypto_traits::sign::PublicKey as PublicKeyTrait;
 use pqcrypto_traits::sign::SecretKey as SecretKeyTrait;
-use pqcrypto_traits::sign::SignedMessage as SignedMessageTrait;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use std::error::Error;

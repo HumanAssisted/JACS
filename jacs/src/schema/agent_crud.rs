@@ -22,7 +22,7 @@ pub fn create_minimal_agent(
     services: Option<Vec<Value>>,
     contacts: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let allowed_agent_types = vec!["human", "human-org", "hybrid", "ai"];
+    let allowed_agent_types = ["human", "human-org", "hybrid", "ai"];
     if !allowed_agent_types.contains(&agent_type) {
         return Err(format!("Invalid agent type: {}", agent_type));
     }
@@ -133,7 +133,7 @@ fn remove_service_from_agent(agent: &mut Value, service: Value) -> Result<(), St
 /// * `Ok(())` - If the contact was added successfully.
 /// * `Err(String)` - If an error occurred while adding the contact.
 fn add_contact_to_agent(agent: &mut Value, contact: Value) -> Result<(), String> {
-    if !agent.get("jacsContacts").is_some() {
+    if agent.get("jacsContacts").is_none() {
         agent["jacsContacts"] = json!([]);
     }
     agent["jacsContacts"]

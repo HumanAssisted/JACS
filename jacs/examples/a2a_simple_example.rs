@@ -1,92 +1,100 @@
 //! Simple example demonstrating A2A integration without full agent setup
 //!
 //! This example shows how to:
-//! 1. Create an A2A Agent Card manually
+//! 1. Create an A2A Agent Card manually (v0.4.0)
 //! 2. Export JACS extension descriptor
 //! 3. Sign with JWS for A2A compatibility
 
 use jacs::a2a::{agent_card::*, extension::*, keys::*, *};
 use serde_json::json;
+use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== JACS A2A Simple Integration Example ===\n");
+    println!("=== JACS A2A Simple Integration Example (v0.4.0) ===\n");
 
     // Step 1: Create an A2A Agent Card manually
     println!("1. Creating A2A Agent Card...");
 
+    let mut security_schemes = HashMap::new();
+    security_schemes.insert(
+        "bearer-jwt".to_string(),
+        SecurityScheme::Http {
+            scheme: "Bearer".to_string(),
+            bearer_format: Some("JWT".to_string()),
+        },
+    );
+
     let agent_card = AgentCard {
-        protocol_version: A2A_PROTOCOL_VERSION.to_string(),
-        url: "https://example-agent.com".to_string(),
         name: "Example JACS Agent".to_string(),
         description: "A JACS-enabled agent demonstrating A2A integration".to_string(),
+        version: "1.0.0".to_string(),
+        protocol_versions: vec![A2A_PROTOCOL_VERSION.to_string()],
+        supported_interfaces: vec![AgentInterface {
+            url: "https://example-agent.com".to_string(),
+            protocol_binding: "jsonrpc".to_string(),
+            tenant: None,
+        }],
+        default_input_modes: vec![
+            "text/plain".to_string(),
+            "application/json".to_string(),
+        ],
+        default_output_modes: vec![
+            "text/plain".to_string(),
+            "application/json".to_string(),
+        ],
         skills: vec![
-            Skill {
+            AgentSkill {
+                id: "verify-document".to_string(),
                 name: "verify_document".to_string(),
                 description: "Verify JACS document signatures".to_string(),
-                endpoint: "/api/verify".to_string(),
-                input_schema: Some(json!({
-                    "type": "object",
-                    "properties": {
-                        "document": {
-                            "type": "object",
-                            "description": "The JACS document to verify"
-                        }
-                    },
-                    "required": ["document"]
-                })),
-                output_schema: Some(json!({
-                    "type": "object",
-                    "properties": {
-                        "valid": {"type": "boolean"},
-                        "signerInfo": {"type": "object"}
-                    }
-                })),
+                tags: vec![
+                    "jacs".to_string(),
+                    "verification".to_string(),
+                    "cryptography".to_string(),
+                ],
+                examples: Some(vec!["Verify a signed JACS document".to_string()]),
+                input_modes: Some(vec!["application/json".to_string()]),
+                output_modes: Some(vec!["application/json".to_string()]),
+                security: None,
             },
-            Skill {
+            AgentSkill {
+                id: "sign-document".to_string(),
                 name: "sign_document".to_string(),
                 description: "Sign documents with JACS provenance".to_string(),
-                endpoint: "/api/sign".to_string(),
-                input_schema: Some(json!({
-                    "type": "object",
-                    "properties": {
-                        "document": {
-                            "type": "object",
-                            "description": "The document to sign"
-                        }
-                    },
-                    "required": ["document"]
-                })),
-                output_schema: None,
+                tags: vec!["jacs".to_string(), "signing".to_string()],
+                examples: None,
+                input_modes: Some(vec!["application/json".to_string()]),
+                output_modes: Some(vec!["application/json".to_string()]),
+                security: None,
             },
         ],
-        security_schemes: vec![SecurityScheme {
-            r#type: "http".to_string(),
-            scheme: "bearer".to_string(),
-            bearer_format: Some("JWT".to_string()),
-        }],
-        capabilities: Capabilities {
-            extensions: Some(vec![Extension {
+        security_schemes: Some(security_schemes),
+        capabilities: AgentCapabilities {
+            streaming: None,
+            push_notifications: None,
+            extended_agent_card: None,
+            extensions: Some(vec![AgentExtension {
                 uri: JACS_EXTENSION_URI.to_string(),
-                description: "JACS cryptographic document signing and verification".to_string(),
-                required: false,
-                params: json!({
-                    "jacsDescriptorUrl": "https://example-agent.com/.well-known/jacs-agent.json",
-                    "signatureType": "JACS_PQC",
-                    "supportedAlgorithms": ["dilithium", "rsa", "ecdsa"],
-                    "verificationEndpoint": "/jacs/verify",
-                    "signatureEndpoint": "/jacs/sign",
-                }),
+                description: Some(
+                    "JACS cryptographic document signing and verification".to_string(),
+                ),
+                required: Some(false),
             }]),
         },
+        provider: None,
+        documentation_url: None,
+        icon_url: None,
+        security: None,
+        signatures: None,
         metadata: Some(json!({
-            "version": "1.0.0",
             "author": "JACS Example",
             "license": "Apache-2.0",
         })),
     };
 
-    println!("   ✓ Agent Card created");
+    println!("   Agent Card created");
     println!("   - Name: {}", agent_card.name);
+    println!("   - Protocol: {:?}", agent_card.protocol_versions);
     println!("   - Skills: {} defined", agent_card.skills.len());
     println!("   - Extensions: JACS provenance enabled");
 
@@ -101,8 +109,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", serde_json::to_string_pretty(&descriptor)?);
 
     // Step 4: Show how the Agent Card would be served
-    println!("\n4. Well-known endpoints:");
-    println!("   - /.well-known/agent.json - The A2A Agent Card");
+    println!("\n4. Well-known endpoints (v0.4.0):");
+    println!("   - /.well-known/agent-card.json - The A2A Agent Card (with embedded signatures)");
     println!("   - /.well-known/jwks.json - JWK Set for signature verification");
     println!("   - /.well-known/jacs-agent.json - JACS agent descriptor");
     println!("   - /.well-known/jacs-pubkey.json - JACS public key");

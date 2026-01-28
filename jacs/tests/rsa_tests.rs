@@ -30,30 +30,25 @@ fn test_rsa_create_and_verify_signature() {
     let borrowed_key = binding.expose_secret();
     let key_vec = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
 
-    println!(
-        "loaded keys {} {} ",
-        std::str::from_utf8(&key_vec).expect("Failed to convert bytes to string"),
-        std::str::from_utf8(&public).expect("Failed to convert bytes to string")
+    // Assert private key decryption succeeds and produces non-empty bytes
+    assert!(
+        !key_vec.is_empty(),
+        "Decrypted private key should be non-empty"
     );
 
-    // // cargo test --test rsa_tests -- test_rsa_create_and_verify_signature
-    // let input_str = "JACS is JACKED";
-    // let file_path = "./tests/scratch/";
-    // let sig = jacs::crypt::rsawrapper::sign_string(file_path, input_str);
-    // let signature_base64 = match sig {
-    //     Ok(signature) => signature,
-    //     Err(err_msg) => {
-    //         panic!("Failed to sign string: {}", err_msg);
-    //     }
-    // };
+    // Assert public key is non-empty
+    assert!(!public.is_empty(), "Public key should be non-empty");
 
-    // println!("signature was {} for {}", signature_base64, input_str);
-
-    // let verify_result =
-    //     jacs::crypt::rsawrapper::verify_string(file_path, input_str, &signature_base64);
-    // assert!(
-    //     verify_result.is_ok(),
-    //     "Signature verification failed: {:?}",
-    //     verify_result.err()
-    // );
+    // Assert key lengths are within expected RSA ranges
+    // RSA private keys (PEM) are typically 1600+ bytes, public keys 400+ bytes
+    assert!(
+        key_vec.len() > 100,
+        "RSA private key should be at least 100 bytes, got {}",
+        key_vec.len()
+    );
+    assert!(
+        public.len() > 100,
+        "RSA public key should be at least 100 bytes, got {}",
+        public.len()
+    );
 }

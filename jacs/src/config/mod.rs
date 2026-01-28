@@ -358,7 +358,7 @@ pub fn set_env_vars(
 
     if !jacs_agent_id_and_version.is_empty() {
         let (id, version) = split_id(&jacs_agent_id_and_version).unwrap_or(("", ""));
-        if !Uuid::parse_str(id).is_ok() || !Uuid::parse_str(version).is_ok() {
+        if Uuid::parse_str(id).is_err() || Uuid::parse_str(version).is_err() {
             warn!("ID and Version must be in the form UUID:UUID");
         }
     }
@@ -398,7 +398,7 @@ pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
             message.push_str(&format!(
                 "    {:<35} {}\n",
                 var_name.to_string() + ":",
-                "SKIPPED (ignore_agent_id=true)".to_string()
+                "SKIPPED (ignore_agent_id=true)"
             ));
             continue;
         }
@@ -557,7 +557,7 @@ pub enum LogDestination {
     Null,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum MetricsDestination {
     #[serde(rename = "otlp")]
     Otlp {
@@ -574,13 +574,8 @@ pub enum MetricsDestination {
     #[serde(rename = "file")]
     File { path: String },
     #[serde(rename = "stdout")]
+    #[default]
     Stdout,
-}
-
-impl Default for MetricsDestination {
-    fn default() -> Self {
-        MetricsDestination::Stdout
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

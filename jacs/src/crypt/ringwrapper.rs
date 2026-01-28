@@ -9,17 +9,16 @@ use std::fmt;
 
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let rng = rand::SystemRandom::new();
-    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).map_err(|e| RingError(e))?;
-    let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref())
-        .map_err(|e| KeyRejectedError(e))?;
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).map_err(RingError)?;
+    let key_pair =
+        signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).map_err(KeyRejectedError)?;
     let public_key = key_pair.public_key().as_ref().to_vec();
     let private_key = pkcs8_bytes.as_ref().to_vec();
     Ok((private_key, public_key))
 }
 
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {
-    let key_pair =
-        signature::Ed25519KeyPair::from_pkcs8(&secret_key).map_err(|e| KeyRejectedError(e))?;
+    let key_pair = signature::Ed25519KeyPair::from_pkcs8(&secret_key).map_err(KeyRejectedError)?;
     let signature = key_pair.sign(data.as_bytes());
     let signature_bytes = signature.as_ref();
     let signature_base64 = STANDARD.encode(signature_bytes);
@@ -35,7 +34,7 @@ pub fn verify_string(
     let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);
     public_key
         .verify(data.as_bytes(), &signature_bytes)
-        .map_err(|e| RingError(e))?;
+        .map_err(RingError)?;
     Ok(())
 }
 

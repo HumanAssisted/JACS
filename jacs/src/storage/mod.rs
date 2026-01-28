@@ -64,7 +64,7 @@ impl WebLocalStorage {
 impl ObjectStore for WebLocalStorage {
     async fn put(&self, location: &ObjectPath, bytes: PutPayload) -> Result<(), ObjectStoreError> {
         let data = bytes.into_vec().await?;
-        let encoded = base64::encode(&data);
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
         self.storage
             .set_item(location.as_ref(), &encoded)
             .map_err(|e| ObjectStoreError::Generic {
@@ -96,10 +96,12 @@ impl ObjectStore for WebLocalStorage {
                 )),
             })?;
 
-        let decoded = base64::decode(value).map_err(|e| ObjectStoreError::Generic {
-            store: "WebLocalStorage",
-            source: Box::new(e),
-        })?;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(value)
+            .map_err(|e| ObjectStoreError::Generic {
+                store: "WebLocalStorage",
+                source: Box::new(e),
+            })?;
 
         Ok(GetResult::Stream(Box::pin(futures_util::stream::once(
             async move { Ok(bytes::Bytes::from(decoded)) },
@@ -179,7 +181,7 @@ impl MultiStorage {
 
     pub fn new(storage_type: String) -> Result<Self, ObjectStoreError> {
         let absolute_path = std::env::current_dir().unwrap();
-        return Self::_new(storage_type, absolute_path);
+        Self::_new(storage_type, absolute_path)
     }
 
     pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
@@ -189,7 +191,7 @@ impl MultiStorage {
         let mut _memory: Option<Arc<InMemory>>;
 
         let default_storage: StorageType = StorageType::from_str(&storage_type)
-            .expect(&format!("storage_type {} is not known", storage_type));
+            .unwrap_or_else(|_| panic!("storage_type {} is not known", storage_type));
 
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
@@ -294,10 +296,10 @@ impl MultiStorage {
         } else {
             Err(ObjectStoreError::Generic {
                 store: "MultiStorage",
-                source: Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to save to some storages: {:?}", errors),
-                )),
+                source: Box::new(std::io::Error::other(format!(
+                    "Failed to save to some storages: {:?}",
+                    errors
+                ))),
             })
         }
     }
@@ -378,7 +380,7 @@ impl MultiStorage {
 
         // Delete the original file
         for storage in &self.storages {
-            let from_path = ObjectPath::parse(&Self::clean_path(from))?;
+            let from_path = ObjectPath::parse(Self::clean_path(from))?;
             if let Err(e) = block_on(storage.delete(&from_path)) {
                 // Log error but continue if file doesn't exist or other errors
                 debug!("Error deleting original file during rename: {:?}", e);
@@ -456,10 +458,10 @@ impl CachedMultiStorage {
     }
 
     pub fn clear_cache(&self) {
-        if self.cache_enabled {
-            if let Ok(mut cache) = self.cache.lock() {
-                cache.clear();
-            }
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.clear();
         }
     }
 }
@@ -538,10 +540,10 @@ impl StorageDocumentTraits for MultiStorage {
         for file in files {
             if file.ends_with(".json") && !file.contains("/archive/") {
                 // Extract key from path like "documents/id:version.json"
-                if let Some(filename) = file.strip_prefix("documents/") {
-                    if let Some(key) = filename.strip_suffix(".json") {
-                        document_keys.push(key.to_string());
-                    }
+                if let Some(filename) = file.strip_prefix("documents/")
+                    && let Some(key) = filename.strip_suffix(".json")
+                {
+                    document_keys.push(key.to_string());
                 }
             }
         }
@@ -562,10 +564,10 @@ impl StorageDocumentTraits for MultiStorage {
 
         for doc_key in all_docs {
             // Document keys are in format "id:version", extract the id
-            if let Some(id) = doc_key.split(':').next() {
-                if id == agent_id {
-                    agent_docs.push(doc_key);
-                }
+            if let Some(id) = doc_key.split(':').next()
+                && id == agent_id
+            {
+                agent_docs.push(doc_key);
             }
         }
 
@@ -655,10 +657,10 @@ impl StorageDocumentTraits for CachedMultiStorage {
         self.storage.store_document(doc)?;
 
         // Update cache if enabled
-        if self.cache_enabled {
-            if let Ok(mut cache) = self.cache.lock() {
-                cache.insert(doc.getkey(), doc.clone());
-            }
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.insert(doc.getkey(), doc.clone());
         }
 
         Ok(())
@@ -666,22 +668,21 @@ impl StorageDocumentTraits for CachedMultiStorage {
 
     fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
         // Check cache first if enabled
-        if self.cache_enabled {
-            if let Ok(cache) = self.cache.lock() {
-                if let Some(doc) = cache.get(key) {
-                    return Ok(doc.clone());
-                }
-            }
+        if self.cache_enabled
+            && let Ok(cache) = self.cache.lock()
+            && let Some(doc) = cache.get(key)
+        {
+            return Ok(doc.clone());
         }
 
         // Not in cache, get from storage
         let doc = self.storage.get_document(key)?;
 
         // Update cache if enabled
-        if self.cache_enabled {
-            if let Ok(mut cache) = self.cache.lock() {
-                cache.insert(key.to_string(), doc.clone());
-            }
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.insert(key.to_string(), doc.clone());
         }
 
         Ok(doc)
@@ -691,10 +692,10 @@ impl StorageDocumentTraits for CachedMultiStorage {
         let doc = self.storage.remove_document(key)?;
 
         // Remove from cache if enabled
-        if self.cache_enabled {
-            if let Ok(mut cache) = self.cache.lock() {
-                cache.remove(key);
-            }
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.remove(key);
         }
 
         Ok(doc)
@@ -707,12 +708,11 @@ impl StorageDocumentTraits for CachedMultiStorage {
 
     fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
         // Check cache first
-        if self.cache_enabled {
-            if let Ok(cache) = self.cache.lock() {
-                if cache.contains_key(key) {
-                    return Ok(true);
-                }
-            }
+        if self.cache_enabled
+            && let Ok(cache) = self.cache.lock()
+            && cache.contains_key(key)
+        {
+            return Ok(true);
         }
         self.storage.document_exists(key)
     }
@@ -742,11 +742,11 @@ impl StorageDocumentTraits for CachedMultiStorage {
         let result = self.storage.store_documents(docs.clone())?;
 
         // Update cache if enabled
-        if self.cache_enabled {
-            if let Ok(mut cache) = self.cache.lock() {
-                for doc in docs {
-                    cache.insert(doc.getkey(), doc);
-                }
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            for doc in docs {
+                cache.insert(doc.getkey(), doc);
             }
         }
 

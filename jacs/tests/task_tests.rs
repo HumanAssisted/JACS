@@ -33,7 +33,7 @@ fn test_hai_fields_custom_schema_and_custom_document() {
     agent
         .validate_document_with_custom_schema(
             &format!("{}/raw/custom.schema.json", fixtures_dir.display()),
-            &document_copy.getvalue(),
+            document_copy.getvalue(),
         )
         .unwrap();
 
@@ -50,21 +50,11 @@ fn test_create_task_with_actions() {
     let mut agent_two = load_test_agent_two();
     let mut actions: Vec<Value> = Vec::new();
     let start_in_a_week = Utc::now() + Duration::weeks(1);
-    let action = create_minimal_action(
-        &"go to mars".to_string(),
-        &" how to go to mars".to_string(),
-        None,
-        None,
-    );
+    let action = create_minimal_action("go to mars", " how to go to mars", None, None);
     actions.push(action);
     let mut task =
         create_minimal_task(Some(actions), None, Some(start_in_a_week), None).expect("reason");
-    let action = create_minimal_action(
-        &"terraform mars".to_string(),
-        &" how to terraform mars".to_string(),
-        None,
-        None,
-    );
+    let action = create_minimal_action("terraform mars", " how to terraform mars", None, None);
     add_action_to_task(&mut task, action).expect("reason");
 
     //create jacs task
@@ -80,7 +70,7 @@ fn test_create_task_with_actions() {
     let mut from: Vec<String> = Vec::new();
     to.push("me@hai.ai".to_string());
     from.push(agent.get_id().expect("REASON"));
-    let message = create_message(
+    let _message = create_message(
         &mut agent,
         content,
         to,
@@ -172,7 +162,7 @@ fn print_fields(agent: &Agent, value: Value) {
     let extracted_fields_result = agent.schema.extract_hai_fields(&value, "base");
     match extracted_fields_result {
         Err(error) => {
-            println!(" ERROR {}", error.to_string());
+            println!(" ERROR {}", error);
             assert!(false);
         }
         Ok(extracted_fields) => println!(
@@ -185,7 +175,7 @@ fn print_fields(agent: &Agent, value: Value) {
     let extracted_fields_result = agent.schema.extract_hai_fields(&value, "meta");
     match extracted_fields_result {
         Err(error) => {
-            println!(" ERROR {}", error.to_string());
+            println!(" ERROR {}", error);
             assert!(false);
         }
         Ok(extracted_fields) => println!(
@@ -198,7 +188,7 @@ fn print_fields(agent: &Agent, value: Value) {
     let extracted_fields_result = agent.schema.extract_hai_fields(&value, "agent");
     match extracted_fields_result {
         Err(error) => {
-            println!(" ERROR {}", error.to_string());
+            println!(" ERROR {}", error);
             assert!(false);
         }
         Ok(extracted_fields) => println!(

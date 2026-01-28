@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 /// off by default
 /// /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
-const JACS_USE_SECURITY: &str = "JACS_USE_SECURITY";
+const _JACS_USE_SECURITY: &str = "JACS_USE_SECURITY";
 
 pub trait SecurityTraits {
     fn use_security(&self) -> bool;
