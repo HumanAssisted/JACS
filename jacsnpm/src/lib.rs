@@ -306,7 +306,11 @@ impl JacsAgent {
 
     /// Verify a document's signature with an optional custom signature field.
     #[napi]
-    pub fn verify_signature(&self, document_string: String, signature_field: Option<String>) -> Result<bool> {
+    pub fn verify_signature(
+        &self,
+        document_string: String,
+        signature_field: Option<String>,
+    ) -> Result<bool> {
         let mut agent = self.inner.lock().map_err(|e| {
             Error::new(
                 Status::GenericFailure,
@@ -385,7 +389,11 @@ impl JacsAgent {
 
     /// Sign an agreement on a document.
     #[napi]
-    pub fn sign_agreement(&self, document_string: String, agreement_fieldname: Option<String>) -> Result<String> {
+    pub fn sign_agreement(
+        &self,
+        document_string: String,
+        agreement_fieldname: Option<String>,
+    ) -> Result<String> {
         let mut agent = self.inner.lock().map_err(|e| {
             Error::new(
                 Status::GenericFailure,
@@ -448,7 +456,11 @@ impl JacsAgent {
 
     /// Check an agreement on a document.
     #[napi]
-    pub fn check_agreement(&self, document_string: String, agreement_fieldname: Option<String>) -> Result<String> {
+    pub fn check_agreement(
+        &self,
+        document_string: String,
+        agreement_fieldname: Option<String>,
+    ) -> Result<String> {
         let mut agent = self.inner.lock().map_err(|e| {
             Error::new(
                 Status::GenericFailure,
@@ -540,7 +552,11 @@ impl JacsAgent {
 
     /// Verify a response payload and return the agent ID.
     #[napi]
-    pub fn verify_response_with_agent_id(&self, env: Env, document_string: String) -> Result<JsObject> {
+    pub fn verify_response_with_agent_id(
+        &self,
+        env: Env,
+        document_string: String,
+    ) -> Result<JsObject> {
         let mut agent = self.inner.lock().map_err(|e| {
             Error::new(
                 Status::GenericFailure,
@@ -616,9 +632,8 @@ pub fn create_config(
 use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref LEGACY_AGENT: Arc<Mutex<Agent>> = {
-        Arc::new(Mutex::new(jacs_core::get_empty_agent()))
-    };
+    static ref LEGACY_AGENT: Arc<Mutex<Agent>> =
+        { Arc::new(Mutex::new(jacs_core::get_empty_agent())) };
 }
 
 /// @deprecated Use `new JacsAgent()` and `agent.load()` instead.
@@ -958,7 +973,10 @@ pub fn create_agreement(
 
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
 #[napi]
-pub fn sign_agreement(document_string: String, agreement_fieldname: Option<String>) -> Result<String> {
+pub fn sign_agreement(
+    document_string: String,
+    agreement_fieldname: Option<String>,
+) -> Result<String> {
     let mut agent = LEGACY_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
@@ -1020,7 +1038,10 @@ pub fn create_document(
 
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
 #[napi]
-pub fn check_agreement(document_string: String, agreement_fieldname: Option<String>) -> Result<String> {
+pub fn check_agreement(
+    document_string: String,
+    agreement_fieldname: Option<String>,
+) -> Result<String> {
     let mut agent = LEGACY_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,

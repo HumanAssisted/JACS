@@ -21,7 +21,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let private_key = fs::read(&agent_one_path)?;
         let encrypted = jacs::crypt::aes_encrypt::encrypt_private_key(&private_key)?;
         fs::write(fixtures_dir.join("agent-one.private.pem.enc"), &encrypted)?;
-        println!("  Created agent-one.private.pem.enc ({} bytes)", encrypted.len());
+        println!(
+            "  Created agent-one.private.pem.enc ({} bytes)",
+            encrypted.len()
+        );
     }
 
     // Re-encrypt test-pq-private.pem -> jacs.private.pq.pem.enc with "testpassword"
@@ -36,7 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let private_key = fs::read(&pq_path)?;
         let encrypted = jacs::crypt::aes_encrypt::encrypt_private_key(&private_key)?;
         fs::write(fixtures_dir.join("jacs.private.pq.pem.enc"), &encrypted)?;
-        println!("  Created jacs.private.pq.pem.enc ({} bytes)", encrypted.len());
+        println!(
+            "  Created jacs.private.pq.pem.enc ({} bytes)",
+            encrypted.len()
+        );
     }
 
     // For ring-Ed25519, use "testpassword"
@@ -50,8 +56,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Re-encrypting test-ring-Ed25519-private.pem with password 'testpassword'...");
         let private_key = fs::read(&ring_path)?;
         let encrypted = jacs::crypt::aes_encrypt::encrypt_private_key(&private_key)?;
-        fs::write(fixtures_dir.join("test-ring-Ed25519-private.pem.enc"), &encrypted)?;
-        println!("  Created test-ring-Ed25519-private.pem.enc ({} bytes)", encrypted.len());
+        fs::write(
+            fixtures_dir.join("test-ring-Ed25519-private.pem.enc"),
+            &encrypted,
+        )?;
+        println!(
+            "  Created test-ring-Ed25519-private.pem.enc ({} bytes)",
+            encrypted.len()
+        );
     } else {
         println!("Warning: test-ring-Ed25519-private.pem not found, skipping");
     }

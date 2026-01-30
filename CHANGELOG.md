@@ -147,6 +147,8 @@
 
 - **[MEDIUM] Fixed jacsnpm global singleton**: Refactored from global `lazy_static!` mutex to `JacsAgent` NAPI class pattern. Multiple agents can now be used concurrently in the same Node.js process. Legacy functions preserved for backwards compatibility but marked deprecated.
 
+- **[MEDIUM] Fixed jacspy global singleton**: Refactored from global `lazy_static!` mutex to `JacsAgent` PyO3 class pattern. Multiple agents can now be used concurrently in the same Python process. The `Arc<Mutex<Agent>>` pattern ensures thread-safety and works with Python's GIL as well as future free-threading (Python 3.13+). Legacy functions preserved for backwards compatibility.
+
 - **[MEDIUM] Added secure file permissions**: Private keys now get 0600 permissions (owner read/write only) and key directories get 0700 (owner rwx only) on Unix systems. This prevents other users on shared systems from reading private keys.
 
 ### devex
