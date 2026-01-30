@@ -7,7 +7,12 @@
   "exports": {
     ".": {
       "import": "./index.js",
+      "require": "./index.js",
       "types": "./index.d.ts"
+    },
+    "./a2a": {
+      "import": "./src/a2a.js",
+      "require": "./src/a2a.js"
     },
     "./mcp": {
       "import": "./mcp.ts"

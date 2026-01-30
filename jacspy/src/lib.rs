@@ -59,14 +59,12 @@ impl JacsAgent {
                 e
             ))
         })?;
-        agent_ref
-            .load_by_config(config_path)
-            .map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                    "Failed to load agent: {}",
-                    e
-                ))
-            })?;
+        agent_ref.load_by_config(config_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to load agent: {}",
+                e
+            ))
+        })?;
         Ok("Agent loaded".to_string())
     }
 
@@ -85,7 +83,10 @@ impl JacsAgent {
         })?;
 
         let mut external_agent: Value = agent.validate_agent(agent_string).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Agent validation failed: {}", e))
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Agent validation failed: {}",
+                e
+            ))
         })?;
 
         agent
@@ -487,7 +488,10 @@ impl JacsAgent {
         let bound_params = params_obj.bind(py);
         let payload_value = conversion_utils::pyany_to_value(py, bound_params)?;
         let payload_string = agent.sign_payload(payload_value).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign payload: {}", e))
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to sign payload: {}",
+                e
+            ))
         })?;
         Ok(payload_string)
     }
@@ -501,14 +505,21 @@ impl JacsAgent {
             ))
         })?;
         let payload = agent.verify_payload(document_string, None).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load document: {}", e))
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to load document: {}",
+                e
+            ))
         })?;
 
         conversion_utils::value_to_pyobject(py, &payload)
     }
 
     /// Verify a response document and return (payload, agent_id).
-    fn verify_response_with_agent_id(&self, py: Python, document_string: String) -> PyResult<PyObject> {
+    fn verify_response_with_agent_id(
+        &self,
+        py: Python,
+        document_string: String,
+    ) -> PyResult<PyObject> {
         let mut agent = self.inner.lock().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to acquire agent lock: {}",
