@@ -7,6 +7,10 @@
 import * as jacs from "jacsnpm";
 import type { OpenClawPluginAPI } from "../index";
 
+// Cache for fetched public keys (domain -> key info)
+const pubkeyCache: Map<string, { key: string; algorithm: string; fetchedAt: number }> = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export interface ToolResult {
   result?: any;
   error?: string;
@@ -245,6 +249,159 @@ export function registerTools(api: OpenClawPluginAPI): void {
             : undefined,
         },
       };
+    },
+  });
+
+  // Tool: Fetch another agent's public key
+  api.registerTool({
+    name: "jacs_fetch_pubkey",
+    description:
+      "Fetch another agent's public key from their domain. Use this before verifying documents from other agents. Keys are fetched from https://<domain>/.well-known/jacs-pubkey.json",
+    parameters: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description: "The domain of the agent whose public key to fetch (e.g., 'example.com')",
+        },
+        skipCache: {
+          type: "boolean",
+          description: "Force fetch even if key is cached (default: false)",
+        },
+      },
+      required: ["domain"],
+    },
+    handler: async (params: any): Promise<ToolResult> => {
+      const domain = params.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const cacheKey = domain.toLowerCase();
+
+      // Check cache first
+      if (!params.skipCache) {
+        const cached = pubkeyCache.get(cacheKey);
+        if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+          return {
+            result: {
+              domain,
+              publicKey: cached.key,
+              algorithm: cached.algorithm,
+              cached: true,
+              fetchedAt: new Date(cached.fetchedAt).toISOString(),
+            },
+          };
+        }
+      }
+
+      try {
+        const url = `https://${domain}/.well-known/jacs-pubkey.json`;
+        const response = await fetch(url, {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(10000), // 10 second timeout
+        });
+
+        if (!response.ok) {
+          return {
+            error: `Failed to fetch public key from ${domain}: HTTP ${response.status}`,
+          };
+        }
+
+        const data = (await response.json()) as {
+          publicKey?: string;
+          algorithm?: string;
+          agentId?: string;
+          agentName?: string;
+        };
+
+        if (!data.publicKey) {
+          return { error: `Invalid response from ${domain}: missing publicKey field` };
+        }
+
+        // Cache the key
+        pubkeyCache.set(cacheKey, {
+          key: data.publicKey,
+          algorithm: data.algorithm || "unknown",
+          fetchedAt: Date.now(),
+        });
+
+        return {
+          result: {
+            domain,
+            publicKey: data.publicKey,
+            algorithm: data.algorithm || "unknown",
+            agentId: data.agentId,
+            agentName: data.agentName,
+            cached: false,
+            fetchedAt: new Date().toISOString(),
+          },
+        };
+      } catch (err: any) {
+        if (err.name === "TimeoutError") {
+          return { error: `Timeout fetching public key from ${domain}` };
+        }
+        return { error: `Failed to fetch public key from ${domain}: ${err.message}` };
+      }
+    },
+  });
+
+  // Tool: Verify a document with a specific public key
+  api.registerTool({
+    name: "jacs_verify_with_key",
+    description:
+      "Verify a signed document using another agent's public key. Use jacs_fetch_pubkey first to get the key, then use this to verify documents from that agent.",
+    parameters: {
+      type: "object",
+      properties: {
+        document: {
+          type: "object",
+          description: "The signed document to verify",
+        },
+        publicKey: {
+          type: "string",
+          description: "The PEM-encoded public key of the signing agent",
+        },
+        algorithm: {
+          type: "string",
+          description: "The key algorithm (e.g., 'pq2025', 'ed25519'). Default: 'pq2025'",
+        },
+      },
+      required: ["document", "publicKey"],
+    },
+    handler: async (params: any): Promise<ToolResult> => {
+      try {
+        const docString = JSON.stringify(params.document);
+        const algorithm = params.algorithm || "pq2025";
+
+        // Extract signature from document
+        const doc = params.document;
+        const signature = doc.jacsSignature || doc.signature;
+
+        if (!signature) {
+          return { error: "Document does not contain a signature field (jacsSignature or signature)" };
+        }
+
+        // Convert public key to Buffer
+        const publicKeyBuffer = Buffer.from(params.publicKey, "utf-8");
+
+        // Determine the data that was signed (document without signature)
+        const docWithoutSig = { ...doc };
+        delete docWithoutSig.jacsSignature;
+        delete docWithoutSig.signature;
+        const dataToVerify = JSON.stringify(docWithoutSig);
+
+        // Use JACS verifyString to verify
+        const isValid = jacs.verifyString(dataToVerify, signature, publicKeyBuffer, algorithm);
+
+        return {
+          result: {
+            valid: isValid,
+            algorithm,
+            agentId: doc.jacsAgentId || doc.agentId,
+            documentId: doc.jacsId || doc.id,
+            timestamp: doc.jacsTimestamp || doc.timestamp,
+          },
+        };
+      } catch (err: any) {
+        return { error: `Verification failed: ${err.message}` };
+      }
     },
   });
 }
