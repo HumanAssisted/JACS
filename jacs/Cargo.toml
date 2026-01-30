@@ -82,6 +82,7 @@ hex = "0.4"
 hickory-resolver = { version = "0.24", features = ["dnssec-ring"] }
 hkdf = "0.12"
 zeroize = "1.8"
+pbkdf2 = { version = "0.12", features = ["simple"] }
 
 
 tracing = "0.1"

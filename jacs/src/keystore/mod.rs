@@ -1,5 +1,33 @@
 use std::error::Error;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
+/// Set secure file permissions on key files (Unix only)
+/// Private keys get 0600 (owner read/write), directories get 0700 (owner rwx)
+#[cfg(unix)]
+fn set_secure_permissions(path: &str, is_directory: bool) -> Result<(), Box<dyn Error>> {
+    use std::fs;
+    use std::path::Path;
+
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(()); // File doesn't exist yet, skip
+    }
+
+    let mode = if is_directory { 0o700 } else { 0o600 };
+    let permissions = fs::Permissions::from_mode(mode);
+    fs::set_permissions(path, permissions)?;
+
+    Ok(())
+}
+
+/// No-op on non-Unix systems
+#[cfg(not(unix))]
+fn set_secure_permissions(_path: &str, _is_directory: bool) -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeyBackend {
     FsEncrypted,
@@ -80,7 +108,7 @@ impl KeyStore for FsEncryptedStore {
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
 
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)?.unwrap_or_default();
-        if !password.is_empty() {
+        let final_priv_path = if !password.is_empty() {
             let enc = encrypt_private_key(&priv_key)?;
             let final_priv = if !priv_path.ends_with(".enc") {
                 format!("{}.enc", priv_path)
@@ -88,10 +116,18 @@ impl KeyStore for FsEncryptedStore {
                 priv_path.clone()
             };
             storage.save_file(&final_priv, &enc)?;
+            final_priv
         } else {
             storage.save_file(&priv_path, &priv_key)?;
-        }
+            priv_path.clone()
+        };
         storage.save_file(&pub_path, &pub_key)?;
+
+        // Set secure file permissions (0600 for private key, 0700 for key directory)
+        // This prevents other users on shared systems from reading private keys
+        set_secure_permissions(&final_priv_path, false)?;
+        set_secure_permissions(&pub_path, false)?;
+        set_secure_permissions(&key_dir, true)?;
 
         Ok((priv_key, pub_key))
     }

@@ -131,6 +131,23 @@
 ==== 
 ## 0.3.6
 
+### Security
+
+- **[CRITICAL] Fixed key derivation**: Changed from single SHA-256 hash to proper PBKDF2-HMAC-SHA256 with 100,000 iterations for deriving encryption keys from passwords. The previous single-hash approach was vulnerable to brute-force attacks.
+
+- **[CRITICAL] Fixed crypto panic handling**: Replaced `.expect()` with proper `.map_err()` error handling in AES-GCM encryption/decryption. Crypto failures now return proper errors instead of panicking, which could cause denial of service.
+
+- **[HIGH] Fixed foreign signature verification**: The `verify_wrapped_artifact` function now properly returns `Unverified` status for foreign agent signatures when the public key is not available, rather than incorrectly indicating signatures were verified. Added `VerificationStatus` enum to explicitly distinguish between `Verified`, `SelfSigned`, `Unverified`, and `Invalid` states.
+
+- **[HIGH] Fixed parent signature verification**: The `verify_parent_signatures` function now actually verifies parent signatures recursively. Previously it always returned true regardless of verification status.
+
+- Added `serial_test` for test isolation to prevent environment variable conflicts between tests.
+
+- Added `regenerate_test_keys.rs` utility example for re-encrypting test fixtures with the new KDF.
+
+- **[MEDIUM] Fixed jacsnpm global singleton**: Refactored from global `lazy_static!` mutex to `JacsAgent` NAPI class pattern. Multiple agents can now be used concurrently in the same Node.js process. Legacy functions preserved for backwards compatibility but marked deprecated.
+
+- **[MEDIUM] Added secure file permissions**: Private keys now get 0600 permissions (owner read/write only) and key directories get 0700 (owner rwx only) on Unix systems. This prevents other users on shared systems from reading private keys.
 
 ### devex
 - [x] add updates to book
