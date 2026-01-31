@@ -13,6 +13,7 @@
 - [Creating an Agent](rust/agent.md)
 - [Working with Documents](rust/documents.md)
 - [Creating and Using Agreements](rust/agreements.md)
+- [DNS-Based Verification](rust/dns.md)
 - [Rust Library API](rust/library.md)
 - [Observability](rust/observability.md)
 
@@ -47,6 +48,7 @@
 
 ## Integrations
 - [Model Context Protocol (MCP)](integrations/mcp.md)
+- [OpenClaw](integrations/openclaw.md)
 - [Web Servers](integrations/web-servers.md)
 - [Databases](integrations/databases.md)
 

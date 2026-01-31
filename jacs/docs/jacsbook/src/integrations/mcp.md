@@ -1,1 +1,399 @@
 # Model Context Protocol (MCP)
+
+JACS provides comprehensive integration with the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling cryptographically signed and verified communication between AI agents and MCP servers.
+
+## What is MCP?
+
+Model Context Protocol is an open standard created by Anthropic for AI models to securely access external tools, data, and services. MCP defines:
+
+- **Tools**: Functions that AI models can call
+- **Resources**: Data sources that models can read
+- **Prompts**: Pre-defined prompt templates
+- **Transports**: Communication channels (STDIO, SSE, WebSocket)
+
+## Why JACS + MCP?
+
+JACS enhances MCP by adding a security layer that standard MCP lacks:
+
+| Feature | Standard MCP | JACS MCP |
+|---------|-------------|----------|
+| Message Signing | No | Yes |
+| Identity Verification | No | Yes |
+| Tamper Detection | No | Yes |
+| Audit Trail | No | Yes |
+| Non-Repudiation | No | Yes |
+
+This makes JACS MCP suitable for:
+- Multi-agent systems requiring trust
+- Financial and legal AI applications
+- Healthcare AI systems
+- Enterprise deployments
+- Any scenario where message authenticity matters
+
+## Architecture
+
+JACS uses a **transport proxy pattern** that wraps any MCP transport with cryptographic signing and verification:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      MCP Application                         │
+├─────────────────────────────────────────────────────────────┤
+│                       MCP SDK                                │
+├─────────────────────────────────────────────────────────────┤
+│                  JACS Transport Proxy                        │
+│  ┌─────────────┐                    ┌──────────────┐        │
+│  │ Outgoing:   │                    │ Incoming:    │        │
+│  │ signRequest │                    │ verifyResp   │        │
+│  └─────────────┘                    └──────────────┘        │
+├─────────────────────────────────────────────────────────────┤
+│               Underlying Transport                           │
+│           (STDIO / SSE / WebSocket)                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+1. **Outgoing Messages**: The proxy intercepts JSON-RPC messages and signs them with the agent's private key
+2. **Incoming Messages**: The proxy verifies signatures before passing messages to the application
+3. **Graceful Fallback**: If verification fails, messages can be passed through as plain JSON for interoperability
+
+## Quick Start
+
+### Node.js
+
+```javascript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { z } from 'zod';
+
+// Create transport with JACS encryption
+const baseTransport = new StdioServerTransport();
+const secureTransport = createJACSTransportProxy(
+  baseTransport,
+  "./jacs.config.json",
+  "server"
+);
+
+// Create MCP server
+const server = new McpServer({
+  name: "my-secure-server",
+  version: "1.0.0"
+});
+
+// Register tools (standard MCP API)
+server.tool("add", {
+  a: z.number(),
+  b: z.number()
+}, async ({ a, b }) => {
+  return { content: [{ type: "text", text: `${a + b}` }] };
+});
+
+// Connect with JACS encryption
+await server.connect(secureTransport);
+```
+
+### Python
+
+```python
+import jacs
+from jacs.mcp import JACSMCPServer
+from fastmcp import FastMCP
+import uvicorn
+
+# Initialize JACS agent
+agent = jacs.JacsAgent()
+agent.load("./jacs.config.json")
+
+# Create FastMCP server with JACS authentication
+mcp = JACSMCPServer(FastMCP("Secure Server"))
+
+@mcp.tool()
+def add(a: int, b: int) -> str:
+    """Add two numbers"""
+    return str(a + b)
+
+# Get ASGI app with JACS middleware
+app = mcp.sse_app()
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="localhost", port=8000)
+```
+
+## Language Support
+
+JACS provides native MCP integration for both major platforms:
+
+### Node.js (jacsnpm)
+
+The Node.js integration uses a transport proxy pattern that works with any MCP transport:
+
+- **STDIO**: For CLI tools and subprocess communication
+- **SSE**: For web-based servers
+- **WebSocket**: For bidirectional streaming
+
+Key classes:
+- `JACSTransportProxy` - Wraps any transport with signing/verification
+- `createJACSTransportProxy()` - Factory function
+
+See [Node.js MCP Integration](../nodejs/mcp.md) for complete documentation.
+
+### Python (jacspy)
+
+The Python integration uses middleware wrappers for FastMCP:
+
+- **JACSMCPServer** - Wraps FastMCP servers with authentication
+- **JACSMCPClient** - Wraps FastMCP clients with signing
+
+Key classes:
+- `JACSMCPServer` - Server wrapper with JACS middleware
+- `JACSMCPClient` - Client wrapper with interceptors
+
+See [Python MCP Integration](../python/mcp.md) for complete documentation.
+
+## Message Flow
+
+### Tool Call Example
+
+When a client calls a tool on a JACS-enabled MCP server:
+
+```
+Client                          Server
+  │                               │
+  │  1. Create JSON-RPC request   │
+  │  2. Sign with signRequest()   │
+  │  ──────────────────────────>  │
+  │                               │ 3. Verify with verifyRequest()
+  │                               │ 4. Execute tool
+  │                               │ 5. Sign response with signResponse()
+  │  <──────────────────────────  │
+  │  6. Verify with verifyResponse() │
+  │  7. Extract payload           │
+```
+
+### Signed Message Structure
+
+A JACS-signed MCP message contains:
+
+```json
+{
+  "jacsId": "unique-document-id",
+  "jacsVersion": "version-uuid",
+  "jacsSignature": {
+    "agentID": "signing-agent-id",
+    "agentVersion": "agent-version",
+    "date": "2024-01-15T10:30:00Z",
+    "signature": "base64-signature",
+    "signingAlgorithm": "ring-Ed25519"
+  },
+  "jacsSha256": "content-hash",
+  "payload": {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": { "name": "add", "arguments": { "a": 5, "b": 3 } },
+    "id": 1
+  }
+}
+```
+
+## Configuration
+
+### Server Configuration
+
+```json
+{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_agent_key_algorithm": "ring-Ed25519",
+  "jacs_agent_id_and_version": "server-agent-id:version",
+  "jacs_default_storage": "fs"
+}
+```
+
+### Client Configuration
+
+Each MCP client needs its own JACS agent identity:
+
+```json
+{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_agent_key_algorithm": "ring-Ed25519",
+  "jacs_agent_id_and_version": "client-agent-id:version",
+  "jacs_default_storage": "fs"
+}
+```
+
+## Transports
+
+### STDIO
+
+Best for CLI tools and subprocess communication:
+
+```javascript
+// Node.js
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+const baseTransport = new StdioServerTransport();
+const secureTransport = createJACSTransportProxy(
+  baseTransport,
+  "./jacs.config.json",
+  "server"
+);
+```
+
+**Important**: Debug logging goes to `stderr` to keep `stdout` clean for JSON-RPC.
+
+### Server-Sent Events (SSE)
+
+For web-based MCP servers:
+
+```python
+# Python with FastMCP
+from jacs.mcp import JACSMCPServer
+from fastmcp import FastMCP
+
+mcp = JACSMCPServer(FastMCP("Web Server"))
+app = mcp.sse_app()  # Returns ASGI app with JACS middleware
+```
+
+```javascript
+// Node.js with Express
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import express from 'express';
+
+const app = express();
+app.get('/sse', (req, res) => {
+  const baseTransport = new SSEServerTransport('/messages', res);
+  const secureTransport = createJACSTransportProxy(
+    baseTransport,
+    "./jacs.config.json",
+    "server"
+  );
+  server.connect(secureTransport);
+});
+```
+
+## Security Model
+
+### What Gets Signed
+
+- All JSON-RPC requests and responses
+- Tool calls and results
+- Resource requests and data
+- Prompt requests and templates
+
+### What Gets Verified
+
+- Agent identity (agentID)
+- Message integrity (jacsSha256)
+- Signature validity (jacsSignature)
+- Optional: DNS-based identity verification
+
+### Passthrough Mode
+
+For interoperability with non-JACS MCP systems, the proxy can fall back to plain JSON:
+
+1. Try to verify as JACS artifact
+2. If verification fails, parse as plain JSON
+3. Pass clean message to application
+
+To enforce JACS-only communication, implement custom validation in your tools.
+
+## Debugging
+
+### Enable Debug Logging
+
+```bash
+# Node.js
+export JACS_MCP_DEBUG=true
+
+# Python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+### Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "JACS not operational" | Config path incorrect | Verify config file path |
+| Verification failures | Incompatible keys | Ensure matching key algorithms |
+| Empty responses | Null value handling | Check message serialization |
+| Connection timeouts | Network issues | Verify server is running |
+
+## Best Practices
+
+### 1. Separate Keys for Server and Client
+
+```
+project/
+├── server/
+│   ├── jacs.config.json
+│   └── jacs_keys/
+│       ├── private.pem
+│       └── public.pem
+└── client/
+    ├── jacs.config.json
+    └── jacs_keys/
+        ├── private.pem
+        └── public.pem
+```
+
+### 2. Use TLS for Network Transports
+
+```python
+# Use HTTPS for SSE
+client = JACSMCPClient("https://server.example.com/sse")
+```
+
+### 3. Implement Key Rotation
+
+Update agent versions when rotating keys:
+
+```json
+{
+  "jacs_agent_id_and_version": "my-agent:v2"
+}
+```
+
+### 4. Log Security Events
+
+```python
+# Production logging setup
+import logging
+
+logging.getLogger("jacs").setLevel(logging.INFO)
+logging.getLogger("jacs.security").setLevel(logging.WARNING)
+```
+
+## Example: Multi-Agent System
+
+A complete example with multiple JACS-authenticated agents:
+
+```
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   Agent A        │     │   MCP Server     │     │   Agent B        │
+│  (Data Analyst)  │────>│  (Tool Provider) │<────│  (Report Writer) │
+│                  │     │                  │     │                  │
+│ Signs requests   │     │ Verifies both    │     │ Signs requests   │
+│ Verifies resps   │     │ Signs responses  │     │ Verifies resps   │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+```
+
+Each agent has its own:
+- JACS agent ID and version
+- Private/public key pair
+- Configuration file
+
+The MCP server verifies requests from both agents and signs all responses.
+
+## See Also
+
+- [Node.js MCP Integration](../nodejs/mcp.md) - Node.js specific details
+- [Python MCP Integration](../python/mcp.md) - Python specific details
+- [Security Model](../advanced/security.md) - JACS security architecture
+- [Cryptographic Algorithms](../advanced/crypto.md) - Signing algorithms
+- [Testing](../advanced/testing.md) - Testing MCP integrations

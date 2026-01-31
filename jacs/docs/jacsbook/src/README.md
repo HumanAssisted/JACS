@@ -52,8 +52,13 @@ Choose your implementation and get started in minutes:
 ### Rust CLI
 ```bash
 cargo install jacs
-jacs init  # Create config and agent
-jacs agent create --type "MyAgent"
+jacs init  # Create config, keys, and agent
+```
+
+Or step by step:
+```bash
+jacs config create
+jacs agent create --create-keys true
 ```
 
 ### Node.js
@@ -62,7 +67,9 @@ npm install jacsnpm
 ```
 ```javascript
 import { JacsAgent } from 'jacsnpm';
-const agent = new JacsAgent('./config.json');
+
+const agent = new JacsAgent();
+agent.load('./config.json');
 ```
 
 ### Python
@@ -71,7 +78,9 @@ pip install jacs
 ```
 ```python
 import jacs
-agent = jacs.Agent("./config.json")
+
+agent = jacs.JacsAgent()
+agent.load("./config.json")
 ```
 
 ## When to Use JACS

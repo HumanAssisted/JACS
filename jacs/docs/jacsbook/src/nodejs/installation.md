@@ -37,17 +37,11 @@ console.log('JACS Node.js bindings loaded successfully!');
 
 // Test basic functionality
 try {
-  const config = {
-    jacs_data_directory: "./test_data",
-    jacs_key_directory: "./test_keys",
-    jacs_default_storage: "fs",
-    jacs_agent_key_algorithm: "Ed25519"
-  };
-  
-  const agent = new JacsAgent(config);
-  console.log('Agent created successfully!');
+  const agent = new JacsAgent();
+  agent.load('./jacs.config.json');
+  console.log('Agent loaded successfully!');
 } catch (error) {
-  console.error('Error creating agent:', error);
+  console.error('Error loading agent:', error);
 }
 ```
 
@@ -91,27 +85,29 @@ import {
 The package includes full TypeScript definitions:
 
 ```typescript
-import { 
-  JacsAgent, 
-  JacsConfig, 
-  AgentDocument, 
-  TaskDocument,
-  AgreementDocument 
-} from 'jacsnpm';
+import { JacsAgent, createConfig, hashString } from 'jacsnpm';
 
-interface MyConfig extends JacsConfig {
-  custom_field?: string;
-}
+// Create an agent instance
+const agent: JacsAgent = new JacsAgent();
 
-const config: MyConfig = {
-  jacs_data_directory: "./data",
-  jacs_key_directory: "./keys",
-  jacs_default_storage: "fs",
-  jacs_agent_key_algorithm: "Ed25519",
-  custom_field: "value"
-};
+// Load configuration from file
+agent.load('./jacs.config.json');
 
-const agent: JacsAgent = new JacsAgent(config);
+// Use utility functions
+const hash: string = hashString('some data');
+
+// Create a configuration string
+const configJson: string = createConfig(
+  undefined,           // jacs_use_security
+  './jacs_data',       // jacs_data_directory
+  './jacs_keys',       // jacs_key_directory
+  undefined,           // jacs_agent_private_key_filename
+  undefined,           // jacs_agent_public_key_filename
+  'ring-Ed25519',      // jacs_agent_key_algorithm
+  undefined,           // jacs_private_key_password
+  undefined,           // jacs_agent_id_and_version
+  'fs'                 // jacs_default_storage
+);
 ```
 
 ## Configuration
@@ -123,7 +119,7 @@ const config = {
   jacs_data_directory: "./jacs_data",      // Where documents are stored
   jacs_key_directory: "./jacs_keys",       // Where keys are stored
   jacs_default_storage: "fs",              // Storage backend
-  jacs_agent_key_algorithm: "Ed25519",     // Signing algorithm
+  jacs_agent_key_algorithm: "ring-Ed25519",     // Signing algorithm
   
   // Optional fields
   jacs_agent_id_and_version: null,         // Existing agent to load
@@ -133,106 +129,108 @@ const config = {
 ```
 
 ### Configuration File
-You can also use a JSON configuration file:
+
+Create a `jacs.config.json` file:
 
 ```json
 {
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys", 
+  "jacs_key_directory": "./jacs_keys",
   "jacs_default_storage": "fs",
-  "jacs_agent_key_algorithm": "Ed25519"
+  "jacs_agent_key_algorithm": "ring-Ed25519"
 }
 ```
 
 Load the configuration:
 ```javascript
-import fs from 'fs';
+import { JacsAgent } from 'jacsnpm';
 
-const config = JSON.parse(fs.readFileSync('./jacs.config.json', 'utf8'));
-const agent = new JacsAgent(config);
+const agent = new JacsAgent();
+agent.load('./jacs.config.json');
 ```
 
 ### Environment Variables
 
-You can override configuration with environment variables:
+JACS reads environment variables that override configuration file settings:
 
 ```bash
 export JACS_DATA_DIRECTORY="./production_data"
 export JACS_KEY_DIRECTORY="./production_keys"
-export JACS_AGENT_KEY_ALGORITHM="RSA"
-```
-
-```javascript
-const config = {
-  jacs_data_directory: process.env.JACS_DATA_DIRECTORY || "./jacs_data",
-  jacs_key_directory: process.env.JACS_KEY_DIRECTORY || "./jacs_keys",
-  jacs_default_storage: "fs",
-  jacs_agent_key_algorithm: process.env.JACS_AGENT_KEY_ALGORITHM || "Ed25519"
-};
+export JACS_AGENT_KEY_ALGORITHM="ring-Ed25519"
+export JACS_DEFAULT_STORAGE="fs"
 ```
 
 ## Storage Backends
 
+Configure storage in `jacs.config.json`:
+
 ### File System (Default)
-```javascript
-const config = {
-  jacs_default_storage: "fs",
-  jacs_data_directory: "./jacs_data",
-  jacs_key_directory: "./jacs_keys"
-};
+```json
+{
+  "jacs_default_storage": "fs",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
+}
 ```
 
 ### S3 Storage
-```javascript
-const config = {
-  jacs_default_storage: "s3",
-  jacs_s3_bucket: "my-jacs-bucket",
-  jacs_s3_region: "us-west-2",
-  jacs_s3_prefix: "jacs/"
-};
+```json
+{
+  "jacs_default_storage": "s3"
+}
 ```
 
-### Azure Blob Storage
-```javascript
-const config = {
-  jacs_default_storage: "azure",
-  jacs_azure_account: "myaccount",
-  jacs_azure_container: "jacs",
-  jacs_azure_key: process.env.AZURE_STORAGE_KEY
-};
+S3 credentials are read from standard AWS environment variables.
+
+### Memory Storage (Testing)
+```json
+{
+  "jacs_default_storage": "memory"
+}
 ```
 
 ## Cryptographic Algorithms
 
-### Ed25519 (Recommended)
-```javascript
-const config = {
-  jacs_agent_key_algorithm: "Ed25519"
-};
+### ring-Ed25519 (Recommended)
+```json
+{
+  "jacs_agent_key_algorithm": "ring-Ed25519"
+}
 ```
 
 **Pros**: Fast, secure, small signatures
-**Cons**: Newer standard, less universal support
+**Cons**: Requires elliptic curve support
 
 ### RSA-PSS
-```javascript
-const config = {
-  jacs_agent_key_algorithm: "RSA"
-};
+```json
+{
+  "jacs_agent_key_algorithm": "RSA-PSS"
+}
 ```
 
 **Pros**: Widely supported, proven security
 **Cons**: Larger signatures, slower
 
-### Post-Quantum (Experimental)
-```javascript
-const config = {
-  jacs_agent_key_algorithm: "Dilithium"
-};
+### pq-dilithium (Post-Quantum)
+```json
+{
+  "jacs_agent_key_algorithm": "pq-dilithium"
+}
 ```
 
 **Pros**: Quantum-resistant
 **Cons**: Experimental, large signatures
+
+### pq2025 (Post-Quantum Hybrid)
+```json
+{
+  "jacs_agent_key_algorithm": "pq2025"
+}
+```
+
+**Pros**: Combines ML-DSA-87 with hybrid approach
+**Cons**: Newest algorithm, largest signatures
 
 ## Development Setup
 
@@ -276,26 +274,23 @@ my-jacs-project/
 ```javascript
 // src/app.js
 import { JacsAgent } from 'jacsnpm';
-import fs from 'fs';
 
-// Load configuration
-const config = JSON.parse(fs.readFileSync('./jacs.config.json', 'utf8'));
+// Create and load agent
+const agent = new JacsAgent();
+agent.load('./jacs.config.json');
 
-// Create agent
-const agent = new JacsAgent(config);
+// Create a document
+const documentJson = JSON.stringify({
+  title: "My First Document",
+  content: "Hello from Node.js!"
+});
 
-// Initialize if needed
-if (!config.jacs_agent_id_and_version) {
-  await agent.generateKeys();
-  const agentDoc = await agent.createAgent({
-    name: "My JACS Agent",
-    description: "Example Node.js JACS agent"
-  });
-  
-  // Update config with agent ID
-  config.jacs_agent_id_and_version = `${agentDoc.jacsId}:${agentDoc.jacsVersion}`;
-  fs.writeFileSync('./jacs.config.json', JSON.stringify(config, null, 2));
-}
+const signedDoc = agent.createDocument(documentJson);
+console.log('Document created:', signedDoc);
+
+// Verify the document
+const isValid = agent.verifyDocument(signedDoc);
+console.log('Document valid:', isValid);
 
 console.log('JACS agent ready!');
 ```
