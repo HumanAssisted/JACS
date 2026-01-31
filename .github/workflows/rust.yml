@@ -31,5 +31,5 @@ jobs:
 
     - name: Run jacs tests
       # Specify the working directory for the test command
-      working-directory: jacs 
-      run: cargo test --verbose
+      working-directory: jacs
+      run: cargo test --verbose --features cli
