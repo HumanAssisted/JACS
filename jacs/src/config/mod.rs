@@ -29,7 +29,7 @@ For example, create_agent_and_load() does not neeed a config file at all?
 
 */
 
-#[derive(Serialize, Deserialize, Default, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct Config {
     #[serde(rename = "$schema")]
     #[serde(default = "default_schema")]
@@ -127,6 +127,28 @@ fn default_key_directory() -> Option<String> {
             } else {
                 Some("./jacs_keys".to_string())
             }
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            schema: default_schema(),
+            jacs_use_security: default_security(),
+            jacs_data_directory: default_data_directory(),
+            jacs_key_directory: default_key_directory(),
+            jacs_agent_private_key_filename: None,
+            jacs_agent_public_key_filename: None,
+            jacs_agent_key_algorithm: default_algorithm(),
+            jacs_private_key_password: None,
+            jacs_agent_id_and_version: None,
+            jacs_default_storage: default_storage(),
+            jacs_agent_domain: None,
+            jacs_dns_validate: None,
+            jacs_dns_strict: None,
+            jacs_dns_required: None,
+            observability: None,
         }
     }
 }
