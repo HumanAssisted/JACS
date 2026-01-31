@@ -905,7 +905,7 @@ fn test_sampling_configuration() {
             },
             resource: Some(ResourceConfig {
                 service_name: "jacs-sampling-test".to_string(),
-                service_version: Some("0.3.6".to_string()),
+                service_version: Some("0.4.0".to_string()),
                 environment: Some("test".to_string()),
                 attributes: HashMap::new(),
             }),
@@ -1078,7 +1078,7 @@ fn test_full_production_configuration() {
             },
             resource: Some(ResourceConfig {
                 service_name: "jacs-test".to_string(),
-                service_version: Some("0.3.6".to_string()),
+                service_version: Some("0.4.0".to_string()),
                 environment: Some("test".to_string()),
                 attributes: resource_attributes,
             }),
@@ -1112,7 +1112,7 @@ fn test_full_production_configuration() {
     let mut tags = HashMap::new();
     tags.insert("config".to_string(), "full_production".to_string());
     tags.insert("service".to_string(), "jacs-test".to_string());
-    tags.insert("version".to_string(), "0.3.6".to_string());
+    tags.insert("version".to_string(), "0.4.0".to_string());
 
     increment_counter("prod_config_test", 10, Some(tags.clone()));
     set_gauge("prod_memory_usage", 1024.0, Some(tags.clone()));

@@ -50,7 +50,7 @@
       },
       "resource": {
         "service_name": "jacs",
-        "service_version": "0.3.6",
+        "service_version": "0.4.0",
         "environment": "production",
         "attributes": {
           "team": "platform",
@@ -280,7 +280,7 @@ For remote destinations (OTLP, Prometheus), you can specify authentication heade
     },
     "resource": {
       "service_name": "jacs",
-      "service_version": "0.3.6",
+      "service_version": "0.4.0",
       "environment": "production"
     }
   }
