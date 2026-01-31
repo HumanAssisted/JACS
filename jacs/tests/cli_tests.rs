@@ -24,6 +24,71 @@ mod utils;
 // RUST_BACKTRACE=1 cargo test   --test cli_tests -- --nocapture
 
 #[test]
+fn test_agent_lookup_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+
+    cmd.arg("agent").arg("lookup").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Look up another agent's public key"))
+        .stdout(predicate::str::contains("<domain>"))
+        .stdout(predicate::str::contains("--no-dns"))
+        .stdout(predicate::str::contains("--strict"));
+
+    Ok(())
+}
+
+#[test]
+fn test_agent_lookup_nonexistent_domain() -> Result<(), Box<dyn Error>> {
+    // Test lookup against a domain that definitely won't have JACS configured
+    // This tests that the CLI handles "not found" cases gracefully
+    let mut cmd = Command::cargo_bin("jacs")?;
+
+    cmd.arg("agent")
+        .arg("lookup")
+        .arg("example.com")
+        .arg("--no-dns"); // Skip DNS to speed up test
+
+    cmd.assert()
+        .success() // Should succeed even if endpoint returns 404
+        .stdout(predicate::str::contains("Agent Lookup: example.com"))
+        .stdout(predicate::str::contains("Public Key"))
+        .stdout(predicate::str::contains("DNS TXT Record: Skipped"));
+
+    Ok(())
+}
+
+#[test]
+fn test_agent_lookup_with_dns() -> Result<(), Box<dyn Error>> {
+    // Test lookup with DNS enabled (will fail to find record but should handle gracefully)
+    let mut cmd = Command::cargo_bin("jacs")?;
+
+    cmd.arg("agent").arg("lookup").arg("example.com");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Agent Lookup: example.com"))
+        .stdout(predicate::str::contains("DNS TXT Record"))
+        .stdout(predicate::str::contains("No DNS TXT record found"));
+
+    Ok(())
+}
+
+#[test]
+fn test_agent_lookup_missing_domain() -> Result<(), Box<dyn Error>> {
+    // Test that missing domain argument is handled
+    let mut cmd = Command::cargo_bin("jacs")?;
+
+    cmd.arg("agent").arg("lookup");
+
+    cmd.assert()
+        .failure() // Should fail due to missing required argument
+        .stderr(predicate::str::contains("required"));
+
+    Ok(())
+}
+
+#[test]
 fn test_cli_help() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("jacs")?;
 

@@ -15,6 +15,7 @@ use jacs::config::find_config;
 use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::{load_agent, load_agent_with_dns_strict};
 
+use reqwest;
 use std::env;
 use std::error::Error;
 // use std::os::unix::fs::DirBuilderExt; // unused
@@ -131,6 +132,27 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             .help("Ignore DNS validation entirely.")
                             .action(ArgAction::SetTrue),
                     ),
+                )
+                .subcommand(
+                    Command::new("lookup")
+                        .about("Look up another agent's public key and DNS info from their domain")
+                        .arg(
+                            Arg::new("domain")
+                                .required(true)
+                                .help("Domain to look up (e.g., agent.example.com)"),
+                        )
+                        .arg(
+                            Arg::new("no-dns")
+                                .long("no-dns")
+                                .help("Skip DNS TXT record lookup")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("strict")
+                                .long("strict")
+                                .help("Require DNSSEC validation for DNS lookup")
+                                .action(ArgAction::SetTrue),
+                        ),
                 ),
         )
 
@@ -691,6 +713,100 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     "Agent {} signature verified OK.",
                     agent.get_lookup_id().expect("jacsId")
                 );
+            }
+            Some(("lookup", lookup_matches)) => {
+                let domain = lookup_matches
+                    .get_one::<String>("domain")
+                    .expect("domain required");
+                let skip_dns = *lookup_matches.get_one::<bool>("no-dns").unwrap_or(&false);
+                let strict_dns = *lookup_matches.get_one::<bool>("strict").unwrap_or(&false);
+
+                println!("Agent Lookup: {}\n", domain);
+
+                // Fetch public key from well-known endpoint
+                println!("Public Key (/.well-known/jacs-pubkey.json):");
+                let url = format!("https://{}/.well-known/jacs-pubkey.json", domain);
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .expect("HTTP client");
+                match client.get(&url).send() {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            match response.json::<serde_json::Value>() {
+                                Ok(json) => {
+                                    println!(
+                                        "  Agent ID: {}",
+                                        json.get("agentId")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Not specified")
+                                    );
+                                    println!(
+                                        "  Algorithm: {}",
+                                        json.get("algorithm")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Not specified")
+                                    );
+                                    println!(
+                                        "  Public Key Hash: {}",
+                                        json.get("publicKeyHash")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Not specified")
+                                    );
+                                    if let Some(pk) = json.get("publicKey").and_then(|v| v.as_str()) {
+                                        let preview = if pk.len() > 60 {
+                                            format!("{}...", &pk[..60])
+                                        } else {
+                                            pk.to_string()
+                                        };
+                                        println!("  Public Key: {}", preview);
+                                    }
+                                }
+                                Err(e) => println!("  Error parsing response: {}", e),
+                            }
+                        } else {
+                            println!("  HTTP error: {}", response.status());
+                        }
+                    }
+                    Err(e) => println!("  Error fetching: {}", e),
+                }
+
+                println!();
+
+                // DNS TXT record lookup
+                if !skip_dns {
+                    println!("DNS TXT Record (_v1.agent.jacs.{}):", domain);
+                    let owner = format!("_v1.agent.jacs.{}", domain.trim_end_matches('.'));
+                    let lookup_result = if strict_dns {
+                        dns_bootstrap::resolve_txt_dnssec(&owner)
+                    } else {
+                        dns_bootstrap::resolve_txt_insecure(&owner)
+                    };
+                    match lookup_result {
+                        Ok(txt) => {
+                            // Parse the TXT record
+                            match dns_bootstrap::parse_agent_txt(&txt) {
+                                Ok(parsed) => {
+                                    println!("  Version: {}", parsed.v);
+                                    println!("  Agent ID: {}", parsed.jacs_agent_id);
+                                    println!("  Algorithm: {:?}", parsed.alg);
+                                    println!("  Encoding: {:?}", parsed.enc);
+                                    println!("  Public Key Hash: {}", parsed.digest);
+                                }
+                                Err(e) => println!("  Error parsing TXT: {}", e),
+                            }
+                            println!("  Raw TXT: {}", txt);
+                        }
+                        Err(e) => {
+                            println!("  No DNS TXT record found: {}", e);
+                            if strict_dns {
+                                println!("  (Strict DNSSEC validation was required)");
+                            }
+                        }
+                    }
+                } else {
+                    println!("DNS TXT Record: Skipped (--no-dns)");
+                }
             }
             _ => println!("please enter subcommand see jacs agent --help"),
         },
