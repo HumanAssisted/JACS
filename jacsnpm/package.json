@@ -1,5 +1,5 @@
 {
-  "name": "jacsnpm",
+  "name": "jacs",
   "version": "0.1.0",
   "description": "JACS Node.js bindings with MCP integration",
   "main": "index.js",
@@ -44,8 +44,16 @@
     "mocha": "^11.7.5",
     "sinon": "^21.0.1"
   },
+  "optionalDependencies": {
+    "@jacs/darwin-arm64": "0.1.0",
+    "@jacs/darwin-x64": "0.1.0",
+    "@jacs/linux-x64-gnu": "0.1.0",
+    "@jacs/linux-x64-musl": "0.1.0",
+    "@jacs/linux-arm64-gnu": "0.1.0",
+    "@jacs/win32-x64-msvc": "0.1.0"
+  },
   "napi": {
-    "name": "jacsnpm",
+    "name": "jacs",
     "triples": {
       "defaults": true,
       "additional": [
@@ -54,13 +62,22 @@
       ]
     }
   },
-  "author": "",
+  "author": "HAI.AI",
   "license": "ISC",
+  "homepage": "https://hai.ai/jacs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HumanAssisted/JACS.git"
+  },
   "files": [
     "index.js",
     "index.d.ts",
+    "src/a2a.js",
     "mcp.ts",
+    "mcp.js",
+    "mcp.js.map",
     "http.js",
-    "http.d.ts"
+    "http.d.ts",
+    "*.node"
   ]
 }
