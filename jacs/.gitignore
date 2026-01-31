@@ -16,7 +16,6 @@ Cargo.lock
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-jacs.config.json
 .DS_Store
 tests/fixtures/documents/*
 tests/scratch/*
