@@ -104,6 +104,7 @@ pub fn set_min_test_env_vars() {
         env::set_var("JACS_KEY_DIRECTORY", "tests/fixtures/keys");
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
+        env::set_var("JACS_DATA_DIRECTORY", ".");
     }
 }
 
