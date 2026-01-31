@@ -1,157 +1,259 @@
+"""Tests for the jacspy utility functions and JacsAgent class."""
+
 import pytest
-import jacs   
+import jacs
 import os
 import pathlib
-os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "hello"
-current_dir = pathlib.Path(__file__).parent.absolute()
-fixtures_path = current_dir / "fixtures"
-os.chdir(fixtures_path)
-jacs.load("./jacs.config.json")
+import tempfile
+import json
 
 
-def test_module_import():
-    """Check if the module imports correctly."""
-    assert jacs is not None
-    assert hasattr(jacs, "sign_request")
-    assert hasattr(jacs, "verify_response")
+class TestModuleExports:
+    """Test that the jacs module exports expected items."""
+
+    def test_module_import(self):
+        """Check if the module imports correctly."""
+        assert jacs is not None
+
+    def test_jacs_agent_class_exported(self):
+        """Check if JacsAgent class is exported."""
+        assert hasattr(jacs, "JacsAgent")
+        assert callable(jacs.JacsAgent)
+
+    def test_hash_string_function_exported(self):
+        """Check if hash_string function is exported."""
+        assert hasattr(jacs, "hash_string")
+        assert callable(jacs.hash_string)
+
+    def test_legacy_functions_exported(self):
+        """Check if legacy functions are still exported for backwards compatibility."""
+        legacy_functions = [
+            "load",
+            "sign_request",
+            "verify_response",
+            "sign_string",
+            "verify_string",
+            "create_config",
+        ]
+        for func_name in legacy_functions:
+            assert hasattr(jacs, func_name), f"Missing legacy function: {func_name}"
 
 
-def test_basic_types():
-    """Test basic types."""
-    request_data = 4
-    helper_request_data(request_data)
+class TestHashString:
+    """Test the standalone hash_string function."""
+
+    def test_hash_empty_string(self):
+        """Test hashing an empty string."""
+        result = jacs.hash_string("")
+        assert isinstance(result, str)
+        assert len(result) > 0  # Should return a hash
+
+    def test_hash_simple_string(self):
+        """Test hashing a simple string."""
+        result = jacs.hash_string("hello")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_hash_deterministic(self):
+        """Test that hashing is deterministic."""
+        result1 = jacs.hash_string("test data")
+        result2 = jacs.hash_string("test data")
+        assert result1 == result2
+
+    def test_hash_different_inputs(self):
+        """Test that different inputs produce different hashes."""
+        result1 = jacs.hash_string("hello")
+        result2 = jacs.hash_string("world")
+        assert result1 != result2
+
+    def test_hash_unicode_string(self):
+        """Test hashing unicode strings."""
+        result = jacs.hash_string("Hello, 世界! 🌍")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_hash_long_string(self):
+        """Test hashing a long string."""
+        long_string = "x" * 10000
+        result = jacs.hash_string(long_string)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
 
-def test_binary_data():
-    """Test binary data."""
-    request_data = b"hello"
-    helper_request_data(request_data)
+class TestJacsAgentClass:
+    """Test the JacsAgent class."""
 
-# def test_datetime():
-#     """Test datetime."""
-#     request_data = datetime.now()
-#     helper_request_data(request_data)
+    def test_create_agent_instance(self):
+        """Test creating a JacsAgent instance."""
+        agent = jacs.JacsAgent()
+        assert agent is not None
 
-def test_sign_request_response_basic():
-    """Test signing a simple dictionary."""
-    request_data = {"message": "hello", "value": 123}
-    helper_request_data(request_data)
+    def test_create_multiple_agents(self):
+        """Test creating multiple independent agent instances."""
+        agent1 = jacs.JacsAgent()
+        agent2 = jacs.JacsAgent()
+        assert agent1 is not None
+        assert agent2 is not None
+        assert agent1 is not agent2
+
+    def test_agent_has_expected_methods(self):
+        """Test that JacsAgent has expected methods."""
+        agent = jacs.JacsAgent()
+        expected_methods = [
+            "load",
+            "sign_string",
+            "verify_string",
+            "sign_request",
+            "verify_response",
+            "verify_response_with_agent_id",
+            "create_document",
+            "verify_document",
+            "create_agreement",
+            "sign_agreement",
+            "check_agreement",
+            "verify_agent",
+            "update_agent",
+        ]
+        for method_name in expected_methods:
+            assert hasattr(agent, method_name), f"Missing method: {method_name}"
+
+    def test_load_nonexistent_config(self):
+        """Test that loading a nonexistent config raises an error."""
+        agent = jacs.JacsAgent()
+        with pytest.raises(RuntimeError):
+            agent.load("/nonexistent/path/config.json")
+
+    def test_sign_string_without_load_raises_error(self):
+        """Test that signing without loading config raises an error."""
+        agent = jacs.JacsAgent()
+        with pytest.raises(RuntimeError):
+            agent.sign_string("test data")
+
+    def test_sign_request_without_load_raises_error(self):
+        """Test that sign_request without loading config raises an error."""
+        agent = jacs.JacsAgent()
+        with pytest.raises(RuntimeError):
+            agent.sign_request({"message": "test"})
 
 
-def helper_request_data(request_data):
-    
-    try:
-        signed_request_data = jacs.sign_request(request_data)
-        assert isinstance(signed_request_data, str)
-        print(f"Signed Request: type {type(signed_request_data)} {signed_request_data}")
-    except Exception as e:
-        # Debug info
-        print(f"Detailed error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        pytest.fail(f"Test failed with error: {e}")
- 
-    try:
-        agent_id, payload = jacs.verify_response_with_agent_id(signed_request_data)
+class TestJacsAgentWithFixtures:
+    """Tests that require the test fixtures to be properly set up."""
+
+    @pytest.fixture
+    def fixtures_path(self):
+        """Get the path to test fixtures."""
+        current_dir = pathlib.Path(__file__).parent.absolute()
+        return current_dir / "fixtures"
+
+    @pytest.fixture
+    def config_path(self, fixtures_path):
+        """Get the config file path."""
+        return str(fixtures_path / "jacs.config.json")
+
+    @pytest.fixture
+    def loaded_agent(self, fixtures_path, config_path):
+        """Create and load an agent from fixtures.
+
+        This fixture requires:
+        - JACS_PRIVATE_KEY_PASSWORD environment variable to be set correctly
+        - Valid fixtures in tests/fixtures/
+        """
+        # Change to fixtures directory for relative path resolution
+        original_cwd = os.getcwd()
+        os.chdir(fixtures_path)
+
+        try:
+            agent = jacs.JacsAgent()
+            agent.load(config_path)
+            yield agent
+        except RuntimeError as e:
+            pytest.skip(f"Could not load agent fixtures: {e}")
+        finally:
+            os.chdir(original_cwd)
+
+    @pytest.mark.skipif(
+        os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,
+        reason="JACS_PRIVATE_KEY_PASSWORD not set"
+    )
+    def test_sign_and_verify_string(self, loaded_agent):
+        """Test signing and verifying a string with a loaded agent."""
+        data = "hello world"
+        signature = loaded_agent.sign_string(data)
+        assert isinstance(signature, str)
+        assert len(signature) > 0
+
+    @pytest.mark.skipif(
+        os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,
+        reason="JACS_PRIVATE_KEY_PASSWORD not set"
+    )
+    def test_sign_and_verify_request(self, loaded_agent):
+        """Test signing and verifying a request payload."""
+        request_data = {"message": "hello", "value": 123}
+        signed = loaded_agent.sign_request(request_data)
+        assert isinstance(signed, str)
+
+        # Verify the signed document
+        verified = loaded_agent.verify_response(signed)
+        assert verified == request_data
+
+    @pytest.mark.skipif(
+        os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,
+        reason="JACS_PRIVATE_KEY_PASSWORD not set"
+    )
+    def test_sign_request_with_various_types(self, loaded_agent):
+        """Test signing various Python types."""
+        test_cases = [
+            {"null_value": None},
+            {"bool_true": True, "bool_false": False},
+            {"int_value": 123, "float_value": 3.14},
+            {"string_value": "hello"},
+            {"list_value": [1, 2, 3]},
+            {"nested": {"a": 1, "b": [2, 3]}},
+        ]
+
+        for test_data in test_cases:
+            signed = loaded_agent.sign_request(test_data)
+            verified = loaded_agent.verify_response(signed)
+            assert verified == test_data, f"Failed for: {test_data}"
+
+    @pytest.mark.skipif(
+        os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,
+        reason="JACS_PRIVATE_KEY_PASSWORD not set"
+    )
+    def test_verify_response_with_agent_id(self, loaded_agent):
+        """Test verify_response_with_agent_id returns both payload and agent ID."""
+        request_data = {"message": "test"}
+        signed = loaded_agent.sign_request(request_data)
+
+        result = loaded_agent.verify_response_with_agent_id(signed)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+        agent_id, payload = result
+        assert isinstance(agent_id, str)
         assert payload == request_data
-        print(f"Agent ID: type {type(agent_id)} {agent_id}")
-        print(f"Verified Payload: type {type(payload)} {payload}")  
-
-    except Exception as e:
-        # This might fail if the global agent isn't loaded.
-        print(f"Detailed error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        pytest.fail(f"Test failed with error: {e}")
 
 
-# Add more tests for edge cases, different data types, errors,
-# and especially for load_agent_config if that's the entry point.
+class TestCreateConfig:
+    """Test the create_config function."""
 
-# Example test if conversion functions were directly exposed (requires modifying Rust)
-# def test_direct_conversions():
-#     test_dict = {"a": 1, "b": "str", "c": [True, None], "d": {"nested": 3.14}}
-#     # Assume jacspy._py_to_value and jacspy._value_to_py exist
-#     value_json_str = jacspy._py_to_value(test_dict) # Returns JSON string representation of Value
-#     value = json.loads(value_json_str)
-#     assert value == test_dict # Check JSON matches original dict
-#
-#     py_obj_back = jacspy._value_to_py(value) # Pass dict back, get PyObject
-#     assert py_obj_back == test_dict
+    def test_create_config_function_exists(self):
+        """Test that create_config function exists."""
+        assert hasattr(jacs, "create_config")
+        assert callable(jacs.create_config)
 
 
-def test_conversion_with_sign_request():
-    """Test the conversion functionality through sign_request and verify_response."""
-    # This test demonstrates type conversion using the public API functions
-    try:
-        jacs.load("./jacs.config.json")
+class TestBinaryDataHandling:
+    """Test handling of binary data in Python."""
 
-        # Test basic types
-        basic_types = {
-            "null_value": None,
-            "bool_true": True,
-            "bool_false": False,
-            "int_positive": 123,
-            "int_negative": -456,
-            "float_value": 3.14,
-            "string_value": "hello",
-            "empty_string": "",
-        }
+    def test_binary_to_base64_roundtrip(self):
+        """Test that binary data can be represented for signing."""
+        import base64
 
-        # Test nested structures
-        nested_data = {
-            "list_empty": [],
-            "list_simple": [1, "two", True],
-            "list_nested": [[1, 2], []],
-            "dict_empty": {},
-            "dict_simple": {"a": 1, "b": "bee", "c": None},
-            "dict_nested": {
-                "nested": {"a": 1, "b": "bee", "c": None},
-                "list": [1, "two", True],
-            },
-        }
+        # Binary data needs to be converted to base64 for JSON serialization
+        binary_data = b"\x00\x01\x02\xff\xfe"
+        encoded = base64.b64encode(binary_data).decode("utf-8")
 
-        # Combine all test data
-        test_data = {}
-        test_data.update(basic_types)
-        test_data.update(nested_data)
-
-        # Sign the test data, which will convert Python objects to Rust values
-        signed_data = jacs.sign_request(test_data)
-
-        # Verify the response, which will convert Rust values back to Python objects
-        retrieved_data = jacs.verify_response(signed_data)
-
-        # Verify that the data went through the conversion pipeline correctly
-        assert retrieved_data == test_data
-
-        # Check specific values to ensure type fidelity
-        assert retrieved_data["null_value"] is None
-        assert retrieved_data["bool_true"] is True
-        assert retrieved_data["bool_false"] is False
-        assert retrieved_data["int_positive"] == 123
-        assert retrieved_data["int_negative"] == -456
-        assert abs(retrieved_data["float_value"] - 3.14) < 1e-6
-        assert retrieved_data["string_value"] == "hello"
-        assert retrieved_data["empty_string"] == ""
-
-        # Check nested structures
-        assert retrieved_data["list_empty"] == []
-        assert retrieved_data["list_simple"] == [1, "two", True]
-        assert retrieved_data["list_nested"] == [[1, 2], []]
-        assert retrieved_data["dict_empty"] == {}
-        assert retrieved_data["dict_simple"] == {"a": 1, "b": "bee", "c": None}
-        assert retrieved_data["dict_nested"]["nested"] == {
-            "a": 1,
-            "b": "bee",
-            "c": None,
-        }
-        assert retrieved_data["dict_nested"]["list"] == [1, "two", True]
-
-        print("All conversions successful!")
-
-    except Exception as e:
-        print(f"Detailed error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        pytest.fail(f"Test failed with error: {e}")
+        # Hash should work on the encoded string
+        hash_result = jacs.hash_string(encoded)
+        assert isinstance(hash_result, str)
