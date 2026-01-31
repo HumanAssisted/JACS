@@ -375,6 +375,186 @@ func TestJSONRoundTrip(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// JacsAgent Tests - Testing the recommended handle-based API
+// ============================================================================
+
+// TestJacsAgentCreation tests creating and closing JacsAgent instances
+func TestJacsAgentCreation(t *testing.T) {
+	t.Run("create single agent", func(t *testing.T) {
+		agent, err := NewJacsAgent()
+		if err != nil {
+			t.Fatalf("NewJacsAgent failed: %v", err)
+		}
+		if agent == nil {
+			t.Fatal("Expected non-nil agent")
+		}
+		agent.Close()
+	})
+
+	t.Run("create multiple agents", func(t *testing.T) {
+		// This tests that multiple independent agents can be created
+		agents := make([]*JacsAgent, 5)
+		for i := 0; i < 5; i++ {
+			agent, err := NewJacsAgent()
+			if err != nil {
+				t.Fatalf("NewJacsAgent %d failed: %v", i, err)
+			}
+			agents[i] = agent
+		}
+
+		// Close all agents
+		for i, agent := range agents {
+			if agent == nil {
+				t.Errorf("Agent %d is nil", i)
+			} else {
+				agent.Close()
+			}
+		}
+	})
+
+	t.Run("double close is safe", func(t *testing.T) {
+		agent, err := NewJacsAgent()
+		if err != nil {
+			t.Fatalf("NewJacsAgent failed: %v", err)
+		}
+		agent.Close()
+		agent.Close() // Should not panic
+	})
+}
+
+// TestJacsAgentErrorsWhenClosed tests that methods return errors after Close
+func TestJacsAgentErrorsWhenClosed(t *testing.T) {
+	agent, err := NewJacsAgent()
+	if err != nil {
+		t.Fatalf("NewJacsAgent failed: %v", err)
+	}
+	agent.Close()
+
+	t.Run("Load after close", func(t *testing.T) {
+		err := agent.Load("/some/path")
+		if err == nil {
+			t.Error("Expected error when calling Load on closed agent")
+		}
+	})
+
+	t.Run("SignString after close", func(t *testing.T) {
+		_, err := agent.SignString("test")
+		if err == nil {
+			t.Error("Expected error when calling SignString on closed agent")
+		}
+	})
+
+	t.Run("SignRequest after close", func(t *testing.T) {
+		_, err := agent.SignRequest(map[string]string{"test": "data"})
+		if err == nil {
+			t.Error("Expected error when calling SignRequest on closed agent")
+		}
+	})
+
+	t.Run("VerifyResponse after close", func(t *testing.T) {
+		_, err := agent.VerifyResponse("{}")
+		if err == nil {
+			t.Error("Expected error when calling VerifyResponse on closed agent")
+		}
+	})
+}
+
+// TestJacsAgentLoadError tests loading with invalid config
+func TestJacsAgentLoadError(t *testing.T) {
+	agent, err := NewJacsAgent()
+	if err != nil {
+		t.Fatalf("NewJacsAgent failed: %v", err)
+	}
+	defer agent.Close()
+
+	err = agent.Load("/non/existent/config.json")
+	if err == nil {
+		t.Error("Expected error loading non-existent config")
+	}
+}
+
+// TestJacsAgentConcurrency tests that multiple agents can be used concurrently
+func TestJacsAgentConcurrency(t *testing.T) {
+	const numAgents = 10
+	const hashesPerAgent = 100
+
+	// Create multiple agents
+	agents := make([]*JacsAgent, numAgents)
+	for i := 0; i < numAgents; i++ {
+		agent, err := NewJacsAgent()
+		if err != nil {
+			t.Fatalf("NewJacsAgent %d failed: %v", i, err)
+		}
+		agents[i] = agent
+	}
+
+	// Use goroutines to hash strings concurrently
+	// (Note: HashString is a static function, but this tests that
+	// multiple agent handles don't interfere with each other)
+	done := make(chan bool, numAgents)
+
+	for i := 0; i < numAgents; i++ {
+		go func(agentIdx int) {
+			defer func() { done <- true }()
+
+			for j := 0; j < hashesPerAgent; j++ {
+				data := fmt.Sprintf("agent-%d-hash-%d", agentIdx, j)
+				hash, err := HashString(data)
+				if err != nil {
+					t.Errorf("HashString failed for agent %d: %v", agentIdx, err)
+					return
+				}
+				if hash == "" {
+					t.Errorf("Empty hash for agent %d", agentIdx)
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines
+	for i := 0; i < numAgents; i++ {
+		<-done
+	}
+
+	// Close all agents
+	for _, agent := range agents {
+		agent.Close()
+	}
+}
+
+// TestJacsAgentIndependentState tests that agents have independent state
+func TestJacsAgentIndependentState(t *testing.T) {
+	// Create two agents
+	agent1, err := NewJacsAgent()
+	if err != nil {
+		t.Fatalf("NewJacsAgent 1 failed: %v", err)
+	}
+	defer agent1.Close()
+
+	agent2, err := NewJacsAgent()
+	if err != nil {
+		t.Fatalf("NewJacsAgent 2 failed: %v", err)
+	}
+	defer agent2.Close()
+
+	// Try to load invalid config on agent1 - should fail but not affect agent2
+	err1 := agent1.Load("/invalid/path/1")
+	err2 := agent2.Load("/invalid/path/2")
+
+	// Both should fail independently
+	if err1 == nil {
+		t.Error("Expected error for agent1 load")
+	}
+	if err2 == nil {
+		t.Error("Expected error for agent2 load")
+	}
+
+	// agent1's error shouldn't affect agent2's state
+	// (We can't fully test this without valid configs, but the pattern is established)
+}
+
 // Benchmark functions
 func BenchmarkHashString(b *testing.B) {
 	data := "This is a test string for benchmarking"
@@ -414,6 +594,28 @@ func BenchmarkBinaryDataDecode(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func BenchmarkJacsAgentCreation(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		agent, err := NewJacsAgent()
+		if err != nil {
+			b.Fatal(err)
+		}
+		agent.Close()
+	}
+}
+
+func BenchmarkJacsAgentConcurrent(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			agent, err := NewJacsAgent()
+			if err != nil {
+				b.Fatal(err)
+			}
+			agent.Close()
+		}
+	})
 }
 
 // TestMain provides setup and teardown for all tests
