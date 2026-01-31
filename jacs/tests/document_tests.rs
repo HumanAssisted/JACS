@@ -23,7 +23,6 @@ fn get_raw_schema_path() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use env_logger;
 
     #[test]
     fn init() {
@@ -107,7 +106,7 @@ fn test_load_custom_schema_and_custom_document() {
 
     info!("loaded valid {}", document.getkey());
 
-    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), document.getvalue()) {
         Ok(_) => info!("Document is valid in test_load_custom_schema_and_custom_document."),
         Err(e) => panic!(
             "Document validation error in test_load_custom_schema_and_custom_document: {}",
@@ -163,7 +162,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     };
 
     info!("Document loaded, proceeding to validate document.");
-    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), document.getvalue()) {
         Ok(()) => {
             info!("Document validation succeeded, which should not happen.");
             panic!(
@@ -229,11 +228,11 @@ fn test_load_custom_schema_and_new_custom_document() {
         ),
     };
 
-    info!("loaded valid doc {}", document.to_string());
+    info!("loaded valid doc {}", document);
 
     let document_key = document.getkey();
 
-    let document_ref = match agent.get_document(&document_key) {
+    let _document_ref = match agent.get_document(&document_key) {
         Ok(doc_ref) => doc_ref,
         Err(e) => panic!(
             "Error in test_load_custom_schema_and_new_custom_document getting document: {}",
@@ -241,7 +240,7 @@ fn test_load_custom_schema_and_new_custom_document() {
         ),
     };
 
-    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), document.getvalue()) {
         Ok(_) => info!("Document is valid in test_load_custom_schema_and_new_custom_document."),
         Err(e) => panic!(
             "Document validation error in test_load_custom_schema_and_new_custom_document: {}",
@@ -312,7 +311,7 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!(
         "test_load_custom_schema_and_new_custom_document_agent_two: Attempting to validate document with custom schema"
     );
-    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), document.getvalue()) {
         Ok(_) => info!(
             "test_load_custom_schema_and_new_custom_document_agent_two: Document validation completed"
         ),
@@ -392,7 +391,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         ),
     };
 
-    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), &document.getvalue()) {
+    match agent.validate_document_with_custom_schema(&get_raw_schema_path(), document.getvalue()) {
         Ok(_) => info!(
             "Document is valid in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."
         ),

@@ -101,6 +101,10 @@ pub fn generate_new_docs() {
 pub fn set_min_test_env_vars() {
     unsafe {
         env::set_var("JACS_PRIVATE_KEY_PASSWORD", "secretpassord");
+        env::set_var("JACS_KEY_DIRECTORY", "tests/fixtures/keys");
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
+        env::set_var("JACS_DATA_DIRECTORY", "tests/fixtures");
     }
 }
 
@@ -217,7 +221,7 @@ pub fn set_test_env_vars() {
     unsafe {
         env::set_var("JACS_USE_SECURITY", "false");
         env::set_var("JACS_DATA_DIRECTORY", ".");
-        env::set_var("JACS_KEY_DIRECTORY", ".");
+        env::set_var("JACS_KEY_DIRECTORY", "tests/fixtures/keys");
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");

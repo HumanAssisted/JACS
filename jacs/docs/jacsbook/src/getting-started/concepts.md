@@ -50,9 +50,9 @@ A **Document** is any JSON object that follows JACS conventions for identity, ve
   "jacsSha256": "hash-of-document-content",
   "jacsSignature": {
     "agentID": "agent-uuid",
-    "agentVersion": "agent-version-uuid", 
+    "agentVersion": "agent-version-uuid",
     "signature": "base64-signature",
-    "signingAlgorithm": "Ed25519",
+    "signingAlgorithm": "ring-Ed25519",
     "publicKeyHash": "hash-of-public-key",
     "date": "2024-01-15T10:30:00Z",
     "fields": ["jacsId", "title", "description"]
@@ -64,11 +64,15 @@ A **Document** is any JSON object that follows JACS conventions for identity, ve
 
 | Field | Purpose | Example |
 |-------|---------|---------|
+| `$schema` | JSON Schema reference | URL to schema |
 | `jacsId` | Permanent document identifier | UUID v4 |
 | `jacsVersion` | Version identifier (changes on update) | UUID v4 |
 | `jacsType` | Document type | "agent", "task", "message" |
 | `jacsVersionDate` | When this version was created | RFC 3339 timestamp |
-| `jacsPreviousVersion` | Previous version UUID | UUID v4 or null |
+| `jacsOriginalVersion` | Original version UUID | UUID v4 |
+| `jacsOriginalDate` | Original creation timestamp | RFC 3339 timestamp |
+| `jacsLevel` | Data level/intent | "raw", "config", "artifact", "derived" |
+| `jacsPreviousVersion` | Previous version UUID (optional) | UUID v4 or null |
 | `jacsSha256` | Hash of document content | SHA-256 hex string |
 | `jacsSignature` | Cryptographic signature | Signature object |
 
@@ -202,12 +206,11 @@ JACS uses industry-standard cryptographic primitives for security.
 ### Supported Algorithms
 
 **Current Standards**
-- **Ed25519**: Fast elliptic curve signatures (recommended)
+- **ring-Ed25519**: Fast elliptic curve signatures using the ring library (recommended)
 - **RSA-PSS**: Traditional RSA with probabilistic signature scheme
 
 **Post-Quantum**
-- **Dilithium**: NIST-standardized post-quantum signatures
-- **Falcon**: Alternative post-quantum option
+- **pq-dilithium**: NIST-standardized post-quantum signatures
 
 ### Signature Process
 1. **Content Extraction**: Specific fields are extracted for signing

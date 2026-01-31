@@ -31,7 +31,7 @@ fn test_create_agreement() {
         )
         .expect("create_agreement");
 
-    println!("{}", unsigned_doc.to_string());
+    println!("{}", unsigned_doc);
 
     // agent one  tries and fails to creates agreement document
     let _result = agent.create_agreement(
@@ -104,7 +104,7 @@ fn test_add_and_remove_agents() {
             Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
         )
         .expect("remove_agents_from_agreement");
-    let doc_v3_key = doc_v3.getkey();
+    let _doc_v3_key = doc_v3.getkey();
     println!(
         "doc_v3 agents {:?}",
         doc_v3

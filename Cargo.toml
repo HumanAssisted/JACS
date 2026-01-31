@@ -1,19 +1,19 @@
 [workspace]
 members = [
-    "jacs",   
-    "jacsnpm",       
-     # "mcp-server",      
-    "jacspy"          
+    "jacs",
+    "jacsnpm",
+    "jacspy",
+    "jacs-mcp",
+    "jacsgo/lib"
 ]
 resolver = "3"
-rust-version = "1.85"
 
-
+[workspace.package]
+rust-version = "1.93"
 readme = "README.md"
 authors = ["HAI.AI <engineering@hai.io>"]
 license-file = "LICENSE"
 homepage = "https://humanassisted.github.io/JACS"
 repository = "https://github.com/HumanAssisted/JACS"
 keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
-categories = ["cryptography", "text-processing", "data-structures" ]
-build = "build.rs"
+categories = ["cryptography", "text-processing", "data-structures"]

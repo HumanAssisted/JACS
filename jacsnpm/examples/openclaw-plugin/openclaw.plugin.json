@@ -1,0 +1,48 @@
+{
+  "id": "jacs",
+  "name": "JACS Cryptographic Provenance",
+  "version": "0.1.0",
+  "description": "Add post-quantum cryptographic signatures to all agent communications",
+  "homepage": "https://hai.ai/jacs",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "keyAlgorithm": {
+        "type": "string",
+        "enum": ["pq2025", "pq-dilithium", "ring-Ed25519", "RSA-PSS"],
+        "default": "pq2025",
+        "description": "Cryptographic algorithm for signing (pq2025 recommended for quantum resistance)"
+      },
+      "autoSign": {
+        "type": "boolean",
+        "default": false,
+        "description": "Automatically sign outbound messages (opt-in only)"
+      },
+      "autoVerify": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically verify inbound JACS-signed messages"
+      },
+      "agentName": {
+        "type": "string",
+        "description": "Human-readable agent name"
+      },
+      "agentDescription": {
+        "type": "string",
+        "description": "Agent description for A2A discovery"
+      },
+      "agentDomain": {
+        "type": "string",
+        "description": "Domain for agent identity (DNSSEC validated)"
+      }
+    }
+  },
+  "uiHints": {
+    "keyPassword": {
+      "label": "Private Key Password",
+      "sensitive": true,
+      "placeholder": "Strong password for key encryption"
+    }
+  }
+}

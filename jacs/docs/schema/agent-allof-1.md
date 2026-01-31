@@ -16,9 +16,10 @@ https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1
 
 # 1 Properties
 
-| Property                        | Type     | Required | Nullable       | Defined by                                                                                                                               |
-| :------------------------------ | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
-| [jacsAgentType](#jacsagenttype) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType") |
+| Property                            | Type     | Required | Nullable       | Defined by                                                                                                                                   |
+| :---------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| [jacsAgentType](#jacsagenttype)     | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType")     |
+| [jacsAgentDomain](#jacsagentdomain) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagentdomain.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentDomain") |
 
 ## jacsAgentType
 
@@ -48,3 +49,21 @@ Type of the agent. 'human' indicates a biological entity, 'human-org' indicates 
 | `"human-org"` |             |
 | `"hybrid"`    |             |
 | `"ai"`        |             |
+
+## jacsAgentDomain
+
+Optional domain used for DNSSEC-validated public key fingerprint (\_v1.agent.jacs.<domain>.)
+
+`jacsAgentDomain`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Agent](agent-allof-1-properties-jacsagentdomain.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentDomain")
+
+### jacsAgentDomain Type
+
+`string`

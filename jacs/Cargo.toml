@@ -2,7 +2,7 @@
 name = "jacs"
 version = "0.3.6"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.93"
 resolver = "3"
 
 include = [
@@ -73,24 +73,28 @@ validator = "0.20.0"
 uuid = { version = "1.16.0", features = ["v4", "v7", "js"] }
 env_logger = "0.11.8"
 futures-util = "0.3.31"
-referencing = "0.30.0"
+referencing = "0.33.0"
 futures-executor = "0.3.31"
-update = "0.0.0"
 getset = "0.1.5"
 clap = { version = "4.5.4", features = ["derive", "cargo"], optional = true }
 ratatui = { version = "0.29.0", optional = true }
+hex = "0.4"
+hickory-resolver = { version = "0.24", features = ["dnssec-ring"] }
+hkdf = "0.12"
+zeroize = "1.8"
+pbkdf2 = { version = "0.12", features = ["simple"] }
 
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
-tracing-opentelemetry = "0.31"
-opentelemetry = "0.30.0"
-opentelemetry-otlp = { version = "0.30.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
-opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "experimental_metrics_custom_reader"] }
-opentelemetry-semantic-conventions = "0.30.0"
-opentelemetry-appender-tracing = "0.30.1"
-tokio = { version = "1.0", features = ["rt-multi-thread"] }
+tracing-opentelemetry = { version = "0.31", optional = true }
+opentelemetry = { version = "0.30.0", optional = true }
+opentelemetry-otlp = { version = "0.30.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"], optional = true }
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "experimental_metrics_custom_reader"], optional = true }
+opentelemetry-semantic-conventions = { version = "0.30.0", optional = true }
+opentelemetry-appender-tracing = { version = "0.30.1", optional = true }
+tokio = { version = "1.0", features = ["rt-multi-thread"], optional = true }
 
 # opentelemetry-prometheus = "0.29.1"
 
@@ -123,6 +127,9 @@ ring = "0.17.9"
 reqwest = {  version ="0.12.12", features = ["blocking", "json"] }
 walkdir = "2.5.0"
 object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "http"] }
+# Post-quantum 2025 standards (ML-DSA and ML-KEM)
+fips203 = "0.4.3"
+fips204 = "0.4.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
@@ -135,6 +142,36 @@ required-features = ["cli"]
 
 [features]
 cli = ["dep:clap", "dep:ratatui"]
+
+# Optional convenience helpers (metrics/log wrappers)
+observability-convenience = []
+
+# Server integration surfaces (no deps by default; used by sibling binaries)
+mcp-server = []
+
+# Observability backends are gated behind compile-time features.
+# Default is a minimal core: stderr/file logs only, no remote backends.
+# Enable these features to activate OTLP-based backends and pull in deps.
+otlp-logs = [
+  "dep:opentelemetry",
+  "dep:opentelemetry-otlp",
+  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-appender-tracing",
+  "dep:tokio",
+]
+otlp-metrics = [
+  "dep:opentelemetry",
+  "dep:opentelemetry-otlp",
+  "dep:opentelemetry_sdk",
+  "dep:tokio",
+]
+otlp-tracing = [
+  "dep:opentelemetry",
+  "dep:opentelemetry-otlp",
+  "dep:opentelemetry_sdk",
+  "dep:tracing-opentelemetry",
+  "dep:tokio",
+]
 
 [[bench]]
 name = "sign_and_check_sig"

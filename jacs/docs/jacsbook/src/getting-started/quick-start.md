@@ -36,20 +36,23 @@ jacs init
 
 ### Create Your First Agent
 ```bash
-# Create a specialized agent
-jacs agent create --type "Content Creator" --name "ContentBot"
+# Create an agent (if not done via jacs init)
+# Agent type is defined in the input JSON file or default template
+jacs agent create --create-keys true
 
-# View your agent
-jacs agent show
+# Or provide a custom agent definition file
+jacs agent create --create-keys true -f my-agent.json
+
+# Verify your agent was created correctly
+jacs agent verify
 ```
 
 ### Create and Sign a Task
 ```bash
-# Create a task document
+# Create a task document with name and description
 jacs task create \
-  --title "Write Product Description" \
-  --description "Create compelling copy for new product launch" \
-  --success "Engaging 200-word description completed"
+  -n "Write Product Description" \
+  -d "Create compelling copy for new product launch"
 
 # The task is automatically signed by your agent
 ```
@@ -69,7 +72,7 @@ npm install jacsnpm
 
 ### Basic Setup
 ```javascript
-import { JacsAgent, JacsConfig } from 'jacsnpm';
+import { JacsAgent, createConfig } from 'jacsnpm';
 import fs from 'fs';
 
 // Create configuration
@@ -78,14 +81,15 @@ const config = {
   jacs_data_directory: "./jacs_data",
   jacs_key_directory: "./jacs_keys",
   jacs_default_storage: "fs",
-  jacs_agent_key_algorithm: "Ed25519"
+  jacs_agent_key_algorithm: "ring-Ed25519"
 };
 
 // Save config
 fs.writeFileSync('./jacs.config.json', JSON.stringify(config, null, 2));
 
-// Create agent
-const agent = new JacsAgent('./jacs.config.json');
+// Create agent instance and load configuration
+const agent = new JacsAgent();
+agent.load('./jacs.config.json');
 ```
 
 ### Create Agent Document
@@ -163,9 +167,9 @@ import os
 config = {
     "jacs_agent_id_and_version": None,
     "jacs_data_directory": "./jacs_data",
-    "jacs_key_directory": "./jacs_keys", 
+    "jacs_key_directory": "./jacs_keys",
     "jacs_default_storage": "fs",
-    "jacs_agent_key_algorithm": "Ed25519"
+    "jacs_agent_key_algorithm": "ring-Ed25519"
 }
 
 # Ensure directories exist
@@ -176,8 +180,9 @@ os.makedirs("./jacs_keys", exist_ok=True)
 with open('jacs.config.json', 'w') as f:
     json.dump(config, f, indent=2)
 
-# Create agent
-agent = jacs.Agent("./jacs.config.json")
+# Create agent instance and load configuration
+agent = jacs.JacsAgent()
+agent.load("./jacs.config.json")
 ```
 
 ### Create Agent Document
@@ -271,14 +276,11 @@ Let's verify that the documents are properly signed and can be validated:
 # Verify agent signature
 jacs agent verify
 
-# List all documents
-jacs document list
+# Verify a specific document
+jacs document verify -f ./jacs_data/[document-id].json
 
-# Verify specific task
-jacs document verify --file ./jacs_data/tasks/[task-id].json
-
-# Show task details
-jacs task show --id [task-id]
+# Sign a document
+jacs document sign -f ./jacs_data/[document-id].json
 ```
 
 </div>
@@ -350,26 +352,24 @@ Now let's create a second agent and demonstrate inter-agent communication:
 ```bash
 # Create a second agent configuration
 cp jacs.config.json reviewer.config.json
+# Edit reviewer.config.json to set jacs_agent_id_and_version to null
 
-# Create reviewer agent
-jacs agent create --config reviewer.config.json \
-  --type "Content Reviewer" --name "ReviewBot"
+# Create reviewer agent (uses JACS_CONFIG_PATH environment variable)
+JACS_CONFIG_PATH=./reviewer.config.json jacs agent create --create-keys true
 
-# Create an agreement for the task
-jacs agreement create \
-  --task-id [task-id] \
-  --agents [agent-1-id] [agent-2-id] \
+# Create an agreement on a document
+jacs agreement create -f ./document.json \
+  --agents [agent-1-id],[agent-2-id] \
   --question "Do you agree to collaborate on this content task?"
 
 # Sign the agreement as first agent
-jacs agreement sign --agreement-id [agreement-id]
+jacs agreement sign -f ./document.json
 
-# Sign as second agent (switch config)
-jacs agreement sign --config reviewer.config.json \
-  --agreement-id [agreement-id]
+# Sign as second agent (using reviewer config)
+JACS_CONFIG_PATH=./reviewer.config.json jacs agreement sign -f ./document.json
 
 # Verify agreement is complete
-jacs agreement verify --agreement-id [agreement-id]
+jacs agreement check -f ./document.json
 ```
 
 </div>
@@ -381,11 +381,14 @@ jacs agreement verify --agreement-id [agreement-id]
 <div class="content">
 
 ```javascript
-// Create second agent
+// Create second agent with separate config file
 const reviewerConfig = { ...config };
 reviewerConfig.jacs_agent_id_and_version = null;
 
-const reviewer = new JacsAgent(reviewerConfig);
+fs.writeFileSync('./reviewer.config.json', JSON.stringify(reviewerConfig, null, 2));
+
+const reviewer = new JacsAgent();
+reviewer.load('./reviewer.config.json');
 await reviewer.generateKeys();
 
 const reviewerDoc = await reviewer.createAgent({
@@ -421,11 +424,15 @@ console.log('Agreement complete:', agreementValid);
 <div class="content">
 
 ```python
-# Create second agent
+# Create second agent with separate config file
 reviewer_config = config.copy()
 reviewer_config["jacs_agent_id_and_version"] = None
 
-reviewer = jacs.Agent(reviewer_config)
+with open('reviewer.config.json', 'w') as f:
+    json.dump(reviewer_config, f, indent=2)
+
+reviewer = jacs.JacsAgent()
+reviewer.load("./reviewer.config.json")
 reviewer.generate_keys()
 
 reviewer_doc = reviewer.create_agent({

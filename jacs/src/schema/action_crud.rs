@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 pub fn create_minimal_action(
-    name: &str,
+    _name: &str,
     description: &str,
     tools: Option<Vec<Value>>,
     units: Option<Vec<Value>>,
@@ -23,7 +23,7 @@ pub fn create_minimal_action(
 }
 
 fn add_tool_to_action(action: &mut Value, tool: Value) -> Result<(), String> {
-    if !action.get("tools").is_some() {
+    if action.get("tools").is_none() {
         action["tools"] = json!([]);
     }
     action["tools"]

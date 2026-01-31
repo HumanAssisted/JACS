@@ -65,7 +65,7 @@ pub fn create_minimal_service(
 /// * `Ok(())` - If the tool was added successfully.
 /// * `Err(String)` - If an error occurred while adding the tool.
 fn add_tool_to_service(service: &mut Value, tool: Value) -> Result<(), String> {
-    if !service.get("tools").is_some() {
+    if service.get("tools").is_none() {
         service["tools"] = json!([]);
     }
     service["tools"]
@@ -142,7 +142,7 @@ fn remove_tool_from_service(service: &mut Value, tool: Value) -> Result<(), Stri
 /// * `Ok(())` - If the desired PII was added successfully.
 /// * `Err(String)` - If an error occurred while adding the desired PII.
 fn add_pii_desired_to_service(service: &mut Value, pii: String) -> Result<(), String> {
-    if !service.get("piiDesired").is_some() {
+    if service.get("piiDesired").is_none() {
         service["piiDesired"] = json!([]);
     }
     service["piiDesired"]

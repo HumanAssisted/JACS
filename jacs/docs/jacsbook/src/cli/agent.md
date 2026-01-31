@@ -70,3 +70,44 @@ To make it easier to use, add `jacs_agent_id_and_version` to your config and you
     jacs agent verify
 
 
+## DNS fingerprinting (TXT)
+
+Publish a TXT binding your agent ID to the SHA-256 fingerprint of its public key.
+
+Record name:
+
+```
+_v1.agent.jacs.<domain>.
+```
+
+TXT value:
+
+```
+"v=hai.ai; jacs_agent_id=<GUID>; alg=SHA-256; enc=base64; jac_public_key_hash=<digest>"
+```
+
+Emit commands (strict DNS by default):
+
+```bash
+jacs agent dns --agent-file ./jacs/agent/<ID:VERSION>.json --domain <example.com>
+```
+
+During DNS propagation (allow embedded fallback):
+
+```bash
+jacs agent dns --agent-file ./jacs/agent/<ID:VERSION>.json --domain <example.com> \
+  --provider cloudflare --encoding base64 --no-dns
+
+jacs agent verify -a ./jacs/agent/<ID:VERSION>.json --no-dns
+```
+
+Troubleshooting (DNSSEC):
+
+```bash
+dig +dnssec TXT _v1.agent.jacs.<domain>.
+delv TXT _v1.agent.jacs.<domain>.
+kdig +dnssec TXT _v1.agent.jacs.<domain>.
+drill -DNSSEC TXT _v1.agent.jacs.<domain>.
+```
+
+

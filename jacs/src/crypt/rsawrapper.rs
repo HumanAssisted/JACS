@@ -1,4 +1,4 @@
-use base64::{decode, encode};
+use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
@@ -37,11 +37,11 @@ pub fn sign_string(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let private_key_content_converted =
         std::str::from_utf8(&private_key_content).expect("Failed to convert bytes to string");
-    let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_content_converted)?;
+    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_content_converted)?;
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut OsRng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
-    let signature_base64 = encode(&signature_bytes);
+    let signature_base64 = B64.encode(&signature_bytes);
     // TODO
     // assert_ne!(signature.to_bytes().as_ref(), data);
     debug!(
@@ -53,8 +53,8 @@ pub fn sign_string(
 
 pub fn verify_string(
     public_key_content: Vec<u8>,
-    data: &String,
-    signature_base64: &String,
+    data: &str,
+    signature_base64: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let public_key_content_converted =
         std::str::from_utf8(&public_key_content).expect("Failed to convert bytes to string");
@@ -64,7 +64,7 @@ pub fn verify_string(
         public_key_content_converted
     );
 
-    let public_key = RsaPublicKey::from_public_key_pem(&public_key_content_converted)?;
+    let public_key = RsaPublicKey::from_public_key_pem(public_key_content_converted)?;
 
     debug!("public_key_content_converted pem {:?}", public_key);
 
@@ -77,7 +77,7 @@ pub fn verify_string(
         signature_base64, data
     );
 
-    let signature_bytes = decode(signature_base64)?;
+    let signature_bytes = B64.decode(signature_base64)?;
     debug!("Decoded signature bytes: {:?}", signature_bytes);
 
     let signature = Signature::try_from(signature_bytes.as_slice())?;
@@ -93,10 +93,7 @@ pub fn verify_string(
         Err(e) => {
             let error_message = format!("Signature verification failed: {}", e);
             eprintln!("{}", error_message);
-            Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                error_message,
-            )))
+            Err(Box::new(std::io::Error::other(error_message)))
         }
     }
 }

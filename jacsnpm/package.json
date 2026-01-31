@@ -4,10 +4,19 @@
   "description": "JACS Node.js bindings with MCP integration",
   "main": "index.js",
   "types": "index.d.ts",
+  "overrides": {
+    "body-parser": "^2.2.1",
+    "qs": "^6.14.0"
+  },
   "exports": {
     ".": {
       "import": "./index.js",
+      "require": "./index.js",
       "types": "./index.d.ts"
+    },
+    "./a2a": {
+      "import": "./src/a2a.js",
+      "require": "./src/a2a.js"
     },
     "./mcp": {
       "import": "./mcp.ts"
@@ -22,14 +31,18 @@
     "build:debug": "napi build --platform && npm run build:ts",
     "build:ts": "tsc",
     "install": "npm run build",
-    "test": "node test"
+    "test": "mocha test/**/*.test.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.11.4",
-    "@napi-rs/cli": "^2.16.3"
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@napi-rs/cli": "^2.16.3",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.15"
+    "@types/node": "^22.15",
+    "chai": "^6.2.2",
+    "mocha": "^11.7.5",
+    "sinon": "^21.0.1"
   },
   "napi": {
     "name": "jacsnpm",
@@ -50,4 +63,4 @@
     "http.js",
     "http.d.ts"
   ]
-} 
+}

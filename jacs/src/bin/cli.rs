@@ -11,12 +11,14 @@ use jacs::cli_utils::document::{
     update_documents, verify_documents,
 };
 use jacs::config::find_config;
-use jacs::create_task;
-use jacs::load_agent;
+// use jacs::create_task; // unused
+use jacs::dns::bootstrap as dns_bootstrap;
+use jacs::{load_agent, load_agent_with_dns_strict};
 
+use reqwest;
 use std::env;
 use std::error::Error;
-use std::os::unix::fs::DirBuilderExt;
+// use std::os::unix::fs::DirBuilderExt; // unused
 use std::process;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -40,6 +42,46 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         .subcommand(
             Command::new("agent")
                 .about(" work with a JACS agent")
+                .subcommand(
+                    Command::new("dns")
+                        .about("emit DNS TXT commands for publishing agent fingerprint")
+                        .arg(
+                            Arg::new("agent-file")
+                                .short('a')
+                                .long("agent-file")
+                                .value_parser(value_parser!(String))
+                                .help("Path to agent JSON (optional; defaults via config)"),
+                        )
+                        .arg(
+                            Arg::new("no-dns")
+                                .long("no-dns")
+                                .help("Disable DNS validation; rely on embedded fingerprint")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("require-dns")
+                                .long("require-dns")
+                                .help("Require DNS validation; if domain missing, fail. Not strict (no DNSSEC required).")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("require-strict-dns")
+                                .long("require-strict-dns")
+                                .help("Require strict DNSSEC validation; if domain missing, fail.")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("ignore-dns")
+                                .long("ignore-dns")
+                                .help("Ignore DNS validation entirely.")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(Arg::new("domain").long("domain").value_parser(value_parser!(String)))
+                        .arg(Arg::new("agent-id").long("agent-id").value_parser(value_parser!(String)))
+                        .arg(Arg::new("ttl").long("ttl").value_parser(value_parser!(u32)).default_value("3600"))
+                        .arg(Arg::new("encoding").long("encoding").value_parser(["base64","hex"]).default_value("base64"))
+                        .arg(Arg::new("provider").long("provider").value_parser(["plain","aws","azure","cloudflare"]).default_value("plain"))
+                )
                 .subcommand(
                     Command::new("create")
                         .about(" create an agent")
@@ -65,7 +107,52 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             .short('a')
                             .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
                             .value_parser(value_parser!(String)),
+                    )
+                    .arg(
+                        Arg::new("no-dns")
+                            .long("no-dns")
+                            .help("Disable DNS validation; rely on embedded fingerprint")
+                            .action(ArgAction::SetTrue),
+                    )
+                    .arg(
+                        Arg::new("require-dns")
+                            .long("require-dns")
+                            .help("Require DNS validation; if domain missing, fail. Not strict (no DNSSEC required).")
+                            .action(ArgAction::SetTrue),
+                    )
+                    .arg(
+                        Arg::new("require-strict-dns")
+                            .long("require-strict-dns")
+                            .help("Require strict DNSSEC validation; if domain missing, fail.")
+                            .action(ArgAction::SetTrue),
+                    )
+                    .arg(
+                        Arg::new("ignore-dns")
+                            .long("ignore-dns")
+                            .help("Ignore DNS validation entirely.")
+                            .action(ArgAction::SetTrue),
                     ),
+                )
+                .subcommand(
+                    Command::new("lookup")
+                        .about("Look up another agent's public key and DNS info from their domain")
+                        .arg(
+                            Arg::new("domain")
+                                .required(true)
+                                .help("Domain to look up (e.g., agent.example.com)"),
+                        )
+                        .arg(
+                            Arg::new("no-dns")
+                                .long("no-dns")
+                                .help("Skip DNS TXT record lookup")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("strict")
+                                .long("strict")
+                                .help("Require DNSSEC validation for DNS lookup")
+                                .action(ArgAction::SetTrue),
+                        ),
                 ),
         )
 
@@ -472,6 +559,106 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => println!("please enter subcommand see jacs config --help"),
         },
         Some(("agent", agent_matches)) => match agent_matches.subcommand() {
+            Some(("dns", sub_m)) => {
+                let domain = sub_m.get_one::<String>("domain").cloned();
+                let agent_id_arg = sub_m.get_one::<String>("agent-id").cloned();
+                let ttl = *sub_m.get_one::<u32>("ttl").unwrap();
+                let enc = sub_m
+                    .get_one::<String>("encoding")
+                    .map(|s| s.as_str())
+                    .unwrap_or("base64");
+                let provider = sub_m
+                    .get_one::<String>("provider")
+                    .map(|s| s.as_str())
+                    .unwrap_or("plain");
+
+                // Load agent from optional path, supporting non-strict DNS for propagation
+                let agent_file = sub_m.get_one::<String>("agent-file").cloned();
+                let non_strict = *sub_m.get_one::<bool>("no-dns").unwrap_or(&false);
+                let mut agent: Agent = if let Some(path) = agent_file.clone() {
+                    if non_strict {
+                        load_agent_with_dns_strict(path, false)
+                            .expect("failed to load agent (non-strict)")
+                    } else {
+                        load_agent(Some(path)).expect("failed to load agent")
+                    }
+                } else {
+                    load_agent(None)
+                        .expect("Provide --agent-file or ensure config points to a readable agent")
+                };
+                if *sub_m.get_one::<bool>("ignore-dns").unwrap_or(&false) {
+                    agent.set_dns_validate(false);
+                    agent.set_dns_required(false);
+                    agent.set_dns_strict(false);
+                } else if *sub_m
+                    .get_one::<bool>("require-strict-dns")
+                    .unwrap_or(&false)
+                {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(true);
+                } else if *sub_m.get_one::<bool>("require-dns").unwrap_or(&false) {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(false);
+                } else if non_strict {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(false);
+                    agent.set_dns_strict(false);
+                }
+                let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
+                let pk = agent.get_public_key().expect("public key");
+                let digest = match enc {
+                    "hex" => dns_bootstrap::pubkey_digest_hex(&pk),
+                    _ => dns_bootstrap::pubkey_digest_b64(&pk),
+                };
+                let domain_final = domain
+                    .or_else(|| {
+                        agent
+                            .config
+                            .as_ref()
+                            .and_then(|c| c.jacs_agent_domain().clone())
+                    })
+                    .expect("domain required via --domain or jacs_agent_domain in config");
+
+                let rr = dns_bootstrap::build_dns_record(
+                    &domain_final,
+                    ttl,
+                    &agent_id,
+                    &digest,
+                    if enc == "hex" {
+                        dns_bootstrap::DigestEncoding::Hex
+                    } else {
+                        dns_bootstrap::DigestEncoding::Base64
+                    },
+                );
+
+                println!("Plain/BIND:\n{}", dns_bootstrap::emit_plain_bind(&rr));
+                match provider {
+                    "aws" => println!(
+                        "\nRoute53 change-batch JSON:\n{}",
+                        dns_bootstrap::emit_route53_change_batch(&rr)
+                    ),
+                    "azure" => println!(
+                        "\nAzure CLI:\n{}",
+                        dns_bootstrap::emit_azure_cli(
+                            &rr,
+                            "$RESOURCE_GROUP",
+                            &domain_final,
+                            "_v1.agent.jacs"
+                        )
+                    ),
+                    "cloudflare" => println!(
+                        "\nCloudflare curl:\n{}",
+                        dns_bootstrap::emit_cloudflare_curl(&rr, "$ZONE_ID")
+                    ),
+                    _ => {}
+                }
+                println!(
+                    "\nChecklist: Ensure DNSSEC is enabled for {domain} and DS is published at registrar.",
+                    domain = domain_final
+                );
+            }
             Some(("create", create_matches)) => {
                 // Parse args for the specific agent create command
                 let filename = create_matches.get_one::<String>("filename");
@@ -482,8 +669,43 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             }
             Some(("verify", verify_matches)) => {
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
-
+                let non_strict = *verify_matches.get_one::<bool>("no-dns").unwrap_or(&false);
+                let require_dns = *verify_matches
+                    .get_one::<bool>("require-dns")
+                    .unwrap_or(&false);
+                let require_strict = *verify_matches
+                    .get_one::<bool>("require-strict-dns")
+                    .unwrap_or(&false);
+                let ignore_dns = *verify_matches
+                    .get_one::<bool>("ignore-dns")
+                    .unwrap_or(&false);
+                let mut agent: Agent = if let Some(path) = agentfile.cloned() {
+                    if non_strict {
+                        load_agent_with_dns_strict(path, false).expect("agent file")
+                    } else {
+                        load_agent(Some(path)).expect("agent file")
+                    }
+                } else {
+                    // No path provided; use default loader
+                    load_agent(None).expect("agent file")
+                };
+                if ignore_dns {
+                    agent.set_dns_validate(false);
+                    agent.set_dns_required(false);
+                    agent.set_dns_strict(false);
+                } else if require_strict {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(true);
+                } else if require_dns {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(true);
+                    agent.set_dns_strict(false);
+                } else if non_strict {
+                    agent.set_dns_validate(true);
+                    agent.set_dns_required(false);
+                    agent.set_dns_strict(false);
+                }
                 agent
                     .verify_self_signature()
                     .expect("signature verification");
@@ -491,6 +713,100 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     "Agent {} signature verified OK.",
                     agent.get_lookup_id().expect("jacsId")
                 );
+            }
+            Some(("lookup", lookup_matches)) => {
+                let domain = lookup_matches
+                    .get_one::<String>("domain")
+                    .expect("domain required");
+                let skip_dns = *lookup_matches.get_one::<bool>("no-dns").unwrap_or(&false);
+                let strict_dns = *lookup_matches.get_one::<bool>("strict").unwrap_or(&false);
+
+                println!("Agent Lookup: {}\n", domain);
+
+                // Fetch public key from well-known endpoint
+                println!("Public Key (/.well-known/jacs-pubkey.json):");
+                let url = format!("https://{}/.well-known/jacs-pubkey.json", domain);
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .expect("HTTP client");
+                match client.get(&url).send() {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            match response.json::<serde_json::Value>() {
+                                Ok(json) => {
+                                    println!(
+                                        "  Agent ID: {}",
+                                        json.get("agentId")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Not specified")
+                                    );
+                                    println!(
+                                        "  Algorithm: {}",
+                                        json.get("algorithm")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Not specified")
+                                    );
+                                    println!(
+                                        "  Public Key Hash: {}",
+                                        json.get("publicKeyHash")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Not specified")
+                                    );
+                                    if let Some(pk) = json.get("publicKey").and_then(|v| v.as_str()) {
+                                        let preview = if pk.len() > 60 {
+                                            format!("{}...", &pk[..60])
+                                        } else {
+                                            pk.to_string()
+                                        };
+                                        println!("  Public Key: {}", preview);
+                                    }
+                                }
+                                Err(e) => println!("  Error parsing response: {}", e),
+                            }
+                        } else {
+                            println!("  HTTP error: {}", response.status());
+                        }
+                    }
+                    Err(e) => println!("  Error fetching: {}", e),
+                }
+
+                println!();
+
+                // DNS TXT record lookup
+                if !skip_dns {
+                    println!("DNS TXT Record (_v1.agent.jacs.{}):", domain);
+                    let owner = format!("_v1.agent.jacs.{}", domain.trim_end_matches('.'));
+                    let lookup_result = if strict_dns {
+                        dns_bootstrap::resolve_txt_dnssec(&owner)
+                    } else {
+                        dns_bootstrap::resolve_txt_insecure(&owner)
+                    };
+                    match lookup_result {
+                        Ok(txt) => {
+                            // Parse the TXT record
+                            match dns_bootstrap::parse_agent_txt(&txt) {
+                                Ok(parsed) => {
+                                    println!("  Version: {}", parsed.v);
+                                    println!("  Agent ID: {}", parsed.jacs_agent_id);
+                                    println!("  Algorithm: {:?}", parsed.alg);
+                                    println!("  Encoding: {:?}", parsed.enc);
+                                    println!("  Public Key Hash: {}", parsed.digest);
+                                }
+                                Err(e) => println!("  Error parsing TXT: {}", e),
+                            }
+                            println!("  Raw TXT: {}", txt);
+                        }
+                        Err(e) => {
+                            println!("  No DNS TXT record found: {}", e);
+                            if strict_dns {
+                                println!("  (Strict DNSSEC validation was required)");
+                            }
+                        }
+                    }
+                } else {
+                    println!("DNS TXT Record: Skipped (--no-dns)");
+                }
             }
             _ => println!("please enter subcommand see jacs agent --help"),
         },
@@ -519,7 +835,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
-                let attachments = create_matches.get_one::<String>("attach");
+                let attachments = create_matches
+                    .get_one::<String>("attach")
+                    .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
@@ -546,7 +864,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
-                let attachments = create_matches.get_one::<String>("attach");
+                let attachments = create_matches
+                    .get_one::<String>("attach")
+                    .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");

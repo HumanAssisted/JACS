@@ -1,0 +1,486 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>OpenClaw - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">4.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">5.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">6.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">7.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">8.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">9.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">10.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">11.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">12.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">13.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">14.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">15.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">16.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">17.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">18.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">19.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">20.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">21.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">22.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">23.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">24.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">25.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">26.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">27.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">28.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">29.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">30.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">31.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">32.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/openclaw.html" class="active"><strong aria-hidden="true">33.</strong> OpenClaw</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">34.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">35.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">36.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">37.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">38.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">39.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">40.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">41.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">42.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">43.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="openclaw-integration"><a class="header" href="#openclaw-integration">OpenClaw Integration</a></h1>
+<p>OpenClaw is a personal AI assistant platform. This chapter covers integrating JACS with OpenClaw to enable cryptographically signed agent-to-agent communication.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The JACS OpenClaw plugin enables:</p>
+<ul>
+<li><strong>Bootstrap JACS identity</strong> via <code>openclaw plugin setup jacs</code></li>
+<li><strong>Securely store cryptographic keys</strong> using OpenClaw's configuration system</li>
+<li><strong>Sign and verify all agent communications</strong> with post-quantum cryptographic provenance</li>
+<li><strong>Publish agent identity</strong> via <code>.well-known</code> endpoints</li>
+<li><strong>P2P agent verification</strong> without requiring a central registry</li>
+</ul>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<pre><code class="language-bash"># Install the JACS plugin for OpenClaw
+openclaw plugins install @openclaw/jacs
+</code></pre>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<h3 id="initialize-jacs-identity"><a class="header" href="#initialize-jacs-identity">Initialize JACS Identity</a></h3>
+<pre><code class="language-bash"># Interactive setup wizard
+openclaw jacs init
+</code></pre>
+<p>This will:</p>
+<ol>
+<li>Select a key algorithm (pq2025/dilithium/rsa/ecdsa)</li>
+<li>Generate a cryptographic key pair</li>
+<li>Create an agent identity</li>
+<li>Store keys in <code>~/.openclaw/jacs_keys/</code></li>
+</ol>
+<h3 id="configuration"><a class="header" href="#configuration">Configuration</a></h3>
+<p>The plugin configuration is stored in <code>~/.openclaw/openclaw.json</code>:</p>
+<pre><code class="language-json">{
+  "plugins": {
+    "entries": {
+      "jacs": {
+        "enabled": true,
+        "config": {
+          "keyAlgorithm": "pq2025",
+          "autoSign": false,
+          "autoVerify": false,
+          "agentId": "89fb9d88-6990-420f-8df9-252ccdfdfd3d",
+          "agentName": "My OpenClaw Agent",
+          "agentDescription": "Personal AI assistant with JACS identity"
+        }
+      }
+    }
+  }
+}
+</code></pre>
+<h3 id="configuration-options"><a class="header" href="#configuration-options">Configuration Options</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>keyAlgorithm</code></td><td>string</td><td><code>pq2025</code></td><td>Signing algorithm (pq2025, pq-dilithium, rsa, ecdsa)</td></tr>
+<tr><td><code>autoSign</code></td><td>boolean</td><td><code>false</code></td><td>Automatically sign outbound messages</td></tr>
+<tr><td><code>autoVerify</code></td><td>boolean</td><td><code>false</code></td><td>Automatically verify inbound JACS-signed messages</td></tr>
+<tr><td><code>agentName</code></td><td>string</td><td>-</td><td>Human-readable agent name</td></tr>
+<tr><td><code>agentDescription</code></td><td>string</td><td>-</td><td>Agent description for A2A discovery</td></tr>
+<tr><td><code>agentDomain</code></td><td>string</td><td>-</td><td>Domain for agent identity (DNSSEC validated)</td></tr>
+</tbody></table>
+</div>
+<h2 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h2>
+<pre><code>~/.openclaw/
+├── openclaw.json              # Plugin config (non-sensitive)
+├── jacs/                      # JACS data directory
+│   ├── jacs.config.json       # JACS configuration
+│   └── agent/                 # Agent documents
+└── jacs_keys/                 # Key directory (encrypted)
+    ├── agent.private.pem.enc  # AES-256-GCM encrypted
+    └── agent.public.pem       # Public key (shareable)
+</code></pre>
+<h2 id="cli-commands"><a class="header" href="#cli-commands">CLI Commands</a></h2>
+<h3 id="status"><a class="header" href="#status">Status</a></h3>
+<pre><code class="language-bash">openclaw jacs status
+</code></pre>
+<p>Shows JACS status, agent ID, algorithm, and registration state.</p>
+<h3 id="sign-document"><a class="header" href="#sign-document">Sign Document</a></h3>
+<pre><code class="language-bash">openclaw jacs sign &lt;file&gt;
+</code></pre>
+<p>Sign a JSON document with your JACS identity.</p>
+<h3 id="verify-document"><a class="header" href="#verify-document">Verify Document</a></h3>
+<pre><code class="language-bash">openclaw jacs verify &lt;file&gt;
+</code></pre>
+<p>Verify a JACS-signed document.</p>
+<h3 id="lookup-agent"><a class="header" href="#lookup-agent">Lookup Agent</a></h3>
+<pre><code class="language-bash">openclaw jacs lookup &lt;domain&gt;
+</code></pre>
+<p>Look up another agent's public key from their domain.</p>
+<h3 id="export-agent-card"><a class="header" href="#export-agent-card">Export Agent Card</a></h3>
+<pre><code class="language-bash">openclaw jacs export-card
+</code></pre>
+<p>Export your agent as an A2A Agent Card.</p>
+<h3 id="generate-dns-record"><a class="header" href="#generate-dns-record">Generate DNS Record</a></h3>
+<pre><code class="language-bash">openclaw jacs dns-record &lt;domain&gt;
+</code></pre>
+<p>Generate DNS TXT record commands for publishing your agent fingerprint.</p>
+<h2 id="agent-tools"><a class="header" href="#agent-tools">Agent Tools</a></h2>
+<p>The plugin provides tools for use in agent conversations:</p>
+<h3 id="jacs_sign"><a class="header" href="#jacs_sign">jacs_sign</a></h3>
+<p>Sign a document with JACS cryptographic provenance.</p>
+<pre><code class="language-json">{
+  "name": "jacs_sign",
+  "parameters": {
+    "document": { "message": "hello" },
+    "artifactType": "message"
+  }
+}
+</code></pre>
+<h3 id="jacs_verify"><a class="header" href="#jacs_verify">jacs_verify</a></h3>
+<p>Verify a JACS-signed document.</p>
+<pre><code class="language-json">{
+  "name": "jacs_verify",
+  "parameters": {
+    "document": { "...signed document..." }
+  }
+}
+</code></pre>
+<h3 id="jacs_fetch_pubkey"><a class="header" href="#jacs_fetch_pubkey">jacs_fetch_pubkey</a></h3>
+<p>Fetch another agent's public key from their domain.</p>
+<pre><code class="language-json">{
+  "name": "jacs_fetch_pubkey",
+  "parameters": {
+    "domain": "other-agent.example.com"
+  }
+}
+</code></pre>
+<h3 id="jacs_verify_with_key"><a class="header" href="#jacs_verify_with_key">jacs_verify_with_key</a></h3>
+<p>Verify a document using a fetched public key.</p>
+<pre><code class="language-json">{
+  "name": "jacs_verify_with_key",
+  "parameters": {
+    "document": { "...signed document..." },
+    "publicKey": "-----BEGIN PUBLIC KEY-----..."
+  }
+}
+</code></pre>
+<h3 id="jacs_lookup_agent"><a class="header" href="#jacs_lookup_agent">jacs_lookup_agent</a></h3>
+<p>Lookup a JACS agent by domain or ID.</p>
+<pre><code class="language-json">{
+  "name": "jacs_lookup_agent",
+  "parameters": {
+    "domain": "agent.example.com"
+  }
+}
+</code></pre>
+<h3 id="jacs_create_agreement"><a class="header" href="#jacs_create_agreement">jacs_create_agreement</a></h3>
+<p>Create a multi-party agreement requiring signatures from multiple agents.</p>
+<pre><code class="language-json">{
+  "name": "jacs_create_agreement",
+  "parameters": {
+    "document": { "terms": "..." },
+    "agentIds": ["agent-1-uuid", "agent-2-uuid"],
+    "question": "Do you agree to these terms?"
+  }
+}
+</code></pre>
+<h2 id="well-known-endpoints"><a class="header" href="#well-known-endpoints">Well-Known Endpoints</a></h2>
+<p>When OpenClaw's gateway is running, the plugin serves:</p>
+<h3 id="well-knownagent-cardjson"><a class="header" href="#well-knownagent-cardjson"><code>/.well-known/agent-card.json</code></a></h3>
+<p>A2A v0.4.0 Agent Card with JACS extension.</p>
+<h3 id="well-knownjacs-pubkeyjson"><a class="header" href="#well-knownjacs-pubkeyjson"><code>/.well-known/jacs-pubkey.json</code></a></h3>
+<p>Your agent's public key for verification:</p>
+<pre><code class="language-json">{
+  "publicKey": "-----BEGIN PUBLIC KEY-----...",
+  "publicKeyHash": "sha256-hash",
+  "algorithm": "pq2025",
+  "agentId": "agent-uuid",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+</code></pre>
+<h2 id="p2p-agent-verification"><a class="header" href="#p2p-agent-verification">P2P Agent Verification</a></h2>
+<p>Agents can verify each other without a central registry:</p>
+<h3 id="flow"><a class="header" href="#flow">Flow</a></h3>
+<ol>
+<li><strong>Agent A</strong> publishes their public key at <code>/.well-known/jacs-pubkey.json</code></li>
+<li><strong>Agent A</strong> optionally sets DNS TXT record at <code>_v1.agent.jacs.&lt;domain&gt;.</code></li>
+<li><strong>Agent A</strong> signs a document with <code>jacs_sign</code></li>
+<li><strong>Agent B</strong> receives the signed document</li>
+<li><strong>Agent B</strong> fetches Agent A's key with <code>jacs_fetch_pubkey</code></li>
+<li><strong>Agent B</strong> verifies with <code>jacs_verify_with_key</code></li>
+</ol>
+<h3 id="example-workflow"><a class="header" href="#example-workflow">Example Workflow</a></h3>
+<pre><code>Agent A (agent-a.example.com)          Agent B (agent-b.example.com)
+================================       ================================
+
+1. Initialize JACS
+   openclaw jacs init
+
+2. Publish public key
+   (served at /.well-known/jacs-pubkey.json)
+
+3. Sign a message
+   jacs_sign({ message: "hello" })
+   → signed_doc
+
+4. Send signed_doc to Agent B
+                                       5. Receive signed_doc
+
+                                       6. Fetch Agent A's public key
+                                          jacs_fetch_pubkey("agent-a.example.com")
+                                          → pubkey_a
+
+                                       7. Verify signature
+                                          jacs_verify_with_key(signed_doc, pubkey_a)
+                                          → { valid: true, signer: "agent-a-uuid" }
+</code></pre>
+<h2 id="dns-based-discovery"><a class="header" href="#dns-based-discovery">DNS-Based Discovery</a></h2>
+<p>For additional verification, agents can publish their public key fingerprint in DNS:</p>
+<h3 id="generate-dns-record-1"><a class="header" href="#generate-dns-record-1">Generate DNS Record</a></h3>
+<pre><code class="language-bash">openclaw jacs dns-record agent.example.com
+</code></pre>
+<p>This outputs commands for your DNS provider:</p>
+<pre><code>_v1.agent.jacs.agent.example.com. 3600 IN TXT "v=hai.ai; jacs_agent_id=&lt;UUID&gt;; alg=SHA-256; enc=base64; jac_public_key_hash=&lt;44-char-b64&gt;"
+</code></pre>
+<h3 id="dns-lookup"><a class="header" href="#dns-lookup">DNS Lookup</a></h3>
+<pre><code class="language-bash">openclaw jacs lookup agent.example.com
+</code></pre>
+<p>The plugin will:</p>
+<ol>
+<li>Query DNS TXT record at <code>_v1.agent.jacs.agent.example.com</code></li>
+<li>Fetch full public key from <code>/.well-known/jacs-pubkey.json</code></li>
+<li>Verify the DNS hash matches the fetched key</li>
+</ol>
+<h2 id="security"><a class="header" href="#security">Security</a></h2>
+<h3 id="key-protection"><a class="header" href="#key-protection">Key Protection</a></h3>
+<ul>
+<li>Private keys are encrypted with AES-256-GCM</li>
+<li>Password-derived key using PBKDF2 (100k iterations)</li>
+<li>Keys stored with restricted file permissions</li>
+</ul>
+<h3 id="post-quantum-cryptography"><a class="header" href="#post-quantum-cryptography">Post-Quantum Cryptography</a></h3>
+<p>The default algorithm (<code>pq2025</code> / ML-DSA-87) is quantum-resistant, providing protection against future quantum computing attacks.</p>
+<h3 id="signature-binding"><a class="header" href="#signature-binding">Signature Binding</a></h3>
+<p>Signatures include:</p>
+<ul>
+<li>Document hash (prevents modification)</li>
+<li>Signer's agent ID and version</li>
+<li>Timestamp</li>
+<li>List of signed fields</li>
+</ul>
+<h2 id="skill-usage"><a class="header" href="#skill-usage">Skill Usage</a></h2>
+<p>The plugin provides a skill for agent conversations:</p>
+<pre><code>/jacs sign {"task": "analyze data", "result": "completed"}
+/jacs verify &lt;paste signed document&gt;
+/jacs lookup agent.example.com
+</code></pre>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="jacs-not-initialized"><a class="header" href="#jacs-not-initialized">"JACS not initialized"</a></h3>
+<p>Run <code>openclaw jacs init</code> to set up your JACS identity.</p>
+<h3 id="failed-to-fetch-public-key"><a class="header" href="#failed-to-fetch-public-key">"Failed to fetch public key"</a></h3>
+<p>Verify the domain is correct and serving <code>/.well-known/jacs-pubkey.json</code>.</p>
+<h3 id="signature-verification-failed"><a class="header" href="#signature-verification-failed">"Signature verification failed"</a></h3>
+<ul>
+<li>Check that the document hasn't been modified</li>
+<li>Verify you have the correct public key for the signer</li>
+<li>Ensure the signing algorithm matches</li>
+</ul>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<ul>
+<li><a href="../rust/dns.html">DNS-Based Verification</a> - Detailed DNS setup</li>
+<li><a href="../rust/agreements.html">Agreements</a> - Multi-agent coordination</li>
+<li><a href="mcp.html">MCP Integration</a> - Model Context Protocol</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../integrations/mcp.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../integrations/web-servers.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../integrations/mcp.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../integrations/web-servers.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

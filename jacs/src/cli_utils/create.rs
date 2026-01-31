@@ -2,9 +2,10 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::config::{Config, check_env_vars, set_env_vars};
 use crate::create_minimal_blank_agent;
 use crate::crypt::KeyManager;
+use crate::dns::bootstrap as dns_bootstrap;
 use crate::get_empty_agent;
 use crate::storage::MultiStorage;
-use crate::storage::jenv::{get_required_env_var, set_env_var};
+use crate::storage::jenv::set_env_var;
 use rpassword::read_password;
 use serde_json::{Value, json};
 use std::env;
@@ -106,8 +107,8 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     let jacs_agent_public_key_filename =
         request_string("Enter the public key filename:", "jacs.public.pem");
     let jacs_agent_key_algorithm = request_string(
-        "Enter the agent key algorithm (ring-Ed25519, pq-dilithium, or RSA-PSS)",
-        "RSA-PSS",
+        "Enter the agent key algorithm (pq2025, pq-dilithium, ring-Ed25519, or RSA-PSS)",
+        "pq2025",
     );
     let jacs_default_storage = request_string("Enter the default storage (fs, aws, hai)", "fs");
 
@@ -159,8 +160,12 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     let jacs_use_security = request_string("Use experimental security features", "false");
     let jacs_data_directory = request_string("Directory for data storage", "./jacs");
     let jacs_key_directory = request_string("Directory for keys", "./jacs_keys");
+    let jacs_agent_domain = request_string(
+        "Agent domain for DNSSEC fingerprint (optional, e.g., example.com)",
+        "",
+    );
 
-    let config = Config::new(
+    let mut config = Config::new(
         Some(jacs_use_security),
         Some(jacs_data_directory),
         Some(jacs_key_directory),
@@ -172,7 +177,28 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
         Some(jacs_default_storage),
     );
 
-    let serialized = serde_json::to_string_pretty(&config).unwrap();
+    // insert optional domain if provided
+    if !jacs_agent_domain.trim().is_empty() {
+        // Serialize to Value, add field, then write
+        let mut v = serde_json::to_value(&config).unwrap_or(serde_json::json!({}));
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert(
+                "jacs_agent_domain".to_string(),
+                serde_json::Value::String(jacs_agent_domain.trim().to_string()),
+            );
+        }
+        config = serde_json::from_value(v).unwrap_or(config);
+    }
+
+    // Serialize, but ensure we omit any null fields that may have slipped through
+    let mut value = serde_json::to_value(&config).unwrap_or(serde_json::json!({}));
+    if let Some(obj) = value.as_object_mut() {
+        // Remove optional domain if it ended up as null
+        if obj.get("jacs_agent_domain").is_some_and(|v| v.is_null()) {
+            obj.remove("jacs_agent_domain");
+        }
+    }
+    let serialized = serde_json::to_string_pretty(&value).unwrap();
 
     // Keep using std::fs for config file backup and writing
     // The check and backup logic below is no longer needed as we exit earlier if the file exists.
@@ -328,7 +354,32 @@ pub fn handle_agent_create(
                 .jacs_key_directory()
                 .as_deref()
                 .unwrap_or_default()
-        )
+        );
+        // If a domain is configured, emit DNS fingerprint instructions (non-strict at creation time)
+        agent.set_dns_strict(false);
+        if let Some(domain) = agent
+            .config
+            .as_ref()
+            .and_then(|c| c.jacs_agent_domain().clone())
+            .filter(|s| !s.is_empty())
+            && let Ok(pk) = agent.get_public_key()
+        {
+            let agent_id = agent.get_id().unwrap_or_else(|_| "".to_string());
+            let digest = dns_bootstrap::pubkey_digest_b64(&pk);
+            let rr = dns_bootstrap::build_dns_record(
+                &domain,
+                3600,
+                &agent_id,
+                &digest,
+                dns_bootstrap::DigestEncoding::Base64,
+            );
+            println!("\nDNS (BIND):\n{}\n", dns_bootstrap::emit_plain_bind(&rr));
+            println!(
+                "Use 'jacs agent dns --domain {} --provider <plain|aws|azure|cloudflare>' for provider-specific commands.",
+                domain
+            );
+            println!("Reminder: enable DNSSEC for the zone and publish DS at the registrar.");
+        }
     }
 
     // Use the modified agent string here

@@ -20,6 +20,11 @@
             "ai"
           ],
           "description": "Type of the agent. 'human' indicates a biological entity, 'human-org' indicates a group of people, hybrid' indicates a combination of human and artificial components, 'ai' indicates a fully artificial intelligence."
+        },
+        "jacsAgentDomain": {
+          "type": "string",
+          "description": "Optional domain used for DNSSEC-validated public key fingerprint (_v1.agent.jacs.<domain>.)",
+          "hai": "meta"
         }
       },
       "jacsServices": {

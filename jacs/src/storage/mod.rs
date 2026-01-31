@@ -2,9 +2,8 @@
 use crate::storage::jenv::get_required_env_var;
 use futures_executor::block_on;
 use futures_util::StreamExt;
-use object_store::PutPayload;
 use object_store::{
-    Error as ObjectStoreError, ObjectStore,
+    Error as ObjectStoreError, ObjectStore, PutPayload,
     aws::{AmazonS3, AmazonS3Builder},
     http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,
@@ -13,7 +12,7 @@ use object_store::{
 };
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use strum_macros::{AsRefStr, Display, EnumString};
 use tracing::debug;
 use url::Url;
@@ -65,7 +64,7 @@ impl WebLocalStorage {
 impl ObjectStore for WebLocalStorage {
     async fn put(&self, location: &ObjectPath, bytes: PutPayload) -> Result<(), ObjectStoreError> {
         let data = bytes.into_vec().await?;
-        let encoded = base64::encode(&data);
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
         self.storage
             .set_item(location.as_ref(), &encoded)
             .map_err(|e| ObjectStoreError::Generic {
@@ -97,10 +96,12 @@ impl ObjectStore for WebLocalStorage {
                 )),
             })?;
 
-        let decoded = base64::decode(value).map_err(|e| ObjectStoreError::Generic {
-            store: "WebLocalStorage",
-            source: Box::new(e),
-        })?;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(value)
+            .map_err(|e| ObjectStoreError::Generic {
+                store: "WebLocalStorage",
+                source: Box::new(e),
+            })?;
 
         Ok(GetResult::Stream(Box::pin(futures_util::stream::once(
             async move { Ok(bytes::Bytes::from(decoded)) },
@@ -180,7 +181,7 @@ impl MultiStorage {
 
     pub fn new(storage_type: String) -> Result<Self, ObjectStoreError> {
         let absolute_path = std::env::current_dir().unwrap();
-        return Self::_new(storage_type, absolute_path);
+        Self::_new(storage_type, absolute_path)
     }
 
     pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
@@ -190,7 +191,7 @@ impl MultiStorage {
         let mut _memory: Option<Arc<InMemory>>;
 
         let default_storage: StorageType = StorageType::from_str(&storage_type)
-            .expect(&format!("storage_type {} is not known", storage_type));
+            .unwrap_or_else(|_| panic!("storage_type {} is not known", storage_type));
 
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
@@ -295,10 +296,10 @@ impl MultiStorage {
         } else {
             Err(ObjectStoreError::Generic {
                 store: "MultiStorage",
-                source: Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to save to some storages: {:?}", errors),
-                )),
+                source: Box::new(std::io::Error::other(format!(
+                    "Failed to save to some storages: {:?}",
+                    errors
+                ))),
             })
         }
     }
@@ -379,7 +380,7 @@ impl MultiStorage {
 
         // Delete the original file
         for storage in &self.storages {
-            let from_path = ObjectPath::parse(&Self::clean_path(from))?;
+            let from_path = ObjectPath::parse(Self::clean_path(from))?;
             if let Err(e) = block_on(storage.delete(&from_path)) {
                 // Log error but continue if file doesn't exist or other errors
                 debug!("Error deleting original file during rename: {:?}", e);
@@ -409,16 +410,350 @@ impl MultiStorage {
     }
 }
 
-// #[tokio::main]
-// async fn main() -> Result<(), ObjectStoreError> {
-//     let storage = MultiStorage::new()?;
+use crate::agent::document::JACSDocument;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::error::Error;
 
-//     // Save a file
-//     storage.save_file("example.txt", b"Hello, world!").await?;
+/// Trait for document storage operations
+/// This trait defines methods for storing, retrieving, and querying JACS documents
+pub trait StorageDocumentTraits {
+    // Basic document operations
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>>;
+    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>>;
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>>;
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>>;
+    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>>;
 
-//     // Get a file
-//     let contents = storage.get_file("example.txt").await?;
-//     println!("File contents: {}", String::from_utf8_lossy(&contents));
+    // Advanced query operations (placeholders for now)
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>>;
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>>;
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>>;
+    fn merge_documents(
+        &self,
+        doc_id: &str,
+        v1: &str,
+        v2: &str,
+    ) -> Result<JACSDocument, Box<dyn Error>>;
 
-//     Ok(())
-// }
+    // Bulk operations
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>>;
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>>;
+}
+
+/// Extension to MultiStorage to add document caching support
+pub struct CachedMultiStorage {
+    storage: MultiStorage,
+    cache: Arc<Mutex<HashMap<String, JACSDocument>>>,
+    cache_enabled: bool,
+}
+
+impl CachedMultiStorage {
+    pub fn new(storage: MultiStorage, cache_enabled: bool) -> Self {
+        Self {
+            storage,
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            cache_enabled,
+        }
+    }
+
+    pub fn clear_cache(&self) {
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.clear();
+        }
+    }
+}
+
+impl StorageDocumentTraits for MultiStorage {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+        let key = doc.getkey();
+        let path = format!("documents/{}.json", key);
+        let json_string = serde_json::to_string_pretty(&doc.value)?;
+        self.save_file(&path, json_string.as_bytes())
+            .map_err(|e| Box::new(e) as Box<dyn Error>)
+    }
+
+    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        let path = format!("documents/{}.json", key);
+        let contents = self.get_file(&path, None)?;
+        let json_string = String::from_utf8(contents)?;
+        let value: Value = serde_json::from_str(&json_string)?;
+
+        // Extract required fields from the JSON value
+        let id = value
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing jacsId field")?
+            .to_string();
+        let version = value
+            .get("jacsVersion")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing jacsVersion field")?
+            .to_string();
+        let jacs_type = value
+            .get("jacsType")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing jacsType field")?
+            .to_string();
+
+        Ok(JACSDocument {
+            id,
+            version,
+            value,
+            jacs_type,
+        })
+    }
+
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        // First get the document before removing
+        let doc = self.get_document(key)?;
+
+        // Archive the document
+        let old_path = format!("documents/{}.json", key);
+        let archive_path = format!("documents/archive/{}.json", key);
+
+        // Read the content
+        let contents = self.get_file(&old_path, None)?;
+
+        // Save to archive
+        self.save_file(&archive_path, &contents)?;
+
+        // Note: We don't have a delete method in object_store, so we'll just move to archive
+        // In a real implementation, we might want to add a delete method to MultiStorage
+
+        Ok(doc)
+    }
+
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        let search_prefix = if prefix.is_empty() {
+            "documents/".to_string()
+        } else {
+            format!("documents/{}", prefix)
+        };
+
+        let files = self.list(&search_prefix, None)?;
+
+        // Extract document keys from file paths
+        let mut document_keys = Vec::new();
+        for file in files {
+            if file.ends_with(".json") && !file.contains("/archive/") {
+                // Extract key from path like "documents/id:version.json"
+                if let Some(filename) = file.strip_prefix("documents/")
+                    && let Some(key) = filename.strip_suffix(".json")
+                {
+                    document_keys.push(key.to_string());
+                }
+            }
+        }
+
+        Ok(document_keys)
+    }
+
+    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+        let path = format!("documents/{}.json", key);
+        self.file_exists(&path, None)
+            .map_err(|e| Box::new(e) as Box<dyn Error>)
+    }
+
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        // List all documents and filter by agent_id
+        let all_docs = self.list_documents("")?;
+        let mut agent_docs = Vec::new();
+
+        for doc_key in all_docs {
+            // Document keys are in format "id:version", extract the id
+            if let Some(id) = doc_key.split(':').next()
+                && id == agent_id
+            {
+                agent_docs.push(doc_key);
+            }
+        }
+
+        Ok(agent_docs)
+    }
+
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        // List all documents with this ID prefix
+        let all_docs = self.list_documents("")?;
+        let mut versions = Vec::new();
+
+        for doc_key in all_docs {
+            if doc_key.starts_with(&format!("{}:", document_id)) {
+                versions.push(doc_key);
+            }
+        }
+
+        Ok(versions)
+    }
+
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        let versions = self.get_document_versions(document_id)?;
+
+        if versions.is_empty() {
+            return Err(format!("No documents found with ID: {}", document_id).into());
+        }
+
+        // For now, return the last one in the list
+        // TODO: In the future, implement proper version tree traversal
+        // by checking jacsPreviousVersion field
+        let latest_key = versions.last().unwrap();
+        self.get_document(latest_key)
+    }
+
+    fn merge_documents(
+        &self,
+        _doc_id: &str,
+        _v1: &str,
+        _v2: &str,
+    ) -> Result<JACSDocument, Box<dyn Error>> {
+        // Placeholder implementation
+        // TODO: Implement proper document merging logic
+        Err("Document merging not yet implemented".into())
+    }
+
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+        let mut stored_keys = Vec::new();
+        let mut errors = Vec::new();
+
+        for doc in docs {
+            let key = doc.getkey();
+            match self.store_document(&doc) {
+                Ok(_) => stored_keys.push(key),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(stored_keys)
+        } else {
+            Err(errors)
+        }
+    }
+
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+        let mut documents = Vec::new();
+        let mut errors = Vec::new();
+
+        for key in keys {
+            match self.get_document(&key) {
+                Ok(doc) => documents.push(doc),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(documents)
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+impl StorageDocumentTraits for CachedMultiStorage {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+        // Store in underlying storage
+        self.storage.store_document(doc)?;
+
+        // Update cache if enabled
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.insert(doc.getkey(), doc.clone());
+        }
+
+        Ok(())
+    }
+
+    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        // Check cache first if enabled
+        if self.cache_enabled
+            && let Ok(cache) = self.cache.lock()
+            && let Some(doc) = cache.get(key)
+        {
+            return Ok(doc.clone());
+        }
+
+        // Not in cache, get from storage
+        let doc = self.storage.get_document(key)?;
+
+        // Update cache if enabled
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.insert(key.to_string(), doc.clone());
+        }
+
+        Ok(doc)
+    }
+
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        let doc = self.storage.remove_document(key)?;
+
+        // Remove from cache if enabled
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.remove(key);
+        }
+
+        Ok(doc)
+    }
+
+    // Delegate other methods to underlying storage
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        self.storage.list_documents(prefix)
+    }
+
+    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+        // Check cache first
+        if self.cache_enabled
+            && let Ok(cache) = self.cache.lock()
+            && cache.contains_key(key)
+        {
+            return Ok(true);
+        }
+        self.storage.document_exists(key)
+    }
+
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        self.storage.get_documents_by_agent(agent_id)
+    }
+
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        self.storage.get_document_versions(document_id)
+    }
+
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        self.storage.get_latest_document(document_id)
+    }
+
+    fn merge_documents(
+        &self,
+        doc_id: &str,
+        v1: &str,
+        v2: &str,
+    ) -> Result<JACSDocument, Box<dyn Error>> {
+        self.storage.merge_documents(doc_id, v1, v2)
+    }
+
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+        let result = self.storage.store_documents(docs.clone())?;
+
+        // Update cache if enabled
+        if self.cache_enabled
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            for doc in docs {
+                cache.insert(doc.getkey(), doc);
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+        self.storage.get_documents(keys)
+    }
+}

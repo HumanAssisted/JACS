@@ -1,13 +1,24 @@
 // tests for observability module
+#[cfg(feature = "observability-convenience")]
 use jacs::observability::convenience::{
     record_agent_operation, record_document_validation, record_signature_verification,
 };
+// When the convenience feature isn't compiled, provide no-op shims so this test file still compiles
+#[cfg(not(feature = "observability-convenience"))]
+mod no_convenience_shims {
+    pub fn record_agent_operation(_op: &str, _agent: &str, _success: bool, _duration_ms: u64) {}
+    pub fn record_document_validation(_doc: &str, _version: &str, _valid: bool) {}
+    pub fn record_signature_verification(_agent: &str, _success: bool, _algorithm: &str) {}
+}
 use jacs::observability::metrics::{increment_counter, record_histogram, set_gauge};
 use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
     init_observability,
 };
-use jacs::observability::{ResourceConfig, SamplingConfig, TracingConfig, TracingDestination};
+#[cfg(not(feature = "observability-convenience"))]
+use no_convenience_shims::{
+    record_agent_operation, record_document_validation, record_signature_verification,
+};
 use serial_test::serial;
 use std::collections::HashMap;
 use std::fs;
@@ -209,9 +220,6 @@ fn test_file_metrics_destination() {
 #[test]
 #[serial]
 fn test_stdout_metrics_destination() {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
     // Create a separate test binary that outputs to stdout
     let test_code = r#"
 use jacs::observability::{init_observability, increment_counter, ObservabilityConfig, LogConfig, MetricsConfig, LogDestination, MetricsDestination};
@@ -279,7 +287,7 @@ fn main() {
 #[serial]
 fn test_prometheus_format_output() {
     let temp_dir = TempDir::new().unwrap();
-    let metrics_file = temp_dir.path().join("prometheus.txt");
+    let _metrics_file = temp_dir.path().join("prometheus.txt");
 
     let config = ObservabilityConfig {
         logs: LogConfig {
@@ -698,9 +706,9 @@ fn test_logs_to_scratch_file() {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_file()
-                && path.extension().map_or(false, |ext| {
-                    ext == "log" || ext.to_string_lossy().contains("log")
-                })
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext == "log" || ext.to_string_lossy().contains("log"))
             {
                 println!("Found log file: {:?}", path);
                 let content = fs::read_to_string(&path).unwrap_or_default();
@@ -752,8 +760,6 @@ fn test_logs_to_scratch_file() {
 fn test_isolated_logging_output() {
     // This test runs in isolation to capture actual log output
     // It should be run separately to avoid global subscriber conflicts
-
-    use std::process::Command;
 
     // Create a simple Rust program that uses our observability functions
     let test_program = r#"
@@ -873,6 +879,7 @@ fn test_otlp_with_headers() {
     increment_counter("header_test_counter", 1, None);
 }
 
+#[cfg(feature = "otlp-tracing")]
 #[test]
 #[serial]
 fn test_sampling_configuration() {
@@ -1026,6 +1033,7 @@ fn test_minimal_dev_configuration() {
     println!("✓ Minimal development configuration test completed");
 }
 
+#[cfg(feature = "otlp-tracing")]
 #[test]
 #[serial]
 fn test_full_production_configuration() {
@@ -1390,6 +1398,7 @@ fn test_metrics_export_interval_timing() {
     }
 }
 
+#[cfg(feature = "otlp-tracing")]
 #[test]
 #[serial]
 fn test_tracing_sampling_behavior() {

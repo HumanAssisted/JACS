@@ -7,11 +7,11 @@ use tracing_appender::non_blocking::WorkerGuard;
 #[cfg(not(target_arch = "wasm32"))]
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
 use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
 use opentelemetry_sdk::{Resource, logs::SdkLoggerProvider};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -45,31 +45,38 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             Ok(None)
         }
         LogDestination::Otlp {
-            endpoint,
+            endpoint: _,
             headers: _,
         } => {
-            // Create OTLP log exporter
-            let exporter = LogExporter::builder()
-                .with_http()
-                .with_protocol(Protocol::HttpBinary)
-                .with_endpoint(endpoint)
-                .build()?;
+            #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
+            {
+                // Create OTLP log exporter
+                let exporter = LogExporter::builder()
+                    .with_http()
+                    .with_protocol(Protocol::HttpBinary)
+                    .with_endpoint(endpoint)
+                    .build()?;
 
-            // Create logger provider
-            let logger_provider = SdkLoggerProvider::builder()
-                .with_batch_exporter(exporter)
-                .with_resource(Resource::builder().with_service_name("jacs-demo").build())
-                .build();
+                // Create logger provider
+                let logger_provider = SdkLoggerProvider::builder()
+                    .with_batch_exporter(exporter)
+                    .with_resource(Resource::builder().with_service_name("jacs-demo").build())
+                    .build();
 
-            // Create OpenTelemetry tracing bridge
-            let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
+                // Create OpenTelemetry tracing bridge
+                let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
 
-            Registry::default()
-                .with(filter)
-                .with(fmt::layer().with_writer(io::stderr)) // Also log to stderr for debugging
-                .with(otel_layer)
-                .try_init()?;
-            Ok(None)
+                Registry::default()
+                    .with(filter)
+                    .with(fmt::layer().with_writer(io::stderr)) // Also log to stderr for debugging
+                    .with(otel_layer)
+                    .try_init()?;
+                return Ok(None);
+            }
+            #[cfg(any(target_arch = "wasm32", not(feature = "otlp-logs")))]
+            {
+                Err("otlp-logs feature is not enabled; rebuild with --features otlp-logs".into())
+            }
         }
         LogDestination::Null => Ok(None),
     }

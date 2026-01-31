@@ -10,9 +10,9 @@ use utils::{load_local_document, load_test_agent_one};
 fn test_key_hashing() {
     // cargo test   --test key_tests -- --nocapture
     let public_key_with_newline: Vec<u8> =
-        std::fs::read(&"tests/fixtures/public_key_with_newline.pem".to_string()).unwrap();
+        std::fs::read("tests/fixtures/public_key_with_newline.pem").unwrap();
     let public_key_no_newline: Vec<u8> =
-        std::fs::read(&"tests/fixtures/public_key_no_newline.pem".to_string()).unwrap();
+        std::fs::read("tests/fixtures/public_key_no_newline.pem").unwrap();
 
     let hardcoded = "-----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqXxe+VRMQROrxX6i+1xh
@@ -34,10 +34,10 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
     let agent = load_test_agent_one();
     let agent_one_public_key = agent.get_public_key().unwrap();
 
-    let exepected_hash = "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6";
-    let new_expected_hash = "ce3d294bafee5c388be88f74ad8d8e0054e390964caacc2955c42179638d6df8";
+    let _exepected_hash = "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6";
+    let _new_expected_hash = "ce3d294bafee5c388be88f74ad8d8e0054e390964caacc2955c42179638d6df8";
 
-    let exepected_hash_from_file =
+    let _exepected_hash_from_file =
         load_local_document(&"tests/fixtures/public_key_expected_hash.txt".to_string()).unwrap();
 
     // hash

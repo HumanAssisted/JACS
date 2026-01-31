@@ -47,23 +47,16 @@ Create a simple test to verify everything is working:
 ```python
 # test.py
 import jacs
-import json
 
 print('JACS Python bindings loaded successfully!')
 
 # Test basic functionality
 try:
-    config = {
-        "jacs_data_directory": "./test_data",
-        "jacs_key_directory": "./test_keys",
-        "jacs_default_storage": "fs",
-        "jacs_agent_key_algorithm": "Ed25519"
-    }
-    
-    agent = jacs.Agent(config)
-    print('Agent created successfully!')
+    agent = jacs.JacsAgent()
+    agent.load('./jacs.config.json')
+    print('Agent loaded successfully!')
 except Exception as error:
-    print(f'Error creating agent: {error}')
+    print(f'Error loading agent: {error}')
 ```
 
 Run the test:
@@ -73,158 +66,163 @@ python test.py
 
 ## Package Structure
 
-The `jacs` package includes several modules:
+The `jacs` package provides Python bindings to the JACS Rust library:
 
 ### Core Module
 ```python
 import jacs
 
-# Core classes
-agent = jacs.Agent(config)
-document = jacs.Document(data)
-task = jacs.Task(config)
+# Create and load agent
+agent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
+
+# Utility functions
+hash_value = jacs.hash_string("data to hash")
+config_json = jacs.create_config(
+    jacs_data_directory="./data",
+    jacs_key_directory="./keys",
+    jacs_agent_key_algorithm="ring-Ed25519"
+)
 ```
 
-### MCP Integration
+### JacsAgent Methods
 ```python
-from jacs.mcp import JacsMcpServer, create_jacs_middleware
+# Create a new agent instance
+agent = jacs.JacsAgent()
 
-# MCP server functionality
-server = JacsMcpServer(config)
-```
+# Load configuration
+agent.load('./jacs.config.json')
 
-### FastMCP Integration
-```python
-from jacs.fastmcp import FastMcpServer, JacsTools
+# Document operations
+signed_doc = agent.create_document(json_string)
+is_valid = agent.verify_document(document_string)
 
-# Advanced MCP server with FastMCP
-server = FastMcpServer()
-server.add_jacs_tools()
+# Signing operations
+signature = agent.sign_string("data to sign")
 ```
 
 ## Configuration
 
-### Basic Configuration
-```python
-config = {
-    # Required fields
-    "jacs_data_directory": "./jacs_data",      # Where documents are stored
-    "jacs_key_directory": "./jacs_keys",       # Where keys are stored
-    "jacs_default_storage": "fs",              # Storage backend
-    "jacs_agent_key_algorithm": "Ed25519",     # Signing algorithm
-    
-    # Optional fields
-    "jacs_agent_id_and_version": None,         # Existing agent to load
-    "jacs_agent_private_key_filename": "private.pem",
-    "jacs_agent_public_key_filename": "public.pem"
-}
-```
-
 ### Configuration File
-You can also use a JSON configuration file:
+
+Create a `jacs.config.json` file:
 
 ```json
 {
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys", 
+  "jacs_key_directory": "./jacs_keys",
   "jacs_default_storage": "fs",
-  "jacs_agent_key_algorithm": "Ed25519"
+  "jacs_agent_key_algorithm": "ring-Ed25519",
+  "jacs_agent_id_and_version": "agent-uuid:version-uuid"
 }
 ```
 
-Load the configuration:
+### Load Configuration in Python
+
 ```python
-import json
+import jacs
 
-with open('jacs.config.json', 'r') as f:
-    config = json.load(f)
+# Create agent and load configuration
+agent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
+```
 
-agent = jacs.Agent(config)
+### Programmatic Configuration
+
+```python
+import jacs
+
+# Create a configuration JSON string programmatically
+config_json = jacs.create_config(
+    jacs_data_directory="./jacs_data",
+    jacs_key_directory="./jacs_keys",
+    jacs_agent_key_algorithm="ring-Ed25519",
+    jacs_default_storage="fs"
+)
 ```
 
 ### Environment Variables
 
-You can override configuration with environment variables:
+JACS reads environment variables that override configuration file settings:
 
 ```bash
 export JACS_DATA_DIRECTORY="./production_data"
 export JACS_KEY_DIRECTORY="./production_keys"
-export JACS_AGENT_KEY_ALGORITHM="RSA"
-```
-
-```python
-import os
-
-config = {
-    "jacs_data_directory": os.getenv("JACS_DATA_DIRECTORY", "./jacs_data"),
-    "jacs_key_directory": os.getenv("JACS_KEY_DIRECTORY", "./jacs_keys"),
-    "jacs_default_storage": "fs",
-    "jacs_agent_key_algorithm": os.getenv("JACS_AGENT_KEY_ALGORITHM", "Ed25519")
-}
+export JACS_AGENT_KEY_ALGORITHM="ring-Ed25519"
+export JACS_DEFAULT_STORAGE="fs"
 ```
 
 ## Storage Backends
 
+Configure storage in `jacs.config.json`:
+
 ### File System (Default)
-```python
-config = {
-    "jacs_default_storage": "fs",
-    "jacs_data_directory": "./jacs_data",
-    "jacs_key_directory": "./jacs_keys"
+```json
+{
+  "jacs_default_storage": "fs",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
 }
 ```
 
 ### S3 Storage
-```python
-config = {
-    "jacs_default_storage": "s3",
-    "jacs_s3_bucket": "my-jacs-bucket",
-    "jacs_s3_region": "us-west-2",
-    "jacs_s3_prefix": "jacs/"
+```json
+{
+  "jacs_default_storage": "s3"
 }
 ```
 
-### Azure Blob Storage
-```python
-config = {
-    "jacs_default_storage": "azure",
-    "jacs_azure_account": "myaccount",
-    "jacs_azure_container": "jacs",
-    "jacs_azure_key": os.getenv("AZURE_STORAGE_KEY")
+S3 credentials are read from standard AWS environment variables.
+
+### Memory Storage (Testing)
+```json
+{
+  "jacs_default_storage": "memory"
 }
 ```
 
 ## Cryptographic Algorithms
 
-### Ed25519 (Recommended)
-```python
-config = {
-    "jacs_agent_key_algorithm": "Ed25519"
+### ring-Ed25519 (Recommended)
+```json
+{
+  "jacs_agent_key_algorithm": "ring-Ed25519"
 }
 ```
 
 **Pros**: Fast, secure, small signatures
-**Cons**: Newer standard, less universal support
+**Cons**: Requires elliptic curve support
 
 ### RSA-PSS
-```python
-config = {
-    "jacs_agent_key_algorithm": "RSA"
+```json
+{
+  "jacs_agent_key_algorithm": "RSA-PSS"
 }
 ```
 
 **Pros**: Widely supported, proven security
 **Cons**: Larger signatures, slower
 
-### Post-Quantum (Experimental)
-```python
-config = {
-    "jacs_agent_key_algorithm": "Dilithium"
+### pq-dilithium (Post-Quantum)
+```json
+{
+  "jacs_agent_key_algorithm": "pq-dilithium"
 }
 ```
 
 **Pros**: Quantum-resistant
 **Cons**: Experimental, large signatures
+
+### pq2025 (Post-Quantum Hybrid)
+```json
+{
+  "jacs_agent_key_algorithm": "pq2025"
+}
+```
+
+**Pros**: Combines ML-DSA-87 with hybrid approach
+**Cons**: Newest algorithm, largest signatures
 
 ## Development Setup
 
@@ -261,30 +259,25 @@ pydantic>=2.0.0   # For data validation
 # src/app.py
 import jacs
 import json
-import os
 
 def main():
-    # Load configuration
-    with open('jacs.config.json', 'r') as f:
-        config = json.load(f)
-    
-    # Create agent
-    agent = jacs.Agent(config)
-    
-    # Initialize if needed
-    if not config.get("jacs_agent_id_and_version"):
-        agent.generate_keys()
-        agent_doc = agent.create_agent({
-            "name": "My Python JACS Agent",
-            "description": "Example Python JACS agent"
-        })
-        
-        # Update config with agent ID
-        config["jacs_agent_id_and_version"] = f"{agent_doc['jacsId']}:{agent_doc['jacsVersion']}"
-        
-        with open('jacs.config.json', 'w') as f:
-            json.dump(config, f, indent=2)
-    
+    # Create and load agent
+    agent = jacs.JacsAgent()
+    agent.load('./jacs.config.json')
+
+    # Create a document
+    document_data = {
+        "title": "My First Document",
+        "content": "Hello from Python!"
+    }
+
+    signed_doc = agent.create_document(json.dumps(document_data))
+    print('Document created')
+
+    # Verify the document
+    is_valid = agent.verify_document(signed_doc)
+    print(f'Document valid: {is_valid}')
+
     print('JACS agent ready!')
     return agent
 
@@ -350,23 +343,18 @@ jupyter notebook
 # In your notebook
 import jacs
 import json
-import os
 
-# Setup configuration
-config = {
-    "jacs_data_directory": "./notebook_data",
-    "jacs_key_directory": "./notebook_keys", 
-    "jacs_default_storage": "fs",
-    "jacs_agent_key_algorithm": "Ed25519"
-}
+# Create and load agent
+agent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
 
-# Ensure directories exist
-os.makedirs(config["jacs_data_directory"], exist_ok=True)
-os.makedirs(config["jacs_key_directory"], exist_ok=True)
+# Create a simple document
+doc = agent.create_document(json.dumps({
+    "title": "Notebook Analysis",
+    "data": [1, 2, 3, 4, 5]
+}))
 
-# Create agent
-agent = jacs.Agent(config)
-
+print("Document created!")
 print("JACS ready for notebook use!")
 ```
 
@@ -420,25 +408,19 @@ conda install -c conda-forge jacs
 
 ## Type Hints and IDE Support
 
-JACS includes type hints for better IDE support:
+JACS is built with Rust and PyO3, providing Python bindings:
 
 ```python
-from typing import Dict, List, Any
 import jacs
+import json
 
-# Type hints work with modern IDEs
-config: Dict[str, Any] = {
-    "jacs_data_directory": "./data",
-    "jacs_key_directory": "./keys",
-    "jacs_default_storage": "fs",
-    "jacs_agent_key_algorithm": "Ed25519"
-}
+# Create agent instance
+agent: jacs.JacsAgent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
 
-agent: jacs.Agent = jacs.Agent(config)
-agent_doc: Dict[str, Any] = agent.create_agent({
-    "name": "Typed Agent",
-    "description": "Agent with type hints"
-})
+# Create and verify documents
+signed_doc: str = agent.create_document(json.dumps({"title": "Test"}))
+is_valid: bool = agent.verify_document(signed_doc)
 ```
 
 ## Testing Setup
@@ -446,40 +428,35 @@ agent_doc: Dict[str, Any] = agent.create_agent({
 ```python
 # tests/test_jacs.py
 import unittest
-import tempfile
-import os
 import jacs
+import json
 
 class TestJACS(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.config = {
-            "jacs_data_directory": os.path.join(self.temp_dir, "data"),
-            "jacs_key_directory": os.path.join(self.temp_dir, "keys"),
-            "jacs_default_storage": "fs",
-            "jacs_agent_key_algorithm": "Ed25519"
-        }
-        
-        # Create directories
-        os.makedirs(self.config["jacs_data_directory"])
-        os.makedirs(self.config["jacs_key_directory"])
-        
-        self.agent = jacs.Agent(self.config)
-    
-    def test_agent_creation(self):
-        self.agent.generate_keys()
-        agent_doc = self.agent.create_agent({
-            "name": "Test Agent",
-            "description": "Agent for testing"
-        })
-        
-        self.assertIn("jacsId", agent_doc)
-        self.assertIn("jacsVersion", agent_doc)
-        self.assertIn("name", agent_doc)
-    
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self.temp_dir)
+        # Requires a valid jacs.config.json file
+        self.agent = jacs.JacsAgent()
+        self.agent.load('./jacs.config.json')
+
+    def test_document_creation(self):
+        doc_data = {"title": "Test Document", "content": "Test content"}
+        signed_doc = self.agent.create_document(json.dumps(doc_data))
+
+        # Document should be a valid JSON string
+        parsed = json.loads(signed_doc)
+        self.assertIn("jacsId", parsed)
+        self.assertIn("jacsSignature", parsed)
+
+    def test_document_verification(self):
+        doc_data = {"title": "Verify Test"}
+        signed_doc = self.agent.create_document(json.dumps(doc_data))
+
+        is_valid = self.agent.verify_document(signed_doc)
+        self.assertTrue(is_valid)
+
+    def test_sign_string(self):
+        signature = self.agent.sign_string("test data")
+        self.assertIsInstance(signature, str)
+        self.assertTrue(len(signature) > 0)
 
 if __name__ == "__main__":
     unittest.main()

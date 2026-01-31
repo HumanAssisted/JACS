@@ -67,7 +67,7 @@ pub fn create_minimal_task(
 /// * `Ok(())` - If the action was added successfully.
 /// * `Err(String)` - If an error occurred while adding the action.
 pub fn add_action_to_task(task: &mut Value, action: Value) -> Result<(), String> {
-    if !task.get("jacsTaskActionsDesired").is_some() {
+    if task.get("jacsTaskActionsDesired").is_none() {
         task["jacsTaskActionsDesired"] = json!([]);
     }
     task["jacsTaskActionsDesired"]
@@ -144,7 +144,7 @@ pub fn remove_action_from_task(task: &mut Value, action: Value) -> Result<(), St
 /// * `Ok(())` - If the task state was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the task state.
 pub fn update_task_state(task: &mut Value, new_state: &str) -> Result<(), String> {
-    let allowed_states = vec!["open", "editlock", "closed"];
+    let allowed_states = ["open", "editlock", "closed"];
     if !allowed_states.contains(&new_state) {
         return Err(format!("Invalid task state: {}", new_state));
     }
@@ -236,7 +236,7 @@ pub fn remove_task_complete_date(task: &mut Value) -> Result<(), String> {
 /// * `Ok(())` - If the subtask was added successfully.
 /// * `Err(String)` - If an error occurred while adding the subtask.
 pub fn add_subtask_to_task(task: &mut Value, subtask_id: &str) -> Result<(), String> {
-    if !task.get("jacsTaskSubTaskOf").is_some() {
+    if task.get("jacsTaskSubTaskOf").is_none() {
         task["jacsTaskSubTaskOf"] = json!([]);
     }
     task["jacsTaskSubTaskOf"]
@@ -283,7 +283,7 @@ pub fn remove_subtask_from_task(task: &mut Value, subtask_id: &str) -> Result<()
 /// * `Ok(())` - If the copy task was added successfully.
 /// * `Err(String)` - If an error occurred while adding the copy task.
 pub fn add_copy_task_to_task(task: &mut Value, copy_task_id: &str) -> Result<(), String> {
-    if !task.get("jacsTaskCopyOf").is_some() {
+    if task.get("jacsTaskCopyOf").is_none() {
         task["jacsTaskCopyOf"] = json!([]);
     }
     task["jacsTaskCopyOf"]
@@ -330,7 +330,7 @@ pub fn remove_copy_task_from_task(task: &mut Value, copy_task_id: &str) -> Resul
 /// * `Ok(())` - If the merged task was added successfully.
 /// * `Err(String)` - If an error occurred while adding the merged task.
 pub fn add_merged_task_to_task(task: &mut Value, merged_task_id: &str) -> Result<(), String> {
-    if !task.get("jacsTaskMergedTasks").is_some() {
+    if task.get("jacsTaskMergedTasks").is_none() {
         task["jacsTaskMergedTasks"] = json!([]);
     }
     task["jacsTaskMergedTasks"]

@@ -45,6 +45,6 @@ impl BoilerPlate for Agent {
         // return the id and version
         let id = &self.get_id()?;
         let version = &self.get_version()?;
-        return Ok(format!("{}:{}", id, version));
+        Ok(format!("{}:{}", id, version))
     }
 }

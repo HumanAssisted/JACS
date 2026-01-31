@@ -9,14 +9,16 @@ use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 use tracing::debug;
 
+pub mod a2a;
 pub mod agent;
 pub mod config;
 pub mod crypt;
+pub mod dns;
+pub mod keystore;
 pub mod observability;
 pub mod schema;
 pub mod shared;
@@ -43,19 +45,14 @@ pub fn init_default_observability() -> Result<(), Box<dyn std::error::Error>> {
             headers: None,
         },
         metrics: MetricsConfig {
-            enabled: true,
+            enabled: false,
             destination: MetricsDestination::File {
                 path: "./metrics.txt".to_string(),
             },
             export_interval_seconds: Some(60),
             headers: None,
         },
-        tracing: Some(TracingConfig {
-            enabled: false, // Disabled by default
-            sampling: SamplingConfig::default(),
-            resource: None,
-            destination: None,
-        }),
+        tracing: None,
     };
 
     init_observability(config).map(|_| ())
@@ -73,9 +70,9 @@ pub fn init_custom_observability(
 pub fn get_empty_agent() -> Agent {
     // Use expect as Result handling happens elsewhere or isn't needed here.
     Agent::new(
-        &config::constants::JACS_AGENT_SCHEMA_VERSION.to_string(),
-        &config::constants::JACS_HEADER_SCHEMA_VERSION.to_string(),
-        &config::constants::JACS_SIGNATURE_SCHEMA_VERSION.to_string(),
+        config::constants::JACS_AGENT_SCHEMA_VERSION,
+        config::constants::JACS_HEADER_SCHEMA_VERSION,
+        config::constants::JACS_SIGNATURE_SCHEMA_VERSION,
     )
     .expect("Failed to init Agent in get_empty_agent") // Panic if Agent::new fails
 }
@@ -101,7 +98,7 @@ fn load_path_agent(filepath: String) -> Agent {
 
     // Pass ONLY the logical ID (without .json) to fs_agent_load
     let agent_string = agent
-        .fs_agent_load(&agent_id.to_string()) // Pass ID string
+        .fs_agent_load(agent_id) // Pass ID string
         .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))
         .expect("Agent file loading failed");
 
@@ -118,10 +115,35 @@ fn load_path_agent(filepath: String) -> Agent {
 pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Error>> {
     debug!("load_agent agentfile = {:?}", agentfile);
     if let Some(file) = agentfile {
-        return Ok(load_path_agent(file.to_string()));
+        Ok(load_path_agent(file.to_string()))
     } else {
-        return Err("No agent file provided".into());
+        Err("No agent file provided".into())
     }
+}
+
+/// Load an agent from a file path while controlling DNS strictness before validation runs.
+pub fn load_agent_with_dns_strict(
+    agentfile: String,
+    dns_strict: bool,
+) -> Result<agent::Agent, Box<dyn Error>> {
+    let mut agent = get_empty_agent();
+    agent.set_dns_strict(dns_strict);
+
+    // Extract logical ID from provided path (expects .../agent/ID:VERSION.json)
+    let agent_filename = std::path::Path::new(&agentfile)
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or("Could not extract filename from agent path")?;
+    let agent_id = agent_filename
+        .strip_suffix(".json")
+        .ok_or("Agent filename does not end with .json")?;
+
+    let agent_string = agent
+        .fs_agent_load(agent_id)
+        .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))?;
+
+    agent.load(&agent_string)?;
+    Ok(agent)
 }
 
 /// Creates a minimal agent JSON string with a default service.
@@ -170,8 +192,7 @@ pub fn create_task(
     let action = create_minimal_action(&name, &description, None, None);
     actions.push(action);
     let mut task = create_minimal_task(Some(actions), None, None, None)?;
-    task["jacsTaskCustomer"] =
-        agent.signing_procedure(&task, None, &"jacsTaskCustomer".to_string())?;
+    task["jacsTaskCustomer"] = agent.signing_procedure(&task, None, "jacsTaskCustomer")?;
 
     // create document
     let embed = None;
@@ -179,9 +200,7 @@ pub fn create_task(
 
     save_document(agent, docresult, None, None, None, None)?;
 
-    let task_value = agent
-        .get_document(&task["id"].as_str().unwrap().to_string())?
-        .value;
+    let task_value = agent.get_document(task["id"].as_str().unwrap())?.value;
     let validation_result = agent.schema.taskschema.validate(&task_value);
     match validation_result {
         Ok(_) => Ok(task_value.to_string()),
@@ -197,7 +216,7 @@ pub fn create_task(
 pub fn update_task(_: String) -> Result<String, Box<dyn Error>> {
     // update document
     // validate
-    return Ok("".to_string());
+    Ok("".to_string())
 }
 
 // lets move these here

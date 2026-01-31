@@ -29,7 +29,7 @@ For example, create_agent_and_load() does not neeed a config file at all?
 
 */
 
-#[derive(Serialize, Deserialize, Default, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct Config {
     #[serde(rename = "$schema")]
     #[serde(default = "default_schema")]
@@ -58,6 +58,19 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default = "default_storage")]
     jacs_default_storage: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_agent_domain: Option<String>,
+    // DNS policy
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_dns_validate: Option<bool>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_dns_strict: Option<bool>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_dns_required: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
 }
@@ -118,6 +131,28 @@ fn default_key_directory() -> Option<String> {
     }
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            schema: default_schema(),
+            jacs_use_security: default_security(),
+            jacs_data_directory: default_data_directory(),
+            jacs_key_directory: default_key_directory(),
+            jacs_agent_private_key_filename: None,
+            jacs_agent_public_key_filename: None,
+            jacs_agent_key_algorithm: default_algorithm(),
+            jacs_private_key_password: None,
+            jacs_agent_id_and_version: None,
+            jacs_default_storage: default_storage(),
+            jacs_agent_domain: None,
+            jacs_dns_validate: None,
+            jacs_dns_strict: None,
+            jacs_dns_required: None,
+            observability: None,
+        }
+    }
+}
+
 impl Config {
     pub fn new(
         jacs_use_security: Option<String>,
@@ -141,6 +176,10 @@ impl Config {
             jacs_private_key_password,
             jacs_agent_id_and_version,
             jacs_default_storage,
+            jacs_agent_domain: None,
+            jacs_dns_validate: None,
+            jacs_dns_strict: None,
+            jacs_dns_required: None,
             observability: None,
         }
     }
@@ -341,7 +380,7 @@ pub fn set_env_vars(
 
     if !jacs_agent_id_and_version.is_empty() {
         let (id, version) = split_id(&jacs_agent_id_and_version).unwrap_or(("", ""));
-        if !Uuid::parse_str(id).is_ok() || !Uuid::parse_str(version).is_ok() {
+        if Uuid::parse_str(id).is_err() || Uuid::parse_str(version).is_err() {
             warn!("ID and Version must be in the form UUID:UUID");
         }
     }
@@ -381,7 +420,7 @@ pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
             message.push_str(&format!(
                 "    {:<35} {}\n",
                 var_name.to_string() + ":",
-                "SKIPPED (ignore_agent_id=true)".to_string()
+                "SKIPPED (ignore_agent_id=true)"
             ));
             continue;
         }
@@ -540,7 +579,7 @@ pub enum LogDestination {
     Null,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum MetricsDestination {
     #[serde(rename = "otlp")]
     Otlp {
@@ -557,13 +596,8 @@ pub enum MetricsDestination {
     #[serde(rename = "file")]
     File { path: String },
     #[serde(rename = "stdout")]
+    #[default]
     Stdout,
-}
-
-impl Default for MetricsDestination {
-    fn default() -> Self {
-        MetricsDestination::Stdout
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

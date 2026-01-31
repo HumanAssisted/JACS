@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use secrecy::ExposeSecret;
 pub mod hash;
 pub mod pq;
@@ -5,15 +6,15 @@ pub mod ringwrapper;
 pub mod rsawrapper;
 // pub mod private_key;
 pub mod aes_encrypt;
+pub mod kem;
+pub mod pq2025; // ML-DSA signatures // ML-KEM encryption
 
 use crate::agent::Agent;
 use std::str::FromStr;
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::agent::loaders::FileLoader;
 use strum_macros::{AsRefStr, Display, EnumString};
 
-use crate::crypt::aes_encrypt::decrypt_private_key;
+use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone)]
 pub enum CryptoSigningAlgorithm {
@@ -25,6 +26,8 @@ pub enum CryptoSigningAlgorithm {
     PqDilithium,
     #[strum(serialize = "pq-dilithium-alt")]
     PqDilithiumAlt, // Alternative version with different signature size
+    #[strum(serialize = "pq2025")]
+    Pq2025, // ML-DSA-87 (FIPS-204)
 }
 
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
@@ -95,11 +98,11 @@ pub fn detect_algorithm_from_signature(
 
 pub trait KeyManager {
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>>;
+    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>>;
     fn verify_string(
         &self,
-        data: &String,
-        signature_base64: &String,
+        data: &str,
+        signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>>;
@@ -109,70 +112,39 @@ impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
-        let (mut private_key, mut public_key) = (Vec::new(), Vec::new());
-        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
-        match algo {
-            CryptoSigningAlgorithm::RsaPss => {
-                (private_key, public_key) =
-                    rsawrapper::generate_keys().map_err(|e| e.to_string())?;
-            }
-            CryptoSigningAlgorithm::RingEd25519 => {
-                (private_key, public_key) =
-                    ringwrapper::generate_keys().map_err(|e| e.to_string())?;
-            }
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                (private_key, public_key) = pq::generate_keys().map_err(|e| e.to_string())?;
-            }
-            _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
-            }
-        }
-
-        let _ = self.set_keys(private_key, public_key, &key_algorithm);
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = self.fs_save_keys();
-
+        let ks = FsEncryptedStore;
+        let spec = KeySpec {
+            algorithm: key_algorithm.clone(),
+            key_id: None,
+        };
+        let (private_key, public_key) = ks.generate(&spec)?;
+        self.set_keys(private_key, public_key, &key_algorithm)?;
         Ok(())
     }
 
-    fn sign_string(&mut self, data: &String) -> Result<String, Box<dyn std::error::Error>> {
+    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
         let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
-        let algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
-        match algo {
-            CryptoSigningAlgorithm::RsaPss => {
-                let binding = self.get_private_key()?;
-                let key_vec = decrypt_private_key(binding.expose_secret())?;
-                return rsawrapper::sign_string(key_vec, data);
-            }
-            CryptoSigningAlgorithm::RingEd25519 => {
-                let binding = self.get_private_key()?;
-                let key_vec = decrypt_private_key(binding.expose_secret())?;
-                return ringwrapper::sign_string(key_vec, data);
-            }
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                let binding = self.get_private_key()?;
-                let key_vec = decrypt_private_key(binding.expose_secret())?;
-                return pq::sign_string(key_vec, data);
-            }
-            _ => {
-                return Err(
-                    format!("{} is not a known or implemented algorithm.", key_algorithm).into(),
-                );
-            }
+        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        {
+            // Delegate to keystore; we expect detached signature bytes, return base64
+            let ks = FsEncryptedStore;
+            let binding = self.get_private_key()?;
+            let decrypted =
+                crate::crypt::aes_encrypt::decrypt_private_key(binding.expose_secret())?;
+            let sig_bytes = ks.sign_detached(&decrypted, data.as_bytes(), &key_algorithm)?;
+            Ok(STANDARD.encode(sig_bytes))
         }
     }
 
     fn verify_string(
         &self,
-        data: &String,
-        signature_base64: &String,
+        data: &str,
+        signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Get the signature bytes for analysis
-        let signature_bytes = base64::decode(signature_base64)?;
+        let signature_bytes = STANDARD.decode(signature_base64)?;
 
         // Determine the algorithm type
         let algo = match public_key_enc_type {
@@ -195,10 +167,10 @@ impl KeyManager for Agent {
 
         match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                return rsawrapper::verify_string(public_key, data, signature_base64);
+                rsawrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                return ringwrapper::verify_string(public_key, data, signature_base64);
+                ringwrapper::verify_string(public_key, data, signature_base64)
             }
             CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 // Try the standard PQ verification first
@@ -210,22 +182,21 @@ impl KeyManager for Agent {
 
                 // If we encounter a signature length error and we're using PqDilithiumAlt,
                 // we could implement a special handling here for the alternative format
-                if let Err(e) = &result {
-                    if e.to_string().contains("BadLength")
-                        && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
-                    {
-                        // Here we would add special handling for the alternative format
-                        // For now, we'll just log it and fail with a more descriptive error
-                        return Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}", 
+                if let Err(e) = &result
+                    && e.to_string().contains("BadLength")
+                    && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
+                {
+                    // Here we would add special handling for the alternative format
+                    // For now, we'll just log it and fail with a more descriptive error
+                    return Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}", 
                             signature_bytes.len(), e).into());
-                    }
                 }
 
                 // Return the original error
                 result
             }
-            _ => {
-                return Err(format!("{} is not a known or implemented algorithm.", algo).into());
+            CryptoSigningAlgorithm::Pq2025 => {
+                pq2025::verify_string(public_key, data, signature_base64)
             }
         }
     }

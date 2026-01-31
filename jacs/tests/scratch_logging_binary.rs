@@ -1,12 +1,23 @@
 // This is a separate test binary to demonstrate actual log output
 // Run with: cargo test --test scratch_logging_binary
 
+#[cfg(feature = "observability-convenience")]
 use jacs::observability::convenience::{
     record_agent_operation, record_document_validation, record_signature_verification,
 };
+#[cfg(not(feature = "observability-convenience"))]
+mod no_convenience_shims {
+    pub fn record_agent_operation(_op: &str, _agent: &str, _success: bool, _duration_ms: u64) {}
+    pub fn record_document_validation(_doc: &str, _version: &str, _valid: bool) {}
+    pub fn record_signature_verification(_agent: &str, _success: bool, _algorithm: &str) {}
+}
 use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
     init_observability,
+};
+#[cfg(not(feature = "observability-convenience"))]
+use no_convenience_shims::{
+    record_agent_operation, record_document_validation, record_signature_verification,
 };
 use std::fs;
 
@@ -24,7 +35,7 @@ fn test_actual_log_output() {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_file()
-                && (path.extension().map_or(false, |ext| ext == "log")
+                && (path.extension().is_some_and(|ext| ext == "log")
                     || path
                         .file_name()
                         .unwrap_or_default()
@@ -93,7 +104,7 @@ fn test_actual_log_output() {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_file()
-                && (path.extension().map_or(false, |ext| ext == "log")
+                && (path.extension().is_some_and(|ext| ext == "log")
                     || path
                         .file_name()
                         .unwrap_or_default()

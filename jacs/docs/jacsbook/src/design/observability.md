@@ -1,72 +1,134 @@
-# JACS Observability Guide
+# JACS Observability (simple, feature-gated)
 
-The JACS library includes a comprehensive observability system built on `tracing` and `metrics` crates, providing structured logging, metrics collection, and distributed tracing for agent operations.
+JACS provides a minimal observability API. By default it sets up only local logs (stderr or file). Remote backends (OTLP logs/metrics/tracing) are optional and guarded by Cargo features.
 
 ## Quick Start
 
-### 1. Initialize Observability
+### 1. Initialize
 
-The easiest way to get started is to use the default configuration:
+Simplest setup uses file logs and no remote backends:
 
 ```rust
 use jacs::init_default_observability;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize with sensible defaults
     init_default_observability()?;
-    
-    // Your application code here...
-    
     Ok(())
 }
 ```
 
 This sets up:
 - File-based logging at INFO level in `./logs/`
-- File-based metrics in `./metrics.txt`
-- 60-second metrics export interval
-- Tracing disabled by default
+- No metrics or tracing by default
 
-### 2. Custom Configuration
+### 2. Custom configuration
 
 For more control, use custom configuration:
 
 ```rust
 use jacs::{init_custom_observability, ObservabilityConfig, LogConfig, MetricsConfig, 
-           TracingConfig, SamplingConfig, LogDestination, MetricsDestination};
+           TracingConfig, SamplingConfig, LogDestination, MetricsDestination, TracingDestination};
 use std::collections::HashMap;
 
 let config = ObservabilityConfig {
     logs: LogConfig {
         enabled: true,
         level: "debug".to_string(),
-        destination: LogDestination::File {
-            path: "./custom_logs".to_string(),
-        },
+        destination: LogDestination::File { path: "./custom_logs".to_string() },
         headers: None,
     },
-    metrics: MetricsConfig {
-        enabled: true,
-        destination: MetricsDestination::Prometheus {
-            endpoint: "http://localhost:9090".to_string(),
-            headers: None,
-        },
-        export_interval_seconds: Some(30),
-        headers: None,
-    },
-    tracing: Some(TracingConfig {
-        enabled: true,
-        sampling: SamplingConfig {
-            ratio: 0.1, // Sample 10% of traces
-            parent_based: true,
-            rate_limit: Some(100), // Max 100 samples per second
-        },
-        resource: None,
-    }),
+    metrics: MetricsConfig::default(),
+    tracing: None,
 };
 
 init_custom_observability(config)?;
 ```
+
+## Features and backends
+
+- No extra features: stderr/file logs only.
+- `observability-convenience`: enable convenience helpers (wrappers) for logs/metrics.
+- `otlp-logs`: enable OTLP log export (pulls in OpenTelemetry + tokio).
+- `otlp-metrics`: enable OTLP metrics export (pulls in OpenTelemetry + tokio).
+- `otlp-tracing`: enable OTLP tracing export (pulls in OpenTelemetry + tokio).
+
+If you request an unavailable backend at runtime, initialization returns an error with a clear message (e.g., "otlp-logs feature is not enabled").
+
+Enable features when building:
+```bash
+cargo build --features otlp-logs,otlp-metrics,otlp-tracing
+```
+
+Tokio usage:
+- Tokio is optional and pulled in only by OTLP features.
+- Default build (no OTLP features) has no tokio dependency and is WASM-friendly.
+
+Minimal OTLP examples:
+
+Logs (requires `otlp-logs`):
+```rust
+let cfg = ObservabilityConfig {
+  logs: LogConfig { enabled: true, level: "info".into(), destination: LogDestination::Otlp { endpoint: "http://collector:4318".into(), headers: None }, headers: None },
+  ..Default::default()
+};
+init_custom_observability(cfg)?;
+```
+
+Metrics (requires `otlp-metrics`):
+```rust
+let cfg = ObservabilityConfig {
+  metrics: MetricsConfig { enabled: true, destination: MetricsDestination::Otlp { endpoint: "http://collector:4318".into(), headers: None }, export_interval_seconds: Some(60), headers: None },
+  ..Default::default()
+};
+init_custom_observability(cfg)?;
+```
+
+Tracing (requires `otlp-tracing`):
+```rust
+let cfg = ObservabilityConfig {
+  tracing: Some(TracingConfig { enabled: true, sampling: SamplingConfig { ratio: 0.1, parent_based: true, rate_limit: Some(100) }, resource: None, destination: Some(TracingDestination::Otlp { endpoint: "http://collector:4318".into(), headers: None }) }),
+  ..Default::default()
+};
+init_custom_observability(cfg)?;
+```
+
+Note: direct Prometheus export is not supported; route via an OTLP Collector.
+
+### Compile recipes
+
+- Default (local logs only):
+```bash
+cargo build
+```
+
+- Add convenience helpers only:
+```bash
+cargo build --features observability-convenience
+```
+
+- OTLP logs only:
+```bash
+cargo build --features otlp-logs
+```
+
+- OTLP metrics only:
+```bash
+cargo build --features otlp-metrics
+```
+
+- OTLP tracing only:
+```bash
+cargo build --features otlp-tracing
+```
+
+- Full stack (helpers + logs + metrics + tracing):
+```bash
+cargo build --features "observability-convenience otlp-logs otlp-metrics otlp-tracing"
+```
+
+WASM builds:
+- Build without OTLP features to avoid async runtime dependencies.
+- Use stderr/file logging destinations only.
 
 ## Configuration Reference
 
@@ -75,7 +137,7 @@ init_custom_observability(config)?;
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | `logs` | `LogConfig` | Logging configuration | See LogConfig defaults |
-| `metrics` | `MetricsConfig` | Metrics configuration | See MetricsConfig defaults |
+| `metrics` | `MetricsConfig` | Metrics configuration | Disabled by default |
 | `tracing` | `Option<TracingConfig>` | Distributed tracing configuration | `None` (disabled) |
 
 ### LogConfig
@@ -96,13 +158,14 @@ init_custom_observability(config)?;
 | `export_interval_seconds` | `Option<u64>` | How often to export metrics | `None` |
 | `headers` | `Option<HashMap<String, String>>` | Additional headers for HTTP destinations | `None` |
 
-### TracingConfig
+### TracingConfig (requires `otlp-tracing` for remote export)
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | `enabled` | `bool` | Enable/disable distributed tracing | Required |
 | `sampling` | `SamplingConfig` | Sampling configuration | See SamplingConfig |
 | `resource` | `Option<ResourceConfig>` | Service resource information | `None` |
+| `destination` | `Option<TracingDestination>` | Where to send traces | `None` |
 
 ### SamplingConfig
 
@@ -112,7 +175,7 @@ init_custom_observability(config)?;
 | `parent_based` | `bool` | Use parent span sampling decision | `true` |
 | `rate_limit` | `Option<u32>` | Maximum samples per second | `None` |
 
-### ResourceConfig
+### ResourceConfig (optional)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -134,9 +197,9 @@ LogDestination::File {
     path: "./logs".to_string() 
 }
 
-// OpenTelemetry Protocol (OTLP) with optional headers
+// OpenTelemetry Protocol (OTLP) with optional headers (requires feature `otlp-logs`)
 LogDestination::Otlp { 
-    endpoint: "http://jaeger:4317".to_string(),
+    endpoint: "http://collector:4318".to_string(),
     headers: Some({
         let mut h = HashMap::new();
         h.insert("Authorization".to_string(), "Bearer token123".to_string());
@@ -159,19 +222,9 @@ MetricsDestination::File {
     path: "./metrics.txt".to_string() 
 }
 
-// Prometheus with optional authentication
-MetricsDestination::Prometheus { 
-    endpoint: "http://prometheus:9090".to_string(),
-    headers: Some({
-        let mut h = HashMap::new();
-        h.insert("Authorization".to_string(), "Basic dXNlcjpwYXNz".to_string());
-        h
-    }),
-}
-
-// OpenTelemetry Protocol (OTLP)
+// OpenTelemetry Protocol (OTLP) (requires feature `otlp-metrics`)
 MetricsDestination::Otlp { 
-    endpoint: "http://otel-collector:4317".to_string(),
+    endpoint: "http://collector:4318".to_string(),
     headers: None,
 }
 ```
@@ -215,10 +268,7 @@ record_signature_verification("agent_123", true, "Ed25519");
 
 ## Metrics
 
-The system automatically records metrics for:
-- Agent operation counts and durations
-- Document validation success/failure rates
-- Signature verification success/failure rates
+The system can record metrics via OTLP when enabled.
 
 ### Manual Metrics
 
@@ -236,71 +286,13 @@ set_gauge("memory_usage_bytes", 1024.0, Some(tags.clone()));
 record_histogram("response_time_ms", 123.4, Some(tags));
 ```
 
-## Distributed Tracing
+## Distributed Tracing (requires `otlp-tracing`)
 
-Enable distributed tracing to track requests across service boundaries:
-
-```rust
-use jacs::{ObservabilityConfig, TracingConfig, SamplingConfig, ResourceConfig};
-use std::collections::HashMap;
-
-let config = ObservabilityConfig {
-    logs: LogConfig::default(),
-    metrics: MetricsConfig::default(),
-    tracing: Some(TracingConfig {
-        enabled: true,
-        sampling: SamplingConfig {
-            ratio: 0.1,           // Sample 10% of traces
-            parent_based: true,   // Respect parent sampling decisions
-            rate_limit: Some(100), // Max 100 traces/second
-        },
-        resource: Some(ResourceConfig {
-            service_name: "jacs-agent".to_string(),
-            service_version: Some("1.0.0".to_string()),
-            environment: Some("production".to_string()),
-            attributes: {
-                let mut attrs = HashMap::new();
-                attrs.insert("team".to_string(), "platform".to_string());
-                attrs
-            },
-        }),
-    }),
-};
-```
+Enable distributed tracing to track requests across service boundaries by setting `TracingConfig` with an OTLP destination.
 
 ## Authentication & Headers
 
-For secure endpoints, use headers for authentication:
-
-```rust
-use std::collections::HashMap;
-
-// API Key authentication
-let mut headers = HashMap::new();
-headers.insert("X-API-Key".to_string(), "your-api-key".to_string());
-
-// Bearer token authentication
-let mut headers = HashMap::new();
-headers.insert("Authorization".to_string(), "Bearer your-jwt-token".to_string());
-
-// Basic authentication
-let mut headers = HashMap::new();
-headers.insert("Authorization".to_string(), "Basic dXNlcjpwYXNzd29yZA==".to_string());
-
-// Use in configuration
-let config = ObservabilityConfig {
-    logs: LogConfig {
-        enabled: true,
-        level: "info".to_string(),
-        destination: LogDestination::Otlp {
-            endpoint: "https://api.honeycomb.io/v1/traces".to_string(),
-            headers: Some(headers),
-        },
-        headers: None,
-    },
-    // ... rest of config
-};
-```
+For secure endpoints, use headers for authentication where supported.
 
 ## Example Configurations
 
@@ -313,55 +305,22 @@ ObservabilityConfig {
         destination: LogDestination::Stderr,
         headers: None,
     },
-    metrics: MetricsConfig {
-        enabled: true,
-        destination: MetricsDestination::Stdout,
-        export_interval_seconds: None,
-        headers: None,
-    },
+    metrics: MetricsConfig::default(),
     tracing: None, // Disabled for development
 }
 ```
 
-### Production with External Services
+### Production with OTLP Collector (features enabled)
 ```rust
 ObservabilityConfig {
     logs: LogConfig {
         enabled: true,
         level: "info".to_string(),
-        destination: LogDestination::Otlp {
-            endpoint: "http://jaeger:4317".to_string(),
-            headers: Some({
-                let mut h = HashMap::new();
-                h.insert("Authorization".to_string(), "Bearer prod-token".to_string());
-                h
-            }),
-        },
+        destination: LogDestination::Otlp { endpoint: "http://collector:4318".to_string(), headers: None },
         headers: None,
     },
-    metrics: MetricsConfig {
-        enabled: true,
-        destination: MetricsDestination::Prometheus {
-            endpoint: "http://prometheus:9090".to_string(),
-            headers: None,
-        },
-        export_interval_seconds: Some(60),
-        headers: None,
-    },
-    tracing: Some(TracingConfig {
-        enabled: true,
-        sampling: SamplingConfig {
-            ratio: 0.01, // 1% sampling in production
-            parent_based: true,
-            rate_limit: Some(1000),
-        },
-        resource: Some(ResourceConfig {
-            service_name: "jacs-production".to_string(),
-            service_version: Some("2.1.0".to_string()),
-            environment: Some("production".to_string()),
-            attributes: HashMap::new(),
-        }),
-    }),
+    metrics: MetricsConfig { enabled: true, destination: MetricsDestination::Otlp { endpoint: "http://collector:4318".into(), headers: None }, export_interval_seconds: Some(60), headers: None },
+    tracing: Some(TracingConfig { enabled: true, sampling: SamplingConfig { ratio: 0.01, parent_based: true, rate_limit: Some(1000) }, resource: None, destination: Some(TracingDestination::Otlp { endpoint: "http://collector:4318".into(), headers: None }) }),
 }
 ```
 
@@ -371,22 +330,15 @@ ObservabilityConfig {
     logs: LogConfig {
         enabled: true,
         level: "trace".to_string(),
-        destination: LogDestination::File {
-            path: "./test_logs".to_string(),
-        },
+        destination: LogDestination::File { path: "./test_logs".to_string() },
         headers: None,
     },
-    metrics: MetricsConfig {
-        enabled: false, // Disable metrics in tests
-        destination: MetricsDestination::Stdout,
-        export_interval_seconds: None,
-        headers: None,
-    },
-    tracing: None, // Usually disabled in unit tests
+    metrics: MetricsConfig { enabled: false, destination: MetricsDestination::Stdout, export_interval_seconds: None, headers: None },
+    tracing: None,
 }
 ```
 
-## Integration with Configuration Files
+## Integration with `jacs.config.json`
 
 Add observability to your `jacs.config.json`:
 
@@ -398,37 +350,10 @@ Add observability to your `jacs.config.json`:
     "logs": {
       "enabled": true,
       "level": "info",
-      "destination": {
-        "file": {
-          "path": "./logs"
-        }
-      }
+      "destination": { "file": { "path": "./logs" } }
     },
-    "metrics": {
-      "enabled": true,
-      "destination": {
-        "prometheus": {
-          "endpoint": "http://localhost:9090",
-          "headers": {
-            "Authorization": "Bearer your-token"
-          }
-        }
-      },
-      "export_interval_seconds": 30
-    },
-    "tracing": {
-      "enabled": true,
-      "sampling": {
-        "ratio": 0.1,
-        "parent_based": true,
-        "rate_limit": 100
-      },
-      "resource": {
-        "service_name": "my-jacs-service",
-        "service_version": "1.0.0",
-        "environment": "production"
-      }
-    }
+    "metrics": { "enabled": false },
+    "tracing": null
   }
 }
 ```
@@ -436,27 +361,14 @@ Add observability to your `jacs.config.json`:
 ## Best Practices
 
 1. **Initialize Early**: Call the initialization function as early as possible in your application
-2. **Use Appropriate Log Levels**: 
-   - `error!` for actual errors that need attention
-   - `warn!` for concerning but non-fatal issues
-   - `info!` for important application events
-   - `debug!` for detailed diagnostic information
-   - `trace!` for very verbose debugging
+2. **Use Appropriate Log Levels**: choose levels suitable for your environment
 3. **Include Context**: Add relevant context to your logs (agent IDs, operation types, etc.)
-4. **Use Convenience Functions**: Prefer the domain-specific convenience functions for agent operations
-5. **Tag Your Metrics**: Always include relevant tags for better filtering and aggregation
-6. **Sample Traces in Production**: Use sampling to reduce overhead (1-10% is typical)
-7. **Secure Your Endpoints**: Use headers for authentication when sending to external services
-8. **Set Resource Information**: Properly identify your service in tracing data
+4. **Keep It Minimal**: Enable features only when you need remote export
 
 ## Troubleshooting
 
-- **Global Subscriber Already Set**: If you see this error, it means observability was already initialized. This is usually fine in production.
-- **File Permission Errors**: Ensure the application has write permissions to the log/metrics directories
-- **Missing Log Output**: Check that the log level is appropriate for your messages
-- **Empty Metrics File**: Ensure sufficient time has passed for the export interval, or call flush explicitly
-- **Authentication Failures**: Verify your headers and credentials for external endpoints
-- **High Overhead**: Reduce tracing sampling ratio or increase rate limits
+- **Global Subscriber Already Set**: This can occur if multiple initializations run; usually safe to ignore.
+- **Feature Not Enabled**: If you see an error like "otlp-logs feature is not enabled", rebuild with the required feature.
 
 ## Run the Example
 
@@ -464,4 +376,4 @@ Add observability to your `jacs.config.json`:
 cargo run --example observability_demo
 ```
 
-This will create log files in `./logs/` and metrics in `./metrics.txt` that you can inspect. 
+This will create log files in `./logs/`. Enable OTLP features and configure endpoints to export remotely. 

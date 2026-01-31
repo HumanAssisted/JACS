@@ -1,489 +1,446 @@
 # Model Context Protocol (MCP) Integration
 
-JACS provides native integration with the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling secure agent communication within AI systems. This allows JACS agents to be used directly as MCP servers or clients.
+JACS provides native integration with the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling secure agent communication within AI systems. JACS uses a transport proxy pattern that wraps any MCP transport with cryptographic signing and verification.
 
 ## What is MCP?
 
 Model Context Protocol is a standard for AI models to securely access external tools, data, and services. JACS enhances MCP by adding:
 
-- **Cryptographic verification** of tool outputs
+- **Cryptographic verification** of all messages
 - **Agent identity** for all operations
+- **Transparent encryption** of MCP JSON-RPC traffic
 - **Audit trails** of all MCP interactions
-- **Multi-agent agreements** for complex workflows
+
+## How JACS MCP Works
+
+JACS provides a **transport proxy** that sits between your MCP server/client and the underlying transport (STDIO, SSE, WebSocket). The proxy:
+
+1. **Outgoing messages**: Signs JSON-RPC messages with the JACS agent's key using `signRequest()`
+2. **Incoming messages**: Verifies signatures using `verifyResponse()` and extracts the payload
+3. **Fallback**: If verification fails, passes messages through as plain JSON (graceful degradation)
 
 ## Quick Start
 
-### Basic MCP Server
+### Basic MCP Server with JACS
 
 ```javascript
-import { JacsMcpServer } from 'jacsnpm/mcp';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { z } from 'zod';
 
-// Create a JACS-enabled MCP server
-const server = new JacsMcpServer({
-  name: "JACS Task Server",
-  version: "1.0.0",
-  configPath: './jacs.config.json'
-});
+const JACS_CONFIG_PATH = "./jacs.config.json";
 
-// Add JACS tools automatically
-server.addJacsTools();
+async function main() {
+  // Create the base STDIO transport
+  const baseTransport = new StdioServerTransport();
 
-// Start the server
-await server.start();
-console.log('JACS MCP Server running!');
-```
+  // Wrap with JACS encryption
+  const secureTransport = createJACSTransportProxy(
+    baseTransport,
+    JACS_CONFIG_PATH,
+    "server"
+  );
 
-### Using with Existing MCP Server
+  // Create MCP server
+  const server = new McpServer({
+    name: "my-jacs-server",
+    version: "1.0.0"
+  });
 
-```javascript
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createJacsMiddleware } from 'jacsnpm/mcp';
+  // Register tools
+  server.tool("add", {
+    a: z.number().describe("First number"),
+    b: z.number().describe("Second number")
+  }, async ({ a, b }) => {
+    return { content: [{ type: "text", text: `${a} + ${b} = ${a + b}` }] };
+  });
 
-const server = new McpServer({ 
-  name: "MyServer", 
-  version: "1.0.0" 
-});
-
-// Add JACS middleware
-server.use(createJacsMiddleware({ 
-  configPath: './jacs.config.json' 
-}));
-
-await server.start();
-```
-
-## Available Tools
-
-When you add JACS to an MCP server, it provides these tools:
-
-### Agent Management
-- `jacs_create_agent` - Create new JACS agents
-- `jacs_update_agent` - Update agent information
-- `jacs_verify_agent` - Verify agent signatures
-- `jacs_list_agents` - List all known agents
-
-### Task Management  
-- `jacs_create_task` - Create signed task documents
-- `jacs_assign_task` - Delegate tasks to other agents
-- `jacs_complete_task` - Mark tasks as completed
-- `jacs_verify_task` - Verify task signatures
-
-### Agreement Management
-- `jacs_create_agreement` - Create multi-party agreements
-- `jacs_sign_agreement` - Add signature to agreement
-- `jacs_verify_agreement` - Check agreement completeness
-- `jacs_list_agreements` - Show pending/completed agreements
-
-### Document Operations
-- `jacs_create_document` - Create and sign any document
-- `jacs_verify_document` - Verify document integrity
-- `jacs_list_documents` - List all documents
-- `jacs_get_document` - Retrieve specific document
-
-## Configuration
-
-### Server Configuration
-
-```javascript
-const serverConfig = {
-  // MCP Server settings
-  name: "JACS Agent Server",
-  version: "1.0.0",
-  
-  // JACS Configuration
-  configPath: './jacs.config.json',
-  
-  // Optional: Custom tools
-  enabledTools: [
-    'jacs_create_task',
-    'jacs_verify_task', 
-    'jacs_create_agreement',
-    'jacs_sign_agreement'
-  ],
-  
-  // Optional: Auto-initialization
-  autoInit: true,
-  createAgentOnInit: true
-};
-
-const server = new JacsMcpServer(serverConfig);
-```
-
-### Middleware Configuration
-
-```javascript
-const middlewareConfig = {
-  configPath: './jacs.config.json',
-  
-  // Agent initialization
-  autoCreateAgent: true,
-  agentName: "MCP JACS Agent",
-  agentDescription: "Agent providing JACS services via MCP",
-  
-  // Tool selection
-  tools: ['tasks', 'agreements', 'documents'],
-  
-  // Security options
-  requireSignatures: true,
-  verifyIncomingDocuments: true
-};
-
-server.use(createJacsMiddleware(middlewareConfig));
-```
-
-## Tool Usage Examples
-
-### Creating a Task
-
-```javascript
-// MCP Client code (Claude, other AI systems)
-const taskResult = await mcpClient.callTool('jacs_create_task', {
-  title: "Analyze Sales Data",
-  description: "Generate insights from Q4 sales data",
-  actions: [
-    {
-      id: "extract",
-      name: "Extract Data",
-      description: "Pull sales data from database",
-      success: "Complete dataset extracted",
-      failure: "Unable to connect to database"
-    },
-    {
-      id: "analyze", 
-      name: "Analyze Trends",
-      description: "Identify patterns and insights",
-      success: "Key insights identified",
-      failure: "Insufficient data for analysis"
-    }
-  ]
-});
-
-console.log('Task created:', taskResult.jacsId);
-console.log('Task signature:', taskResult.jacsSignature);
-```
-
-### Creating an Agreement
-
-```javascript
-const agreementResult = await mcpClient.callTool('jacs_create_agreement', {
-  title: "Data Analysis Agreement",
-  question: "Do you agree to analyze the Q4 sales data?",
-  context: "Task requires access to confidential sales database",
-  agents: [
-    "agent-1-uuid",
-    "agent-2-uuid",
-    "agent-3-uuid"
-  ]
-});
-
-console.log('Agreement created:', agreementResult.jacsId);
-console.log('Required signatures:', agreementResult.agents.length);
-```
-
-### Verifying Documents
-
-```javascript
-const verificationResult = await mcpClient.callTool('jacs_verify_document', {
-  documentId: "task-uuid-here"
-});
-
-console.log('Document valid:', verificationResult.valid);
-console.log('Signature verified:', verificationResult.signatureValid);
-console.log('Hash verified:', verificationResult.hashValid);
-```
-
-## Advanced Integration
-
-### Custom Tools
-
-Add your own JACS-aware tools:
-
-```javascript
-import { JacsMcpServer } from 'jacsnpm/mcp';
-
-const server = new JacsMcpServer(config);
-
-// Custom tool that creates signed reports
-server.addTool({
-  name: "create_signed_report",
-  description: "Create a cryptographically signed report",
-  inputSchema: {
-    type: "object",
-    properties: {
-      title: { type: "string" },
-      content: { type: "string" },
-      reportType: { type: "string", enum: ["analysis", "summary", "recommendation"] }
-    },
-    required: ["title", "content", "reportType"]
-  }
-}, async (params) => {
-  const { title, content, reportType } = params;
-  
-  // Create report document
-  const report = {
-    jacsType: "report",
-    title,
-    content,
-    reportType,
-    generatedAt: new Date().toISOString()
-  };
-  
-  // Sign with JACS agent
-  const signedReport = await server.jacsAgent.createDocument(report);
-  
-  return {
-    success: true,
-    document: signedReport,
-    verification: await server.jacsAgent.verifyDocument(signedReport)
-  };
-});
-```
-
-### Multi-Agent Workflows
-
-Coordinate multiple agents through MCP:
-
-```javascript
-// Agent A creates a task
-const task = await agentA.callTool('jacs_create_task', {
-  title: "Content Creation Pipeline",
-  description: "Multi-stage content creation process"
-});
-
-// Create agreement for collaboration
-const agreement = await agentA.callTool('jacs_create_agreement', {
-  title: "Content Collaboration Agreement", 
-  question: "Do you agree to participate in content creation?",
-  context: `Task: ${task.jacsId}`,
-  agents: [agentA.id, agentB.id, agentC.id]
-});
-
-// Each agent signs the agreement
-await agentA.callTool('jacs_sign_agreement', { agreementId: agreement.jacsId });
-await agentB.callTool('jacs_sign_agreement', { agreementId: agreement.jacsId });
-await agentC.callTool('jacs_sign_agreement', { agreementId: agreement.jacsId });
-
-// Verify all signatures before proceeding
-const verification = await agentA.callTool('jacs_verify_agreement', { 
-  agreementId: agreement.jacsId 
-});
-
-if (verification.complete) {
-  console.log('All agents have signed - workflow can proceed');
+  // Connect with JACS encryption
+  await server.connect(secureTransport);
+  console.error("JACS MCP Server running with encryption enabled");
 }
+
+main();
+```
+
+### MCP Client with JACS
+
+```javascript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
+
+const JACS_CONFIG_PATH = "./jacs.config.json";
+
+async function main() {
+  // Create base transport to connect to MCP server
+  const baseTransport = new StdioClientTransport({
+    command: 'node',
+    args: ['my-jacs-server.js']
+  });
+
+  // Wrap with JACS encryption
+  const secureTransport = createJACSTransportProxy(
+    baseTransport,
+    JACS_CONFIG_PATH,
+    "client"
+  );
+
+  // Create MCP client
+  const client = new Client({
+    name: "my-jacs-client",
+    version: "1.0.0"
+  }, {
+    capabilities: {
+      tools: {}
+    }
+  });
+
+  // Connect with JACS encryption
+  await client.connect(secureTransport);
+
+  // List available tools
+  const tools = await client.listTools();
+  console.log('Available tools:', tools.tools.map(t => t.name));
+
+  // Call a tool (message will be JACS-signed)
+  const result = await client.callTool({
+    name: "add",
+    arguments: { a: 5, b: 3 }
+  });
+
+  console.log('Result:', result.content);
+}
+
+main();
+```
+
+## API Reference
+
+### JACSTransportProxy
+
+The main class that wraps MCP transports with JACS encryption.
+
+```javascript
+import { JACSTransportProxy } from 'jacsnpm/mcp';
+
+const proxy = new JACSTransportProxy(
+  transport,      // Any MCP transport (Stdio, SSE, WebSocket)
+  role,           // "server" or "client"
+  jacsConfigPath  // Path to jacs.config.json
+);
+```
+
+### createJACSTransportProxy
+
+Factory function for creating a transport proxy.
+
+```javascript
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
+
+const secureTransport = createJACSTransportProxy(
+  baseTransport,    // The underlying MCP transport
+  configPath,       // Path to jacs.config.json
+  role              // "server" or "client"
+);
+```
+
+### createJACSTransportProxyAsync
+
+Async factory that waits for JACS to be fully loaded before returning.
+
+```javascript
+import { createJACSTransportProxyAsync } from 'jacsnpm/mcp';
+
+const secureTransport = await createJACSTransportProxyAsync(
+  baseTransport,
+  configPath,
+  role
+);
 ```
 
 ## Transport Options
 
-### Stdio Transport (Default)
+### STDIO Transport
+
+Best for CLI tools and subprocess communication:
 
 ```javascript
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
 
-const server = new JacsMcpServer(config);
-const transport = new StdioServerTransport();
-await server.connect(transport);
+const baseTransport = new StdioServerTransport();
+const secureTransport = createJACSTransportProxy(
+  baseTransport,
+  "./jacs.config.json",
+  "server"
+);
 ```
+
+**Important**: When using STDIO transport, all debug logging goes to `stderr` to keep `stdout` clean for JSON-RPC messages.
 
 ### SSE Transport (HTTP)
 
-```javascript
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+For web-based MCP servers:
 
-const server = new JacsMcpServer(config);
-const transport = new SSEServerTransport('/mcp', {
-  port: 3000
+```javascript
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import express from 'express';
+
+const app = express();
+
+app.get('/sse', (req, res) => {
+  const baseTransport = new SSEServerTransport('/messages', res);
+  const secureTransport = createJACSTransportProxy(
+    baseTransport,
+    "./jacs.config.json",
+    "server"
+  );
+
+  // Connect your MCP server to secureTransport
+  server.connect(secureTransport);
 });
-await server.connect(transport);
+
+// Handle POST messages with JACS decryption
+app.post('/messages', express.text(), async (req, res) => {
+  await secureTransport.handlePostMessage(req, res, req.body);
+});
+
+app.listen(3000);
 ```
 
-### WebSocket Transport
+## Configuration
 
-```javascript
-import { WebSocketServerTransport } from '@modelcontextprotocol/sdk/server/websocket.js';
+### JACS Config File
 
-const server = new JacsMcpServer(config);
-const transport = new WebSocketServerTransport({
-  port: 3001
-});
-await server.connect(transport);
+Create a `jacs.config.json` for your MCP server/client:
+
+```json
+{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_default_storage": "fs",
+  "jacs_agent_key_algorithm": "ring-Ed25519",
+  "jacs_agent_id_and_version": "agent-uuid:version-uuid"
+}
 ```
 
-## Client Integration
+### Environment Variables
 
-### Using JACS with MCP Clients
+Enable debug logging (not recommended for STDIO):
+
+```bash
+export JACS_MCP_DEBUG=true
+```
+
+## How Messages Are Signed
+
+### Outgoing Messages
+
+When the MCP SDK sends a message, the proxy intercepts it and:
+
+1. Serializes the JSON-RPC message
+2. Calls `jacs.signRequest(message)` to create a JACS artifact
+3. Sends the signed artifact to the transport
 
 ```javascript
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+// Original MCP message
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "add", "arguments": { "a": 5, "b": 3 } }
+}
 
-// Connect to JACS MCP server
-const transport = new StdioClientTransport({
-  command: 'node',
-  args: ['jacs-mcp-server.js']
+// Becomes a JACS-signed artifact with jacsId, jacsSignature, etc.
+```
+
+### Incoming Messages
+
+When the transport receives a message, the proxy:
+
+1. Attempts to verify it as a JACS artifact using `jacs.verifyResponse()`
+2. If valid, extracts the original JSON-RPC payload
+3. If not valid JACS, parses as plain JSON (fallback mode)
+4. Passes the clean message to the MCP SDK
+
+## Complete Example
+
+### Server (mcp.server.js)
+
+```javascript
+#!/usr/bin/env node
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { z } from 'zod';
+
+async function main() {
+  console.error("JACS MCP Server starting...");
+
+  // Create transport with JACS encryption
+  const baseTransport = new StdioServerTransport();
+  const secureTransport = createJACSTransportProxy(
+    baseTransport,
+    "./jacs.server.config.json",
+    "server"
+  );
+
+  // Create MCP server
+  const server = new McpServer({
+    name: "jacs-demo-server",
+    version: "1.0.0"
+  });
+
+  // Register tools
+  server.tool("echo", {
+    message: z.string().describe("Message to echo")
+  }, async ({ message }) => {
+    console.error(`Echo called with: ${message}`);
+    return { content: [{ type: "text", text: `Echo: ${message}` }] };
+  });
+
+  server.tool("add", {
+    a: z.number().describe("First number"),
+    b: z.number().describe("Second number")
+  }, async ({ a, b }) => {
+    console.error(`Add called with: ${a}, ${b}`);
+    return { content: [{ type: "text", text: `Result: ${a + b}` }] };
+  });
+
+  // Register resources
+  server.resource(
+    "server-info",
+    "info://server",
+    async (uri) => ({
+      contents: [{
+        uri: uri.href,
+        text: "JACS-secured MCP Server",
+        mimeType: "text/plain"
+      }]
+    })
+  );
+
+  // Connect
+  await server.connect(secureTransport);
+  console.error("Server running with JACS encryption");
+}
+
+main().catch(err => {
+  console.error("Fatal error:", err);
+  process.exit(1);
 });
+```
 
-const client = new Client({
-  name: "JACS MCP Client",
-  version: "1.0.0"
-}, {
-  capabilities: {
-    tools: {}
-  }
-});
+### Client (mcp.client.js)
 
-await client.connect(transport);
+```javascript
+#!/usr/bin/env node
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { createJACSTransportProxy } from 'jacsnpm/mcp';
 
-// List available JACS tools
-const tools = await client.listTools();
-console.log('Available JACS tools:', tools.tools.map(t => t.name));
+async function main() {
+  console.log("JACS MCP Client starting...");
 
-// Use JACS tools
-const result = await client.callTool({
-  name: "jacs_create_task",
-  arguments: {
-    title: "Example Task",
-    description: "Task created via MCP client"
-  }
-});
+  // Connect to the server
+  const baseTransport = new StdioClientTransport({
+    command: 'node',
+    args: ['mcp.server.js']
+  });
 
-console.log('Task created:', result.content);
+  const secureTransport = createJACSTransportProxy(
+    baseTransport,
+    "./jacs.client.config.json",
+    "client"
+  );
+
+  const client = new Client({
+    name: "jacs-demo-client",
+    version: "1.0.0"
+  }, {
+    capabilities: { tools: {} }
+  });
+
+  await client.connect(secureTransport);
+  console.log("Connected to JACS MCP Server");
+
+  // List tools
+  const tools = await client.listTools();
+  console.log("Available tools:", tools.tools.map(t => t.name));
+
+  // Call echo tool
+  const echoResult = await client.callTool({
+    name: "echo",
+    arguments: { message: "Hello, JACS!" }
+  });
+  console.log("Echo result:", echoResult.content[0].text);
+
+  // Call add tool
+  const addResult = await client.callTool({
+    name: "add",
+    arguments: { a: 10, b: 20 }
+  });
+  console.log("Add result:", addResult.content[0].text);
+
+  await client.close();
+}
+
+main().catch(console.error);
 ```
 
 ## Security Considerations
 
-### Signature Verification
+### Message Verification
 
-All JACS tools automatically verify signatures:
+All JACS-signed messages include:
+- `jacsId` - Unique document identifier
+- `jacsVersion` - Version tracking
+- `jacsSignature` - Cryptographic signature
+- `jacsHash` - Content hash for integrity
 
-```javascript
-// Tool implementation with verification
-server.addTool({
-  name: "process_task_result",
-  description: "Process results from task completion"
-}, async (params) => {
-  const { taskId, result } = params;
-  
-  // Verify the task exists and signature is valid
-  const task = await server.jacsAgent.getDocument(taskId);
-  const isValid = await server.jacsAgent.verifyDocument(task);
-  
-  if (!isValid) {
-    throw new Error('Invalid task signature - refusing to process');
-  }
-  
-  // Process the verified task result
-  return processResult(result);
-});
-```
+### Passthrough Mode
 
-### Agent Authentication
+If JACS cannot verify an incoming message, it falls back to plain JSON parsing. This allows:
+- Gradual migration to JACS-secured communication
+- Interoperability with non-JACS MCP clients/servers
 
-Authenticate agent identity for sensitive operations:
+To require JACS verification (no fallback), implement custom validation in your tools.
 
-```javascript
-server.addTool({
-  name: "access_sensitive_data",
-  description: "Access sensitive data with agent verification"
-}, async (params, context) => {
-  const { agentId, dataType } = params;
-  
-  // Verify the requesting agent has proper credentials
-  const agent = await server.jacsAgent.getAgent(agentId);
-  const hasPermission = await checkAgentPermissions(agent, dataType);
-  
-  if (!hasPermission) {
-    throw new Error('Agent lacks permission for this data type');
-  }
-  
-  return getSensitiveData(dataType);
-});
-```
+### Key Management
 
-## Monitoring and Observability
+Each MCP server and client needs its own JACS agent with:
+- Unique agent ID
+- Private/public key pair
+- Configuration file
 
-### Request Logging
+## Debugging
 
-```javascript
-const server = new JacsMcpServer({
-  ...config,
-  logging: {
-    logRequests: true,
-    logSignatures: true,
-    logVerifications: true
-  }
-});
-
-// Logs will include:
-// - Tool calls with agent identity
-// - Signature verification results  
-// - Document creation/modification
-// - Agreement signing events
-```
-
-### Metrics Collection
-
-```javascript
-import { recordMcpOperation } from 'jacsnpm/observability';
-
-server.addTool({
-  name: "example_tool"
-}, async (params) => {
-  const startTime = Date.now();
-  
-  try {
-    const result = await performOperation(params);
-    
-    recordMcpOperation('example_tool', true, Date.now() - startTime);
-    return result;
-  } catch (error) {
-    recordMcpOperation('example_tool', false, Date.now() - startTime);
-    throw error;
-  }
-});
-```
-
-## Examples
-
-Complete MCP integration examples are available:
-
-- **[Basic MCP Server](../examples/nodejs.md#mcp-server)** - Simple JACS MCP server
-- **[Express Integration](../examples/nodejs.md#express-mcp)** - MCP server with Express.js
-- **[Multi-Agent Workflow](../examples/nodejs.md#multi-agent-mcp)** - Coordinated agent collaboration
-- **[Custom Tools](../examples/nodejs.md#custom-mcp-tools)** - Building domain-specific JACS tools
-
-## Troubleshooting
-
-### Connection Issues
+### Enable Debug Logging
 
 ```bash
-# Test MCP server connectivity
-echo '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}' | node jacs-mcp-server.js
+export JACS_MCP_DEBUG=true
 ```
 
-### Tool Registration Problems
+This outputs detailed logs about message signing and verification.
 
-```javascript
-// Verify tools are registered correctly
-const server = new JacsMcpServer(config);
-await server.start();
+### STDIO Debug Note
 
-const tools = await server.listTools();
-console.log('Registered tools:', tools.map(t => t.name));
-```
+For STDIO transports, debug logs go to `stderr` to prevent contaminating the JSON-RPC stream on `stdout`.
 
-### Signature Verification Failures
+### Common Issues
 
-```javascript
-// Debug signature issues
-try {
-  const result = await mcpClient.callTool('jacs_verify_document', {
-    documentId: 'problematic-doc-id'
-  });
-} catch (error) {
-  console.error('Verification details:', error.details);
-  // Check agent keys, document integrity, etc.
-}
-```
+**"JACS not operational"**: Check that your config file path is correct and the agent is properly initialized.
 
-For more details, see the [API Reference](api.md) and [complete examples](../examples/nodejs.md). 
+**Verification failures**: Ensure both server and client are using compatible JACS versions and valid keys.
+
+**Empty responses**: The proxy removes null values from messages to prevent MCP schema validation issues.
+
+## Next Steps
+
+- [HTTP Server](http.md) - Create HTTP APIs with JACS
+- [Express Middleware](express.md) - Integrate with Express.js
+- [API Reference](api.md) - Complete API documentation

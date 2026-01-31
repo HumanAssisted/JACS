@@ -11,6 +11,7 @@
 . ai.pydantic.dev
 - secure storage of private key for shared server envs https://crates.io/crates/tss-esapi, https://docs.rs/cryptoki/latest/cryptoki/
 - qr code integration
+- https://github.com/sourcemeta/one
 
 ## 0.4.0
 - Domain integration
@@ -22,6 +23,11 @@
    - load document whatever storage config is
    - function test output metadata about current config and current agent
 
+- [] add more feature flags for modular integrations
+- [] a2a integration
+- [] acp integration
+
+
 ## jacs-mcp 0.1.0
 
  - [] use rmcp
@@ -29,13 +35,37 @@
  - [] integration test with client
  - [] https://github.com/modelcontextprotocol/specification/discussions
 
+### devrel
+- [] github actions builder for auto build/deploy of platform specific versions
+--------------------
 
+- [] cli install for brew
+- [] cli install via shell script
+- [] open license
+ - [] api for easier integratios data processing 
+
+ - [] clickhous demo
+ - [] test centralized logging output without file output 
+ 
 --------------------
 
 ## 0.3.7
 
-### devrel
-- [] github actions builder for auto build/deploy of platform specific versions
+### internals
+
+- [x] Updated A2A integration to protocol v0.4.0: rewrote AgentCard schema (protocolVersions array, supportedInterfaces, embedded JWS signatures, SecurityScheme enum, AgentSkill with id/tags), updated well-known path to agent-card.json, and aligned Rust, Python, and Node.js bindings with passing tests across all three.
+- [] remove in memory map if users don't request it. Refactor and DRY storage to prep for DB storage
+- [] test a2a across libraries
+- [] store in database
+- [] awareness of branch, merge, latest for documents. 
+
+### hai.ai
+
+- integration with 
+
+ 1. register
+ 2. 
+
 
 ### jacsnpm
 
@@ -59,11 +89,12 @@
       1. cli create agent 
       2. config jacspy to load each agent
  - [] github actions builder for linux varieties
+ - [] switch to uv from pip/etc
 
 ### JACS core
- - [] acp integration
+ 
  - [] brew installer, review installation instrucitons,  cli install instructions. a .sh command?
- - [] a2a integration
+ - [] more a2a tests
  - [] ensure if a user wants standard logging they can use that
 
  
@@ -78,33 +109,7 @@
  ### minor core
 - [] don't store  "jacs_private_key_password":  in config, don't display
 - [] minor feature - no_save = false should save document and still return json string instead of message on create document
-
---------------------
-
-## 0.3.6
-
-
-### devex
-
-- [] add more feature flags for modular integrations
-- [] a2a integration
-- [] acp integration
-- [] add updates to book
-- [] cli install for brew
-- [] cli install via shell script
-- [] open license
-- [] crew.ai
-- [] langchain
-
-### jacs
-
- - [] redesign api for easier bootstrapping
- - [] PKI choice (dkim, ke)
- - [] private key bootstrapping with vault, kerberos - filesystem
- - [] api for easier integratios data processing 
- - [x] add observability to configuration
-
- - [] test centralized logging output without file output 
+ - [] default to dnssec if domain is present - or WARN
 
 ### jacsmcp
 
@@ -115,12 +120,54 @@
 - [] refactor api
 - [] publish to pipy 
 - [] tracing and logging integration tests
-- [] switch to uv from pip/etc
+
 
 ### jacsnpm
 
 - [] publish to npm
 - [] tracing and logging integration tests
+
+
+==== 
+## 0.3.6
+
+### Security
+
+- **[CRITICAL] Fixed key derivation**: Changed from single SHA-256 hash to proper PBKDF2-HMAC-SHA256 with 100,000 iterations for deriving encryption keys from passwords. The previous single-hash approach was vulnerable to brute-force attacks.
+
+- **[CRITICAL] Fixed crypto panic handling**: Replaced `.expect()` with proper `.map_err()` error handling in AES-GCM encryption/decryption. Crypto failures now return proper errors instead of panicking, which could cause denial of service.
+
+- **[HIGH] Fixed foreign signature verification**: The `verify_wrapped_artifact` function now properly returns `Unverified` status for foreign agent signatures when the public key is not available, rather than incorrectly indicating signatures were verified. Added `VerificationStatus` enum to explicitly distinguish between `Verified`, `SelfSigned`, `Unverified`, and `Invalid` states.
+
+- **[HIGH] Fixed parent signature verification**: The `verify_parent_signatures` function now actually verifies parent signatures recursively. Previously it always returned true regardless of verification status.
+
+- Added `serial_test` for test isolation to prevent environment variable conflicts between tests.
+
+- Added `regenerate_test_keys.rs` utility example for re-encrypting test fixtures with the new KDF.
+
+- **[MEDIUM] Fixed jacsnpm global singleton**: Refactored from global `lazy_static!` mutex to `JacsAgent` NAPI class pattern. Multiple agents can now be used concurrently in the same Node.js process. Legacy functions preserved for backwards compatibility but marked deprecated.
+
+- **[MEDIUM] Fixed jacspy global singleton**: Refactored from global `lazy_static!` mutex to `JacsAgent` PyO3 class pattern. Multiple agents can now be used concurrently in the same Python process. The `Arc<Mutex<Agent>>` pattern ensures thread-safety and works with Python's GIL as well as future free-threading (Python 3.13+). Legacy functions preserved for backwards compatibility.
+
+- **[MEDIUM] Added secure file permissions**: Private keys now get 0600 permissions (owner read/write only) and key directories get 0700 (owner rwx only) on Unix systems. This prevents other users on shared systems from reading private keys.
+
+### devex
+- [x] add updates to book
+- [x] add observability demo
+
+### jacs
+ - [x] a2a integration
+- [x] clean up observability
+   - Observability: added feature-gated backends (`otlp-logs`, `otlp-metrics`, `otlp-tracing`) and optional `observability-convenience`. Default build is minimal (stderr/file logs only), no tokio/OpenTelemetry; clear runtime errors if a requested backend isn’t compiled. Docs now include a feature matrix and compile recipes. Tests updated and all pass with features.
+
+ - [x] dns verification of pubic key hash
+      - DNS: implemented fingerprint-in-DNS (TXT under `_v1.agent.jacs.<domain>.`), CLI emitters for BIND/Route53/Azure/Cloudflare, DNSSEC validation with non-strict fallback, and config flags (`jacs_agent_domain`, `jacs_dns_validate`, `jacs_dns_strict`, `jacs_dns_required`). Added CLI flags `--require-dns`, `--require-strict-dns`, `--ignore-dns`, and `--no-dns` (alias preserved). Improved error messages, updated docs, and added policy/encoding tests.
+
+ 
+ - [x] scaffold private key bootstrapping with vault, kerberos - filesystem
+
+
+
 
 
 --------------------

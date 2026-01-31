@@ -2,18 +2,6 @@ use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
 use jacs_core::agent::payloads::PayloadTraits;
 use jacs_core::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
-// use jacs_core::cli_utils::create::handle_agent_create;
-// use jacs_core::cli_utils::create::handle_config_create;
-// use jacs_core::cli_utils::default_set_file_list;
-// use jacs_core::cli_utils::document::{
-//     check_agreement as cli_check_agreement, create_agreement as cli_create_agreement,
-//     create_documents as cli_create_documents, extract_documents as cli_extract_documents,
-//     sign_documents as cli_sign_documents, update_documents as cli_update_documents,
-//     verify_documents as cli_verify_documents,
-// };
-// use jacs_core::config::find_config;
-// use pyo3::types::PyDict;
-// use pyo3::types::PyDateTime;
 
 use jacs_core::crypt::KeyManager;
 use jacs_core::crypt::hash::hash_string as jacs_hash_string;
@@ -27,10 +15,549 @@ use std::sync::Mutex;
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
 
+// =============================================================================
+// JacsAgent Class - Preferred API for concurrent usage
+// =============================================================================
+// Each JacsAgent instance has its own independent state. This allows multiple
+// agents to be used concurrently in the same Python process without shared
+// mutable state. This is the recommended API for new code.
+//
+// The Arc<Mutex<Agent>> pattern ensures thread-safety:
+// - Arc allows shared ownership across Python references
+// - Mutex protects internal Agent state from data races
+// - Works correctly with Python's GIL and future free-threading (Python 3.13+)
+// =============================================================================
+
+/// A JACS agent instance for signing and verifying documents.
+///
+/// Each JacsAgent has independent state, allowing multiple agents to be used
+/// concurrently. This is the recommended API for new code.
+///
+/// Example:
+///     agent = jacs.JacsAgent()
+///     agent.load("/path/to/config.json")
+///     signed = agent.sign_string("hello")
+#[pyclass]
+pub struct JacsAgent {
+    inner: Arc<Mutex<Agent>>,
+}
+
+#[pymethods]
+impl JacsAgent {
+    #[new]
+    fn new() -> Self {
+        JacsAgent {
+            inner: Arc::new(Mutex::new(jacs_core::get_empty_agent())),
+        }
+    }
+
+    /// Load agent configuration from a file path.
+    fn load(&self, config_path: String) -> PyResult<String> {
+        let mut agent_ref = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to lock agent: {}",
+                e
+            ))
+        })?;
+        agent_ref.load_by_config(config_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to load agent: {}",
+                e
+            ))
+        })?;
+        Ok("Agent loaded".to_string())
+    }
+
+    /// Sign an external agent's document with this agent's registration signature.
+    fn sign_agent(
+        &self,
+        agent_string: &str,
+        public_key: &[u8],
+        public_key_enc_type: &str,
+    ) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        let mut external_agent: Value = agent.validate_agent(agent_string).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Agent validation failed: {}",
+                e
+            ))
+        })?;
+
+        agent
+            .signature_verification_procedure(
+                &external_agent,
+                None,
+                &AGENT_SIGNATURE_FIELDNAME.to_string(),
+                public_key.to_vec(),
+                Some(public_key_enc_type.to_string()),
+                None,
+                None,
+            )
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Signature verification failed: {}",
+                    e
+                ))
+            })?;
+
+        let registration_signature = agent
+            .signing_procedure(
+                &external_agent,
+                None,
+                &AGENT_REGISTRATION_SIGNATURE_FIELDNAME.to_string(),
+            )
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Signing procedure failed: {}",
+                    e
+                ))
+            })?;
+        external_agent[AGENT_REGISTRATION_SIGNATURE_FIELDNAME] = registration_signature;
+        Ok(external_agent.to_string())
+    }
+
+    /// Verify a signature on data using a public key.
+    fn verify_string(
+        &self,
+        data: &str,
+        signature_base64: &str,
+        public_key: &[u8],
+        public_key_enc_type: &str,
+    ) -> PyResult<bool> {
+        let agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        if data.is_empty()
+            || signature_base64.is_empty()
+            || public_key.is_empty()
+            || public_key_enc_type.is_empty()
+        {
+            return Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+                "one param is empty \ndata {} \nsignature_base64 {} \npublic_key {:?} \npublic_key_enc_type {} ",
+                data, signature_base64, public_key, public_key_enc_type
+            )));
+        }
+        match agent.verify_string(
+            &data.to_string(),
+            &signature_base64.to_string(),
+            public_key.to_vec(),
+            Some(public_key_enc_type.to_string()),
+        ) {
+            Ok(_) => Ok(true),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+                "signature fail: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Sign a string and return the base64-encoded signature.
+    fn sign_string(&self, data: &str) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+        let signed_string = agent.sign_string(&data.to_string()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to sign string: {}",
+                e
+            ))
+        })?;
+        Ok(signed_string)
+    }
+
+    /// Verify this agent's self-signature.
+    fn verify_agent(&self, agentfile: Option<String>) -> PyResult<bool> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        if let Some(file) = agentfile {
+            let agent_result = jacs_core::load_agent(Some(file));
+            match agent_result {
+                Ok(loaded_agent) => {
+                    *agent = loaded_agent;
+                }
+                Err(e) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Failed to load agent: {}",
+                        e
+                    )));
+                }
+            }
+        }
+
+        match agent.verify_self_signature() {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to verify agent signature: {}",
+                    e
+                )));
+            }
+        }
+
+        match agent.verify_self_hash() {
+            Ok(_) => Ok(true),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify agent hash: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Update this agent with new data.
+    fn update_agent(&self, new_agent_string: String) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        match agent.update_self(&new_agent_string) {
+            Ok(updated) => Ok(updated),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to update agent: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Verify a document's signature and hash.
+    fn verify_document(&self, document_string: String) -> PyResult<bool> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        let doc_result = agent.load_document(&document_string);
+        let doc = match doc_result {
+            Ok(doc) => doc,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to load document: {}",
+                    e
+                )));
+            }
+        };
+
+        let document_key = doc.getkey();
+        let value = doc.getvalue();
+
+        match agent.verify_hash(value) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to verify document hash: {}",
+                    e
+                )));
+            }
+        }
+
+        match agent.verify_external_document_signature(&document_key) {
+            Ok(_) => Ok(true),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify document signature: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Update an existing document.
+    fn update_document(
+        &self,
+        document_key: String,
+        new_document_string: String,
+        attachments: Option<Vec<String>>,
+        embed: Option<bool>,
+    ) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        match agent.update_document(&document_key, &new_document_string, attachments, embed) {
+            Ok(doc) => Ok(doc.to_string()),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to update document: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Verify a signature field on a document.
+    fn verify_signature(
+        &self,
+        document_string: String,
+        signature_field: Option<String>,
+    ) -> PyResult<bool> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        let doc_result = agent.load_document(&document_string);
+        let doc = match doc_result {
+            Ok(doc) => doc,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to load document: {}",
+                    e
+                )));
+            }
+        };
+
+        let document_key = doc.getkey();
+        let sig_field_ref = signature_field.as_ref();
+
+        match agent.verify_document_signature(
+            &document_key,
+            sig_field_ref.map(|s| s.as_str()),
+            None,
+            None,
+            None,
+        ) {
+            Ok(_) => Ok(true),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify signature: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Create an agreement on a document requiring signatures from specified agents.
+    fn create_agreement(
+        &self,
+        document_string: String,
+        agentids: Vec<String>,
+        question: Option<String>,
+        context: Option<String>,
+        agreement_fieldname: Option<String>,
+    ) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        match jacs_core::shared::document_add_agreement(
+            &mut agent,
+            &document_string,
+            agentids,
+            None,
+            None,
+            question,
+            context,
+            None,
+            None,
+            false,
+            agreement_fieldname,
+        ) {
+            Ok(result) => Ok(result),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create agreement: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Sign an agreement on a document.
+    fn sign_agreement(
+        &self,
+        document_string: String,
+        agreement_fieldname: Option<String>,
+    ) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        match jacs_core::shared::document_sign_agreement(
+            &mut agent,
+            &document_string,
+            None,
+            None,
+            None,
+            None,
+            false,
+            agreement_fieldname,
+        ) {
+            Ok(result) => Ok(result),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to sign agreement: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Create a new signed document.
+    fn create_document(
+        &self,
+        document_string: String,
+        custom_schema: Option<String>,
+        outputfilename: Option<String>,
+        no_save: Option<bool>,
+        attachments: Option<String>,
+        embed: Option<bool>,
+    ) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        match jacs_core::shared::document_create(
+            &mut agent,
+            &document_string,
+            custom_schema,
+            outputfilename,
+            no_save.unwrap_or(false),
+            attachments.as_deref(),
+            embed,
+        ) {
+            Ok(result) => Ok(result),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create document: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Check agreement status on a document.
+    fn check_agreement(
+        &self,
+        document_string: String,
+        agreement_fieldname: Option<String>,
+    ) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        match jacs_core::shared::document_check_agreement(
+            &mut agent,
+            &document_string,
+            None,
+            agreement_fieldname,
+        ) {
+            Ok(result) => Ok(result),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to check agreement: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Sign a request payload and return a signed JACS document.
+    fn sign_request(&self, py: Python, params_obj: PyObject) -> PyResult<String> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+
+        let bound_params = params_obj.bind(py);
+        let payload_value = conversion_utils::pyany_to_value(py, bound_params)?;
+        let payload_string = agent.sign_payload(payload_value).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to sign payload: {}",
+                e
+            ))
+        })?;
+        Ok(payload_string)
+    }
+
+    /// Verify a response document and return the payload.
+    fn verify_response(&self, py: Python, document_string: String) -> PyResult<PyObject> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+        let payload = agent.verify_payload(document_string, None).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to load document: {}",
+                e
+            ))
+        })?;
+
+        conversion_utils::value_to_pyobject(py, &payload)
+    }
+
+    /// Verify a response document and return (payload, agent_id).
+    fn verify_response_with_agent_id(
+        &self,
+        py: Python,
+        document_string: String,
+    ) -> PyResult<PyObject> {
+        let mut agent = self.inner.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to acquire agent lock: {}",
+                e
+            ))
+        })?;
+        let (payload, agent_id) = agent
+            .verify_payload_with_agent_id(document_string, None)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to load document: {}",
+                    e
+                ))
+            })?;
+        let py_payload = conversion_utils::value_to_pyobject(py, &payload)?;
+        let py_agent_id: Py<pyo3::types::PyString> =
+            pyo3::types::PyString::new_bound(py, &agent_id).into();
+
+        let tuple_bound_ref =
+            pyo3::types::PyTuple::new_bound(py, &[py_agent_id.into_py(py), py_payload]);
+        let py_object_tuple = tuple_bound_ref.to_object(py);
+
+        Ok(py_object_tuple)
+    }
+}
+
+// =============================================================================
+// Legacy Global Singleton - Deprecated, use JacsAgent class instead
+// =============================================================================
+// These functions use a global shared agent for backward compatibility.
+// New code should use the JacsAgent class for better concurrency support.
+// =============================================================================
+
 lazy_static! {
+    /// @deprecated Use JacsAgent class instead for new code.
+    /// Global agent for legacy function compatibility.
     pub static ref JACS_AGENT: Arc<Mutex<Agent>> = {
-        let agent: Arc<Mutex<Agent>> = Arc::new(Mutex::new(jacs_core::get_empty_agent()));
-        return agent;
+        Arc::new(Mutex::new(jacs_core::get_empty_agent()))
     };
 }
 
@@ -360,7 +887,13 @@ fn verify_signature(
 
     // Verify signature using the DocumentTraits trait method
     // FIXME get the public key from the document
-    match agent.verify_document_signature(&document_key, sig_field_ref, None, None, None) {
+    match agent.verify_document_signature(
+        &document_key,
+        sig_field_ref.map(|s| s.as_str()),
+        None,
+        None,
+        None,
+    ) {
         Ok(_) => Ok(true),
         Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "Failed to verify signature: {}",
@@ -446,7 +979,7 @@ fn create_document(
         custom_schema,
         outputfilename,
         no_save.unwrap_or(false),
-        attachments.as_ref(),
+        attachments.as_deref(),
         embed,
     ) {
         Ok(result) => Ok(result),
@@ -554,7 +1087,7 @@ fn create_documents_py(
         filename.as_ref(),
         directory.as_ref(),
         outputfilename.as_ref(),
-        attachments.as_ref(),
+        attachments.as_deref(),
         embed,
         no_save,
         schema.as_ref(),
@@ -673,13 +1206,16 @@ fn extract_documents_py(
 #[pymodule]
 fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
-    // pyo3::types::PyDateTime::init_type();
+
+    // Add the JacsAgent class - recommended API for new code
+    m.add_class::<JacsAgent>()?;
 
     #[pyfn(m, name = "log_to_python")]
     fn py_log_to_python(py: Python, message: String, log_level: String) -> PyResult<()> {
         log_to_python(py, &message, &log_level)
     }
 
+    // Legacy functions using global singleton - deprecated, use JacsAgent class instead
     m.add_function(wrap_pyfunction!(verify_string, m)?)?;
     m.add_function(wrap_pyfunction!(hash_string, m)?)?;
     m.add_function(wrap_pyfunction!(sign_string, m)?)?;
@@ -700,17 +1236,6 @@ fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(sign_request, m)?)?;
     m.add_function(wrap_pyfunction!(verify_response, m)?)?;
-
-    //cli functions
-    // m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(create_documents_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(update_documents_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(create_agreement_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(check_agreement_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(sign_documents_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(verify_documents_py, m)?)?;
-    // m.add_function(wrap_pyfunction!(extract_documents_py, m)?)?;
 
     Ok(())
 }

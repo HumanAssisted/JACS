@@ -31,7 +31,8 @@
       "enum": [
             "RSA-PSS",
             "ring-Ed25519",
-            "pq-dilithium"
+            "pq-dilithium",
+            "pq2025"
           ]
     },
      "jacs_agent_schema_version": {
@@ -56,6 +57,22 @@
       "enum": [
         "fs", "aws", "hai"
       ]
+    },
+    "jacs_agent_domain": {
+      "description": "Optional domain used for DNSSEC-validated public key fingerprint (_v1.agent.jacs.<domain>.)",
+      "type": "string"
+    },
+    "jacs_dns_validate": {
+      "description": "If true, attempt DNS TXT fingerprint validation when a domain is present (default true if domain present).",
+      "type": "boolean"
+    },
+    "jacs_dns_strict": {
+      "description": "If true, require DNSSEC-validated TXT and disallow embedded fallback when validating.",
+      "type": "boolean"
+    },
+    "jacs_dns_required": {
+      "description": "If true, require a domain and DNS validation to be present; fail validation if missing.",
+      "type": "boolean"
     },
     "observability": {
       "description": "Observability configuration for logging, metrics, and tracing",

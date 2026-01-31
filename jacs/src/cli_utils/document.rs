@@ -16,13 +16,13 @@ pub fn create_documents(
     filename: Option<&String>,
     directory: Option<&String>,
     outputfilename: Option<&String>,
-    attachments: Option<&String>,
+    attachments: Option<&str>,
     embed: Option<bool>,
     no_save: bool,
     schema: Option<&String>,
 ) -> Result<(), Box<dyn Error>> {
     let storage = get_storage_default_for_cli();
-    if !outputfilename.is_none() && !directory.is_none() {
+    if outputfilename.is_some() && directory.is_some() {
         eprintln!(
             "Error: if there is a directory you can't name the file the same for multiple files."
         );
@@ -67,9 +67,9 @@ pub fn create_documents(
                     .as_ref()
                     .expect("Storage must be initialized for this command")
                     .get_file(file, None)
-                    .expect(&format!("Failed to load document file: {}", file));
+                    .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
                 String::from_utf8(content_bytes)
-                    .expect(&format!("Document file {} is not valid UTF-8", file))
+                    .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file))
             } else {
                 eprintln!("Warning: Empty file path encountered in loop.");
                 "{}".to_string()
@@ -120,11 +120,11 @@ pub fn update_documents(
             .as_ref()
             .expect("Storage must be initialized for this command")
             .get_file(schema_file, None)
-            .expect(&format!("Failed to load schema file: {}", schema_file));
+            .unwrap_or_else(|_| panic!("Failed to load schema file: {}", schema_file));
         let _schemastring = String::from_utf8(schema_bytes)
-            .expect(&format!("Schema file {} is not valid UTF-8", schema_file));
+            .unwrap_or_else(|_| panic!("Schema file {} is not valid UTF-8", schema_file));
         let schemas = [schema_file.clone()]; // Still need the path string for agent
-        agent.load_custom_schemas(&schemas);
+        agent.load_custom_schemas(&schemas)?;
     }
 
     // Use storage to read the document files
@@ -132,27 +132,26 @@ pub fn update_documents(
         .as_ref()
         .expect("Storage must be initialized for this command")
         .get_file(new_filename, None)
-        .expect(&format!(
-            "Failed to load new document file: {}",
-            new_filename
-        ));
-    let new_document_string = String::from_utf8(new_doc_bytes).expect(&format!(
-        "New document file {} is not valid UTF-8",
-        new_filename
-    ));
+        .unwrap_or_else(|_| panic!("Failed to load new document file: {}", new_filename));
+    let new_document_string = String::from_utf8(new_doc_bytes)
+        .unwrap_or_else(|_| panic!("New document file {} is not valid UTF-8", new_filename));
 
     let original_doc_bytes = storage
         .as_ref()
         .expect("Storage must be initialized for this command")
         .get_file(original_filename, None)
-        .expect(&format!(
-            "Failed to load original document file: {}",
+        .unwrap_or_else(|_| {
+            panic!(
+                "Failed to load original document file: {}",
+                original_filename
+            )
+        });
+    let original_document_string = String::from_utf8(original_doc_bytes).unwrap_or_else(|_| {
+        panic!(
+            "Original document file {} is not valid UTF-8",
             original_filename
-        ));
-    let original_document_string = String::from_utf8(original_doc_bytes).expect(&format!(
-        "Original document file {} is not valid UTF-8",
-        original_filename
-    ));
+        )
+    });
 
     let original_doc = agent
         .load_document(&original_document_string)
@@ -179,7 +178,7 @@ pub fn update_documents(
         //let document_ref = agent.get_document(&document_key).unwrap();
 
         let validate_result =
-            agent.validate_document_with_custom_schema(&schema_file, &updated_document.getvalue());
+            agent.validate_document_with_custom_schema(schema_file, updated_document.getvalue());
         match validate_result {
             Ok(_doc) => {
                 println!("document specialised schema {} validated", new_document_key);
@@ -199,14 +198,14 @@ pub fn update_documents(
         agent
             .save_document(
                 &new_document_key,
-                format!("{}", intermediate_filename).into(),
+                intermediate_filename.to_string().into(),
                 None,
                 None,
             )
             .expect("save document");
         println!("created doc {}", intermediate_filename);
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn extract_documents(
@@ -225,9 +224,9 @@ pub fn extract_documents(
             .as_ref()
             .expect("Storage must be initialized for this command")
             .get_file(file, None)
-            .expect(&format!("Failed to load document file: {}", file));
+            .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
         let document_string = String::from_utf8(content_bytes)
-            .expect(&format!("Document file {} is not valid UTF-8", file));
+            .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file));
         let result = document_load_and_save(
             agent,
             &document_string,
@@ -241,7 +240,7 @@ pub fn extract_documents(
         println!("{}", result);
     }
 
-    return Ok(());
+    Ok(())
 }
 pub fn verify_documents(
     agent: &mut Agent,
@@ -259,9 +258,9 @@ pub fn verify_documents(
             .as_ref()
             .expect("Storage must be initialized for this command")
             .get_file(file, None)
-            .expect(&format!("Failed to load document file: {}", file));
+            .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
         let document_string = String::from_utf8(content_bytes)
-            .expect(&format!("Document file {} is not valid UTF-8", file));
+            .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file));
         let result = document_load_and_save(
             agent,
             &document_string,
@@ -274,7 +273,7 @@ pub fn verify_documents(
         .expect("reason");
         println!("{}", result);
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn sign_documents(
@@ -293,9 +292,9 @@ pub fn sign_documents(
             .as_ref()
             .expect("Storage must be initialized for this command")
             .get_file(file, None)
-            .expect(&format!("Failed to load document file: {}", file));
+            .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
         let document_string = String::from_utf8(content_bytes)
-            .expect(&format!("Document file {} is not valid UTF-8", file));
+            .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file));
         let result = document_sign_agreement(
             agent,
             &document_string,
@@ -309,7 +308,7 @@ pub fn sign_documents(
         .expect("reason");
         println!("{}", result);
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn create_agreement(
@@ -329,9 +328,9 @@ pub fn create_agreement(
             .as_ref()
             .expect("Storage must be initialized for this command")
             .get_file(file, None)
-            .expect(&format!("Failed to load document file: {}", file));
+            .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
         let document_string = String::from_utf8(content_bytes)
-            .expect(&format!("Document file {} is not valid UTF-8", file));
+            .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file));
         let result = document_add_agreement(
             agent,
             &document_string,
@@ -366,9 +365,9 @@ pub fn check_agreement(
             .as_ref()
             .expect("Storage must be initialized for this command")
             .get_file(file, None)
-            .expect(&format!("Failed to load document file: {}", file));
+            .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
         let document_string = String::from_utf8(content_bytes)
-            .expect(&format!("Document file {} is not valid UTF-8", file));
+            .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file));
         let result = document_check_agreement(
             agent,
             &document_string,

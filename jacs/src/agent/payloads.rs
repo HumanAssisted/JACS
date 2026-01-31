@@ -46,7 +46,7 @@ impl PayloadTraits for Agent {
             None,
             outputfilename,
             no_save,
-            attachments.as_ref(),
+            attachments.as_deref(),
             Some(false),
         )?;
 
