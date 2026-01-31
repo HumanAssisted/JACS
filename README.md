@@ -27,7 +27,7 @@ wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
 
 ```javascript
 // Node.js
-const { JACSA2AIntegration } = require('jacsnpm');
+const { JACSA2AIntegration } = require('jacsnpm/a2a');
 const a2a = new JACSA2AIntegration();
 const agentCard = a2a.exportAgentCard(agentData);
 const wrapped = a2a.wrapArtifactWithProvenance(artifact, 'task');
@@ -95,10 +95,26 @@ if __name__ == "__main__":
 
 ## Node JS
 
+Install with `npm install jacsnpm`
+
 ```js
+const jacs = require('jacsnpm');
 
+// Load configuration (set JACS_PRIVATE_KEY_PASSWORD env var first)
+jacs.load('jacs.config.json');
 
+// Sign a document
+const doc = { content: 'Hello from Node.js!' };
+const signed = jacs.signRequest(doc);
+console.log('Signed:', signed);
 
+// Verify a document
+const result = jacs.verifyResponse(signed);
+console.log('Valid:', result);
+
+// Hash content
+const hash = jacs.hashString('data to hash');
+console.log('Hash:', hash);
 ```
 
 ## Go
