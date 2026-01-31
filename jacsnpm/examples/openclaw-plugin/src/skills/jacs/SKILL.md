@@ -15,8 +15,11 @@ Use these capabilities to sign, verify, and manage cryptographically secure docu
 |------|---------|
 | `jacs_sign` | Sign a document with your JACS identity |
 | `jacs_verify` | Verify a signed document's authenticity (self-signed) |
+| `jacs_verify_auto` | **Seamlessly verify any signed document** (auto-fetches keys) |
 | `jacs_fetch_pubkey` | Fetch another agent's public key from their domain |
-| `jacs_verify_with_key` | Verify a document using another agent's public key |
+| `jacs_verify_with_key` | Verify a document using a specific public key |
+| `jacs_dns_lookup` | Look up an agent's DNS TXT record for verification |
+| `jacs_lookup_agent` | Get complete info about an agent (DNS + public key) |
 | `jacs_create_agreement` | Create multi-party signing agreements |
 | `jacs_sign_agreement` | Add your signature to an agreement |
 | `jacs_check_agreement` | Check which parties have signed |
@@ -88,6 +91,10 @@ You can also use these commands directly:
 - `openclaw jacs status` - Show agent status
 - `openclaw jacs hash <string>` - Hash a string
 - `openclaw jacs dns-record <domain>` - Generate DNS TXT record
+- `openclaw jacs lookup <domain>` - Look up another agent's public key and DNS info
+
+The standalone JACS CLI also supports lookup:
+- `jacs agent lookup <domain>` - Look up agent info (with `--strict` for DNSSEC validation)
 
 ## Public Endpoints
 

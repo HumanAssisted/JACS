@@ -4,12 +4,13 @@
  * Interactive setup for generating keys and creating agent identity.
  */
 
-import * as jacs from "jacsnpm";
+import { JacsAgent, createConfig } from "jacsnpm";
 import { v4 as uuidv4 } from "uuid";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import type { OpenClawPluginAPI } from "./index";
+import { setAgentInstance } from "./index";
 
 export interface SetupOptions {
   keyAlgorithm: string;
@@ -62,8 +63,8 @@ export function setupCommand(api: OpenClawPluginAPI) {
 
       logger.info(`Generating ${options.keyAlgorithm} key pair...`);
 
-      // Create JACS configuration
-      const jacsConfig = jacs.createConfig(
+      // Create JACS configuration using static function
+      const jacsConfig = createConfig(
         "true", // jacs_use_security
         jacsDir, // jacs_data_directory
         keysDir, // jacs_key_directory
@@ -81,8 +82,9 @@ export function setupCommand(api: OpenClawPluginAPI) {
       // Set password in environment for key generation
       process.env.JACS_PRIVATE_KEY_PASSWORD = options.keyPassword;
 
-      // Load configuration to generate keys
-      jacs.load(configPath);
+      // Create agent instance and load configuration (generates keys)
+      const agent = new JacsAgent();
+      agent.load(configPath);
 
       // Create minimal agent document
       const agentDoc = {
@@ -96,14 +98,21 @@ export function setupCommand(api: OpenClawPluginAPI) {
         $schema: "https://hai.ai/schemas/agent/v1/agent.schema.json",
       };
 
-      // Sign the agent document
-      const signedAgent = jacs.signRequest(agentDoc);
+      // Sign the agent document using instance method
+      const signedAgent = agent.signRequest(agentDoc);
 
       // Save agent document
       const agentPath = path.join(jacsDir, "agent", `${agentId}:${agentVersion}.json`);
       fs.writeFileSync(agentPath, JSON.stringify(JSON.parse(signedAgent), null, 2));
 
       logger.info(`Agent created: ${agentId}`);
+
+      // Load the public key for the runtime
+      const pubKeyPath = path.join(keysDir, "agent.public.pem");
+      const publicKey = fs.readFileSync(pubKeyPath, "utf-8");
+
+      // Register the agent instance with the plugin runtime
+      setAgentInstance(agent, agentId, publicKey);
 
       // Update OpenClaw plugin config
       api.updateConfig({

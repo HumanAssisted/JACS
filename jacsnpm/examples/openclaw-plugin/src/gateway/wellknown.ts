@@ -4,7 +4,7 @@
  * Serves .well-known endpoints for JACS agent discovery.
  */
 
-import * as jacs from "jacsnpm";
+import { hashString } from "jacsnpm";
 import * as fs from "fs";
 import * as path from "path";
 import type { OpenClawPluginAPI } from "../index";
@@ -54,7 +54,7 @@ export function registerGatewayMethods(api: OpenClawPluginAPI): void {
         }
 
         const publicKey = fs.readFileSync(publicKeyPath, "utf-8");
-        const publicKeyHash = jacs.hashString(publicKey);
+        const publicKeyHash = hashString(publicKey);
 
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Cache-Control", "public, max-age=3600");
@@ -88,7 +88,13 @@ export function registerGatewayMethods(api: OpenClawPluginAPI): void {
           return;
         }
 
-        const result = jacs.verifyResponse(JSON.stringify(req.body));
+        const agent = api.runtime.jacs?.getAgent();
+        if (!agent) {
+          res.status(503).json({ error: "JACS not initialized" });
+          return;
+        }
+
+        const result = agent.verifyResponse(JSON.stringify(req.body));
         res.json(result);
       } catch (err: any) {
         res.status(400).json({ error: err.message });
@@ -113,7 +119,13 @@ export function registerGatewayMethods(api: OpenClawPluginAPI): void {
           return;
         }
 
-        const signed = jacs.signRequest(req.body.document);
+        const agent = api.runtime.jacs?.getAgent();
+        if (!agent) {
+          res.status(503).json({ error: "JACS not initialized" });
+          return;
+        }
+
+        const signed = agent.signRequest(req.body.document);
         res.json(JSON.parse(signed));
       } catch (err: any) {
         res.status(400).json({ error: err.message });

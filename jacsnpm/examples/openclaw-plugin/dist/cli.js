@@ -39,9 +39,10 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.cliCommands = cliCommands;
-const jacs = __importStar(require("jacsnpm"));
+const jacsnpm_1 = require("jacsnpm");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const tools_1 = require("./tools");
 /**
  * Creates CLI commands for the JACS plugin
  */
@@ -75,7 +76,7 @@ function cliCommands(api) {
                 const pubKeyPath = path.join(keysDir, "agent.public.pem");
                 const publicKeyExists = fs.existsSync(pubKeyPath);
                 const publicKeyHash = publicKeyExists
-                    ? jacs.hashString(fs.readFileSync(pubKeyPath, "utf-8"))
+                    ? (0, jacsnpm_1.hashString)(fs.readFileSync(pubKeyPath, "utf-8"))
                     : "N/A";
                 return {
                     text: `JACS Status: Active
@@ -99,7 +100,8 @@ Config Path: ${configPath}`,
             description: "Sign a document with JACS",
             args: ["<file>"],
             handler: async (args) => {
-                if (!api.runtime.jacs?.isInitialized()) {
+                const agent = api.runtime.jacs?.getAgent();
+                if (!agent) {
                     return { text: "JACS not initialized. Run 'openclaw jacs init' first." };
                 }
                 const filePath = args.file || args._?.[0];
@@ -116,7 +118,7 @@ Config Path: ${configPath}`,
                         // If not JSON, wrap as text document
                         document = { content, type: "text" };
                     }
-                    const signed = jacs.signRequest(document);
+                    const signed = agent.signRequest(document);
                     const parsed = JSON.parse(signed);
                     return {
                         text: JSON.stringify(parsed, null, 2),
@@ -135,7 +137,8 @@ Config Path: ${configPath}`,
             description: "Verify a JACS-signed document",
             args: ["<file>"],
             handler: async (args) => {
-                if (!api.runtime.jacs?.isInitialized()) {
+                const agent = api.runtime.jacs?.getAgent();
+                if (!agent) {
                     return { text: "JACS not initialized. Run 'openclaw jacs init' first." };
                 }
                 const filePath = args.file || args._?.[0];
@@ -144,7 +147,7 @@ Config Path: ${configPath}`,
                 }
                 try {
                     const content = fs.readFileSync(filePath, "utf-8");
-                    const result = jacs.verifyResponse(content);
+                    const result = agent.verifyResponse(content);
                     if (result.error) {
                         return {
                             text: `Verification failed: ${result.error}`,
@@ -176,7 +179,7 @@ Valid: Yes`,
                 if (!input) {
                     return { text: "Usage: openclaw jacs hash <string>", error: "Missing input" };
                 }
-                const hash = jacs.hashString(input);
+                const hash = (0, jacsnpm_1.hashString)(input);
                 return {
                     text: hash,
                     data: { input, hash },
@@ -201,7 +204,7 @@ Valid: Yes`,
                         return { text: "Public key not found.", error: "Missing public key" };
                     }
                     const publicKey = fs.readFileSync(pubKeyPath, "utf-8");
-                    const publicKeyHash = jacs.hashString(publicKey);
+                    const publicKeyHash = (0, jacsnpm_1.hashString)(publicKey);
                     const agentId = config.agentId || "unknown";
                     const txtRecord = `v=hai.ai; jacs_agent_id=${agentId}; alg=SHA-256; enc=base64; jac_public_key_hash=${publicKeyHash}`;
                     const recordOwner = `_v1.agent.jacs.${domain}.`;
@@ -229,6 +232,60 @@ Add this record to your DNS provider to enable agent discovery via DNSSEC.`,
                         error: err.message,
                     };
                 }
+            },
+        },
+        lookup: {
+            description: "Look up another agent's public key and DNS info",
+            args: ["<domain>"],
+            handler: async (args) => {
+                const domain = args.domain || args._?.[0];
+                if (!domain) {
+                    return { text: "Usage: openclaw jacs lookup <domain>", error: "Missing domain" };
+                }
+                const results = [`Agent Lookup: ${domain}`, ""];
+                // Fetch public key from well-known endpoint
+                results.push("Public Key (/.well-known/jacs-pubkey.json):");
+                const keyResult = await (0, tools_1.fetchPublicKey)(domain, true); // skip cache for fresh lookup
+                if ("error" in keyResult) {
+                    results.push(`  Error: ${keyResult.error}`);
+                }
+                else {
+                    const key = keyResult.data;
+                    results.push(`  Agent ID: ${key.agentId || "Not specified"}`);
+                    results.push(`  Algorithm: ${key.algorithm}`);
+                    results.push(`  Public Key Hash: ${key.publicKeyHash || "Not specified"}`);
+                    results.push(`  Public Key: ${key.key.substring(0, 60)}...`);
+                }
+                results.push("");
+                // Resolve DNS TXT record
+                results.push(`DNS TXT Record (_v1.agent.jacs.${domain}):`);
+                const dnsResult = await (0, tools_1.resolveDnsRecord)(domain);
+                if (!dnsResult) {
+                    results.push("  No DNS TXT record found (or DNS resolution failed)");
+                }
+                else {
+                    const parsed = dnsResult.parsed;
+                    results.push(`  Version: ${parsed.v || "N/A"}`);
+                    results.push(`  Agent ID: ${parsed.jacsAgentId || "N/A"}`);
+                    results.push(`  Algorithm: ${parsed.alg || "N/A"}`);
+                    results.push(`  Encoding: ${parsed.enc || "N/A"}`);
+                    results.push(`  Public Key Hash: ${parsed.publicKeyHash || "N/A"}`);
+                    results.push(`  Raw TXT: ${dnsResult.txt}`);
+                    // Verify DNS hash matches well-known key hash
+                    if (!("error" in keyResult) && keyResult.data.publicKeyHash && parsed.publicKeyHash) {
+                        const matches = keyResult.data.publicKeyHash === parsed.publicKeyHash;
+                        results.push("");
+                        results.push(`DNS Verification: ${matches ? "✓ PASSED" : "✗ FAILED"} (well-known hash matches DNS hash)`);
+                    }
+                }
+                return {
+                    text: results.join("\n"),
+                    data: {
+                        domain,
+                        publicKey: "error" in keyResult ? null : keyResult.data,
+                        dns: dnsResult,
+                    },
+                };
             },
         },
     };

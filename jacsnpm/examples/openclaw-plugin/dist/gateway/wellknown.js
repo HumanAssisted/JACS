@@ -39,7 +39,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerGatewayMethods = registerGatewayMethods;
-const jacs = __importStar(require("jacsnpm"));
+const jacsnpm_1 = require("jacsnpm");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 /**
@@ -68,7 +68,7 @@ function registerGatewayMethods(api) {
                     return;
                 }
                 const publicKey = fs.readFileSync(publicKeyPath, "utf-8");
-                const publicKeyHash = jacs.hashString(publicKey);
+                const publicKeyHash = (0, jacsnpm_1.hashString)(publicKey);
                 res.setHeader("Content-Type", "application/json");
                 res.setHeader("Cache-Control", "public, max-age=3600");
                 res.json({
@@ -99,7 +99,12 @@ function registerGatewayMethods(api) {
                     res.status(400).json({ error: "Request body required" });
                     return;
                 }
-                const result = jacs.verifyResponse(JSON.stringify(req.body));
+                const agent = api.runtime.jacs?.getAgent();
+                if (!agent) {
+                    res.status(503).json({ error: "JACS not initialized" });
+                    return;
+                }
+                const result = agent.verifyResponse(JSON.stringify(req.body));
                 res.json(result);
             }
             catch (err) {
@@ -122,7 +127,12 @@ function registerGatewayMethods(api) {
                     res.status(400).json({ error: "document field required in request body" });
                     return;
                 }
-                const signed = jacs.signRequest(req.body.document);
+                const agent = api.runtime.jacs?.getAgent();
+                if (!agent) {
+                    res.status(503).json({ error: "JACS not initialized" });
+                    return;
+                }
+                const signed = agent.signRequest(req.body.document);
                 res.json(JSON.parse(signed));
             }
             catch (err) {

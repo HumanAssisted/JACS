@@ -4,16 +4,154 @@
  * Tools that AI agents can use to sign and verify documents.
  */
 
-import * as jacs from "jacsnpm";
+import { hashString, verifyString, JacsAgent } from "jacsnpm";
+import * as dns from "dns";
+import { promisify } from "util";
 import type { OpenClawPluginAPI } from "../index";
 
+const resolveTxt = promisify(dns.resolveTxt);
+
 // Cache for fetched public keys (domain -> key info)
-const pubkeyCache: Map<string, { key: string; algorithm: string; fetchedAt: number }> = new Map();
+interface CachedKey {
+  key: string;
+  algorithm: string;
+  agentId?: string;
+  publicKeyHash?: string;
+  fetchedAt: number;
+}
+const pubkeyCache: Map<string, CachedKey> = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Export CachedKey for use by CLI
+export type { CachedKey };
 
 export interface ToolResult {
   result?: any;
   error?: string;
+}
+
+/**
+ * Get the JACS agent instance from the API runtime
+ */
+function getAgent(api: OpenClawPluginAPI): JacsAgent | null {
+  return api.runtime.jacs?.getAgent() || null;
+}
+
+/**
+ * Parse JACS DNS TXT record
+ * Format: v=hai.ai; jacs_agent_id=UUID; alg=SHA-256; enc=base64; jac_public_key_hash=HASH
+ */
+export function parseDnsTxt(txt: string): {
+  v?: string;
+  jacsAgentId?: string;
+  alg?: string;
+  enc?: string;
+  publicKeyHash?: string;
+} {
+  const result: Record<string, string> = {};
+  const parts = txt.split(";").map((s) => s.trim());
+  for (const part of parts) {
+    const [key, value] = part.split("=").map((s) => s.trim());
+    if (key && value) {
+      result[key] = value;
+    }
+  }
+  return {
+    v: result["v"],
+    jacsAgentId: result["jacs_agent_id"],
+    alg: result["alg"],
+    enc: result["enc"],
+    publicKeyHash: result["jac_public_key_hash"],
+  };
+}
+
+/**
+ * Resolve DNS TXT record for JACS agent
+ */
+export async function resolveDnsRecord(
+  domain: string
+): Promise<{ txt: string; parsed: ReturnType<typeof parseDnsTxt> } | null> {
+  const owner = `_v1.agent.jacs.${domain.replace(/\.$/, "")}`;
+  try {
+    const records = await resolveTxt(owner);
+    // TXT records come as arrays of strings, join them
+    const txt = records.map((r) => r.join("")).join("");
+    if (!txt) return null;
+    return { txt, parsed: parseDnsTxt(txt) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch public key from domain's well-known endpoint
+ */
+export async function fetchPublicKey(
+  domain: string,
+  skipCache = false
+): Promise<{ data: CachedKey; cached: boolean } | { error: string }> {
+  const cacheKey = domain.toLowerCase();
+
+  // Check cache
+  if (!skipCache) {
+    const cached = pubkeyCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+      return { data: cached, cached: true };
+    }
+  }
+
+  try {
+    const url = `https://${domain}/.well-known/jacs-pubkey.json`;
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return { error: `HTTP ${response.status} from ${domain}` };
+    }
+
+    const data = (await response.json()) as {
+      publicKey?: string;
+      algorithm?: string;
+      agentId?: string;
+      publicKeyHash?: string;
+    };
+
+    if (!data.publicKey) {
+      return { error: `Missing publicKey in response from ${domain}` };
+    }
+
+    const keyInfo: CachedKey = {
+      key: data.publicKey,
+      algorithm: data.algorithm || "unknown",
+      agentId: data.agentId,
+      publicKeyHash: data.publicKeyHash,
+      fetchedAt: Date.now(),
+    };
+
+    pubkeyCache.set(cacheKey, keyInfo);
+    return { data: keyInfo, cached: false };
+  } catch (err: any) {
+    if (err.name === "TimeoutError") {
+      return { error: `Timeout fetching from ${domain}` };
+    }
+    return { error: err.message };
+  }
+}
+
+/**
+ * Extract signer domain from a JACS document
+ * Looks for jacsAgentDomain in the document or signature metadata
+ */
+function extractSignerDomain(doc: any): string | null {
+  // Check document-level domain
+  if (doc.jacsAgentDomain) return doc.jacsAgentDomain;
+
+  // Check signature metadata
+  if (doc.jacsSignature?.agentDomain) return doc.jacsSignature.agentDomain;
+
+  return null;
 }
 
 /**
@@ -36,12 +174,13 @@ export function registerTools(api: OpenClawPluginAPI): void {
       required: ["document"],
     },
     handler: async (params: any): Promise<ToolResult> => {
-      if (!api.runtime.jacs?.isInitialized()) {
+      const agent = getAgent(api);
+      if (!agent) {
         return { error: "JACS not initialized. Run 'openclaw jacs init' first." };
       }
 
       try {
-        const signed = jacs.signRequest(params.document);
+        const signed = agent.signRequest(params.document);
         return { result: JSON.parse(signed) };
       } catch (err: any) {
         return { error: `Failed to sign: ${err.message}` };
@@ -65,12 +204,13 @@ export function registerTools(api: OpenClawPluginAPI): void {
       required: ["document"],
     },
     handler: async (params: any): Promise<ToolResult> => {
-      if (!api.runtime.jacs?.isInitialized()) {
+      const agent = getAgent(api);
+      if (!agent) {
         return { error: "JACS not initialized. Run 'openclaw jacs init' first." };
       }
 
       try {
-        const result = jacs.verifyResponse(JSON.stringify(params.document));
+        const result = agent.verifyResponse(JSON.stringify(params.document));
         return { result };
       } catch (err: any) {
         return { error: `Verification failed: ${err.message}` };
@@ -107,12 +247,13 @@ export function registerTools(api: OpenClawPluginAPI): void {
       required: ["document", "agentIds"],
     },
     handler: async (params: any): Promise<ToolResult> => {
-      if (!api.runtime.jacs?.isInitialized()) {
+      const agent = getAgent(api);
+      if (!agent) {
         return { error: "JACS not initialized. Run 'openclaw jacs init' first." };
       }
 
       try {
-        const result = jacs.createAgreement(
+        const result = agent.createAgreement(
           JSON.stringify(params.document),
           params.agentIds,
           params.question,
@@ -145,12 +286,13 @@ export function registerTools(api: OpenClawPluginAPI): void {
       required: ["document"],
     },
     handler: async (params: any): Promise<ToolResult> => {
-      if (!api.runtime.jacs?.isInitialized()) {
+      const agent = getAgent(api);
+      if (!agent) {
         return { error: "JACS not initialized. Run 'openclaw jacs init' first." };
       }
 
       try {
-        const result = jacs.signAgreement(
+        const result = agent.signAgreement(
           JSON.stringify(params.document),
           params.agreementFieldname
         );
@@ -181,12 +323,13 @@ export function registerTools(api: OpenClawPluginAPI): void {
       required: ["document"],
     },
     handler: async (params: any): Promise<ToolResult> => {
-      if (!api.runtime.jacs?.isInitialized()) {
+      const agent = getAgent(api);
+      if (!agent) {
         return { error: "JACS not initialized. Run 'openclaw jacs init' first." };
       }
 
       try {
-        const result = jacs.checkAgreement(
+        const result = agent.checkAgreement(
           JSON.stringify(params.document),
           params.agreementFieldname
         );
@@ -214,7 +357,7 @@ export function registerTools(api: OpenClawPluginAPI): void {
     },
     handler: async (params: any): Promise<ToolResult> => {
       try {
-        const hash = jacs.hashString(params.content);
+        const hash = hashString(params.content);
         return { result: { hash, algorithm: "SHA-256" } };
       } catch (err: any) {
         return { error: `Failed to hash: ${err.message}` };
@@ -245,7 +388,7 @@ export function registerTools(api: OpenClawPluginAPI): void {
           agentDomain: config.agentDomain,
           algorithm: config.keyAlgorithm,
           publicKeyHash: config.agentId
-            ? jacs.hashString(api.runtime.jacs.getPublicKey())
+            ? hashString(api.runtime.jacs.getPublicKey())
             : undefined,
         },
       };
@@ -367,41 +510,283 @@ export function registerTools(api: OpenClawPluginAPI): void {
     },
     handler: async (params: any): Promise<ToolResult> => {
       try {
-        const docString = JSON.stringify(params.document);
-        const algorithm = params.algorithm || "pq2025";
-
-        // Extract signature from document
         const doc = params.document;
-        const signature = doc.jacsSignature || doc.signature;
+        const sig = doc.jacsSignature || doc.signature;
 
-        if (!signature) {
+        if (!sig) {
           return { error: "Document does not contain a signature field (jacsSignature or signature)" };
         }
+
+        // Get the actual signature string
+        const signatureValue = typeof sig === "object" ? sig.signature : sig;
+        if (!signatureValue) {
+          return { error: "Could not extract signature value from document" };
+        }
+
+        // Determine algorithm from signature or parameter
+        const algorithm = params.algorithm || sig.signingAlgorithm || "pq2025";
 
         // Convert public key to Buffer
         const publicKeyBuffer = Buffer.from(params.publicKey, "utf-8");
 
-        // Determine the data that was signed (document without signature)
+        // Build the data that was signed (document without signature fields)
         const docWithoutSig = { ...doc };
         delete docWithoutSig.jacsSignature;
         delete docWithoutSig.signature;
+        delete docWithoutSig.jacsHash;
         const dataToVerify = JSON.stringify(docWithoutSig);
 
-        // Use JACS verifyString to verify
-        const isValid = jacs.verifyString(dataToVerify, signature, publicKeyBuffer, algorithm);
+        // Use JACS verifyString to verify (static function)
+        const isValid = verifyString(dataToVerify, signatureValue, publicKeyBuffer, algorithm);
 
         return {
           result: {
             valid: isValid,
             algorithm,
-            agentId: doc.jacsAgentId || doc.agentId,
-            documentId: doc.jacsId || doc.id,
-            timestamp: doc.jacsTimestamp || doc.timestamp,
+            agentId: sig.agentID || doc.jacsAgentId,
+            agentVersion: sig.agentVersion,
+            signedAt: sig.date,
+            publicKeyHash: sig.publicKeyHash,
+            documentId: doc.jacsId,
           },
         };
       } catch (err: any) {
         return { error: `Verification failed: ${err.message}` };
       }
+    },
+  });
+
+  // Tool: Seamless verification with auto-fetch
+  api.registerTool({
+    name: "jacs_verify_auto",
+    description:
+      "Automatically verify a JACS-signed document by fetching the signer's public key. This is the easiest way to verify documents from other agents - just provide the document and optionally the signer's domain.",
+    parameters: {
+      type: "object",
+      properties: {
+        document: {
+          type: "object",
+          description: "The signed document to verify",
+        },
+        domain: {
+          type: "string",
+          description:
+            "The domain of the signing agent (e.g., 'agent.example.com'). If not provided, will try to extract from document.",
+        },
+        verifyDns: {
+          type: "boolean",
+          description:
+            "Also verify the public key hash against DNS TXT record (default: false). Provides stronger verification.",
+        },
+      },
+      required: ["document"],
+    },
+    handler: async (params: any): Promise<ToolResult> => {
+      const doc = params.document;
+      const sig = doc.jacsSignature || doc.signature;
+
+      if (!sig) {
+        return { error: "Document does not contain a signature" };
+      }
+
+      // Determine domain
+      let domain = params.domain;
+      if (!domain) {
+        domain = extractSignerDomain(doc);
+      }
+
+      if (!domain) {
+        return {
+          error:
+            "Could not determine signer domain. Please provide the 'domain' parameter or ensure the document contains 'jacsAgentDomain'.",
+        };
+      }
+
+      // Fetch public key
+      const keyResult = await fetchPublicKey(domain);
+      if ("error" in keyResult) {
+        return { error: `Failed to fetch public key: ${keyResult.error}` };
+      }
+
+      const keyInfo = keyResult.data;
+      let dnsVerified = false;
+      let dnsError: string | undefined;
+
+      // Optional DNS verification
+      if (params.verifyDns) {
+        const dnsResult = await resolveDnsRecord(domain);
+        if (dnsResult) {
+          const dnsHash = dnsResult.parsed.publicKeyHash;
+          // Compare public key hash
+          const localHash = hashString(keyInfo.key);
+          if (dnsHash === localHash || dnsHash === keyInfo.publicKeyHash) {
+            dnsVerified = true;
+          } else {
+            dnsError = "DNS public key hash does not match fetched key";
+          }
+
+          // Also verify agent ID if present
+          if (dnsResult.parsed.jacsAgentId && sig.agentID) {
+            if (dnsResult.parsed.jacsAgentId !== sig.agentID) {
+              dnsError = "DNS agent ID does not match document signer";
+            }
+          }
+        } else {
+          dnsError = "DNS TXT record not found";
+        }
+      }
+
+      // Get signature value
+      const signatureValue = typeof sig === "object" ? sig.signature : sig;
+      if (!signatureValue) {
+        return { error: "Could not extract signature value" };
+      }
+
+      // Determine algorithm
+      const algorithm = sig.signingAlgorithm || keyInfo.algorithm || "pq2025";
+
+      // Build data to verify
+      const docWithoutSig = { ...doc };
+      delete docWithoutSig.jacsSignature;
+      delete docWithoutSig.signature;
+      delete docWithoutSig.jacsHash;
+      const dataToVerify = JSON.stringify(docWithoutSig);
+
+      try {
+        const publicKeyBuffer = Buffer.from(keyInfo.key, "utf-8");
+        const isValid = verifyString(dataToVerify, signatureValue, publicKeyBuffer, algorithm);
+
+        return {
+          result: {
+            valid: isValid,
+            domain,
+            algorithm,
+            agentId: sig.agentID || keyInfo.agentId,
+            agentVersion: sig.agentVersion,
+            signedAt: sig.date,
+            keyFromCache: keyResult.cached,
+            dnsVerified: params.verifyDns ? dnsVerified : undefined,
+            dnsError: params.verifyDns ? dnsError : undefined,
+            documentId: doc.jacsId,
+          },
+        };
+      } catch (err: any) {
+        return { error: `Signature verification failed: ${err.message}` };
+      }
+    },
+  });
+
+  // Tool: DNS lookup for agent verification
+  api.registerTool({
+    name: "jacs_dns_lookup",
+    description:
+      "Look up a JACS agent's DNS TXT record. This provides the public key hash published in DNS for additional verification. The DNS record is at _v1.agent.jacs.<domain>.",
+    parameters: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description: "The domain to look up (e.g., 'agent.example.com')",
+        },
+      },
+      required: ["domain"],
+    },
+    handler: async (params: any): Promise<ToolResult> => {
+      const domain = params.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const owner = `_v1.agent.jacs.${domain}`;
+
+      const result = await resolveDnsRecord(domain);
+
+      if (!result) {
+        return {
+          result: {
+            found: false,
+            domain,
+            owner,
+            message: `No JACS DNS TXT record found at ${owner}`,
+          },
+        };
+      }
+
+      return {
+        result: {
+          found: true,
+          domain,
+          owner,
+          rawTxt: result.txt,
+          ...result.parsed,
+        },
+      };
+    },
+  });
+
+  // Tool: Lookup agent info (combines DNS + well-known)
+  api.registerTool({
+    name: "jacs_lookup_agent",
+    description:
+      "Look up complete information about a JACS agent by domain. Fetches both the public key from /.well-known/jacs-pubkey.json and the DNS TXT record.",
+    parameters: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description: "The domain of the agent (e.g., 'agent.example.com')",
+        },
+      },
+      required: ["domain"],
+    },
+    handler: async (params: any): Promise<ToolResult> => {
+      const domain = params.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+      // Fetch public key and DNS in parallel
+      const [keyResult, dnsResult] = await Promise.all([
+        fetchPublicKey(domain, true), // skip cache for fresh lookup
+        resolveDnsRecord(domain),
+      ]);
+
+      const result: any = {
+        domain,
+        wellKnown: null as any,
+        dns: null as any,
+        verified: false,
+      };
+
+      // Process well-known result
+      if ("error" in keyResult) {
+        result.wellKnown = { error: keyResult.error };
+      } else {
+        result.wellKnown = {
+          publicKey: keyResult.data.key.substring(0, 100) + "...", // truncate for display
+          publicKeyHash: keyResult.data.publicKeyHash || hashString(keyResult.data.key),
+          algorithm: keyResult.data.algorithm,
+          agentId: keyResult.data.agentId,
+        };
+      }
+
+      // Process DNS result
+      if (dnsResult) {
+        result.dns = {
+          owner: `_v1.agent.jacs.${domain}`,
+          agentId: dnsResult.parsed.jacsAgentId,
+          publicKeyHash: dnsResult.parsed.publicKeyHash,
+          algorithm: dnsResult.parsed.alg,
+          encoding: dnsResult.parsed.enc,
+        };
+
+        // Verify DNS matches well-known
+        if (result.wellKnown && !result.wellKnown.error) {
+          const localHash = result.wellKnown.publicKeyHash;
+          const dnsHash = dnsResult.parsed.publicKeyHash;
+          result.verified = localHash === dnsHash;
+          if (!result.verified) {
+            result.verificationError = "Public key hash from well-known endpoint does not match DNS";
+          }
+        }
+      } else {
+        result.dns = { error: "No DNS TXT record found" };
+      }
+
+      return { result };
     },
   });
 }

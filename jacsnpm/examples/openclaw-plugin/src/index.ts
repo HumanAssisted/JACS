@@ -9,7 +9,7 @@
  * - Public key endpoint for discovery
  */
 
-import * as jacs from "jacsnpm";
+import { JacsAgent, hashString, verifyString, createConfig } from "jacsnpm";
 import { setupCommand } from "./setup";
 import { cliCommands } from "./cli";
 import { registerGatewayMethods } from "./gateway/wellknown";
@@ -50,12 +50,15 @@ export interface OpenClawPluginAPI {
 
 export interface JACSRuntime {
   isInitialized: () => boolean;
+  getAgent: () => JacsAgent | null;
   signDocument: (doc: any) => string;
   verifyDocument: (doc: string) => any;
   getAgentId: () => string | undefined;
   getPublicKey: () => string;
 }
 
+// Agent instance (replaces deprecated global singleton)
+let agentInstance: JacsAgent | null = null;
 let isInitialized = false;
 let currentAgentId: string | undefined;
 let publicKeyContent: string | undefined;
@@ -75,7 +78,9 @@ export default function register(api: OpenClawPluginAPI): void {
   // Try to initialize JACS if config exists
   if (fs.existsSync(configPath)) {
     try {
-      jacs.load(configPath);
+      // Use JacsAgent class instead of deprecated global load()
+      agentInstance = new JacsAgent();
+      agentInstance.load(configPath);
       currentAgentId = config.agentId;
 
       // Load public key
@@ -88,6 +93,7 @@ export default function register(api: OpenClawPluginAPI): void {
       logger.info("JACS initialized successfully");
     } catch (err: any) {
       logger.warn(`JACS not initialized - run 'openclaw jacs init': ${err.message}`);
+      agentInstance = null;
     }
   } else {
     logger.info("JACS not configured - run 'openclaw jacs init' to set up");
@@ -116,8 +122,15 @@ export default function register(api: OpenClawPluginAPI): void {
   // Expose JACS runtime for other plugins
   api.runtime.jacs = {
     isInitialized: () => isInitialized,
-    signDocument: (doc: any) => jacs.signRequest(doc),
-    verifyDocument: (doc: string) => jacs.verifyResponse(doc),
+    getAgent: () => agentInstance,
+    signDocument: (doc: any) => {
+      if (!agentInstance) throw new Error("JACS not initialized");
+      return agentInstance.signRequest(doc);
+    },
+    verifyDocument: (doc: string) => {
+      if (!agentInstance) throw new Error("JACS not initialized");
+      return agentInstance.verifyResponse(doc);
+    },
     getAgentId: () => currentAgentId,
     getPublicKey: () => publicKeyContent || "",
   };
@@ -125,8 +138,17 @@ export default function register(api: OpenClawPluginAPI): void {
   logger.debug("JACS plugin registered");
 }
 
-// Export utilities for direct use
-export { jacs };
+// Re-export for use by other modules
+export { JacsAgent, hashString, verifyString, createConfig };
+
+// Export internal state accessor for reinit after setup
+export function setAgentInstance(agent: JacsAgent, agentId: string, publicKey: string): void {
+  agentInstance = agent;
+  currentAgentId = agentId;
+  publicKeyContent = publicKey;
+  isInitialized = true;
+}
+
 export { setupCommand } from "./setup";
 export { cliCommands } from "./cli";
 export { registerTools } from "./tools";

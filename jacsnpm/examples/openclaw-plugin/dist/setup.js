@@ -39,11 +39,12 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.setupCommand = setupCommand;
-const jacs = __importStar(require("jacsnpm"));
+const jacsnpm_1 = require("jacsnpm");
 const uuid_1 = require("uuid");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const crypto = __importStar(require("crypto"));
+const index_1 = require("./index");
 /**
  * Creates the setup command handler
  */
@@ -73,8 +74,8 @@ function setupCommand(api) {
             const agentId = (0, uuid_1.v4)();
             const agentVersion = (0, uuid_1.v4)();
             logger.info(`Generating ${options.keyAlgorithm} key pair...`);
-            // Create JACS configuration
-            const jacsConfig = jacs.createConfig("true", // jacs_use_security
+            // Create JACS configuration using static function
+            const jacsConfig = (0, jacsnpm_1.createConfig)("true", // jacs_use_security
             jacsDir, // jacs_data_directory
             keysDir, // jacs_key_directory
             "agent.private.pem.enc", // private key filename
@@ -88,8 +89,9 @@ function setupCommand(api) {
             fs.writeFileSync(configPath, jacsConfig, { mode: 0o600 });
             // Set password in environment for key generation
             process.env.JACS_PRIVATE_KEY_PASSWORD = options.keyPassword;
-            // Load configuration to generate keys
-            jacs.load(configPath);
+            // Create agent instance and load configuration (generates keys)
+            const agent = new jacsnpm_1.JacsAgent();
+            agent.load(configPath);
             // Create minimal agent document
             const agentDoc = {
                 jacsId: agentId,
@@ -101,12 +103,17 @@ function setupCommand(api) {
                 jacsServices: [],
                 $schema: "https://hai.ai/schemas/agent/v1/agent.schema.json",
             };
-            // Sign the agent document
-            const signedAgent = jacs.signRequest(agentDoc);
+            // Sign the agent document using instance method
+            const signedAgent = agent.signRequest(agentDoc);
             // Save agent document
             const agentPath = path.join(jacsDir, "agent", `${agentId}:${agentVersion}.json`);
             fs.writeFileSync(agentPath, JSON.stringify(JSON.parse(signedAgent), null, 2));
             logger.info(`Agent created: ${agentId}`);
+            // Load the public key for the runtime
+            const pubKeyPath = path.join(keysDir, "agent.public.pem");
+            const publicKey = fs.readFileSync(pubKeyPath, "utf-8");
+            // Register the agent instance with the plugin runtime
+            (0, index_1.setAgentInstance)(agent, agentId, publicKey);
             // Update OpenClaw plugin config
             api.updateConfig({
                 agentId,
