@@ -19,6 +19,7 @@
 
 ## Node.js (jacsnpm)
 - [Installation](nodejs/installation.md)
+- [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)
 - [MCP Integration](nodejs/mcp.md)
 - [HTTP Server](nodejs/http.md)
@@ -27,6 +28,7 @@
 
 ## Python (jacspy)
 - [Installation](python/installation.md)
+- [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
 - [MCP Integration](python/mcp.md)
 <!-- - [FastMCP Integration](python/fastmcp.md) -->

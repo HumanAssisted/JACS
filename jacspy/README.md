@@ -16,27 +16,39 @@ import jacs.simple as jacs
 # Load your agent
 agent = jacs.load("./jacs.config.json")
 
-# Sign a message
-signed = jacs.sign_message("Hello, World!")
-print(f"Signed by: {signed.signer_id}")
+# Sign a message (accepts dict, list, str, or any JSON-serializable data)
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+print(f"Signed by: {signed.agent_id}")
 
 # Verify it
-result = jacs.verify(signed.raw_json)
+result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}")
 
 # Sign a file
 signed_file = jacs.sign_file("document.pdf", embed=True)
+
+# Update agent metadata
+agent_doc = json.loads(jacs.export_agent())
+agent_doc["jacsAgentType"] = "updated-service"
+updated = jacs.update_agent(agent_doc)
+
+# Update a document
+doc = json.loads(signed.raw)
+doc["content"]["status"] = "approved"
+updated_doc = jacs.update_document(signed.document_id, doc)
 ```
 
 ## Core Operations
 
-The simplified API provides 6 core operations:
+The simplified API provides 8 core operations:
 
 | Operation | Description |
 |-----------|-------------|
 | `create()` | Create a new agent with cryptographic keys |
 | `load()` | Load an existing agent from config |
 | `verify_self()` | Verify the loaded agent's integrity |
+| `update_agent()` | Update the agent document with new data |
+| `update_document()` | Update an existing document with new data |
 | `sign_message()` | Sign a text message or JSON data |
 | `sign_file()` | Sign a file with optional embedding |
 | `verify()` | Verify any signed document |
@@ -48,8 +60,8 @@ from jacs import AgentInfo, SignedDocument, VerificationResult
 
 # All return types are dataclasses with clear fields
 agent: AgentInfo = jacs.load()
-signed: SignedDocument = jacs.sign_message("hello")
-result: VerificationResult = jacs.verify(signed.raw_json)
+signed: SignedDocument = jacs.sign_message({"data": "hello"})
+result: VerificationResult = jacs.verify(signed.raw)
 ```
 
 ## MCP Integration
@@ -65,8 +77,8 @@ jacs.load("./jacs.config.json")
 
 @mcp.tool()
 def signed_hello(name: str) -> dict:
-    signed = jacs.sign_message(f"Hello, {name}!")
-    return {"response": signed.raw_json}
+    signed = jacs.sign_message({"greeting": f"Hello, {name}!"})
+    return {"response": signed.raw}
 ```
 
 ## JacsAgent Class (Advanced)

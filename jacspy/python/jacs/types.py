@@ -21,6 +21,8 @@ class AgentInfo:
         public_key_hash: Hash of the agent's public key for verification
         created_at: ISO 8601 timestamp of agent creation
         algorithm: Cryptographic algorithm used (e.g., "RSA", "ML-DSA")
+        config_path: Path to the loaded config file
+        public_key_path: Path to the public key file
     """
     agent_id: str
     version: str
@@ -28,6 +30,8 @@ class AgentInfo:
     public_key_hash: str = ""
     created_at: str = ""
     algorithm: str = "RSA"
+    config_path: Optional[str] = None
+    public_key_path: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AgentInfo":
@@ -39,6 +43,8 @@ class AgentInfo:
             public_key_hash=data.get("public_key_hash", ""),
             created_at=data.get("created_at", ""),
             algorithm=data.get("algorithm", "RSA"),
+            config_path=data.get("config_path"),
+            public_key_path=data.get("public_key_path"),
         )
 
 
@@ -96,6 +102,21 @@ class SignedDocument:
     attachments: List[Attachment] = field(default_factory=list)
     raw_json: str = ""
 
+    @property
+    def raw(self) -> str:
+        """Alias for raw_json (for API consistency with Node.js)."""
+        return self.raw_json
+
+    @property
+    def agent_id(self) -> str:
+        """Alias for signer_id (for API consistency with Node.js)."""
+        return self.signer_id
+
+    @property
+    def timestamp(self) -> str:
+        """Alias for signed_at (for API consistency with Node.js)."""
+        return self.signed_at
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SignedDocument":
         """Create SignedDocument from a dictionary."""
@@ -131,7 +152,8 @@ class VerificationResult:
         content_hash_valid: True if content hash matches
         signature_valid: True if cryptographic signature is valid
         timestamp: When the document was signed (ISO 8601)
-        error: Error message if verification failed
+        errors: List of error messages if verification failed
+        attachments: List of file attachments in the document
     """
     valid: bool
     signer_id: str = ""
@@ -139,11 +161,24 @@ class VerificationResult:
     content_hash_valid: bool = False
     signature_valid: bool = False
     timestamp: str = ""
-    error: Optional[str] = None
+    errors: List[str] = field(default_factory=list)
+    attachments: List[Attachment] = field(default_factory=list)
+
+    @property
+    def error(self) -> Optional[str]:
+        """Return first error message (for backwards compatibility)."""
+        return self.errors[0] if self.errors else None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VerificationResult":
         """Create VerificationResult from a dictionary."""
+        errors = data.get("errors", [])
+        if not errors and data.get("error"):
+            errors = [data.get("error")]
+        attachments = [
+            Attachment.from_dict(a) if isinstance(a, dict) else a
+            for a in data.get("attachments", [])
+        ]
         return cls(
             valid=data.get("valid", False),
             signer_id=data.get("signer_id", ""),
@@ -151,7 +186,8 @@ class VerificationResult:
             content_hash_valid=data.get("content_hash_valid", False),
             signature_valid=data.get("signature_valid", False),
             timestamp=data.get("timestamp", ""),
-            error=data.get("error"),
+            errors=errors,
+            attachments=attachments,
         )
 
     @classmethod
@@ -176,7 +212,7 @@ class VerificationResult:
         """Create a failed verification result."""
         return cls(
             valid=False,
-            error=error,
+            errors=[error] if error else [],
         )
 
 

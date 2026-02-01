@@ -1,0 +1,55 @@
+name: Node.js (jacsnpm)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'jacsnpm/**'
+      - 'jacs/**'  # jacsnpm depends on jacs
+      - '.github/workflows/nodejs.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'jacsnpm/**'
+      - 'jacs/**'  # jacsnpm depends on jacs
+      - '.github/workflows/nodejs.yml'
+  workflow_dispatch: # Allows manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-jacsnpm:
+    name: Test jacsnpm (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node-version: ['20']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        working-directory: jacsnpm
+        run: npm ci || npm install
+
+      - name: Build native module
+        working-directory: jacsnpm
+        run: npm run build
+
+      - name: Run tests
+        working-directory: jacsnpm
+        run: npm test

@@ -36,7 +36,12 @@
     "build:debug": "napi build --platform && npm run build:ts",
     "build:ts": "tsc",
     "install": "npm run build",
-    "test": "mocha test/**/*.test.js"
+    "test": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/**/*.test.js'",
+    "test:utils": "mocha --timeout 15000 'test/utils.test.js'",
+    "test:agent": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/agent.test.js'",
+    "test:simple": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/simple.test.js'",
+    "test:a2a": "mocha --timeout 15000 'test/a2a.test.js'",
+    "test:integration": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/integration.test.js'"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
@@ -47,7 +52,8 @@
     "@types/node": "^22.15",
     "chai": "^6.2.2",
     "mocha": "^11.7.5",
-    "sinon": "^21.0.1"
+    "sinon": "^21.0.1",
+    "typescript": "^5.7.0"
   },
   "optionalDependencies": {
     "@jacs/darwin-arm64": "0.1.0",

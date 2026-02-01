@@ -34,6 +34,8 @@ console.log(`Signer: ${result.signerId}`);
 |----------|-------------|
 | `load(configPath)` | Load agent from config file |
 | `verifySelf()` | Verify agent's own integrity |
+| `updateAgent(data)` | Update agent document with new data |
+| `updateDocument(id, data)` | Update existing document with new data |
 | `signMessage(data)` | Sign any JSON data |
 | `signFile(path, embed)` | Sign a file |
 | `verify(doc)` | Verify signed document |
@@ -82,6 +84,29 @@ if (result.valid) {
   console.log(`Signed by: ${result.signerId}`);
   console.log(`Data: ${JSON.stringify(result.data)}`);
 }
+```
+
+### Update Agent
+
+```javascript
+// Get current agent, modify, and update
+const agentDoc = JSON.parse(jacs.exportAgent());
+agentDoc.jacsAgentType = 'updated-service';
+const updated = jacs.updateAgent(agentDoc);
+console.log('Agent updated with new version');
+```
+
+### Update Document
+
+```javascript
+// Create a document
+const signed = jacs.signMessage({ status: 'pending', amount: 100 });
+
+// Later, update it
+const doc = JSON.parse(signed.raw);
+doc.content.status = 'approved';
+const updated = jacs.updateDocument(signed.documentId, doc);
+console.log('Document updated with new version');
 ```
 
 ### File Signing

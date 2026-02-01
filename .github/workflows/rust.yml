@@ -3,14 +3,15 @@ name: Rust (jacs crate)
 on:
   push:
     branches: [ "main" ]
-    paths: # Optional: Trigger only on changes within jacs/ or relevant files
-      - 'JACS/jacs/**'
-      - '.github/workflows/rust.yml' 
+    paths:
+      - 'jacs/**'
+      - '.github/workflows/rust.yml'
   pull_request:
     branches: [ "main" ]
-    paths: # Optional: Trigger only on changes within jacs/ or relevant files
-      - 'JACS/jacs/**'
-      - '.github/workflows/rust.yml' 
+    paths:
+      - 'jacs/**'
+      - '.github/workflows/rust.yml'
+  workflow_dispatch: # Allows manual triggering 
 
 env:
   CARGO_TERM_COLOR: always

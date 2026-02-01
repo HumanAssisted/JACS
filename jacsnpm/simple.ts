@@ -5,6 +5,8 @@
  * - create(): Create a new agent with keys
  * - load(): Load an existing agent from config
  * - verifySelf(): Verify the loaded agent's integrity
+ * - updateAgent(): Update the agent document with new data
+ * - updateDocument(): Update an existing document with new data
  * - signMessage(): Sign a text message
  * - signFile(): Sign a file with optional embedding
  * - verify(): Verify any signed document
@@ -246,6 +248,92 @@ export function signMessage(data: any): SignedDocument {
   );
 
   // Parse result
+  const doc = JSON.parse(result);
+
+  return {
+    raw: result,
+    documentId: doc.jacsId || '',
+    agentId: doc.jacsSignature?.agentID || '',
+    timestamp: doc.jacsSignature?.date || '',
+  };
+}
+
+/**
+ * Updates the agent document with new data and re-signs it.
+ *
+ * This function expects a complete agent document (not partial updates).
+ * Use exportAgent() to get the current document, modify it, then pass it here.
+ * The function will create a new version, re-sign, and re-hash the document.
+ *
+ * @param newAgentData - Complete agent document as JSON string or object
+ * @returns The updated and re-signed agent document as a JSON string
+ *
+ * @example
+ * ```typescript
+ * // Get current agent, modify, and update
+ * const agentDoc = JSON.parse(jacs.exportAgent());
+ * agentDoc.jacsAgentType = 'updated-service';
+ * const updated = jacs.updateAgent(agentDoc);
+ * console.log('Agent updated with new version');
+ * ```
+ */
+export function updateAgent(newAgentData: any): string {
+  if (!globalAgent) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+
+  const dataString = typeof newAgentData === 'string'
+    ? newAgentData
+    : JSON.stringify(newAgentData);
+
+  return globalAgent.updateAgent(dataString);
+}
+
+/**
+ * Updates an existing document with new data and re-signs it.
+ *
+ * Use signMessage() to create a document first, then use this to update it.
+ * The function will create a new version, re-sign, and re-hash the document.
+ *
+ * @param documentId - The document ID (jacsId) to update
+ * @param newDocumentData - The updated document as JSON string or object
+ * @param attachments - Optional array of file paths to attach
+ * @param embed - If true, embed attachment contents
+ * @returns SignedDocument with the updated document
+ *
+ * @example
+ * ```typescript
+ * // Create a document first
+ * const signed = jacs.signMessage({ status: 'pending' });
+ *
+ * // Later, update it
+ * const doc = JSON.parse(signed.raw);
+ * doc.content.status = 'approved';
+ * const updated = jacs.updateDocument(signed.documentId, doc);
+ * console.log('Document updated with new version');
+ * ```
+ */
+export function updateDocument(
+  documentId: string,
+  newDocumentData: any,
+  attachments?: string[],
+  embed?: boolean
+): SignedDocument {
+  if (!globalAgent) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+
+  const dataString = typeof newDocumentData === 'string'
+    ? newDocumentData
+    : JSON.stringify(newDocumentData);
+
+  const result = globalAgent.updateDocument(
+    documentId,
+    dataString,
+    attachments || null,
+    embed ?? null
+  );
+
   const doc = JSON.parse(result);
 
   return {

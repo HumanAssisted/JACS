@@ -5,6 +5,8 @@ A streamlined interface for the most common JACS operations:
 - create(): Create a new agent with keys
 - load(): Load an existing agent from config
 - verify_self(): Verify the loaded agent's integrity
+- update_agent(): Update the agent document with new data
+- update_document(): Update an existing document with new data
 - sign_message(): Sign a text message
 - sign_file(): Sign a file with optional embedding
 - verify(): Verify any signed document
@@ -215,6 +217,7 @@ def load(config_path: Optional[str] = None) -> AgentInfo:
         agent_id = parts[0] if parts else ""
         version = parts[1] if len(parts) > 1 else ""
 
+        key_dir = config.get("jacs_key_directory", "./jacs_keys")
         _agent_info = AgentInfo(
             agent_id=agent_id,
             version=version,
@@ -222,6 +225,8 @@ def load(config_path: Optional[str] = None) -> AgentInfo:
             public_key_hash="",  # Will be populated after verification
             created_at="",
             algorithm=config.get("jacs_agent_key_algorithm", "RSA"),
+            config_path=config_path,
+            public_key_path=os.path.join(key_dir, "jacs.public.pem"),
         )
 
         return _agent_info
@@ -269,40 +274,137 @@ def verify_self() -> VerificationResult:
     except Exception as e:
         return VerificationResult(
             valid=False,
-            error=str(e),
+            errors=[str(e)],
         )
 
 
-def sign_message(message: str) -> SignedDocument:
-    """Sign a text message.
+def update_agent(new_agent_data: Union[str, dict]) -> str:
+    """Update the agent document with new data and re-sign it.
 
-    Creates a cryptographically signed JACS document containing
-    the message text. The signature proves the message came from
-    this agent and hasn't been modified.
+    This function expects a complete agent document (not partial updates).
+    Use export_agent() to get the current document, modify it, then pass it here.
+    The function will create a new version, re-sign, and re-hash the document.
 
     Args:
-        message: The text message to sign
+        new_agent_data: Complete agent document as JSON string or dict
 
     Returns:
-        SignedDocument containing the signed message
+        The updated and re-signed agent document as a JSON string
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If update fails
+
+    Example:
+        # Get current agent, modify, and update
+        agent_doc = json.loads(jacs.export_agent())
+        agent_doc["jacsAgentType"] = "updated-service"
+        updated = jacs.update_agent(agent_doc)
+        print("Agent updated with new version")
+    """
+    agent = _get_agent()
+
+    # Convert dict to JSON string if needed
+    if isinstance(new_agent_data, dict):
+        data_string = json.dumps(new_agent_data)
+    else:
+        data_string = new_agent_data
+
+    try:
+        return agent.update_agent(data_string)
+    except Exception as e:
+        raise JacsError(f"Failed to update agent: {e}")
+
+
+def update_document(
+    document_id: str,
+    new_document_data: Union[str, dict],
+    attachments: Optional[List[str]] = None,
+    embed: bool = False,
+) -> SignedDocument:
+    """Update an existing document with new data and re-sign it.
+
+    Use sign_message() to create a document first, then use this to update it.
+    The function will create a new version, re-sign, and re-hash the document.
+
+    Args:
+        document_id: The document ID (jacsId) to update
+        new_document_data: The updated document as JSON string or dict
+        attachments: Optional list of file paths to attach
+        embed: If True, embed attachment contents
+
+    Returns:
+        SignedDocument with the updated document
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If update fails
+
+    Example:
+        # Create a document first
+        signed = jacs.sign_message({"status": "pending"})
+
+        # Later, update it
+        doc = json.loads(signed.raw_json)
+        doc["content"]["status"] = "approved"
+        updated = jacs.update_document(signed.document_id, doc)
+        print("Document updated with new version")
+    """
+    agent = _get_agent()
+
+    # Convert dict to JSON string if needed
+    if isinstance(new_document_data, dict):
+        data_string = json.dumps(new_document_data)
+    else:
+        data_string = new_document_data
+
+    try:
+        result = agent.update_document(
+            document_id,
+            data_string,
+            attachments,
+            embed,
+        )
+        return _parse_signed_document(result)
+    except Exception as e:
+        raise JacsError(f"Failed to update document: {e}")
+
+
+def sign_message(data: Any) -> SignedDocument:
+    """Sign arbitrary data as a JACS message.
+
+    Creates a cryptographically signed JACS document containing
+    the data. The signature proves the data came from this agent
+    and hasn't been modified.
+
+    Args:
+        data: The data to sign (dict, list, str, or any JSON-serializable value)
+
+    Returns:
+        SignedDocument containing the signed data
 
     Raises:
         AgentNotLoadedError: If no agent is loaded
         SigningError: If signing fails
 
     Example:
+        # Sign a dict
+        signed = jacs.sign_message({"action": "approve", "amount": 100})
+
+        # Sign a string
         signed = jacs.sign_message("Hello, World!")
+
         print(signed.document_id)
-        print(signed.raw_json)  # Send this to verify
+        print(signed.raw)  # Send this to verify
     """
     agent = _get_agent()
 
     try:
-        # Create a document with the message as payload
+        # Create a document with the data as payload
         doc_json = json.dumps({
             "jacsDocument": {
                 "type": "message",
-                "content": message,
+                "content": data,
             }
         })
 
@@ -354,7 +456,7 @@ def sign_file(
 
     # Check file exists
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
+        raise JacsError(f"File not found: {file_path}")
 
     try:
         # Create a minimal document that references the file
@@ -432,7 +534,7 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
     except Exception as e:
         return VerificationResult(
             valid=False,
-            error=str(e),
+            errors=[str(e)],
         )
 
 
@@ -550,10 +652,12 @@ def is_loaded() -> bool:
 
 
 __all__ = [
-    # Core 6-operation API
+    # Core 8-operation API
     "create",
     "load",
     "verify_self",
+    "update_agent",
+    "update_document",
     "sign_message",
     "sign_file",
     "verify",
