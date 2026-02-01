@@ -37,8 +37,6 @@
  * const hash = jacs.hashString('data to hash');
  * ```
  */
-/// <reference types="node" />
-/// <reference types="node" />
 import { JacsAgent, hashString, verifyString, createConfig } from './index';
 /**
  * Re-export utilities and classes for advanced use cases.

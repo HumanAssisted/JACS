@@ -54,15 +54,40 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkAgreement = exports.signAgreement = exports.createAgreement = exports.isLoaded = exports.getAgentInfo = exports.exportAgent = exports.getPublicKey = exports.verify = exports.signFile = exports.updateDocument = exports.updateAgent = exports.signMessage = exports.verifySelf = exports.load = exports.create = exports.createConfig = exports.verifyString = exports.hashString = exports.JacsAgent = void 0;
+exports.createConfig = exports.verifyString = exports.hashString = exports.JacsAgent = void 0;
+exports.create = create;
+exports.load = load;
+exports.verifySelf = verifySelf;
+exports.signMessage = signMessage;
+exports.updateAgent = updateAgent;
+exports.updateDocument = updateDocument;
+exports.signFile = signFile;
+exports.verify = verify;
+exports.getPublicKey = getPublicKey;
+exports.exportAgent = exportAgent;
+exports.getAgentInfo = getAgentInfo;
+exports.isLoaded = isLoaded;
+exports.createAgreement = createAgreement;
+exports.signAgreement = signAgreement;
+exports.checkAgreement = checkAgreement;
 const index_1 = require("./index");
 Object.defineProperty(exports, "JacsAgent", { enumerable: true, get: function () { return index_1.JacsAgent; } });
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
@@ -97,7 +122,6 @@ function create(name, purpose, keyAlgorithm) {
     // For now, throw an error directing to CLI
     throw new Error('Agent creation from JS not yet supported. Use CLI: jacs create');
 }
-exports.create = create;
 /**
  * Loads an existing agent from a configuration file.
  *
@@ -130,7 +154,6 @@ function load(configPath) {
     };
     return agentInfo;
 }
-exports.load = load;
 /**
  * Verifies the currently loaded agent's integrity.
  *
@@ -168,7 +191,6 @@ function verifySelf() {
         };
     }
 }
-exports.verifySelf = verifySelf;
 /**
  * Signs arbitrary data as a JACS message.
  *
@@ -202,7 +224,6 @@ function signMessage(data) {
         timestamp: doc.jacsSignature?.date || '',
     };
 }
-exports.signMessage = signMessage;
 /**
  * Updates the agent document with new data and re-signs it.
  *
@@ -231,7 +252,6 @@ function updateAgent(newAgentData) {
         : JSON.stringify(newAgentData);
     return globalAgent.updateAgent(dataString);
 }
-exports.updateAgent = updateAgent;
 /**
  * Updates an existing document with new data and re-signs it.
  *
@@ -272,7 +292,6 @@ function updateDocument(documentId, newDocumentData, attachments, embed) {
         timestamp: doc.jacsSignature?.date || '',
     };
 }
-exports.updateDocument = updateDocument;
 /**
  * Signs a file with optional content embedding.
  *
@@ -310,7 +329,6 @@ function signFile(filePath, embed = false) {
         timestamp: doc.jacsSignature?.date || '',
     };
 }
-exports.signFile = signFile;
 /**
  * Verifies a signed document and extracts its content.
  *
@@ -371,7 +389,6 @@ function verify(signedDocument) {
         };
     }
 }
-exports.verify = verify;
 /**
  * Get the loaded agent's public key in PEM format.
  *
@@ -392,7 +409,6 @@ function getPublicKey() {
     }
     return fs.readFileSync(agentInfo.publicKeyPath, 'utf8');
 }
-exports.getPublicKey = getPublicKey;
 /**
  * Export the agent document for sharing.
  *
@@ -418,7 +434,6 @@ function exportAgent() {
     }
     return fs.readFileSync(agentPath, 'utf8');
 }
-exports.exportAgent = exportAgent;
 /**
  * Get information about the currently loaded agent.
  *
@@ -427,7 +442,6 @@ exports.exportAgent = exportAgent;
 function getAgentInfo() {
     return agentInfo;
 }
-exports.getAgentInfo = getAgentInfo;
 /**
  * Check if an agent is currently loaded.
  *
@@ -436,7 +450,6 @@ exports.getAgentInfo = getAgentInfo;
 function isLoaded() {
     return globalAgent !== null;
 }
-exports.isLoaded = isLoaded;
 /**
  * Creates a multi-party agreement that requires signatures from multiple agents.
  *
@@ -473,7 +486,6 @@ function createAgreement(document, agentIds, question, context, fieldName) {
         timestamp: doc.jacsSignature?.date || '',
     };
 }
-exports.createAgreement = createAgreement;
 /**
  * Signs an existing multi-party agreement.
  *
@@ -504,7 +516,6 @@ function signAgreement(document, fieldName) {
         timestamp: doc.jacsSignature?.date || '',
     };
 }
-exports.signAgreement = signAgreement;
 /**
  * Checks the status of a multi-party agreement.
  *
@@ -532,5 +543,4 @@ function checkAgreement(document, fieldName) {
     const result = globalAgent.checkAgreement(docString, fieldName || null);
     return JSON.parse(result);
 }
-exports.checkAgreement = checkAgreement;
 //# sourceMappingURL=simple.js.map
