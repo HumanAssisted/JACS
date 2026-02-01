@@ -1,0 +1,35 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "jacsType": "message",
+  "jacsLevel": "raw",
+  "content": {
+    "type": "test_message",
+    "text": "This document has a corrupted signature for testing error handling."
+  },
+  "jacsId": "golden-invalid-sig-001",
+  "jacsVersion": "v1",
+  "jacsOriginalVersion": "v1",
+  "jacsVersionDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsOriginalDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsSha256": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6",
+  "jacsSignature": {
+    "agentID": "golden-test-agent",
+    "agentVersion": "v1",
+    "date": "2025-01-01T00:00:00.000000+00:00",
+    "fields": [
+      "$schema",
+      "content",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature": "INVALID_CORRUPTED_SIGNATURE_FOR_TESTING_AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNNOOOOPPPPQQQQRRRRSSSSTTTTUUUUVVVVWWWWXXXXYYYYZZZZ",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "_golden_fixture_note": "This fixture intentionally has an invalid signature. Verification should fail with a signature error."
+}

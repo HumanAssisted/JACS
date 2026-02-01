@@ -4,144 +4,109 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 
 	jacs "github.com/HumanAssisted/JACS/jacsgo"
 )
 
 func main() {
-	// Example 1: Create a JACS configuration
-	fmt.Println("=== Creating JACS Configuration ===")
+	// ===========================================
+	// JACS Simplified API Example
+	// ===========================================
 
-	useSecurity := "true"
-	dataDir := "./jacs_data"
-	keyDir := "./jacs_keys"
-	privateKeyFile := "jacs.private.pem.enc"
-	publicKeyFile := "jacs.public.pem"
-	keyAlgorithm := "RSA-PSS"
-	password := "test_password"
-	agentID := "example-agent:v0.1.0"
-	storage := "fs"
+	fmt.Println("=== JACS Go Quickstart ===")
+	fmt.Println()
 
-	config := jacs.Config{
-		UseSecurity:         &useSecurity,
-		DataDirectory:       &dataDir,
-		KeyDirectory:        &keyDir,
-		AgentPrivateKeyFile: &privateKeyFile,
-		AgentPublicKeyFile:  &publicKeyFile,
-		AgentKeyAlgorithm:   &keyAlgorithm,
-		PrivateKeyPassword:  &password,
-		AgentIDAndVersion:   &agentID,
-		DefaultStorage:      &storage,
-	}
+	// Load an existing agent
+	// Run `jacs create --name "my-agent"` first if you don't have one
+	configPath := "./jacs.config.json"
+	if err := jacs.Load(&configPath); err != nil {
+		log.Printf("No agent found. Creating one...")
 
-	configJSON, err := jacs.CreateConfig(config)
-	if err != nil {
-		log.Fatalf("Failed to create config: %v", err)
-	}
-
-	fmt.Printf("Generated config:\n%s\n\n", configJSON)
-
-	// Save config to file
-	err = os.WriteFile("jacs.config.json", []byte(configJSON), 0644)
-	if err != nil {
-		log.Fatalf("Failed to write config file: %v", err)
-	}
-
-	// Example 2: Load JACS configuration
-	fmt.Println("=== Loading JACS Configuration ===")
-	err = jacs.Load("jacs.config.json")
-	if err != nil {
-		// Note: This might fail if the config references non-existent keys
-		fmt.Printf("Warning: Failed to load config (this is expected if keys don't exist): %v\n\n", err)
+		// Create a new agent
+		info, err := jacs.Create("example-agent", "Demo agent for Go", "ed25519")
+		if err != nil {
+			log.Fatalf("Failed to create agent: %v", err)
+		}
+		fmt.Printf("Created agent: %s\n", info.Name)
 	} else {
-		fmt.Println("Configuration loaded successfully\n")
+		fmt.Println("Agent loaded successfully")
 	}
 
-	// Example 3: Hash a string
-	fmt.Println("=== Hashing a String ===")
-	testData := "Hello, JACS!"
-	hash, err := jacs.HashString(testData)
+	// Verify the agent's integrity
+	result, err := jacs.VerifySelf()
 	if err != nil {
-		log.Fatalf("Failed to hash string: %v", err)
+		log.Fatalf("Self verification error: %v", err)
 	}
-	fmt.Printf("Original: %s\n", testData)
-	fmt.Printf("Hash: %s\n\n", hash)
+	if result.Valid {
+		fmt.Println("Agent integrity: VERIFIED")
+	} else {
+		fmt.Printf("Agent integrity: FAILED - %v\n", result.Errors)
+	}
+	fmt.Println()
 
-	// Example 4: Sign and verify a string (requires loaded agent with keys)
-	fmt.Println("=== Sign and Verify String ===")
-	fmt.Println("Note: This example requires a properly configured agent with keys")
+	// ===========================================
+	// Sign a message
+	// ===========================================
+	fmt.Println("=== Signing a Message ===")
 
-	// Example 5: Create a document
-	fmt.Println("=== Creating a Document ===")
-	documentData := map[string]interface{}{
-		"title":     "Example Document",
-		"content":   "This is a test document created with JACS Go bindings",
-		"timestamp": "2025-01-01T00:00:00Z",
-		"author":    "JACS Example",
-		"tags":      []string{"example", "test", "go"},
+	messageData := map[string]interface{}{
+		"action":   "approve",
+		"amount":   100.50,
+		"currency": "USD",
 		"metadata": map[string]interface{}{
-			"version": "1.0",
-			"public":  true,
+			"approver": "finance-bot",
+			"category": "expenses",
 		},
 	}
 
-	documentJSON, err := json.Marshal(documentData)
+	signed, err := jacs.SignMessage(messageData)
 	if err != nil {
-		log.Fatalf("Failed to marshal document: %v", err)
+		log.Fatalf("Failed to sign message: %v", err)
 	}
 
-	// Note: This might fail without a properly loaded agent
-	noSave := true
-	createdDoc, err := jacs.CreateDocument(string(documentJSON), nil, nil, noSave, nil, nil)
+	fmt.Printf("Document ID: %s\n", signed.DocumentID)
+	fmt.Printf("Signed by: %s\n", signed.AgentID)
+	fmt.Printf("Timestamp: %s\n", signed.Timestamp)
+	fmt.Println()
+
+	// ===========================================
+	// Verify the signed message
+	// ===========================================
+	fmt.Println("=== Verifying Signature ===")
+
+	verifyResult, err := jacs.Verify(signed.Raw)
 	if err != nil {
-		fmt.Printf("Warning: Failed to create document (expected without loaded agent): %v\n\n", err)
+		log.Fatalf("Verification error: %v", err)
+	}
+
+	fmt.Printf("Valid: %t\n", verifyResult.Valid)
+	fmt.Printf("Signer: %s\n", verifyResult.SignerID)
+	fmt.Printf("Timestamp: %s\n", verifyResult.Timestamp)
+
+	// Access the original data
+	if verifyResult.Data != nil {
+		dataJSON, _ := json.MarshalIndent(verifyResult.Data, "", "  ")
+		fmt.Printf("Data:\n%s\n", dataJSON)
+	}
+	fmt.Println()
+
+	// ===========================================
+	// Get public key for sharing
+	// ===========================================
+	fmt.Println("=== Public Key (for sharing) ===")
+
+	pem, err := jacs.GetPublicKeyPEM()
+	if err != nil {
+		fmt.Printf("Could not get public key: %v\n", err)
 	} else {
-		fmt.Printf("Created document:\n%s\n\n", createdDoc)
+		// Just show first 80 chars
+		if len(pem) > 80 {
+			fmt.Printf("%s...\n", pem[:80])
+		} else {
+			fmt.Println(pem)
+		}
 	}
 
-	// Example 6: Working with binary data
-	fmt.Println("=== Binary Data Conversion ===")
-	binaryData := []byte{0x48, 0x65, 0x6c, 0x6c, 0x6f} // "Hello" in bytes
-
-	// Encode binary data for cross-language compatibility
-	encoded := jacs.EncodeBinaryData(binaryData)
-	fmt.Printf("Original bytes: %v\n", binaryData)
-	fmt.Printf("Encoded: %+v\n", encoded)
-
-	// Decode it back
-	decoded, err := jacs.DecodeBinaryData(encoded)
-	if err != nil {
-		log.Fatalf("Failed to decode binary data: %v", err)
-	}
-	fmt.Printf("Decoded bytes: %v\n", decoded)
-	fmt.Printf("Decoded string: %s\n\n", string(decoded))
-
-	// Example 7: Convert complex data structures
-	fmt.Println("=== Complex Data Conversion ===")
-	complexData := map[string]interface{}{
-		"text":   "Regular string",
-		"number": 42,
-		"binary": []byte("Binary data here"),
-		"nested": map[string]interface{}{
-			"array": []interface{}{1, 2, 3},
-			"bool":  true,
-		},
-	}
-
-	// Convert to JSON with special type handling
-	jsonStr, err := jacs.ToJSON(complexData)
-	if err != nil {
-		log.Fatalf("Failed to convert to JSON: %v", err)
-	}
-	fmt.Printf("JSON with special types:\n%s\n", jsonStr)
-
-	// Parse back from JSON
-	restored, err := jacs.FromJSON(jsonStr)
-	if err != nil {
-		log.Fatalf("Failed to parse JSON: %v", err)
-	}
-	fmt.Printf("Restored data: %+v\n", restored)
-
-	fmt.Println("\n=== Example completed successfully ===")
+	fmt.Println()
+	fmt.Println("=== Example Complete ===")
 }

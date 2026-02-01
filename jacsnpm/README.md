@@ -1,73 +1,112 @@
-# JACS Node.js Library
+# JACS for Node.js
 
-Node.js bindings for JACS (JSON Agent Communication Standard) with A2A protocol support.
+Sign and verify AI agent communications with cryptographic signatures.
+
+## Installation
 
 ```bash
-npm install jacsnpm
+npm install @hai-ai/jacs
 ```
 
 ## Quick Start
 
 ```javascript
-const jacs = require('jacsnpm');
+const jacs = require('@hai-ai/jacs/simple');
 
-// Load JACS configuration
-jacs.load('jacs.config.json');
+// Load your agent (run `jacs create` first if needed)
+const agent = jacs.load('./jacs.config.json');
 
-// Sign and verify documents
-const signedDoc = jacs.signRequest({ data: 'value' });
-const isValid = jacs.verifyResponse(signedDoc);
+// Sign a message
+const signed = jacs.signMessage({
+  action: 'approve',
+  amount: 100
+});
+
+// Verify it
+const result = jacs.verify(signed.raw);
+console.log(`Valid: ${result.valid}`);
+console.log(`Signer: ${result.signerId}`);
 ```
 
-## A2A Protocol Integration
+## Core API
 
-JACS Node.js includes support for Google's A2A (Agent-to-Agent) protocol:
+| Function | Description |
+|----------|-------------|
+| `load(configPath)` | Load agent from config file |
+| `verifySelf()` | Verify agent's own integrity |
+| `signMessage(data)` | Sign any JSON data |
+| `signFile(path, embed)` | Sign a file |
+| `verify(doc)` | Verify signed document |
+| `getPublicKey()` | Get public key for sharing |
+| `isLoaded()` | Check if agent is loaded |
+
+## Types
+
+```typescript
+interface SignedDocument {
+  raw: string;        // Full JSON document
+  documentId: string; // UUID
+  agentId: string;    // Signer's ID
+  timestamp: string;  // ISO 8601
+}
+
+interface VerificationResult {
+  valid: boolean;
+  data?: any;
+  signerId: string;
+  timestamp: string;
+  attachments: Attachment[];
+  errors: string[];
+}
+```
+
+## Examples
+
+### Sign and Verify
 
 ```javascript
-const { JACSA2AIntegration } = require('jacsnpm');
+const jacs = require('@hai-ai/jacs/simple');
 
-// Initialize A2A integration
-const a2a = new JACSA2AIntegration('jacs.config.json');
+jacs.load('./jacs.config.json');
 
-// Export JACS agent to A2A Agent Card
-const agentCard = a2a.exportAgentCard(agentData);
+// Sign data
+const signed = jacs.signMessage({
+  action: 'transfer',
+  amount: 500,
+  to: 'agent-123'
+});
 
-// Wrap A2A artifacts with JACS provenance
-const wrapped = a2a.wrapArtifactWithProvenance(artifact, 'task');
-
-// Verify wrapped artifacts
-const result = a2a.verifyWrappedArtifact(wrapped);
-
-// Create chain of custody for workflows
-const chain = a2a.createChainOfCustody([wrapped1, wrapped2, wrapped3]);
+// Later, verify received data
+const result = jacs.verify(receivedJson);
+if (result.valid) {
+  console.log(`Signed by: ${result.signerId}`);
+  console.log(`Data: ${JSON.stringify(result.data)}`);
+}
 ```
 
-See [examples/a2a-agent-example.js](./examples/a2a-agent-example.js) for a complete example.
+### File Signing
 
-## Usage 
+```javascript
+// Reference only (stores hash)
+const signed = jacs.signFile('contract.pdf', false);
 
-see [examples](./examples)
-
-### With MCP
-
-You can use JACS middleware
-
-```js
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createJacsMiddleware } from 'jacsnpm/mcp';
-
-const server = new McpServer({ name: "MyServer", version: "1.0.0" });
-server.use(createJacsMiddleware({ configPath: './config.json' }));
+// Embed content (portable document)
+const embedded = jacs.signFile('contract.pdf', true);
 ```
 
-Or you can use JACS warpper for simpler syntax
+### MCP Integration
 
-```js
-import { JacsMcpServer } from 'jacsnpm/mcp';
+```javascript
+import { JacsMcpServer } from '@hai-ai/jacs/mcp';
 
 const server = new JacsMcpServer({
-    name: "MyServer",
-    version: "1.0.0",
-    configPath: './config.json'
+  name: 'MyServer',
+  version: '1.0.0',
+  configPath: './jacs.config.json'
 });
 ```
+
+## See Also
+
+- [JACS Documentation](https://hai.ai/jacs)
+- [Examples](./examples/)

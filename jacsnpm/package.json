@@ -1,7 +1,7 @@
 {
-  "name": "jacs",
-  "version": "0.1.0",
-  "description": "JACS Node.js bindings with MCP integration",
+  "name": "@hai-ai/jacs",
+  "version": "0.5.0",
+  "description": "JACS - Sign and verify AI agent communications with cryptographic signatures",
   "main": "index.js",
   "types": "index.d.ts",
   "overrides": {
@@ -13,6 +13,11 @@
       "import": "./index.js",
       "require": "./index.js",
       "types": "./index.d.ts"
+    },
+    "./simple": {
+      "import": "./simple.js",
+      "require": "./simple.js",
+      "types": "./simple.d.ts"
     },
     "./a2a": {
       "import": "./src/a2a.js",
@@ -72,6 +77,8 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "simple.js",
+    "simple.d.ts",
     "src/a2a.js",
     "mcp.ts",
     "mcp.js",
@@ -79,5 +86,15 @@
     "http.js",
     "http.d.ts",
     "*.node"
+  ],
+  "keywords": [
+    "jacs",
+    "ai",
+    "agent",
+    "signing",
+    "verification",
+    "cryptography",
+    "mcp",
+    "model-context-protocol"
   ]
 }

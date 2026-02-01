@@ -18,11 +18,16 @@ pub mod agent;
 pub mod config;
 pub mod crypt;
 pub mod dns;
+pub mod error;
 pub mod keystore;
+pub mod mime;
 pub mod observability;
+pub mod paths;
 pub mod schema;
 pub mod shared;
+pub mod simple;
 pub mod storage;
+pub mod trust;
 
 // #[cfg(feature = "cli")]
 pub mod cli_utils;

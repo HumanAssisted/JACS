@@ -1203,12 +1203,292 @@ fn extract_documents_py(
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+// =============================================================================
+// Simplified API Functions - New in v0.5.0
+// =============================================================================
+// These functions provide a streamlined interface for common operations.
+// They use the jacs::simple module from the core library.
+// =============================================================================
+
+/// Create a new JACS agent with cryptographic keys.
+///
+/// Args:
+///     name: Human-readable name for the agent
+///     purpose: Optional description of the agent's purpose
+///     key_algorithm: Signing algorithm ("ed25519", "rsa-pss", or "pq2025")
+///
+/// Returns:
+///     dict with agent_id, name, public_key_path, config_path
+#[pyfunction]
+fn create_simple(
+    name: &str,
+    purpose: Option<&str>,
+    key_algorithm: Option<&str>,
+) -> PyResult<PyObject> {
+    Python::with_gil(|py| {
+        let info = jacs_core::simple::create(name, purpose, key_algorithm).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create agent: {}",
+                e
+            ))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("agent_id", &info.agent_id)?;
+        dict.set_item("name", &info.name)?;
+        dict.set_item("public_key_path", &info.public_key_path)?;
+        dict.set_item("config_path", &info.config_path)?;
+        Ok(dict.into())
+    })
+}
+
+/// Load an existing agent from configuration.
+///
+/// Args:
+///     config_path: Path to jacs.config.json (default: "./jacs.config.json")
+#[pyfunction]
+fn load_simple(config_path: Option<&str>) -> PyResult<()> {
+    jacs_core::simple::load(config_path).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to load agent: {}", e))
+    })
+}
+
+/// Verify the loaded agent's own integrity.
+///
+/// Returns:
+///     dict with valid, signer_id, timestamp, errors
+#[pyfunction]
+fn verify_self_simple() -> PyResult<PyObject> {
+    Python::with_gil(|py| {
+        let result = jacs_core::simple::verify_self().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify self: {}",
+                e
+            ))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("valid", result.valid)?;
+        dict.set_item("signer_id", &result.signer_id)?;
+        dict.set_item("timestamp", &result.timestamp)?;
+        let errors: Vec<String> = result.errors;
+        dict.set_item("errors", errors)?;
+        Ok(dict.into())
+    })
+}
+
+/// Sign a message and return a signed JACS document.
+///
+/// Args:
+///     data: JSON string or dict to sign
+///
+/// Returns:
+///     dict with raw, document_id, agent_id, timestamp
+#[pyfunction]
+fn sign_message_simple(py: Python, data: PyObject) -> PyResult<PyObject> {
+    let bound_data = data.bind(py);
+    let json_value = conversion_utils::pyany_to_value(py, bound_data)?;
+
+    let signed = jacs_core::simple::sign_message(&json_value).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign message: {}", e))
+    })?;
+
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("raw", &signed.raw)?;
+    dict.set_item("document_id", &signed.document_id)?;
+    dict.set_item("agent_id", &signed.agent_id)?;
+    dict.set_item("timestamp", &signed.timestamp)?;
+    Ok(dict.into())
+}
+
+/// Sign a file with optional embedding.
+///
+/// Args:
+///     file_path: Path to the file to sign
+///     embed: If true, embed file content in document
+///
+/// Returns:
+///     dict with raw, document_id, agent_id, timestamp
+#[pyfunction]
+fn sign_file_simple(file_path: &str, embed: bool) -> PyResult<PyObject> {
+    Python::with_gil(|py| {
+        let signed = jacs_core::simple::sign_file(file_path, embed).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign file: {}", e))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("raw", &signed.raw)?;
+        dict.set_item("document_id", &signed.document_id)?;
+        dict.set_item("agent_id", &signed.agent_id)?;
+        dict.set_item("timestamp", &signed.timestamp)?;
+        Ok(dict.into())
+    })
+}
+
+/// Verify a signed JACS document.
+///
+/// Args:
+///     signed_document: JSON string of the signed document
+///
+/// Returns:
+///     dict with valid, data, signer_id, timestamp, attachments, errors
+#[pyfunction]
+fn verify_simple(py: Python, signed_document: &str) -> PyResult<PyObject> {
+    let result = jacs_core::simple::verify(signed_document).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to verify: {}", e))
+    })?;
+
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("valid", result.valid)?;
+    dict.set_item("signer_id", &result.signer_id)?;
+    dict.set_item("timestamp", &result.timestamp)?;
+    let errors: Vec<String> = result.errors;
+    dict.set_item("errors", errors)?;
+
+    // Convert data to Python object
+    let py_data = conversion_utils::value_to_pyobject(py, &result.data)?;
+    dict.set_item("data", py_data)?;
+
+    // Convert attachments to list of dicts
+    let attachments_list = pyo3::types::PyList::empty(py);
+    for att in &result.attachments {
+        let att_dict = pyo3::types::PyDict::new(py);
+        att_dict.set_item("filename", &att.filename)?;
+        att_dict.set_item("mime_type", &att.mime_type)?;
+        att_dict.set_item("hash", &att.hash)?;
+        att_dict.set_item("embedded", att.embedded)?;
+        attachments_list.append(att_dict)?;
+    }
+    dict.set_item("attachments", attachments_list)?;
+
+    Ok(dict.into())
+}
+
+/// Export the current agent's identity JSON for P2P exchange.
+///
+/// Returns:
+///     The agent JSON document as a string
+#[pyfunction]
+fn export_agent_simple() -> PyResult<String> {
+    jacs_core::simple::export_agent().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to export agent: {}", e))
+    })
+}
+
+/// Get the current agent's public key in PEM format.
+///
+/// Returns:
+///     The public key as a PEM string
+#[pyfunction]
+fn get_public_key_pem_simple() -> PyResult<String> {
+    jacs_core::simple::get_public_key_pem().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to get public key: {}",
+            e
+        ))
+    })
+}
+
+// =============================================================================
+// Trust Store Functions
+// =============================================================================
+
+/// Add an agent to the local trust store.
+///
+/// Args:
+///     agent_json: The full agent JSON string
+///
+/// Returns:
+///     The agent ID if successfully trusted
+#[pyfunction]
+fn trust_agent_simple(agent_json: &str) -> PyResult<String> {
+    jacs_core::trust::trust_agent(agent_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to trust agent: {}", e))
+    })
+}
+
+/// List all trusted agent IDs.
+///
+/// Returns:
+///     List of agent IDs in the trust store
+#[pyfunction]
+fn list_trusted_agents_simple() -> PyResult<Vec<String>> {
+    jacs_core::trust::list_trusted_agents().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to list trusted agents: {}",
+            e
+        ))
+    })
+}
+
+/// Remove an agent from the trust store.
+///
+/// Args:
+///     agent_id: The ID of the agent to untrust
+#[pyfunction]
+fn untrust_agent_simple(agent_id: &str) -> PyResult<()> {
+    jacs_core::trust::untrust_agent(agent_id).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to untrust agent: {}",
+            e
+        ))
+    })
+}
+
+/// Check if an agent is in the trust store.
+///
+/// Args:
+///     agent_id: The ID of the agent to check
+///
+/// Returns:
+///     True if the agent is trusted
+#[pyfunction]
+fn is_trusted_simple(agent_id: &str) -> bool {
+    jacs_core::trust::is_trusted(agent_id)
+}
+
+/// Get a trusted agent's JSON document.
+///
+/// Args:
+///     agent_id: The ID of the agent
+///
+/// Returns:
+///     The agent JSON string
+#[pyfunction]
+fn get_trusted_agent_simple(agent_id: &str) -> PyResult<String> {
+    jacs_core::trust::get_trusted_agent(agent_id).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to get trusted agent: {}",
+            e
+        ))
+    })
+}
+
 #[pymodule]
 fn jacs(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
 
     // Add the JacsAgent class - recommended API for new code
     m.add_class::<JacsAgent>()?;
+
+    // =============================================================================
+    // Simplified API - New in v0.5.0
+    // =============================================================================
+    m.add_function(wrap_pyfunction!(create_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(load_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_self_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_message_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_file_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(export_agent_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(get_public_key_pem_simple, m)?)?;
+
+    // Trust store functions
+    m.add_function(wrap_pyfunction!(trust_agent_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(list_trusted_agents_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(untrust_agent_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(is_trusted_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(get_trusted_agent_simple, m)?)?;
 
     #[pyfn(m, name = "log_to_python")]
     fn py_log_to_python(py: Python, message: String, log_level: String) -> PyResult<()> {

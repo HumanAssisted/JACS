@@ -1,0 +1,36 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "jacsType": "message",
+  "jacsLevel": "raw",
+  "content": {
+    "type": "test_message",
+    "text": "This document has a mismatched hash. The content was modified after signing.",
+    "modified_field": "This field was added after the document was signed"
+  },
+  "jacsId": "golden-invalid-hash-001",
+  "jacsVersion": "v1",
+  "jacsOriginalVersion": "v1",
+  "jacsVersionDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsOriginalDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "jacsSignature": {
+    "agentID": "golden-test-agent",
+    "agentVersion": "v1",
+    "date": "2025-01-01T00:00:00.000000+00:00",
+    "fields": [
+      "$schema",
+      "content",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature": "PLACEHOLDER_SIGNATURE_FOR_HASH_MISMATCH_TEST",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "_golden_fixture_note": "This fixture intentionally has a mismatched hash. The jacsSha256 does not match the actual content hash. Verification should fail with a hash mismatch error."
+}
