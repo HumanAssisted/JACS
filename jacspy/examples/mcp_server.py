@@ -61,11 +61,11 @@ def echo(message: str) -> dict:
 
     return {
         "message": message,
-        "signed_by": signed.signer_id,
+        "signed_by": signed.agent_id,  # alias for signer_id
         "document_id": signed.document_id,
-        "signature_time": signed.signed_at,
+        "timestamp": signed.timestamp,  # alias for signed_at
         # The full signed document can be verified independently
-        "signed_document": signed.raw_json,
+        "signed_document": signed.raw,  # alias for raw_json
     }
 
 
@@ -83,7 +83,7 @@ def sign_data(data: str) -> str:
         Signed JACS document as JSON string
     """
     signed = jacs.sign_message(data)
-    return signed.raw_json
+    return signed.raw  # alias for raw_json
 
 
 @mcp.tool()

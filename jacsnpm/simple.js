@@ -3,21 +3,29 @@
  * JACS Simplified API for TypeScript/JavaScript
  *
  * A streamlined interface for the most common JACS operations:
- * - create(): Create a new agent with keys
  * - load(): Load an existing agent from config
  * - verifySelf(): Verify the loaded agent's integrity
+ * - signMessage(): Sign a message or data
+ * - verify(): Verify any signed document
+ * - signFile(): Sign a file with optional embedding
  * - updateAgent(): Update the agent document with new data
  * - updateDocument(): Update an existing document with new data
- * - signMessage(): Sign a text message
- * - signFile(): Sign a file with optional embedding
- * - verify(): Verify any signed document
+ * - createAgreement(): Create a multi-party agreement
+ * - signAgreement(): Sign an existing agreement
+ * - checkAgreement(): Check agreement status
+ *
+ * Also re-exports for advanced usage:
+ * - JacsAgent: Class for direct agent control
+ * - hashString: Standalone SHA-256 hashing
+ * - verifyString: Verify with external public key
+ * - createConfig: Create agent configuration
  *
  * @example
  * ```typescript
  * import * as jacs from '@hai-ai/jacs/simple';
  *
  * // Load agent
- * const agent = await jacs.load('./jacs.config.json');
+ * const agent = jacs.load('./jacs.config.json');
  *
  * // Sign a message
  * const signed = jacs.signMessage({ action: 'approve', amount: 100 });
@@ -25,6 +33,9 @@
  * // Verify it
  * const result = jacs.verify(signed.raw);
  * console.log(`Valid: ${result.valid}`);
+ *
+ * // Use standalone hash function
+ * const hash = jacs.hashString('data to hash');
  * ```
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
@@ -51,8 +62,12 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isLoaded = exports.getAgentInfo = exports.exportAgent = exports.getPublicKey = exports.verify = exports.signFile = exports.updateDocument = exports.updateAgent = exports.signMessage = exports.verifySelf = exports.load = exports.create = void 0;
+exports.checkAgreement = exports.signAgreement = exports.createAgreement = exports.isLoaded = exports.getAgentInfo = exports.exportAgent = exports.getPublicKey = exports.verify = exports.signFile = exports.updateDocument = exports.updateAgent = exports.signMessage = exports.verifySelf = exports.load = exports.create = exports.createConfig = exports.verifyString = exports.hashString = exports.JacsAgent = void 0;
 const index_1 = require("./index");
+Object.defineProperty(exports, "JacsAgent", { enumerable: true, get: function () { return index_1.JacsAgent; } });
+Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
+Object.defineProperty(exports, "verifyString", { enumerable: true, get: function () { return index_1.verifyString; } });
+Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 // =============================================================================
@@ -422,4 +437,100 @@ function isLoaded() {
     return globalAgent !== null;
 }
 exports.isLoaded = isLoaded;
+/**
+ * Creates a multi-party agreement that requires signatures from multiple agents.
+ *
+ * @param document - The document to create an agreement on (object or JSON string)
+ * @param agentIds - List of agent IDs required to sign
+ * @param question - Optional question or purpose of the agreement
+ * @param context - Optional additional context for signers
+ * @param fieldName - Optional custom field name for the agreement (default: "jacsAgreement")
+ * @returns SignedDocument containing the agreement document
+ *
+ * @example
+ * ```typescript
+ * const agreement = jacs.createAgreement(
+ *   { proposal: 'Merge codebase' },
+ *   ['agent-1-uuid', 'agent-2-uuid'],
+ *   'Do you approve this merge?',
+ *   'This will combine repositories A and B'
+ * );
+ * ```
+ */
+function createAgreement(document, agentIds, question, context, fieldName) {
+    if (!globalAgent) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    const docString = typeof document === 'string'
+        ? document
+        : JSON.stringify(document);
+    const result = globalAgent.createAgreement(docString, agentIds, question || null, context || null, fieldName || null);
+    const doc = JSON.parse(result);
+    return {
+        raw: result,
+        documentId: doc.jacsId || '',
+        agentId: doc.jacsSignature?.agentID || '',
+        timestamp: doc.jacsSignature?.date || '',
+    };
+}
+exports.createAgreement = createAgreement;
+/**
+ * Signs an existing multi-party agreement.
+ *
+ * @param document - The agreement document to sign (object or JSON string)
+ * @param fieldName - Optional custom field name for the agreement (default: "jacsAgreement")
+ * @returns SignedDocument with this agent's signature added
+ *
+ * @example
+ * ```typescript
+ * // Receive agreement from another party
+ * const signedByMe = jacs.signAgreement(agreementDoc);
+ * // Send back to coordinator or next signer
+ * ```
+ */
+function signAgreement(document, fieldName) {
+    if (!globalAgent) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    const docString = typeof document === 'string'
+        ? document
+        : JSON.stringify(document);
+    const result = globalAgent.signAgreement(docString, fieldName || null);
+    const doc = JSON.parse(result);
+    return {
+        raw: result,
+        documentId: doc.jacsId || '',
+        agentId: doc.jacsSignature?.agentID || '',
+        timestamp: doc.jacsSignature?.date || '',
+    };
+}
+exports.signAgreement = signAgreement;
+/**
+ * Checks the status of a multi-party agreement.
+ *
+ * @param document - The agreement document to check (object or JSON string)
+ * @param fieldName - Optional custom field name for the agreement (default: "jacsAgreement")
+ * @returns AgreementStatus with completion status and signer details
+ *
+ * @example
+ * ```typescript
+ * const status = jacs.checkAgreement(agreementDoc);
+ * if (status.complete) {
+ *   console.log('All parties have signed!');
+ * } else {
+ *   console.log(`Waiting for: ${status.pending.join(', ')}`);
+ * }
+ * ```
+ */
+function checkAgreement(document, fieldName) {
+    if (!globalAgent) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    const docString = typeof document === 'string'
+        ? document
+        : JSON.stringify(document);
+    const result = globalAgent.checkAgreement(docString, fieldName || null);
+    return JSON.parse(result);
+}
+exports.checkAgreement = checkAgreement;
 //# sourceMappingURL=simple.js.map

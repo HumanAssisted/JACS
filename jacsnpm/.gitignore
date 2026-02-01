@@ -1,4 +1,4 @@
 node_modules
 index.d.ts
 index.js
-jacsnpm.darwin-arm64.node
+*.node
