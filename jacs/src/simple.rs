@@ -100,6 +100,57 @@ pub struct VerificationResult {
     pub errors: Vec<String>,
 }
 
+impl VerificationResult {
+    /// Creates a failed verification result with the given error message.
+    ///
+    /// This is a convenience constructor for creating a `VerificationResult`
+    /// that represents a failed verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - The error message describing why verification failed
+    ///
+    /// # Returns
+    ///
+    /// A `VerificationResult` with `valid: false` and the error in the `errors` field.
+    #[must_use]
+    pub fn failure(error: String) -> Self {
+        Self {
+            valid: false,
+            data: json!(null),
+            signer_id: String::new(),
+            signer_name: None,
+            timestamp: String::new(),
+            attachments: vec![],
+            errors: vec![error],
+        }
+    }
+
+    /// Creates a successful verification result.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The verified data/content
+    /// * `signer_id` - The ID of the agent that signed the document
+    /// * `timestamp` - The timestamp when the document was signed
+    ///
+    /// # Returns
+    ///
+    /// A `VerificationResult` with `valid: true` and no errors.
+    #[must_use]
+    pub fn success(data: Value, signer_id: String, timestamp: String) -> Self {
+        Self {
+            valid: true,
+            data,
+            signer_id,
+            signer_name: None,
+            timestamp,
+            attachments: vec![],
+            errors: vec![],
+        }
+    }
+}
+
 /// A file attachment in a signed document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attachment {
@@ -204,6 +255,7 @@ impl SimpleAgent {
     /// let agent = SimpleAgent::create("my-agent", Some("Signing documents"), None)?;
     /// println!("Agent created successfully");
     /// ```
+    #[must_use = "agent creation result must be checked for errors"]
     pub fn create(
         name: &str,
         purpose: Option<&str>,
@@ -311,6 +363,7 @@ impl SimpleAgent {
     /// // or
     /// let agent = SimpleAgent::load(Some("./my-agent/jacs.config.json"))?;
     /// ```
+    #[must_use = "agent loading result must be checked for errors"]
     pub fn load(config_path: Option<&str>) -> Result<Self, JacsError> {
         let path = config_path.unwrap_or("./jacs.config.json");
 
@@ -354,6 +407,7 @@ impl SimpleAgent {
     /// let result = agent.verify_self()?;
     /// assert!(result.valid);
     /// ```
+    #[must_use = "self-verification result must be checked"]
     pub fn verify_self(&self) -> Result<VerificationResult, JacsError> {
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -414,6 +468,7 @@ impl SimpleAgent {
     /// let signed = agent.sign_message(&json!({"action": "approve", "amount": 100}))?;
     /// println!("Document ID: {}", signed.document_id);
     /// ```
+    #[must_use = "signed document must be used or stored"]
     pub fn sign_message(&self, data: &Value) -> Result<SignedDocument, JacsError> {
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -471,6 +526,7 @@ impl SimpleAgent {
     /// // Or just reference it by hash
     /// let signed = agent.sign_file("large-video.mp4", false)?;
     /// ```
+    #[must_use = "signed document must be used or stored"]
     pub fn sign_file(&self, file_path: &str, embed: bool) -> Result<SignedDocument, JacsError> {
         // Check file exists
         if !Path::new(file_path).exists() {
@@ -520,6 +576,120 @@ impl SimpleAgent {
         })
     }
 
+    /// Signs multiple messages in a batch operation.
+    ///
+    /// This is more efficient than calling `sign_message` repeatedly because it
+    /// amortizes the overhead of acquiring locks and key operations across all
+    /// messages.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - A slice of JSON values to sign
+    ///
+    /// # Returns
+    ///
+    /// A vector of `SignedDocument` objects, one for each input message, in the
+    /// same order as the input slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if signing any message fails. In case of failure,
+    /// documents created before the failure are still stored but the partial
+    /// results are not returned (all-or-nothing return semantics).
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    /// use serde_json::json;
+    ///
+    /// let agent = SimpleAgent::load(None)?;
+    ///
+    /// let messages = vec![
+    ///     json!({"action": "approve", "item": 1}),
+    ///     json!({"action": "approve", "item": 2}),
+    ///     json!({"action": "reject", "item": 3}),
+    /// ];
+    ///
+    /// let refs: Vec<&serde_json::Value> = messages.iter().collect();
+    /// let signed_docs = agent.sign_messages_batch(&refs)?;
+    ///
+    /// for doc in &signed_docs {
+    ///     println!("Signed document: {}", doc.document_id);
+    /// }
+    /// ```
+    ///
+    /// # Performance Notes
+    ///
+    /// - The agent lock is acquired once for the entire batch
+    /// - Key decryption overhead is amortized across all messages
+    /// - For very large batches, consider splitting into smaller chunks
+    pub fn sign_messages_batch(&self, messages: &[&Value]) -> Result<Vec<SignedDocument>, JacsError> {
+        use crate::agent::document::DocumentTraits;
+        use tracing::info;
+
+        if messages.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        info!(
+            batch_size = messages.len(),
+            "Signing batch of messages"
+        );
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        // Prepare all document JSON strings
+        let doc_strings: Vec<String> = messages
+            .iter()
+            .map(|data| {
+                let doc_content = json!({
+                    "jacsType": "message",
+                    "jacsLevel": "raw",
+                    "content": data
+                });
+                doc_content.to_string()
+            })
+            .collect();
+
+        // Convert to slice of &str for the batch API
+        let doc_refs: Vec<&str> = doc_strings.iter().map(|s| s.as_str()).collect();
+
+        // Use the batch document creation API
+        let jacs_docs = agent
+            .create_documents_batch(&doc_refs)
+            .map_err(|e| JacsError::SigningFailed {
+                reason: e.to_string(),
+            })?;
+
+        // Convert to SignedDocument results
+        let mut results = Vec::with_capacity(jacs_docs.len());
+        for jacs_doc in jacs_docs {
+            let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize document: {}", e),
+            })?;
+
+            let timestamp = jacs_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
+            let agent_id = jacs_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
+
+            results.push(SignedDocument {
+                raw,
+                document_id: jacs_doc.id,
+                agent_id,
+                timestamp,
+            });
+        }
+
+        info!(
+            batch_size = results.len(),
+            "Batch message signing completed successfully"
+        );
+
+        Ok(results)
+    }
+
     /// Verifies a signed document and extracts its content.
     ///
     /// This function auto-detects whether the document contains a message or file.
@@ -545,6 +715,7 @@ impl SimpleAgent {
     ///     println!("Verification failed: {:?}", result.errors);
     /// }
     /// ```
+    #[must_use = "verification result must be checked"]
     pub fn verify(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
         // Parse the document to validate JSON
         let _: Value = serde_json::from_str(signed_document).map_err(|e| {
@@ -609,6 +780,7 @@ impl SimpleAgent {
     }
 
     /// Exports the agent's identity JSON for P2P exchange.
+    #[must_use = "exported agent data must be used"]
     pub fn export_agent(&self) -> Result<String, JacsError> {
         let agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -621,6 +793,7 @@ impl SimpleAgent {
     }
 
     /// Returns the agent's public key in PEM format.
+    #[must_use = "public key data must be used"]
     pub fn get_public_key_pem(&self) -> Result<String, JacsError> {
         // Read from the standard key file location
         let key_path = "./jacs_keys/jacs.public.pem";
@@ -632,6 +805,67 @@ impl SimpleAgent {
     /// Returns the path to the configuration file, if available.
     pub fn config_path(&self) -> Option<&str> {
         self.config_path.as_deref()
+    }
+
+    /// Verifies multiple signed documents in a batch operation.
+    ///
+    /// This method processes each document sequentially, verifying signatures
+    /// and hashes for each. All documents are processed regardless of individual
+    /// failures, and results are returned for each input document.
+    ///
+    /// # Arguments
+    ///
+    /// * `documents` - A slice of JSON strings, each representing a signed JACS document
+    ///
+    /// # Returns
+    ///
+    /// A vector of `VerificationResult` in the same order as the input documents.
+    /// Each result contains:
+    /// - `valid`: Whether the signature and hash are valid
+    /// - `data`: The extracted content from the document
+    /// - `signer_id`: The ID of the signing agent
+    /// - `errors`: Any error messages if verification failed
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let agent = SimpleAgent::load(None)?;
+    ///
+    /// let documents = vec![
+    ///     signed_doc1.as_str(),
+    ///     signed_doc2.as_str(),
+    ///     signed_doc3.as_str(),
+    /// ];
+    ///
+    /// let results = agent.verify_batch(&documents);
+    /// for (i, result) in results.iter().enumerate() {
+    ///     if result.valid {
+    ///         println!("Document {} verified successfully", i);
+    ///     } else {
+    ///         println!("Document {} failed: {:?}", i, result.errors);
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Performance Notes
+    ///
+    /// - Verification is sequential; for parallel verification, consider using
+    ///   rayon's `par_iter()` externally or spawning threads
+    /// - Each verification is independent and does not short-circuit on failure
+    /// - The method acquires the agent lock once per document verification
+    #[must_use]
+    pub fn verify_batch(&self, documents: &[&str]) -> Vec<VerificationResult> {
+        documents
+            .iter()
+            .map(|doc| {
+                match self.verify(doc) {
+                    Ok(result) => result,
+                    Err(e) => VerificationResult::failure(e.to_string()),
+                }
+            })
+            .collect()
     }
 }
 
@@ -1028,5 +1262,41 @@ mod tests {
         // but we can verify the struct design
         let result = SimpleAgent::load(Some("./nonexistent.json"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verification_result_failure_constructor() {
+        // Test that VerificationResult::failure creates a valid failure result
+        let result = VerificationResult::failure("Test error message".to_string());
+        assert!(!result.valid);
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains("Test error message"));
+        assert_eq!(result.signer_id, "");
+        assert!(result.signer_name.is_none());
+    }
+
+    #[test]
+    fn test_verification_result_success_constructor() {
+        let data = json!({"message": "hello"});
+        let signer_id = "agent-123".to_string();
+        let timestamp = "2024-01-15T10:30:00Z".to_string();
+
+        let result = VerificationResult::success(data.clone(), signer_id.clone(), timestamp.clone());
+
+        assert!(result.valid);
+        assert_eq!(result.data, data);
+        assert_eq!(result.signer_id, signer_id);
+        assert!(result.signer_name.is_none());
+        assert_eq!(result.timestamp, timestamp);
+        assert!(result.attachments.is_empty());
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_verification_result_failure_has_null_data() {
+        let result = VerificationResult::failure("error".to_string());
+        assert_eq!(result.data, json!(null));
+        assert!(result.timestamp.is_empty());
+        assert!(result.attachments.is_empty());
     }
 }

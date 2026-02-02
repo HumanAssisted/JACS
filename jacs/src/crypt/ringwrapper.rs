@@ -8,6 +8,7 @@ use std::error::Error;
 use std::fmt;
 use tracing::{debug, trace, warn};
 
+#[must_use = "generated keys must be stored securely"]
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     trace!("Generating Ed25519 keypair");
     let rng = rand::SystemRandom::new();
@@ -24,6 +25,7 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
     Ok((private_key, public_key))
 }
 
+#[must_use = "signature must be stored or transmitted"]
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {
     trace!(data_len = data.len(), "Ed25519 signing starting");
     let key_pair = signature::Ed25519KeyPair::from_pkcs8(&secret_key).map_err(KeyRejectedError)?;
@@ -37,6 +39,7 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn
     Ok(signature_base64)
 }
 
+#[must_use = "signature verification result must be checked"]
 pub fn verify_string(
     public_key: Vec<u8>,
     data: &str,

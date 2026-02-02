@@ -36,6 +36,7 @@ pub fn base64_encode(data: &[u8]) -> String {
 
 /// Decode base64 string to bytes using the standard engine.
 #[inline]
+#[must_use = "decoded bytes must be used"]
 pub fn base64_decode(encoded: &str) -> Result<Vec<u8>, JacsError> {
     STANDARD
         .decode(encoded)
@@ -166,6 +167,27 @@ pub trait KeyManager {
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// Signs multiple strings in a batch operation.
+    ///
+    /// This is more efficient than calling `sign_string` repeatedly when signing
+    /// multiple messages because it amortizes the overhead of key decryption and
+    /// algorithm lookup across all messages.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - A slice of string references to sign
+    ///
+    /// # Returns
+    ///
+    /// A vector of base64-encoded signatures, one for each input message, in the
+    /// same order as the input slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if signing any message fails. In case of failure, no
+    /// signatures are returned (all-or-nothing semantics).
+    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>>;
 }
 
 impl KeyManager for Agent {
@@ -211,6 +233,52 @@ impl KeyManager for Agent {
             );
             Ok(STANDARD.encode(sig_bytes))
         }
+    }
+
+    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        if messages.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let config = self.config.as_ref().ok_or("Agent config not initialized")?;
+        let key_algorithm = config.get_key_algorithm()?;
+
+        info!(
+            algorithm = %key_algorithm,
+            batch_size = messages.len(),
+            "Signing batch of messages"
+        );
+
+        // Validate algorithm is known
+        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm)
+            .map_err(|_| format!("Unknown signing algorithm: {}", key_algorithm))?;
+
+        // Decrypt the private key once for all signatures
+        let ks = FsEncryptedStore;
+        let binding = self.get_private_key()?;
+        let decrypted =
+            crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())?;
+
+        // Sign all messages with the same decrypted key
+        let mut signatures = Vec::with_capacity(messages.len());
+        for (index, data) in messages.iter().enumerate() {
+            trace!(
+                algorithm = %key_algorithm,
+                batch_index = index,
+                data_len = data.len(),
+                "Signing batch item"
+            );
+            let sig_bytes = ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
+            signatures.push(STANDARD.encode(sig_bytes));
+        }
+
+        debug!(
+            algorithm = %key_algorithm,
+            batch_size = messages.len(),
+            "Batch signing completed successfully"
+        );
+
+        Ok(signatures)
     }
 
     fn verify_string(

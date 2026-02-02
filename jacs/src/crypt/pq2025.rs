@@ -10,6 +10,7 @@ use tracing::{debug, trace, warn};
 
 /// Generate ML-DSA-87 keypair
 /// Returns (private_key_bytes, public_key_bytes)
+#[must_use = "generated keys must be stored securely"]
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let (pk, sk) = ml_dsa_87::KG::try_keygen()?;
     let sk_bytes = sk.into_bytes().to_vec();
@@ -23,6 +24,7 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
 }
 
 /// Sign string data with ML-DSA-87 private key
+#[must_use = "signature must be stored or transmitted"]
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {
     trace!(data_len = data.len(), "ML-DSA-87 signing starting");
     // Convert Vec<u8> to fixed-size array
@@ -42,6 +44,7 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn
 }
 
 /// Verify ML-DSA-87 signature
+#[must_use = "signature verification result must be checked"]
 pub fn verify_string(
     public_key: Vec<u8>,
     data: &str,

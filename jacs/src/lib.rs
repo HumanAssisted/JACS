@@ -31,6 +31,7 @@ pub mod shutdown;
 pub mod simple;
 pub mod storage;
 pub mod trust;
+pub mod validation;
 
 // #[cfg(feature = "cli")]
 pub mod cli_utils;
@@ -53,6 +54,12 @@ pub use observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
     ResourceConfig, SamplingConfig, TracingConfig, TracingDestination, init_logging,
     init_observability,
+};
+
+// Re-export validation types for convenience
+pub use validation::{
+    AgentId, are_valid_uuid_parts, format_agent_id, is_valid_agent_id, normalize_agent_id,
+    parse_agent_id, split_agent_id, validate_agent_id,
 };
 
 /// Initialize observability with a default configuration suitable for most applications.

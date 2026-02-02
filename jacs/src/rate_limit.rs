@@ -147,6 +147,15 @@ impl RateLimiter {
     ///
     /// This method will sleep if no tokens are available, then retry.
     ///
+    /// # Warning
+    ///
+    /// This method blocks the calling thread using `std::thread::sleep`.
+    /// In async contexts (Tokio, async-std), use `tokio::task::spawn_blocking`
+    /// or similar to avoid blocking the runtime.
+    ///
+    /// // TODO: Add async variant `acquire_async()` that uses tokio::time::sleep
+    /// // instead of std::thread::sleep for better async runtime compatibility.
+    ///
     /// # Example
     ///
     /// ```

@@ -59,6 +59,7 @@ pub struct TrustedAgent {
 /// This function requires the public key to be provided separately via
 /// `trust_agent_with_key` for proper signature verification. This version
 /// attempts to load the public key from the trust store's key cache.
+#[must_use = "trust operation result must be checked for errors"]
 pub fn trust_agent(agent_json: &str) -> Result<String, JacsError> {
     // For backward compatibility, try to trust without a provided public key
     // This will fail if the public key isn't already in our key cache
@@ -84,6 +85,7 @@ pub fn trust_agent(agent_json: &str) -> Result<String, JacsError> {
 ///
 /// The self-signature is cryptographically verified before the agent is trusted.
 /// If verification fails, the agent is NOT added to the trust store.
+#[must_use = "trust operation result must be checked for errors"]
 pub fn trust_agent_with_key(agent_json: &str, public_key_pem: Option<&str>) -> Result<String, JacsError> {
     // Parse the agent JSON
     let agent_value: Value = serde_json::from_str(agent_json).map_err(|e| {
@@ -195,6 +197,7 @@ pub fn trust_agent_with_key(agent_json: &str, public_key_pem: Option<&str>) -> R
 ///     println!("Trusted: {}", agent_id);
 /// }
 /// ```
+#[must_use = "list of trusted agents must be used"]
 pub fn list_trusted_agents() -> Result<Vec<String>, JacsError> {
     let trust_dir = trust_store_dir();
 
@@ -241,6 +244,7 @@ pub fn list_trusted_agents() -> Result<Vec<String>, JacsError> {
 ///
 /// untrust_agent("agent-123-uuid")?;
 /// ```
+#[must_use = "untrust operation result must be checked for errors"]
 pub fn untrust_agent(agent_id: &str) -> Result<(), JacsError> {
     let trust_dir = trust_store_dir();
 
@@ -279,6 +283,7 @@ pub fn untrust_agent(agent_id: &str) -> Result<(), JacsError> {
 /// # Returns
 ///
 /// The full agent JSON if the agent is trusted.
+#[must_use = "trusted agent data must be used"]
 pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
     let trust_dir = trust_store_dir();
     let agent_file = trust_dir.join(format!("{}.json", agent_id));
@@ -304,6 +309,7 @@ pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
 /// # Returns
 ///
 /// The public key hash for looking up the actual key.
+#[must_use = "public key hash must be used"]
 pub fn get_trusted_public_key_hash(agent_id: &str) -> Result<String, JacsError> {
     let agent_json = get_trusted_agent(agent_id)?;
     let agent_value: Value = serde_json::from_str(&agent_json).map_err(|e| {

@@ -157,20 +157,18 @@ pub fn network_health_check() -> ComponentHealth {
 /// - Schema validation (always healthy if compiled)
 /// - Storage (basic check)
 pub fn health_check() -> HealthCheckResult {
-    let mut components = Vec::new();
-
-    // Network health
-    components.push(network_health_check());
-
-    // Schema health - if we got this far, schemas loaded correctly
-    components.push(ComponentHealth::new(
-        "schema",
-        HealthStatus::Healthy,
-        "Schema validation is operational.",
-    ));
-
-    // Storage health - basic check
-    components.push(storage_health_check());
+    let components = vec![
+        // Network health
+        network_health_check(),
+        // Schema health - if we got this far, schemas loaded correctly
+        ComponentHealth::new(
+            "schema",
+            HealthStatus::Healthy,
+            "Schema validation is operational.",
+        ),
+        // Storage health - basic check
+        storage_health_check(),
+    ];
 
     HealthCheckResult::from_components(components)
 }

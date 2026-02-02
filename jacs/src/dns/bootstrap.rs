@@ -1,6 +1,5 @@
-use crate::crypt::hash::hash_public_key;
+use crate::crypt::hash::{hash_bytes_raw, hash_public_key};
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
-use sha2::{Digest, Sha256};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DnsRecord {
@@ -33,12 +32,7 @@ pub struct AgentTxtFields {
 }
 
 pub fn pubkey_digest_sha256_bytes(pubkey: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(pubkey);
-    let out = hasher.finalize();
-    let mut arr = [0u8; 32];
-    arr.copy_from_slice(&out);
-    arr
+    hash_bytes_raw(pubkey)
 }
 
 pub fn pubkey_digest_b64(pubkey: &[u8]) -> String {

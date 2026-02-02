@@ -12,6 +12,7 @@ use signature::{RandomizedSigner, SignatureEncoding, Verifier};
 use tracing::{debug, trace, warn};
 
 /// returns public, public_filepath, private, private_filepath
+#[must_use = "generated keys must be stored securely"]
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let mut rng = OsRng;
     let private_key = RsaPrivateKey::new(&mut rng, RSA_KEY_BITS)
@@ -27,6 +28,7 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
     ))
 }
 
+#[must_use = "signature must be stored or transmitted"]
 pub fn sign_string(
     private_key_content: Vec<u8>,
     data: &str,
@@ -46,6 +48,7 @@ pub fn sign_string(
     Ok(signature_base64)
 }
 
+#[must_use = "signature verification result must be checked"]
 pub fn verify_string(
     public_key_content: Vec<u8>,
     data: &str,

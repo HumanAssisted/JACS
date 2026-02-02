@@ -14,7 +14,8 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use tracing::{error, info, warn};
-use uuid::Uuid;
+
+use crate::validation::{are_valid_uuid_parts, split_agent_id};
 
 pub mod constants;
 
@@ -709,18 +710,14 @@ pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
     Config::from_file(config_path)
 }
 
+/// Splits an ID string in "id:version" format into its components.
+///
+/// # Deprecated
+///
+/// Use [`crate::validation::split_agent_id`] instead for new code.
+#[deprecated(since = "0.3.0", note = "Use crate::validation::split_agent_id instead")]
 pub fn split_id(input: &str) -> Option<(&str, &str)> {
-    if !input.is_empty() && input.contains(':') {
-        let mut parts = input.splitn(2, ':');
-        let first = parts.next();
-        let second = parts.next();
-        match (first, second) {
-            (Some(first), Some(second)) => Some((first, second)),
-            _ => None, // In case the split fails unexpectedly or there's only one part
-        }
-    } else {
-        None // If input is empty or does not contain ':'
-    }
+    split_agent_id(input)
 }
 
 pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
@@ -869,8 +866,11 @@ pub fn set_env_vars(
         .clone();
 
     if !jacs_agent_id_and_version.is_empty() {
-        let (id, version) = split_id(&jacs_agent_id_and_version).unwrap_or(("", ""));
-        if Uuid::parse_str(id).is_err() || Uuid::parse_str(version).is_err() {
+        if let Some((id, version)) = split_agent_id(&jacs_agent_id_and_version) {
+            if !are_valid_uuid_parts(id, version) {
+                warn!("ID and Version must be in the form UUID:UUID");
+            }
+        } else {
             warn!("ID and Version must be in the form UUID:UUID");
         }
     }

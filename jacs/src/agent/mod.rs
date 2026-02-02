@@ -37,6 +37,7 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::validation::are_valid_uuid_parts;
 use secrecy::SecretBox;
 
 /// this field is only ignored by itself, but other
@@ -163,6 +164,7 @@ impl Agent {
         self.dns_required = Some(required);
     }
 
+    #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
 
@@ -205,6 +207,7 @@ impl Agent {
         result
     }
 
+    #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
         // load config string
         self.config = Some(load_config(&path).map_err(|e| {
@@ -283,6 +286,7 @@ impl Agent {
         Ok(())
     }
 
+    #[must_use = "private key must be used for signing operations"]
     pub fn get_private_key(&self) -> Result<&SecretPrivateKey, Box<dyn Error>> {
         match &self.private_key {
             Some(private_key) => Ok(private_key),
@@ -298,6 +302,7 @@ impl Agent {
         }
     }
 
+    #[must_use = "agent loading result must be checked for errors"]
     pub fn load(&mut self, agent_string: &str) -> Result<(), Box<dyn Error>> {
         // validate schema
         // then load
@@ -313,7 +318,7 @@ impl Agent {
 
                 // Validate that ID and Version are valid UUIDs
                 if let (Some(id), Some(version)) = (&self.id, &self.version)
-                    && (Uuid::parse_str(id).is_err() || Uuid::parse_str(version).is_err())
+                    && !are_valid_uuid_parts(id, version)
                 {
                     warn!("ID and Version must be UUID");
                 }
@@ -355,6 +360,7 @@ impl Agent {
         Ok(())
     }
 
+    #[must_use = "signature verification result must be checked"]
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
         let agent_id = self.id.clone().unwrap_or_else(|| "<unknown>".to_string());
         let public_key = self.get_public_key().map_err(|e| {
@@ -728,6 +734,7 @@ impl Agent {
     }
 
     /// verify the hash of a complete document that has SHA256_FIELDNAME
+    #[must_use = "hash verification result must be checked"]
     pub fn verify_hash(&self, doc: &Value) -> Result<bool, Box<dyn Error>> {
         let original_hash_string = doc[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
         let new_hash_string = self.hash_doc(doc)?;
@@ -747,6 +754,7 @@ impl Agent {
     }
 
     /// verify the hash where the document is the agent itself.
+    #[must_use = "hash verification result must be checked"]
     pub fn verify_self_hash(&self) -> Result<bool, Box<dyn Error>> {
         match &self.value {
             Some(embedded_value) => self.verify_hash(embedded_value),
@@ -770,6 +778,7 @@ impl Agent {
     /// versioning
     /// resigning
     /// rehashing
+    #[must_use = "updated agent JSON must be used or stored"]
     pub fn update_self(&mut self, new_agent_string: &str) -> Result<String, Box<dyn Error>> {
         let mut new_self: Value = self.schema.validate_agent(new_agent_string)?;
         let original_self = self.value.as_ref().ok_or_else(|| {
@@ -845,6 +854,7 @@ impl Agent {
     }
 
     //// accepts local file system path or Urls
+    #[must_use = "schema loading result must be checked for errors"]
     pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), String> {
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
@@ -859,6 +869,7 @@ impl Agent {
         Ok(())
     }
 
+    #[must_use = "save result must be checked for errors"]
     pub fn save(&self) -> Result<String, Box<dyn Error>> {
         let agent_string = self.as_string()?;
         let lookup_id = self.get_lookup_id()?;
@@ -866,6 +877,7 @@ impl Agent {
     }
 
     /// create an agent, and provde id and version as a result
+    #[must_use = "created agent value must be used"]
     pub fn create_agent_and_load(
         &mut self,
         json: &str,
@@ -941,6 +953,69 @@ impl Agent {
     /// ```
     pub fn builder() -> AgentBuilder {
         AgentBuilder::new()
+    }
+
+    /// Verifies multiple signatures in a batch operation.
+    ///
+    /// This method processes each verification sequentially. For CPU-bound signature
+    /// verification, this is often efficient due to the cryptographic operations
+    /// being compute-intensive. If parallel verification is needed, consider using
+    /// rayon's `par_iter()` on the input slice externally.
+    ///
+    /// # Arguments
+    ///
+    /// * `items` - A slice of tuples containing:
+    ///   - `data`: The string data that was signed
+    ///   - `signature`: The base64-encoded signature
+    ///   - `public_key`: The public key bytes for verification
+    ///   - `algorithm`: Optional algorithm hint (e.g., "ring-Ed25519", "RSA-PSS")
+    ///
+    /// # Returns
+    ///
+    /// A vector of `Result<(), JacsError>` in the same order as the input items.
+    /// - `Ok(())` indicates the signature is valid
+    /// - `Err(JacsError)` indicates verification failed with a specific reason
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::agent::Agent;
+    ///
+    /// let agent = Agent::builder().build()?;
+    ///
+    /// let items = vec![
+    ///     ("message1".to_string(), sig1, pk1.clone(), None),
+    ///     ("message2".to_string(), sig2, pk2.clone(), Some("ring-Ed25519".to_string())),
+    /// ];
+    ///
+    /// let results = agent.verify_batch(&items);
+    /// for (i, result) in results.iter().enumerate() {
+    ///     match result {
+    ///         Ok(()) => println!("Item {} verified successfully", i),
+    ///         Err(e) => println!("Item {} failed: {}", i, e),
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Performance Notes
+    ///
+    /// - Verification is sequential; for parallel verification, use rayon externally
+    /// - Each verification is independent and does not short-circuit on failure
+    /// - The method returns all results even if some verifications fail
+    #[must_use]
+    pub fn verify_batch(
+        &self,
+        items: &[(String, String, Vec<u8>, Option<String>)],
+    ) -> Vec<Result<(), JacsError>> {
+        items
+            .iter()
+            .map(|(data, signature, public_key, algorithm)| {
+                self.verify_string(data, signature, public_key.clone(), algorithm.clone())
+                    .map_err(|e| JacsError::SignatureVerificationFailed {
+                        reason: e.to_string(),
+                    })
+            })
+            .collect()
     }
 }
 
@@ -1104,6 +1179,7 @@ impl AgentBuilder {
     ///     .dns_strict(true)
     ///     .build()?;
     /// ```
+    #[must_use = "agent build result must be checked for errors"]
     pub fn build(self) -> Result<Agent, JacsError> {
         // Use defaults if not specified
         let agent_version = self.agent_version.unwrap_or_else(|| "v1".to_string());
@@ -1181,6 +1257,7 @@ impl AgentBuilder {
     ///     .config_path("./jacs.config.json")
     ///     .build_and_load("123e4567-e89b-12d3-a456-426614174000:123e4567-e89b-12d3-a456-426614174001")?;
     /// ```
+    #[must_use = "agent build and load result must be checked for errors"]
     pub fn build_and_load(self, agent_id: &str) -> Result<Agent, JacsError> {
         let mut agent = self.build()?;
         agent.load_by_id(agent_id.to_string()).map_err(|e| {
@@ -1316,5 +1393,35 @@ mod builder_tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("config"));
+    }
+
+    #[test]
+    fn test_verify_batch_empty_input() {
+        // Test that verify_batch handles empty input gracefully
+        let agent = Agent::builder().build().expect("Should build with defaults");
+        let items: Vec<(String, String, Vec<u8>, Option<String>)> = vec![];
+        let results = agent.verify_batch(&items);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_verify_batch_returns_correct_count() {
+        // Test that verify_batch returns one result per input item
+        let agent = Agent::builder().build().expect("Should build with defaults");
+
+        // Create invalid items (they will fail verification, but we are testing the count)
+        let items: Vec<(String, String, Vec<u8>, Option<String>)> = vec![
+            ("data1".to_string(), "invalid_sig".to_string(), vec![1, 2, 3], None),
+            ("data2".to_string(), "invalid_sig".to_string(), vec![4, 5, 6], None),
+            ("data3".to_string(), "invalid_sig".to_string(), vec![7, 8, 9], None),
+        ];
+
+        let results = agent.verify_batch(&items);
+        assert_eq!(results.len(), 3);
+
+        // All should fail since these are invalid signatures
+        for result in &results {
+            assert!(result.is_err());
+        }
     }
 }

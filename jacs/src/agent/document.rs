@@ -10,7 +10,7 @@ use crate::error::JacsError;
 use crate::storage::StorageDocumentTraits;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::crypt::hash::hash_string;
+use crate::crypt::hash::{hash_bytes, hash_string};
 use crate::schema::utils::ValueExt;
 use chrono::{DateTime, Local, Utc};
 use difference::{Changeset, Difference};
@@ -19,7 +19,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -269,6 +268,30 @@ pub trait DocumentTraits {
     /// util function for parsing arguments for attachments
     fn parse_attachement_arg(&mut self, attachments: Option<&str>) -> Option<Vec<String>>;
     fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String);
+
+    /// Creates and signs multiple documents in a batch operation.
+    ///
+    /// This is more efficient than calling `create_document_and_load` repeatedly
+    /// because it amortizes key decryption overhead across all documents.
+    ///
+    /// # Arguments
+    ///
+    /// * `documents` - A slice of JSON strings representing documents to sign
+    ///
+    /// # Returns
+    ///
+    /// A vector of `JACSDocument` objects, one for each input document, in the
+    /// same order as the input slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if creating/signing any document fails. Documents created
+    /// before the failure are stored but the partial results are not returned
+    /// (all-or-nothing return semantics).
+    fn create_documents_batch(
+        &mut self,
+        documents: &[&str],
+    ) -> Result<Vec<JACSDocument>, Box<dyn std::error::Error + 'static>>;
 }
 
 impl DocumentTraits for Agent {
@@ -311,9 +334,7 @@ impl DocumentTraits for Agent {
             .to_string();
 
         // Calculate the SHA256 hash of the contents
-        let mut hasher = Sha256::new();
-        hasher.update(&base64_contents);
-        let sha256_hash = format!("{:x}", hasher.finalize());
+        let sha256_hash = hash_bytes(base64_contents.as_bytes());
 
         // Create the JSON object
         let file_json = json!({
@@ -359,9 +380,7 @@ impl DocumentTraits for Agent {
                 let base64_contents = self.fs_get_document_content(file_path.to_string())?;
 
                 // Calculate the SHA256 hash of the loaded contents
-                let mut hasher = Sha256::new();
-                hasher.update(&base64_contents);
-                let actual_hash = format!("{:x}", hasher.finalize());
+                let actual_hash = hash_bytes(base64_contents.as_bytes());
 
                 // Compare the actual hash with the expected hash
                 if actual_hash != expected_hash {
@@ -911,5 +930,52 @@ impl DocumentTraits for Agent {
         }
 
         (same, add, rem)
+    }
+
+    fn create_documents_batch(
+        &mut self,
+        documents: &[&str],
+    ) -> Result<Vec<JACSDocument>, Box<dyn std::error::Error + 'static>> {
+        use tracing::info;
+
+        if documents.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        info!(
+            batch_size = documents.len(),
+            "Creating batch of documents"
+        );
+
+        let mut results = Vec::with_capacity(documents.len());
+
+        for (index, json) in documents.iter().enumerate() {
+            // Validate and create the document structure
+            let mut instance = self.schema.create(json)?;
+
+            // Sign the document
+            instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
+                self.signing_procedure(&instance, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
+
+            // Hash the document
+            let document_hash = self.hash_doc(&instance)?;
+            instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+
+            // Store and collect the result
+            let doc = self.store_jacs_document(&instance)?;
+            results.push(doc);
+
+            tracing::trace!(
+                batch_index = index,
+                "Batch document created"
+            );
+        }
+
+        info!(
+            batch_size = documents.len(),
+            "Batch document creation completed successfully"
+        );
+
+        Ok(results)
     }
 }

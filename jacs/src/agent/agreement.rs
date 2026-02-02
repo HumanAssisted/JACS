@@ -13,6 +13,7 @@ use crate::crypt::hash::hash_public_key;
 use crate::crypt::hash::hash_string;
 use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
+use crate::validation::normalize_agent_id;
 use serde::ser::StdError;
 use serde_json::Value;
 use serde_json::json;
@@ -317,11 +318,7 @@ impl Agreement for Agent {
         )?;
 
         // Normalize signing agent ID to avoid duplicates - extract just the ID part
-        let normalized_agent_id = if let Some(pos) = signing_agent_id.find(':') {
-            signing_agent_id[0..pos].to_string()
-        } else {
-            signing_agent_id.clone()
-        };
+        let normalized_agent_id = normalize_agent_id(&signing_agent_id).to_string();
 
         // Check if agent ID (normalized) is already in the agreement
         let mut agent_already_in_agreement = false;
@@ -331,12 +328,7 @@ impl Agreement for Agent {
         {
             for agent in agents_array {
                 let agent_str = agent.as_str().unwrap_or("");
-                let agent_normalized = if let Some(pos) = agent_str.find(':') {
-                    agent_str[0..pos].to_string()
-                } else {
-                    agent_str.to_string()
-                };
-                if agent_normalized == normalized_agent_id {
+                if normalize_agent_id(agent_str) == normalized_agent_id {
                     agent_already_in_agreement = true;
                     break;
                 }
