@@ -6,8 +6,6 @@
 //! Note: These tests create fresh agents rather than relying on pre-existing fixtures
 //! to ensure test isolation and avoid fixture staleness issues.
 
-use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
-use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::trust;
@@ -18,9 +16,7 @@ use std::fs;
 use tempfile::TempDir;
 
 mod utils;
-use utils::{
-    create_agent_v1, raw_fixture, set_min_test_env_vars, TEST_PASSWORD,
-};
+use utils::{create_agent_v1, raw_fixture, set_min_test_env_vars};
 
 // =============================================================================
 // Test Helpers
