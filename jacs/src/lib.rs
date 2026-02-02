@@ -19,12 +19,15 @@ pub mod config;
 pub mod crypt;
 pub mod dns;
 pub mod error;
+pub mod health;
 pub mod keystore;
 pub mod mime;
 pub mod observability;
 pub mod paths;
+pub mod rate_limit;
 pub mod schema;
 pub mod shared;
+pub mod shutdown;
 pub mod simple;
 pub mod storage;
 pub mod trust;
@@ -33,6 +36,17 @@ pub mod trust;
 pub mod cli_utils;
 // Re-export error types for convenience
 pub use error::JacsError;
+
+// Re-export health check types for convenience
+pub use health::{
+    health_check, network_health_check, ComponentHealth, HealthCheckResult, HealthStatus,
+};
+
+// Re-export shutdown types for convenience
+pub use shutdown::{ShutdownGuard, install_signal_handler, is_shutdown_requested, shutdown};
+
+// Re-export rate limiting types for convenience
+pub use rate_limit::{RateLimitConfig, RateLimiter};
 
 // Re-export observability types for convenience
 pub use observability::{

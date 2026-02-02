@@ -13,6 +13,7 @@ use jacs::cli_utils::document::{
 use jacs::config::find_config;
 // use jacs::create_task; // unused
 use jacs::dns::bootstrap as dns_bootstrap;
+use jacs::shutdown::{ShutdownGuard, install_signal_handler};
 use jacs::{load_agent, load_agent_with_dns_strict};
 
 use reqwest;
@@ -22,6 +23,11 @@ use std::error::Error;
 use std::process;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
+    // Install signal handler for graceful shutdown (Ctrl+C, SIGTERM)
+    install_signal_handler();
+
+    // Create shutdown guard to ensure cleanup on exit (including early returns)
+    let _shutdown_guard = ShutdownGuard::new();
     let matches = Command::new(crate_name!())
         .subcommand(
             Command::new("version")
