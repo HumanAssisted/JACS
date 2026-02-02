@@ -1,3 +1,4 @@
+use crate::error::JacsError;
 use std::error::Error;
 
 #[cfg(unix)]
@@ -79,7 +80,7 @@ impl KeyStore for FsEncryptedStore {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
-            other => return Err(format!("Unsupported algorithm: {}", other).into()),
+            other => return Err(JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into()),
         };
         eprintln!("[FsEncryptedStore::generate] Matched to enum: {:?}", algo);
         let (priv_key, pub_key) = match algo {
@@ -168,7 +169,7 @@ impl KeyStore for FsEncryptedStore {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
-            other => return Err(format!("Unsupported algorithm: {}", other).into()),
+            other => return Err(JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into()),
         };
         let data = std::str::from_utf8(message).unwrap_or("").to_string();
         let sig_b64 = match algo {

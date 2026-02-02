@@ -1,3 +1,7 @@
+// Allow deprecated functions within this module - they call each other during migration
+#![allow(deprecated)]
+
+use crate::error::JacsError;
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
 use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var, set_env_var_override};
 use getset::Getters;
@@ -17,15 +21,44 @@ pub mod constants;
 /*
 Config is embedded in agents and may have private information.
 
-It can be
-1. loadded from json
-2. values from environment variables (useful for secrets)
+Configuration Loading (12-Factor App Pattern)
+=============================================
 
-The difficult part is bootstrapping an agent.
+JACS follows the 12-Factor App methodology for configuration (https://12factor.net/config).
+Configuration is loaded in the following order, with later sources overriding earlier ones:
 
-The agent file itself is NOT private (the .value field in the agent struct)
-Each config _may_ be loaded from a file, or from environment variables.
-For example, create_agent_and_load() does not neeed a config file at all?
+1. DEFAULTS: Sensible defaults are built into the code
+2. CONFIG FILE: Optional JSON file provides project-specific defaults
+3. ENVIRONMENT VARIABLES: Always take highest precedence (12-Factor compliance)
+
+This allows:
+- Development: Use config file for convenience
+- Production: Override with environment variables for security and flexibility
+- CI/CD: Set environment variables in deployment scripts
+
+Environment Variables Supported:
+- JACS_USE_SECURITY
+- JACS_DATA_DIRECTORY
+- JACS_KEY_DIRECTORY
+- JACS_AGENT_PRIVATE_KEY_FILENAME
+- JACS_AGENT_PUBLIC_KEY_FILENAME
+- JACS_AGENT_KEY_ALGORITHM
+- JACS_PRIVATE_KEY_PASSWORD (NEVER put in config file!)
+- JACS_AGENT_ID_AND_VERSION
+- JACS_DEFAULT_STORAGE
+- JACS_AGENT_DOMAIN
+- JACS_DNS_VALIDATE
+- JACS_DNS_STRICT
+- JACS_DNS_REQUIRED
+
+Usage:
+```rust
+// Recommended: 12-Factor compliant loading
+let config = load_config_12factor(Some("jacs.config.json"))?;
+
+// Or with just defaults and env vars (no config file)
+let config = load_config_12factor(None)?;
+```
 
 */
 
@@ -217,6 +250,175 @@ impl Config {
         get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)
             .map_err(|e| Box::new(e) as Box<dyn Error>) // Map EnvError to Box<dyn Error>
     }
+
+    /// Merge another config into this one.
+    /// Values from `other` will override values in `self` if they are Some.
+    pub fn merge(&mut self, other: Config) {
+        if other.jacs_use_security.is_some() {
+            self.jacs_use_security = other.jacs_use_security;
+        }
+        if other.jacs_data_directory.is_some() {
+            self.jacs_data_directory = other.jacs_data_directory;
+        }
+        if other.jacs_key_directory.is_some() {
+            self.jacs_key_directory = other.jacs_key_directory;
+        }
+        if other.jacs_agent_private_key_filename.is_some() {
+            self.jacs_agent_private_key_filename = other.jacs_agent_private_key_filename;
+        }
+        if other.jacs_agent_public_key_filename.is_some() {
+            self.jacs_agent_public_key_filename = other.jacs_agent_public_key_filename;
+        }
+        if other.jacs_agent_key_algorithm.is_some() {
+            self.jacs_agent_key_algorithm = other.jacs_agent_key_algorithm;
+        }
+        if other.jacs_agent_id_and_version.is_some() {
+            self.jacs_agent_id_and_version = other.jacs_agent_id_and_version;
+        }
+        if other.jacs_default_storage.is_some() {
+            self.jacs_default_storage = other.jacs_default_storage;
+        }
+        if other.jacs_agent_domain.is_some() {
+            self.jacs_agent_domain = other.jacs_agent_domain;
+        }
+        if other.jacs_dns_validate.is_some() {
+            self.jacs_dns_validate = other.jacs_dns_validate;
+        }
+        if other.jacs_dns_strict.is_some() {
+            self.jacs_dns_strict = other.jacs_dns_strict;
+        }
+        if other.jacs_dns_required.is_some() {
+            self.jacs_dns_required = other.jacs_dns_required;
+        }
+        if other.observability.is_some() {
+            self.observability = other.observability;
+        }
+    }
+
+    /// Apply environment variable overrides to this config.
+    /// Environment variables always take precedence (12-Factor compliance).
+    ///
+    /// This method reads from the following environment variables:
+    /// - JACS_USE_SECURITY
+    /// - JACS_DATA_DIRECTORY
+    /// - JACS_KEY_DIRECTORY
+    /// - JACS_AGENT_PRIVATE_KEY_FILENAME
+    /// - JACS_AGENT_PUBLIC_KEY_FILENAME
+    /// - JACS_AGENT_KEY_ALGORITHM
+    /// - JACS_AGENT_ID_AND_VERSION
+    /// - JACS_DEFAULT_STORAGE
+    /// - JACS_AGENT_DOMAIN
+    /// - JACS_DNS_VALIDATE
+    /// - JACS_DNS_STRICT
+    /// - JACS_DNS_REQUIRED
+    ///
+    /// Note: JACS_PRIVATE_KEY_PASSWORD is intentionally NOT loaded into config.
+    /// It should be read directly from environment when needed for security.
+    pub fn apply_env_overrides(&mut self) {
+        // Helper to get env var as Option<String>
+        fn env_opt(key: &str) -> Option<String> {
+            match get_env_var(key, false) {
+                Ok(Some(val)) if !val.is_empty() => Some(val),
+                _ => None,
+            }
+        }
+
+        // Helper to get env var as Option<bool>
+        fn env_opt_bool(key: &str) -> Option<bool> {
+            match get_env_var(key, false) {
+                Ok(Some(val)) if !val.is_empty() => {
+                    Some(val.to_lowercase() == "true" || val == "1")
+                }
+                _ => None,
+            }
+        }
+
+        // Apply string overrides
+        if let Some(val) = env_opt("JACS_USE_SECURITY") {
+            self.jacs_use_security = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_DATA_DIRECTORY") {
+            self.jacs_data_directory = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_KEY_DIRECTORY") {
+            self.jacs_key_directory = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_AGENT_PRIVATE_KEY_FILENAME") {
+            self.jacs_agent_private_key_filename = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_AGENT_PUBLIC_KEY_FILENAME") {
+            self.jacs_agent_public_key_filename = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_AGENT_KEY_ALGORITHM") {
+            self.jacs_agent_key_algorithm = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_AGENT_ID_AND_VERSION") {
+            self.jacs_agent_id_and_version = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_DEFAULT_STORAGE") {
+            self.jacs_default_storage = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_AGENT_DOMAIN") {
+            self.jacs_agent_domain = Some(val);
+        }
+
+        // Apply boolean overrides
+        if let Some(val) = env_opt_bool("JACS_DNS_VALIDATE") {
+            self.jacs_dns_validate = Some(val);
+        }
+        if let Some(val) = env_opt_bool("JACS_DNS_STRICT") {
+            self.jacs_dns_strict = Some(val);
+        }
+        if let Some(val) = env_opt_bool("JACS_DNS_REQUIRED") {
+            self.jacs_dns_required = Some(val);
+        }
+
+        // Note: Password is intentionally NOT loaded from env into config
+        // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
+    }
+
+    /// Create a Config with only hardcoded defaults (no env var lookups).
+    /// This is useful for testing or when you want explicit control.
+    pub fn with_defaults() -> Self {
+        Config {
+            schema: default_schema(),
+            jacs_use_security: Some("false".to_string()),
+            jacs_data_directory: Some("./jacs_data".to_string()),
+            jacs_key_directory: Some("./jacs_keys".to_string()),
+            jacs_agent_private_key_filename: None,
+            jacs_agent_public_key_filename: None,
+            jacs_agent_key_algorithm: Some("RSA-PSS".to_string()),
+            jacs_private_key_password: None,
+            jacs_agent_id_and_version: None,
+            jacs_default_storage: Some("fs".to_string()),
+            jacs_agent_domain: None,
+            jacs_dns_validate: None,
+            jacs_dns_strict: None,
+            jacs_dns_required: None,
+            observability: None,
+        }
+    }
+
+    /// Load config from a JSON file without applying environment overrides.
+    /// Use `load_config_12factor` for the recommended 12-Factor compliant loading.
+    pub fn from_file(path: &str) -> Result<Config, Box<dyn Error>> {
+        let json_str = fs::read_to_string(path)
+            .map_err(|e| JacsError::ConfigError(format!("Failed to read config file '{}': {}", path, e)))?;
+        let validated_value: Value = validate_config(&json_str)?;
+        let config: Config = serde_json::from_value(validated_value)?;
+
+        // Warn if password is in config file
+        if config.jacs_private_key_password.is_some() {
+            warn!(
+                "SECURITY WARNING: Password found in config file '{}'. \
+                This is insecure - passwords should only be set via JACS_PRIVATE_KEY_PASSWORD \
+                environment variable. The password in the config file will be ignored.",
+                path
+            );
+        }
+
+        Ok(config)
+    }
 }
 
 impl fmt::Display for Config {
@@ -249,14 +451,91 @@ impl fmt::Display for Config {
     }
 }
 
-// the simplest way to load a config is to pass in a path to a config file
-// the config is stored in the agent, no need to use ENV vars
-pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
-    let json_str = fs::read_to_string(config_path)
-        .map_err(|e| format!("Failed to read config file '{}': {}", config_path, e))?;
-    let validated_value: Value = validate_config(&json_str)?;
-    let config: Config = serde_json::from_value(validated_value)?;
+/// Load configuration following 12-Factor App principles.
+///
+/// Configuration is loaded in this order (later sources override earlier):
+/// 1. Hardcoded defaults
+/// 2. Config file (if provided and exists)
+/// 3. Environment variables (always take highest precedence)
+///
+/// # Arguments
+/// * `config_path` - Optional path to a JSON config file
+///
+/// # Example
+/// ```rust,ignore
+/// // Load with config file and env overrides
+/// let config = load_config_12factor(Some("jacs.config.json"))?;
+///
+/// // Load with just defaults and env overrides
+/// let config = load_config_12factor(None)?;
+/// ```
+pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, Box<dyn Error>> {
+    // Step 1: Start with hardcoded defaults
+    let mut config = Config::with_defaults();
+
+    // Step 2: If config file provided, merge those values
+    if let Some(path) = config_path {
+        match Config::from_file(path) {
+            Ok(file_config) => {
+                info!("Loaded config file: {}", path);
+                config.merge(file_config);
+            }
+            Err(e) => {
+                // File was specified but couldn't be loaded - this is an error
+                return Err(e);
+            }
+        }
+    }
+
+    // Step 3: Environment variables override everything (12-Factor compliance)
+    config.apply_env_overrides();
+
+    info!("Final config (12-Factor):{}", config);
     Ok(config)
+}
+
+/// Load configuration with 12-Factor compliance, with optional config file that may not exist.
+///
+/// Unlike `load_config_12factor`, this function does not fail if the config file doesn't exist.
+/// It will log a warning and continue with defaults + env vars.
+///
+/// # Arguments
+/// * `config_path` - Optional path to a JSON config file (won't fail if missing)
+pub fn load_config_12factor_optional(config_path: Option<&str>) -> Result<Config, Box<dyn Error>> {
+    // Step 1: Start with hardcoded defaults
+    let mut config = Config::with_defaults();
+
+    // Step 2: If config file provided and exists, merge those values
+    if let Some(path) = config_path {
+        if std::path::Path::new(path).exists() {
+            match Config::from_file(path) {
+                Ok(file_config) => {
+                    info!("Loaded config file: {}", path);
+                    config.merge(file_config);
+                }
+                Err(e) => {
+                    warn!("Failed to parse config file '{}': {}. Using defaults.", path, e);
+                }
+            }
+        } else {
+            info!("Config file '{}' not found. Using defaults and environment variables.", path);
+        }
+    }
+
+    // Step 3: Environment variables override everything (12-Factor compliance)
+    config.apply_env_overrides();
+
+    info!("Final config (12-Factor):{}", config);
+    Ok(config)
+}
+
+/// DEPRECATED: Use `load_config_12factor` instead for 12-Factor compliant loading.
+///
+/// This function loads config from file only, without applying environment overrides.
+/// It exists for backwards compatibility but does not follow 12-Factor principles.
+#[deprecated(since = "0.2.0", note = "Use load_config_12factor() for 12-Factor compliant config loading")]
+pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
+    Config::from_file(config_path)
 }
 
 pub fn split_id(input: &str) -> Option<(&str, &str)> {
@@ -298,6 +577,11 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
     Ok(instance)
 }
 
+/// DEPRECATED: Use `load_config_12factor_optional` instead.
+///
+/// Attempts to find and load a config file from the given path.
+/// Falls back to Config::default() if file not found.
+#[deprecated(since = "0.2.0", note = "Use load_config_12factor_optional() for 12-Factor compliant config loading")]
 pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
     let config: Config = match fs::read_to_string(format!("{}jacs.config.json", path)) {
         Ok(content) => {
@@ -309,7 +593,15 @@ pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
-// TODO DEPRICATE - focuse on configs created from env vars as backup
+/// DEPRECATED: Use `load_config_12factor` instead.
+///
+/// This function takes config file values and sets them as environment variables,
+/// which is the OPPOSITE of 12-Factor principles. Environment variables should
+/// be the source of truth, not the target.
+///
+/// This function is kept for backwards compatibility only. New code should use
+/// `load_config_12factor()` which reads env vars INTO config (correct direction).
+#[deprecated(since = "0.2.0", note = "Use load_config_12factor() - env vars should override config, not vice versa")]
 pub fn set_env_vars(
     do_override: bool,
     config_json: Option<&str>,
@@ -649,5 +941,234 @@ impl Default for TracingDestination {
             endpoint: "http://localhost:4318".to_string(),
             headers: None,
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use crate::storage::jenv::{clear_env_var, set_env_var};
+    use serial_test::serial;
+
+    /// Helper to clear all JACS env vars for test isolation
+    fn clear_jacs_env_vars() {
+        let vars = [
+            "JACS_USE_SECURITY",
+            "JACS_DATA_DIRECTORY",
+            "JACS_KEY_DIRECTORY",
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+            "JACS_AGENT_KEY_ALGORITHM",
+            "JACS_PRIVATE_KEY_PASSWORD",
+            "JACS_AGENT_ID_AND_VERSION",
+            "JACS_DEFAULT_STORAGE",
+            "JACS_AGENT_DOMAIN",
+            "JACS_DNS_VALIDATE",
+            "JACS_DNS_STRICT",
+            "JACS_DNS_REQUIRED",
+        ];
+        for var in vars {
+            let _ = clear_env_var(var);
+        }
+    }
+
+    #[test]
+    fn test_config_with_defaults() {
+        // This test doesn't use env vars, so no serial needed
+        let config = Config::with_defaults();
+        assert_eq!(config.jacs_use_security, Some("false".to_string()));
+        assert_eq!(config.jacs_data_directory, Some("./jacs_data".to_string()));
+        assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("RSA-PSS".to_string()));
+        assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
+        // Password should never be in config
+        assert!(config.jacs_private_key_password.is_none());
+    }
+
+    #[test]
+    fn test_config_merge() {
+        // This test doesn't use env vars, so no serial needed
+        let mut base = Config::with_defaults();
+        let override_config = Config {
+            schema: default_schema(),
+            jacs_use_security: Some("true".to_string()),
+            jacs_data_directory: Some("/custom/data".to_string()),
+            jacs_key_directory: None, // Should not override
+            jacs_agent_private_key_filename: Some("custom.pem".to_string()),
+            jacs_agent_public_key_filename: None,
+            jacs_agent_key_algorithm: Some("pq2025".to_string()),
+            jacs_private_key_password: None,
+            jacs_agent_id_and_version: None,
+            jacs_default_storage: None, // Should not override
+            jacs_agent_domain: Some("example.com".to_string()),
+            jacs_dns_validate: Some(true),
+            jacs_dns_strict: None,
+            jacs_dns_required: None,
+            observability: None,
+        };
+
+        base.merge(override_config);
+
+        // Values that were Some should be overridden
+        assert_eq!(base.jacs_use_security, Some("true".to_string()));
+        assert_eq!(base.jacs_data_directory, Some("/custom/data".to_string()));
+        assert_eq!(base.jacs_agent_private_key_filename, Some("custom.pem".to_string()));
+        assert_eq!(base.jacs_agent_key_algorithm, Some("pq2025".to_string()));
+        assert_eq!(base.jacs_agent_domain, Some("example.com".to_string()));
+        assert_eq!(base.jacs_dns_validate, Some(true));
+
+        // Values that were None should retain original
+        assert_eq!(base.jacs_key_directory, Some("./jacs_keys".to_string()));
+        assert_eq!(base.jacs_default_storage, Some("fs".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn test_apply_env_overrides() {
+        clear_jacs_env_vars();
+
+        // Set some env vars
+        set_env_var("JACS_DATA_DIRECTORY", "/env/data").unwrap();
+        set_env_var("JACS_AGENT_KEY_ALGORITHM", "Ed25519").unwrap();
+        set_env_var("JACS_DNS_VALIDATE", "true").unwrap();
+        set_env_var("JACS_DNS_STRICT", "1").unwrap();
+
+        let mut config = Config::with_defaults();
+        config.apply_env_overrides();
+
+        // Env vars should override defaults
+        assert_eq!(config.jacs_data_directory, Some("/env/data".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("Ed25519".to_string()));
+        assert_eq!(config.jacs_dns_validate, Some(true));
+        assert_eq!(config.jacs_dns_strict, Some(true));
+
+        // Values not in env should remain default
+        assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
+        assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_env_overrides_config_file() {
+        clear_jacs_env_vars();
+
+        // Simulate: defaults -> config file -> env vars
+        // Config file would set algorithm to pq2025
+        // Env var should override to Ed25519
+
+        let mut config = Config::with_defaults();
+
+        // Simulate config file merge
+        let file_config = Config {
+            schema: default_schema(),
+            jacs_use_security: None,
+            jacs_data_directory: Some("/config/data".to_string()),
+            jacs_key_directory: Some("/config/keys".to_string()),
+            jacs_agent_private_key_filename: None,
+            jacs_agent_public_key_filename: None,
+            jacs_agent_key_algorithm: Some("pq2025".to_string()),
+            jacs_private_key_password: None,
+            jacs_agent_id_and_version: None,
+            jacs_default_storage: None,
+            jacs_agent_domain: None,
+            jacs_dns_validate: None,
+            jacs_dns_strict: None,
+            jacs_dns_required: None,
+            observability: None,
+        };
+        config.merge(file_config);
+
+        // At this point, config has file values
+        assert_eq!(config.jacs_data_directory, Some("/config/data".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("pq2025".to_string()));
+
+        // Now env vars override (12-Factor: env vars win)
+        set_env_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519").unwrap();
+        set_env_var("JACS_DATA_DIRECTORY", "/env/override/data").unwrap();
+
+        config.apply_env_overrides();
+
+        // Env vars should win (12-Factor compliance)
+        assert_eq!(config.jacs_agent_key_algorithm, Some("ring-Ed25519".to_string()));
+        assert_eq!(config.jacs_data_directory, Some("/env/override/data".to_string()));
+
+        // Config file value not overridden by env should remain
+        assert_eq!(config.jacs_key_directory, Some("/config/keys".to_string()));
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_config_12factor_no_file() {
+        clear_jacs_env_vars();
+
+        // Set env vars
+        set_env_var("JACS_USE_SECURITY", "true").unwrap();
+        set_env_var("JACS_DATA_DIRECTORY", "/production/data").unwrap();
+
+        // Load without config file
+        let config = load_config_12factor(None).expect("Should load successfully");
+
+        // Should have defaults overridden by env vars
+        assert_eq!(config.jacs_use_security, Some("true".to_string()));
+        assert_eq!(config.jacs_data_directory, Some("/production/data".to_string()));
+        // Non-overridden defaults
+        assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_config_12factor_optional_missing_file() {
+        clear_jacs_env_vars();
+
+        // Set env vars
+        set_env_var("JACS_AGENT_KEY_ALGORITHM", "pq2025").unwrap();
+
+        // Load with non-existent config file - should NOT fail
+        let config = load_config_12factor_optional(Some("/nonexistent/config.json"))
+            .expect("Should load successfully even with missing file");
+
+        // Should have defaults overridden by env vars
+        assert_eq!(config.jacs_agent_key_algorithm, Some("pq2025".to_string()));
+        assert_eq!(config.jacs_use_security, Some("false".to_string())); // default
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_boolean_env_var_parsing() {
+        clear_jacs_env_vars();
+
+        // Test various boolean representations
+        let mut config = Config::with_defaults();
+
+        set_env_var("JACS_DNS_VALIDATE", "true").unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.jacs_dns_validate, Some(true));
+
+        set_env_var("JACS_DNS_VALIDATE", "TRUE").unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.jacs_dns_validate, Some(true));
+
+        set_env_var("JACS_DNS_VALIDATE", "1").unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.jacs_dns_validate, Some(true));
+
+        set_env_var("JACS_DNS_VALIDATE", "false").unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.jacs_dns_validate, Some(false));
+
+        set_env_var("JACS_DNS_VALIDATE", "0").unwrap();
+        config.apply_env_overrides();
+        assert_eq!(config.jacs_dns_validate, Some(false));
+
+        clear_jacs_env_vars();
     }
 }

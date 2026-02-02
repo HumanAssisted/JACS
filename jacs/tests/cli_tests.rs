@@ -13,6 +13,7 @@ use std::{
     process::{Command, Stdio},
 }; // Run programs // To read CARGO_PKG_VERSION
 mod utils;
+use utils::{fixtures_raw_dir, PASSWORD_ENV_VAR, TEST_PASSWORD};
 // static INIT: Once = Once::new();
 
 // fn setup() {
@@ -189,7 +190,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     cmd_config_create.current_dir(&scratch_dir);
     cmd_config_create.arg("config").arg("create");
 
-    cmd_config_create.env("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!"); // Skips interactive password
+    cmd_config_create.env(PASSWORD_ENV_VAR, TEST_PASSWORD); // Skips interactive password
 
     cmd_config_create.stdin(Stdio::piped());
     cmd_config_create.stdout(Stdio::piped());
@@ -309,7 +310,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     println!("Created input files in data dir");
 
     // 3. Define Environment Variables for subsequent commands
-    let dummy_password = "TestP@ss123!"; // Use the same password as provided above
+    let dummy_password = TEST_PASSWORD; // Use centralized test password constant
 
     // 4. Create other input files directly in scratch Dir too
     let agent_raw_path_dest = scratch_dir.join("agent.raw.json");
@@ -338,7 +339,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     // Define base command helper that sets env vars
     let base_cmd = || -> Command {
         let mut cmd = Command::cargo_bin("jacs").unwrap();
-        cmd.env("JACS_PRIVATE_KEY_PASSWORD", dummy_password);
+        cmd.env(PASSWORD_ENV_VAR, dummy_password);
         cmd.env("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
         cmd.current_dir(&scratch_dir); // Use scratch dir as CWD
         cmd
@@ -568,11 +569,13 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     println!("Running: document tests ");
 
-    // Get fixtures paths - should be at "../fixtures" relative to scratch dir
-    let fixtures_dir = Path::new("../fixtures").to_path_buf();
-    println!("Using fixtures directory at: {:?}", fixtures_dir);
-    let src_ddl = fixtures_dir.join("raw").join("favorite-fruit.json");
-    let src_mobius = fixtures_dir.join("raw").join("mobius.jpeg");
+    // Get fixtures paths using centralized helper
+    // Note: fixtures_raw_dir() works from the original cwd, but we've changed to scratch dir
+    // So we use relative path here since we're in tests/scratch and fixtures is at tests/fixtures
+    let fixtures_raw = Path::new("../fixtures/raw").to_path_buf();
+    println!("Using fixtures raw directory at: {:?}", fixtures_raw);
+    let src_ddl = fixtures_raw.join("favorite-fruit.json");
+    let src_mobius = fixtures_raw.join("mobius.jpeg");
 
     let dst_ddl = format!("{}/fruit.json", data_dir_string);
     let dst_mobius = format!("{}/mobius.jpeg", data_dir_string);

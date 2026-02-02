@@ -1,17 +1,128 @@
-//! Unified error types for the JACS simplified API.
+//! Unified error types for the JACS crate.
 //!
 //! This module provides a comprehensive error taxonomy that maps to
 //! user-friendly error messages with actionable guidance.
+//!
+//! # Error Categories
+//!
+//! The error types are organized into two groups:
+//!
+//! 1. **High-level category errors** - Broad categories for general error handling:
+//!    - `ConfigError` - Configuration loading/parsing errors
+//!    - `CryptoError` - Cryptographic operation errors
+//!    - `SchemaError` - Schema validation errors
+//!    - `AgentError` - Agent lifecycle errors
+//!    - `DocumentError` - Document operations errors
+//!    - `NetworkError` - Network/HTTP errors
+//!    - `TrustError` - Trust store errors
+//!    - `IoError` - IO wrapper
+//!    - `ValidationError` - Input validation errors
+//!
+//! 2. **Specific error variants** - Detailed errors for precise error handling
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use jacs::error::JacsError;
+//!
+//! fn load_config(path: &str) -> Result<Config, JacsError> {
+//!     let content = std::fs::read_to_string(path)
+//!         .map_err(|e| JacsError::ConfigError(format!("Failed to read config at '{}': {}", path, e)))?;
+//!     // ...
+//! }
+//! ```
 
 use std::error::Error;
 use std::fmt;
 
-/// Unified error type for all JACS simplified API operations.
+/// Unified error type for all JACS operations.
 ///
 /// Each variant includes contextual information to help users
 /// understand what went wrong and how to fix it.
 #[derive(Debug)]
 pub enum JacsError {
+    // ==========================================================================
+    // HIGH-LEVEL CATEGORY ERRORS
+    // These are broad categories useful for converting from format!() errors
+    // and providing consistent error handling across the crate.
+    // ==========================================================================
+
+    /// Configuration loading or parsing error.
+    ///
+    /// Use this for errors related to:
+    /// - Missing or invalid configuration files
+    /// - Invalid configuration values
+    /// - Environment variable issues
+    ConfigError(String),
+
+    /// Cryptographic operation error.
+    ///
+    /// Use this for errors related to:
+    /// - Key generation failures
+    /// - Encryption/decryption failures
+    /// - Signature creation/verification failures
+    /// - Hash computation failures
+    CryptoError(String),
+
+    /// Schema validation error.
+    ///
+    /// Use this for errors related to:
+    /// - JSON schema validation failures
+    /// - Schema loading/parsing errors
+    /// - Schema compilation errors
+    SchemaError(String),
+
+    /// Agent lifecycle error.
+    ///
+    /// Use this for errors related to:
+    /// - Agent creation failures
+    /// - Agent loading failures
+    /// - Agent state transitions
+    AgentError(String),
+
+    /// Document operation error.
+    ///
+    /// Use this for errors related to:
+    /// - Document creation failures
+    /// - Document loading failures
+    /// - Document signing/verification failures
+    DocumentError(String),
+
+    /// Network or HTTP error.
+    ///
+    /// Use this for errors related to:
+    /// - HTTP request failures
+    /// - Connection errors
+    /// - DNS resolution failures
+    /// - TLS/SSL errors
+    NetworkError(String),
+
+    /// Trust store error.
+    ///
+    /// Use this for errors related to:
+    /// - Trust store operations
+    /// - Trusted agent management
+    /// - Public key cache operations
+    TrustError(String),
+
+    /// IO error wrapper.
+    ///
+    /// Wraps `std::io::Error` for file and IO operations.
+    IoError(std::io::Error),
+
+    /// Input validation error.
+    ///
+    /// Use this for errors related to:
+    /// - Invalid function arguments
+    /// - Malformed input data
+    /// - Constraint violations
+    ValidationError(String),
+
+    // ==========================================================================
+    // SPECIFIC ERROR VARIANTS
+    // These provide detailed error information for precise error handling.
+    // ==========================================================================
+
     // === Configuration Errors ===
     /// Configuration file not found at the specified path.
     ConfigNotFound {
@@ -129,6 +240,9 @@ pub enum JacsError {
 
     // === Wrapped Errors ===
     /// Wrapper for underlying errors from the existing API.
+    ///
+    /// Note: Prefer using specific category errors (ConfigError, CryptoError, etc.)
+    /// over Internal when the error category is known.
     Internal {
         message: String,
     },
@@ -137,7 +251,18 @@ pub enum JacsError {
 impl fmt::Display for JacsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            // Configuration
+            // High-level category errors
+            JacsError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
+            JacsError::CryptoError(msg) => write!(f, "Cryptographic error: {}", msg),
+            JacsError::SchemaError(msg) => write!(f, "Schema error: {}", msg),
+            JacsError::AgentError(msg) => write!(f, "Agent error: {}", msg),
+            JacsError::DocumentError(msg) => write!(f, "Document error: {}", msg),
+            JacsError::NetworkError(msg) => write!(f, "Network error: {}", msg),
+            JacsError::TrustError(msg) => write!(f, "Trust store error: {}", msg),
+            JacsError::IoError(err) => write!(f, "IO error: {}", err),
+            JacsError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+
+            // Specific configuration errors
             JacsError::ConfigNotFound { path } => {
                 write!(
                     f,
@@ -276,9 +401,7 @@ impl From<Box<dyn Error>> for JacsError {
 
 impl From<std::io::Error> for JacsError {
     fn from(err: std::io::Error) -> Self {
-        JacsError::Internal {
-            message: err.to_string(),
-        }
+        JacsError::IoError(err)
     }
 }
 
@@ -309,6 +432,96 @@ impl From<&str> for JacsError {
 mod tests {
     use super::*;
 
+    // ==========================================================================
+    // HIGH-LEVEL CATEGORY ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_config_error_display() {
+        let err = JacsError::ConfigError("missing required field 'name'".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Configuration error"));
+        assert!(msg.contains("missing required field"));
+    }
+
+    #[test]
+    fn test_crypto_error_display() {
+        let err = JacsError::CryptoError("key generation failed".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Cryptographic error"));
+        assert!(msg.contains("key generation"));
+    }
+
+    #[test]
+    fn test_schema_error_display() {
+        let err = JacsError::SchemaError("schema validation failed".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Schema error"));
+        assert!(msg.contains("validation failed"));
+    }
+
+    #[test]
+    fn test_agent_error_display() {
+        let err = JacsError::AgentError("failed to load agent".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Agent error"));
+        assert!(msg.contains("failed to load"));
+    }
+
+    #[test]
+    fn test_document_error_display() {
+        let err = JacsError::DocumentError("document signing failed".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Document error"));
+        assert!(msg.contains("signing failed"));
+    }
+
+    #[test]
+    fn test_network_error_display() {
+        let err = JacsError::NetworkError("connection refused".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Network error"));
+        assert!(msg.contains("connection refused"));
+    }
+
+    #[test]
+    fn test_trust_error_display() {
+        let err = JacsError::TrustError("trust store not found".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Trust store error"));
+        assert!(msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_io_error_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = JacsError::IoError(io_err);
+        let msg = err.to_string();
+        assert!(msg.contains("IO error"));
+        assert!(msg.contains("file not found"));
+    }
+
+    #[test]
+    fn test_validation_error_display() {
+        let err = JacsError::ValidationError("invalid input".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Validation error"));
+        assert!(msg.contains("invalid input"));
+    }
+
+    #[test]
+    fn test_io_error_from_std_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        let jacs_err: JacsError = io_err.into();
+        assert!(matches!(jacs_err, JacsError::IoError(_)));
+        let msg = jacs_err.to_string();
+        assert!(msg.contains("access denied"));
+    }
+
+    // ==========================================================================
+    // SPECIFIC ERROR VARIANT TESTS
+    // ==========================================================================
+
     #[test]
     fn test_error_display_config_not_found() {
         let err = JacsError::ConfigNotFound {
@@ -331,5 +544,32 @@ mod tests {
     fn test_error_from_string() {
         let err: JacsError = "test error".into();
         assert!(matches!(err, JacsError::Internal { .. }));
+    }
+
+    #[test]
+    fn test_error_is_send_sync() {
+        // Ensure JacsError can be sent across threads
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+
+        // These will fail to compile if JacsError doesn't implement Send/Sync
+        // Note: IoError contains std::io::Error which is Send + Sync
+        assert_send::<JacsError>();
+        assert_sync::<JacsError>();
+    }
+
+    #[test]
+    fn test_error_implements_std_error() {
+        let err = JacsError::ConfigError("test".to_string());
+        // Verify it implements std::error::Error
+        let _: &dyn Error = &err;
+    }
+
+    #[test]
+    fn test_error_debug_format() {
+        let err = JacsError::CryptoError("test crypto error".to_string());
+        let debug_str = format!("{:?}", err);
+        assert!(debug_str.contains("CryptoError"));
+        assert!(debug_str.contains("test crypto error"));
     }
 }

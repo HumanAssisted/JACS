@@ -1,4 +1,5 @@
 use crate::crypt::private_key::ZeroizingVec;
+use crate::error::JacsError;
 use crate::storage::jenv::get_required_env_var;
 use aes_gcm::AeadCore;
 use aes_gcm::{
@@ -188,11 +189,11 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if trimmed.len() < MIN_PASSWORD_LENGTH {
-        return Err(format!(
+        return Err(JacsError::CryptoError(format!(
             "Password must be at least {} characters long (got {} characters). Use a stronger password for JACS_PRIVATE_KEY_PASSWORD.",
             MIN_PASSWORD_LENGTH,
             trimmed.len()
-        ).into());
+        )).into());
     }
 
     // Check against common weak passwords (case-insensitive)
@@ -220,10 +221,10 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
         } else {
             "Try using a longer password with more varied characters."
         };
-        return Err(format!(
+        return Err(JacsError::CryptoError(format!(
             "Password entropy too low ({:.1} bits, minimum is {:.0} bits). {}",
             entropy, MIN_ENTROPY_BITS, suggestion
-        ).into());
+        )).into());
     }
 
     // Single character class passwords are allowed if they have sufficient entropy
@@ -233,10 +234,10 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     // ~11 lowercase characters or ~8 alphanumeric characters - reasonable for internal use
     let char_classes = count_character_classes(trimmed);
     if char_classes < 2 && entropy < 35.0 {
-        return Err(format!(
+        return Err(JacsError::CryptoError(format!(
             "Password uses only {} character class(es) with insufficient length. Use at least 2 character types (uppercase, lowercase, digits, symbols) or use a longer password.",
             char_classes
-        ).into());
+        )).into());
     }
 
     Ok(())
@@ -352,10 +353,10 @@ pub fn decrypt_private_key_secure(
     let password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
 
     if encrypted_key_with_salt_and_nonce.len() < 16 + 12 {
-        return Err(format!(
+        return Err(JacsError::CryptoError(format!(
             "Encrypted private key data is too short: expected at least 28 bytes (16 salt + 12 nonce), got {} bytes",
             encrypted_key_with_salt_and_nonce.len()
-        ).into());
+        )).into());
     }
 
     // Split the data into salt, nonce, and encrypted key
@@ -391,17 +392,31 @@ mod tests {
     use serial_test::serial;
     use std::env;
 
-    // Helper functions for setting/removing env vars in tests
-    // These are unsafe in Rust 2024 edition due to potential data races
+    // Helper functions for setting/removing env vars in tests.
+    // These are unsafe in Rust 2024 edition due to potential data races when other threads
+    // read environment variables concurrently.
+
     fn set_test_password(password: &str) {
-        // SAFETY: These tests run serially (via #[serial]) and don't share state with other threads
+        // SAFETY: `env::set_var` is unsafe because concurrent reads from other threads
+        // could observe a partially-written value or cause undefined behavior. This is
+        // safe here because:
+        // 1. All tests using this helper are marked #[serial], ensuring single-threaded execution
+        // 2. The password is set before any code reads JACS_PRIVATE_KEY_PASSWORD
+        // 3. No background threads are spawned that might read this variable
+        // 4. The serial_test crate guarantees mutual exclusion with other #[serial] tests
+        // Violating these invariants (e.g., removing #[serial]) could cause data races.
         unsafe {
             env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
         }
     }
 
     fn remove_test_password() {
-        // SAFETY: These tests run serially (via #[serial]) and don't share state with other threads
+        // SAFETY: `env::remove_var` is unsafe for the same reasons as `env::set_var`.
+        // This is safe here because:
+        // 1. Called only from #[serial] tests ensuring single-threaded execution
+        // 2. This is called in cleanup after the test completes, when no concurrent reads occur
+        // 3. The serial_test crate ensures this completes before any other test starts
+        // If #[serial] is removed or background threads are added, this could cause UB.
         unsafe {
             env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
         }
@@ -783,5 +798,268 @@ mod tests {
         assert_eq!(decrypted.unwrap().as_slice(), original_key);
 
         remove_test_password();
+    }
+
+    // ==================== Additional Negative Tests for Security ====================
+
+    #[test]
+    #[serial]
+    fn test_very_long_password_works_or_fails_gracefully() {
+        // 100KB password - should work or fail gracefully (not crash/panic)
+        let long_password = "A".repeat(100_000);
+        set_test_password(&long_password);
+
+        let original_key = b"secret data";
+        let result = encrypt_private_key(original_key);
+        // The result can be Ok or Err, but it should NOT panic
+        // If it succeeds, decryption should also work
+        if let Ok(encrypted) = result {
+            let decrypted = decrypt_private_key(&encrypted);
+            assert!(
+                decrypted.is_ok(),
+                "If encryption with long password succeeds, decryption should too"
+            );
+            assert_eq!(decrypted.unwrap().as_slice(), original_key);
+        }
+        // If it fails, that's acceptable too - just ensure no panic occurred
+
+        remove_test_password();
+    }
+
+    #[test]
+    #[serial]
+    fn test_corrupted_encrypted_data_fails_gracefully() {
+        set_test_password("MyStr0ng!Pass#2024");
+
+        let original_key = b"secret data";
+        let encrypted = encrypt_private_key(original_key).expect("encryption should succeed");
+
+        // Corrupt different parts of the encrypted data
+        let test_cases = vec![
+            ("corrupted salt", {
+                let mut data = encrypted.clone();
+                data[0] ^= 0xFF;
+                data[8] ^= 0xFF;
+                data
+            }),
+            ("corrupted nonce", {
+                let mut data = encrypted.clone();
+                data[16] ^= 0xFF; // Nonce starts at byte 16
+                data[20] ^= 0xFF;
+                data
+            }),
+            ("corrupted ciphertext", {
+                let mut data = encrypted.clone();
+                let mid = data.len() / 2;
+                data[mid] ^= 0xFF;
+                data
+            }),
+            ("corrupted auth tag", {
+                let mut data = encrypted.clone();
+                let last = data.len() - 1;
+                data[last] ^= 0xFF;
+                data[last - 8] ^= 0xFF;
+                data
+            }),
+        ];
+
+        for (description, corrupted_data) in test_cases {
+            let result = decrypt_private_key(&corrupted_data);
+            assert!(
+                result.is_err(),
+                "Decryption with {} should fail",
+                description
+            );
+        }
+
+        remove_test_password();
+    }
+
+    #[test]
+    #[serial]
+    fn test_all_zeros_encrypted_data_rejected() {
+        set_test_password("MyStr0ng!Pass#2024");
+
+        // All zeros (valid length but garbage)
+        let zeros = vec![0u8; 100];
+        let result = decrypt_private_key(&zeros);
+        assert!(
+            result.is_err(),
+            "All-zeros encrypted data should be rejected"
+        );
+
+        remove_test_password();
+    }
+
+    #[test]
+    #[serial]
+    fn test_all_ones_encrypted_data_rejected() {
+        set_test_password("MyStr0ng!Pass#2024");
+
+        // All 0xFF (valid length but garbage)
+        let ones = vec![0xFF; 100];
+        let result = decrypt_private_key(&ones);
+        assert!(
+            result.is_err(),
+            "All-ones encrypted data should be rejected"
+        );
+
+        remove_test_password();
+    }
+
+    #[test]
+    #[serial]
+    fn test_empty_plaintext_encryption() {
+        set_test_password("MyStr0ng!Pass#2024");
+
+        // Empty data should be encryptable and decryptable
+        let empty_data = b"";
+        let encrypted = encrypt_private_key(empty_data);
+        assert!(encrypted.is_ok(), "Empty data encryption should succeed");
+
+        let decrypted = decrypt_private_key(&encrypted.unwrap());
+        assert!(decrypted.is_ok(), "Empty data decryption should succeed");
+        assert_eq!(decrypted.unwrap().as_slice(), empty_data.as_slice());
+
+        remove_test_password();
+    }
+
+    #[test]
+    #[serial]
+    fn test_large_plaintext_encryption() {
+        set_test_password("MyStr0ng!Pass#2024");
+
+        // 1MB of data
+        let large_data = vec![0x42u8; 1_000_000];
+        let encrypted = encrypt_private_key(&large_data);
+        assert!(encrypted.is_ok(), "Large data encryption should succeed");
+
+        let decrypted = decrypt_private_key(&encrypted.unwrap());
+        assert!(decrypted.is_ok(), "Large data decryption should succeed");
+        assert_eq!(decrypted.unwrap().as_slice(), large_data.as_slice());
+
+        remove_test_password();
+    }
+
+    #[test]
+    fn test_unicode_password_validation() {
+        // Unicode passwords should work if they meet entropy requirements
+        // This tests the password validation with various unicode strings
+        let unicode_passwords = [
+            // High entropy unicode (should pass)
+            ("P@ssw0rd\u{1F600}", true),  // With emoji
+            ("密码Tr0ng!Pass", true),      // Chinese characters
+            ("\u{0391}\u{0392}Str0ng!P@ss", true), // Greek letters
+
+            // Low entropy unicode (should fail)
+            ("\u{1F600}\u{1F600}\u{1F600}\u{1F600}", false), // Just 4 emojis
+        ];
+
+        for (password, should_pass) in unicode_passwords {
+            let result = validate_password(password);
+            if should_pass {
+                assert!(
+                    result.is_ok(),
+                    "Unicode password '{}' should be accepted: {:?}",
+                    password,
+                    result.err()
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "Low entropy unicode password '{}' should be rejected",
+                    password
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_password_with_null_bytes_handled() {
+        // Passwords with null bytes could cause issues in C-string contexts
+        // These should either be accepted (if they meet entropy) or rejected gracefully
+        let passwords_with_nulls = [
+            "pass\0word12!@AB",
+            "\0passwordAB12!@",
+            "passwordAB12!@\0",
+        ];
+
+        for password in passwords_with_nulls {
+            let result = validate_password(password);
+            // Just verify no panic occurs - result can be ok or err
+            let _ = result;
+        }
+    }
+
+    #[test]
+    fn test_password_boundary_lengths() {
+        // Test exact boundary conditions
+        // 7 characters (one below minimum) should fail
+        let seven_chars = "aB1$xY9";
+        assert!(
+            validate_password(seven_chars).is_err(),
+            "7-character password should be rejected"
+        );
+
+        // 8 characters with variety should pass
+        let eight_chars = "aB1$xY90";
+        assert!(
+            validate_password(eight_chars).is_ok(),
+            "8-character varied password should be accepted: {:?}",
+            validate_password(eight_chars).err()
+        );
+    }
+
+    #[test]
+    fn test_keyboard_pattern_passwords() {
+        // Common keyboard patterns should be rejected
+        let keyboard_patterns = [
+            "qwertyuiop",    // Top row
+            "asdfghjkl",     // Middle row
+            "zxcvbnm123",    // Bottom row + numbers
+        ];
+
+        for pattern in keyboard_patterns {
+            let result = validate_password(pattern);
+            assert!(
+                result.is_err(),
+                "Keyboard pattern '{}' should be rejected",
+                pattern
+            );
+        }
+    }
+
+    #[test]
+    fn test_leet_speak_common_passwords() {
+        // Common passwords in leet speak might have higher entropy
+        // but if they're still in the weak list, they should be rejected
+        let result = validate_password("trustno1");
+        assert!(
+            result.is_err(),
+            "trustno1 should be rejected as a common weak password"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_decrypt_with_missing_password_env_var() {
+        // Remove the password environment variable
+        remove_test_password();
+
+        // Create some dummy encrypted data (minimum valid length)
+        let dummy_encrypted = vec![0u8; 50];
+
+        // Decryption should fail because password env var is not set
+        let result = decrypt_private_key(&dummy_encrypted);
+        assert!(
+            result.is_err(),
+            "Decryption without password env var should fail"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("JACS_PRIVATE_KEY_PASSWORD") || err_msg.contains("password") || err_msg.contains("environment"),
+            "Error should mention missing password: {}",
+            err_msg
+        );
     }
 }

@@ -1,3 +1,11 @@
+/* HYGIENE-010: Potentially dead code - verify tests pass before removal
+ *
+ * This entire module is not included in lib.rs and is therefore not compiled.
+ * The libp2p dependency is also commented out in Cargo.toml.
+ * This appears to be experimental P2P networking code that was never integrated.
+ *
+ * Original file contents follow:
+
 use async_std::task;
 use futures::prelude::*;
 use libp2p::{
@@ -5,7 +13,7 @@ use libp2p::{
     identity,
     kad::{
         record::{Key as KadKey, Record},
-        Kademlia, KademliaEvent, PutRecordOk, GetRecordOk, Quorum, 
+        Kademlia, KademliaEvent, PutRecordOk, GetRecordOk, Quorum,
         record::store::MemoryStore,
     },
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
@@ -42,7 +50,7 @@ pub struct Agent {
     pub keypair: ed25519_dalek::Keypair,
     /// A large recovery code (a long random string)
     pub recovery_code: String,
-    /// The recovery code’s signature (signed by the agent’s private key)
+    /// The recovery code's signature (signed by the agent's private key)
     pub recovery_signature: ed25519_dalek::Signature,
 }
 
@@ -72,7 +80,7 @@ impl libp2p::swarm::NetworkBehaviourEventProcess<KademliaEvent> for MyBehaviour 
     }
 }
 
-/// A wrapper that uses libp2p’s Kademlia DHT to store/retrieve documents.
+/// A wrapper that uses libp2p's Kademlia DHT to store/retrieve documents.
 pub struct NetworkKVStore {
     pub swarm: Swarm<MyBehaviour>,
 }
@@ -101,7 +109,7 @@ impl NetworkKVStore {
 
     /// Writes a document to the DHT. We serialize the Document into JSON bytes.
     pub async fn write_document(&mut self, doc: Document) -> Result<(), Box<dyn Error>> {
-        // Use a key prefix "doc:" so that document ids don’t conflict.
+        // Use a key prefix "doc:" so that document ids don't conflict.
         let key = format!("doc:{}", doc.document_id);
         let kad_key = KadKey::new(&key);
         let value = serde_json::to_vec(&doc)?;
@@ -218,7 +226,7 @@ pub async fn create_agent(nkv: &mut NetworkKVStore) -> Agent {
     Agent { id: agent_id, keypair, recovery_code, recovery_signature }
 }
 
-/// Updates the agent’s public key using the recovery code.
+/// Updates the agent's public key using the recovery code.
 /// It verifies the stored recovery code, increments the version,
 /// and writes a new public key document.
 pub async fn update_agent(
@@ -284,4 +292,6 @@ async fn main() {
         loop {
             if let Some(event) = nkv.swarm.next().await {
                 println!("Swarm event: {:?}", event);
-   
+
+End of original file contents (file was truncated/incomplete)
+*/

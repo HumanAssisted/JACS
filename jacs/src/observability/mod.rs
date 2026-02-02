@@ -16,6 +16,9 @@ pub use crate::config::{
     ResourceConfig, SamplingConfig, TracingConfig, TracingDestination,
 };
 
+// Re-export the simple init_logging function for easy use
+pub use logs::init_logging;
+
 #[cfg(not(target_arch = "wasm32"))]
 use tracing_appender::non_blocking::WorkerGuard;
 
@@ -27,6 +30,7 @@ static LOG_WORKER_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static TEST_METRICS_RECORDER_HANDLE: Mutex<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>> =
     Mutex::new(None);
 
+#[allow(clippy::type_complexity)]
 pub fn init_observability(
     config: ObservabilityConfig,
 ) -> Result<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>, Box<dyn std::error::Error>> {

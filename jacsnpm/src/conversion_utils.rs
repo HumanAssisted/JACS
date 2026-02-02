@@ -1,5 +1,4 @@
 use base64::{Engine as _, engine::general_purpose};
-use napi::NapiValue;
 use napi::bindgen_prelude::*;
 use napi::{JsBuffer, JsObject, JsString, JsUnknown};
 use serde_json::{Map as JsonMap, Value};

@@ -10,7 +10,30 @@ pub mod kem;
 pub mod pq2025; // ML-DSA signatures // ML-KEM encryption
 
 use crate::agent::Agent;
+use crate::error::JacsError;
 use std::str::FromStr;
+use tracing::{debug, info, trace, warn};
+
+// ============================================================================
+// Centralized Base64 Helpers
+// ============================================================================
+// All base64 operations in JACS use the STANDARD engine for consistency.
+// For JWK/JWT operations that require URL-safe encoding, use the dedicated
+// functions in src/a2a/keys.rs which correctly use URL_SAFE_NO_PAD per spec.
+
+/// Encode bytes to base64 using the standard engine.
+#[inline]
+pub fn base64_encode(data: &[u8]) -> String {
+    STANDARD.encode(data)
+}
+
+/// Decode base64 string to bytes using the standard engine.
+#[inline]
+pub fn base64_decode(encoded: &str) -> Result<Vec<u8>, JacsError> {
+    STANDARD
+        .decode(encoded)
+        .map_err(|e| JacsError::CryptoError(format!("Invalid base64: {}", e)))
+}
 
 use strum_macros::{AsRefStr, Display, EnumString};
 
@@ -47,27 +70,35 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
 ) -> Result<CryptoSigningAlgorithm, Box<dyn std::error::Error>> {
+    trace!(
+        public_key_len = public_key.len(),
+        "Detecting algorithm from public key"
+    );
     // Count non-ASCII bytes in the key
     let non_ascii_count = public_key.iter().filter(|&&b| b > 127).count();
     let non_ascii_ratio = non_ascii_count as f32 / public_key.len() as f32;
 
     // Ed25519 public keys are exactly 32 bytes and typically contain non-ASCII characters
     if public_key.len() == 32 && non_ascii_ratio > 0.5 {
+        debug!(algorithm = "RingEd25519", "Detected Ed25519 from public key format");
         return Ok(CryptoSigningAlgorithm::RingEd25519);
     }
 
     // RSA keys are typically longer, mostly ASCII-compatible, and often start with specific ASN.1 DER encoding
     if public_key.len() > 100 && public_key.starts_with(&[0x30]) && non_ascii_ratio < 0.2 {
+        debug!(algorithm = "RSA-PSS", "Detected RSA-PSS from public key format");
         return Ok(CryptoSigningAlgorithm::RsaPss);
     }
 
     // ML-DSA-87 (Pq2025) has exactly 2592 byte public keys
     if public_key.len() == 2592 {
+        debug!(algorithm = "pq2025", "Detected ML-DSA-87 from public key format");
         return Ok(CryptoSigningAlgorithm::Pq2025);
     }
 
     // PQ Dilithium keys have specific formats with many non-ASCII characters and larger sizes
     if public_key.len() > 1000 && non_ascii_ratio > 0.3 {
+        debug!(algorithm = "pq-dilithium", "Detected PQ-Dilithium from public key format");
         return Ok(CryptoSigningAlgorithm::PqDilithium);
     }
 
@@ -75,13 +106,20 @@ pub fn detect_algorithm_from_public_key(
     // it's more likely to be Ed25519 or PQ Dilithium than RSA
     if non_ascii_ratio > 0.5 {
         if public_key.len() > 500 {
+            debug!(algorithm = "pq-dilithium", "Detected PQ-Dilithium from public key format (fallback)");
             return Ok(CryptoSigningAlgorithm::PqDilithium);
         } else {
+            debug!(algorithm = "RingEd25519", "Detected Ed25519 from public key format (fallback)");
             return Ok(CryptoSigningAlgorithm::RingEd25519);
         }
     }
 
-    Err("Could not determine the algorithm from the public key format".into())
+    warn!(
+        public_key_len = public_key.len(),
+        non_ascii_ratio = non_ascii_ratio,
+        "Could not determine algorithm from public key format"
+    );
+    Err(JacsError::CryptoError("Could not determine the algorithm from the public key format".to_string()).into())
 }
 
 /// Detects which algorithm to use based on signature length and other characteristics
@@ -123,6 +161,7 @@ impl KeyManager for Agent {
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let key_algorithm = config.get_key_algorithm()?;
+        info!(algorithm = %key_algorithm, "Generating new keypair");
         let ks = FsEncryptedStore;
         let spec = KeySpec {
             algorithm: key_algorithm.clone(),
@@ -130,12 +169,18 @@ impl KeyManager for Agent {
         };
         let (private_key, public_key) = ks.generate(&spec)?;
         self.set_keys(private_key, public_key, &key_algorithm)?;
+        info!(algorithm = %key_algorithm, "Keypair generated successfully");
         Ok(())
     }
 
     fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let key_algorithm = config.get_key_algorithm()?;
+        trace!(
+            algorithm = %key_algorithm,
+            data_len = data.len(),
+            "Signing data"
+        );
         // Validate algorithm is known (result unused but validates early)
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm)
             .map_err(|_| format!("Unknown signing algorithm: {}", key_algorithm))?;
@@ -147,6 +192,11 @@ impl KeyManager for Agent {
             let decrypted =
                 crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())?;
             let sig_bytes = ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
+            debug!(
+                algorithm = %key_algorithm,
+                signature_len = sig_bytes.len(),
+                "Signing completed successfully"
+            );
             Ok(STANDARD.encode(sig_bytes))
         }
     }
@@ -158,24 +208,37 @@ impl KeyManager for Agent {
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        trace!(
+            data_len = data.len(),
+            signature_len = signature_base64.len(),
+            public_key_len = public_key.len(),
+            explicit_algorithm = ?public_key_enc_type,
+            "Verifying signature"
+        );
         // Get the signature bytes for analysis
         let signature_bytes = STANDARD.decode(signature_base64)?;
 
         // Determine the algorithm type
         let algo = match public_key_enc_type {
-            Some(public_key_enc_type) => CryptoSigningAlgorithm::from_str(&public_key_enc_type)?,
+            Some(ref enc_type) => {
+                debug!(algorithm = %enc_type, "Using explicit algorithm from signature");
+                CryptoSigningAlgorithm::from_str(enc_type)?
+            }
             None => {
                 // Try to auto-detect the algorithm type from the public key
                 match detect_algorithm_from_public_key(&public_key) {
                     Ok(detected_algo) => {
                         // Further refine detection based on signature
-                        detect_algorithm_from_signature(&signature_bytes, &detected_algo)
+                        let refined = detect_algorithm_from_signature(&signature_bytes, &detected_algo);
+                        debug!(detected = %refined, "Auto-detected algorithm from public key");
+                        refined
                     }
                     Err(_) => {
                         // Fall back to the agent's configured algorithm if auto-detection fails
                         let config = self.config.as_ref()
                             .ok_or("Agent config not initialized for algorithm fallback")?;
                         let key_algorithm = config.get_key_algorithm()?;
+                        debug!(fallback = %key_algorithm, "Using config fallback for algorithm detection");
                         CryptoSigningAlgorithm::from_str(&key_algorithm)?
                     }
                 }

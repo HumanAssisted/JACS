@@ -1,4 +1,5 @@
 use crate::agent::Agent;
+use crate::error::JacsError;
 use std::error::Error;
 
 pub trait BoilerPlate {
@@ -25,11 +26,12 @@ impl BoilerPlate for Agent {
             Some(public_key) => Ok(public_key.to_vec()),
             None => {
                 let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
-                Err(format!(
-                    "get_public_key failed for agent '{}': Public key has not been loaded. \
-                    Call fs_load_keys() or fs_preload_keys() first, or ensure keys are generated during agent creation.",
-                    agent_id
-                ).into())
+                Err(JacsError::KeyNotFound {
+                    path: format!(
+                        "Public key for agent '{}': Call fs_load_keys() or fs_preload_keys() first, or ensure keys are generated during agent creation.",
+                        agent_id
+                    ),
+                }.into())
             }
         }
     }
@@ -39,11 +41,11 @@ impl BoilerPlate for Agent {
             Some(version) => Ok(version.to_string()),
             None => {
                 let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
-                Err(format!(
+                Err(JacsError::AgentError(format!(
                     "get_version failed for agent '{}': Agent version is not set. \
                     The agent may not be fully loaded or created.",
                     agent_id
-                ).into())
+                )).into())
             }
         }
     }
@@ -53,15 +55,10 @@ impl BoilerPlate for Agent {
     fn as_string(&self) -> Result<String, Box<dyn Error>> {
         match &self.value {
             Some(value) => serde_json::to_string_pretty(value).map_err(|e| {
-                format!("as_string failed: Could not serialize agent to JSON: {}", e).into()
+                JacsError::AgentError(format!("as_string failed: Could not serialize agent to JSON: {}", e)).into()
             }),
             None => {
-                let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
-                Err(format!(
-                    "as_string failed for agent '{}': Agent value is not loaded. \
-                    Call load(), load_by_id(), or create_agent_and_load() first.",
-                    agent_id
-                ).into())
+                Err(JacsError::AgentNotLoaded.into())
             }
         }
     }

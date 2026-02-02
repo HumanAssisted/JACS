@@ -60,13 +60,13 @@ pub fn get_env_var(key: &str, required_non_empty: bool) -> Result<Option<String>
     #[cfg(not(target_arch = "wasm32"))]
     {
         // First check our thread-safe override store
-        if let Ok(overrides) = get_overrides().read() {
-            if let Some(value) = overrides.get(key) {
-                if required_non_empty && value.trim().is_empty() {
-                    return Err(EnvError::Empty(key.to_string()));
-                }
-                return Ok(Some(value.clone()));
+        if let Ok(overrides) = get_overrides().read()
+            && let Some(value) = overrides.get(key)
+        {
+            if required_non_empty && value.trim().is_empty() {
+                return Err(EnvError::Empty(key.to_string()));
             }
+            return Ok(Some(value.clone()));
         }
 
         // Fall back to actual environment

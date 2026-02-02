@@ -1,3 +1,6 @@
+// Allow deprecated config functions during 12-Factor migration (see task ARCH-005)
+#![allow(deprecated)]
+
 pub mod agreement;
 pub mod boilerplate;
 pub mod document;
@@ -8,6 +11,7 @@ pub mod security;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::DocumentTraits;
 use crate::crypt::hash::hash_public_key;
+use crate::error::JacsError;
 use crate::storage::MultiStorage;
 
 use crate::config::{Config, find_config, load_config};
@@ -284,11 +288,12 @@ impl Agent {
             Some(private_key) => Ok(private_key),
             None => {
                 let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
-                Err(format!(
-                    "get_private_key failed for agent '{}': Private key has not been loaded. \
-                    Call fs_load_keys() or fs_preload_keys() first, or ensure keys are generated during agent creation.",
-                    agent_id
-                ).into())
+                Err(JacsError::KeyNotFound {
+                    path: format!(
+                        "Private key for agent '{}': Call fs_load_keys() or fs_preload_keys() first, or ensure keys are generated during agent creation.",
+                        agent_id
+                    ),
+                }.into())
             }
         }
     }
@@ -307,19 +312,19 @@ impl Agent {
                 }
 
                 // Validate that ID and Version are valid UUIDs
-                if let (Some(id), Some(version)) = (&self.id, &self.version) {
-                    if Uuid::parse_str(id).is_err() || Uuid::parse_str(version).is_err() {
-                        warn!("ID and Version must be UUID");
-                    }
+                if let (Some(id), Some(version)) = (&self.id, &self.version)
+                    && (Uuid::parse_str(id).is_err() || Uuid::parse_str(version).is_err())
+                {
+                    warn!("ID and Version must be UUID");
                 }
             }
             Err(e) => {
                 error!("Agent validation failed: {}", e);
-                return Err(format!(
+                return Err(JacsError::AgentError(format!(
                     "Agent load failed at schema validation step: {}. \
                     Ensure the agent JSON conforms to the JACS agent schema.",
                     e
-                ).into());
+                )).into());
             }
         }
 
@@ -426,6 +431,7 @@ impl Agent {
         Ok(format!("{}:{}", agentid, agentversion))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn signature_verification_procedure(
         &self,
         json_value: &Value,
@@ -593,9 +599,9 @@ impl Agent {
     ///
     /// * `json_value` - A reference to the JSON value to be signed.
     /// * `fields` - An optional reference to a vector of field names to include in the signature.
-    ///              If `None`, system default fields will be used.
+    ///   If `None`, system default fields will be used.
     /// * `placement_key` - A reference to a string representing the key where the signature
-    ///                     should be placed in the resulting JSON value.
+    ///   should be placed in the resulting JSON value.
     ///
     /// # Returns
     ///
@@ -780,10 +786,10 @@ impl Agent {
         let new_doc_orginal_id = &new_self.get_str("jacsId");
         let new_doc_orginal_version = &new_self.get_str("jacsVersion");
         if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
-            return Err(format!(
+            return Err(JacsError::AgentError(format!(
                 "The id/versions do not match for old and new agent:  . {:?}{:?}",
                 new_doc_orginal_id, new_doc_orginal_version
-            )
+            ))
             .into());
         }
 

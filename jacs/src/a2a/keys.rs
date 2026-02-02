@@ -1,6 +1,7 @@
 //! Key management for A2A integration
 //! Handles dual key generation (PQC for JACS, RSA/ECDSA for A2A)
 
+use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -56,13 +57,13 @@ pub fn create_jwk_keys(
         "dilithium" | "pq-dilithium" => crate::crypt::pq::generate_keys()?,
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
         "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        _ => return Err(format!("Unsupported JACS algorithm: {}", jacs_alg).into()),
+        _ => return Err(JacsError::CryptoError(format!("Unsupported JACS algorithm: {}", jacs_alg)).into()),
     };
 
     let (a2a_private, a2a_public) = match a2a_alg {
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
         "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        _ => return Err(format!("Unsupported A2A algorithm: {}", a2a_alg).into()),
+        _ => return Err(JacsError::CryptoError(format!("Unsupported A2A algorithm: {}", a2a_alg)).into()),
     };
 
     Ok(DualKeyPair {
@@ -139,7 +140,7 @@ pub fn export_as_jwk(
     match algorithm {
         "rsa" => export_rsa_as_jwk(public_key, key_id),
         "ecdsa" | "es256" => export_ecdsa_as_jwk(public_key, key_id),
-        _ => Err(format!("Cannot export {} key as JWK", algorithm).into()),
+        _ => Err(JacsError::CryptoError(format!("Cannot export {} key as JWK", algorithm)).into()),
     }
 }
 
@@ -162,7 +163,7 @@ pub fn sign_jws(
         "alg": match algorithm {
             "rsa" => "RS256",
             "ecdsa" | "es256" => "ES256",
-            _ => return Err(format!("Unsupported JWS algorithm: {}", algorithm).into()),
+            _ => return Err(JacsError::CryptoError(format!("Unsupported JWS algorithm: {}", algorithm)).into()),
         },
         "typ": "JWT",
         "kid": key_id
@@ -187,7 +188,7 @@ pub fn sign_jws(
                 crate::crypt::ringwrapper::sign_string(private_key.to_vec(), &signing_input)?;
             general_purpose::STANDARD.decode(&sig_b64)?
         }
-        _ => return Err(format!("Unsupported algorithm: {}", algorithm).into()),
+        _ => return Err(JacsError::CryptoError(format!("Unsupported algorithm: {}", algorithm)).into()),
     };
 
     // Base64url encode signature

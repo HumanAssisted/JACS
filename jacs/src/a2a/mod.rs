@@ -13,7 +13,7 @@ pub mod provenance;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::error::Error;
+// HYGIENE-005: std::error::Error was only used by commented-out A2AError and A2AProtocolError
 
 /// A2A protocol version constant (v0.4.0)
 pub const A2A_PROTOCOL_VERSION: &str = "0.4.0";
@@ -21,6 +21,10 @@ pub const A2A_PROTOCOL_VERSION: &str = "0.4.0";
 /// JACS extension URI for A2A
 pub const JACS_EXTENSION_URI: &str = "urn:hai.ai:jacs-provenance-v1";
 
+/* HYGIENE-005: Potentially dead code - verify tests pass before removal
+ * A2AError is defined but never used anywhere in the codebase.
+ * Consider removing after confirming no external consumers.
+ *
 /// Common A2A error type
 #[derive(Debug)]
 pub enum A2AError {
@@ -42,6 +46,7 @@ impl std::fmt::Display for A2AError {
 }
 
 impl Error for A2AError {}
+*/
 
 // ---------------------------------------------------------------------------
 // AgentCard and related types (A2A v0.4.0)
@@ -266,6 +271,11 @@ pub struct A2AMessage {
     pub reference_task_ids: Option<Vec<String>>,
 }
 
+/* HYGIENE-005: Potentially dead code - verify tests pass before removal
+ * TaskStatus and A2ATask are defined but only used in tests within this module.
+ * They are not imported by any submodule or external code.
+ * Consider removing after confirming no external consumers.
+ *
 /// A2A Task Status (v0.4.0)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -291,11 +301,16 @@ pub struct A2ATask {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
 }
+*/
 
 // ---------------------------------------------------------------------------
 // A2A Protocol Errors
 // ---------------------------------------------------------------------------
 
+/* HYGIENE-005: Potentially dead code - verify tests pass before removal
+ * A2AProtocolError is defined but never used anywhere in the codebase.
+ * Consider removing after confirming no external consumers.
+ *
 /// Standard A2A protocol error types (v0.4.0)
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum A2AProtocolError {
@@ -335,6 +350,7 @@ impl std::fmt::Display for A2AProtocolError {
 }
 
 impl Error for A2AProtocolError {}
+*/
 
 #[cfg(test)]
 mod tests {

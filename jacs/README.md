@@ -50,6 +50,25 @@ jacs sign-file doc.pdf   # Sign a file
 jacs verify doc.json     # Verify a document
 ```
 
+## Security
+
+**Security Hardening**: This library includes:
+- Password entropy validation for key encryption (minimum 40 bits)
+- Thread-safe environment variable handling
+- TLS certificate validation enabled by default
+- Private key zeroization on drop
+- Algorithm identification embedded in signatures
+
+**Reporting Vulnerabilities**: Please report security issues responsibly.
+- Email: security@hai.ai
+- Do **not** open public issues for security vulnerabilities
+- We aim to respond within 48 hours
+
+**Best Practices**:
+- Use strong passwords (12+ characters with mixed case, numbers, symbols)
+- Store private keys securely with appropriate file permissions
+- Keep JACS and its dependencies updated
+
 ## Links
 
 - [Documentation](https://humanassisted.github.io/JACS/)

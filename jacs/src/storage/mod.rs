@@ -64,7 +64,7 @@ impl WebLocalStorage {
 impl ObjectStore for WebLocalStorage {
     async fn put(&self, location: &ObjectPath, bytes: PutPayload) -> Result<(), ObjectStoreError> {
         let data = bytes.into_vec().await?;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+        let encoded = crate::crypt::base64_encode(&data);
         self.storage
             .set_item(location.as_ref(), &encoded)
             .map_err(|e| ObjectStoreError::Generic {
@@ -96,11 +96,10 @@ impl ObjectStore for WebLocalStorage {
                 )),
             })?;
 
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(value)
+        let decoded = crate::crypt::base64_decode(&value)
             .map_err(|e| ObjectStoreError::Generic {
                 store: "WebLocalStorage",
-                source: Box::new(e),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
             })?;
 
         Ok(GetResult::Stream(Box::pin(futures_util::stream::once(
@@ -411,6 +410,7 @@ impl MultiStorage {
 }
 
 use crate::agent::document::JACSDocument;
+use crate::error::JacsError;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
@@ -592,7 +592,7 @@ impl StorageDocumentTraits for MultiStorage {
         let versions = self.get_document_versions(document_id)?;
 
         if versions.is_empty() {
-            return Err(format!("No documents found with ID: {}", document_id).into());
+            return Err(JacsError::DocumentError(format!("No documents found with ID: {}", document_id)).into());
         }
 
         // For now, return the last one in the list

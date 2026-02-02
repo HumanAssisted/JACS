@@ -2,7 +2,7 @@ use crate::agent::Agent;
 use crate::agent::FileLoader;
 use std::error::Error;
 use std::fs;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use std::fs::Permissions;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]

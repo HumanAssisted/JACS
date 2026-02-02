@@ -31,10 +31,14 @@ pub mod trust;
 
 // #[cfg(feature = "cli")]
 pub mod cli_utils;
+// Re-export error types for convenience
+pub use error::JacsError;
+
 // Re-export observability types for convenience
 pub use observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-    ResourceConfig, SamplingConfig, TracingConfig, TracingDestination, init_observability,
+    ResourceConfig, SamplingConfig, TracingConfig, TracingDestination, init_logging,
+    init_observability,
 };
 
 /// Initialize observability with a default configuration suitable for most applications.

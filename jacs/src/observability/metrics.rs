@@ -43,6 +43,7 @@ pub enum CapturedMetric {
     },
 }
 
+#[allow(clippy::type_complexity)]
 pub fn init_metrics(
     config: &MetricsConfig,
 ) -> Result<

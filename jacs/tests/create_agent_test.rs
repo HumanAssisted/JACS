@@ -1,17 +1,13 @@
 use jacs::agent::loaders::FileLoader;
-use std::fs;
 mod utils;
+use utils::{create_agent_v1, read_new_agent_fixture, read_raw_fixture, set_min_test_env_vars};
 
 #[test]
 fn test_validate_agent_creation() {
-    utils::set_min_test_env_vars();
+    set_min_test_env_vars();
     // RUST_BACKTRACE=1 cargo test create_agent_tests -- --test test_validate_agent_creation
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("./tests/fixtures/raw/myagent.new.json").expect("REASON");
+    let mut agent = create_agent_v1().expect("Failed to create agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {
@@ -30,8 +26,7 @@ fn test_validate_agent_creation() {
         &"agent-two.public.pem".to_string(),
         Some("RSA-PSS".to_string()),
     );
-    let json_data =
-        fs::read_to_string("./tests/fixtures/raw/mysecondagent.new.json").expect("REASON");
+    let json_data = read_raw_fixture("mysecondagent.new.json").expect("Failed to read second agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {
@@ -48,13 +43,9 @@ fn test_validate_agent_creation() {
 
 #[test]
 fn test_validate_single_agent_creation() {
-    utils::set_min_test_env_vars();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("./tests/fixtures/raw/myagent.new.json").expect("REASON");
+    set_min_test_env_vars();
+    let mut agent = create_agent_v1().expect("Failed to create agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {
@@ -70,13 +61,9 @@ fn test_validate_single_agent_creation() {
 
 #[test]
 fn test_validate_agent_creation_save_and_load() {
-    utils::set_min_test_env_vars();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    let json_data = fs::read_to_string("./tests/fixtures/raw/myagent.new.json").expect("REASON");
+    set_min_test_env_vars();
+    let mut agent = create_agent_v1().expect("Failed to create agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {

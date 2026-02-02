@@ -1,0 +1,15 @@
+[package]
+name = "jacs-binding-core"
+version = "0.4.4"
+edition = "2024"
+rust-version = "1.85"
+resolver = "3"
+description = "Shared core logic for JACS language bindings (Python, Node.js, etc.)"
+readme = "../README.md"
+authors = ["HAI.AI <engineering@hai.io>"]
+license-file = "../LICENSE"
+
+[dependencies]
+jacs = { path = "../jacs" }
+serde_json = "1.0"
+base64 = "0.22.1"

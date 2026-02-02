@@ -7,6 +7,7 @@ use crate::crypt::hash::hash_public_key;
 use crate::crypt::{CryptoSigningAlgorithm, detect_algorithm_from_public_key};
 use crate::error::JacsError;
 use crate::paths::trust_store_dir;
+use crate::schema::utils::ValueExt;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -93,31 +94,16 @@ pub fn trust_agent_with_key(agent_json: &str, public_key_pem: Option<&str>) -> R
     })?;
 
     // Extract required fields
-    let agent_id = agent_value["jacsId"]
-        .as_str()
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsId".to_string(),
-            reason: "Missing or invalid jacsId".to_string(),
-        })?
-        .to_string();
-
-    let name = agent_value["name"].as_str().map(|s| s.to_string());
+    let agent_id = agent_value.get_str_required("jacsId")?;
+    let name = agent_value.get_str("name");
 
     // Extract public key hash from signature
-    let public_key_hash = agent_value["jacsSignature"]["publicKeyHash"]
-        .as_str()
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsSignature.publicKeyHash".to_string(),
-            reason: "Missing public key hash".to_string(),
-        })?
-        .to_string();
+    let public_key_hash = agent_value.get_path_str_required(&["jacsSignature", "publicKeyHash"])?;
 
     // Extract signing algorithm from signature
     // Note: signingAlgorithm is now required in the schema, but we handle legacy documents
     // that may not have it by falling back to algorithm detection with a warning
-    let signing_algorithm = agent_value["jacsSignature"]["signingAlgorithm"]
-        .as_str()
-        .map(|s| s.to_string());
+    let signing_algorithm = agent_value.get_path_str(&["jacsSignature", "signingAlgorithm"]);
 
     if signing_algorithm.is_none() {
         warn!(
@@ -228,15 +214,14 @@ pub fn list_trusted_agents() -> Result<Vec<String>, JacsError> {
         })?;
 
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "json")
+        if path.extension().is_some_and(|ext| ext == "json")
             && !path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .map_or(false, |n| n.ends_with(".meta.json"))
+                .is_some_and(|n| n.ends_with(".meta.json"))
+            && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
         {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                agents.push(stem.to_string());
-            }
+            agents.push(stem.to_string());
         }
     }
 
@@ -328,13 +313,7 @@ pub fn get_trusted_public_key_hash(agent_id: &str) -> Result<String, JacsError> 
         }
     })?;
 
-    agent_value["jacsSignature"]["publicKeyHash"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsSignature.publicKeyHash".to_string(),
-            reason: "Missing public key hash".to_string(),
-        })
+    agent_value.get_path_str_required(&["jacsSignature", "publicKeyHash"])
 }
 
 /// Checks if an agent is in the trust store.
@@ -477,39 +456,21 @@ fn verify_agent_self_signature(
     algorithm: Option<&str>,
 ) -> Result<(), JacsError> {
     // Extract and validate signature timestamp
-    let signature_date = agent_value["jacsSignature"]["date"]
-        .as_str()
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsSignature.date".to_string(),
-            reason: "Missing signature timestamp".to_string(),
-        })?;
-
-    validate_signature_timestamp(signature_date)?;
+    let signature_date = agent_value.get_path_str_required(&["jacsSignature", "date"])?;
+    validate_signature_timestamp(&signature_date)?;
 
     // Extract signature components
-    let signature_b64 = agent_value["jacsSignature"]["signature"]
-        .as_str()
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsSignature.signature".to_string(),
-            reason: "Missing signature".to_string(),
-        })?;
-
-    let fields = agent_value["jacsSignature"]["fields"]
-        .as_array()
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsSignature.fields".to_string(),
-            reason: "Missing or invalid fields array".to_string(),
-        })?;
+    let signature_b64 = agent_value.get_path_str_required(&["jacsSignature", "signature"])?;
+    let fields = agent_value.get_path_array_required(&["jacsSignature", "fields"])?;
 
     // Build the content that was signed
     let mut content_parts: Vec<String> = Vec::new();
     for field in fields {
-        if let Some(field_name) = field.as_str() {
-            if let Some(value) = agent_value.get(field_name) {
-                if let Some(str_val) = value.as_str() {
-                    content_parts.push(str_val.to_string());
-                }
-            }
+        if let Some(field_name) = field.as_str()
+            && let Some(value) = agent_value.get(field_name)
+            && let Some(str_val) = value.as_str()
+        {
+            content_parts.push(str_val.to_string());
         }
     }
     let signed_content = content_parts.join(" ");
@@ -535,28 +496,28 @@ fn verify_agent_self_signature(
             crate::crypt::rsawrapper::verify_string(
                 public_key_bytes.to_vec(),
                 &signed_content,
-                signature_b64,
+                &signature_b64,
             )
         }
         CryptoSigningAlgorithm::RingEd25519 => {
             crate::crypt::ringwrapper::verify_string(
                 public_key_bytes.to_vec(),
                 &signed_content,
-                signature_b64,
+                &signature_b64,
             )
         }
         CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
             crate::crypt::pq::verify_string(
                 public_key_bytes.to_vec(),
                 &signed_content,
-                signature_b64,
+                &signature_b64,
             )
         }
         CryptoSigningAlgorithm::Pq2025 => {
             crate::crypt::pq2025::verify_string(
                 public_key_bytes.to_vec(),
                 &signed_content,
-                signature_b64,
+                &signature_b64,
             )
         }
     };
@@ -580,7 +541,14 @@ mod tests {
     fn setup_test_trust_dir() -> TempDir {
         let temp_dir = TempDir::new().unwrap();
         // Override the trust store location for tests
-        // SAFETY: This is only used in single-threaded tests
+        // SAFETY: `env::set_var` is unsafe in Rust 2024+ due to potential data races when
+        // other threads read environment variables concurrently. This is safe here because:
+        // 1. This function is only called from #[serial] tests which run single-threaded
+        // 2. No other threads are spawned before this call completes
+        // 3. The HOME variable is read only after this setup completes
+        // 4. The TempDir lifetime ensures the path remains valid for the test duration
+        // If these invariants are violated (e.g., parallel test execution), undefined
+        // behavior could occur from concurrent env access.
         unsafe {
             env::set_var("HOME", temp_dir.path().to_str().unwrap());
         }
@@ -779,6 +747,332 @@ mod tests {
         match result {
             Err(JacsError::KeyNotFound { .. }) => (),
             _ => panic!("Expected KeyNotFound error"),
+        }
+    }
+
+    // ==================== Additional Negative Tests for Security ====================
+
+    #[test]
+    fn test_timestamp_empty_string_rejected() {
+        let result = validate_signature_timestamp("");
+        assert!(result.is_err(), "Empty timestamp should be rejected");
+        if let Err(JacsError::SignatureVerificationFailed { reason }) = result {
+            assert!(
+                reason.contains("Invalid") || reason.contains("format"),
+                "Error should mention invalid format: {}",
+                reason
+            );
+        }
+    }
+
+    #[test]
+    fn test_timestamp_whitespace_only_rejected() {
+        let whitespace_timestamps = ["   ", "\t\t", "\n\n", "  \t\n  "];
+        for ts in whitespace_timestamps {
+            let result = validate_signature_timestamp(ts);
+            assert!(
+                result.is_err(),
+                "Whitespace-only timestamp '{}' should be rejected",
+                ts.escape_debug()
+            );
+        }
+    }
+
+    #[test]
+    fn test_timestamp_extremely_far_future_rejected() {
+        // Year 3000 - definitely too far in the future
+        let far_future = "3000-01-01T00:00:00Z";
+        let result = validate_signature_timestamp(far_future);
+        assert!(
+            result.is_err(),
+            "Extremely far future timestamp should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_timestamp_truly_invalid_formats_rejected() {
+        // Formats that are definitely invalid for RFC 3339
+        let invalid_timestamps = [
+            "2024/01/01T00:00:00Z",    // Wrong date separator
+            "Jan 01, 2024",            // Human readable format
+            "1704067200",              // Unix timestamp
+            "2024-W01",                // ISO week format
+        ];
+
+        for ts in invalid_timestamps {
+            let result = validate_signature_timestamp(ts);
+            assert!(
+                result.is_err(),
+                "Invalid timestamp format '{}' should be rejected",
+                ts
+            );
+        }
+    }
+
+    #[test]
+    fn test_timestamp_with_injection_attempt() {
+        // Timestamps with potential injection characters
+        let injection_attempts = [
+            "2024-01-01T00:00:00Z; DROP TABLE users;",
+            "2024-01-01T00:00:00Z<script>",
+            "2024-01-01T00:00:00Z\x00null",
+            "2024-01-01T00:00:00Z' OR '1'='1",
+        ];
+
+        for ts in injection_attempts {
+            let result = validate_signature_timestamp(ts);
+            assert!(
+                result.is_err(),
+                "Timestamp with injection attempt '{}' should be rejected",
+                ts.escape_debug()
+            );
+        }
+    }
+
+    #[test]
+    fn test_timestamp_unix_epoch_valid() {
+        // Unix epoch (1970-01-01) should be valid when expiration is disabled
+        let epoch = "1970-01-01T00:00:00Z";
+        let result = validate_signature_timestamp(epoch);
+        assert!(
+            result.is_ok(),
+            "Unix epoch should be valid when expiration disabled: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_timestamp_y2k38_boundary() {
+        // Test around the Y2K38 boundary (2038-01-19)
+        let y2k38 = "2038-01-19T03:14:07Z";
+        let result = validate_signature_timestamp(y2k38);
+        // This should be valid (it's in the past from 2026 perspective when test runs,
+        // or slightly in the future - either way, within normal bounds)
+        // Just ensure it doesn't panic
+        let _ = result;
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_rejects_invalid_json() {
+        let _temp = setup_test_trust_dir();
+
+        let invalid_json_cases = [
+            "",                          // Empty
+            "not json at all",           // Plain text
+            "{",                         // Unclosed brace
+            "[}",                        // Mismatched brackets
+            "{'invalid': 'single quotes'}", // Single quotes
+            "{\"incomplete\":",          // Incomplete
+        ];
+
+        for invalid_json in invalid_json_cases {
+            let result = trust_agent(invalid_json);
+            assert!(
+                result.is_err(),
+                "Invalid JSON '{}' should be rejected",
+                invalid_json.escape_debug()
+            );
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_rejects_missing_jacs_id() {
+        let _temp = setup_test_trust_dir();
+
+        // Valid JSON but missing jacsId
+        let agent_json = r#"{
+            "name": "Test Agent",
+            "jacsSignature": {
+                "signature": "dGVzdA==",
+                "publicKeyHash": "abc123",
+                "date": "2024-01-01T00:00:00Z",
+                "fields": ["name"]
+            }
+        }"#;
+
+        let result = trust_agent(agent_json);
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::DocumentMalformed { field, .. }) => {
+                assert!(
+                    field.contains("jacsId"),
+                    "Error should mention jacsId: {}",
+                    field
+                );
+            }
+            _ => panic!("Expected DocumentMalformed error for missing jacsId"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_rejects_null_fields() {
+        let _temp = setup_test_trust_dir();
+
+        // JSON with null values where strings expected
+        let agent_json = r#"{
+            "jacsId": null,
+            "name": "Test Agent",
+            "jacsSignature": {
+                "signature": "dGVzdA==",
+                "publicKeyHash": "abc123",
+                "date": "2024-01-01T00:00:00Z",
+                "fields": ["name"]
+            }
+        }"#;
+
+        let result = trust_agent(agent_json);
+        assert!(result.is_err(), "Null jacsId should be rejected");
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_rejects_wrong_type_fields() {
+        let _temp = setup_test_trust_dir();
+
+        // jacsId as number instead of string
+        let agent_json = r#"{
+            "jacsId": 12345,
+            "name": "Test Agent",
+            "jacsSignature": {
+                "signature": "dGVzdA==",
+                "publicKeyHash": "abc123",
+                "date": "2024-01-01T00:00:00Z",
+                "fields": ["name"]
+            }
+        }"#;
+
+        let result = trust_agent(agent_json);
+        assert!(result.is_err(), "Non-string jacsId should be rejected");
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_rejects_empty_signature() {
+        let _temp = setup_test_trust_dir();
+
+        let agent_json = r#"{
+            "jacsId": "test-agent-id",
+            "name": "Test Agent",
+            "jacsSignature": {
+                "signature": "",
+                "publicKeyHash": "abc123",
+                "date": "2024-01-01T00:00:00Z",
+                "signingAlgorithm": "ring-Ed25519",
+                "fields": ["name"]
+            }
+        }"#;
+
+        let result = trust_agent(agent_json);
+        // This will fail because empty signature can't be verified
+        // and there's no public key for "abc123" hash
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_rejects_malformed_base64_signature() {
+        let _temp = setup_test_trust_dir();
+
+        let agent_json = r#"{
+            "jacsId": "test-agent-id",
+            "name": "Test Agent",
+            "jacsSignature": {
+                "signature": "!!!not-valid-base64!!!",
+                "publicKeyHash": "abc123",
+                "date": "2024-01-01T00:00:00Z",
+                "signingAlgorithm": "ring-Ed25519",
+                "fields": ["name"]
+            }
+        }"#;
+
+        let result = trust_agent(agent_json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn test_untrust_nonexistent_agent() {
+        let _temp = setup_test_trust_dir();
+
+        let result = untrust_agent("nonexistent-agent-id");
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::AgentNotTrusted { agent_id }) => {
+                assert_eq!(agent_id, "nonexistent-agent-id");
+            }
+            _ => panic!("Expected AgentNotTrusted error"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_trusted_agent_nonexistent() {
+        let _temp = setup_test_trust_dir();
+
+        let result = get_trusted_agent("nonexistent-agent-id");
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::AgentNotTrusted { agent_id }) => {
+                assert_eq!(agent_id, "nonexistent-agent-id");
+            }
+            _ => panic!("Expected AgentNotTrusted error"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_rejects_future_signature_timestamp() {
+        let _temp = setup_test_trust_dir();
+
+        // Create test key and save it
+        let test_key = b"test-public-key";
+        let hash = "test-future-hash";
+        save_public_key_to_cache(hash, test_key, Some("ring-Ed25519")).unwrap();
+
+        // Agent with far future timestamp
+        let far_future = (Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let agent_json = format!(r#"{{
+            "jacsId": "test-agent-id",
+            "name": "Test Agent",
+            "jacsSignature": {{
+                "signature": "dGVzdA==",
+                "publicKeyHash": "{}",
+                "date": "{}",
+                "signingAlgorithm": "ring-Ed25519",
+                "fields": ["name"]
+            }}
+        }}"#, hash, far_future);
+
+        let result = trust_agent(&agent_json);
+        // This should fail because the timestamp is too far in the future
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_algorithm_detection_with_empty_key() {
+        use crate::crypt::detect_algorithm_from_public_key;
+
+        let result = detect_algorithm_from_public_key(&[]);
+        assert!(result.is_err(), "Empty public key should fail detection");
+    }
+
+    #[test]
+    fn test_algorithm_detection_with_very_short_key() {
+        use crate::crypt::detect_algorithm_from_public_key;
+
+        let short_keys = [
+            vec![0u8; 1],
+            vec![0u8; 10],
+            vec![0u8; 20],
+        ];
+
+        for key in short_keys {
+            // These may succeed with Ed25519 detection or fail
+            // The important thing is no panic
+            let _ = detect_algorithm_from_public_key(&key);
         }
     }
 }

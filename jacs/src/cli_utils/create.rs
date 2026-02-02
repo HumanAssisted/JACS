@@ -1,3 +1,6 @@
+// Allow deprecated config functions during 12-Factor migration (see task ARCH-005)
+#![allow(deprecated)]
+
 use crate::agent::boilerplate::BoilerPlate;
 use crate::config::{Config, check_env_vars, set_env_vars};
 use crate::create_minimal_blank_agent;

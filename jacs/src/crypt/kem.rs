@@ -21,6 +21,7 @@ pub fn generate_kem_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
 
 /// Seal (encrypt) data to recipient's public key
 /// Returns (kem_ciphertext, nonce, aead_ciphertext)
+#[allow(clippy::type_complexity)]
 pub fn seal(
     recipient_pub: &[u8],
     aad: &[u8],

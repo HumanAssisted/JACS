@@ -143,8 +143,7 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> 
 /// Create JACS public key document
 fn create_jacs_pubkey_document(agent: &Agent) -> Result<Value, Box<dyn Error>> {
     let public_key = agent.get_public_key()?;
-    let public_key_b64 =
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &public_key);
+    let public_key_b64 = crate::crypt::base64_encode(&public_key);
     let public_key_hash = crate::crypt::hash::hash_public_key(public_key.clone());
 
     let agent_id = agent.get_id()?;

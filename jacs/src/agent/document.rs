@@ -6,6 +6,7 @@ use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
 use crate::agent::security::SecurityTraits;
+use crate::error::JacsError;
 use crate::storage::StorageDocumentTraits;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
@@ -364,7 +365,10 @@ impl DocumentTraits for Agent {
 
                 // Compare the actual hash with the expected hash
                 if actual_hash != expected_hash {
-                    return Err(format!("Hash mismatch for file: {}", file_path).into());
+                    return Err(JacsError::HashMismatch {
+                        expected: expected_hash.to_string(),
+                        got: actual_hash,
+                    }.into());
                 }
             }
         }
@@ -561,14 +565,13 @@ impl DocumentTraits for Agent {
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
-        let error_message = format!("original document {} not found", document_key);
         let original_document = self.get_document(document_key)?;
         let value = original_document.value.clone();
         let jacs_level = new_document
             .get_str("jacsLevel")
             .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());
         if !EDITABLE_JACS_DOCS.contains(&jacs_level.as_str()) {
-            return Err(format!("JACS docs of type {} are not editable", jacs_level).into());
+            return Err(JacsError::DocumentError(format!("JACS docs of type {} are not editable", jacs_level)).into());
         };
 
         let mut files_array: Vec<Value> = new_document
@@ -605,10 +608,13 @@ impl DocumentTraits for Agent {
         let new_doc_orginal_id = &new_document.get_str("jacsId");
         let new_doc_orginal_version = &new_document.get_str("jacsVersion");
         if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
-            return Err(format!(
-                "The id/versions do not match found for key: {}. {:?}{:?}",
-                document_key, new_doc_orginal_id, new_doc_orginal_version
-            )
+            return Err(JacsError::DocumentMalformed {
+                field: "jacsId/jacsVersion".to_string(),
+                reason: format!(
+                    "The id/versions do not match found for key: {}. {:?}{:?}",
+                    document_key, new_doc_orginal_id, new_doc_orginal_version
+                ),
+            }
             .into());
         }
 

@@ -10,7 +10,7 @@
     "jacs_agent_schema_version": "v1",
     "jacs_header_schema_version": "v1",
     "jacs_signature_schema_version": "v1",
-    "jacs_private_key_password": "testpassword", 
+    "jacs_private_key_password": "",
     "jacs_agent_id_and_version": "",
     "jacs_default_storage": "fs"
   }

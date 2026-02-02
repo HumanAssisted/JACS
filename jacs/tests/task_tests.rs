@@ -12,7 +12,7 @@ use jacs::agent::document::DocumentTraits;
 use serde_json::Value;
 mod utils;
 use utils::DOCTESTFILE;
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
+use utils::{load_local_document, load_test_agent_one, load_test_agent_two, raw_fixture};
 // use color_eyre::eyre::Result;
 use chrono::{Duration, Utc};
 
@@ -20,8 +20,8 @@ use chrono::{Duration, Utc};
 fn test_hai_fields_custom_schema_and_custom_document() {
     // cargo test   --test task_tests test_hai_fields_custom_schema_and_custom_document -- --nocapture
     let mut agent = load_test_agent_one();
-    let fixtures_dir = utils::find_fixtures_dir();
-    let schemas = [format!("{}/raw/custom.schema.json", fixtures_dir.display())];
+    let schema_path = raw_fixture("custom.schema.json").to_string_lossy().to_string();
+    let schemas = [schema_path.clone()];
     agent
         .load_custom_schemas(&schemas)
         .expect("Failed to load custom schemas");
@@ -32,7 +32,7 @@ fn test_hai_fields_custom_schema_and_custom_document() {
     let document_copy = agent.get_document(&document_key).unwrap();
     agent
         .validate_document_with_custom_schema(
-            &format!("{}/raw/custom.schema.json", fixtures_dir.display()),
+            &schema_path,
             document_copy.getvalue(),
         )
         .unwrap();
@@ -44,7 +44,6 @@ fn test_hai_fields_custom_schema_and_custom_document() {
 
 #[test]
 fn test_create_task_with_actions() {
-    let fixtures_dir = utils::find_fixtures_dir();
     // cargo test   --test task_tests test_create_task_with_actions -- --nocapture
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
@@ -63,7 +62,7 @@ fn test_create_task_with_actions() {
         .unwrap();
     let task_doc_key = task_doc.getkey();
 
-    let attachments = vec![format!("{}/raw/mobius.jpeg", fixtures_dir.display())];
+    let attachments = vec![raw_fixture("mobius.jpeg").to_string_lossy().to_string()];
     // create a message
     let content = json!("lets goooo");
     let mut to: Vec<String> = Vec::new();

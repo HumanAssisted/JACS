@@ -2,7 +2,6 @@ use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::SecurityTraits;
 use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
-use crate::crypt::private_key::ZeroizingVec;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -17,7 +16,7 @@ use tracing::{debug, error, info, warn};
 
 /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
-
+///
 /// The goal of fileloader is to prevent fileloading into arbitrary directories
 /// by centralizing all filesystem access
 /// Only an initilaized agent can perform some of the functions by calling isready()
@@ -285,10 +284,8 @@ impl FileLoader for Agent {
             self.config
                 .as_ref()
                 .ok_or_else(|| {
-                    format!(
-                        "fs_preload_keys failed: No custom_key_algorithm provided and agent config is missing. \
-                        Provide a key algorithm or ensure the agent has a valid configuration."
-                    )
+                    "fs_preload_keys failed: No custom_key_algorithm provided and agent config is missing. \
+                        Provide a key algorithm or ensure the agent has a valid configuration.".to_string()
                 })?
                 .get_key_algorithm()
                 .map_err(|e| {

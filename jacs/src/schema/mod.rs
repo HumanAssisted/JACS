@@ -1,3 +1,4 @@
+use crate::error::JacsError;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use crate::schema::utils::ValueExt;
 use chrono::prelude::*;
@@ -28,6 +29,26 @@ use utils::{DEFAULT_SCHEMA_STRINGS, EmbeddedSchemaResolver};
 use std::error::Error;
 use std::fmt;
 
+/// Builds a JSON Schema validator with standard JACS configuration.
+///
+/// This helper consolidates the repeated pattern of creating validators with
+/// Draft7 and the embedded schema resolver.
+///
+/// # Arguments
+/// * `schema` - The parsed JSON schema value to compile
+/// * `schema_name` - A descriptive name for error messages (e.g., "agentschema", "taskschema")
+///
+/// # Returns
+/// * `Ok(Validator)` - The compiled validator ready for use
+/// * `Err(JacsError)` - If schema compilation fails
+fn build_validator(schema: &Value, schema_name: &str) -> Result<Validator, JacsError> {
+    Validator::options()
+        .with_draft(Draft::Draft7)
+        .with_retriever(EmbeddedSchemaResolver::new())
+        .build(schema)
+        .map_err(|e| JacsError::SchemaError(format!("Failed to compile {}: {}", schema_name, e)))
+}
+
 // Custom error type
 #[derive(Debug)]
 pub struct ValidationError(pub String);
@@ -40,7 +61,10 @@ impl fmt::Display for ValidationError {
 
 impl Error for ValidationError {}
 
+// Schema validators are pre-compiled for future document types
+// They will be exposed as validation methods are added
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Schema {
     /// used to validate any JACS document
     pub headerschema: Validator,
@@ -97,8 +121,7 @@ impl Schema {
         let url = base_url.join(schema_url)?;
         let schema_value_result =
             schema_resolver.retrieve(&Uri::try_from(url.as_str().to_string())?);
-        let schema_value: Arc<Value>;
-        match schema_value_result {
+        let schema_value: Arc<Value> = match schema_value_result {
             Err(_) => {
                 let default_url =
                     Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")?;
@@ -108,10 +131,10 @@ impl Schema {
                     Ok(value) => value,
                     Err(e) => return Err(e.to_string().into()),
                 };
-                schema_value = Arc::new(result);
+                Arc::new(result)
             }
-            Ok(value) => schema_value = Arc::new(value),
-        }
+            Ok(value) => Arc::new(value),
+        };
 
         match schema_value.as_ref() {
             Value::Object(schema_map) => {
@@ -378,141 +401,22 @@ impl Schema {
         let programschema_result: Value = serde_json::from_str(programdata)?;
         let embeddingschema_result: Value = serde_json::from_str(embeddingdata)?;
 
-        let agentschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&agentschema_result)
-            .map_err(|_| format!("Failed to compile agentschema: {}", &agentversion_path))?;
-
-        let headerschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&headerchema_result)
-            .map_err(|_| format!("Failed to compile headerschema: {}", &header_path))?;
-
-        let signatureschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&signatureschema_result)
-            .map_err(|_| {
-                format!(
-                    "Failed to compile signatureschema: {}",
-                    &signatureversion_path
-                )
-            })?;
-
-        let jacsconfigschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&jacsconfigschema_result)
-            .map_err(|_| "Failed to compile jacsconfigschema")?;
-
-        let serviceschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&serviceschema_result)
-            .map_err(|_| format!("Failed to compile serviceschema: {}", &service_path))?;
-
-        let unitschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&unitschema_result)
-            .map_err(|_| format!("Failed to compile unitschema: {}", &unit_path))?;
-
-        let actionschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&actionschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(format!("Failed to compile actionschema: {}", &action_path).into());
-            }
-        };
-
-        let toolschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&toolschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => return Err(format!("Failed to compile toolschema: {}", &tool_path).into()),
-        };
-
-        let agreementschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&agreementschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(format!(
-                    "Failed to compile agreementschema: {}",
-                    &agreementversion_path
-                )
-                .into());
-            }
-        };
-
-        let evalschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&evalschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => return Err(format!("Failed to compile evalschema: {}", &eval_path).into()),
-        };
-
-        let nodeschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&nodeschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => return Err(format!("Failed to compile headerschema: {}", &node_path).into()),
-        };
-
-        let programschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&programschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(format!("Failed to compile headerschema: {}", &program_path).into());
-            }
-        };
-
-        let embeddingschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&embeddingschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(
-                    format!("Failed to compile embeddingschema: {}", &embedding_path).into(),
-                );
-            }
-        };
-
-        let contactschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&contactschema_result)
-            .map_err(|_| format!("Failed to compile contactschema: {}", &contact_path))?;
-
-        let taskschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&taskschema_result)
-            .map_err(|_| format!("Failed to compile taskschema: {}", &task_path))?;
-
-        let messageschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&messageschema_result)
-            .map_err(|_| format!("Failed to compile messageschema: {}", &message_path))?;
+        let agentschema = build_validator(&agentschema_result, &agentversion_path)?;
+        let headerschema = build_validator(&headerchema_result, &header_path)?;
+        let signatureschema = build_validator(&signatureschema_result, &signatureversion_path)?;
+        let jacsconfigschema = build_validator(&jacsconfigschema_result, "jacsconfigschema")?;
+        let serviceschema = build_validator(&serviceschema_result, &service_path)?;
+        let unitschema = build_validator(&unitschema_result, &unit_path)?;
+        let actionschema = build_validator(&actionschema_result, &action_path)?;
+        let toolschema = build_validator(&toolschema_result, &tool_path)?;
+        let agreementschema = build_validator(&agreementschema_result, &agreementversion_path)?;
+        let evalschema = build_validator(&evalschema_result, &eval_path)?;
+        let nodeschema = build_validator(&nodeschema_result, &node_path)?;
+        let programschema = build_validator(&programschema_result, &program_path)?;
+        let embeddingschema = build_validator(&embeddingschema_result, &embedding_path)?;
+        let contactschema = build_validator(&contactschema_result, &contact_path)?;
+        let taskschema = build_validator(&taskschema_result, &task_path)?;
+        let messageschema = build_validator(&messageschema_result, &message_path)?;
 
         Ok(Self {
             headerschema,
