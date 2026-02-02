@@ -41,9 +41,13 @@ Example:
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional, Union, List, Any
+
+# Configure module logger
+logger = logging.getLogger("jacs")
 
 # Import types
 from .types import (
@@ -209,8 +213,11 @@ def load(config_path: Optional[str] = None) -> AgentInfo:
     if config_path is None:
         config_path = "./jacs.config.json"
 
+    logger.debug("load() called with config_path=%s", config_path)
+
     # Check if config exists
     if not os.path.exists(config_path):
+        logger.error("Config file not found: %s", config_path)
         raise ConfigError(
             f"Config file not found: {config_path}\n"
             "Run 'jacs create' or call jacs.create() to create a new agent."
@@ -245,13 +252,17 @@ def load(config_path: Optional[str] = None) -> AgentInfo:
             public_key_path=os.path.join(key_dir, "jacs.public.pem"),
         )
 
+        logger.info("Agent loaded: id=%s, name=%s", agent_id, config.get("name"))
         return _agent_info
 
     except FileNotFoundError:
+        logger.error("Config file not found: %s", config_path)
         raise ConfigError(f"Config file not found: {config_path}")
     except json.JSONDecodeError as e:
+        logger.error("Invalid config file: %s", e)
         raise ConfigError(f"Invalid config file: {e}")
     except Exception as e:
+        logger.error("Failed to load agent: %s", e)
         raise JacsError(f"Failed to load agent: {e}")
 
 
@@ -425,6 +436,7 @@ def create_agreement(
         # Send to each agent for signing
     """
     agent = _get_agent()
+    logger.debug("create_agreement() called with %d agent_ids", len(agent_ids))
 
     # Convert to JSON string if needed
     if isinstance(document, SignedDocument):
@@ -442,8 +454,11 @@ def create_agreement(
             context,
             field_name,
         )
-        return _parse_signed_document(result)
+        signed_doc = _parse_signed_document(result)
+        logger.info("Agreement created: document_id=%s, signers=%s", signed_doc.document_id, agent_ids)
+        return signed_doc
     except Exception as e:
+        logger.error("Failed to create agreement: %s", e)
         raise JacsError(f"Failed to create agreement: {e}")
 
 
@@ -585,6 +600,7 @@ def sign_message(data: Any) -> SignedDocument:
         print(signed.raw)  # Send this to verify
     """
     agent = _get_agent()
+    logger.debug("sign_message() called with data type=%s", type(data).__name__)
 
     try:
         # Create a document with the data as payload
@@ -605,9 +621,12 @@ def sign_message(data: Any) -> SignedDocument:
             embed=None,
         )
 
-        return _parse_signed_document(result)
+        signed_doc = _parse_signed_document(result)
+        logger.info("Message signed: document_id=%s", signed_doc.document_id)
+        return signed_doc
 
     except Exception as e:
+        logger.error("Failed to sign message: %s", e)
         raise SigningError(f"Failed to sign message: {e}")
 
 
@@ -692,6 +711,7 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
             print(f"Invalid: {result.error}")
     """
     agent = _get_agent()
+    logger.debug("verify() called with document type=%s", type(document).__name__)
 
     # Convert to JSON string if needed
     if isinstance(document, SignedDocument):
@@ -708,10 +728,13 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
         # Parse to get signer info
         doc_data = json.loads(doc_str)
         sig_info = doc_data.get("jacsSignature", {})
+        signer_id = sig_info.get("agentId", sig_info.get("agentID", ""))
+
+        logger.info("Document verified: valid=%s, signer=%s", is_valid, signer_id)
 
         return VerificationResult(
             valid=is_valid,
-            signer_id=sig_info.get("agentId", sig_info.get("agentID", "")),
+            signer_id=signer_id,
             signer_public_key_hash=sig_info.get("publicKeyHash", ""),
             content_hash_valid=True,
             signature_valid=True,
@@ -719,6 +742,7 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
         )
 
     except Exception as e:
+        logger.warning("Verification failed: %s", e)
         return VerificationResult(
             valid=False,
             errors=[str(e)],

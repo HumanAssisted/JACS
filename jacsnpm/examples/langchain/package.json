@@ -1,0 +1,24 @@
+{
+  "name": "jacs-langchain-examples",
+  "version": "1.0.0",
+  "description": "LangChain + JACS TypeScript integration examples",
+  "type": "module",
+  "scripts": {
+    "basic": "tsx basic-agent.ts",
+    "callback": "tsx signing-callback.ts"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^0.3.0",
+    "@langchain/core": "^0.3.0",
+    "@langchain/langgraph": "^0.2.0",
+    "@langchain/openai": "^0.3.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@hai-ai/jacs": "file:../..",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
