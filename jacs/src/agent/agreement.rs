@@ -207,13 +207,13 @@ impl Agreement for Agent {
                     let merged_agents = subtract_vecs(&agents_vec, agentids);
                     *agents = json!(merged_agents);
                 } else {
-                    return Err("no agreement  agents  present".into());
+                    return Err("Agreement modification failed: no agents present in agreement".into());
                 }
             } else {
-                return Err("no agreement  agents present".into());
+                return Err("Agreement modification failed: agents field not found".into());
             }
         } else {
-            return Err("no agreement   present".into());
+            return Err("Agreement modification failed: no agreement field present".into());
         }
 
         let updated_document =
@@ -424,7 +424,7 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("check_agreement: agreement hashes don't match".into());
+            return Err("Agreement verification failed: agreement hashes do not match".into());
         }
 
         if let Some(jacs_agreement) = document.value.get(agreement_fieldname_key) {
@@ -437,7 +437,7 @@ impl Agreement for Agent {
 
             return Ok((question.to_string(), context.to_string()));
         }
-        Err("check_agreement: document has no agreement".into())
+        Err("Agreement verification failed: document has no agreement".into())
     }
 
     /// checking agreements requires you have the public key of each signatory
@@ -461,7 +461,7 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("check_agreement: agreement hashes don't match".into());
+            return Err("Agreement verification failed: agreement hashes do not match".into());
         }
 
         let unsigned = document.agreement_unsigned_agents(agreement_fieldname.clone())?;
@@ -533,7 +533,7 @@ impl Agreement for Agent {
             }
             return Ok("All signatures passed".to_string());
         }
-        Err("check_agreement: document has no agreement".into())
+        Err("Agreement verification failed: document has no agreement".into())
     }
 }
 

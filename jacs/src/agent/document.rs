@@ -57,7 +57,7 @@ impl JACSDocument {
         {
             return Ok(schema_str.to_string());
         }
-        Err("no schema in doc or schema is not a string".into())
+        Err("Schema extraction failed: no schema in doc or schema is not a string".into())
     }
 
     /// use this to get the name of the
@@ -128,7 +128,7 @@ impl JACSDocument {
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect());
         }
-        Err("no agreement or agents in agreement".into())
+        Err("Agreement lookup failed: no agreement or agents in agreement".into())
     }
 
     pub fn signing_agent(&self) -> Result<String, Box<dyn Error>> {
@@ -142,7 +142,7 @@ impl JACSDocument {
                 .ok_or_else(|| "'agentID' in signature is not a string".to_string())?
                 .to_string());
         }
-        Err("no agreement or signatures in agreement".into())
+        Err("Agreement lookup failed: no agreement or signatures in agreement".into())
     }
 
     pub fn signing_agent_str(&self) -> Result<&str, Box<dyn Error>> {
@@ -154,7 +154,7 @@ impl JACSDocument {
                 .as_str()
                 .ok_or_else(|| "'agentID' in signature is not a string".to_string())?);
         }
-        Err("no agreement or signatures in agreement".into())
+        Err("Agreement lookup failed: no agreement or signatures in agreement".into())
     }
 
     pub fn agreement_signed_agents(
@@ -183,7 +183,7 @@ impl JACSDocument {
             }
             return Ok(signed_agents);
         }
-        Err("no agreement or signatures in agreement".into())
+        Err("Agreement lookup failed: no agreement or signatures in agreement".into())
     }
 }
 

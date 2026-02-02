@@ -485,17 +485,17 @@ impl StorageDocumentTraits for MultiStorage {
         let id = value
             .get("jacsId")
             .and_then(|v| v.as_str())
-            .ok_or("Missing jacsId field")?
+            .ok_or("Document missing required field: jacsId")?
             .to_string();
         let version = value
             .get("jacsVersion")
             .and_then(|v| v.as_str())
-            .ok_or("Missing jacsVersion field")?
+            .ok_or("Document missing required field: jacsVersion")?
             .to_string();
         let jacs_type = value
             .get("jacsType")
             .and_then(|v| v.as_str())
-            .ok_or("Missing jacsType field")?
+            .ok_or("Document missing required field: jacsType")?
             .to_string();
 
         Ok(JACSDocument {
@@ -610,7 +610,7 @@ impl StorageDocumentTraits for MultiStorage {
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // Placeholder implementation
         // TODO: Implement proper document merging logic
-        Err("Document merging not yet implemented".into())
+        Err("Document merging not yet implemented: feature pending".into())
     }
 
     fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {

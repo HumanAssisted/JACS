@@ -1,6 +1,7 @@
 //! ML-DSA (FIPS-204) signature implementation for post-quantum security
 //! Uses ML-DSA-87 (security level 5)
 
+use super::constants::{ML_DSA_87_PRIVATE_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE, ML_DSA_87_SIGNATURE_SIZE};
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use fips204::ml_dsa_87;
 use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
@@ -25,12 +26,12 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {
     trace!(data_len = data.len(), "ML-DSA-87 signing starting");
     // Convert Vec<u8> to fixed-size array
-    let sk_array: [u8; 4896] = secret_key
+    let sk_array: [u8; ML_DSA_87_PRIVATE_KEY_SIZE] = secret_key
         .try_into()
         .map_err(|v: Vec<u8>| {
             format!(
-                "Invalid private key length for ML-DSA-87: expected 4896 bytes, got {} bytes",
-                v.len()
+                "Invalid private key length for ML-DSA-87: expected {} bytes, got {} bytes",
+                ML_DSA_87_PRIVATE_KEY_SIZE, v.len()
             )
         })?;
     let sk = ml_dsa_87::PrivateKey::try_from_bytes(sk_array)?;
@@ -52,23 +53,23 @@ pub fn verify_string(
         "ML-DSA-87 verification starting"
     );
     // Convert Vec<u8> to fixed-size array
-    let pk_array: [u8; 2592] = public_key
+    let pk_array: [u8; ML_DSA_87_PUBLIC_KEY_SIZE] = public_key
         .try_into()
         .map_err(|v: Vec<u8>| {
             format!(
-                "Invalid public key length for ML-DSA-87: expected 2592 bytes, got {} bytes",
-                v.len()
+                "Invalid public key length for ML-DSA-87: expected {} bytes, got {} bytes",
+                ML_DSA_87_PUBLIC_KEY_SIZE, v.len()
             )
         })?;
     let pk = ml_dsa_87::PublicKey::try_from_bytes(pk_array)?;
 
     let sig_bytes = B64.decode(signature_base64)?;
-    let sig_array: [u8; 4627] = sig_bytes
+    let sig_array: [u8; ML_DSA_87_SIGNATURE_SIZE] = sig_bytes
         .try_into()
         .map_err(|v: Vec<u8>| {
             format!(
-                "Invalid signature length for ML-DSA-87: expected 4627 bytes, got {} bytes",
-                v.len()
+                "Invalid signature length for ML-DSA-87: expected {} bytes, got {} bytes",
+                ML_DSA_87_SIGNATURE_SIZE, v.len()
             )
         })?;
 

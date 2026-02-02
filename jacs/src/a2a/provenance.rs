@@ -239,7 +239,7 @@ fn verify_parent_signatures(
 ) -> Result<(bool, Vec<ParentVerificationResult>), Box<dyn Error>> {
     let parents = match wrapped_artifact.get("jacsParentSignatures") {
         Some(Value::Array(arr)) => arr,
-        Some(_) => return Err("jacsParentSignatures must be an array".into()),
+        Some(_) => return Err("Invalid jacsParentSignatures: must be an array".into()),
         None => return Ok((true, vec![])), // No parents = valid chain
     };
 

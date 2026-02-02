@@ -73,22 +73,22 @@ pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, String> {
             map.insert(k.trim().to_string(), v.trim().to_string());
         }
     }
-    let v = map.get("v").cloned().ok_or("missing v field")?;
+    let v = map.get("v").cloned().ok_or("Missing v field")?;
     let jacs_agent_id = map
         .get("jacs_agent_id")
         .cloned()
-        .ok_or("missing jacs_agent_id")?;
-    let alg = map.get("alg").cloned().ok_or("missing alg")?;
-    let enc_val = map.get("enc").cloned().ok_or("missing enc")?;
+        .ok_or("Missing jacs_agent_id field")?;
+    let alg = map.get("alg").cloned().ok_or("Missing alg field")?;
+    let enc_val = map.get("enc").cloned().ok_or("Missing enc field")?;
     let enc = match enc_val.as_str() {
         "base64" => DigestEncoding::Base64,
         "hex" => DigestEncoding::Hex,
-        _ => return Err(format!("unsupported enc: {}", enc_val)),
+        _ => return Err(format!("Unsupported encoding: {}", enc_val)),
     };
     let digest = map
         .get("jac_public_key_hash")
         .cloned()
-        .ok_or("missing jac_public_key_hash")?;
+        .ok_or("Missing jac_public_key_hash field")?;
     Ok(AgentTxtFields {
         v,
         jacs_agent_id,
@@ -185,14 +185,14 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, String> {
     let mut opts = ResolverOpts::default();
     opts.validate = true;
     let resolver = Resolver::new(ResolverConfig::default(), opts)
-        .map_err(|e| format!("resolver init: {e}"))?;
+        .map_err(|e| format!("Resolver init failed: {e}"))?;
     let resp = resolver
         .txt_lookup(owner)
-        .map_err(|e| format!("lookup: {e}"))?;
+        .map_err(|e| format!("DNS lookup failed: {e}"))?;
     let mut s = String::new();
     for rr in resp.iter() {
         for part in rr.txt_data() {
-            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| format!("utf8: {e}"))?);
+            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| format!("UTF-8 decode failed: {e}"))?);
         }
     }
     Ok(s)
@@ -205,14 +205,14 @@ pub fn resolve_txt_insecure(owner: &str) -> Result<String, String> {
     let mut opts = ResolverOpts::default();
     opts.validate = false; // allow unsigned answers
     let resolver = Resolver::new(ResolverConfig::default(), opts)
-        .map_err(|e| format!("resolver init: {e}"))?;
+        .map_err(|e| format!("Resolver init failed: {e}"))?;
     let resp = resolver
         .txt_lookup(owner)
-        .map_err(|e| format!("lookup: {e}"))?;
+        .map_err(|e| format!("DNS lookup failed: {e}"))?;
     let mut s = String::new();
     for rr in resp.iter() {
         for part in rr.txt_data() {
-            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| format!("utf8: {e}"))?);
+            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| format!("UTF-8 decode failed: {e}"))?);
         }
     }
     Ok(s)
@@ -239,10 +239,10 @@ pub fn verify_pubkey_via_dns_or_embedded(
             Ok(txt) => {
                 let f = parse_agent_txt(&txt)?;
                 if f.v != "hai.ai" {
-                    return Err(format!("unexpected v field: {}", f.v));
+                    return Err(format!("Unexpected v field: {}", f.v));
                 }
                 if f.jacs_agent_id != agent_id {
-                    return Err("agent id mismatch".to_string());
+                    return Err("Agent ID mismatch".to_string());
                 }
                 let ok = match f.enc {
                     DigestEncoding::Base64 => f.digest == local_b64,
@@ -251,7 +251,7 @@ pub fn verify_pubkey_via_dns_or_embedded(
                 if ok {
                     return Ok(());
                 } else {
-                    return Err("DNS fingerprint mismatch".to_string());
+                    return Err("DNS fingerprint mismatch: digest does not match local public key".to_string());
                 }
             }
             Err(_e) => {
@@ -265,17 +265,17 @@ pub fn verify_pubkey_via_dns_or_embedded(
                     {
                         return Ok(());
                     }
-                    return Err("embedded fingerprint mismatch (embedded present but does not match local public key)".to_string());
+                    return Err("Embedded fingerprint mismatch: does not match local public key".to_string());
                 }
                 // Neither DNS nor embedded available
                 if strict_dns {
                     return Err(format!(
-                        "strict DNSSEC validation failed for {} (TXT not authenticated). Enable DNSSEC and publish DS at registrar",
+                        "Strict DNSSEC validation failed for {}: TXT not authenticated. Enable DNSSEC and publish DS at registrar",
                         owner
                     ));
                 } else {
                     return Err(format!(
-                        "DNS TXT lookup failed for {} (record missing or not yet propagated)",
+                        "DNS TXT lookup failed for {}: record missing or not yet propagated",
                         owner
                     ));
                 }
@@ -297,5 +297,5 @@ pub fn verify_pubkey_via_dns_or_embedded(
         );
     }
 
-    Err("DNS TXT lookup required (domain configured) or provide embedded fingerprint".to_string())
+    Err("DNS TXT lookup required: domain configured or provide embedded fingerprint".to_string())
 }

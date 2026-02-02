@@ -122,12 +122,12 @@ fn load_path_agent(filepath: String) -> Agent {
     // Pass ONLY the logical ID (without .json) to fs_agent_load
     let agent_string = agent
         .fs_agent_load(agent_id) // Pass ID string
-        .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))
-        .expect("Agent file loading failed");
+        .map_err(|e| format!("Agent file loading failed for ID '{}': {}", agent_id, e))
+        .expect("Agent file loading failed: could not load from storage");
 
     agent
         .load(&agent_string)
-        .expect("agent loading from string failed");
+        .expect("Agent loading failed: could not parse agent data");
     debug!(
         "[load_path_agent] Agent loaded and validated successfully using ID: {}",
         agent_id
@@ -140,7 +140,7 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
     if let Some(file) = agentfile {
         Ok(load_path_agent(file.to_string()))
     } else {
-        Err("No agent file provided".into())
+        Err("No agent file provided: specify an agent file path".into())
     }
 }
 
@@ -163,7 +163,7 @@ pub fn load_agent_with_dns_strict(
 
     let agent_string = agent
         .fs_agent_load(agent_id)
-        .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))?;
+        .map_err(|e| format!("Agent file loading failed for ID '{}': {}", agent_id, e))?;
 
     agent.load(&agent_string)?;
     Ok(agent)

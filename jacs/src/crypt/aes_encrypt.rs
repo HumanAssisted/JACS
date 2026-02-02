@@ -1,3 +1,11 @@
+use crate::crypt::constants::{
+    AES_256_KEY_SIZE, AES_GCM_NONCE_SIZE, DIGIT_POOL_SIZE, LOWERCASE_POOL_SIZE,
+    MAX_CONSECUTIVE_IDENTICAL_CHARS, MAX_SEQUENTIAL_CHARS, MIN_ENCRYPTED_HEADER_SIZE,
+    MIN_ENTROPY_BITS, MIN_PASSWORD_LENGTH, MODERATE_UNIQUENESS_PENALTY,
+    MODERATE_UNIQUENESS_THRESHOLD, PBKDF2_ITERATIONS, PBKDF2_SALT_SIZE, SEVERE_UNIQUENESS_PENALTY,
+    SEVERE_UNIQUENESS_THRESHOLD, SINGLE_CLASS_MIN_ENTROPY_BITS, SPECIAL_CHAR_POOL_SIZE,
+    UPPERCASE_POOL_SIZE,
+};
 use crate::crypt::private_key::ZeroizingVec;
 use crate::error::JacsError;
 use crate::storage::jenv::get_required_env_var;
@@ -10,19 +18,6 @@ use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
 use sha2::Sha256;
 use zeroize::Zeroize;
-
-/// Number of PBKDF2 iterations for key derivation.
-/// 100,000 iterations provides reasonable security against brute-force attacks.
-const PBKDF2_ITERATIONS: u32 = 100_000;
-
-/// Minimum password length for key encryption.
-const MIN_PASSWORD_LENGTH: usize = 8;
-
-/// Minimum entropy bits required for a password.
-/// 28 bits provides reasonable protection against offline attacks when combined
-/// with PBKDF2's 100k iterations (which effectively adds ~17 bits of work factor).
-/// This threshold allows reasonable 8-character passwords with some variety.
-const MIN_ENTROPY_BITS: f64 = 28.0;
 
 /// Common weak passwords that should be rejected regardless of calculated entropy.
 const WEAK_PASSWORDS: &[&str] = &[
@@ -69,16 +64,16 @@ fn calculate_entropy(password: &str) -> f64 {
 
     let mut pool_size = 0;
     if has_lower {
-        pool_size += 26;
+        pool_size += LOWERCASE_POOL_SIZE;
     }
     if has_upper {
-        pool_size += 26;
+        pool_size += UPPERCASE_POOL_SIZE;
     }
     if has_digit {
-        pool_size += 10;
+        pool_size += DIGIT_POOL_SIZE;
     }
     if has_special {
-        pool_size += 32; // Common special characters
+        pool_size += SPECIAL_CHAR_POOL_SIZE;
     }
 
     // At minimum, pool size is the number of unique characters
@@ -96,10 +91,10 @@ fn calculate_entropy(password: &str) -> f64 {
 
     // Apply penalty for low uniqueness (many repeated characters)
     let uniqueness_ratio = unique_chars.len() as f64 / len;
-    let uniqueness_penalty = if uniqueness_ratio < 0.5 {
-        0.5 // Severe penalty for mostly repeated chars
-    } else if uniqueness_ratio < 0.75 {
-        0.75 // Moderate penalty
+    let uniqueness_penalty = if uniqueness_ratio < SEVERE_UNIQUENESS_THRESHOLD {
+        SEVERE_UNIQUENESS_PENALTY
+    } else if uniqueness_ratio < MODERATE_UNIQUENESS_THRESHOLD {
+        MODERATE_UNIQUENESS_PENALTY
     } else {
         1.0 // No penalty
     };
@@ -115,7 +110,7 @@ fn has_excessive_repetition(password: &str) -> bool {
     for i in 1..chars.len() {
         if chars[i] == chars[i - 1] {
             consecutive += 1;
-            if consecutive >= 4 {
+            if consecutive >= MAX_CONSECUTIVE_IDENTICAL_CHARS {
                 return true;
             }
         } else {
@@ -139,13 +134,13 @@ fn has_sequential_pattern(password: &str) -> bool {
         if curr == prev + 1 {
             ascending += 1;
             descending = 1;
-            if ascending >= 5 {
+            if ascending >= MAX_SEQUENTIAL_CHARS {
                 return true;
             }
         } else if curr == prev - 1 {
             descending += 1;
             ascending = 1;
-            if descending >= 5 {
+            if descending >= MAX_SEQUENTIAL_CHARS {
                 return true;
             }
         } else {
@@ -230,10 +225,10 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Single character class passwords are allowed if they have sufficient entropy
     // through length (e.g., a long lowercase-only passphrase)
     // The 28-bit minimum entropy check above already provides baseline security
-    // We use 35 bits as threshold for single-class passwords, which is equivalent to
-    // ~11 lowercase characters or ~8 alphanumeric characters - reasonable for internal use
+    // We use SINGLE_CLASS_MIN_ENTROPY_BITS as threshold for single-class passwords,
+    // which is equivalent to ~11 lowercase characters or ~8 alphanumeric characters
     let char_classes = count_character_classes(trimmed);
-    if char_classes < 2 && entropy < 35.0 {
+    if char_classes < 2 && entropy < SINGLE_CLASS_MIN_ENTROPY_BITS {
         return Err(JacsError::CryptoError(format!(
             "Password uses only {} character class(es) with insufficient length. Use at least 2 character types (uppercase, lowercase, digits, symbols) or use a longer password.",
             char_classes
@@ -244,8 +239,8 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Derive a 256-bit key from a password using PBKDF2-HMAC-SHA256.
-fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; 32] {
-    let mut key = [0u8; 32];
+fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZE] {
+    let mut key = [0u8; AES_256_KEY_SIZE];
     pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, PBKDF2_ITERATIONS, &mut key);
     key
 }
@@ -269,7 +264,7 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
     validate_password(&password)?;
 
     // Generate a random salt
-    let mut salt = [0u8; 16];
+    let mut salt = [0u8; PBKDF2_SALT_SIZE];
     rand::rng().fill(&mut salt[..]);
 
     // Derive key using PBKDF2-HMAC-SHA256
@@ -352,16 +347,17 @@ pub fn decrypt_private_key_secure(
     // Password strength is validated only during encrypt_private_key()
     let password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
 
-    if encrypted_key_with_salt_and_nonce.len() < 16 + 12 {
+    if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
-            "Encrypted private key data is too short: expected at least 28 bytes (16 salt + 12 nonce), got {} bytes",
+            "Encrypted private key data is too short: expected at least {} bytes ({} salt + {} nonce), got {} bytes",
+            MIN_ENCRYPTED_HEADER_SIZE, PBKDF2_SALT_SIZE, AES_GCM_NONCE_SIZE,
             encrypted_key_with_salt_and_nonce.len()
         )).into());
     }
 
     // Split the data into salt, nonce, and encrypted key
-    let (salt, rest) = encrypted_key_with_salt_and_nonce.split_at(16);
-    let (nonce, encrypted_data) = rest.split_at(12);
+    let (salt, rest) = encrypted_key_with_salt_and_nonce.split_at(PBKDF2_SALT_SIZE);
+    let (nonce, encrypted_data) = rest.split_at(AES_GCM_NONCE_SIZE);
 
     // Derive key using PBKDF2-HMAC-SHA256
     let mut key = derive_key_from_password(&password, salt);

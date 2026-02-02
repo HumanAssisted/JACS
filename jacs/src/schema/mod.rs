@@ -263,7 +263,7 @@ impl Schema {
             return Ok(());
         }
 
-        Err("properies map failed".into())
+        Err("Properties map failed: could not extract from schema".into())
     }
 
     fn process_field_value(
@@ -577,7 +577,7 @@ impl Schema {
         {
             return Ok(schema_str.to_string());
         }
-        Err("no schema in doc or schema is not a string".into())
+        Err("Schema extraction failed: no schema in doc or schema is not a string".into())
     }
 
     /// use this to get the name of the

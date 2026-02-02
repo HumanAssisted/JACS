@@ -1,3 +1,4 @@
+use super::constants::RSA_KEY_BITS;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
@@ -10,15 +11,10 @@ use rsa::{RsaPrivateKey, RsaPublicKey};
 use signature::{RandomizedSigner, SignatureEncoding, Verifier};
 use tracing::{debug, trace, warn};
 
-/// best for pure Rust, least secure
-// Use smaller key size for tests, larger for production
-static BITSOFBITS: usize = 4096; // Production value
-//static BITSOFBITS: usize = 2048;
-
 /// returns public, public_filepath, private, private_filepath
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let mut rng = OsRng;
-    let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS)
+    let private_key = RsaPrivateKey::new(&mut rng, RSA_KEY_BITS)
         .map_err(|e| format!("Failed to generate RSA key: {}", e))?;
     let public_key = RsaPublicKey::from(&private_key);
 
@@ -97,12 +93,13 @@ pub fn verify_string(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypt::constants::RSA_TEST_KEY_BITS;
 
     // Use smaller key size for tests to speed up key generation
-    // Production code uses 4096 bits but tests can use 2048 for speed
+    // Production code uses RSA_KEY_BITS (4096) but tests use RSA_TEST_KEY_BITS (2048) for speed
     fn generate_test_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
         let mut rng = OsRng;
-        let private_key = RsaPrivateKey::new(&mut rng, 2048)
+        let private_key = RsaPrivateKey::new(&mut rng, RSA_TEST_KEY_BITS)
             .map_err(|e| format!("Failed to generate RSA key: {}", e))?;
         let public_key = RsaPublicKey::from(&private_key);
 

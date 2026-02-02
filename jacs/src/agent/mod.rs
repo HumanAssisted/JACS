@@ -14,7 +14,7 @@ use crate::crypt::hash::hash_public_key;
 use crate::error::JacsError;
 use crate::storage::MultiStorage;
 
-use crate::config::{Config, find_config, load_config};
+use crate::config::{Config, find_config, load_config, load_config_12factor};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::crypt::private_key::ZeroizingVec;
@@ -513,7 +513,7 @@ impl Agent {
                     return Err(e.into());
                 }
             } else if required {
-                return Err("domain required for DNS validation".into());
+                return Err("DNS validation failed: domain required but not configured".into());
             }
         } else {
             // DNS not validated -> rely on embedded fingerprint
@@ -915,5 +915,406 @@ impl Agent {
         self.value = Some(instance.clone());
         self.verify_self_signature()?;
         Ok(instance)
+    }
+
+    /// Returns an `AgentBuilder` for constructing an `Agent` with a fluent API.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use jacs::agent::Agent;
+    ///
+    /// // Build an agent with default v1 versions
+    /// let agent = Agent::builder().build()?;
+    ///
+    /// // Build an agent with custom configuration
+    /// let agent = Agent::builder()
+    ///     .config_path("path/to/jacs.config.json")
+    ///     .dns_strict(true)
+    ///     .build()?;
+    ///
+    /// // Build an agent with explicit versions
+    /// let agent = Agent::builder()
+    ///     .agent_version("v1")
+    ///     .header_version("v1")
+    ///     .signature_version("v1")
+    ///     .build()?;
+    /// ```
+    pub fn builder() -> AgentBuilder {
+        AgentBuilder::new()
+    }
+}
+
+/// A builder for constructing `Agent` instances with a fluent API.
+///
+/// This provides a more ergonomic way to create agents compared to calling
+/// `Agent::new()` directly, with sensible defaults for common use cases.
+///
+/// # Defaults
+/// - `agent_version`: "v1"
+/// - `header_version`: "v1"
+/// - `signature_version`: "v1"
+/// - `dns_strict`: false
+/// - `dns_validate`: None (derived from config/domain presence)
+/// - `dns_required`: None (derived from config/domain presence)
+///
+/// # Example
+/// ```rust,ignore
+/// use jacs::agent::AgentBuilder;
+///
+/// // Simplest usage - all defaults
+/// let agent = AgentBuilder::new().build()?;
+///
+/// // With config file
+/// let agent = AgentBuilder::new()
+///     .config_path("/path/to/config.json")
+///     .build()?;
+///
+/// // With inline config
+/// let config = Config::with_defaults();
+/// let agent = AgentBuilder::new()
+///     .config(config)
+///     .build()?;
+/// ```
+#[derive(Debug, Default)]
+pub struct AgentBuilder {
+    agent_version: Option<String>,
+    header_version: Option<String>,
+    signature_version: Option<String>,
+    config_path: Option<String>,
+    config: Option<Config>,
+    dns_strict: Option<bool>,
+    dns_validate: Option<bool>,
+    dns_required: Option<bool>,
+}
+
+impl AgentBuilder {
+    /// Creates a new `AgentBuilder` with default values.
+    ///
+    /// Default versions are all "v1".
+    pub fn new() -> Self {
+        Self {
+            agent_version: None,
+            header_version: None,
+            signature_version: None,
+            config_path: None,
+            config: None,
+            dns_strict: None,
+            dns_validate: None,
+            dns_required: None,
+        }
+    }
+
+    /// Sets the agent schema version (default: "v1").
+    pub fn agent_version(mut self, version: &str) -> Self {
+        self.agent_version = Some(version.to_string());
+        self
+    }
+
+    /// Sets the header schema version (default: "v1").
+    pub fn header_version(mut self, version: &str) -> Self {
+        self.header_version = Some(version.to_string());
+        self
+    }
+
+    /// Sets the signature schema version (default: "v1").
+    pub fn signature_version(mut self, version: &str) -> Self {
+        self.signature_version = Some(version.to_string());
+        self
+    }
+
+    /// Sets all schema versions at once (agent, header, signature).
+    ///
+    /// This is a convenience method for setting all versions to the same value.
+    pub fn all_versions(mut self, version: &str) -> Self {
+        self.agent_version = Some(version.to_string());
+        self.header_version = Some(version.to_string());
+        self.signature_version = Some(version.to_string());
+        self
+    }
+
+    /// Sets the path to a JACS config file to load.
+    ///
+    /// If set, the config will be loaded from this path during `build()`.
+    /// This takes precedence over any config set via `config()`.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let agent = Agent::builder()
+    ///     .config_path("./jacs.config.json")
+    ///     .build()?;
+    /// ```
+    pub fn config_path(mut self, path: &str) -> Self {
+        self.config_path = Some(path.to_string());
+        self
+    }
+
+    /// Sets a pre-built config directly.
+    ///
+    /// Note: If `config_path()` is also set, the path takes precedence
+    /// and this config will be ignored.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let config = Config::with_defaults();
+    /// let agent = Agent::builder()
+    ///     .config(config)
+    ///     .build()?;
+    /// ```
+    pub fn config(mut self, config: Config) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    /// Sets whether DNS validation should be strict.
+    ///
+    /// When strict, DNS verification must succeed (no fallback to embedded fingerprint).
+    pub fn dns_strict(mut self, strict: bool) -> Self {
+        self.dns_strict = Some(strict);
+        self
+    }
+
+    /// Sets whether DNS validation is enabled.
+    ///
+    /// If None, DNS validation is derived from config/domain presence.
+    pub fn dns_validate(mut self, enabled: bool) -> Self {
+        self.dns_validate = Some(enabled);
+        self
+    }
+
+    /// Sets whether DNS validation is required.
+    ///
+    /// When required, the agent must have a domain and DNS validation must succeed.
+    pub fn dns_required(mut self, required: bool) -> Self {
+        self.dns_required = Some(required);
+        self
+    }
+
+    /// Builds the `Agent` with the configured options.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Schema initialization fails
+    /// - Config file loading fails (if `config_path` was set)
+    /// - Storage initialization fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let agent = Agent::builder()
+    ///     .config_path("./jacs.config.json")
+    ///     .dns_strict(true)
+    ///     .build()?;
+    /// ```
+    pub fn build(self) -> Result<Agent, JacsError> {
+        // Use defaults if not specified
+        let agent_version = self.agent_version.unwrap_or_else(|| "v1".to_string());
+        let header_version = self.header_version.unwrap_or_else(|| "v1".to_string());
+        let signature_version = self.signature_version.unwrap_or_else(|| "v1".to_string());
+
+        // Initialize schema
+        let schema = Schema::new(&agent_version, &header_version, &signature_version)
+            .map_err(|e| JacsError::SchemaError(format!("Failed to initialize schema: {}", e)))?;
+
+        // Load config
+        let config = if let Some(path) = self.config_path {
+            // Load from path using 12-Factor compliant loading
+            Some(load_config_12factor(Some(&path)).map_err(|e| {
+                JacsError::ConfigError(format!("Failed to load config from '{}': {}", path, e))
+            })?)
+        } else if let Some(cfg) = self.config {
+            // Use provided config
+            Some(cfg)
+        } else {
+            // Use 12-Factor loading with defaults + env vars
+            Some(load_config_12factor(None).map_err(|e| {
+                JacsError::ConfigError(format!("Failed to load default config: {}", e))
+            })?)
+        };
+
+        // Initialize storage
+        let storage = MultiStorage::default_new().map_err(|e| {
+            JacsError::ConfigError(format!("Failed to initialize storage: {}", e))
+        })?;
+
+        let document_schemas = Arc::new(Mutex::new(HashMap::new()));
+
+        // Create the agent
+        let mut agent = Agent {
+            schema,
+            value: None,
+            config,
+            storage,
+            document_schemas,
+            id: None,
+            version: None,
+            key_algorithm: None,
+            public_key: None,
+            private_key: None,
+            dns_strict: self.dns_strict.unwrap_or(false),
+            dns_validate_enabled: self.dns_validate,
+            dns_required: self.dns_required,
+        };
+
+        // Apply DNS settings if specified
+        if let Some(strict) = self.dns_strict {
+            agent.set_dns_strict(strict);
+        }
+        if let Some(validate) = self.dns_validate {
+            agent.set_dns_validate(validate);
+        }
+        if let Some(required) = self.dns_required {
+            agent.set_dns_required(required);
+        }
+
+        Ok(agent)
+    }
+
+    /// Builds an `Agent` and loads it from the specified agent ID.
+    ///
+    /// This is a convenience method that combines `build()` with `load_by_id()`.
+    ///
+    /// # Arguments
+    /// * `agent_id` - The agent ID in format "uuid:version_uuid"
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let agent = Agent::builder()
+    ///     .config_path("./jacs.config.json")
+    ///     .build_and_load("123e4567-e89b-12d3-a456-426614174000:123e4567-e89b-12d3-a456-426614174001")?;
+    /// ```
+    pub fn build_and_load(self, agent_id: &str) -> Result<Agent, JacsError> {
+        let mut agent = self.build()?;
+        agent.load_by_id(agent_id.to_string()).map_err(|e| {
+            JacsError::AgentError(format!("Failed to load agent '{}': {}", agent_id, e))
+        })?;
+        Ok(agent)
+    }
+}
+
+#[cfg(test)]
+mod builder_tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_builder_default_values() {
+        // Build an agent with all defaults
+        let agent = Agent::builder().build().expect("Should build with defaults");
+
+        // Verify the agent was created (not loaded, so no value)
+        assert!(agent.get_value().is_none());
+        // Config should be loaded
+        assert!(agent.config.is_some());
+    }
+
+    #[test]
+    fn test_agent_builder_new_equals_default() {
+        // AgentBuilder::new() and AgentBuilder::default() should produce equivalent builders
+        let builder_new = AgentBuilder::new();
+        let builder_default = AgentBuilder::default();
+
+        // Both should have None for all fields
+        assert!(builder_new.agent_version.is_none());
+        assert!(builder_new.header_version.is_none());
+        assert!(builder_new.signature_version.is_none());
+        assert!(builder_new.config_path.is_none());
+        assert!(builder_new.config.is_none());
+        assert!(builder_new.dns_strict.is_none());
+        assert!(builder_new.dns_validate.is_none());
+        assert!(builder_new.dns_required.is_none());
+
+        assert!(builder_default.agent_version.is_none());
+        assert!(builder_default.header_version.is_none());
+        assert!(builder_default.signature_version.is_none());
+        assert!(builder_default.config_path.is_none());
+        assert!(builder_default.config.is_none());
+        assert!(builder_default.dns_strict.is_none());
+        assert!(builder_default.dns_validate.is_none());
+        assert!(builder_default.dns_required.is_none());
+    }
+
+    #[test]
+    fn test_agent_builder_custom_versions() {
+        // Build an agent with custom versions
+        let agent = Agent::builder()
+            .agent_version("v1")
+            .header_version("v1")
+            .signature_version("v1")
+            .build()
+            .expect("Should build with custom versions");
+
+        // Verify the agent was created
+        assert!(agent.config.is_some());
+    }
+
+    #[test]
+    fn test_agent_builder_all_versions() {
+        // Test the all_versions convenience method
+        let builder = AgentBuilder::new().all_versions("v1");
+
+        assert_eq!(builder.agent_version, Some("v1".to_string()));
+        assert_eq!(builder.header_version, Some("v1".to_string()));
+        assert_eq!(builder.signature_version, Some("v1".to_string()));
+    }
+
+    #[test]
+    fn test_agent_builder_dns_settings() {
+        // Build an agent with DNS settings
+        let agent = Agent::builder()
+            .dns_strict(true)
+            .dns_validate(true)
+            .dns_required(false)
+            .build()
+            .expect("Should build with DNS settings");
+
+        // Verify DNS settings were applied
+        assert!(agent.dns_strict);
+        assert_eq!(agent.dns_validate_enabled, Some(true));
+        assert_eq!(agent.dns_required, Some(false));
+    }
+
+    #[test]
+    fn test_agent_builder_with_config() {
+        // Build an agent with a direct config
+        let config = Config::with_defaults();
+        let agent = Agent::builder()
+            .config(config)
+            .build()
+            .expect("Should build with config");
+
+        // Verify config was used
+        assert!(agent.config.is_some());
+    }
+
+    #[test]
+    fn test_agent_builder_fluent_api() {
+        // Verify the fluent API returns Self at each step
+        let agent = Agent::builder()
+            .agent_version("v1")
+            .header_version("v1")
+            .signature_version("v1")
+            .dns_strict(false)
+            .dns_validate(true)
+            .build()
+            .expect("Should build with fluent API");
+
+        assert!(agent.config.is_some());
+    }
+
+    #[test]
+    fn test_agent_builder_method_exists() {
+        // Verify Agent::builder() returns an AgentBuilder
+        let builder = Agent::builder();
+        assert!(builder.agent_version.is_none());
+    }
+
+    #[test]
+    fn test_agent_builder_config_path_invalid() {
+        // Build with an invalid config path should fail
+        let result = Agent::builder()
+            .config_path("/nonexistent/path/to/config.json")
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("config"));
     }
 }

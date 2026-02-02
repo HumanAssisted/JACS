@@ -88,7 +88,7 @@ pub fn init_metrics(
             endpoint: _,
             headers: _,
         } => {
-            Err("otlp-metrics feature is not enabled; rebuild with --features otlp-metrics".into())
+            Err("OTLP metrics feature not enabled: rebuild with --features otlp-metrics".into())
         }
 
         MetricsDestination::File { path: _ } => {

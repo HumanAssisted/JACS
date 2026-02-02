@@ -197,7 +197,178 @@ impl Default for Config {
     }
 }
 
+/// Builder for creating Config instances with a fluent API.
+///
+/// # Example
+/// ```rust,ignore
+/// let config = Config::builder()
+///     .key_algorithm("Ed25519")
+///     .key_directory("/custom/keys")
+///     .data_directory("/custom/data")
+///     .use_security(true)
+///     .build();
+/// ```
+#[derive(Debug, Default)]
+pub struct ConfigBuilder {
+    agent_id_and_version: Option<String>,
+    key_algorithm: Option<String>,
+    private_key_filename: Option<String>,
+    public_key_filename: Option<String>,
+    key_directory: Option<String>,
+    data_directory: Option<String>,
+    default_storage: Option<String>,
+    use_security: Option<bool>,
+    agent_domain: Option<String>,
+    dns_validate: Option<bool>,
+    dns_strict: Option<bool>,
+    dns_required: Option<bool>,
+    observability: Option<ObservabilityConfig>,
+}
+
+impl ConfigBuilder {
+    /// Create a new ConfigBuilder with no values set.
+    /// All fields will use sensible defaults when `build()` is called.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the agent ID and version (format: "UUID:UUID").
+    pub fn agent_id_and_version(mut self, id_version: &str) -> Self {
+        self.agent_id_and_version = Some(id_version.to_string());
+        self
+    }
+
+    /// Set the key algorithm (e.g., "RSA-PSS", "Ed25519", "pq2025").
+    pub fn key_algorithm(mut self, algo: &str) -> Self {
+        self.key_algorithm = Some(algo.to_string());
+        self
+    }
+
+    /// Set the private key filename.
+    pub fn private_key_filename(mut self, filename: &str) -> Self {
+        self.private_key_filename = Some(filename.to_string());
+        self
+    }
+
+    /// Set the public key filename.
+    pub fn public_key_filename(mut self, filename: &str) -> Self {
+        self.public_key_filename = Some(filename.to_string());
+        self
+    }
+
+    /// Set the directory where keys are stored.
+    pub fn key_directory(mut self, dir: &str) -> Self {
+        self.key_directory = Some(dir.to_string());
+        self
+    }
+
+    /// Set the directory where data is stored.
+    pub fn data_directory(mut self, dir: &str) -> Self {
+        self.data_directory = Some(dir.to_string());
+        self
+    }
+
+    /// Set the default storage backend (e.g., "fs", "memory").
+    pub fn default_storage(mut self, storage: &str) -> Self {
+        self.default_storage = Some(storage.to_string());
+        self
+    }
+
+    /// Enable or disable security features.
+    pub fn use_security(mut self, enabled: bool) -> Self {
+        self.use_security = Some(enabled);
+        self
+    }
+
+    /// Set the agent domain for DNS validation.
+    pub fn agent_domain(mut self, domain: &str) -> Self {
+        self.agent_domain = Some(domain.to_string());
+        self
+    }
+
+    /// Enable or disable DNS validation.
+    pub fn dns_validate(mut self, enabled: bool) -> Self {
+        self.dns_validate = Some(enabled);
+        self
+    }
+
+    /// Enable or disable strict DNS mode.
+    pub fn dns_strict(mut self, enabled: bool) -> Self {
+        self.dns_strict = Some(enabled);
+        self
+    }
+
+    /// Enable or disable DNS requirement.
+    pub fn dns_required(mut self, required: bool) -> Self {
+        self.dns_required = Some(required);
+        self
+    }
+
+    /// Set the observability configuration.
+    pub fn observability(mut self, config: ObservabilityConfig) -> Self {
+        self.observability = Some(config);
+        self
+    }
+
+    /// Build the Config instance.
+    ///
+    /// Fields not explicitly set will use sensible defaults:
+    /// - `key_algorithm`: "RSA-PSS"
+    /// - `key_directory`: "./jacs_keys"
+    /// - `data_directory`: "./jacs_data"
+    /// - `default_storage`: "fs"
+    /// - `use_security`: false
+    pub fn build(self) -> Config {
+        Config {
+            schema: default_schema(),
+            jacs_use_security: Some(
+                self.use_security
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "false".to_string()),
+            ),
+            jacs_data_directory: Some(
+                self.data_directory
+                    .unwrap_or_else(|| "./jacs_data".to_string()),
+            ),
+            jacs_key_directory: Some(
+                self.key_directory
+                    .unwrap_or_else(|| "./jacs_keys".to_string()),
+            ),
+            jacs_agent_private_key_filename: self.private_key_filename,
+            jacs_agent_public_key_filename: self.public_key_filename,
+            jacs_agent_key_algorithm: Some(
+                self.key_algorithm
+                    .unwrap_or_else(|| "RSA-PSS".to_string()),
+            ),
+            jacs_private_key_password: None, // Never store password in config
+            jacs_agent_id_and_version: self.agent_id_and_version,
+            jacs_default_storage: Some(
+                self.default_storage.unwrap_or_else(|| "fs".to_string()),
+            ),
+            jacs_agent_domain: self.agent_domain,
+            jacs_dns_validate: self.dns_validate,
+            jacs_dns_strict: self.dns_strict,
+            jacs_dns_required: self.dns_required,
+            observability: self.observability,
+        }
+    }
+}
+
 impl Config {
+    /// Create a ConfigBuilder for fluent configuration.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let config = Config::builder()
+    ///     .key_algorithm("Ed25519")
+    ///     .key_directory("/custom/keys")
+    ///     .use_security(true)
+    ///     .build();
+    /// ```
+    pub fn builder() -> ConfigBuilder {
+        ConfigBuilder::new()
+    }
+
     /// Create a new Config.
     ///
     /// # Arguments
@@ -1170,5 +1341,114 @@ mod tests {
         assert_eq!(config.jacs_dns_validate, Some(false));
 
         clear_jacs_env_vars();
+    }
+
+    #[test]
+    fn test_config_builder_defaults() {
+        // Builder with no options set should produce sensible defaults
+        let config = Config::builder().build();
+
+        assert_eq!(config.jacs_use_security, Some("false".to_string()));
+        assert_eq!(config.jacs_data_directory, Some("./jacs_data".to_string()));
+        assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("RSA-PSS".to_string()));
+        assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
+        // Password should never be in config
+        assert!(config.jacs_private_key_password.is_none());
+        // Optional fields should be None
+        assert!(config.jacs_agent_private_key_filename.is_none());
+        assert!(config.jacs_agent_public_key_filename.is_none());
+        assert!(config.jacs_agent_id_and_version.is_none());
+        assert!(config.jacs_agent_domain.is_none());
+    }
+
+    #[test]
+    fn test_config_builder_custom_values() {
+        let config = Config::builder()
+            .key_algorithm("Ed25519")
+            .key_directory("/custom/keys")
+            .data_directory("/custom/data")
+            .default_storage("memory")
+            .use_security(true)
+            .private_key_filename("my_private.pem")
+            .public_key_filename("my_public.pem")
+            .agent_id_and_version("550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001")
+            .agent_domain("example.com")
+            .dns_validate(true)
+            .dns_strict(false)
+            .dns_required(true)
+            .build();
+
+        assert_eq!(config.jacs_agent_key_algorithm, Some("Ed25519".to_string()));
+        assert_eq!(config.jacs_key_directory, Some("/custom/keys".to_string()));
+        assert_eq!(config.jacs_data_directory, Some("/custom/data".to_string()));
+        assert_eq!(config.jacs_default_storage, Some("memory".to_string()));
+        assert_eq!(config.jacs_use_security, Some("true".to_string()));
+        assert_eq!(config.jacs_agent_private_key_filename, Some("my_private.pem".to_string()));
+        assert_eq!(config.jacs_agent_public_key_filename, Some("my_public.pem".to_string()));
+        assert_eq!(
+            config.jacs_agent_id_and_version,
+            Some("550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001".to_string())
+        );
+        assert_eq!(config.jacs_agent_domain, Some("example.com".to_string()));
+        assert_eq!(config.jacs_dns_validate, Some(true));
+        assert_eq!(config.jacs_dns_strict, Some(false));
+        assert_eq!(config.jacs_dns_required, Some(true));
+    }
+
+    #[test]
+    fn test_config_builder_partial() {
+        // Test that partial configuration works - only set some values
+        let config = Config::builder()
+            .key_algorithm("pq2025")
+            .use_security(true)
+            .build();
+
+        // Explicitly set values
+        assert_eq!(config.jacs_agent_key_algorithm, Some("pq2025".to_string()));
+        assert_eq!(config.jacs_use_security, Some("true".to_string()));
+
+        // Default values for unset fields
+        assert_eq!(config.jacs_data_directory, Some("./jacs_data".to_string()));
+        assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
+        assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
+    }
+
+    #[test]
+    fn test_config_builder_method_chaining() {
+        // Ensure method chaining works correctly
+        let builder = ConfigBuilder::new()
+            .key_algorithm("Ed25519")
+            .key_directory("/keys")
+            .data_directory("/data");
+
+        let config = builder.build();
+
+        assert_eq!(config.jacs_agent_key_algorithm, Some("Ed25519".to_string()));
+        assert_eq!(config.jacs_key_directory, Some("/keys".to_string()));
+        assert_eq!(config.jacs_data_directory, Some("/data".to_string()));
+    }
+
+    #[test]
+    fn test_config_builder_vs_with_defaults() {
+        // Builder defaults should match with_defaults() for the core fields
+        let builder_config = Config::builder().build();
+        let defaults_config = Config::with_defaults();
+
+        // Core fields should have same default values
+        assert_eq!(
+            builder_config.jacs_use_security,
+            defaults_config.jacs_use_security
+        );
+        assert_eq!(
+            builder_config.jacs_agent_key_algorithm,
+            defaults_config.jacs_agent_key_algorithm
+        );
+        assert_eq!(
+            builder_config.jacs_default_storage,
+            defaults_config.jacs_default_storage
+        );
+        // Note: data_directory and key_directory may differ due to CWD resolution
+        // in with_defaults(), but builder uses static defaults
     }
 }

@@ -1,5 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use secrecy::ExposeSecret;
+pub mod constants;
 pub mod hash;
 pub mod pq;
 pub mod private_key;
@@ -8,6 +9,12 @@ pub mod rsawrapper;
 pub mod aes_encrypt;
 pub mod kem;
 pub mod pq2025; // ML-DSA signatures // ML-KEM encryption
+
+use constants::{
+    DILITHIUM_ALT_SIG_SIZE_MAX, DILITHIUM_ALT_SIG_SIZE_MIN, DILITHIUM_MIN_KEY_LENGTH,
+    DILITHIUM_NON_ASCII_RATIO, ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE,
+    ML_DSA_87_PUBLIC_KEY_SIZE, PQ_SMALL_KEY_THRESHOLD, RSA_MIN_KEY_LENGTH, RSA_NON_ASCII_RATIO,
+};
 
 use crate::agent::Agent;
 use crate::error::JacsError;
@@ -79,33 +86,36 @@ pub fn detect_algorithm_from_public_key(
     let non_ascii_ratio = non_ascii_count as f32 / public_key.len() as f32;
 
     // Ed25519 public keys are exactly 32 bytes and typically contain non-ASCII characters
-    if public_key.len() == 32 && non_ascii_ratio > 0.5 {
+    if public_key.len() == ED25519_PUBLIC_KEY_SIZE && non_ascii_ratio > ED25519_NON_ASCII_RATIO {
         debug!(algorithm = "RingEd25519", "Detected Ed25519 from public key format");
         return Ok(CryptoSigningAlgorithm::RingEd25519);
     }
 
     // RSA keys are typically longer, mostly ASCII-compatible, and often start with specific ASN.1 DER encoding
-    if public_key.len() > 100 && public_key.starts_with(&[0x30]) && non_ascii_ratio < 0.2 {
+    if public_key.len() > RSA_MIN_KEY_LENGTH
+        && public_key.starts_with(&[0x30])
+        && non_ascii_ratio < RSA_NON_ASCII_RATIO
+    {
         debug!(algorithm = "RSA-PSS", "Detected RSA-PSS from public key format");
         return Ok(CryptoSigningAlgorithm::RsaPss);
     }
 
     // ML-DSA-87 (Pq2025) has exactly 2592 byte public keys
-    if public_key.len() == 2592 {
+    if public_key.len() == ML_DSA_87_PUBLIC_KEY_SIZE {
         debug!(algorithm = "pq2025", "Detected ML-DSA-87 from public key format");
         return Ok(CryptoSigningAlgorithm::Pq2025);
     }
 
     // PQ Dilithium keys have specific formats with many non-ASCII characters and larger sizes
-    if public_key.len() > 1000 && non_ascii_ratio > 0.3 {
+    if public_key.len() > DILITHIUM_MIN_KEY_LENGTH && non_ascii_ratio > DILITHIUM_NON_ASCII_RATIO {
         debug!(algorithm = "pq-dilithium", "Detected PQ-Dilithium from public key format");
         return Ok(CryptoSigningAlgorithm::PqDilithium);
     }
 
     // If we have a high proportion of non-ASCII characters but don't match other criteria,
     // it's more likely to be Ed25519 or PQ Dilithium than RSA
-    if non_ascii_ratio > 0.5 {
-        if public_key.len() > 500 {
+    if non_ascii_ratio > ED25519_NON_ASCII_RATIO {
+        if public_key.len() > PQ_SMALL_KEY_THRESHOLD {
             debug!(algorithm = "pq-dilithium", "Detected PQ-Dilithium from public key format (fallback)");
             return Ok(CryptoSigningAlgorithm::PqDilithium);
         } else {
@@ -131,7 +141,9 @@ pub fn detect_algorithm_from_signature(
     match detected_algo {
         CryptoSigningAlgorithm::PqDilithium => {
             // Handle different Dilithium signature lengths
-            if signature_bytes.len() > 4640 && signature_bytes.len() < 4650 {
+            if signature_bytes.len() > DILITHIUM_ALT_SIG_SIZE_MIN
+                && signature_bytes.len() < DILITHIUM_ALT_SIG_SIZE_MAX
+            {
                 // This appears to be the newer version with ~4644 byte signatures
                 CryptoSigningAlgorithm::PqDilithiumAlt
             } else {

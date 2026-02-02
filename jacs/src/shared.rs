@@ -373,6 +373,6 @@ pub fn save_document(
             agent.save_document(&document_key, save_filename, export_embedded, extract_only)?;
             Ok(format!("saved  {}", document_key))
         }
-        Err(ref e) => Err(JacsError::ValidationError(format!("document validation failed {}", e)).into()),
+        Err(ref e) => Err(JacsError::ValidationError(format!("Document validation failed: {}", e)).into()),
     }
 }
