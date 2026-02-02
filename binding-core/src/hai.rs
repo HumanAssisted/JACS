@@ -93,6 +93,25 @@ pub struct RegistrationResult {
     pub signatures: Vec<HaiSignature>,
 }
 
+/// Result of checking agent registration status with HAI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusResult {
+    /// Whether the agent is registered with HAI.ai.
+    pub registered: bool,
+    /// The agent's JACS ID (if registered).
+    #[serde(default)]
+    pub agent_id: String,
+    /// HAI.ai registration ID (if registered).
+    #[serde(default)]
+    pub registration_id: String,
+    /// When the agent was registered (if registered), as ISO 8601 timestamp.
+    #[serde(default)]
+    pub registered_at: String,
+    /// List of HAI signature IDs (if registered).
+    #[serde(default)]
+    pub hai_signatures: Vec<String>,
+}
+
 // =============================================================================
 // Internal Request/Response Types
 // =============================================================================
@@ -238,6 +257,92 @@ impl HaiClient {
             .await
             .map_err(|e| HaiError::InvalidResponse(e.to_string()))
     }
+
+    /// Check registration status of an agent with HAI.
+    ///
+    /// Queries the HAI API to determine if the agent is registered
+    /// and retrieves registration details if so.
+    ///
+    /// # Arguments
+    ///
+    /// * `agent` - A loaded `AgentWrapper` to check status for
+    ///
+    /// # Returns
+    ///
+    /// `StatusResult` with registration details. If the agent is not registered,
+    /// `registered` will be `false`.
+    ///
+    /// # Errors
+    ///
+    /// - `HaiError::AuthRequired` - No API key was provided
+    /// - `HaiError::ConnectionFailed` - Could not connect to HAI server
+    /// - `HaiError::InvalidResponse` - The server returned an unexpected response
+    pub async fn status(&self, agent: &AgentWrapper) -> Result<StatusResult, HaiError> {
+        let api_key = self
+            .api_key
+            .as_ref()
+            .ok_or(HaiError::AuthRequired)?;
+
+        // Get the agent JSON and extract the ID
+        let agent_json = agent
+            .get_agent_json()
+            .map_err(|e| HaiError::InvalidResponse(format!("Failed to get agent JSON: {}", e)))?;
+
+        let agent_value: serde_json::Value = serde_json::from_str(&agent_json)
+            .map_err(|e| HaiError::InvalidResponse(format!("Failed to parse agent JSON: {}", e)))?;
+
+        let agent_id = agent_value
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| HaiError::InvalidResponse("Agent JSON missing jacsId field".to_string()))?
+            .to_string();
+
+        let url = format!("{}/v1/agents/{}/status", self.endpoint, agent_id);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .send()
+            .await
+            .map_err(|e| HaiError::ConnectionFailed(e.to_string()))?;
+
+        // Handle 404 as "not registered"
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(StatusResult {
+                registered: false,
+                agent_id,
+                registration_id: String::new(),
+                registered_at: String::new(),
+                hai_signatures: Vec::new(),
+            });
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "No response body".to_string());
+            return Err(HaiError::InvalidResponse(format!(
+                "Status {}: {}",
+                status, body
+            )));
+        }
+
+        response
+            .json::<StatusResult>()
+            .await
+            .map(|mut result| {
+                // Ensure registered is true for successful responses
+                result.registered = true;
+                if result.agent_id.is_empty() {
+                    result.agent_id = agent_id;
+                }
+                result
+            })
+            .map_err(|e| HaiError::InvalidResponse(e.to_string()))
+    }
 }
 
 // =============================================================================
@@ -294,5 +399,42 @@ mod tests {
 
         assert_eq!(parsed.agent_id, "agent-123");
         assert_eq!(parsed.signatures.len(), 1);
+    }
+
+    #[test]
+    fn test_status_result_serialization() {
+        let result = StatusResult {
+            registered: true,
+            agent_id: "agent-123".to_string(),
+            registration_id: "reg-456".to_string(),
+            registered_at: "2024-01-15T10:30:00Z".to_string(),
+            hai_signatures: vec!["sig-1".to_string(), "sig-2".to_string()],
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: StatusResult = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.registered, true);
+        assert_eq!(parsed.agent_id, "agent-123");
+        assert_eq!(parsed.registration_id, "reg-456");
+        assert_eq!(parsed.hai_signatures.len(), 2);
+    }
+
+    #[test]
+    fn test_status_result_not_registered() {
+        let result = StatusResult {
+            registered: false,
+            agent_id: "agent-123".to_string(),
+            registration_id: String::new(),
+            registered_at: String::new(),
+            hai_signatures: Vec::new(),
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: StatusResult = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.registered, false);
+        assert_eq!(parsed.agent_id, "agent-123");
+        assert!(parsed.registration_id.is_empty());
     }
 }

@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 """HAI.ai Quickstart - Register your agent in 5 minutes.
 
-This minimal example shows how to:
-1. Test connection to HAI.ai
-2. Register your JACS agent with HAI.ai
+This minimal example shows how to create a JACS agent and register it with HAI.ai
+in ONE step using register_new_agent().
 
 Prerequisites:
-    1. Create a JACS agent first:
-       python quickstart.py --create
+    1. Install HAI dependencies:
+       uv pip install jacs[hai]
+       # Or with pip: pip install jacs[hai]
 
-    2. Install HAI dependencies:
-       pip install httpx httpx-sse
-
-    3. Get an API key from HAI.ai (https://hai.ai)
+    2. Get an API key from HAI.ai (https://hai.ai/developers)
 
 Usage:
-    # Test connection
+    # Test connection only
     python hai_quickstart.py --test
 
-    # Register your agent
+    # Create and register (uses HAI_API_KEY env var)
     export HAI_API_KEY=your-api-key
     python hai_quickstart.py
+
+    # Or specify API key directly
+    python hai_quickstart.py --api-key your-api-key
 """
 
 import argparse
@@ -30,26 +30,34 @@ import sys
 # Add parent directory for development imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
 
-import jacs.simple as jacs
-from jacs.hai import HaiClient
+from jacs.hai import HaiClient, register_new_agent
 
 
 def main():
-    """Minimal HAI.ai integration example."""
+    """Create and register an agent with HAI.ai."""
     parser = argparse.ArgumentParser(
-        description="HAI.ai Quickstart Example",
+        description="HAI.ai Quickstart - Create and register an agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument(
         "--test", "-t",
         action="store_true",
-        help="Only test connection, don't register",
+        help="Only test connection, don't create/register",
     )
     parser.add_argument(
         "--url",
         default="https://hai.ai",
         help="HAI.ai server URL (default: https://hai.ai)",
+    )
+    parser.add_argument(
+        "--api-key",
+        help="API key (or set HAI_API_KEY env var)",
+    )
+    parser.add_argument(
+        "--name",
+        default="My Agent",
+        help="Name for your agent (default: 'My Agent')",
     )
     args = parser.parse_args()
 
@@ -57,51 +65,36 @@ def main():
     print("HAI.ai Quickstart")
     print("=" * 60)
 
-    # Step 1: Connect to HAI
-    print(f"\n1. Connecting to {args.url}...")
-    client = HaiClient()
-
-    if client.testconnection(args.url):
-        print("   ✓ Connected to HAI.ai")
-    else:
-        print("   ✗ Connection failed")
-        sys.exit(1)
-
+    # Test connection only
     if args.test:
-        print("\nTest-only mode, exiting.")
+        print(f"\nTesting connection to {args.url}...")
+        client = HaiClient()
+        if client.testconnection(args.url):
+            print("Connected to HAI.ai")
+        else:
+            print("Connection failed")
+            sys.exit(1)
         return
 
-    # Step 2: Load your agent
-    print("\n2. Loading JACS agent...")
-    try:
-        agent = jacs.load("./jacs.config.json")
-        print(f"   ✓ Loaded agent: {agent.agent_id}")
-    except jacs.ConfigError:
-        print("   ✗ Agent config not found")
-        print("\n   Create an agent first with:")
-        print("     python quickstart.py --create")
-        sys.exit(1)
+    # Create and register in ONE step
+    print(f"\nCreating and registering agent '{args.name}'...")
 
-    # Step 3: Get API key
-    print("\n3. Getting API key...")
-    api_key = os.environ.get("HAI_API_KEY")
-    if not api_key:
-        print("   ✗ HAI_API_KEY environment variable not set")
-        print("\n   Set your API key with:")
-        print("     export HAI_API_KEY=your-api-key-here")
-        sys.exit(1)
-    print("   ✓ API key loaded from environment")
-
-    # Step 4: Register your agent
-    print("\n4. Registering agent with HAI.ai...")
     try:
-        result = client.register(args.url, api_key=api_key)
-        print("   ✓ Agent registered!")
-        print(f"\n   Agent ID: {result.agent_id}")
-        print(f"   Registration ID: {result.registration_id}")
-        print(f"   Registered at: {result.registered_at}")
+        result = register_new_agent(
+            name=args.name,
+            hai_url=args.url,
+            api_key=args.api_key,  # Falls back to HAI_API_KEY env var
+        )
+        print(f"\nAgent registered!")
+        print(f"  Agent ID: {result.agent_id}")
+        print(f"  Registration ID: {result.registration_id}")
+        print(f"  Config saved to: ./jacs.config.json")
+
     except Exception as e:
-        print(f"   ✗ Registration failed: {e}")
+        print(f"\nRegistration failed: {e}")
+        if "HAI_API_KEY" in str(e) or "api_key" in str(e).lower():
+            print("\nSet your API key:")
+            print("  export HAI_API_KEY=your-api-key")
         sys.exit(1)
 
     print("\n" + "=" * 60)
@@ -111,7 +104,6 @@ def main():
     print("\nNext steps:")
     print("  - Run benchmarks:  python run_benchmark.py")
     print("  - Stream events:   python sse_client.py")
-    print("  - Full example:    python register_with_hai.py")
 
 
 if __name__ == "__main__":

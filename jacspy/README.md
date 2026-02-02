@@ -3,7 +3,14 @@
 Python bindings for JACS (JSON AI Communication Standard) - cryptographic signing and verification for AI agents.
 
 ```bash
+# Using uv (recommended)
+uv pip install jacs
+
+# Or with pip
 pip install jacs
+
+# With HAI.ai integration
+uv pip install jacs[hai]
 ```
 
 ## Quick Start (Simplified API)
@@ -163,6 +170,9 @@ pip install jacs
 
 # With MCP support
 pip install jacs[mcp]
+
+# With HAI.ai integration
+pip install jacs[hai]
 ```
 
 ## Examples

@@ -2,17 +2,29 @@
 JACS HAI.ai Integration Module
 
 Provides methods for integrating JACS agents with HAI.ai platform:
-- register(): Register an agent with HAI.ai
+- register_new_agent(): Create a new JACS agent AND register with HAI.ai in one step
+- register(): Register an existing agent with HAI.ai
 - testconnection(): Test connectivity to HAI.ai
 - benchmark(): Run benchmarks via HAI.ai
 - connect(): Connect to HAI.ai SSE stream
 - disconnect(): Close SSE connection
 
-Example:
+Quick Start (recommended for new developers):
+    from jacs.hai import register_new_agent
+
+    # Create and register in one step
+    result = register_new_agent(
+        name="My Trading Bot",
+        api_key="your-api-key"  # or set HAI_API_KEY env var
+    )
+    print(f"Agent registered: {result.agent_id}")
+    print(f"Config saved to: ./jacs.config.json")
+
+Advanced Usage (existing agents):
     import jacs.simple as jacs
     from jacs.hai import HaiClient
 
-    # Load your JACS agent
+    # Load your existing JACS agent
     jacs.load("./jacs.config.json")
 
     # Create HAI client
@@ -29,7 +41,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, Generator, List, Callable
+from typing import Optional, Dict, Any, Generator, List, Callable, Union
 from urllib.parse import urljoin
 
 # Configure module logger
@@ -220,6 +232,44 @@ class BenchmarkResult:
     duration_ms: int = 0
     results: List[Dict[str, Any]] = field(default_factory=list)
     raw_response: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class HaiStatusResult:
+    """Result of checking agent registration status.
+
+    Attributes:
+        registered: Whether the agent is registered with HAI.ai
+        agent_id: The agent's JACS ID (if registered)
+        registration_id: HAI.ai registration ID (if registered)
+        registered_at: When the agent was registered (if registered)
+        hai_signatures: List of HAI signature IDs (if registered)
+        raw_response: Full API response
+    """
+    registered: bool
+    agent_id: str = ""
+    registration_id: str = ""
+    registered_at: str = ""
+    hai_signatures: List[str] = field(default_factory=list)
+    raw_response: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class HaiRegistrationPreview:
+    """Preview of what would be sent during registration.
+
+    Attributes:
+        agent_id: The agent's JACS ID
+        agent_name: Human-readable agent name
+        payload_json: The full JSON that would be sent (pretty-printed)
+        endpoint: The API endpoint that would be called
+        headers: Headers that would be sent (API key masked)
+    """
+    agent_id: str
+    agent_name: str
+    payload_json: str
+    endpoint: str
+    headers: Dict[str, str]
 
 
 # =============================================================================
@@ -413,7 +463,8 @@ class HaiClient:
         self,
         hai_url: str,
         api_key: Optional[str] = None,
-    ) -> HaiRegistrationResult:
+        preview: bool = False,
+    ) -> Union[HaiRegistrationResult, HaiRegistrationPreview]:
         """Register a JACS agent with HAI.ai.
 
         Exports the current agent's JSON document and sends it to HAI.ai
@@ -423,9 +474,12 @@ class HaiClient:
             hai_url: Base URL of the HAI.ai server (e.g., "https://hai.ai")
             api_key: Optional API key for authentication. If not provided,
                      will attempt to use environment variable HAI_API_KEY.
+            preview: If True, return a preview of what would be sent without
+                     actually registering. Useful for verifying data before submission.
 
         Returns:
-            HaiRegistrationResult with registration details and HAI signature
+            HaiRegistrationResult if preview=False (default)
+            HaiRegistrationPreview if preview=True
 
         Raises:
             RegistrationError: If registration fails
@@ -439,6 +493,13 @@ class HaiClient:
             jacs.load("./jacs.config.json")
 
             hai = HaiClient()
+
+            # Preview what would be sent
+            preview = hai.register("https://hai.ai", api_key="your-key", preview=True)
+            print(f"Would send to: {preview.endpoint}")
+            print(f"Payload: {preview.payload_json}")
+
+            # Actually register
             result = hai.register("https://hai.ai", api_key="your-key")
 
             if result.success:
@@ -446,6 +507,35 @@ class HaiClient:
                 print(f"HAI signature: {result.hai_signature}")
         """
         import os
+
+        # Get API key from parameter or environment
+        if api_key is None:
+            api_key = os.environ.get("HAI_API_KEY")
+
+        # Handle preview mode
+        if preview:
+            # Build the preview without making the actual request
+            try:
+                agent_json = self._get_agent_json()
+                agent_data = json.loads(agent_json)
+            except Exception as e:
+                raise RegistrationError(f"Failed to export agent: {e}")
+
+            url = self._make_url(hai_url, "/api/v1/agents/register")
+
+            masked_key = f"{api_key[:8]}...{api_key[-4:]}" if api_key and len(api_key) > 12 else "***"
+
+            return HaiRegistrationPreview(
+                agent_id=agent_data.get("jacsId", ""),
+                agent_name=agent_data.get("name", ""),
+                payload_json=json.dumps(agent_data, indent=2),
+                endpoint=url,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {masked_key}",
+                }
+            )
+
         httpx = self._get_httpx()
 
         # Get API key from parameter or environment
@@ -921,6 +1011,136 @@ class HaiClient:
         """
         return self._connected
 
+    # =========================================================================
+    # SDK-PY-007: status() method
+    # =========================================================================
+
+    def status(
+        self,
+        hai_url: str,
+        api_key: Optional[str] = None,
+    ) -> HaiStatusResult:
+        """Check registration status of the current agent.
+
+        Queries HAI.ai to determine if the currently loaded JACS agent
+        is registered with the platform and retrieves registration details.
+
+        Args:
+            hai_url: Base URL of the HAI.ai server (e.g., "https://hai.ai")
+            api_key: Optional API key for authentication. If not provided,
+                     will attempt to use environment variable HAI_API_KEY.
+
+        Returns:
+            HaiStatusResult with registration details
+
+        Raises:
+            HaiConnectionError: If cannot connect to HAI.ai
+            AuthenticationError: If API key is invalid
+            HaiError: If no agent is loaded
+
+        Example:
+            import jacs.simple as jacs
+            from jacs.hai import HaiClient
+
+            jacs.load("./jacs.config.json")
+
+            hai = HaiClient()
+            status = hai.status("https://hai.ai", api_key="your-key")
+
+            if status.registered:
+                print(f"Registered since {status.registered_at}")
+                print(f"Registration ID: {status.registration_id}")
+            else:
+                print("Not registered yet")
+        """
+        import os
+        httpx = self._get_httpx()
+
+        # Get API key from parameter or environment
+        if api_key is None:
+            api_key = os.environ.get("HAI_API_KEY")
+
+        # Get agent ID
+        try:
+            agent_id = self._get_agent_id()
+        except Exception as e:
+            raise HaiError(f"Failed to get agent ID: {e}")
+
+        # Build request
+        url = self._make_url(hai_url, f"/api/v1/agents/{agent_id}/status")
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        # Make request with retries
+        last_error = None
+        for attempt in range(self._max_retries):
+            try:
+                logger.debug(
+                    "Checking agent status (attempt %d/%d) at %s",
+                    attempt + 1, self._max_retries, url
+                )
+
+                response = httpx.get(
+                    url,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+
+                # Handle response
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info("Agent status retrieved: registered=%s", data.get("registered", True))
+
+                    return HaiStatusResult(
+                        registered=True,
+                        agent_id=data.get("agent_id", data.get("agentId", agent_id)),
+                        registration_id=data.get("registration_id", data.get("registrationId", "")),
+                        registered_at=data.get("registered_at", data.get("registeredAt", "")),
+                        hai_signatures=data.get("hai_signatures", data.get("haiSignatures", [])),
+                        raw_response=data,
+                    )
+
+                elif response.status_code == 404:
+                    # Agent not registered
+                    logger.info("Agent %s is not registered", agent_id)
+                    return HaiStatusResult(
+                        registered=False,
+                        agent_id=agent_id,
+                        raw_response=response.json() if response.text else {},
+                    )
+
+                elif response.status_code == 401:
+                    raise AuthenticationError(
+                        "Invalid or missing API key",
+                        status_code=response.status_code,
+                        response_data=response.json() if response.text else {},
+                    )
+
+                else:
+                    last_error = HaiError.from_response(
+                        response,
+                        f"Status check failed with status {response.status_code}"
+                    )
+
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_error = HaiConnectionError(f"Connection failed: {e}")
+                logger.warning("Connection failed (attempt %d): %s", attempt + 1, e)
+
+            except HaiError:
+                raise
+
+            except Exception as e:
+                last_error = HaiError(f"Unexpected error: {e}")
+                logger.warning("Unexpected error (attempt %d): %s", attempt + 1, e)
+
+            # Wait before retry (exponential backoff)
+            if attempt < self._max_retries - 1:
+                time.sleep(2 ** attempt)
+
+        # All retries exhausted
+        raise last_error or HaiError("Status check failed after all retries")
+
 
 # =============================================================================
 # Module-level convenience functions
@@ -946,12 +1166,16 @@ def testconnection(hai_url: str) -> bool:
     return _get_client().testconnection(hai_url)
 
 
-def register(hai_url: str, api_key: Optional[str] = None) -> HaiRegistrationResult:
+def register(
+    hai_url: str,
+    api_key: Optional[str] = None,
+    preview: bool = False,
+) -> Union[HaiRegistrationResult, HaiRegistrationPreview]:
     """Register a JACS agent with HAI.ai.
 
     See HaiClient.register() for full documentation.
     """
-    return _get_client().register(hai_url, api_key)
+    return _get_client().register(hai_url, api_key, preview)
 
 
 def benchmark(
@@ -986,6 +1210,88 @@ def disconnect() -> None:
     return _get_client().disconnect()
 
 
+def status(hai_url: str, api_key: Optional[str] = None) -> HaiStatusResult:
+    """Check registration status of the current agent.
+
+    See HaiClient.status() for full documentation.
+    """
+    return _get_client().status(hai_url, api_key)
+
+
+def register_new_agent(
+    name: str,
+    hai_url: str = "https://hai.ai",
+    api_key: Optional[str] = None,
+    key_algorithm: str = "ed25519",
+    output_dir: str = ".",
+) -> HaiRegistrationResult:
+    """Create a new JACS agent and register it with HAI.ai in one step.
+
+    This is the fastest way to get started with HAI.ai. It:
+    1. Creates a new JACS agent with cryptographic keys
+    2. Registers the agent with HAI.ai
+    3. Returns the registration result with HAI's signature
+
+    Args:
+        name: Human-readable name for your agent (e.g., "My Trading Bot")
+        hai_url: HAI.ai server URL (default: "https://hai.ai")
+        api_key: API key for HAI.ai. If not provided, uses HAI_API_KEY env var.
+        key_algorithm: Cryptographic algorithm ("ed25519" or "pq2025")
+        output_dir: Directory to save agent config files (default: current dir)
+
+    Returns:
+        HaiRegistrationResult with agent_id, hai_signature, and registration details
+
+    Raises:
+        RegistrationError: If registration fails
+        HaiConnectionError: If cannot connect to HAI.ai
+
+    Example:
+        from jacs.hai import register_new_agent
+
+        result = register_new_agent(
+            name="My Trading Bot",
+            api_key="your-api-key"  # or set HAI_API_KEY env var
+        )
+        print(f"Agent registered: {result.agent_id}")
+        print(f"Config saved to: ./jacs.config.json")
+    """
+    import os
+    from contextlib import contextmanager
+    from . import simple as jacs_simple
+
+    @contextmanager
+    def _change_dir(path: str):
+        """Context manager for safe directory changes."""
+        original_dir = os.getcwd()
+        try:
+            os.chdir(path)
+            yield
+        finally:
+            os.chdir(original_dir)
+
+    # Step 1: Create the JACS agent
+    try:
+        with _change_dir(output_dir):
+            jacs_simple.create(
+                name=name,
+                algorithm=key_algorithm,
+            )
+    except Exception as e:
+        raise RegistrationError(f"Failed to create JACS agent: {e}")
+
+    # Step 2: Load the newly created agent
+    config_path = os.path.join(output_dir, "jacs.config.json")
+    try:
+        jacs_simple.load(config_path)
+    except Exception as e:
+        raise RegistrationError(f"Failed to load created agent: {e}")
+
+    # Step 3: Register with HAI.ai
+    client = HaiClient()
+    return client.register(hai_url, api_key)
+
+
 __all__ = [
     # Client class
     "HaiClient",
@@ -998,11 +1304,15 @@ __all__ = [
     "SSEError",
     # Data types
     "HaiRegistrationResult",
+    "HaiRegistrationPreview",
+    "HaiStatusResult",
     "HaiEvent",
     "BenchmarkResult",
     # Convenience functions
     "testconnection",
     "register",
+    "register_new_agent",
+    "status",
     "benchmark",
     "connect",
     "disconnect",
