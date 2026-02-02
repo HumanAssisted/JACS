@@ -247,11 +247,63 @@ class TrustError(JacsError):
     pass
 
 
+@dataclass
+class SignerStatus:
+    """Status of a single signer in a multi-party agreement.
+
+    Attributes:
+        agent_id: Unique identifier of the signing agent
+        signed: Whether this agent has signed the agreement
+        signed_at: ISO 8601 timestamp when the agent signed (if signed)
+    """
+    agent_id: str
+    signed: bool
+    signed_at: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SignerStatus":
+        """Create SignerStatus from a dictionary."""
+        return cls(
+            agent_id=data.get("agent_id", data.get("agentId", "")),
+            signed=data.get("signed", False),
+            signed_at=data.get("signed_at", data.get("signedAt")),
+        )
+
+
+@dataclass
+class AgreementStatus:
+    """Status of a multi-party agreement.
+
+    Attributes:
+        complete: Whether all required parties have signed
+        signers: List of signer statuses
+        pending: List of agent IDs that haven't signed yet
+    """
+    complete: bool
+    signers: List[SignerStatus]
+    pending: List[str]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AgreementStatus":
+        """Create AgreementStatus from a dictionary."""
+        signers = [
+            SignerStatus.from_dict(s) if isinstance(s, dict) else s
+            for s in data.get("signers", [])
+        ]
+        return cls(
+            complete=data.get("complete", False),
+            signers=signers,
+            pending=data.get("pending", []),
+        )
+
+
 __all__ = [
     "AgentInfo",
     "Attachment",
     "SignedDocument",
     "VerificationResult",
+    "SignerStatus",
+    "AgreementStatus",
     "JacsError",
     "ConfigError",
     "AgentNotLoadedError",

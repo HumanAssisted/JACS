@@ -1,0 +1,23 @@
+# LangChain + JACS Integration Dependencies
+
+# Core LangChain packages
+langchain>=0.3.0
+langchain-core>=0.3.0
+langgraph>=0.2.0
+
+# MCP integration
+langchain-mcp-adapters>=0.1.0
+
+# LLM providers (choose based on your preference)
+langchain-anthropic>=0.3.0  # For Claude models
+langchain-openai>=0.2.0     # For OpenAI models
+
+# JACS
+jacs
+
+# FastMCP for running the JACS MCP server
+fastmcp>=0.1.0
+
+# Async support
+anyio>=4.0.0
+httpx>=0.25.0

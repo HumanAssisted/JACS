@@ -19,6 +19,8 @@ from jacs.types import (
     AgentInfo,
     SignedDocument,
     VerificationResult,
+    SignerStatus,
+    AgreementStatus,
     JacsError,
     AgentNotLoadedError,
 )
@@ -366,3 +368,209 @@ class TestIntegration:
         result = simple.verify(signed.raw)
         assert result.valid
         assert result.signer_id == info.agent_id
+
+
+# Test Agreement Functions
+
+
+class TestAgreementTypes:
+    """Test agreement type dataclasses."""
+
+    def test_signer_status_from_dict(self):
+        """SignerStatus.from_dict should parse correctly."""
+        data = {
+            "agent_id": "agent-123",
+            "signed": True,
+            "signed_at": "2024-01-15T10:30:00Z"
+        }
+        status = SignerStatus.from_dict(data)
+
+        assert status.agent_id == "agent-123"
+        assert status.signed is True
+        assert status.signed_at == "2024-01-15T10:30:00Z"
+
+    def test_signer_status_from_dict_camelcase(self):
+        """SignerStatus.from_dict should handle camelCase keys."""
+        data = {
+            "agentId": "agent-456",
+            "signed": False,
+            "signedAt": None
+        }
+        status = SignerStatus.from_dict(data)
+
+        assert status.agent_id == "agent-456"
+        assert status.signed is False
+        assert status.signed_at is None
+
+    def test_agreement_status_from_dict(self):
+        """AgreementStatus.from_dict should parse correctly."""
+        data = {
+            "complete": False,
+            "signers": [
+                {"agent_id": "agent-1", "signed": True, "signed_at": "2024-01-15T10:30:00Z"},
+                {"agent_id": "agent-2", "signed": False}
+            ],
+            "pending": ["agent-2"]
+        }
+        status = AgreementStatus.from_dict(data)
+
+        assert status.complete is False
+        assert len(status.signers) == 2
+        assert status.signers[0].agent_id == "agent-1"
+        assert status.signers[0].signed is True
+        assert status.signers[1].agent_id == "agent-2"
+        assert status.signers[1].signed is False
+        assert status.pending == ["agent-2"]
+
+
+class TestCreateAgreement:
+    """Test create_agreement function."""
+
+    def test_create_agreement_without_load_raises(self):
+        """create_agreement() without loaded agent should raise AgentNotLoadedError."""
+        import importlib
+        importlib.reload(simple)
+
+        with pytest.raises(AgentNotLoadedError):
+            simple.create_agreement(
+                document={"proposal": "test"},
+                agent_ids=["agent-1", "agent-2"]
+            )
+
+    def test_create_agreement_returns_signed_document(self, loaded_agent):
+        """create_agreement() should return a SignedDocument."""
+        agreement = simple.create_agreement(
+            document={"proposal": "Test proposal"},
+            agent_ids=[loaded_agent.agent_id],
+            question="Do you approve?",
+            context="This is a test agreement"
+        )
+
+        assert isinstance(agreement, SignedDocument)
+        assert agreement.document_id
+        assert agreement.agent_id
+        assert agreement.raw_json
+
+    def test_create_agreement_with_dict(self, loaded_agent):
+        """create_agreement() should accept a dict."""
+        agreement = simple.create_agreement(
+            document={"data": "test"},
+            agent_ids=[loaded_agent.agent_id]
+        )
+
+        assert isinstance(agreement, SignedDocument)
+
+    def test_create_agreement_with_json_string(self, loaded_agent):
+        """create_agreement() should accept a JSON string."""
+        doc_str = json.dumps({"data": "test"})
+        agreement = simple.create_agreement(
+            document=doc_str,
+            agent_ids=[loaded_agent.agent_id]
+        )
+
+        assert isinstance(agreement, SignedDocument)
+
+
+class TestSignAgreement:
+    """Test sign_agreement function."""
+
+    def test_sign_agreement_without_load_raises(self):
+        """sign_agreement() without loaded agent should raise AgentNotLoadedError."""
+        import importlib
+        importlib.reload(simple)
+
+        with pytest.raises(AgentNotLoadedError):
+            simple.sign_agreement(document={"test": True})
+
+    def test_sign_agreement_adds_signature(self, loaded_agent):
+        """sign_agreement() should add the current agent's signature."""
+        # First create an agreement
+        agreement = simple.create_agreement(
+            document={"proposal": "Sign this"},
+            agent_ids=[loaded_agent.agent_id]
+        )
+
+        # Then sign it
+        signed = simple.sign_agreement(agreement)
+
+        assert isinstance(signed, SignedDocument)
+        assert signed.document_id
+
+
+class TestCheckAgreement:
+    """Test check_agreement function."""
+
+    def test_check_agreement_without_load_raises(self):
+        """check_agreement() without loaded agent should raise AgentNotLoadedError."""
+        import importlib
+        importlib.reload(simple)
+
+        with pytest.raises(AgentNotLoadedError):
+            simple.check_agreement(document={"test": True})
+
+    def test_check_agreement_returns_status(self, loaded_agent):
+        """check_agreement() should return AgreementStatus."""
+        # Create and sign an agreement
+        agreement = simple.create_agreement(
+            document={"proposal": "Check this"},
+            agent_ids=[loaded_agent.agent_id]
+        )
+        signed = simple.sign_agreement(agreement)
+
+        # Check status
+        status = simple.check_agreement(signed)
+
+        assert isinstance(status, AgreementStatus)
+        assert isinstance(status.complete, bool)
+        assert isinstance(status.signers, list)
+        assert isinstance(status.pending, list)
+
+    def test_check_agreement_shows_completion(self, loaded_agent):
+        """check_agreement() should show complete=True after all sign."""
+        # Create agreement with only the loaded agent
+        agreement = simple.create_agreement(
+            document={"proposal": "Single signer"},
+            agent_ids=[loaded_agent.agent_id]
+        )
+
+        # Sign it
+        signed = simple.sign_agreement(agreement)
+
+        # Should be complete
+        status = simple.check_agreement(signed)
+        assert status.complete is True
+        assert len(status.pending) == 0
+
+
+class TestAgreementWorkflow:
+    """Integration tests for complete agreement workflows."""
+
+    def test_single_party_agreement_workflow(self, loaded_agent):
+        """Test complete single-party agreement workflow."""
+        # Step 1: Create agreement
+        proposal = {"action": "approve_budget", "amount": 10000}
+        agreement = simple.create_agreement(
+            document=proposal,
+            agent_ids=[loaded_agent.agent_id],
+            question="Do you approve this budget?",
+            context="Q4 2024 budget request"
+        )
+        assert agreement.document_id
+
+        # Step 2: Check status (should be pending)
+        status = simple.check_agreement(agreement)
+        assert status.complete is False
+        assert loaded_agent.agent_id in status.pending
+
+        # Step 3: Sign agreement
+        signed = simple.sign_agreement(agreement)
+        assert signed.document_id
+
+        # Step 4: Check status (should be complete)
+        final_status = simple.check_agreement(signed)
+        assert final_status.complete is True
+        assert len(final_status.pending) == 0
+
+        # Step 5: Verify the signed document is valid
+        result = simple.verify(signed.raw_json)
+        assert result.valid is True

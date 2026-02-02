@@ -10,6 +10,9 @@ A streamlined interface for the most common JACS operations:
 - sign_message(): Sign a text message
 - sign_file(): Sign a file with optional embedding
 - verify(): Verify any signed document
+- create_agreement(): Create a multi-party agreement
+- sign_agreement(): Sign an existing agreement
+- check_agreement(): Check agreement status
 
 Example:
     import jacs.simple as jacs
@@ -24,6 +27,17 @@ Example:
     # Verify it
     result = jacs.verify(signed.raw_json)
     print(f"Valid: {result.valid}")
+
+    # Create a multi-party agreement
+    agreement = jacs.create_agreement(
+        document={"proposal": "Merge codebase"},
+        agent_ids=["agent-1", "agent-2"],
+        question="Do you approve?"
+    )
+
+    # Check agreement status
+    status = jacs.check_agreement(agreement)
+    print(f"Complete: {status.complete}, Pending: {status.pending}")
 """
 
 import json
@@ -37,6 +51,8 @@ from .types import (
     Attachment,
     SignedDocument,
     VerificationResult,
+    SignerStatus,
+    AgreementStatus,
     JacsError,
     ConfigError,
     AgentNotLoadedError,
@@ -370,6 +386,177 @@ def update_document(
         raise JacsError(f"Failed to update document: {e}")
 
 
+def create_agreement(
+    document: Union[str, dict, SignedDocument],
+    agent_ids: List[str],
+    question: Optional[str] = None,
+    context: Optional[str] = None,
+    field_name: Optional[str] = None,
+) -> SignedDocument:
+    """Create a multi-party agreement requiring signatures from specified agents.
+
+    This creates an agreement on a document that must be signed by all specified
+    agents before it is considered complete. Use this for scenarios requiring
+    multi-party approval, such as contract signing or governance decisions.
+
+    Args:
+        document: The document to create an agreement on (JSON string, dict, or SignedDocument)
+        agent_ids: List of agent IDs required to sign the agreement
+        question: Optional question or purpose of the agreement (e.g., "Do you approve this proposal?")
+        context: Optional additional context for signers
+        field_name: Optional custom field name for the agreement (default: "jacsAgreement")
+
+    Returns:
+        SignedDocument containing the agreement document
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If agreement creation fails
+
+    Example:
+        # Create an agreement requiring two approvers
+        agreement = jacs.create_agreement(
+            document={"proposal": "Merge codebases A and B"},
+            agent_ids=["agent-1-uuid", "agent-2-uuid"],
+            question="Do you approve this merge?",
+            context="This will combine repositories A and B"
+        )
+        print(f"Agreement created: {agreement.document_id}")
+        # Send to each agent for signing
+    """
+    agent = _get_agent()
+
+    # Convert to JSON string if needed
+    if isinstance(document, SignedDocument):
+        doc_str = document.raw_json
+    elif isinstance(document, dict):
+        doc_str = json.dumps(document)
+    else:
+        doc_str = document
+
+    try:
+        result = agent.create_agreement(
+            doc_str,
+            agent_ids,
+            question,
+            context,
+            field_name,
+        )
+        return _parse_signed_document(result)
+    except Exception as e:
+        raise JacsError(f"Failed to create agreement: {e}")
+
+
+def sign_agreement(
+    document: Union[str, dict, SignedDocument],
+    field_name: Optional[str] = None,
+) -> SignedDocument:
+    """Sign an existing multi-party agreement as the current agent.
+
+    When an agreement is created, each required signer must call this function
+    to add their signature. The agreement is complete when all signers have signed.
+
+    Args:
+        document: The agreement document to sign (JSON string, dict, or SignedDocument)
+        field_name: Optional custom field name for the agreement (default: "jacsAgreement")
+
+    Returns:
+        SignedDocument with this agent's signature added
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If signing fails (e.g., agent not in required signers list)
+
+    Example:
+        # Receive agreement from coordinator
+        agreement_json = receive_agreement_from_coordinator()
+
+        # Sign it
+        signed = jacs.sign_agreement(agreement_json)
+
+        # Send back to coordinator or pass to next signer
+        send_to_coordinator(signed.raw_json)
+    """
+    agent = _get_agent()
+
+    # Convert to JSON string if needed
+    if isinstance(document, SignedDocument):
+        doc_str = document.raw_json
+    elif isinstance(document, dict):
+        doc_str = json.dumps(document)
+    else:
+        doc_str = document
+
+    try:
+        result = agent.sign_agreement(doc_str, field_name)
+        return _parse_signed_document(result)
+    except Exception as e:
+        raise JacsError(f"Failed to sign agreement: {e}")
+
+
+def check_agreement(
+    document: Union[str, dict, SignedDocument],
+    field_name: Optional[str] = None,
+) -> AgreementStatus:
+    """Check the status of a multi-party agreement.
+
+    Use this to determine which agents have signed and whether the agreement
+    is complete (all required signatures collected).
+
+    Args:
+        document: The agreement document to check (JSON string, dict, or SignedDocument)
+        field_name: Optional custom field name for the agreement (default: "jacsAgreement")
+
+    Returns:
+        AgreementStatus with completion status and signer details
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If checking fails (e.g., document has no agreement field)
+
+    Example:
+        status = jacs.check_agreement(agreement_doc)
+        if status.complete:
+            print("All parties have signed!")
+            process_completed_agreement(agreement_doc)
+        else:
+            print(f"Waiting for signatures from: {status.pending}")
+            for signer in status.signers:
+                if signer.signed:
+                    print(f"  {signer.agent_id}: signed at {signer.signed_at}")
+                else:
+                    print(f"  {signer.agent_id}: pending")
+    """
+    agent = _get_agent()
+
+    # Convert to JSON string if needed
+    if isinstance(document, SignedDocument):
+        doc_str = document.raw_json
+    elif isinstance(document, dict):
+        doc_str = json.dumps(document)
+    else:
+        doc_str = document
+
+    try:
+        result_json = agent.check_agreement(doc_str, field_name)
+        result_data = json.loads(result_json)
+
+        # Parse signers
+        signers = []
+        for signer_data in result_data.get("signers", []):
+            signers.append(SignerStatus.from_dict(signer_data))
+
+        return AgreementStatus(
+            complete=result_data.get("complete", False),
+            signers=signers,
+            pending=result_data.get("pending", []),
+        )
+    except json.JSONDecodeError as e:
+        raise JacsError(f"Invalid agreement status response: {e}")
+    except Exception as e:
+        raise JacsError(f"Failed to check agreement: {e}")
+
+
 def sign_message(data: Any) -> SignedDocument:
     """Sign arbitrary data as a JACS message.
 
@@ -652,7 +839,7 @@ def is_loaded() -> bool:
 
 
 __all__ = [
-    # Core 8-operation API
+    # Core operations
     "create",
     "load",
     "verify_self",
@@ -661,6 +848,10 @@ __all__ = [
     "sign_message",
     "sign_file",
     "verify",
+    # Agreement functions
+    "create_agreement",
+    "sign_agreement",
+    "check_agreement",
     # Utility functions
     "get_public_key",
     "export_agent",
@@ -671,6 +862,8 @@ __all__ = [
     "Attachment",
     "SignedDocument",
     "VerificationResult",
+    "SignerStatus",
+    "AgreementStatus",
     # Errors
     "JacsError",
     "ConfigError",

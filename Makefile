@@ -1,4 +1,4 @@
-.PHONY: build-jacs test test-jacs test-jacs-cli test-jacs-observability test-jacspy \
+.PHONY: build-jacs build-jacsbook test test-jacs test-jacs-cli test-jacs-observability test-jacspy \
         publish-jacs publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-all \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm \
@@ -32,6 +32,9 @@ build-jacspy:
 
 build-jacsnpm:
 	cd jacsnpm && npm run build
+
+build-jacsbook:
+	cd jacs/docs/jacsbook && mdbook build
 
 # ============================================================================
 # TEST
@@ -196,6 +199,7 @@ help:
 	@echo "  make build-jacs      Build and install Rust CLI"
 	@echo "  make build-jacspy    Build Python bindings (dev mode)"
 	@echo "  make build-jacsnpm   Build Node.js bindings"
+	@echo "  make build-jacsbook  Generate jacsbook (mdbook build)"
 	@echo ""
 	@echo "TEST:"
 	@echo "  make test            Run all tests (alias for test-jacs)"

@@ -75,6 +75,9 @@ from .types import (
 # Make simplified API available as jacs.simple
 from . import simple
 
+# Make async API available as jacs.async_simple
+from . import async_simple
+
 # Make MCP helpers available (optional, may fail if fastmcp not installed)
 try:
     from . import mcp_simple
@@ -108,6 +111,7 @@ __all__ = [
     "TrustError",
     # Submodules
     "simple",
+    "async_simple",
 ]
 
  

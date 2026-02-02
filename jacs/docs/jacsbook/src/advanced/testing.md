@@ -473,7 +473,7 @@ cargo llvm-cov --lcov --output-path lcov.info
 | Accuracy | LLVM source-based (highly accurate) | Ptrace-based (some inaccuracies) |
 | Coverage types | Line, region, branch | Line primarily |
 
-For complete Rust coverage documentation, see [COVERAGE.md](https://github.com/HumanAssisted/JACS/blob/main/COVERAGE.md).
+For CI integration, export to LCOV format and upload to Codecov or similar services.
 
 ### Python Coverage
 
