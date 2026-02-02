@@ -10,28 +10,46 @@ use tracing::{debug, warn};
 
 /// Whether to accept invalid TLS certificates when fetching remote schemas.
 ///
-/// **Security Warning**: This is `false` by default for security.
-/// Setting this to `true` allows MITM attacks when fetching remote schemas.
+/// **Default behavior**: `true` - accepts invalid certs with a warning.
+/// This allows the application to continue working in development environments
+/// with self-signed certificates while alerting users to the security risk.
 ///
-/// To enable insecure mode for development, set the environment variable:
-/// `JACS_ACCEPT_INVALID_CERTS=true`
-pub const ACCEPT_INVALID_CERTS: bool = false;
+/// To enforce strict TLS validation (recommended for production), set:
+/// `JACS_STRICT_TLS=true`
+///
+/// **Security Warning**: Accepting invalid certificates allows MITM attacks.
+pub const ACCEPT_INVALID_CERTS_DEFAULT: bool = true;
 
 /// Returns whether to accept invalid TLS certificates.
-/// Checks the environment variable `JACS_ACCEPT_INVALID_CERTS` first,
-/// then falls back to the compile-time constant.
+///
+/// By default, accepts invalid certs but logs a warning.
+/// Set `JACS_STRICT_TLS=true` to enforce certificate validation (recommended for production).
 #[cfg(not(target_arch = "wasm32"))]
 fn should_accept_invalid_certs() -> bool {
-    match std::env::var("JACS_ACCEPT_INVALID_CERTS") {
-        Ok(val) => {
-            let accept = val.eq_ignore_ascii_case("true") || val == "1";
-            if accept {
-                warn!("SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true");
-            }
-            accept
+    // Check for strict mode first - if enabled, always validate certs
+    if let Ok(val) = std::env::var("JACS_STRICT_TLS") {
+        if val.eq_ignore_ascii_case("true") || val == "1" {
+            return false; // Don't accept invalid certs in strict mode
         }
-        Err(_) => ACCEPT_INVALID_CERTS,
     }
+
+    // Check legacy env var for explicit override
+    if let Ok(val) = std::env::var("JACS_ACCEPT_INVALID_CERTS") {
+        let accept = val.eq_ignore_ascii_case("true") || val == "1";
+        if accept {
+            warn!("SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true");
+        }
+        return accept;
+    }
+
+    // Default: accept invalid certs but warn
+    if ACCEPT_INVALID_CERTS_DEFAULT {
+        warn!(
+            "TLS certificate validation is disabled by default. \
+            For production, set JACS_STRICT_TLS=true to enforce certificate validation."
+        );
+    }
+    ACCEPT_INVALID_CERTS_DEFAULT
 }
 pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
     "schemas/agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
@@ -264,8 +282,10 @@ impl Retrieve for EmbeddedSchemaResolver {
 ///
 /// # Security
 ///
-/// By default, this function validates TLS certificates. To skip validation
-/// (for development only), set the environment variable `JACS_ACCEPT_INVALID_CERTS=true`.
+/// By default, this function accepts invalid TLS certificates but logs a warning.
+/// This allows development environments with self-signed certs to work out of the box.
+///
+/// For production, set `JACS_STRICT_TLS=true` to enforce certificate validation.
 ///
 /// **Warning**: Accepting invalid certificates allows MITM attacks.
 ///

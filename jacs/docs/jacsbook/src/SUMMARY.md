@@ -43,6 +43,7 @@
 
 ## Advanced Topics
 - [Security Model](advanced/security.md)
+- [Key Rotation](advanced/key-rotation.md)
 - [Cryptographic Algorithms](advanced/crypto.md)
 - [Storage Backends](advanced/storage.md)
 - [Custom Schemas](advanced/custom-schemas.md)

@@ -53,9 +53,9 @@ jacs verify doc.json     # Verify a document
 ## Security
 
 **Security Hardening**: This library includes:
-- Password entropy validation for key encryption (minimum 40 bits)
+- Password entropy validation for key encryption (minimum 28 bits, 35 bits for single character class)
 - Thread-safe environment variable handling
-- TLS certificate validation enabled by default
+- TLS certificate validation (warns by default; set `JACS_STRICT_TLS=true` for production)
 - Private key zeroization on drop
 - Algorithm identification embedded in signatures
 
