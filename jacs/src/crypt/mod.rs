@@ -208,8 +208,17 @@ impl KeyManager for Agent {
     }
 
     fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
-        let config = self.config.as_ref().ok_or("Agent config not initialized")?;
-        let key_algorithm = config.get_key_algorithm()?;
+        let config = self.config.as_ref().ok_or(
+            "Document signing failed: agent configuration not initialized. \
+            Call load() with a valid config file or create() to initialize the agent first."
+        )?;
+        let key_algorithm = config.get_key_algorithm().map_err(|e| {
+            format!(
+                "Document signing failed: could not determine signing algorithm. \
+                Ensure 'jacs_agent_key_algorithm' is set in your config file. Error: {}",
+                e
+            )
+        })?;
         trace!(
             algorithm = %key_algorithm,
             data_len = data.len(),
@@ -217,15 +226,39 @@ impl KeyManager for Agent {
         );
         // Validate algorithm is known (result unused but validates early)
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm)
-            .map_err(|_| format!("Unknown signing algorithm: {}", key_algorithm))?;
+            .map_err(|_| format!(
+                "Document signing failed: unknown signing algorithm '{}'. \
+                Supported algorithms: ring-Ed25519, RSA-PSS, pq-dilithium, pq2025.",
+                key_algorithm
+            ))?;
         {
             // Delegate to keystore; we expect detached signature bytes, return base64
             let ks = FsEncryptedStore;
-            let binding = self.get_private_key()?;
+            let binding = self.get_private_key().map_err(|e| {
+                format!(
+                    "Document signing failed: private key not loaded. \
+                    Ensure the agent has valid keys in the configured key directory. Error: {}",
+                    e
+                )
+            })?;
             // Use secure decryption - ZeroizingVec will be zeroized when it goes out of scope
             let decrypted =
-                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())?;
-            let sig_bytes = ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
+                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                    .map_err(|e| {
+                        format!(
+                            "Document signing failed: could not decrypt private key. \
+                            Check that the password is correct. Error: {}",
+                            e
+                        )
+                    })?;
+            let sig_bytes = ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)
+                .map_err(|e| {
+                    format!(
+                        "Document signing failed: cryptographic signing operation failed. \
+                        This may indicate a corrupted key or algorithm mismatch. Error: {}",
+                        e
+                    )
+                })?;
             debug!(
                 algorithm = %key_algorithm,
                 signature_len = sig_bytes.len(),
@@ -240,8 +273,17 @@ impl KeyManager for Agent {
             return Ok(Vec::new());
         }
 
-        let config = self.config.as_ref().ok_or("Agent config not initialized")?;
-        let key_algorithm = config.get_key_algorithm()?;
+        let config = self.config.as_ref().ok_or(
+            "Batch signing failed: agent configuration not initialized. \
+            Call load() with a valid config file or create() to initialize the agent first."
+        )?;
+        let key_algorithm = config.get_key_algorithm().map_err(|e| {
+            format!(
+                "Batch signing failed: could not determine signing algorithm. \
+                Ensure 'jacs_agent_key_algorithm' is set in your config file. Error: {}",
+                e
+            )
+        })?;
 
         info!(
             algorithm = %key_algorithm,
@@ -251,13 +293,30 @@ impl KeyManager for Agent {
 
         // Validate algorithm is known
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm)
-            .map_err(|_| format!("Unknown signing algorithm: {}", key_algorithm))?;
+            .map_err(|_| format!(
+                "Batch signing failed: unknown signing algorithm '{}'. \
+                Supported algorithms: ring-Ed25519, RSA-PSS, pq-dilithium, pq2025.",
+                key_algorithm
+            ))?;
 
         // Decrypt the private key once for all signatures
         let ks = FsEncryptedStore;
-        let binding = self.get_private_key()?;
+        let binding = self.get_private_key().map_err(|e| {
+            format!(
+                "Batch signing failed: private key not loaded. \
+                Ensure the agent has valid keys in the configured key directory. Error: {}",
+                e
+            )
+        })?;
         let decrypted =
-            crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())?;
+            crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                .map_err(|e| {
+                    format!(
+                        "Batch signing failed: could not decrypt private key. \
+                        Check that the password is correct. Error: {}",
+                        e
+                    )
+                })?;
 
         // Sign all messages with the same decrypted key
         let mut signatures = Vec::with_capacity(messages.len());

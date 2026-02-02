@@ -172,8 +172,23 @@ pub fn local_data_dir() -> PathBuf {
 /// Returns the path if successful, or an error if creation fails.
 pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, Box<dyn std::error::Error>> {
     if !path.exists() {
-        std::fs::create_dir_all(path)
-            .map_err(|e| format!("Failed to create directory '{}': {}", path.display(), e))?;
+        std::fs::create_dir_all(path).map_err(|e| {
+            let suggestion = match e.kind() {
+                std::io::ErrorKind::PermissionDenied => {
+                    " Check that you have write permissions for the parent directory."
+                }
+                std::io::ErrorKind::NotFound => {
+                    " The parent directory path may be invalid."
+                }
+                _ => "",
+            };
+            format!(
+                "Failed to create directory '{}': {}.{}",
+                path.display(),
+                e,
+                suggestion
+            )
+        })?;
     }
     Ok(path)
 }

@@ -8,7 +8,7 @@ use flate2::write::GzEncoder;
 use secrecy::ExposeSecret;
 
 use crate::storage::jenv::get_env_var;
-use chrono::Utc;
+use crate::time_utils;
 use std::error::Error;
 use std::io::Write;
 use std::path::Path;
@@ -513,9 +513,16 @@ impl FileLoader for Agent {
         self.storage
             .get_file(filename, None)
             .map_err(|e| {
+                let suggestion = if e.to_string().contains("not found") || e.to_string().contains("NotFound") {
+                    " Ensure the key file exists or run key generation first."
+                } else if e.to_string().contains("permission") || e.to_string().contains("Permission") {
+                    " Check file permissions - the key file may not be readable by the current user."
+                } else {
+                    ""
+                };
                 format!(
-                    "load_public_key_file failed: Could not read key file '{}': {}",
-                    filename, e
+                    "Failed to read key file '{}': {}.{}",
+                    filename, e, suggestion
                 ).into()
             })
     }
@@ -538,8 +545,8 @@ impl FileLoader for Agent {
             // Use secure decryption - the ZeroizingVec will be zeroized after we extract the bytes
             let decrypted = decrypt_private_key_secure(&loaded_key).map_err(|e| {
                 format!(
-                    "load_private_key failed: Could not decrypt encrypted key file '{}'. \
-                    Ensure JACS_PRIVATE_KEY_PASSWORD environment variable is set correctly: {}",
+                    "Failed to decrypt private key from '{}': {}. \
+                    Verify that JACS_PRIVATE_KEY_PASSWORD is set to the correct password used during key generation.",
                     filepath, e
                 )
             })?;
@@ -578,7 +585,7 @@ impl FileLoader for Agent {
     /// private Helper function to create a backup file name based on the current timestamp
     #[cfg(not(target_arch = "wasm32"))]
     fn create_backup(&self, file_path: &str) -> Result<String, Box<dyn Error>> {
-        let timestamp = Utc::now().format("backup-%Y-%m-%d-%H-%M").to_string();
+        let timestamp = time_utils::backup_timestamp_suffix();
 
         // Split the path into directory and filename
         let path = Path::new(file_path);

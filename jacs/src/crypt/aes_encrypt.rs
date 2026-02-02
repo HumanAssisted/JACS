@@ -349,8 +349,10 @@ pub fn decrypt_private_key_secure(
 
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
-            "Encrypted private key data is too short: expected at least {} bytes ({} salt + {} nonce), got {} bytes",
-            MIN_ENCRYPTED_HEADER_SIZE, PBKDF2_SALT_SIZE, AES_GCM_NONCE_SIZE,
+            "Encrypted private key file is corrupted or truncated: expected at least {} bytes, got {} bytes. \
+            The key file may have been damaged during transfer or storage. \
+            Try regenerating your keys with 'jacs keygen' or restore from a backup.",
+            MIN_ENCRYPTED_HEADER_SIZE,
             encrypted_key_with_salt_and_nonce.len()
         )).into());
     }
@@ -372,11 +374,11 @@ pub fn decrypt_private_key_secure(
     // Decrypt private key
     let decrypted_data = cipher
         .decrypt(Nonce::from_slice(nonce), encrypted_data)
-        .map_err(|e| {
-            format!(
-                "AES-GCM decryption failed (wrong password or corrupted data): {}",
-                e
-            )
+        .map_err(|_| {
+            "Private key decryption failed: incorrect password or corrupted key file. \
+            Check that JACS_PRIVATE_KEY_PASSWORD matches the password used during key generation. \
+            If the key file is corrupted, you may need to regenerate your keys."
+                .to_string()
         })?;
 
     Ok(ZeroizingVec::new(decrypted_data))

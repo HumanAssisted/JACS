@@ -1,5 +1,7 @@
 // use futures_util::stream::stream::StreamExt;
 use crate::storage::jenv::get_required_env_var;
+#[cfg(target_arch = "wasm32")]
+use crate::time_utils;
 use futures_executor::block_on;
 use futures_util::StreamExt;
 use object_store::{
@@ -122,7 +124,7 @@ impl ObjectStore for WebLocalStorage {
                 if let Ok(Some(value)) = self.storage.get_item(&key) {
                     items.push(Ok(ObjectMeta {
                         location: ObjectPath::parse(&key).unwrap(),
-                        last_modified: chrono::Utc::now(),
+                        last_modified: time_utils::now_utc(),
                         size: value.len(),
                     }));
                 }

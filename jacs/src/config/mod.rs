@@ -116,64 +116,48 @@ fn default_schema() -> String {
     "https://hai.ai/schemas/jacs.config.schema.json".to_string()
 }
 
-// TODO change these to macros
-fn default_storage() -> Option<String> {
-    match get_env_var("JACS_DEFAULT_STORAGE", false) {
-        Ok(Some(val)) if !val.is_empty() => Some(val),
-        _ => Some("fs".to_string()),
-    }
+/// Macro to generate default functions that check an environment variable with a fallback value.
+/// This reduces repetition across the simple default_* functions.
+macro_rules! env_default {
+    ($fn_name:ident, $env_var:literal, $default:expr) => {
+        fn $fn_name() -> Option<String> {
+            match get_env_var($env_var, false) {
+                Ok(Some(val)) if !val.is_empty() => Some(val),
+                _ => Some($default.to_string()),
+            }
+        }
+    };
 }
 
-fn default_algorithm() -> Option<String> {
-    match get_env_var("JACS_AGENT_KEY_ALGORITHM", false) {
-        Ok(Some(val)) if !val.is_empty() => Some(val),
-        _ => Some("RSA-PSS".to_string()),
-    }
-}
+env_default!(default_storage, "JACS_DEFAULT_STORAGE", "fs");
+env_default!(default_algorithm, "JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+env_default!(default_security, "JACS_USE_SECURITY", "false");
 
-fn default_security() -> Option<String> {
-    match get_env_var("JACS_USE_SECURITY", false) {
+/// Helper to compute a directory default with CWD resolution for filesystem storage.
+/// Falls back to a relative path if CWD cannot be determined or storage is not "fs".
+fn default_directory_with_cwd(env_var: &str, dir_name: &str) -> Option<String> {
+    match get_env_var(env_var, false) {
         Ok(Some(val)) if !val.is_empty() => Some(val),
-        _ => Some("false".to_string()),
+        _ => {
+            let fallback = format!("./{}", dir_name);
+            if default_storage() == Some("fs".to_string()) {
+                match std::env::current_dir() {
+                    Ok(cur_dir) => Some(cur_dir.join(dir_name).to_string_lossy().to_string()),
+                    Err(_) => Some(fallback),
+                }
+            } else {
+                Some(fallback)
+            }
+        }
     }
 }
 
 fn default_data_directory() -> Option<String> {
-    match get_env_var("JACS_DATA_DIRECTORY", false) {
-        Ok(Some(val)) if !val.is_empty() => Some(val),
-        _ => {
-            if default_storage() == Some("fs".to_string()) {
-                match std::env::current_dir() {
-                    Ok(cur_dir) => {
-                        let data_dir = cur_dir.join("jacs_data");
-                        Some(data_dir.to_string_lossy().to_string())
-                    }
-                    Err(_) => Some("./jacs_data".to_string()),
-                }
-            } else {
-                Some("./jacs_data".to_string())
-            }
-        }
-    }
+    default_directory_with_cwd("JACS_DATA_DIRECTORY", "jacs_data")
 }
 
 fn default_key_directory() -> Option<String> {
-    match get_env_var("JACS_KEY_DIRECTORY", false) {
-        Ok(Some(val)) if !val.is_empty() => Some(val),
-        _ => {
-            if default_storage() == Some("fs".to_string()) {
-                match std::env::current_dir() {
-                    Ok(cur_dir) => {
-                        let key_dir = cur_dir.join("jacs_keys");
-                        Some(key_dir.to_string_lossy().to_string())
-                    }
-                    Err(_) => Some("./jacs_keys".to_string()),
-                }
-            } else {
-                Some("./jacs_keys".to_string())
-            }
-        }
-    }
+    default_directory_with_cwd("JACS_KEY_DIRECTORY", "jacs_keys")
 }
 
 impl Default for Config {
@@ -575,9 +559,38 @@ impl Config {
     /// Use `load_config_12factor` for the recommended 12-Factor compliant loading.
     pub fn from_file(path: &str) -> Result<Config, Box<dyn Error>> {
         let json_str = fs::read_to_string(path)
-            .map_err(|e| JacsError::ConfigError(format!("Failed to read config file '{}': {}", path, e)))?;
-        let validated_value: Value = validate_config(&json_str)?;
-        let config: Config = serde_json::from_value(validated_value)?;
+            .map_err(|e| {
+                let help = match e.kind() {
+                    std::io::ErrorKind::NotFound => {
+                        format!(
+                            "Config file not found at '{}'. Create a jacs.config.json file or use \
+                            environment variables (JACS_DATA_DIRECTORY, JACS_KEY_DIRECTORY, etc.) \
+                            to configure JACS without a file.",
+                            path
+                        )
+                    }
+                    std::io::ErrorKind::PermissionDenied => {
+                        format!(
+                            "Permission denied reading config file '{}'. Check file permissions.",
+                            path
+                        )
+                    }
+                    _ => {
+                        format!("Failed to read config file '{}': {}", path, e)
+                    }
+                };
+                JacsError::ConfigError(help)
+            })?;
+        let validated_value: Value = validate_config(&json_str).map_err(|e| {
+            JacsError::ConfigError(format!("Invalid config at '{}': {}", path, e))
+        })?;
+        let config: Config = serde_json::from_value(validated_value.clone()).map_err(|e| {
+            // This can happen if the JSON structure doesn't match our Config struct
+            JacsError::ConfigError(format!(
+                "Config structure error at '{}': {}. The JSON may have valid syntax but incorrect field types.",
+                path, e
+            ))
+        })?;
 
         // Warn if password is in config file
         if config.jacs_private_key_password.is_some() {
@@ -720,6 +733,101 @@ pub fn split_id(input: &str) -> Option<(&str, &str)> {
     split_agent_id(input)
 }
 
+/// Known config fields with their expected formats for helpful error messages
+const CONFIG_FIELD_HELP: &[(&str, &str)] = &[
+    ("jacs_agent_key_algorithm", "Expected one of: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025"),
+    ("jacs_default_storage", "Expected one of: fs, aws, hai"),
+    ("jacs_use_security", "Expected 'true' or 'false' as a string"),
+    ("jacs_data_directory", "Expected a valid directory path"),
+    ("jacs_key_directory", "Expected a valid directory path"),
+    ("jacs_agent_private_key_filename", "Expected a filename (e.g., 'rsa_pss_private.pem')"),
+    ("jacs_agent_public_key_filename", "Expected a filename (e.g., 'rsa_pss_public.pem')"),
+    ("jacs_agent_id_and_version", "Expected format: UUID:UUID (e.g., '550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001')"),
+    ("jacs_agent_domain", "Expected a domain name (e.g., 'example.com')"),
+    ("jacs_dns_validate", "Expected a boolean (true/false)"),
+    ("jacs_dns_strict", "Expected a boolean (true/false)"),
+    ("jacs_dns_required", "Expected a boolean (true/false)"),
+];
+
+/// Get help text for a config field
+fn get_field_help(field_name: &str) -> Option<&'static str> {
+    CONFIG_FIELD_HELP
+        .iter()
+        .find(|(name, _)| field_name.contains(name))
+        .map(|(_, help)| *help)
+}
+
+/// Format a schema validation error with actionable context
+fn format_validation_error(error: &jsonschema::ValidationError, instance: &Value) -> String {
+    let path = error.instance_path.to_string();
+    let field_name = if path.is_empty() || path == "/" {
+        "root".to_string()
+    } else {
+        path.trim_start_matches('/').to_string()
+    };
+
+    // Extract the actual invalid value from the instance using the path
+    let invalid_value: Option<String> = if !path.is_empty() && path != "/" {
+        // Try to get the value at the path from the instance
+        let path_parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+        let mut current = instance;
+        for part in &path_parts {
+            if let Some(obj) = current.as_object() {
+                if let Some(val) = obj.get(*part) {
+                    current = val;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        if current != instance {
+            let s = current.to_string();
+            if s.len() > 50 {
+                Some(format!("{}...", &s[..47]))
+            } else {
+                Some(s)
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Build the error message
+    let mut msg = format!("Config validation error at '{}': {}", field_name, error);
+
+    // Add the invalid value if we have it
+    if let Some(val) = invalid_value {
+        msg.push_str(&format!(" (got: {})", val));
+    }
+
+    // Add helpful guidance for known fields
+    if let Some(help) = get_field_help(&field_name) {
+        msg.push_str(&format!(". {}", help));
+    }
+
+    // Special handling for missing required fields
+    let error_str = error.to_string();
+    if error_str.contains("required") {
+        // List required fields for context
+        msg.push_str(". Required fields: jacs_data_directory, jacs_key_directory, jacs_agent_private_key_filename, jacs_agent_public_key_filename, jacs_agent_key_algorithm, jacs_default_storage");
+    }
+
+    // Special handling for enum violations
+    if error_str.contains("is not one of") {
+        if field_name.contains("jacs_agent_key_algorithm") {
+            msg.push_str(". Valid algorithms: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025");
+        } else if field_name.contains("jacs_default_storage") {
+            msg.push_str(". Valid storage options: fs, aws, hai");
+        }
+    }
+
+    msg
+}
+
 pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
     let jacsconfigschema_result: Value = serde_json::from_str(CONFIG_SCHEMA_STRING)?;
 
@@ -729,18 +837,31 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
         .build(&jacsconfigschema_result)?;
 
     let instance: Value = serde_json::from_str(config_json).map_err(|e| {
-        error!("Invalid JSON: {}", e);
-        e
-    })?;
-
-    //debug!("validate json {:?}", instance);
-
-    // Validate and map any error into an owned error (a boxed String error).
-    jacsconfigschema.validate(&instance).map_err(|e| {
-        let err_msg = format!("Error validating config file: {}", e);
+        // Provide detailed JSON parse error with line/column
+        let category = match e.classify() {
+            serde_json::error::Category::Io => "IO error",
+            serde_json::error::Category::Syntax => "syntax error",
+            serde_json::error::Category::Data => "data type error",
+            serde_json::error::Category::Eof => "unexpected end of file",
+        };
+        let err_msg = format!(
+            "Config JSON parse error at line {}, column {}: {} - {}. \
+            Ensure the config file contains valid JSON syntax (check for missing commas, quotes, or brackets).",
+            e.line(),
+            e.column(),
+            category,
+            e
+        );
         error!("{}", err_msg);
         Box::<dyn Error>::from(err_msg)
     })?;
+
+    // Validate and provide detailed error messages
+    if let Err(e) = jacsconfigschema.validate(&instance) {
+        let err_msg = format_validation_error(&e, &instance);
+        error!("{}", err_msg);
+        return Err(Box::<dyn Error>::from(err_msg));
+    }
 
     Ok(instance)
 }
@@ -1450,5 +1571,107 @@ mod tests {
         );
         // Note: data_directory and key_directory may differ due to CWD resolution
         // in with_defaults(), but builder uses static defaults
+    }
+
+    #[test]
+    fn test_validate_config_invalid_json_error_message() {
+        // Test that JSON parse errors include line/column info
+        let invalid_json = r#"{
+  "jacs_data_directory": "/data",
+  "jacs_key_directory": "/keys"
+  "jacs_agent_key_algorithm": "RSA-PSS"
+}"#;
+        let result = validate_config(invalid_json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // Should include line number, column, and helpful message
+        assert!(err.contains("line"), "Error should include line number: {}", err);
+        assert!(err.contains("column"), "Error should include column: {}", err);
+        assert!(err.contains("syntax"), "Error should mention syntax issue: {}", err);
+        assert!(err.contains("JSON"), "Error should mention JSON: {}", err);
+    }
+
+    #[test]
+    fn test_validate_config_invalid_algorithm_error_message() {
+        // Test that invalid enum values show valid options
+        let invalid_algo = r#"{
+  "jacs_data_directory": "/data",
+  "jacs_key_directory": "/keys",
+  "jacs_agent_private_key_filename": "private.pem",
+  "jacs_agent_public_key_filename": "public.pem",
+  "jacs_agent_key_algorithm": "INVALID_ALGO",
+  "jacs_default_storage": "fs"
+}"#;
+        let result = validate_config(invalid_algo);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // Should mention the field name and valid options
+        assert!(err.contains("jacs_agent_key_algorithm"), "Error should mention field name: {}", err);
+        assert!(
+            err.contains("RSA-PSS") || err.contains("Valid algorithms"),
+            "Error should mention valid algorithms: {}", err
+        );
+    }
+
+    #[test]
+    fn test_validate_config_missing_required_field_error_message() {
+        // Test that missing required fields are clearly indicated
+        let missing_field = r#"{
+  "jacs_data_directory": "/data"
+}"#;
+        let result = validate_config(missing_field);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // Should mention required fields
+        assert!(
+            err.contains("required") || err.contains("Required"),
+            "Error should mention required fields: {}", err
+        );
+    }
+
+    #[test]
+    fn test_validate_config_invalid_storage_error_message() {
+        // Test that invalid storage values show valid options
+        let invalid_storage = r#"{
+  "jacs_data_directory": "/data",
+  "jacs_key_directory": "/keys",
+  "jacs_agent_private_key_filename": "private.pem",
+  "jacs_agent_public_key_filename": "public.pem",
+  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_default_storage": "invalid_storage"
+}"#;
+        let result = validate_config(invalid_storage);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // Should mention the field name
+        assert!(err.contains("jacs_default_storage"), "Error should mention field name: {}", err);
+        assert!(
+            err.contains("fs") || err.contains("Valid storage"),
+            "Error should mention valid storage options: {}", err
+        );
+    }
+
+    #[test]
+    fn test_config_from_file_not_found_error_message() {
+        // Test that file not found errors are actionable
+        let result = Config::from_file("/nonexistent/path/jacs.config.json");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // Should include path and guidance
+        assert!(err.contains("nonexistent"), "Error should include path: {}", err);
+        assert!(
+            err.contains("environment") || err.contains("not found"),
+            "Error should provide guidance: {}", err
+        );
+    }
+
+    #[test]
+    fn test_get_field_help() {
+        // Test the field help function returns appropriate guidance
+        assert!(get_field_help("jacs_agent_key_algorithm").unwrap().contains("RSA-PSS"));
+        assert!(get_field_help("jacs_default_storage").unwrap().contains("fs"));
+        assert!(get_field_help("jacs_data_directory").unwrap().contains("path"));
+        assert!(get_field_help("jacs_agent_id_and_version").unwrap().contains("UUID"));
+        assert!(get_field_help("unknown_field").is_none());
     }
 }

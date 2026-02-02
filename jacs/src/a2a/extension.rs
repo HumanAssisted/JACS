@@ -3,6 +3,7 @@
 use crate::a2a::keys::{create_jwk_set, export_as_jwk, sign_jws};
 use crate::a2a::{AgentCard, AgentCardSignature};
 use crate::agent::{Agent, boilerplate::BoilerPlate};
+use crate::time_utils;
 use serde_json::{Value, json};
 use std::error::Error;
 use tracing::info;
@@ -155,7 +156,7 @@ fn create_jacs_pubkey_document(agent: &Agent) -> Result<Value, Box<dyn Error>> {
         "algorithm": agent.get_key_algorithm(),
         "agentId": agent_id,
         "agentVersion": agent_version,
-        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "timestamp": time_utils::now_rfc3339(),
     }))
 }
 

@@ -269,11 +269,13 @@ impl SimpleAgent {
         let keys_dir = Path::new("./jacs_keys");
         let data_dir = Path::new("./jacs_data");
 
-        fs::create_dir_all(keys_dir).map_err(|e| JacsError::Internal {
-            message: format!("Failed to create keys directory: {}", e),
+        fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: keys_dir.to_string_lossy().to_string(),
+            reason: e.to_string(),
         })?;
-        fs::create_dir_all(data_dir).map_err(|e| JacsError::Internal {
-            message: format!("Failed to create data directory: {}", e),
+        fs::create_dir_all(data_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: data_dir.to_string_lossy().to_string(),
+            reason: e.to_string(),
         })?;
 
         // Create a minimal agent JSON
@@ -484,7 +486,10 @@ impl SimpleAgent {
         let jacs_doc = agent
             .create_document_and_load(&doc_content.to_string(), None, None)
             .map_err(|e| JacsError::SigningFailed {
-                reason: e.to_string(),
+                reason: format!(
+                    "{}. Ensure the agent is properly initialized with load() or create() and has valid keys.",
+                    e
+                ),
             })?;
 
         let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
@@ -558,7 +563,10 @@ impl SimpleAgent {
         let jacs_doc = agent
             .create_document_and_load(&doc_content.to_string(), Some(attachment), Some(embed))
             .map_err(|e| JacsError::SigningFailed {
-                reason: e.to_string(),
+                reason: format!(
+                    "File signing failed for '{}': {}. Verify the file exists and the agent has valid keys.",
+                    file_path, e
+                ),
             })?;
 
         let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
@@ -661,7 +669,10 @@ impl SimpleAgent {
         let jacs_docs = agent
             .create_documents_batch(&doc_refs)
             .map_err(|e| JacsError::SigningFailed {
-                reason: e.to_string(),
+                reason: format!(
+                    "Batch signing failed: {}. Ensure the agent is properly initialized with load() or create() and has valid keys.",
+                    e
+                ),
             })?;
 
         // Convert to SignedDocument results
@@ -797,8 +808,20 @@ impl SimpleAgent {
     pub fn get_public_key_pem(&self) -> Result<String, JacsError> {
         // Read from the standard key file location
         let key_path = "./jacs_keys/jacs.public.pem";
-        fs::read_to_string(key_path).map_err(|_| JacsError::KeyNotFound {
-            path: key_path.to_string(),
+        fs::read_to_string(key_path).map_err(|e| {
+            let reason = match e.kind() {
+                std::io::ErrorKind::NotFound => {
+                    "file does not exist. Run agent creation to generate keys first.".to_string()
+                }
+                std::io::ErrorKind::PermissionDenied => {
+                    "permission denied. Check that the key file is readable.".to_string()
+                }
+                _ => e.to_string(),
+            };
+            JacsError::FileReadFailed {
+                path: key_path.to_string(),
+                reason,
+            }
         })
     }
 

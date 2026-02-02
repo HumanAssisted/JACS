@@ -173,12 +173,25 @@ impl SecurityTraits for Agent {
         let quarantine_dir = Path::new(&data_dir).join("quarantine");
 
         if !quarantine_dir.exists() {
-            fs::create_dir_all(&quarantine_dir)?;
+            fs::create_dir_all(&quarantine_dir).map_err(|e| {
+                format!(
+                    "Failed to create quarantine directory '{}': {}. \
+                    Check that the parent directory exists and has write permissions.",
+                    quarantine_dir.display(),
+                    e
+                )
+            })?;
             // Set directory permissions (Unix only)
             #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
             {
                 let permissions = Permissions::from_mode(0o755);
-                fs::set_permissions(&quarantine_dir, permissions)?;
+                fs::set_permissions(&quarantine_dir, permissions).map_err(|e| {
+                    format!(
+                        "Failed to set permissions on quarantine directory '{}': {}",
+                        quarantine_dir.display(),
+                        e
+                    )
+                })?;
             }
         }
 

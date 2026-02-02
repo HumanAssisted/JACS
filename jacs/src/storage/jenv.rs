@@ -37,8 +37,41 @@ pub enum EnvError {
 impl std::fmt::Display for EnvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EnvError::NotFound(key) => write!(f, "Environment variable '{}' not found", key),
-            EnvError::Empty(key) => write!(f, "Environment variable '{}' is empty", key),
+            EnvError::NotFound(key) => {
+                let hint = match key.as_str() {
+                    "JACS_PRIVATE_KEY_PASSWORD" => {
+                        " Set this to the password used to encrypt your private key."
+                    }
+                    "JACS_KEY_DIRECTORY" => {
+                        " Set this to the directory containing your key files (e.g., './keys')."
+                    }
+                    "JACS_DATA_DIRECTORY" => {
+                        " Set this to the directory for JACS data files (e.g., './data')."
+                    }
+                    "JACS_AGENT_PRIVATE_KEY_FILENAME" => {
+                        " Set this to your private key filename (e.g., 'agent.private.pem.enc')."
+                    }
+                    "JACS_AGENT_PUBLIC_KEY_FILENAME" => {
+                        " Set this to your public key filename (e.g., 'agent.public.pem')."
+                    }
+                    "JACS_AGENT_KEY_ALGORITHM" => {
+                        " Set this to your key algorithm (e.g., 'ring-Ed25519', 'RSA-PSS', 'pq-dilithium')."
+                    }
+                    _ => "",
+                };
+                write!(
+                    f,
+                    "Required environment variable '{}' is not set.{}",
+                    key, hint
+                )
+            }
+            EnvError::Empty(key) => {
+                write!(
+                    f,
+                    "Environment variable '{}' is set but empty. Please provide a non-empty value.",
+                    key
+                )
+            }
             #[cfg(target_arch = "wasm32")]
             EnvError::WasmError(msg) => write!(f, "WASM environment error: {}", msg),
         }

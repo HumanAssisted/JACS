@@ -217,6 +217,18 @@ pub enum JacsError {
         reason: String,
     },
 
+    /// Failed to write file contents.
+    FileWriteFailed {
+        path: String,
+        reason: String,
+    },
+
+    /// Failed to create a directory.
+    DirectoryCreateFailed {
+        path: String,
+        reason: String,
+    },
+
     /// Could not determine MIME type for the file.
     MimeTypeUnknown {
         path: String,
@@ -295,7 +307,11 @@ impl fmt::Display for JacsError {
 
             // Signing
             JacsError::SigningFailed { reason } => {
-                write!(f, "Signing failed: {}", reason)
+                write!(
+                    f,
+                    "Document signing failed: {}",
+                    reason
+                )
             }
 
             // Verification
@@ -346,10 +362,32 @@ impl fmt::Display for JacsError {
 
             // Files
             JacsError::FileNotFound { path } => {
-                write!(f, "File not found: '{}'", path)
+                write!(
+                    f,
+                    "File not found: '{}'. Ensure the file path is correct or create the file first.",
+                    path
+                )
             }
             JacsError::FileReadFailed { path, reason } => {
-                write!(f, "Failed to read '{}': {}", path, reason)
+                write!(
+                    f,
+                    "Failed to read file '{}': {}. Check that the file exists and has read permissions.",
+                    path, reason
+                )
+            }
+            JacsError::FileWriteFailed { path, reason } => {
+                write!(
+                    f,
+                    "Failed to write file '{}': {}. Check that the directory exists and has write permissions.",
+                    path, reason
+                )
+            }
+            JacsError::DirectoryCreateFailed { path, reason } => {
+                write!(
+                    f,
+                    "Failed to create directory '{}': {}. Check that the parent directory exists and has write permissions.",
+                    path, reason
+                )
             }
             JacsError::MimeTypeUnknown { path } => {
                 write!(
@@ -571,5 +609,55 @@ mod tests {
         let debug_str = format!("{:?}", err);
         assert!(debug_str.contains("CryptoError"));
         assert!(debug_str.contains("test crypto error"));
+    }
+
+    // ==========================================================================
+    // FILE OPERATION ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_file_not_found_error_is_actionable() {
+        let err = JacsError::FileNotFound {
+            path: "/path/to/missing.json".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/path/to/missing.json"), "Should include the file path");
+        assert!(msg.contains("Ensure") || msg.contains("create"), "Should provide guidance");
+    }
+
+    #[test]
+    fn test_file_read_failed_error_is_actionable() {
+        let err = JacsError::FileReadFailed {
+            path: "/path/to/file.json".to_string(),
+            reason: "permission denied".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/path/to/file.json"), "Should include the file path");
+        assert!(msg.contains("permission denied"), "Should include the reason");
+        assert!(msg.contains("permission") || msg.contains("Check"), "Should provide guidance");
+    }
+
+    #[test]
+    fn test_file_write_failed_error_is_actionable() {
+        let err = JacsError::FileWriteFailed {
+            path: "/path/to/output.json".to_string(),
+            reason: "disk full".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/path/to/output.json"), "Should include the file path");
+        assert!(msg.contains("disk full"), "Should include the reason");
+        assert!(msg.contains("write") || msg.contains("Check"), "Should provide guidance");
+    }
+
+    #[test]
+    fn test_directory_create_failed_error_is_actionable() {
+        let err = JacsError::DirectoryCreateFailed {
+            path: "/path/to/new_dir".to_string(),
+            reason: "permission denied".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/path/to/new_dir"), "Should include the directory path");
+        assert!(msg.contains("permission denied"), "Should include the reason");
+        assert!(msg.contains("parent") || msg.contains("Check"), "Should suggest checking parent directory");
     }
 }

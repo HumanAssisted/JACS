@@ -299,7 +299,7 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
 /// # Arguments
 /// * `rawpath` - The path or URL to the schema. Can be:
 ///   - A key in DEFAULT_SCHEMA_STRINGS
-///   - A https://hai.ai URL (will be converted to embedded schema)
+///   - A <https://hai.ai> URL (will be converted to embedded schema)
 ///   - A remote URL (will attempt fetch)
 ///   - A local filesystem path
 ///

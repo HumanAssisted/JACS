@@ -8,6 +8,7 @@ use crate::crypt::{CryptoSigningAlgorithm, detect_algorithm_from_public_key};
 use crate::error::JacsError;
 use crate::paths::trust_store_dir;
 use crate::schema::utils::ValueExt;
+use crate::time_utils;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -130,8 +131,13 @@ pub fn trust_agent_with_key(agent_json: &str, public_key_pem: Option<&str>) -> R
     if computed_hash != public_key_hash {
         return Err(JacsError::SignatureVerificationFailed {
             reason: format!(
-                "Public key hash mismatch: expected {}, got {}",
-                public_key_hash, computed_hash
+                "Public key hash mismatch for agent '{}': the provided public key (hash: '{}') \
+                does not match the key hash in the agent's signature (expected: '{}'). \
+                This could mean: (1) the wrong public key was provided, \
+                (2) the agent document was modified after signing, or \
+                (3) the agent's keys have been rotated. \
+                Verify you have the correct public key for this agent.",
+                agent_id, computed_hash, public_key_hash
             ),
         });
     }
@@ -141,14 +147,16 @@ pub fn trust_agent_with_key(agent_json: &str, public_key_pem: Option<&str>) -> R
 
     // Create trust store directory if it doesn't exist
     let trust_dir = trust_store_dir();
-    fs::create_dir_all(&trust_dir).map_err(|e| JacsError::Internal {
-        message: format!("Failed to create trust store directory: {}", e),
+    fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+        path: trust_dir.to_string_lossy().to_string(),
+        reason: e.to_string(),
     })?;
 
     // Save the agent file
     let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    fs::write(&agent_file, agent_json).map_err(|e| JacsError::Internal {
-        message: format!("Failed to write trusted agent file: {}", e),
+    fs::write(&agent_file, agent_json).map_err(|e| JacsError::FileWriteFailed {
+        path: agent_file.to_string_lossy().to_string(),
+        reason: e.to_string(),
     })?;
 
     // Save the public key to the key cache for future verifications
@@ -164,7 +172,7 @@ pub fn trust_agent_with_key(agent_json: &str, public_key_pem: Option<&str>) -> R
         name,
         public_key_pem: public_key_pem_string,
         public_key_hash,
-        trusted_at: chrono::Utc::now().to_rfc3339(),
+        trusted_at: time_utils::now_rfc3339(),
     };
 
     let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
@@ -289,9 +297,13 @@ pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
     let agent_file = trust_dir.join(format!("{}.json", agent_id));
 
     if !agent_file.exists() {
-        return Err(JacsError::AgentNotTrusted {
-            agent_id: agent_id.to_string(),
-        });
+        return Err(JacsError::TrustError(format!(
+            "Agent '{}' is not in the trust store. Use trust_agent() or trust_agent_with_key() \
+            to add the agent first. Use list_trusted_agents() to see currently trusted agents. \
+            Expected file at: {}",
+            agent_id,
+            agent_file.to_string_lossy()
+        )));
     }
 
     fs::read_to_string(&agent_file).map_err(|e| JacsError::FileReadFailed {
@@ -348,9 +360,13 @@ fn load_public_key_from_cache(public_key_hash: &str) -> Result<Vec<u8>, JacsErro
     let key_file = keys_dir.join(format!("{}.pem", public_key_hash));
 
     if !key_file.exists() {
-        return Err(JacsError::KeyNotFound {
-            path: key_file.to_string_lossy().to_string(),
-        });
+        return Err(JacsError::TrustError(format!(
+            "Public key not found in trust store cache for hash '{}'. \
+            To trust this agent, call trust_agent_with_key() and provide the agent's public key PEM. \
+            Expected key at: {}",
+            public_key_hash,
+            key_file.to_string_lossy()
+        )));
     }
 
     fs::read(&key_file).map_err(|e| JacsError::FileReadFailed {
@@ -368,88 +384,36 @@ fn save_public_key_to_cache(
     let trust_dir = trust_store_dir();
     let keys_dir = trust_dir.join("keys");
 
-    fs::create_dir_all(&keys_dir).map_err(|e| JacsError::Internal {
-        message: format!("Failed to create keys directory: {}", e),
+    fs::create_dir_all(&keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+        path: keys_dir.to_string_lossy().to_string(),
+        reason: e.to_string(),
     })?;
 
     // Save the public key
     let key_file = keys_dir.join(format!("{}.pem", public_key_hash));
-    fs::write(&key_file, public_key_bytes).map_err(|e| JacsError::Internal {
-        message: format!("Failed to write public key file: {}", e),
+    fs::write(&key_file, public_key_bytes).map_err(|e| JacsError::FileWriteFailed {
+        path: key_file.to_string_lossy().to_string(),
+        reason: e.to_string(),
     })?;
 
     // Save the algorithm type if provided
     if let Some(algo) = algorithm {
         let algo_file = keys_dir.join(format!("{}.algo", public_key_hash));
-        fs::write(&algo_file, algo).map_err(|e| JacsError::Internal {
-            message: format!("Failed to write algorithm file: {}", e),
+        fs::write(&algo_file, algo).map_err(|e| JacsError::FileWriteFailed {
+            path: algo_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
         })?;
     }
 
     Ok(())
 }
 
-/// Maximum clock drift tolerance for signature timestamps (in seconds).
-/// Signatures dated more than 5 minutes in the future are rejected.
-const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
-
-/// Optional maximum signature age (in seconds).
-/// Set to 0 to disable expiration checking.
-/// Default: 0 (no expiration - signatures don't expire)
-const MAX_SIGNATURE_AGE_SECONDS: i64 = 0;
-
-/// Validates a signature timestamp.
+/// Validates a signature timestamp using centralized time utilities.
 ///
-/// # Arguments
-/// * `timestamp_str` - ISO 8601 / RFC 3339 formatted timestamp string
-///
-/// # Returns
-/// Ok(()) if the timestamp is valid, or an error describing the issue.
-///
-/// # Validation Rules
-/// 1. The timestamp must be a valid RFC 3339 / ISO 8601 format
-/// 2. The timestamp must not be more than MAX_FUTURE_TIMESTAMP_SECONDS in the future
-///    (allows for small clock drift between systems)
-/// 3. If MAX_SIGNATURE_AGE_SECONDS > 0, the timestamp must not be older than that
+/// This is a thin wrapper around `time_utils::validate_signature_timestamp`
+/// for use within this module.
 fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError> {
-    use chrono::{DateTime, Utc};
-
-    // Parse the timestamp
-    let signature_time: DateTime<Utc> = timestamp_str
-        .parse()
-        .map_err(|e| JacsError::SignatureVerificationFailed {
-            reason: format!("Invalid signature timestamp format '{}': {}", timestamp_str, e),
-        })?;
-
-    let now = Utc::now();
-
-    // Check for future timestamps (with clock drift tolerance)
-    let future_limit = now + chrono::Duration::seconds(MAX_FUTURE_TIMESTAMP_SECONDS);
-    if signature_time > future_limit {
-        return Err(JacsError::SignatureVerificationFailed {
-            reason: format!(
-                "Signature timestamp {} is too far in the future (max {} seconds allowed). \
-                This may indicate clock skew or a forged signature.",
-                timestamp_str, MAX_FUTURE_TIMESTAMP_SECONDS
-            ),
-        });
-    }
-
-    // Check for expired signatures (if expiration is enabled)
-    if MAX_SIGNATURE_AGE_SECONDS > 0 {
-        let expiry_limit = now - chrono::Duration::seconds(MAX_SIGNATURE_AGE_SECONDS);
-        if signature_time < expiry_limit {
-            return Err(JacsError::SignatureVerificationFailed {
-                reason: format!(
-                    "Signature timestamp {} is too old (max age {} seconds). \
-                    The agent document may need to be re-signed.",
-                    timestamp_str, MAX_SIGNATURE_AGE_SECONDS
-                ),
-            });
-        }
-    }
-
-    Ok(())
+    time_utils::validate_signature_timestamp(timestamp_str)
 }
 
 /// Verifies an agent's self-signature.
@@ -484,13 +448,24 @@ fn verify_agent_self_signature(
     // Determine the algorithm
     let algo = match algorithm {
         Some(a) => CryptoSigningAlgorithm::from_str(a).map_err(|_| JacsError::SignatureVerificationFailed {
-            reason: format!("Unknown signing algorithm: {}", a),
+            reason: format!(
+                "Unknown signing algorithm '{}'. Supported algorithms are: \
+                'ring-Ed25519', 'RSA-PSS', 'pq-dilithium', 'pq-dilithium-alt', 'pq2025'. \
+                The agent document may have been signed with an unsupported algorithm version.",
+                a
+            ),
         })?,
         None => {
             // Try to detect from the public key
             detect_algorithm_from_public_key(public_key_bytes).map_err(|e| {
                 JacsError::SignatureVerificationFailed {
-                    reason: format!("Could not detect algorithm: {}", e),
+                    reason: format!(
+                        "Could not detect signing algorithm from public key: {}. \
+                        The agent document is missing the 'signingAlgorithm' field and \
+                        automatic detection failed. Re-sign the agent document to include \
+                        the signingAlgorithm field, or verify the public key format is correct.",
+                        e
+                    ),
                 }
             })?
         }
@@ -529,7 +504,13 @@ fn verify_agent_self_signature(
     };
 
     verification_result.map_err(|e| JacsError::SignatureVerificationFailed {
-        reason: format!("Signature verification failed: {}", e),
+        reason: format!(
+            "Cryptographic signature verification failed using {} algorithm: {}. \
+            This typically means: (1) the agent document was modified after signing, \
+            (2) the wrong public key is being used, or (3) the signature is corrupted. \
+            Verify the agent document integrity and ensure the correct public key is provided.",
+            algo, e
+        ),
     })?;
 
     info!("Agent self-signature verified successfully");
@@ -539,26 +520,74 @@ fn verify_agent_self_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use crate::time_utils::{now_rfc3339, now_utc};
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
 
-    fn setup_test_trust_dir() -> TempDir {
-        let temp_dir = TempDir::new().unwrap();
-        // Override the trust store location for tests
-        // SAFETY: `env::set_var` is unsafe in Rust 2024+ due to potential data races when
-        // other threads read environment variables concurrently. This is safe here because:
-        // 1. This function is only called from #[serial] tests which run single-threaded
-        // 2. No other threads are spawned before this call completes
-        // 3. The HOME variable is read only after this setup completes
-        // 4. The TempDir lifetime ensures the path remains valid for the test duration
-        // If these invariants are violated (e.g., parallel test execution), undefined
-        // behavior could occur from concurrent env access.
-        unsafe {
-            env::set_var("HOME", temp_dir.path().to_str().unwrap());
+    /// RAII guard for test isolation that ensures HOME is restored even on panic.
+    ///
+    /// This struct:
+    /// - Saves the original HOME environment variable
+    /// - Creates a temporary directory and sets HOME to point to it
+    /// - On drop (including panic unwinding): restores the original HOME
+    /// - The TempDir is automatically cleaned up when dropped
+    struct TrustTestGuard {
+        _temp_dir: TempDir,
+        original_home: Option<String>,
+    }
+
+    impl TrustTestGuard {
+        /// Creates a new test guard that sets up an isolated trust store environment.
+        ///
+        /// # Panics
+        ///
+        /// Panics if the temporary directory cannot be created.
+        fn new() -> Self {
+            // Save original HOME before modifying
+            let original_home = env::var("HOME").ok();
+
+            let temp_dir = TempDir::new().expect("Failed to create temp directory for test");
+
+            // SAFETY: `env::set_var` is unsafe in Rust 2024+ due to potential data races when
+            // other threads read environment variables concurrently. This is safe here because:
+            // 1. This function is only called from #[serial] tests which run single-threaded
+            // 2. No other threads are spawned before this call completes
+            // 3. The HOME variable is read only after this setup completes
+            // 4. The TempDir lifetime ensures the path remains valid for the test duration
+            // If these invariants are violated (e.g., parallel test execution), undefined
+            // behavior could occur from concurrent env access.
+            unsafe {
+                env::set_var("HOME", temp_dir.path().to_str().unwrap());
+            }
+
+            Self {
+                _temp_dir: temp_dir,
+                original_home,
+            }
         }
-        temp_dir
+    }
+
+    impl Drop for TrustTestGuard {
+        fn drop(&mut self) {
+            // Restore original HOME even during panic unwinding.
+            // SAFETY: Same rationale as in new() - tests are #[serial] so no concurrent access.
+            unsafe {
+                match &self.original_home {
+                    Some(home) => env::set_var("HOME", home),
+                    None => env::remove_var("HOME"),
+                }
+            }
+        }
+    }
+
+    /// Sets up an isolated trust store environment for testing.
+    ///
+    /// Returns a guard that must be kept alive for the duration of the test.
+    /// When the guard is dropped (including on panic), the original HOME
+    /// environment variable is restored.
+    fn setup_test_trust_dir() -> TrustTestGuard {
+        TrustTestGuard::new()
     }
 
     // ==================== Timestamp Validation Tests ====================
@@ -566,7 +595,7 @@ mod tests {
     #[test]
     fn test_valid_recent_timestamp() {
         // A timestamp from just now should be valid
-        let now = Utc::now().to_rfc3339();
+        let now = now_rfc3339();
         let result = validate_signature_timestamp(&now);
         assert!(result.is_ok(), "Recent timestamp should be valid: {:?}", result);
     }
@@ -574,7 +603,7 @@ mod tests {
     #[test]
     fn test_valid_past_timestamp() {
         // A timestamp from 1 hour ago should be valid (when expiration is disabled)
-        let past = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        let past = (now_utc() - chrono::Duration::hours(1)).to_rfc3339();
         let result = validate_signature_timestamp(&past);
         assert!(result.is_ok(), "Past timestamp should be valid when expiration is disabled: {:?}", result);
     }
@@ -582,7 +611,7 @@ mod tests {
     #[test]
     fn test_valid_old_timestamp() {
         // A timestamp from a year ago should be valid (when expiration is disabled)
-        let old = (Utc::now() - chrono::Duration::days(365)).to_rfc3339();
+        let old = (now_utc() - chrono::Duration::days(365)).to_rfc3339();
         let result = validate_signature_timestamp(&old);
         assert!(result.is_ok(), "Old timestamp should be valid when expiration is disabled: {:?}", result);
     }
@@ -590,7 +619,7 @@ mod tests {
     #[test]
     fn test_timestamp_slight_future_allowed() {
         // A timestamp a few seconds in the future should be allowed (clock drift)
-        let slight_future = (Utc::now() + chrono::Duration::seconds(30)).to_rfc3339();
+        let slight_future = (now_utc() + chrono::Duration::seconds(30)).to_rfc3339();
         let result = validate_signature_timestamp(&slight_future);
         assert!(result.is_ok(), "Slight future timestamp should be allowed for clock drift: {:?}", result);
     }
@@ -598,7 +627,7 @@ mod tests {
     #[test]
     fn test_timestamp_far_future_rejected() {
         // A timestamp 10 minutes in the future should be rejected
-        let far_future = (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339();
+        let far_future = (now_utc() + chrono::Duration::minutes(10)).to_rfc3339();
         let result = validate_signature_timestamp(&far_future);
         assert!(result.is_err(), "Far future timestamp should be rejected");
         if let Err(JacsError::SignatureVerificationFailed { reason }) = result {
@@ -751,8 +780,11 @@ mod tests {
         let result = load_public_key_from_cache("nonexistent-hash");
         assert!(result.is_err());
         match result {
-            Err(JacsError::KeyNotFound { .. }) => (),
-            _ => panic!("Expected KeyNotFound error"),
+            Err(JacsError::TrustError(msg)) => {
+                assert!(msg.contains("nonexistent-hash"), "Error should contain the hash");
+                assert!(msg.contains("trust_agent_with_key"), "Error should suggest trust_agent_with_key");
+            }
+            _ => panic!("Expected TrustError error"),
         }
     }
 
@@ -1007,7 +1039,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(JacsError::AgentNotTrusted { agent_id }) => {
-                assert_eq!(agent_id, "nonexistent-agent-id");
+                assert_eq!(agent_id, "nonexistent-agent-id", "Error should contain agent ID");
             }
             _ => panic!("Expected AgentNotTrusted error"),
         }
@@ -1021,10 +1053,12 @@ mod tests {
         let result = get_trusted_agent("nonexistent-agent-id");
         assert!(result.is_err());
         match result {
-            Err(JacsError::AgentNotTrusted { agent_id }) => {
-                assert_eq!(agent_id, "nonexistent-agent-id");
+            Err(JacsError::TrustError(msg)) => {
+                assert!(msg.contains("nonexistent-agent-id"), "Error should contain agent ID");
+                assert!(msg.contains("not in the trust store"), "Error should explain the issue");
+                assert!(msg.contains("trust_agent"), "Error should suggest using trust_agent");
             }
-            _ => panic!("Expected AgentNotTrusted error"),
+            _ => panic!("Expected TrustError error"),
         }
     }
 
@@ -1039,7 +1073,7 @@ mod tests {
         save_public_key_to_cache(hash, test_key, Some("ring-Ed25519")).unwrap();
 
         // Agent with far future timestamp
-        let far_future = (Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let far_future = (now_utc() + chrono::Duration::hours(1)).to_rfc3339();
         let agent_json = format!(r#"{{
             "jacsId": "test-agent-id",
             "name": "Test Agent",

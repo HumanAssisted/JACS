@@ -12,7 +12,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::crypt::hash::{hash_bytes, hash_string};
 use crate::schema::utils::ValueExt;
-use chrono::{DateTime, Local, Utc};
+use crate::time_utils;
+use chrono::Local;
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use regex::Regex;
@@ -424,7 +425,8 @@ impl DocumentTraits for Agent {
 
             // Create a new "files" field in the document
             let instance_map = instance.as_object_mut()
-                .ok_or("Document instance is not a JSON object")?;
+                .ok_or("Invalid document structure: expected a JSON object but got a different type. \
+                    Ensure your document JSON is a valid object (starts with '{' and ends with '}').")?;
             instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
         }
 
@@ -468,13 +470,11 @@ impl DocumentTraits for Agent {
                         (doc["jacsId"].as_str(), doc["jacsVersionDate"].as_str())
                 {
                     // Convert jacsVersionDate to timestamp (i64)
-                    let timestamp = match DateTime::parse_from_rfc3339(jacs_version_date) {
-                        Ok(dt) => dt.with_timezone(&Utc).timestamp(),
-                        Err(e) => {
+                    let timestamp = time_utils::parse_rfc3339_to_timestamp(jacs_version_date)
+                        .unwrap_or_else(|e| {
                             println!("Failed to parse timestamp: {}", e);
-                            Utc::now().timestamp()
-                        }
-                    };
+                            time_utils::now_timestamp()
+                        });
 
                     let entry = most_recent_docs
                         .entry(jacs_id.to_string())
@@ -526,18 +526,33 @@ impl DocumentTraits for Agent {
     }
 
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
-        // Use ok_or_else for mandatory fields
+        // Use ok_or_else for mandatory fields with actionable error messages
         let id = value
             .get_str("jacsId")
-            .ok_or_else(|| "Missing 'jacsId' field".to_string())?
+            .ok_or_else(|| {
+                "Invalid document: missing required field 'jacsId'. \
+                Documents must have jacsId, jacsVersion, and jacsType fields. \
+                Use create_document_and_load() to create a properly structured document."
+                    .to_string()
+            })?
             .to_string();
         let version = value
             .get_str("jacsVersion")
-            .ok_or_else(|| "Missing 'jacsVersion' field".to_string())?
+            .ok_or_else(|| {
+                "Invalid document: missing required field 'jacsVersion'. \
+                Documents must have jacsId, jacsVersion, and jacsType fields. \
+                Use create_document_and_load() to create a properly structured document."
+                    .to_string()
+            })?
             .to_string();
         let jacs_type = value
             .get_str("jacsType")
-            .ok_or_else(|| "Missing 'jacsType' field".to_string())?
+            .ok_or_else(|| {
+                "Invalid document: missing required field 'jacsType'. \
+                Documents must have jacsId, jacsVersion, and jacsType fields. \
+                Use create_document_and_load() to create a properly structured document."
+                    .to_string()
+            })?
             .to_string();
 
         let doc = JACSDocument {
@@ -642,7 +657,7 @@ impl DocumentTraits for Agent {
         // validate schema
         let new_version = Uuid::new_v4().to_string();
         let last_version = &value["jacsVersion"];
-        let versioncreated = Utc::now().to_rfc3339();
+        let versioncreated = time_utils::now_rfc3339();
 
         new_document["jacsPreviousVersion"] = last_version.clone();
         new_document["jacsVersion"] = json!(format!("{}", new_version));
@@ -680,7 +695,7 @@ impl DocumentTraits for Agent {
         let mut value = original_document.value;
         let new_version = Uuid::new_v4().to_string();
         let last_version = &value["jacsVersion"];
-        let versioncreated = Utc::now().to_rfc3339();
+        let versioncreated = time_utils::now_rfc3339();
 
         value["jacsPreviousVersion"] = last_version.clone();
         value["jacsVersion"] = json!(format!("{}", new_version));

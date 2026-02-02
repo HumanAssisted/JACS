@@ -26,7 +26,7 @@ use crate::dns::bootstrap::verify_pubkey_via_dns_or_embedded;
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
 use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
-use chrono::prelude::*;
+use crate::time_utils;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use serde_json::{Value, json, to_value};
@@ -642,7 +642,7 @@ impl Agent {
         let binding = String::new();
         let agent_id = self.id.as_ref().unwrap_or(&binding);
         let agent_version = self.version.as_ref().unwrap_or(&binding);
-        let date = Utc::now().to_rfc3339();
+        let date = time_utils::now_rfc3339();
 
         let config = self.config.as_ref().ok_or_else(|| {
             let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
@@ -805,7 +805,7 @@ impl Agent {
         // validate schema
         let new_version = Uuid::new_v4().to_string();
         let last_version = &original_self["jacsVersion"];
-        let versioncreated = Utc::now().to_rfc3339();
+        let versioncreated = time_utils::now_rfc3339();
 
         new_self["jacsPreviousVersion"] = last_version.clone();
         new_self["jacsVersion"] = json!(format!("{}", new_version));

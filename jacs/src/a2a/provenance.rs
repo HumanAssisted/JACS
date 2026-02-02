@@ -6,6 +6,7 @@ use crate::agent::{
     AGENT_SIGNATURE_FIELDNAME, Agent, boilerplate::BoilerPlate, document::DocumentTraits,
 };
 use crate::schema::utils::ValueExt;
+use crate::time_utils;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::error::Error;
@@ -63,7 +64,7 @@ pub fn wrap_artifact_with_provenance(
         "jacsType": format!("a2a-{}", artifact_type),
         "jacsLevel": "artifact",
         "jacsPreviousVersion": null,
-        "jacsVersionDate": chrono::Utc::now().to_rfc3339(),
+        "jacsVersionDate": time_utils::now_rfc3339(),
         "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
         "a2aArtifact": artifact,
     });
@@ -350,7 +351,7 @@ pub fn create_chain_of_custody(artifacts: Vec<Value>) -> Result<Value, Box<dyn E
 
     Ok(json!({
         "chainOfCustody": chain,
-        "created": chrono::Utc::now().to_rfc3339(),
+        "created": time_utils::now_rfc3339(),
         "totalArtifacts": chain.len(),
     }))
 }
@@ -421,7 +422,7 @@ mod tests {
             signer_id: "test-agent".to_string(),
             signer_version: "v1".to_string(),
             artifact_type: "a2a-task".to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: time_utils::now_rfc3339(),
             parent_signatures_valid: true,
             parent_verification_results: vec![],
             original_artifact: json!({"test": "data"}),

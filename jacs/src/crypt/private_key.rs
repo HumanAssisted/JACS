@@ -21,7 +21,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub struct ZeroizingVec(Vec<u8>);
 
 impl ZeroizingVec {
-    /// Create a new ZeroizingVec from a Vec<u8>.
+    /// Create a new ZeroizingVec from a `Vec<u8>`.
     ///
     /// The input Vec's contents are moved into the ZeroizingVec.
     pub fn new(data: Vec<u8>) -> Self {
