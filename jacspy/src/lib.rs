@@ -4,6 +4,7 @@
 //! shared `jacs-binding-core` crate for common functionality.
 
 use ::jacs as jacs_core;
+use jacs_binding_core::hai::{HaiClient, HaiError, RegistrationResult};
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -463,6 +464,123 @@ impl SimpleAgent {
                 e
             ))
         })
+    }
+}
+
+// =============================================================================
+// HaiClient Class - HAI.ai Integration
+// =============================================================================
+// This class wraps the HaiClient from binding-core for Python usage.
+// Async methods are executed using a blocking tokio runtime.
+// =============================================================================
+
+/// Convert a HaiError to a PyErr.
+fn hai_err_to_py(e: HaiError) -> PyErr {
+    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+}
+
+/// Client for interacting with HAI.ai services.
+///
+/// Example:
+///     client = jacs.HaiClient("https://api.hai.ai")
+///     client = client.with_api_key("your-key")
+///     if client.testconnection():
+///         result = client.register(agent)
+///         print(result["agent_id"])
+#[pyclass]
+pub struct PyHaiClient {
+    inner: HaiClient,
+}
+
+#[pymethods]
+impl PyHaiClient {
+    /// Create a new HAI client targeting the specified endpoint.
+    ///
+    /// Args:
+    ///     endpoint: Base URL of the HAI API (e.g., "https://api.hai.ai")
+    #[new]
+    fn new(endpoint: &str) -> Self {
+        PyHaiClient {
+            inner: HaiClient::new(endpoint),
+        }
+    }
+
+    /// Set the API key for authentication.
+    ///
+    /// Args:
+    ///     api_key: Your HAI API key
+    ///
+    /// Returns:
+    ///     A new HaiClient with the API key configured
+    fn with_api_key(&self, api_key: &str) -> Self {
+        // Clone the endpoint and rebuild with API key
+        // Note: HaiClient uses builder pattern with ownership, so we reconstruct
+        let endpoint = self.inner.endpoint();
+        PyHaiClient {
+            inner: HaiClient::new(endpoint).with_api_key(api_key),
+        }
+    }
+
+    /// Test connectivity to the HAI server.
+    ///
+    /// Returns:
+    ///     True if the server is reachable and healthy
+    ///
+    /// Raises:
+    ///     RuntimeError: If the connection fails
+    fn testconnection(&self) -> PyResult<bool> {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create runtime: {}",
+                e
+            ))
+        })?;
+
+        rt.block_on(self.inner.testconnection())
+            .map_err(hai_err_to_py)
+    }
+
+    /// Register a JACS agent with HAI.
+    ///
+    /// Args:
+    ///     agent: A loaded JacsAgent instance
+    ///
+    /// Returns:
+    ///     dict with agent_id, jacs_id, dns_verified, signatures
+    ///
+    /// Raises:
+    ///     RuntimeError: If registration fails or no API key is set
+    fn register(&self, py: Python, agent: &JacsAgent) -> PyResult<PyObject> {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create runtime: {}",
+                e
+            ))
+        })?;
+
+        let result: RegistrationResult = rt
+            .block_on(self.inner.register(&agent.inner))
+            .map_err(hai_err_to_py)?;
+
+        // Convert RegistrationResult to Python dict
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("agent_id", &result.agent_id)?;
+        dict.set_item("jacs_id", &result.jacs_id)?;
+        dict.set_item("dns_verified", result.dns_verified)?;
+
+        // Convert signatures to list of dicts
+        let signatures_list = pyo3::types::PyList::empty(py);
+        for sig in &result.signatures {
+            let sig_dict = pyo3::types::PyDict::new(py);
+            sig_dict.set_item("key_id", &sig.key_id)?;
+            sig_dict.set_item("algorithm", &sig.algorithm)?;
+            sig_dict.set_item("signature", &sig.signature)?;
+            sig_dict.set_item("signed_at", &sig.signed_at)?;
+            signatures_list.append(sig_dict)?;
+        }
+        dict.set_item("signatures", signatures_list)?;
+
+        Ok(dict.into())
     }
 }
 
@@ -949,6 +1067,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // =============================================================================
     m.add_class::<JacsAgent>()?;
     m.add_class::<SimpleAgent>()?;
+    m.add_class::<PyHaiClient>()?;
 
     // =============================================================================
     // Stateless Utility Functions

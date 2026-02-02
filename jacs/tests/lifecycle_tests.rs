@@ -71,10 +71,25 @@ fn cleanup_test_env() {
     }
 }
 
+/// Sets up environment for lifecycle tests with unique key filenames.
+/// This prevents overwriting the shared fixture keys used by other tests.
+fn set_lifecycle_test_env_vars() {
+    let fixtures_dir = utils::fixtures_dir_string();
+    let keys_dir = utils::fixtures_keys_dir_string();
+    unsafe {
+        env::set_var(utils::PASSWORD_ENV_VAR, utils::TEST_PASSWORD_LEGACY);
+        env::set_var("JACS_KEY_DIRECTORY", &keys_dir);
+        // Use unique key filenames for lifecycle tests to avoid overwriting shared fixtures
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "lifecycle-test.private.pem");
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "lifecycle-test.public.pem");
+        env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
+    }
+}
+
 /// Creates a fresh test agent with auto-generated keys.
 /// Returns the agent ready for use.
 fn create_fresh_agent() -> jacs::agent::Agent {
-    set_min_test_env_vars();
+    set_lifecycle_test_env_vars();
     let mut agent = create_agent_v1().expect("Failed to create agent schema");
     let json_data = fs::read_to_string(raw_fixture("myagent.new.json"))
         .expect("Failed to read agent fixture");
@@ -114,7 +129,8 @@ fn test_agent_creation_with_low_level_api() {
 #[test]
 #[serial]
 fn test_agent_creation_with_keys() {
-    set_min_test_env_vars();
+    // Use lifecycle-specific env vars to avoid overwriting shared fixture keys
+    set_lifecycle_test_env_vars();
 
     let mut agent = create_agent_v1().expect("Failed to create agent schema");
     let json_data = fs::read_to_string(raw_fixture("myagent.new.json"))

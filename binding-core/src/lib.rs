@@ -17,6 +17,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
 
+#[cfg(feature = "hai")]
+pub mod hai;
+
 /// Error type for binding core operations.
 ///
 /// This is the internal error type that binding implementations convert
@@ -501,6 +504,20 @@ impl AgentWrapper {
         agent
             .verify_payload_with_agent_id(document_string, None)
             .map_err(|e| BindingCoreError::verification_failed(e.to_string()))
+    }
+
+    /// Get the agent's JSON representation as a string.
+    ///
+    /// Returns the agent's full JSON document, suitable for registration
+    /// with external services like HAI.
+    pub fn get_agent_json(&self) -> BindingResult<String> {
+        let agent = self.lock()?;
+        match agent.get_value() {
+            Some(value) => Ok(value.to_string()),
+            None => Err(BindingCoreError::agent_load(
+                "Agent not loaded. Call load() first.",
+            )),
+        }
     }
 }
 

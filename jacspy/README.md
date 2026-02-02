@@ -113,6 +113,48 @@ agent_card = a2a.export_agent_card(agent_data)
 wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
 ```
 
+## HAI.ai Integration
+
+HAI.ai is a platform for agent-to-agent agreements and conflict resolution, providing cryptographic attestation of agent capabilities.
+
+### Quick Registration
+
+```python
+from jacs.hai import HaiClient
+import jacs.simple as jacs
+
+# Load your JACS agent
+jacs.load("./jacs.config.json")
+
+# Connect to HAI.ai
+hai = HaiClient()
+
+# Test connection
+if hai.testconnection("https://hai.ai"):
+    # Register your agent
+    result = hai.register("https://hai.ai", api_key="your-api-key")
+    print(f"Registered: {result.agent_id}")
+```
+
+### Prerequisites
+
+- JACS agent created (see [Quick Start](#quick-start-simplified-api))
+- API key from HAI.ai (visit https://hai.ai/developers)
+
+### Available Methods
+
+| Method | Description |
+|--------|-------------|
+| `testconnection()` | Test HAI.ai connectivity |
+| `register()` | Register agent with HAI.ai |
+| `benchmark()` | Run benchmark suite |
+| `connect()` | Connect to SSE event stream |
+
+### Examples
+
+- `examples/hai_quickstart.py` - 5-minute quickstart
+- `examples/register_with_hai.py` - Complete registration example
+
 ## Installation
 
 ```bash
