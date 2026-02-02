@@ -30,6 +30,7 @@ dependencies = []
 
 [project.optional-dependencies]
 mcp = ["fastmcp>=0.1.0"]
+hai = ["httpx>=0.24.0", "httpx-sse>=0.4.0"]
 
 [project.urls] 
 Homepage = "https://github.com/HumanAssisted/JACS" 

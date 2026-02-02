@@ -84,6 +84,12 @@ try:
 except ImportError:
     mcp_simple = None  # fastmcp not installed
 
+# Make HAI.ai integration available (optional, may fail if httpx not installed)
+try:
+    from . import hai
+except ImportError:
+    hai = None  # httpx not installed
+
 __all__ = [
     # Rust bindings (JacsAgent class and legacy functions)
     "JacsAgent",
@@ -112,6 +118,7 @@ __all__ = [
     # Submodules
     "simple",
     "async_simple",
+    "hai",
 ]
 
  
