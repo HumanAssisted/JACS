@@ -8,7 +8,7 @@ use rsa::rand_core::OsRng;
 use rsa::sha2::Sha256;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use signature::{RandomizedSigner, SignatureEncoding, Verifier};
-use tracing::debug; // Correctly import VerifyingKey
+use tracing::{debug, trace, warn};
 
 /// best for pure Rust, least secure
 
@@ -42,11 +42,10 @@ pub fn sign_string(
     let signature = signing_key.sign_with_rng(&mut OsRng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
     let signature_base64 = B64.encode(&signature_bytes);
-    // TODO
-    // assert_ne!(signature.to_bytes().as_ref(), data);
-    debug!(
-        "xxx sign_string  sig: {}     --------CONTENT: {}",
-        signature_base64, data
+    trace!(
+        data_len = data.len(),
+        signature_len = signature_base64.len(),
+        "RSA-PSS signing completed"
     );
     Ok(signature_base64)
 }
@@ -59,41 +58,38 @@ pub fn verify_string(
     let public_key_content_converted =
         std::str::from_utf8(&public_key_content).expect("Failed to convert bytes to string");
 
-    debug!(
-        "public_key_content_converted {}",
-        public_key_content_converted
+    trace!(
+        public_key_len = public_key_content.len(),
+        "Parsing RSA public key"
     );
 
     let public_key = RsaPublicKey::from_public_key_pem(public_key_content_converted)?;
 
-    debug!("public_key_content_converted pem {:?}", public_key);
-
     // Updated instantiation of VerifyingKey
     let verifying_key = VerifyingKey::<Sha256>::from(public_key);
-    debug!("verifying_key pem {:?}", verifying_key);
 
-    debug!(
-        "xxx verify_string  sig: {}     --------CONTENT: {}",
-        signature_base64, data
+    trace!(
+        data_len = data.len(),
+        signature_len = signature_base64.len(),
+        "RSA-PSS verification starting"
     );
 
     let signature_bytes = B64.decode(signature_base64)?;
-    debug!("Decoded signature bytes: {:?}", signature_bytes);
-
     let signature = Signature::try_from(signature_bytes.as_slice())?;
-    debug!("Created Signature object: {:?}", signature);
 
     let result = verifying_key.verify(data.as_bytes(), &signature);
 
     match result {
         Ok(()) => {
-            debug!("Signature verification succeeded");
+            debug!("RSA-PSS signature verification succeeded");
             Ok(())
         }
         Err(e) => {
-            let error_message = format!("Signature verification failed: {}", e);
-            eprintln!("{}", error_message);
-            Err(Box::new(std::io::Error::other(error_message)))
+            warn!("RSA-PSS signature verification failed");
+            Err(Box::new(std::io::Error::other(format!(
+                "Signature verification failed: {}",
+                e
+            ))))
         }
     }
 }

@@ -2,9 +2,9 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use secrecy::ExposeSecret;
 pub mod hash;
 pub mod pq;
+pub mod private_key;
 pub mod ringwrapper;
 pub mod rsawrapper;
-// pub mod private_key;
 pub mod aes_encrypt;
 pub mod kem;
 pub mod pq2025; // ML-DSA signatures // ML-KEM encryption
@@ -35,10 +35,15 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 
 /// Detects the algorithm type based on the public key format.
 ///
+/// **DEPRECATED**: This function uses heuristics that could potentially be fooled.
+/// Prefer using the explicit `signingAlgorithm` field from the signature document.
+/// This function should only be used as a fallback for legacy documents.
+///
 /// Each algorithm has unique characteristics in their public keys:
 /// - Ed25519: Fixed length of 32 bytes, contains non-ASCII characters
 /// - RSA-PSS: Typically longer (512+ bytes), mostly ASCII-compatible and starts with specific ASN.1 DER encoding
 /// - Dilithium: Has a specific binary format with non-ASCII characters and varying lengths based on the parameter set
+/// - Pq2025 (ML-DSA-87): 2592-byte public keys
 pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
 ) -> Result<CryptoSigningAlgorithm, Box<dyn std::error::Error>> {
@@ -54,6 +59,11 @@ pub fn detect_algorithm_from_public_key(
     // RSA keys are typically longer, mostly ASCII-compatible, and often start with specific ASN.1 DER encoding
     if public_key.len() > 100 && public_key.starts_with(&[0x30]) && non_ascii_ratio < 0.2 {
         return Ok(CryptoSigningAlgorithm::RsaPss);
+    }
+
+    // ML-DSA-87 (Pq2025) has exactly 2592 byte public keys
+    if public_key.len() == 2592 {
+        return Ok(CryptoSigningAlgorithm::Pq2025);
     }
 
     // PQ Dilithium keys have specific formats with many non-ASCII characters and larger sizes
@@ -129,9 +139,10 @@ impl KeyManager for Agent {
             // Delegate to keystore; we expect detached signature bytes, return base64
             let ks = FsEncryptedStore;
             let binding = self.get_private_key()?;
+            // Use secure decryption - ZeroizingVec will be zeroized when it goes out of scope
             let decrypted =
-                crate::crypt::aes_encrypt::decrypt_private_key(binding.expose_secret())?;
-            let sig_bytes = ks.sign_detached(&decrypted, data.as_bytes(), &key_algorithm)?;
+                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())?;
+            let sig_bytes = ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
             Ok(STANDARD.encode(sig_bytes))
         }
     }

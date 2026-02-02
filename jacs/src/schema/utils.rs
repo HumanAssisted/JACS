@@ -5,9 +5,33 @@ use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, warn};
 
-pub const ACCEPT_INVALID_CERTS: bool = true;
+/// Whether to accept invalid TLS certificates when fetching remote schemas.
+///
+/// **Security Warning**: This is `false` by default for security.
+/// Setting this to `true` allows MITM attacks when fetching remote schemas.
+///
+/// To enable insecure mode for development, set the environment variable:
+/// `JACS_ACCEPT_INVALID_CERTS=true`
+pub const ACCEPT_INVALID_CERTS: bool = false;
+
+/// Returns whether to accept invalid TLS certificates.
+/// Checks the environment variable `JACS_ACCEPT_INVALID_CERTS` first,
+/// then falls back to the compile-time constant.
+#[cfg(not(target_arch = "wasm32"))]
+fn should_accept_invalid_certs() -> bool {
+    match std::env::var("JACS_ACCEPT_INVALID_CERTS") {
+        Ok(val) => {
+            let accept = val.eq_ignore_ascii_case("true") || val == "1";
+            if accept {
+                warn!("SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true");
+            }
+            accept
+        }
+        Err(_) => ACCEPT_INVALID_CERTS,
+    }
+}
 pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
     "schemas/agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
     "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),
@@ -124,14 +148,19 @@ impl Retrieve for EmbeddedSchemaResolver {
 
 /// Fetches a schema from a remote URL using reqwest.
 ///
-/// Security: This function accepts invalid certificates and makes unrestricted HTTP requests.
-/// It should only be used in development or controlled environments.
+/// # Security
+///
+/// By default, this function validates TLS certificates. To skip validation
+/// (for development only), set the environment variable `JACS_ACCEPT_INVALID_CERTS=true`.
+///
+/// **Warning**: Accepting invalid certificates allows MITM attacks.
 ///
 /// Not available in WASM builds.
 #[cfg(not(target_arch = "wasm32"))]
 fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
+    let accept_invalid = should_accept_invalid_certs();
     let client = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(ACCEPT_INVALID_CERTS)
+        .danger_accept_invalid_certs(accept_invalid)
         .build()?;
 
     let response = client.get(url).send()?;

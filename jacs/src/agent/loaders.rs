@@ -1,8 +1,8 @@
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::SecurityTraits;
-use crate::crypt::aes_encrypt::decrypt_private_key;
-use crate::crypt::aes_encrypt::encrypt_private_key;
+use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+use crate::crypt::private_key::ZeroizingVec;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -110,9 +110,10 @@ impl FileLoader for Agent {
 
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
-        let key_vec = decrypt_private_key(borrowed_key)?;
+        // Use secure decryption - ZeroizingVec will be zeroized when it goes out of scope
+        let key_vec = decrypt_private_key_secure(borrowed_key)?;
 
-        self.save_private_key(&absolute_private_key_path, &key_vec)?;
+        self.save_private_key(&absolute_private_key_path, key_vec.as_slice())?;
 
         self.storage
             .save_file(&absolute_public_key_path, &self.get_public_key()?)?;
@@ -414,7 +415,11 @@ impl FileLoader for Agent {
         let filepath = self.make_key_directory_path(filename)?;
         let loaded_key = self.load_public_key_file(&filepath)?;
         if filename.ends_with(".enc") {
-            Ok(decrypt_private_key(&loaded_key)?)
+            // Use secure decryption - the ZeroizingVec will be zeroized after we extract the bytes
+            let decrypted = decrypt_private_key_secure(&loaded_key)?;
+            // Clone the bytes out - the ZeroizingVec will be zeroized when dropped
+            // Note: The caller (set_keys) will immediately re-encrypt this
+            Ok(decrypted.as_slice().to_vec())
         } else {
             Ok(loaded_key)
         }

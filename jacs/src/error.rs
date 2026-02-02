@@ -54,6 +54,11 @@ pub enum JacsError {
         got: String,
     },
 
+    /// Signature verification failed (cryptographic check failed).
+    SignatureVerificationFailed {
+        reason: String,
+    },
+
     /// Document hash does not match the expected value.
     HashMismatch {
         expected: String,
@@ -176,6 +181,9 @@ impl fmt::Display for JacsError {
                     &expected[..expected.len().min(16)],
                     &got[..got.len().min(16)]
                 )
+            }
+            JacsError::SignatureVerificationFailed { reason } => {
+                write!(f, "Signature verification failed: {}", reason)
             }
             JacsError::HashMismatch { expected, got } => {
                 write!(

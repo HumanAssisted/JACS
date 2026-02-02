@@ -5,6 +5,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use fips204::ml_dsa_87;
 use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
 use std::error::Error;
+use tracing::trace;
 
 /// Generate ML-DSA-87 keypair
 /// Returns (private_key_bytes, public_key_bytes)
@@ -12,10 +13,10 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
     let (pk, sk) = ml_dsa_87::KG::try_keygen()?;
     let sk_bytes = sk.into_bytes().to_vec();
     let pk_bytes = pk.into_bytes().to_vec();
-    eprintln!(
-        "[pq2025::generate_keys] Generated key sizes: sk={} bytes, pk={} bytes",
-        sk_bytes.len(),
-        pk_bytes.len()
+    trace!(
+        sk_len = sk_bytes.len(),
+        pk_len = pk_bytes.len(),
+        "ML-DSA-87 keypair generated"
     );
     Ok((sk_bytes, pk_bytes))
 }

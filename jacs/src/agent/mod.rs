@@ -12,7 +12,8 @@ use crate::storage::MultiStorage;
 
 use crate::config::{Config, find_config, load_config};
 
-use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
+use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
 
@@ -65,9 +66,13 @@ pub const JACS_IGNORE_FIELDS: [&str; 7] = [
 pub type PrivateKey = Vec<u8>;
 pub type SecretPrivateKey = SecretBox<Vec<u8>>;
 
-// If we need any specific methods for private key operations:
-pub fn use_secret(key: &[u8]) -> Vec<u8> {
-    decrypt_private_key(key).expect("use_secret decrypt failed")
+/// Decrypt a private key with automatic memory zeroization.
+///
+/// # Security
+/// Returns a `ZeroizingVec` that will securely erase the decrypted key
+/// from memory when it goes out of scope.
+pub fn use_secret(key: &[u8]) -> ZeroizingVec {
+    decrypt_private_key_secure(key).expect("use_secret decrypt failed")
 }
 
 #[derive(Debug)]

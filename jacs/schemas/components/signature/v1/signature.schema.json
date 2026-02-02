@@ -34,13 +34,14 @@
       "type": "string"
     },
     "signingAlgorithm": {
-      "description": "What signature algorithm was used",
+      "description": "The cryptographic algorithm used to create this signature. MUST be verified explicitly during signature verification.",
       "hai": "base",
       "type": "string",
       "enum": [
         "RSA-PSS",
         "ring-Ed25519",
-        "pq-dilithium"
+        "pq-dilithium",
+        "pq2025"
       ]
     },
     "response": {
@@ -74,6 +75,7 @@
     "signature",
     "date",
     "publicKeyHash",
+    "signingAlgorithm",
     "fields"
   ]
 }

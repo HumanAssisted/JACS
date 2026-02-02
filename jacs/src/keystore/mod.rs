@@ -61,7 +61,7 @@ pub trait KeyStore: Send + Sync {
 // Default filesystem-encrypted backend placeholder.
 // Current code paths in Agent/crypt already implement FS behavior; this scaffold
 // exists for future refactors. For now these functions are unimplemented.
-use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
+use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
 use crate::storage::jenv::{get_env_var, get_required_env_var};
@@ -141,7 +141,9 @@ impl KeyStore for FsEncryptedStore {
             .get_file(&priv_path, None)
             .or_else(|_| storage.get_file(&format!("{}.enc", priv_path), None))?;
         if priv_path.ends_with(".enc") || bytes.len() > 16 + 12 {
-            return decrypt_private_key(&bytes);
+            // Use secure decryption - the ZeroizingVec will be zeroized when dropped
+            let decrypted = decrypt_private_key_secure(&bytes)?;
+            return Ok(decrypted.as_slice().to_vec());
         }
         Ok(bytes)
     }

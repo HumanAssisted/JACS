@@ -51,7 +51,10 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default = "default_algorithm")]
     jacs_agent_key_algorithm: Option<String>,
-    #[getset(get)]
+    /// DEPRECATED: Password should NEVER be stored in config files.
+    /// Use the JACS_PRIVATE_KEY_PASSWORD environment variable instead.
+    /// This field is kept for backwards compatibility to detect and warn about insecure configs.
+    #[serde(default, skip_serializing)]
     jacs_private_key_password: Option<String>,
     #[getset(get = "pub")]
     jacs_agent_id_and_version: Option<String>,
@@ -154,6 +157,12 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Create a new Config.
+    ///
+    /// # Arguments
+    /// * `jacs_private_key_password` - DEPRECATED: This parameter is ignored.
+    ///   Passwords should be set via the JACS_PRIVATE_KEY_PASSWORD environment variable only.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         jacs_use_security: Option<String>,
         jacs_data_directory: Option<String>,
@@ -165,6 +174,13 @@ impl Config {
         jacs_agent_id_and_version: Option<String>,
         jacs_default_storage: Option<String>,
     ) -> Config {
+        // Warn if password is passed - it will be ignored
+        if jacs_private_key_password.is_some() {
+            warn!(
+                "SECURITY WARNING: Password passed to Config::new() is deprecated and will be ignored. \
+                Use the JACS_PRIVATE_KEY_PASSWORD environment variable instead."
+            );
+        }
         Config {
             schema: default_schema(),
             jacs_use_security,
@@ -173,7 +189,7 @@ impl Config {
             jacs_agent_private_key_filename,
             jacs_agent_public_key_filename,
             jacs_agent_key_algorithm,
-            jacs_private_key_password,
+            jacs_private_key_password: None, // Never store password in config
             jacs_agent_id_and_version,
             jacs_default_storage,
             jacs_agent_domain: None,
@@ -300,16 +316,16 @@ pub fn set_env_vars(
     // debug!("configs from file {:?}", config);
     validate_config(&serde_json::to_string(&config).map_err(|e| Box::new(e) as Box<dyn Error>)?)?;
 
-    let jacs_private_key_password = config
-        .jacs_private_key_password
-        .as_ref()
-        .unwrap_or(&"true".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_PRIVATE_KEY_PASSWORD",
-        &jacs_private_key_password,
-        do_override,
-    )?;
+    // Security: Password should come from environment variable, not config file
+    if config.jacs_private_key_password.is_some() {
+        warn!(
+            "SECURITY WARNING: Password found in config file. \
+            This is insecure - passwords should only be set via JACS_PRIVATE_KEY_PASSWORD \
+            environment variable. The password in the config file will be ignored."
+        );
+    }
+    // Do NOT set password from config - it must come from env var only
+    // The password will be read directly from env var when needed
 
     let jacs_use_security = config
         .jacs_use_security
