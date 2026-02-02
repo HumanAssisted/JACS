@@ -129,10 +129,11 @@ impl Schema {
                                     level,
                                     processed_fields,
                                 )?;
-                                result
-                                    .as_object_mut()
-                                    .unwrap()
-                                    .extend(child_result.as_object().unwrap().clone());
+                                if let (Some(result_obj), Some(child_obj)) =
+                                    (result.as_object_mut(), child_result.as_object())
+                                {
+                                    result_obj.extend(child_obj.clone());
+                                }
                             }
 
                             if let Some(properties) = item.get("properties") {
@@ -337,21 +338,28 @@ impl Schema {
             default_version
         );
 
-        let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
-        let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
-        let agreementdata = DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path).unwrap();
-        let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion_path).unwrap();
-        let servicedata = DEFAULT_SCHEMA_STRINGS.get(&service_path).unwrap();
-        let unitdata = DEFAULT_SCHEMA_STRINGS.get(&unit_path).unwrap();
-        let actiondata = DEFAULT_SCHEMA_STRINGS.get(&action_path).unwrap();
-        let tooldata = DEFAULT_SCHEMA_STRINGS.get(&tool_path).unwrap();
-        let contactdata = DEFAULT_SCHEMA_STRINGS.get(&contact_path).unwrap();
-        let taskdata = DEFAULT_SCHEMA_STRINGS.get(&task_path).unwrap();
-        let messagedata = DEFAULT_SCHEMA_STRINGS.get(&message_path).unwrap();
-        let evaldata = DEFAULT_SCHEMA_STRINGS.get(&eval_path).unwrap();
-        let programdata = DEFAULT_SCHEMA_STRINGS.get(&program_path).unwrap();
-        let nodedata = DEFAULT_SCHEMA_STRINGS.get(&node_path).unwrap();
-        let embeddingdata = DEFAULT_SCHEMA_STRINGS.get(&embedding_path).unwrap();
+        // Helper to get schema with better error messages
+        let get_schema = |path: &str| -> Result<&str, Box<dyn std::error::Error>> {
+            DEFAULT_SCHEMA_STRINGS.get(path)
+                .copied()
+                .ok_or_else(|| format!("Schema not found: {}", path).into())
+        };
+
+        let headerdata = get_schema(&header_path)?;
+        let agentdata = get_schema(&agentversion_path)?;
+        let agreementdata = get_schema(&agreementversion_path)?;
+        let signaturedata = get_schema(&signatureversion_path)?;
+        let servicedata = get_schema(&service_path)?;
+        let unitdata = get_schema(&unit_path)?;
+        let actiondata = get_schema(&action_path)?;
+        let tooldata = get_schema(&tool_path)?;
+        let contactdata = get_schema(&contact_path)?;
+        let taskdata = get_schema(&task_path)?;
+        let messagedata = get_schema(&message_path)?;
+        let evaldata = get_schema(&eval_path)?;
+        let programdata = get_schema(&program_path)?;
+        let nodedata = get_schema(&node_path)?;
+        let embeddingdata = get_schema(&embedding_path)?;
 
         let agentschema_result: Value = serde_json::from_str(agentdata)?;
         let headerchema_result: Value = serde_json::from_str(headerdata)?;
@@ -550,8 +558,14 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(error) => {
-                error!("error validating header schema");
-                Err(error.to_string().into())
+                let doc_id = instance.get("jacsId").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let schema_url = instance.get("$schema").and_then(|v| v.as_str()).unwrap_or("header.schema.json");
+                let error_message = format!(
+                    "Header schema validation failed for document '{}' against schema '{}': {}",
+                    doc_id, schema_url, error
+                );
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -576,8 +590,14 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(error) => {
-                error!("error validating task schema");
-                Err(error.to_string().into())
+                let task_id = instance.get("jacsId").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let task_state = instance.get("jacsTaskState").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let error_message = format!(
+                    "Task schema validation failed for task '{}' (state: '{}'): {}",
+                    task_id, task_state, error
+                );
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -593,8 +613,14 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(()),
             Err(error) => {
-                error!("error validating signature schema");
-                Err(error.to_string().into())
+                let agent_id = signature.get("agentID").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let sig_date = signature.get("date").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let error_message = format!(
+                    "Signature schema validation failed for agent '{}' (date: '{}'): {}",
+                    agent_id, sig_date, error
+                );
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -620,8 +646,14 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(error) => {
-                error!("error validating agent schema");
-                Err(error.to_string().into())
+                let agent_id = instance.get("jacsId").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let agent_type = instance.get("jacsAgentType").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let error_message = format!(
+                    "Agent schema validation failed for agent '{}' (type: '{}'): {}",
+                    agent_id, agent_type, error
+                );
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -647,7 +679,8 @@ impl Schema {
     /// use this to get the name of the
     pub fn getshortschema(&self, value: Value) -> Result<String, Box<dyn Error>> {
         let longschema = self.getschema(value)?;
-        let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
+        let re = Regex::new(r"/([^/]+)\.schema\.json$")
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
 
         if let Some(caps) = re.captures(&longschema)
             && let Some(matched) = caps.get(1)
@@ -718,7 +751,13 @@ impl Schema {
         match validation_result {
             Ok(instance) => instance,
             Err(error) => {
-                let error_message = error.to_string();
+                let doc_id = instance.get("jacsId").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let doc_type = instance.get("jacsType").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                let schema_url = instance.get("$schema").and_then(|v| v.as_str()).unwrap_or("header.schema.json");
+                let error_message = format!(
+                    "Document creation failed: header schema validation error for document '{}' (type: '{}') against schema '{}': {}",
+                    doc_id, doc_type, schema_url, error
+                );
                 error!("{}", error_message);
                 return Err(Box::new(ValidationError(error_message))
                     as Box<dyn std::error::Error + 'static>);

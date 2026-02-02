@@ -404,15 +404,88 @@ fn save_public_key_to_cache(
     Ok(())
 }
 
+/// Maximum clock drift tolerance for signature timestamps (in seconds).
+/// Signatures dated more than 5 minutes in the future are rejected.
+const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
+
+/// Optional maximum signature age (in seconds).
+/// Set to 0 to disable expiration checking.
+/// Default: 0 (no expiration - signatures don't expire)
+const MAX_SIGNATURE_AGE_SECONDS: i64 = 0;
+
+/// Validates a signature timestamp.
+///
+/// # Arguments
+/// * `timestamp_str` - ISO 8601 / RFC 3339 formatted timestamp string
+///
+/// # Returns
+/// Ok(()) if the timestamp is valid, or an error describing the issue.
+///
+/// # Validation Rules
+/// 1. The timestamp must be a valid RFC 3339 / ISO 8601 format
+/// 2. The timestamp must not be more than MAX_FUTURE_TIMESTAMP_SECONDS in the future
+///    (allows for small clock drift between systems)
+/// 3. If MAX_SIGNATURE_AGE_SECONDS > 0, the timestamp must not be older than that
+fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError> {
+    use chrono::{DateTime, Utc};
+
+    // Parse the timestamp
+    let signature_time: DateTime<Utc> = timestamp_str
+        .parse()
+        .map_err(|e| JacsError::SignatureVerificationFailed {
+            reason: format!("Invalid signature timestamp format '{}': {}", timestamp_str, e),
+        })?;
+
+    let now = Utc::now();
+
+    // Check for future timestamps (with clock drift tolerance)
+    let future_limit = now + chrono::Duration::seconds(MAX_FUTURE_TIMESTAMP_SECONDS);
+    if signature_time > future_limit {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Signature timestamp {} is too far in the future (max {} seconds allowed). \
+                This may indicate clock skew or a forged signature.",
+                timestamp_str, MAX_FUTURE_TIMESTAMP_SECONDS
+            ),
+        });
+    }
+
+    // Check for expired signatures (if expiration is enabled)
+    if MAX_SIGNATURE_AGE_SECONDS > 0 {
+        let expiry_limit = now - chrono::Duration::seconds(MAX_SIGNATURE_AGE_SECONDS);
+        if signature_time < expiry_limit {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: format!(
+                    "Signature timestamp {} is too old (max age {} seconds). \
+                    The agent document may need to be re-signed.",
+                    timestamp_str, MAX_SIGNATURE_AGE_SECONDS
+                ),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 /// Verifies an agent's self-signature.
 ///
 /// This function extracts the signature from the agent document and verifies it
-/// against the provided public key.
+/// against the provided public key. It also validates the signature timestamp.
 fn verify_agent_self_signature(
     agent_value: &Value,
     public_key_bytes: &[u8],
     algorithm: Option<&str>,
 ) -> Result<(), JacsError> {
+    // Extract and validate signature timestamp
+    let signature_date = agent_value["jacsSignature"]["date"]
+        .as_str()
+        .ok_or_else(|| JacsError::DocumentMalformed {
+            field: "jacsSignature.date".to_string(),
+            reason: "Missing signature timestamp".to_string(),
+        })?;
+
+    validate_signature_timestamp(signature_date)?;
+
     // Extract signature components
     let signature_b64 = agent_value["jacsSignature"]["signature"]
         .as_str()
@@ -499,6 +572,7 @@ fn verify_agent_self_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
@@ -512,6 +586,109 @@ mod tests {
         }
         temp_dir
     }
+
+    // ==================== Timestamp Validation Tests ====================
+
+    #[test]
+    fn test_valid_recent_timestamp() {
+        // A timestamp from just now should be valid
+        let now = Utc::now().to_rfc3339();
+        let result = validate_signature_timestamp(&now);
+        assert!(result.is_ok(), "Recent timestamp should be valid: {:?}", result);
+    }
+
+    #[test]
+    fn test_valid_past_timestamp() {
+        // A timestamp from 1 hour ago should be valid (when expiration is disabled)
+        let past = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        let result = validate_signature_timestamp(&past);
+        assert!(result.is_ok(), "Past timestamp should be valid when expiration is disabled: {:?}", result);
+    }
+
+    #[test]
+    fn test_valid_old_timestamp() {
+        // A timestamp from a year ago should be valid (when expiration is disabled)
+        let old = (Utc::now() - chrono::Duration::days(365)).to_rfc3339();
+        let result = validate_signature_timestamp(&old);
+        assert!(result.is_ok(), "Old timestamp should be valid when expiration is disabled: {:?}", result);
+    }
+
+    #[test]
+    fn test_timestamp_slight_future_allowed() {
+        // A timestamp a few seconds in the future should be allowed (clock drift)
+        let slight_future = (Utc::now() + chrono::Duration::seconds(30)).to_rfc3339();
+        let result = validate_signature_timestamp(&slight_future);
+        assert!(result.is_ok(), "Slight future timestamp should be allowed for clock drift: {:?}", result);
+    }
+
+    #[test]
+    fn test_timestamp_far_future_rejected() {
+        // A timestamp 10 minutes in the future should be rejected
+        let far_future = (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339();
+        let result = validate_signature_timestamp(&far_future);
+        assert!(result.is_err(), "Far future timestamp should be rejected");
+        if let Err(JacsError::SignatureVerificationFailed { reason }) = result {
+            assert!(
+                reason.contains("future"),
+                "Error should mention future timestamp: {}",
+                reason
+            );
+        } else {
+            panic!("Expected SignatureVerificationFailed error");
+        }
+    }
+
+    #[test]
+    fn test_timestamp_invalid_format_rejected() {
+        // Invalid timestamp formats should be rejected
+        let invalid_timestamps = [
+            "not-a-timestamp",
+            "2024-13-01T00:00:00Z",  // Invalid month
+            "2024-01-32T00:00:00Z",  // Invalid day
+            "01/01/2024",            // Wrong format
+            "",                       // Empty
+        ];
+
+        for invalid in invalid_timestamps {
+            let result = validate_signature_timestamp(invalid);
+            assert!(
+                result.is_err(),
+                "Invalid timestamp '{}' should be rejected",
+                invalid
+            );
+            if let Err(JacsError::SignatureVerificationFailed { reason }) = result {
+                assert!(
+                    reason.contains("Invalid") || reason.contains("format"),
+                    "Error should mention invalid format for '{}': {}",
+                    invalid,
+                    reason
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_timestamp_various_valid_formats() {
+        // Various valid RFC 3339 formats should work
+        let valid_timestamps = [
+            "2024-01-15T10:30:00Z",
+            "2024-06-20T15:45:30+00:00",
+            "2024-12-01T00:00:00.000Z",
+        ];
+
+        for valid in valid_timestamps {
+            let result = validate_signature_timestamp(valid);
+            // These are old timestamps but should still be valid if no expiration
+            assert!(
+                result.is_ok(),
+                "Valid timestamp format '{}' should be accepted: {:?}",
+                valid,
+                result
+            );
+        }
+    }
+
+    // ==================== Trust Store Tests ====================
 
     #[test]
     #[serial]

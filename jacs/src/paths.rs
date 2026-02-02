@@ -170,9 +170,10 @@ pub fn local_data_dir() -> PathBuf {
 /// Ensures a directory exists, creating it if necessary.
 ///
 /// Returns the path if successful, or an error if creation fails.
-pub fn ensure_dir_exists(path: &PathBuf) -> std::io::Result<&PathBuf> {
+pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, Box<dyn std::error::Error>> {
     if !path.exists() {
-        std::fs::create_dir_all(path)?;
+        std::fs::create_dir_all(path)
+            .map_err(|e| format!("Failed to create directory '{}': {}", path.display(), e))?;
     }
     Ok(path)
 }

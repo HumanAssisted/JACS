@@ -121,7 +121,8 @@ pub trait KeyManager {
 impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
+        let config = self.config.as_ref().ok_or("Agent config not initialized")?;
+        let key_algorithm = config.get_key_algorithm()?;
         let ks = FsEncryptedStore;
         let spec = KeySpec {
             algorithm: key_algorithm.clone(),
@@ -133,8 +134,11 @@ impl KeyManager for Agent {
     }
 
     fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
-        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
-        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).unwrap();
+        let config = self.config.as_ref().ok_or("Agent config not initialized")?;
+        let key_algorithm = config.get_key_algorithm()?;
+        // Validate algorithm is known (result unused but validates early)
+        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm)
+            .map_err(|_| format!("Unknown signing algorithm: {}", key_algorithm))?;
         {
             // Delegate to keystore; we expect detached signature bytes, return base64
             let ks = FsEncryptedStore;
@@ -169,7 +173,9 @@ impl KeyManager for Agent {
                     }
                     Err(_) => {
                         // Fall back to the agent's configured algorithm if auto-detection fails
-                        let key_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
+                        let config = self.config.as_ref()
+                            .ok_or("Agent config not initialized for algorithm fallback")?;
+                        let key_algorithm = config.get_key_algorithm()?;
                         CryptoSigningAlgorithm::from_str(&key_algorithm)?
                     }
                 }

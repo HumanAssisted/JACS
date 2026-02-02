@@ -30,5 +30,5 @@ pub fn verify_string(
     let signature = DetachedSignature::from_bytes(&signature_bytes)?;
     let pk = PublicKey::from_bytes(&public_key)?;
     verify_detached_signature(&signature, data.as_bytes(), &pk)
-        .map_err(|e| format!("Verification failed: {:?}", e).into())
+        .map_err(|e| format!("Dilithium5 signature verification failed: {:?}", e).into())
 }

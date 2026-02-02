@@ -89,20 +89,28 @@ impl FileLoader for Agent {
         let private_key_filename = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing".to_string())?
+            .ok_or_else(|| {
+                "fs_save_keys failed: Agent config is missing. Ensure the agent is initialized with a valid configuration before saving keys.".to_string()
+            })?
             .jacs_agent_private_key_filename()
             .as_deref()
-            .ok_or_else(|| "Private key filename not found in config".to_string())?
+            .ok_or_else(|| {
+                "fs_save_keys failed: 'jacs_agent_private_key_filename' not found in config. Add this field to your jacs.config.json or set JACS_AGENT_PRIVATE_KEY_FILENAME environment variable.".to_string()
+            })?
             .to_string();
 
         // Get public key filename: ONLY from config
         let public_key_filename = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing".to_string())?
+            .ok_or_else(|| {
+                "fs_save_keys failed: Agent config is missing. Ensure the agent is initialized with a valid configuration before saving keys.".to_string()
+            })?
             .jacs_agent_public_key_filename()
             .as_deref()
-            .ok_or_else(|| "Public key filename not found in config".to_string())?
+            .ok_or_else(|| {
+                "fs_save_keys failed: 'jacs_agent_public_key_filename' not found in config. Add this field to your jacs.config.json or set JACS_AGENT_PUBLIC_KEY_FILENAME environment variable.".to_string()
+            })?
             .to_string();
 
         let absolute_public_key_path = self.make_key_directory_path(&public_key_filename)?;
@@ -125,34 +133,64 @@ impl FileLoader for Agent {
         let private_key_filename = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing".to_string())? // Error if config itself is None
-            .jacs_agent_private_key_filename() // Get &Option<String>
-            .as_deref() // Convert to Option<&str>
-            .ok_or_else(|| "Private key filename not found in config".to_string())? // Error if Option is None
-            .to_string(); // Convert &str to String
+            .ok_or_else(|| {
+                "fs_load_keys failed: Agent config is missing. Ensure agent is initialized with a valid configuration before loading keys.".to_string()
+            })?
+            .jacs_agent_private_key_filename()
+            .as_deref()
+            .ok_or_else(|| {
+                "fs_load_keys failed: 'jacs_agent_private_key_filename' not found in config. Add this field to your jacs.config.json or set JACS_AGENT_PRIVATE_KEY_FILENAME environment variable.".to_string()
+            })?
+            .to_string();
 
         // Get public key filename: ONLY from config
         let public_key_filename = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing".to_string())? // Error if config itself is None
-            .jacs_agent_public_key_filename() // Get &Option<String>
-            .as_deref() // Convert to Option<&str>
-            .ok_or_else(|| "Public key filename not found in config".to_string())? // Error if Option is None
-            .to_string(); //
-        let private_key = self.load_private_key(&private_key_filename)?;
-        let agents_public_key = self.load_private_key(&public_key_filename)?;
+            .ok_or_else(|| {
+                "fs_load_keys failed: Agent config is missing during public key filename lookup.".to_string()
+            })?
+            .jacs_agent_public_key_filename()
+            .as_deref()
+            .ok_or_else(|| {
+                "fs_load_keys failed: 'jacs_agent_public_key_filename' not found in config. Add this field to your jacs.config.json or set JACS_AGENT_PUBLIC_KEY_FILENAME environment variable.".to_string()
+            })?
+            .to_string();
+
+        let private_key = self.load_private_key(&private_key_filename).map_err(|e| {
+            format!(
+                "fs_load_keys failed: Could not load private key from file '{}': {}",
+                private_key_filename, e
+            )
+        })?;
+        let agents_public_key = self.load_private_key(&public_key_filename).map_err(|e| {
+            format!(
+                "fs_load_keys failed: Could not load public key from file '{}': {}",
+                public_key_filename, e
+            )
+        })?;
 
         let key_algorithm = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing".to_string())? // Error if config itself is None
-            .jacs_agent_key_algorithm() // Get &Option<String>
-            .as_deref() // Convert to Option<&str>
-            .ok_or_else(|| "Public key filename not found in config".to_string())? // Error if Option is None
+            .ok_or_else(|| {
+                "fs_load_keys failed: Agent config is missing during key algorithm lookup.".to_string()
+            })?
+            .jacs_agent_key_algorithm()
+            .as_deref()
+            .ok_or_else(|| {
+                "fs_load_keys failed: 'jacs_agent_key_algorithm' not found in config. Add this field to your jacs.config.json or set JACS_AGENT_KEY_ALGORITHM environment variable.".to_string()
+            })?
             .to_string();
 
-        self.set_keys(private_key, agents_public_key, &key_algorithm)
+        self.set_keys(private_key, agents_public_key, &key_algorithm).map_err(|e| {
+            format!(
+                "fs_load_keys failed: Could not set keys with algorithm '{}': {}",
+                key_algorithm, e
+            )
+        })?;
+
+        Ok(())
     }
 
     /// in JACS the public keys need to be added manually
@@ -161,14 +199,29 @@ impl FileLoader for Agent {
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
         self.storage
             .get_file(&absolute_public_key_path, None)
-            .map_err(|e| Box::new(e) as Box<dyn Error>)
+            .map_err(|e| {
+                format!(
+                    "fs_load_public_key failed: Could not load public key for hash '{}' from path '{}': {}",
+                    hash, absolute_public_key_path, e
+                ).into()
+            })
     }
 
     fn fs_load_public_key_type(&self, hash: &str) -> Result<String, Box<dyn Error>> {
         let public_key_path = format!("public_keys/{}.enc_type", hash);
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
-        let bytes = self.storage.get_file(&absolute_public_key_path, None)?;
-        String::from_utf8(bytes).map_err(|e| Box::new(e) as Box<dyn Error>)
+        let bytes = self.storage.get_file(&absolute_public_key_path, None).map_err(|e| {
+            format!(
+                "fs_load_public_key_type failed: Could not load encryption type for hash '{}' from path '{}': {}",
+                hash, absolute_public_key_path, e
+            )
+        })?;
+        String::from_utf8(bytes).map_err(|e| {
+            format!(
+                "fs_load_public_key_type failed: Encryption type file for hash '{}' contains invalid UTF-8: {}",
+                hash, e
+            ).into()
+        })
     }
 
     /// in JACS the public keys need to be added manually
@@ -197,11 +250,31 @@ impl FileLoader for Agent {
         public_key_filename: &str,
         custom_key_algorithm: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
-        let private_path = self.make_key_directory_path(private_key_filename)?;
-        let public_path = self.make_key_directory_path(public_key_filename)?;
+        let private_path = self.make_key_directory_path(private_key_filename).map_err(|e| {
+            format!(
+                "fs_preload_keys failed: Could not construct path for private key file '{}': {}",
+                private_key_filename, e
+            )
+        })?;
+        let public_path = self.make_key_directory_path(public_key_filename).map_err(|e| {
+            format!(
+                "fs_preload_keys failed: Could not construct path for public key file '{}': {}",
+                public_key_filename, e
+            )
+        })?;
 
-        let private_key = self.storage.get_file(&private_path, None)?;
-        let public_key = self.storage.get_file(&public_path, None)?;
+        let private_key = self.storage.get_file(&private_path, None).map_err(|e| {
+            format!(
+                "fs_preload_keys failed: Could not read private key from '{}': {}",
+                private_path, e
+            )
+        })?;
+        let public_key = self.storage.get_file(&public_path, None).map_err(|e| {
+            format!(
+                "fs_preload_keys failed: Could not read public key from '{}': {}",
+                public_path, e
+            )
+        })?;
 
         // Determine the key algorithm with priority: custom -> config -> env var
         let key_algorithm = if let Some(algo) = custom_key_algorithm {
@@ -209,10 +282,31 @@ impl FileLoader for Agent {
             algo
         } else {
             // 2. If no custom algo, try config
-            self.config.as_ref().unwrap().get_key_algorithm()?
+            self.config
+                .as_ref()
+                .ok_or_else(|| {
+                    format!(
+                        "fs_preload_keys failed: No custom_key_algorithm provided and agent config is missing. \
+                        Provide a key algorithm or ensure the agent has a valid configuration."
+                    )
+                })?
+                .get_key_algorithm()
+                .map_err(|e| {
+                    format!(
+                        "fs_preload_keys failed: Could not determine key algorithm from config: {}",
+                        e
+                    )
+                })?
         };
 
-        self.set_keys(private_key, public_key, &key_algorithm)
+        self.set_keys(private_key, public_key, &key_algorithm).map_err(|e| {
+            format!(
+                "fs_preload_keys failed: Could not set keys (private='{}', public='{}', algorithm='{}'): {}",
+                private_key_filename, public_key_filename, key_algorithm, e
+            )
+        })?;
+
+        Ok(())
     }
 
     /// function used to load all documents present
@@ -276,17 +370,31 @@ impl FileLoader for Agent {
             relative_path
         );
 
-        let absolute_path = self.make_data_directory_path(&relative_path)?;
+        let absolute_path = self.make_data_directory_path(&relative_path).map_err(|e| {
+            format!(
+                "fs_agent_load failed for agent '{}': Could not construct data directory path for '{}': {}",
+                agentid, relative_path, e
+            )
+        })?;
         let contents = self.storage.get_file(&absolute_path, None).map_err(|e| {
             error!(
-                "[fs_agent_load] Failed to get file from relative path '{}': {}",
+                "[fs_agent_load] Failed to get file from path '{}': {}",
                 absolute_path, e
             );
-            e
+            format!(
+                "fs_agent_load failed for agent '{}': Could not read agent file from '{}': {}. \
+                Ensure the agent file exists and the data directory is correctly configured.",
+                agentid, absolute_path, e
+            )
         })?;
 
         info!("[fs_agent_load] Successfully loaded file content.");
-        String::from_utf8(contents).map_err(|e| Box::new(e) as Box<dyn Error>)
+        String::from_utf8(contents).map_err(|e| {
+            format!(
+                "fs_agent_load failed for agent '{}': Agent file at '{}' contains invalid UTF-8: {}",
+                agentid, absolute_path, e
+            ).into()
+        })
     }
 
     fn fs_agent_save(&self, agentid: &str, agent_string: &str) -> Result<String, Box<dyn Error>> {
@@ -407,16 +515,37 @@ impl FileLoader for Agent {
     fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
         self.storage
             .get_file(filename, None)
-            .map_err(|e| Box::new(e) as Box<dyn Error>)
+            .map_err(|e| {
+                format!(
+                    "load_public_key_file failed: Could not read key file '{}': {}",
+                    filename, e
+                ).into()
+            })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn load_private_key(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        let filepath = self.make_key_directory_path(filename)?;
-        let loaded_key = self.load_public_key_file(&filepath)?;
+        let filepath = self.make_key_directory_path(filename).map_err(|e| {
+            format!(
+                "load_private_key failed: Could not construct key directory path for '{}': {}",
+                filename, e
+            )
+        })?;
+        let loaded_key = self.load_public_key_file(&filepath).map_err(|e| {
+            format!(
+                "load_private_key failed: Could not read key file at '{}': {}",
+                filepath, e
+            )
+        })?;
         if filename.ends_with(".enc") {
             // Use secure decryption - the ZeroizingVec will be zeroized after we extract the bytes
-            let decrypted = decrypt_private_key_secure(&loaded_key)?;
+            let decrypted = decrypt_private_key_secure(&loaded_key).map_err(|e| {
+                format!(
+                    "load_private_key failed: Could not decrypt encrypted key file '{}'. \
+                    Ensure JACS_PRIVATE_KEY_PASSWORD environment variable is set correctly: {}",
+                    filepath, e
+                )
+            })?;
             // Clone the bytes out - the ZeroizingVec will be zeroized when dropped
             // Note: The caller (set_keys) will immediately re-encrypt this
             Ok(decrypted.as_slice().to_vec())
@@ -480,10 +609,22 @@ impl FileLoader for Agent {
         let mut data_dir = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing for data directory path".to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "make_data_directory_path failed for '{}': Agent config is missing. \
+                    Ensure the agent is initialized with a valid configuration.",
+                    filename
+                )
+            })?
             .jacs_data_directory()
             .as_deref()
-            .ok_or_else(|| "Config does not contain 'jacs_data_directory'".to_string())?;
+            .ok_or_else(|| {
+                format!(
+                    "make_data_directory_path failed for '{}': 'jacs_data_directory' not found in config. \
+                    Add this field to your jacs.config.json or set JACS_DATA_DIRECTORY environment variable.",
+                    filename
+                )
+            })?;
         data_dir = data_dir.strip_prefix("./").unwrap_or(data_dir);
         debug!("data_dir {} filename {}", data_dir, filename);
         let path = format!("{}/{}", data_dir, filename);
@@ -495,10 +636,22 @@ impl FileLoader for Agent {
         let mut key_dir = self
             .config
             .as_ref()
-            .ok_or_else(|| "Agent config is missing for key directory path".to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "make_key_directory_path failed for '{}': Agent config is missing. \
+                    Ensure the agent is initialized with a valid configuration.",
+                    filename
+                )
+            })?
             .jacs_key_directory()
             .as_deref()
-            .ok_or_else(|| "Config does not contain 'jacs_key_directory'".to_string())?;
+            .ok_or_else(|| {
+                format!(
+                    "make_key_directory_path failed for '{}': 'jacs_key_directory' not found in config. \
+                    Add this field to your jacs.config.json or set JACS_KEY_DIRECTORY environment variable.",
+                    filename
+                )
+            })?;
         key_dir = key_dir.strip_prefix("./").unwrap_or(key_dir);
         let path = format!("{}/{}", key_dir, filename);
         debug!("Key directory path: {}", path);

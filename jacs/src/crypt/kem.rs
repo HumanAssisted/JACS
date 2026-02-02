@@ -29,7 +29,12 @@ pub fn seal(
     // Convert slice to fixed-size array
     let ek_array: [u8; 1184] = recipient_pub
         .try_into()
-        .map_err(|_| "Invalid public key length for ML-KEM-768")?;
+        .map_err(|_| {
+            format!(
+                "Invalid encapsulation key length for ML-KEM-768: expected 1184 bytes, got {} bytes",
+                recipient_pub.len()
+            )
+        })?;
     let ek = ml_kem_768::EncapsKey::try_from_bytes(ek_array)?;
     let (ss, ct) = ek.try_encaps()?;
 
@@ -37,7 +42,7 @@ pub fn seal(
     let hk = Hkdf::<Sha256>::new(None, &ss.into_bytes());
     let mut aead_key = [0u8; 32];
     hk.expand(b"jacs-pq2025-aead", &mut aead_key)
-        .map_err(|e| format!("HKDF expand failed: {}", e))?;
+        .map_err(|e| format!("HKDF key derivation failed during ML-KEM-768 seal: {}", e))?;
 
     // AEAD encrypt
     let cipher = Aes256Gcm::new_from_slice(&aead_key)?;
@@ -51,7 +56,7 @@ pub fn seal(
                 aad,
             },
         )
-        .map_err(|e| format!("AES-GCM encryption failed: {}", e))?;
+        .map_err(|e| format!("AES-GCM encryption failed during ML-KEM-768 seal: {}", e))?;
 
     Ok((ct.into_bytes().to_vec(), nonce_bytes, ciphertext))
 }
@@ -67,12 +72,22 @@ pub fn open(
     // Convert slices to fixed-size arrays
     let dk_array: [u8; 2400] = private_key
         .try_into()
-        .map_err(|_| "Invalid private key length for ML-KEM-768")?;
+        .map_err(|_| {
+            format!(
+                "Invalid decapsulation key length for ML-KEM-768: expected 2400 bytes, got {} bytes",
+                private_key.len()
+            )
+        })?;
     let dk = ml_kem_768::DecapsKey::try_from_bytes(dk_array)?;
 
     let ct_array: [u8; 1088] = kem_ct
         .try_into()
-        .map_err(|_| "Invalid ciphertext length for ML-KEM-768")?;
+        .map_err(|_| {
+            format!(
+                "Invalid KEM ciphertext length for ML-KEM-768: expected 1088 bytes, got {} bytes",
+                kem_ct.len()
+            )
+        })?;
     let ct = ml_kem_768::CipherText::try_from_bytes(ct_array)?;
 
     let ss = dk.try_decaps(&ct)?;
@@ -81,7 +96,7 @@ pub fn open(
     let hk = Hkdf::<Sha256>::new(None, &ss.into_bytes());
     let mut aead_key = [0u8; 32];
     hk.expand(b"jacs-pq2025-aead", &mut aead_key)
-        .map_err(|e| format!("HKDF expand failed: {}", e))?;
+        .map_err(|e| format!("HKDF key derivation failed during ML-KEM-768 open: {}", e))?;
 
     // AEAD decrypt
     let cipher = Aes256Gcm::new_from_slice(&aead_key)?;
@@ -90,7 +105,12 @@ pub fn open(
             Nonce::from_slice(nonce),
             aes_gcm::aead::Payload { msg: aead_ct, aad },
         )
-        .map_err(|e| format!("AES-GCM decryption failed: {}", e))?;
+        .map_err(|e| {
+            format!(
+                "AES-GCM decryption failed during ML-KEM-768 open (wrong key or corrupted data): {}",
+                e
+            )
+        })?;
 
     Ok(plaintext)
 }

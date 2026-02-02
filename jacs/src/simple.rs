@@ -257,10 +257,12 @@ pub fn create(
     });
 
     let config_path = "./jacs.config.json";
-    fs::write(config_path, serde_json::to_string_pretty(&config_json).unwrap())
-        .map_err(|e| JacsError::Internal {
-            message: format!("Failed to write config: {}", e),
-        })?;
+    let config_str = serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
+        message: format!("Failed to serialize config: {}", e),
+    })?;
+    fs::write(config_path, config_str).map_err(|e| JacsError::Internal {
+        message: format!("Failed to write config: {}", e),
+    })?;
 
     // Store agent globally
     {

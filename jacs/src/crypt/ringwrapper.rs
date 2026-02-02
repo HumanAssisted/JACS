@@ -43,7 +43,7 @@ struct RingError(Unspecified);
 
 impl fmt::Display for RingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Ring error: {:?}", self.0)
+        write!(f, "Ed25519 cryptographic operation failed: {:?}", self.0)
     }
 }
 
@@ -60,7 +60,11 @@ struct KeyRejectedError(KeyRejected);
 
 impl fmt::Display for KeyRejectedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Key rejected error: {:?}", self.0)
+        write!(
+            f,
+            "Ed25519 key parsing failed (invalid PKCS#8 format or corrupted key): {:?}",
+            self.0
+        )
     }
 }
 

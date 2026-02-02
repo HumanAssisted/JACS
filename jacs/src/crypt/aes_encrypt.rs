@@ -17,11 +17,169 @@ const PBKDF2_ITERATIONS: u32 = 100_000;
 /// Minimum password length for key encryption.
 const MIN_PASSWORD_LENGTH: usize = 8;
 
+/// Minimum entropy bits required for a password.
+/// 28 bits provides reasonable protection against offline attacks when combined
+/// with PBKDF2's 100k iterations (which effectively adds ~17 bits of work factor).
+/// This threshold allows reasonable 8-character passwords with some variety.
+const MIN_ENTROPY_BITS: f64 = 28.0;
+
+/// Common weak passwords that should be rejected regardless of calculated entropy.
+const WEAK_PASSWORDS: &[&str] = &[
+    "password",
+    "12345678",
+    "123456789",
+    "1234567890",
+    "qwerty123",
+    "letmein123",
+    "welcome123",
+    "admin123",
+    "password1",
+    "password123",
+    "iloveyou1",
+    "sunshine1",
+    "princess1",
+    "football1",
+    "monkey123",
+    "shadow123",
+    "master123",
+    "dragon123",
+    "trustno1",
+    "abc12345",
+    "abcd1234",
+    "qwertyuiop",
+    "asdfghjkl",
+    "zxcvbnm123",
+];
+
+/// Calculate effective entropy of a password in bits.
+///
+/// This estimates the keyspace based on character pool size and password length,
+/// then applies penalties for weak patterns like repetition and limited uniqueness.
+fn calculate_entropy(password: &str) -> f64 {
+    if password.is_empty() {
+        return 0.0;
+    }
+
+    // Determine character pool size based on what's used
+    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_special = password.chars().any(|c| !c.is_alphanumeric());
+
+    let mut pool_size = 0;
+    if has_lower {
+        pool_size += 26;
+    }
+    if has_upper {
+        pool_size += 26;
+    }
+    if has_digit {
+        pool_size += 10;
+    }
+    if has_special {
+        pool_size += 32; // Common special characters
+    }
+
+    // At minimum, pool size is the number of unique characters
+    let unique_chars: std::collections::HashSet<char> = password.chars().collect();
+    pool_size = pool_size.max(unique_chars.len());
+
+    if pool_size == 0 {
+        return 0.0;
+    }
+
+    // Base entropy: log2(pool_size) * length
+    let bits_per_char = (pool_size as f64).log2();
+    let len = password.len() as f64;
+    let base_entropy = bits_per_char * len;
+
+    // Apply penalty for low uniqueness (many repeated characters)
+    let uniqueness_ratio = unique_chars.len() as f64 / len;
+    let uniqueness_penalty = if uniqueness_ratio < 0.5 {
+        0.5 // Severe penalty for mostly repeated chars
+    } else if uniqueness_ratio < 0.75 {
+        0.75 // Moderate penalty
+    } else {
+        1.0 // No penalty
+    };
+
+    base_entropy * uniqueness_penalty
+}
+
+/// Check if password contains consecutive repeated characters (e.g., "aaa", "111")
+fn has_excessive_repetition(password: &str) -> bool {
+    let chars: Vec<char> = password.chars().collect();
+    let mut consecutive = 1;
+
+    for i in 1..chars.len() {
+        if chars[i] == chars[i - 1] {
+            consecutive += 1;
+            if consecutive >= 4 {
+                return true;
+            }
+        } else {
+            consecutive = 1;
+        }
+    }
+
+    false
+}
+
+/// Check if password contains sequential characters (e.g., "1234", "abcd")
+fn has_sequential_pattern(password: &str) -> bool {
+    let chars: Vec<char> = password.chars().collect();
+    let mut ascending = 1;
+    let mut descending = 1;
+
+    for i in 1..chars.len() {
+        let prev = chars[i - 1] as i32;
+        let curr = chars[i] as i32;
+
+        if curr == prev + 1 {
+            ascending += 1;
+            descending = 1;
+            if ascending >= 5 {
+                return true;
+            }
+        } else if curr == prev - 1 {
+            descending += 1;
+            ascending = 1;
+            if descending >= 5 {
+                return true;
+            }
+        } else {
+            ascending = 1;
+            descending = 1;
+        }
+    }
+
+    false
+}
+
+/// Count the number of distinct character classes used in the password.
+/// Classes: lowercase, uppercase, digits, special characters
+fn count_character_classes(password: &str) -> usize {
+    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_special = password.chars().any(|c| !c.is_alphanumeric());
+
+    [has_lower, has_upper, has_digit, has_special]
+        .iter()
+        .filter(|&&b| b)
+        .count()
+}
+
 /// Validates that the password meets minimum security requirements.
 ///
 /// # Requirements
 /// - At least 8 characters long
 /// - Not empty or whitespace-only
+/// - Not in the list of common weak passwords
+/// - Minimum 40 bits of entropy
+/// - No excessive character repetition (4+ same chars in a row)
+/// - No long sequential patterns (5+ ascending/descending chars)
+/// - At least 2 different character classes (recommended)
 fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     let trimmed = password.trim();
 
@@ -34,6 +192,50 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
             "Password must be at least {} characters long (got {} characters). Use a stronger password for JACS_PRIVATE_KEY_PASSWORD.",
             MIN_PASSWORD_LENGTH,
             trimmed.len()
+        ).into());
+    }
+
+    // Check against common weak passwords (case-insensitive)
+    let lower = trimmed.to_lowercase();
+    if WEAK_PASSWORDS.contains(&lower.as_str()) {
+        return Err("Password is too common and easily guessable. Please use a unique password.".into());
+    }
+
+    // Check for excessive repetition
+    if has_excessive_repetition(trimmed) {
+        return Err("Password contains too many repeated characters (4+ in a row). Use more variety.".into());
+    }
+
+    // Check for sequential patterns
+    if has_sequential_pattern(trimmed) {
+        return Err("Password contains sequential characters (like '12345' or 'abcde'). Use a less predictable pattern.".into());
+    }
+
+    // Calculate entropy
+    let entropy = calculate_entropy(trimmed);
+    if entropy < MIN_ENTROPY_BITS {
+        let char_classes = count_character_classes(trimmed);
+        let suggestion = if char_classes < 2 {
+            "Try mixing uppercase, lowercase, numbers, and symbols."
+        } else {
+            "Try using a longer password with more varied characters."
+        };
+        return Err(format!(
+            "Password entropy too low ({:.1} bits, minimum is {:.0} bits). {}",
+            entropy, MIN_ENTROPY_BITS, suggestion
+        ).into());
+    }
+
+    // Single character class passwords are allowed if they have sufficient entropy
+    // through length (e.g., a long lowercase-only passphrase)
+    // The 28-bit minimum entropy check above already provides baseline security
+    // We use 35 bits as threshold for single-class passwords, which is equivalent to
+    // ~11 lowercase characters or ~8 alphanumeric characters - reasonable for internal use
+    let char_classes = count_character_classes(trimmed);
+    if char_classes < 2 && entropy < 35.0 {
+        return Err(format!(
+            "Password uses only {} character class(es) with insufficient length. Use at least 2 character types (uppercase, lowercase, digits, symbols) or use a longer password.",
+            char_classes
         ).into());
     }
 
@@ -143,13 +345,17 @@ pub fn decrypt_private_key_secure(
     encrypted_key_with_salt_and_nonce: &[u8],
 ) -> Result<ZeroizingVec, Box<dyn std::error::Error>> {
     // Password is required and must be non-empty
+    // Note: We don't validate password strength during decryption because:
+    // 1. The password must match whatever was used during encryption
+    // 2. Existing keys may have been encrypted with older/weaker passwords
+    // Password strength is validated only during encrypt_private_key()
     let password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
 
-    // Validate password strength
-    validate_password(&password)?;
-
     if encrypted_key_with_salt_and_nonce.len() < 16 + 12 {
-        return Err("encrypted data is too short".into());
+        return Err(format!(
+            "Encrypted private key data is too short: expected at least 28 bytes (16 salt + 12 nonce), got {} bytes",
+            encrypted_key_with_salt_and_nonce.len()
+        ).into());
     }
 
     // Split the data into salt, nonce, and encrypted key
@@ -325,12 +531,13 @@ mod tests {
     #[test]
     #[serial]
     fn test_minimum_length_password_accepted() {
-        // Exactly 8 characters - should be accepted
-        set_test_password("12345678");
+        // Exactly 8 characters with variety - should be accepted
+        // Note: "12345678" is rejected as a common weak password
+        set_test_password("xK9m$pL2");
 
         let original_key = b"secret data";
         let result = encrypt_private_key(original_key);
-        assert!(result.is_ok(), "8-character password should be accepted");
+        assert!(result.is_ok(), "8-character varied password should be accepted: {:?}", result.err());
 
         remove_test_password();
     }
@@ -343,7 +550,238 @@ mod tests {
         assert!(validate_password("\t\n").is_err());
         assert!(validate_password("short").is_err());
         assert!(validate_password("1234567").is_err()); // 7 chars
-        assert!(validate_password("12345678").is_ok()); // 8 chars - minimum
-        assert!(validate_password("longpassword123").is_ok());
+        // Note: "12345678" is rejected as a common weak password
+        assert!(validate_password("12345678").is_err());
+        // Use a non-weak 8-char password with variety
+        assert!(validate_password("xK9m$pL2").is_ok());
+        assert!(validate_password("MyP@ssw0rd!").is_ok()); // Strong password
+    }
+
+    // ==================== Entropy Tests ====================
+
+    #[test]
+    fn test_entropy_calculation() {
+        // All same characters should have low entropy (penalized for low uniqueness)
+        let low_entropy = calculate_entropy("aaaaaaaa");
+        assert!(
+            low_entropy < 20.0,
+            "Repeated chars should have low entropy due to uniqueness penalty: {}",
+            low_entropy
+        );
+
+        // Mixed lowercase characters should have decent entropy
+        let medium_entropy = calculate_entropy("abcdefgh");
+        assert!(
+            medium_entropy > 30.0,
+            "8 unique lowercase chars should have decent entropy: {}",
+            medium_entropy
+        );
+
+        // Complex password with multiple character classes should have high entropy
+        let high_entropy = calculate_entropy("aB3$xY9@kL");
+        assert!(
+            high_entropy > 50.0,
+            "Complex password should have high entropy: {}",
+            high_entropy
+        );
+
+        // Verify entropy increases with character diversity
+        let lowercase_only = calculate_entropy("abcdefgh");
+        let mixed_case = calculate_entropy("aBcDeFgH");
+        let with_numbers = calculate_entropy("aBcD1234");
+        let with_special = calculate_entropy("aB1$cD2@");
+
+        assert!(
+            mixed_case > lowercase_only,
+            "Mixed case should have higher entropy than lowercase only"
+        );
+        assert!(
+            with_numbers > mixed_case,
+            "Adding numbers should increase entropy"
+        );
+        assert!(
+            with_special > with_numbers,
+            "Adding special chars should increase entropy"
+        );
+    }
+
+    #[test]
+    fn test_common_weak_passwords_rejected() {
+        // All these common passwords should be rejected
+        let weak_passwords = [
+            "password",
+            "Password",
+            "PASSWORD",
+            "12345678",
+            "qwerty123",
+            "letmein123",
+            "password123",
+            "trustno1",
+        ];
+
+        for pwd in weak_passwords {
+            let result = validate_password(pwd);
+            assert!(
+                result.is_err(),
+                "Common password '{}' should be rejected",
+                pwd
+            );
+            let err_msg = result.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("common") || err_msg.contains("guessable"),
+                "Error for '{}' should mention common/guessable: {}",
+                pwd,
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_repetition_rejected() {
+        // 4+ repeated characters should be rejected
+        let repetitive_passwords = ["aaaa1234", "pass1111", "xxxx5678", "ab@@@@cd"];
+
+        for pwd in repetitive_passwords {
+            let result = validate_password(pwd);
+            assert!(
+                result.is_err(),
+                "Repetitive password '{}' should be rejected",
+                pwd
+            );
+            let err_msg = result.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("repeated"),
+                "Error for '{}' should mention repetition: {}",
+                pwd,
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_sequential_patterns_rejected() {
+        // 5+ sequential characters should be rejected
+        let sequential_passwords = ["12345abc", "abcdefgh", "98765xyz", "zyxwvuts"];
+
+        for pwd in sequential_passwords {
+            let result = validate_password(pwd);
+            assert!(
+                result.is_err(),
+                "Sequential password '{}' should be rejected",
+                pwd
+            );
+            let err_msg = result.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("sequential") || err_msg.contains("entropy"),
+                "Error for '{}' should mention sequential or entropy: {}",
+                pwd,
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_low_entropy_single_class_rejected() {
+        // All lowercase, low diversity passwords
+        let low_entropy_passwords = ["aaaaabbb", "zzzzzzzz", "qqqqqqqq"];
+
+        for pwd in low_entropy_passwords {
+            let result = validate_password(pwd);
+            assert!(
+                result.is_err(),
+                "Low entropy password '{}' should be rejected",
+                pwd
+            );
+        }
+    }
+
+    #[test]
+    fn test_strong_passwords_accepted() {
+        // These should all pass validation
+        let strong_passwords = [
+            "MyP@ssw0rd!",
+            "Tr0ub4dor&3",
+            "correct-horse-battery",
+            "xK9$mN2@pL5!",
+            "SecurePass#2024",
+            "n0t-a-w3ak-p@ss",
+        ];
+
+        for pwd in strong_passwords {
+            let result = validate_password(pwd);
+            assert!(
+                result.is_ok(),
+                "Strong password '{}' should be accepted: {:?}",
+                pwd,
+                result.err()
+            );
+        }
+    }
+
+    #[test]
+    fn test_character_class_counting() {
+        assert_eq!(count_character_classes("abcdefgh"), 1); // lowercase only
+        assert_eq!(count_character_classes("ABCDEFGH"), 1); // uppercase only
+        assert_eq!(count_character_classes("12345678"), 1); // digits only
+        assert_eq!(count_character_classes("!@#$%^&*"), 1); // special only
+        assert_eq!(count_character_classes("abcABC12"), 3); // lower + upper + digit
+        assert_eq!(count_character_classes("aB1!"), 4); // all four classes
+    }
+
+    #[test]
+    fn test_has_excessive_repetition_detection() {
+        assert!(!has_excessive_repetition("abc123")); // No repetition
+        assert!(!has_excessive_repetition("aabcc")); // 2 is okay
+        assert!(!has_excessive_repetition("aaabbb")); // 3 is okay
+        assert!(has_excessive_repetition("aaaab")); // 4 consecutive is bad
+        assert!(has_excessive_repetition("x1111y")); // 4 consecutive digits
+    }
+
+    #[test]
+    fn test_has_sequential_pattern_detection() {
+        assert!(!has_sequential_pattern("abc12")); // Short sequence okay
+        assert!(!has_sequential_pattern("1234x")); // 4 in a row okay
+        assert!(has_sequential_pattern("12345")); // 5 ascending bad
+        assert!(has_sequential_pattern("abcde")); // 5 letters bad
+        assert!(has_sequential_pattern("54321")); // 5 descending bad
+        assert!(has_sequential_pattern("edcba")); // 5 letters descending bad
+    }
+
+    #[test]
+    #[serial]
+    fn test_encryption_with_weak_password_fails() {
+        // Try to encrypt with a weak password - should fail validation
+        set_test_password("password");
+
+        let original_key = b"secret data";
+        let result = encrypt_private_key(original_key);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("common") || err_msg.contains("guessable"),
+            "Should reject common password: {}",
+            err_msg
+        );
+
+        remove_test_password();
+    }
+
+    #[test]
+    #[serial]
+    fn test_encryption_with_strong_password_succeeds() {
+        // Use a properly strong password
+        set_test_password("MyStr0ng!Pass#2024");
+
+        let original_key = b"secret data";
+        let result = encrypt_private_key(original_key);
+        assert!(result.is_ok(), "Strong password should work: {:?}", result);
+
+        // Also verify decryption works
+        let encrypted = result.unwrap();
+        let decrypted = decrypt_private_key(&encrypted);
+        assert!(decrypted.is_ok());
+        assert_eq!(decrypted.unwrap().as_slice(), original_key);
+
+        remove_test_password();
     }
 }

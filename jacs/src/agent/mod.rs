@@ -71,8 +71,11 @@ pub type SecretPrivateKey = SecretBox<Vec<u8>>;
 /// # Security
 /// Returns a `ZeroizingVec` that will securely erase the decrypted key
 /// from memory when it goes out of scope.
-pub fn use_secret(key: &[u8]) -> ZeroizingVec {
-    decrypt_private_key_secure(key).expect("use_secret decrypt failed")
+///
+/// # Errors
+/// Returns an error if decryption fails (wrong password or corrupted data).
+pub fn use_secret(key: &[u8]) -> Result<ZeroizingVec, Box<dyn std::error::Error>> {
+    decrypt_private_key_secure(key)
 }
 
 #[derive(Debug)]
@@ -159,11 +162,26 @@ impl Agent {
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
 
-        self.config = Some(find_config("./".to_string())?);
+        self.config = Some(find_config("./".to_string()).map_err(|e| {
+            format!(
+                "load_by_id failed for agent '{}': Could not find or load configuration: {}",
+                lookup_id, e
+            )
+        })?);
         debug!("load_by_id config {:?}", self.config);
 
-        let agent_string = self.fs_agent_load(&lookup_id)?;
-        let result = self.load(&agent_string);
+        let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
+            format!(
+                "load_by_id failed for agent '{}': Could not load agent file: {}",
+                lookup_id, e
+            )
+        })?;
+        let result: Result<(), Box<dyn Error>> = self.load(&agent_string).map_err(|e| {
+            format!(
+                "load_by_id failed for agent '{}': Agent validation or key loading failed: {}",
+                lookup_id, e
+            ).into()
+        });
 
         let _duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
@@ -185,25 +203,49 @@ impl Agent {
 
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
         // load config string
-        self.config = Some(load_config(&path)?);
-        let lookup_id: &str = self
-            .config
-            .as_ref()
-            .unwrap()
+        self.config = Some(load_config(&path).map_err(|e| {
+            format!(
+                "load_by_config failed: Could not load configuration from '{}': {}",
+                path, e
+            )
+        })?);
+        let config = self.config.as_ref().ok_or_else(|| {
+            format!(
+                "load_by_config failed: Configuration object is unexpectedly None after loading from '{}'",
+                path
+            )
+        })?;
+        // Clone values needed for error messages to avoid borrow conflicts
+        let lookup_id: String = config
             .jacs_agent_id_and_version()
             .as_deref()
-            .unwrap_or("");
-        let storage_type = self
-            .config
-            .as_ref()
-            .unwrap()
+            .unwrap_or("")
+            .to_string();
+        let storage_type: String = config
             .jacs_default_storage()
             .as_deref()
-            .unwrap_or("");
-        self.storage = MultiStorage::new(storage_type.to_string())?;
+            .unwrap_or("")
+            .to_string();
+        self.storage = MultiStorage::new(storage_type.clone()).map_err(|e| {
+            format!(
+                "load_by_config failed: Could not initialize storage type '{}' (from config '{}'): {}",
+                storage_type, path, e
+            )
+        })?;
         if !lookup_id.is_empty() {
-            let agent_string = self.fs_agent_load(lookup_id)?;
-            self.load(&agent_string)
+            let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
+                format!(
+                    "load_by_config failed: Could not load agent '{}' (specified in config '{}'): {}",
+                    lookup_id, path, e
+                )
+            })?;
+            self.load(&agent_string).map_err(|e| {
+                let err_msg = format!(
+                    "load_by_config failed: Agent '{}' validation or key loading failed (config '{}'): {}",
+                    lookup_id, path, e
+                );
+                Box::<dyn Error>::from(err_msg)
+            })
         } else {
             Ok(())
         }
@@ -240,7 +282,14 @@ impl Agent {
     pub fn get_private_key(&self) -> Result<&SecretPrivateKey, Box<dyn Error>> {
         match &self.private_key {
             Some(private_key) => Ok(private_key),
-            None => Err("private_key is None".into()),
+            None => {
+                let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
+                Err(format!(
+                    "get_private_key failed for agent '{}': Private key has not been loaded. \
+                    Call fs_load_keys() or fs_preload_keys() first, or ensure keys are generated during agent creation.",
+                    agent_id
+                ).into())
+            }
         }
     }
 
@@ -257,36 +306,58 @@ impl Agent {
                     self.version = value.get_str("jacsVersion");
                 }
 
-                if Uuid::parse_str(&self.id.clone().expect("string expected").to_string()).is_err()
-                    || Uuid::parse_str(&self.version.clone().expect("string expected").to_string())
-                        .is_err()
-                {
-                    warn!("ID and Version must be UUID");
+                // Validate that ID and Version are valid UUIDs
+                if let (Some(id), Some(version)) = (&self.id, &self.version) {
+                    if Uuid::parse_str(id).is_err() || Uuid::parse_str(version).is_err() {
+                        warn!("ID and Version must be UUID");
+                    }
                 }
             }
             Err(e) => {
                 error!("Agent validation failed: {}", e);
-                return Err(e.to_string().into());
+                return Err(format!(
+                    "Agent load failed at schema validation step: {}. \
+                    Ensure the agent JSON conforms to the JACS agent schema.",
+                    e
+                ).into());
             }
         }
 
+        let agent_id_for_errors = self.id.clone().unwrap_or_else(|| "<unknown>".to_string());
+
         if self.id.is_some() {
-            let _id_string = self.id.clone().expect("string expected").to_string();
             // check if keys are already loaded
             if self.public_key.is_none() || self.private_key.is_none() {
-                self.fs_load_keys()?;
+                self.fs_load_keys().map_err(|e| {
+                    format!(
+                        "Agent load failed for '{}' at key loading step: {}",
+                        agent_id_for_errors, e
+                    )
+                })?;
             } else {
                 info!("Keys already loaded for agent");
             }
 
-            self.verify_self_signature()?;
+            self.verify_self_signature().map_err(|e| {
+                format!(
+                    "Agent load failed for '{}' at signature verification step: {}. \
+                    The agent's signature may be invalid or the keys may not match.",
+                    agent_id_for_errors, e
+                )
+            })?;
         }
 
         Ok(())
     }
 
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
-        let public_key = self.get_public_key()?;
+        let agent_id = self.id.clone().unwrap_or_else(|| "<unknown>".to_string());
+        let public_key = self.get_public_key().map_err(|e| {
+            format!(
+                "verify_self_signature failed for agent '{}': Could not retrieve public key: {}",
+                agent_id, e
+            )
+        })?;
         // validate header
         let signature_key_from = &AGENT_SIGNATURE_FIELDNAME.to_string();
         match &self.value.clone() {
@@ -298,9 +369,18 @@ impl Agent {
                 None,
                 None,
                 None,
-            ),
+            ).map_err(|e| {
+                format!(
+                    "verify_self_signature failed for agent '{}': Signature verification failed: {}",
+                    agent_id, e
+                ).into()
+            }),
             None => {
-                let error_message = "Value is None";
+                let error_message = format!(
+                    "verify_self_signature failed for agent '{}': Agent value is not loaded. \
+                    Ensure the agent is properly initialized before verifying signature.",
+                    agent_id
+                );
                 error!("{}", error_message);
                 Err(error_message.into())
             }
@@ -318,7 +398,7 @@ impl Agent {
         document_key: String,
         signature_key_from: Option<&str>,
     ) -> Result<String, Box<dyn Error>> {
-        let document = self.get_document(&document_key).expect("Reason");
+        let document = self.get_document(&document_key)?;
         let document_value = document.getvalue();
         let binding = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
         let signature_key_from_final = match signature_key_from {
@@ -552,7 +632,15 @@ impl Agent {
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = Utc::now().to_rfc3339();
 
-        let signing_algorithm = self.config.as_ref().unwrap().get_key_algorithm()?;
+        let config = self.config.as_ref().ok_or_else(|| {
+            let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
+            format!(
+                "signing_procedure failed for agent '{}': Agent config is not initialized. \
+                Ensure the agent is properly loaded with a valid configuration.",
+                agent_id
+            )
+        })?;
+        let signing_algorithm = config.get_key_algorithm()?;
 
         let serialized_fields = match to_value(accepted_fields) {
             Ok(value) => value,
@@ -641,8 +729,8 @@ impl Agent {
         if original_hash_string != new_hash_string {
             let error_message = format!(
                 "Hashes don't match for doc {:?} {:?}! {:?} != {:?}",
-                doc.get_str("jacsId").expect("REASON"),
-                doc.get_str("jacsVersion").expect("REASON"),
+                doc.get_str("jacsId").unwrap_or_else(|| "unknown".to_string()),
+                doc.get_str("jacsVersion").unwrap_or_else(|| "unknown".to_string()),
                 original_hash_string,
                 new_hash_string
             );
@@ -665,8 +753,10 @@ impl Agent {
     }
 
     pub fn get_schema_keys(&mut self) -> Vec<String> {
-        let document_schemas = self.document_schemas.lock().expect("document_schemas lock");
-        document_schemas.keys().map(|k| k.to_string()).collect()
+        match self.document_schemas.lock() {
+            Ok(document_schemas) => document_schemas.keys().map(|k| k.to_string()).collect(),
+            Err(_) => Vec::new(), // Return empty vec if lock is poisoned
+        }
     }
 
     /// pass in modified agent's JSON
@@ -676,7 +766,14 @@ impl Agent {
     /// rehashing
     pub fn update_self(&mut self, new_agent_string: &str) -> Result<String, Box<dyn Error>> {
         let mut new_self: Value = self.schema.validate_agent(new_agent_string)?;
-        let original_self = self.value.as_ref().expect("REASON");
+        let original_self = self.value.as_ref().ok_or_else(|| {
+            let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
+            format!(
+                "update_self failed for agent '{}': Agent value is not loaded. \
+                Load the agent first before attempting to update it.",
+                agent_id
+            )
+        })?;
         let orginal_id = &original_self.get_str("jacsId");
         let orginal_version = &original_self.get_str("jacsVersion");
         // check which fields are different
@@ -784,10 +881,9 @@ impl Agent {
         }
 
         // Instead of using ID:version as the filename, we should use the public key hash
-        if self.public_key.is_some() && self.key_algorithm.is_some() {
-            let public_key = self.public_key.as_ref().unwrap();
-            let key_algorithm = self.key_algorithm.as_ref().unwrap();
-
+        if let (Some(public_key), Some(key_algorithm)) =
+            (&self.public_key, &self.key_algorithm)
+        {
             // Calculate hash of public key to use as filename
             let public_key_hash = hash_public_key(public_key.clone());
 

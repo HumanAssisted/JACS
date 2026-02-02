@@ -102,7 +102,9 @@ pub trait ValueExt {
 
 impl ValueExt for Value {
     fn as_string(&self) -> String {
-        serde_json::to_string_pretty(self).expect("error")
+        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
+            format!("{{\"error\": \"Failed to serialize JSON: {}\"}}", e)
+        })
     }
 
     fn get_str(&self, field: &str) -> Option<String> {
@@ -223,7 +225,10 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
                 let schema_value: Value = serde_json::from_str(schema_json)?;
                 return Ok(Arc::new(schema_value));
             }
-            Err("Schema not found".into())
+            Err(format!(
+                "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
+                path, relative_path, DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
+            ).into())
         } else {
             get_remote_schema(path)
         }

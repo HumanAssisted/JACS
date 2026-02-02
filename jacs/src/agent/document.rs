@@ -62,7 +62,8 @@ impl JACSDocument {
     /// use this to get the name of the
     pub fn getshortschema(&self) -> Result<String, Box<dyn Error>> {
         let longschema = self.getschema()?;
-        let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
+        let re = Regex::new(r"/([^/]+)\.schema\.json$")
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
 
         if let Some(caps) = re.captures(&longschema)
             && let Some(matched) = caps.get(1)
@@ -123,7 +124,7 @@ impl JACSDocument {
         {
             return Ok(agents_array
                 .iter()
-                .map(|v| v.as_str().unwrap().to_string())
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect());
         }
         Err("no agreement or agents in agreement".into())
@@ -276,13 +277,21 @@ impl DocumentTraits for Agent {
         schema_path: &str,
         json: &Value,
     ) -> Result<(), String> {
-        let schemas = self.document_schemas.lock().unwrap();
+        let schemas = self.document_schemas.lock()
+            .map_err(|e| format!("Failed to acquire schema lock: {}", e))?;
         let validator = schemas
             .get(schema_path)
-            .ok_or_else(|| format!("Validator not found for path: {}", schema_path))?;
+            .ok_or_else(|| format!("Validator not found for schema path: '{}'. Ensure the schema is registered.", schema_path))?;
 
         let validation_result = validator.validate(json);
-        validation_result.map_err(|error| error.to_string())?;
+        validation_result.map_err(|error| {
+            let doc_id = json.get("jacsId").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            let doc_type = json.get("jacsType").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            format!(
+                "Custom schema validation failed for document '{}' (type: '{}') against schema '{}': {}",
+                doc_id, doc_type, schema_path, error
+            )
+        })?;
 
         Ok(())
     }
@@ -315,13 +324,14 @@ impl DocumentTraits for Agent {
 
         // Add the contents field if embed is true
         let file_json = if embed {
-            file_json
-                .as_object()
-                .unwrap()
-                .clone()
-                .into_iter()
-                .chain(vec![("contents".to_string(), json!(base64_contents))])
-                .collect()
+            match file_json.as_object() {
+                Some(obj) => obj
+                    .clone()
+                    .into_iter()
+                    .chain(vec![("contents".to_string(), json!(base64_contents))])
+                    .collect(),
+                None => file_json, // Should never happen with json! macro
+            }
         } else {
             file_json
         };
@@ -381,7 +391,7 @@ impl DocumentTraits for Agent {
                     // iterate over attachment files
                     for file in &file_paths {
                         let final_embed = embed.unwrap_or(false);
-                        let file_json = self.create_file_json(file, final_embed).unwrap();
+                        let file_json = self.create_file_json(file, final_embed)?;
 
                         // Add the file JSON to the files array
                         files_array.push(file_json);
@@ -390,7 +400,8 @@ impl DocumentTraits for Agent {
             }
 
             // Create a new "files" field in the document
-            let instance_map = instance.as_object_mut().unwrap();
+            let instance_map = instance.as_object_mut()
+                .ok_or("Document instance is not a JSON object")?;
             instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
         }
 
@@ -551,7 +562,7 @@ impl DocumentTraits for Agent {
         // check that old document is found
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let error_message = format!("original document {} not found", document_key);
-        let original_document = self.get_document(document_key).expect(&error_message);
+        let original_document = self.get_document(document_key)?;
         let value = original_document.value.clone();
         let jacs_level = new_document
             .get_str("jacsLevel")
@@ -569,7 +580,7 @@ impl DocumentTraits for Agent {
         // now re-verify these files
 
         self.verify_document_files(&new_document)
-            .expect("file verification");
+            ?;
         if let Some(attachment_list) = attachments {
             // Iterate over each attachment
             for attachment_path in attachment_list {
@@ -640,7 +651,7 @@ impl DocumentTraits for Agent {
 
     /// copys document without modifications
     fn copy_document(&mut self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>> {
-        let original_document = self.get_document(document_key).unwrap();
+        let original_document = self.get_document(document_key)?;
         let mut value = original_document.value;
         let new_version = Uuid::new_v4().to_string();
         let last_version = &value["jacsVersion"];
@@ -665,7 +676,7 @@ impl DocumentTraits for Agent {
         export_embedded: Option<bool>,
         extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>> {
-        let original_document = self.get_document(document_key).unwrap();
+        let original_document = self.get_document(document_key)?;
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
 
         let is_extract_only = extract_only.unwrap_or_default();
@@ -719,7 +730,7 @@ impl DocumentTraits for Agent {
         &mut self,
         document_key: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let document = self.get_document(document_key).unwrap();
+        let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
         let public_key_hash: String = json_value[signature_key_from]["publicKeyHash"]
@@ -743,7 +754,7 @@ impl DocumentTraits for Agent {
         &mut self,
         document_key: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let document = self.get_document(document_key).unwrap();
+        let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
         let angent_id: String = json_value[signature_key_from]["agentID"]
@@ -766,7 +777,7 @@ impl DocumentTraits for Agent {
         &mut self,
         document_key: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let document = self.get_document(document_key).unwrap();
+        let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
         let date: String = json_value[signature_key_from]["date"]
@@ -786,10 +797,10 @@ impl DocumentTraits for Agent {
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
-        let document = self.get_document(document_key).expect("Reason");
+        let document = self.get_document(document_key)?;
         let document_value = document.getvalue();
         self.verify_document_files(document_value)
-            .expect("file verification");
+            ?;
         // this is innefficient since I generate a whole document
         let used_public_key = match public_key {
             Some(public_key) => public_key,

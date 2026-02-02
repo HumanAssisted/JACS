@@ -210,8 +210,13 @@ pub fn create_task(
     match validation_result {
         Ok(_) => Ok(task_value.to_string()),
         Err(error) => {
-            error!("error validating task");
-            let error_message = error.to_string();
+            let task_id = task_value.get("jacsId").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            let task_state = task_value.get("jacsTaskState").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            let error_message = format!(
+                "Task creation failed: task schema validation error for task '{}' (state: '{}'): {}",
+                task_id, task_state, error
+            );
+            error!("{}", error_message);
             Err(error_message.into())
         }
     }

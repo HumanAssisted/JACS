@@ -189,7 +189,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     cmd_config_create.current_dir(&scratch_dir);
     cmd_config_create.arg("config").arg("create");
 
-    cmd_config_create.env("JACS_PRIVATE_KEY_PASSWORD", "testpassword"); // Skips interactive password
+    cmd_config_create.env("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!"); // Skips interactive password
 
     cmd_config_create.stdin(Stdio::piped());
     cmd_config_create.stdout(Stdio::piped());
@@ -309,7 +309,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     println!("Created input files in data dir");
 
     // 3. Define Environment Variables for subsequent commands
-    let dummy_password = "testpassword"; // Use the same password as provided above
+    let dummy_password = "TestP@ss123!"; // Use the same password as provided above
 
     // 4. Create other input files directly in scratch Dir too
     let agent_raw_path_dest = scratch_dir.join("agent.raw.json");

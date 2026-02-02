@@ -19,7 +19,8 @@ static BITSOFBITS: usize = 4096; // Production value
 /// returns public, public_filepath, private, private_filepath
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     let mut rng = OsRng;
-    let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS).expect("failed to generate a key");
+    let private_key = RsaPrivateKey::new(&mut rng, BITSOFBITS)
+        .map_err(|e| format!("Failed to generate RSA key: {}", e))?;
     let public_key = RsaPublicKey::from(&private_key);
 
     let private_key_pem = private_key.to_pkcs8_pem(LineEnding::CRLF)?;
@@ -35,8 +36,8 @@ pub fn sign_string(
     private_key_content: Vec<u8>,
     data: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let private_key_content_converted =
-        std::str::from_utf8(&private_key_content).expect("Failed to convert bytes to string");
+    let private_key_content_converted = std::str::from_utf8(&private_key_content)
+        .map_err(|e| format!("Private key is not valid UTF-8: {}", e))?;
     let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_content_converted)?;
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut OsRng, data.as_bytes());
@@ -55,8 +56,8 @@ pub fn verify_string(
     data: &str,
     signature_base64: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let public_key_content_converted =
-        std::str::from_utf8(&public_key_content).expect("Failed to convert bytes to string");
+    let public_key_content_converted = std::str::from_utf8(&public_key_content)
+        .map_err(|e| format!("Public key is not valid UTF-8: {}", e))?;
 
     trace!(
         public_key_len = public_key_content.len(),

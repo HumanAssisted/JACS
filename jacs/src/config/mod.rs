@@ -109,9 +109,13 @@ fn default_data_directory() -> Option<String> {
         Ok(Some(val)) if !val.is_empty() => Some(val),
         _ => {
             if default_storage() == Some("fs".to_string()) {
-                let cur_dir = std::env::current_dir().unwrap();
-                let data_dir = cur_dir.join("jacs_data");
-                Some(data_dir.to_string_lossy().to_string())
+                match std::env::current_dir() {
+                    Ok(cur_dir) => {
+                        let data_dir = cur_dir.join("jacs_data");
+                        Some(data_dir.to_string_lossy().to_string())
+                    }
+                    Err(_) => Some("./jacs_data".to_string()),
+                }
             } else {
                 Some("./jacs_data".to_string())
             }
@@ -124,9 +128,13 @@ fn default_key_directory() -> Option<String> {
         Ok(Some(val)) if !val.is_empty() => Some(val),
         _ => {
             if default_storage() == Some("fs".to_string()) {
-                let cur_dir = std::env::current_dir().unwrap();
-                let data_dir = cur_dir.join("jacs_keys");
-                Some(data_dir.to_string_lossy().to_string())
+                match std::env::current_dir() {
+                    Ok(cur_dir) => {
+                        let key_dir = cur_dir.join("jacs_keys");
+                        Some(key_dir.to_string_lossy().to_string())
+                    }
+                    Err(_) => Some("./jacs_keys".to_string()),
+                }
             } else {
                 Some("./jacs_keys".to_string())
             }
@@ -244,7 +252,8 @@ impl fmt::Display for Config {
 // the simplest way to load a config is to pass in a path to a config file
 // the config is stored in the agent, no need to use ENV vars
 pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
-    let json_str = fs::read_to_string(config_path)?;
+    let json_str = fs::read_to_string(config_path)
+        .map_err(|e| format!("Failed to read config file '{}': {}", config_path, e))?;
     let validated_value: Value = validate_config(&json_str)?;
     let config: Config = serde_json::from_value(validated_value)?;
     Ok(config)
@@ -337,7 +346,9 @@ pub fn set_env_vars(
     let jacs_data_directory = config
         .jacs_data_directory
         .as_ref()
-        .unwrap_or(&format!("{:?}", std::env::current_dir().unwrap()))
+        .unwrap_or(&std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "./jacs_data".to_string()))
         .clone();
     set_env_var_override("JACS_DATA_DIRECTORY", &jacs_data_directory, do_override)?;
 
