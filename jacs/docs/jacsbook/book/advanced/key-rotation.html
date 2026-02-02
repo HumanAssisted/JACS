@@ -1,0 +1,520 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Key Rotation - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">4.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">5.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">6.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">7.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">8.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">9.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">10.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">11.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">12.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/simple-api.html"><strong aria-hidden="true">13.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">14.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">15.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">16.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">17.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">18.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">19.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/simple-api.html"><strong aria-hidden="true">20.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">21.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">22.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">23.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">24.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">25.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">26.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">27.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">28.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">29.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/key-rotation.html" class="active"><strong aria-hidden="true">30.</strong> Key Rotation</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">31.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">32.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">33.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">34.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">35.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/openclaw.html"><strong aria-hidden="true">36.</strong> OpenClaw</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">37.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">38.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">39.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">40.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">41.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">42.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">43.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">44.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">45.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">46.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="key-rotation"><a class="header" href="#key-rotation">Key Rotation</a></h1>
+<p>Key rotation is the process of replacing an agent's cryptographic keys while preserving the ability to verify documents signed with previous keys. JACS implements version-aware key management to support secure key lifecycle operations.</p>
+<h2 id="why-key-rotation-matters"><a class="header" href="#why-key-rotation-matters">Why Key Rotation Matters</a></h2>
+<h3 id="key-compromise-recovery"><a class="header" href="#key-compromise-recovery">Key Compromise Recovery</a></h3>
+<p>When a private key is compromised, the agent must be able to:</p>
+<ul>
+<li>Generate new keys and continue operating</li>
+<li>Revoke trust in the compromised key</li>
+<li>Maintain verifiability of documents signed before the compromise</li>
+</ul>
+<h3 id="cryptographic-agility"><a class="header" href="#cryptographic-agility">Cryptographic Agility</a></h3>
+<p>Cryptographic algorithms evolve. Key rotation enables:</p>
+<ul>
+<li>Migration from older algorithms to newer ones</li>
+<li>Transition to post-quantum cryptography when needed</li>
+<li>Algorithm upgrades without breaking existing signatures</li>
+</ul>
+<h3 id="compliance-requirements"><a class="header" href="#compliance-requirements">Compliance Requirements</a></h3>
+<p>Many security standards require periodic key rotation:</p>
+<ul>
+<li>PCI-DSS mandates regular key changes</li>
+<li>SOC 2 requires key management policies</li>
+<li>NIST guidelines recommend rotation schedules</li>
+</ul>
+<h2 id="agent-versioning"><a class="header" href="#agent-versioning">Agent Versioning</a></h2>
+<p>JACS uses a versioned identity model where each key rotation creates a new agent version.</p>
+<h3 id="version-format"><a class="header" href="#version-format">Version Format</a></h3>
+<p>Agent identifiers follow the format: <code>{agent_id}:{version_uuid}</code></p>
+<ul>
+<li><strong>jacsId</strong>: The stable agent identity (UUID v4) - never changes</li>
+<li><strong>jacsVersion</strong>: Current version UUID - changes on each update</li>
+<li><strong>jacsPreviousVersion</strong>: Links to the prior version</li>
+<li><strong>jacsOriginalVersion</strong>: The first version ever created</li>
+</ul>
+<pre><code class="language-json">{
+  "jacsId": "550e8400-e29b-41d4-a716-446655440000",
+  "jacsVersion": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "jacsPreviousVersion": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "jacsOriginalVersion": "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+}
+</code></pre>
+<h3 id="version-chain"><a class="header" href="#version-chain">Version Chain</a></h3>
+<p>Each version forms a linked chain back to the original:</p>
+<pre><code>Original (v1) &lt;-- Previous (v2) &lt;-- Current (v3)
+   |                 |                  |
+ key-A             key-B              key-C
+</code></pre>
+<p>This chain provides an audit trail of all key changes and allows verification of any version.</p>
+<h2 id="version-aware-verification"><a class="header" href="#version-aware-verification">Version-Aware Verification</a></h2>
+<p>The critical insight enabling key rotation is that signatures contain both the agent ID and the version that created them.</p>
+<h3 id="signature-structure"><a class="header" href="#signature-structure">Signature Structure</a></h3>
+<pre><code class="language-json">{
+  "jacsSignature": {
+    "agentID": "550e8400-e29b-41d4-a716-446655440000",
+    "agentVersion": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "publicKeyHash": "sha256-of-public-key-A",
+    "signingAlgorithm": "ring-Ed25519",
+    "signature": "base64-encoded-signature",
+    "date": "2024-01-15T10:00:00Z"
+  }
+}
+</code></pre>
+<h3 id="key-resolution-process"><a class="header" href="#key-resolution-process">Key Resolution Process</a></h3>
+<p>When verifying a signature:</p>
+<ol>
+<li>Extract <code>agentVersion</code> and <code>publicKeyHash</code> from the signature</li>
+<li>Look up the public key that was active for that version</li>
+<li>Verify the signature using that historical key</li>
+</ol>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Pseudocode for version-aware verification
+fn verify_signature(doc: &amp;Document) -&gt; Result&lt;()&gt; {
+    let sig = &amp;doc.jacs_signature;
+
+    // Find the key that was active for this version
+    let public_key = resolve_key_for_version(
+        &amp;sig.agent_id,
+        &amp;sig.agent_version,
+        &amp;sig.public_key_hash,
+    )?;
+
+    // Verify with the historical key
+    verify_with_key(&amp;doc, &amp;sig, &amp;public_key)
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="key-lookup-priority"><a class="header" href="#key-lookup-priority">Key Lookup Priority</a></h3>
+<p>The verification system tries multiple sources:</p>
+<ol>
+<li><strong>Local cache by hash</strong> - Fastest, key already stored locally</li>
+<li><strong>Trust store by version</strong> - Most accurate for known agents</li>
+<li><strong>Trust store by hash</strong> - Fallback for legacy entries</li>
+<li><strong>DNS lookup</strong> - External verification, authoritative</li>
+<li><strong>Fail</strong> - Key not found, verification impossible</li>
+</ol>
+<h2 id="key-rotation-process"><a class="header" href="#key-rotation-process">Key Rotation Process</a></h2>
+<h3 id="step-by-step-rotation"><a class="header" href="#step-by-step-rotation">Step-by-Step Rotation</a></h3>
+<ol>
+<li><strong>Generate new key pair</strong> with the desired algorithm</li>
+<li><strong>Create new agent version</strong> with updated key information</li>
+<li><strong>Sign new version with old key</strong> (transition signature)</li>
+<li><strong>Update DNS records</strong> to include new key fingerprint</li>
+<li><strong>Store old public key</strong> for future verifications</li>
+</ol>
+<h3 id="transition-signature"><a class="header" href="#transition-signature">Transition Signature</a></h3>
+<p>The transition signature proves the key rotation was authorized by the holder of the old key:</p>
+<pre><code>JACS_KEY_ROTATION:{agent_id}:{old_key_hash}:{new_key_hash}:{timestamp}
+</code></pre>
+<p>This signed message:</p>
+<ul>
+<li>Proves continuity of ownership</li>
+<li>Provides an audit trail</li>
+<li>Binds old and new keys together cryptographically</li>
+</ul>
+<h3 id="cli-commands-planned"><a class="header" href="#cli-commands-planned">CLI Commands (Planned)</a></h3>
+<blockquote>
+<p><strong>Note</strong>: These CLI commands are planned for a future release. Currently, key rotation must be performed programmatically using the Rust API.</p>
+</blockquote>
+<pre><code class="language-bash"># Rotate keys with default algorithm (Coming Soon)
+jacs agent rotate-keys
+
+# Rotate to post-quantum algorithm (Coming Soon)
+jacs agent rotate-keys --algorithm pq2025
+
+# List key history (Coming Soon)
+jacs agent keys list
+
+# Revoke a compromised key (Coming Soon)
+jacs agent keys revoke &lt;key-hash&gt;
+</code></pre>
+<h3 id="example-rotation-flow"><a class="header" href="#example-rotation-flow">Example Rotation Flow</a></h3>
+<pre><code>Time T0: Agent created
+  - jacsId: "abc-123"
+  - jacsVersion: "v1-uuid"
+  - jacsCurrentKeyHash: "hash-A"
+
+Time T1: Agent signs document D1
+  - D1.jacsSignature.agentVersion: "v1-uuid"
+  - D1.jacsSignature.publicKeyHash: "hash-A"
+
+Time T2: Key rotation
+  - New keys generated with hash-B
+  - jacsVersion: "v2-uuid"
+  - jacsKeyHistory: [{ hash: "hash-A", status: "rotated" }]
+  - jacsCurrentKeyHash: "hash-B"
+
+Time T3: Verify D1
+  - Extract agentVersion "v1-uuid" and hash "hash-A"
+  - Look up key: find "hash-A" with status "rotated"
+  - Verification succeeds (old key still valid for old docs)
+
+Time T4: Agent signs document D2
+  - D2.jacsSignature.agentVersion: "v2-uuid"
+  - D2.jacsSignature.publicKeyHash: "hash-B"
+</code></pre>
+<h2 id="trust-store-with-version-history"><a class="header" href="#trust-store-with-version-history">Trust Store with Version History</a></h2>
+<p>The trust store maintains a history of all public keys for each trusted agent.</p>
+<h3 id="trustedagent-structure"><a class="header" href="#trustedagent-structure">TrustedAgent Structure</a></h3>
+<pre><code class="language-json">{
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Example Agent",
+  "trusted_at": "2024-01-15T10:00:00Z",
+  "current_key_hash": "abc123...",
+  "domain": "agent.example.com",
+  "key_history": [
+    {
+      "public_key_hash": "xyz789...",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...",
+      "signing_algorithm": "ring-Ed25519",
+      "trusted_at": "2024-01-01T00:00:00Z",
+      "first_version": "11111111-1111-1111-1111-111111111111",
+      "last_version": "22222222-2222-2222-2222-222222222222",
+      "status": "rotated"
+    },
+    {
+      "public_key_hash": "abc123...",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...",
+      "signing_algorithm": "ring-Ed25519",
+      "trusted_at": "2024-01-15T10:00:00Z",
+      "first_version": "33333333-3333-3333-3333-333333333333",
+      "last_version": null,
+      "status": "active"
+    }
+  ]
+}
+</code></pre>
+<h3 id="key-status-values"><a class="header" href="#key-status-values">Key Status Values</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Status</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>active</code></td><td>Currently in use for signing</td></tr>
+<tr><td><code>rotated</code></td><td>Superseded by newer key, still valid for old signatures</td></tr>
+<tr><td><code>revoked</code></td><td>Compromised, signatures should not be trusted</td></tr>
+<tr><td><code>expired</code></td><td>Past validity period</td></tr>
+</tbody></table>
+</div>
+<h3 id="looking-up-keys"><a class="header" href="#looking-up-keys">Looking Up Keys</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>impl TrustedAgent {
+    /// Get the public key that was active for a specific agent version
+    fn get_key_for_version(&amp;self, version: &amp;str) -&gt; Option&lt;&amp;KeyEntry&gt; {
+        self.key_history.iter().find(|entry| {
+            match (&amp;entry.first_version, &amp;entry.last_version) {
+                (Some(first), Some(last)) =&gt; {
+                    version &gt;= first &amp;&amp; version &lt;= last
+                }
+                (Some(first), None) =&gt; {
+                    version &gt;= first  // Current key
+                }
+                _ =&gt; false
+            }
+        })
+    }
+
+    /// Get the public key by its hash
+    fn get_key_by_hash(&amp;self, hash: &amp;str) -&gt; Option&lt;&amp;KeyEntry&gt; {
+        self.key_history.iter().find(|e| e.public_key_hash == hash)
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="dns-support-for-key-versions"><a class="header" href="#dns-support-for-key-versions">DNS Support for Key Versions</a></h2>
+<p>DNS records can advertise multiple key versions for an agent.</p>
+<h3 id="multi-version-dns-records"><a class="header" href="#multi-version-dns-records">Multi-Version DNS Records</a></h3>
+<p>Each key version gets its own TXT record:</p>
+<pre><code>; Current key
+_v1.agent.jacs.example.com. 3600 IN TXT "v=hai.ai; jacs_agent_id={id}; ver=current; alg=SHA-256; hash={hash1}"
+
+; Previous key (still valid for old signatures)
+_v1.agent.jacs.example.com. 3600 IN TXT "v=hai.ai; jacs_agent_id={id}; ver=rotated; valid_until=2025-01-15; hash={hash2}"
+</code></pre>
+<h3 id="dns-record-generation"><a class="header" href="#dns-record-generation">DNS Record Generation</a></h3>
+<pre><code class="language-bash"># Generate DNS records for all active keys
+jacs agent dns --all-keys
+</code></pre>
+<h2 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h2>
+<h3 id="key-revocation"><a class="header" href="#key-revocation">Key Revocation</a></h3>
+<p>When a key is compromised:</p>
+<ol>
+<li><strong>Mark as revoked</strong> in the agent's key history</li>
+<li><strong>Update DNS</strong> to include revocation status</li>
+<li><strong>Signatures fail verification</strong> when made with revoked keys</li>
+<li><strong>Notify trusted peers</strong> if possible</li>
+</ol>
+<h3 id="overlap-period"><a class="header" href="#overlap-period">Overlap Period</a></h3>
+<p>During rotation, both old and new keys may be valid:</p>
+<ul>
+<li>New documents should be signed with the new key</li>
+<li>Old documents remain verifiable with the old key</li>
+<li>DNS may advertise both keys during transition</li>
+</ul>
+<h3 id="secure-deletion"><a class="header" href="#secure-deletion">Secure Deletion</a></h3>
+<p>After rotation:</p>
+<ul>
+<li>Old private keys should be securely deleted</li>
+<li>Only public keys are retained for verification</li>
+<li>Key metadata must be protected from modification</li>
+</ul>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="rotation-schedule"><a class="header" href="#rotation-schedule">Rotation Schedule</a></h3>
+<ul>
+<li><strong>Regular rotation</strong>: Quarterly or annually for compliance</li>
+<li><strong>Algorithm upgrade</strong>: When transitioning to stronger cryptography</li>
+<li><strong>Incident response</strong>: Immediately after suspected compromise</li>
+</ul>
+<h3 id="pre-rotation-checklist"><a class="header" href="#pre-rotation-checklist">Pre-Rotation Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Backup current agent state</li>
+<li><input disabled="" type="checkbox"/>
+Verify all systems can handle new key format</li>
+<li><input disabled="" type="checkbox"/>
+Plan DNS propagation time</li>
+<li><input disabled="" type="checkbox"/>
+Notify dependent systems of upcoming change</li>
+</ul>
+<h3 id="post-rotation-checklist"><a class="header" href="#post-rotation-checklist">Post-Rotation Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Verify new key is active</li>
+<li><input disabled="" type="checkbox"/>
+Confirm old documents still verify</li>
+<li><input disabled="" type="checkbox"/>
+Update DNS records</li>
+<li><input disabled="" type="checkbox"/>
+Securely delete old private key</li>
+<li><input disabled="" type="checkbox"/>
+Test signing with new key</li>
+</ul>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="security.html">Security Model</a> - Overall security architecture</li>
+<li><a href="crypto.html">Cryptographic Algorithms</a> - Algorithm details</li>
+<li><a href="../rust/dns.html">DNS Verification</a> - DNS-based identity verification</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../advanced/security.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../advanced/crypto.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../advanced/security.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../advanced/crypto.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
