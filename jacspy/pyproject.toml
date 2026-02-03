@@ -3,15 +3,18 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"       
 [project]
 name = "jacs"
-version = "0.1.0"  
-description = "Python bindings for the JACS Rust library."  
+version = "0.5.0"
+description = "JACS - JSON AI Communication Standard: Cryptographic signing and verification for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0 with Common Clause" } 
+license = { text = "Apache-2.0 with Common Clause" }
 authors = [
-    { name = "HAI.AI", email = "engineering@hai.io" }, 
+    { name = "HAI.AI", email = "engineering@hai.io" },
 ]
-classifiers = [  
+keywords = ["cryptography", "signing", "verification", "ai", "agents", "mcp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: 3",
@@ -19,12 +22,15 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3",
-    "License :: Apache-2.0 with Common Clause",
-    "Operating System :: Linux, MacOS",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 dependencies = []
+
+[project.optional-dependencies]
+mcp = ["fastmcp>=0.1.0"]
+hai = ["httpx>=0.24.0", "httpx-sse>=0.4.0"]
 
 [project.urls] 
 Homepage = "https://github.com/HumanAssisted/JACS" 

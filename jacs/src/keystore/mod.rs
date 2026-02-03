@@ -1,3 +1,4 @@
+use crate::error::JacsError;
 use std::error::Error;
 
 #[cfg(unix)]
@@ -61,7 +62,7 @@ pub trait KeyStore: Send + Sync {
 // Default filesystem-encrypted backend placeholder.
 // Current code paths in Agent/crypt already implement FS behavior; this scaffold
 // exists for future refactors. For now these functions are unimplemented.
-use crate::crypt::aes_encrypt::{decrypt_private_key, encrypt_private_key};
+use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
 use crate::storage::jenv::{get_env_var, get_required_env_var};
@@ -79,7 +80,11 @@ impl KeyStore for FsEncryptedStore {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
-            other => return Err(format!("Unsupported algorithm: {}", other).into()),
+            other => return Err(JacsError::CryptoError(format!(
+                "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'RSA-PSS', 'pq-dilithium', 'pq2025'. \
+                Check your JACS_AGENT_KEY_ALGORITHM environment variable or config file.",
+                other
+            )).into()),
         };
         eprintln!("[FsEncryptedStore::generate] Matched to enum: {:?}", algo);
         let (priv_key, pub_key) = match algo {
@@ -99,7 +104,12 @@ impl KeyStore for FsEncryptedStore {
             pub_key.len()
         );
         // Persist using MultiStorage
-        let storage = MultiStorage::default_new()?;
+        let storage = MultiStorage::default_new().map_err(|e| {
+            format!(
+                "Failed to initialize storage for key generation: {}. Check that the current directory is accessible.",
+                e
+            )
+        })?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
         let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
         let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
@@ -109,19 +119,39 @@ impl KeyStore for FsEncryptedStore {
 
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)?.unwrap_or_default();
         let final_priv_path = if !password.is_empty() {
-            let enc = encrypt_private_key(&priv_key)?;
+            let enc = encrypt_private_key(&priv_key).map_err(|e| {
+                format!(
+                    "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
+                    e
+                )
+            })?;
             let final_priv = if !priv_path.ends_with(".enc") {
                 format!("{}.enc", priv_path)
             } else {
                 priv_path.clone()
             };
-            storage.save_file(&final_priv, &enc)?;
+            storage.save_file(&final_priv, &enc).map_err(|e| {
+                format!(
+                    "Failed to save encrypted private key to '{}': {}. Check that the key directory '{}' exists and is writable.",
+                    final_priv, e, key_dir
+                )
+            })?;
             final_priv
         } else {
-            storage.save_file(&priv_path, &priv_key)?;
+            storage.save_file(&priv_path, &priv_key).map_err(|e| {
+                format!(
+                    "Failed to save private key to '{}': {}. Check that the key directory '{}' exists and is writable.",
+                    priv_path, e, key_dir
+                )
+            })?;
             priv_path.clone()
         };
-        storage.save_file(&pub_path, &pub_key)?;
+        storage.save_file(&pub_path, &pub_key).map_err(|e| {
+            format!(
+                "Failed to save public key to '{}': {}. Check that the key directory '{}' exists and is writable.",
+                pub_path, e, key_dir
+            )
+        })?;
 
         // Set secure file permissions (0600 for private key, 0700 for key directory)
         // This prevents other users on shared systems from reading private keys
@@ -133,25 +163,59 @@ impl KeyStore for FsEncryptedStore {
     }
 
     fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let storage = MultiStorage::default_new()?;
+        let storage = MultiStorage::default_new().map_err(|e| {
+            format!(
+                "Failed to initialize storage for key loading: {}. Check that the current directory is accessible.",
+                e
+            )
+        })?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
         let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
-        let bytes = storage
-            .get_file(&priv_path, None)
-            .or_else(|_| storage.get_file(&format!("{}.enc", priv_path), None))?;
+        let enc_path = format!("{}.enc", priv_path);
+
+        let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
+            storage.get_file(&enc_path, None).map_err(|e2| {
+                format!(
+                    "Failed to load private key: file not found at '{}' or '{}'. \
+                    Ensure the key file exists or run key generation first. \
+                    Original errors: unencrypted: {}, encrypted: {}",
+                    priv_path, enc_path, e1, e2
+                )
+            })
+        })?;
+
         if priv_path.ends_with(".enc") || bytes.len() > 16 + 12 {
-            return decrypt_private_key(&bytes);
+            // Use secure decryption - the ZeroizingVec will be zeroized when dropped
+            let decrypted = decrypt_private_key_secure(&bytes).map_err(|e| {
+                format!(
+                    "Failed to decrypt private key from '{}': {}",
+                    if priv_path.ends_with(".enc") { &priv_path } else { &enc_path },
+                    e
+                )
+            })?;
+            return Ok(decrypted.as_slice().to_vec());
         }
         Ok(bytes)
     }
 
     fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let storage = MultiStorage::default_new()?;
+        let storage = MultiStorage::default_new().map_err(|e| {
+            format!(
+                "Failed to initialize storage for key loading: {}. Check that the current directory is accessible.",
+                e
+            )
+        })?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
         let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
-        let bytes = storage.get_file(&pub_path, None)?;
+        let bytes = storage.get_file(&pub_path, None).map_err(|e| {
+            format!(
+                "Failed to load public key from '{}': {}. \
+                Ensure the key file exists or run key generation first.",
+                pub_path, e
+            )
+        })?;
         Ok(bytes)
     }
 
@@ -166,7 +230,7 @@ impl KeyStore for FsEncryptedStore {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
-            other => return Err(format!("Unsupported algorithm: {}", other).into()),
+            other => return Err(JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into()),
         };
         let data = std::str::from_utf8(message).unwrap_or("").to_string();
         let sig_b64 = match algo {

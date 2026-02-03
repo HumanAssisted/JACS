@@ -11,6 +11,7 @@ use crate::shared::document_sign_agreement;
 use std::error::Error;
 use std::process;
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_documents(
     agent: &mut Agent,
     filename: Option<&String>,
@@ -103,6 +104,7 @@ pub fn create_documents(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_documents(
     agent: &mut Agent,
     new_filename: &String,

@@ -140,36 +140,21 @@ class TestJacsAgentWithFixtures:
     """Tests that require the test fixtures to be properly set up."""
 
     @pytest.fixture
-    def fixtures_path(self):
-        """Get the path to test fixtures."""
-        current_dir = pathlib.Path(__file__).parent.absolute()
-        return current_dir / "fixtures"
-
-    @pytest.fixture
-    def config_path(self, fixtures_path):
-        """Get the config file path."""
-        return str(fixtures_path / "jacs.config.json")
-
-    @pytest.fixture
-    def loaded_agent(self, fixtures_path, config_path):
+    def loaded_agent(self, in_fixtures_dir, shared_config_path):
         """Create and load an agent from fixtures.
 
         This fixture requires:
         - JACS_PRIVATE_KEY_PASSWORD environment variable to be set correctly
-        - Valid fixtures in tests/fixtures/
-        """
-        # Change to fixtures directory for relative path resolution
-        original_cwd = os.getcwd()
-        os.chdir(fixtures_path)
+        - Valid fixtures in jacs/tests/scratch/
 
+        Uses in_fixtures_dir to ensure CWD is properly managed with cleanup.
+        """
         try:
             agent = jacs.JacsAgent()
-            agent.load(config_path)
+            agent.load(shared_config_path)
             yield agent
         except RuntimeError as e:
             pytest.skip(f"Could not load agent fixtures: {e}")
-        finally:
-            os.chdir(original_cwd)
 
     @pytest.mark.skipif(
         os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,

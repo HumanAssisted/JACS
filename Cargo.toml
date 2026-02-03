@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "jacs",
+    "binding-core",
     "jacsnpm",
     "jacspy",
     "jacs-mcp",

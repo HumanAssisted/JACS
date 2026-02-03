@@ -4,20 +4,18 @@ mod utils;
 use utils::DOCTESTFILECONFIG;
 use utils::TESTFILE_MODIFIED;
 
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two};
+use utils::{load_local_document, load_test_agent_one, load_test_agent_two, raw_fixture};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 extern crate env_logger;
 use log::{error, info};
 
-// Define the correct absolute path for the custom schema
+// Define the correct path for the custom schema
 
 static SCHEMA: &str = "custom.schema.json";
 
 fn get_raw_schema_path() -> String {
-    let fixtures_dir = utils::find_fixtures_dir();
-    let schema_path = fixtures_dir.join("raw").join(SCHEMA);
-    schema_path.to_string_lossy().to_string()
+    raw_fixture(SCHEMA).to_string_lossy().to_string()
 }
 
 #[cfg(test)]
@@ -131,7 +129,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     info!("Custom schemas loaded, proceeding to create and load document.");
 
     let document_string = match load_local_document(
-        &"tests/fixtures/raw/not-fruit.json".to_string(),
+        &raw_fixture("not-fruit.json").to_string_lossy().to_string(),
     ) {
         Ok(content) => {
             info!("Local document loaded successfully.");
@@ -211,7 +209,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     };
 
     let document_string = match load_local_document(
-        &"tests/fixtures/raw/favorite-fruit.json".to_string(),
+        &raw_fixture("favorite-fruit.json").to_string_lossy().to_string(),
     ) {
         Ok(content) => content,
         Err(e) => panic!(
@@ -278,7 +276,7 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
         "test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load local document"
     );
     let document_string = match load_local_document(
-        &"tests/fixtures/raw/favorite-fruit.json".to_string(),
+        &raw_fixture("favorite-fruit.json").to_string_lossy().to_string(),
     ) {
         Ok(content) => {
             info!(

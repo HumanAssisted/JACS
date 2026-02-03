@@ -22,6 +22,8 @@ pub fn create_minimal_action(
     action
 }
 
+// CRUD operations for future public API - will be exposed in upcoming releases
+#[allow(dead_code)]
 fn add_tool_to_action(action: &mut Value, tool: Value) -> Result<(), String> {
     if action.get("tools").is_none() {
         action["tools"] = json!([]);
@@ -33,6 +35,7 @@ fn add_tool_to_action(action: &mut Value, tool: Value) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn update_tool_in_action(
     action: &mut Value,
     old_tool: Value,
@@ -51,6 +54,7 @@ fn update_tool_in_action(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn remove_tool_from_action(action: &mut Value, tool: Value) -> Result<(), String> {
     let tools = action["tools"]
         .as_array_mut()

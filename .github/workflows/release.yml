@@ -1,0 +1,109 @@
+name: Release npm
+
+on:
+  push:
+    tags:
+      - 'npm/v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      matches: ${{ steps.check.outputs.matches }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: extract
+        run: |
+          TAG="${GITHUB_REF#refs/tags/npm/v}"
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check package.json version matches tag
+        id: check
+        run: |
+          PKG_VERSION=$(node -p "require('./jacsnpm/package.json').version")
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          echo "Package version: $PKG_VERSION"
+          echo "Tag version: $TAG_VERSION"
+          if [ "$PKG_VERSION" = "$TAG_VERSION" ]; then
+            echo "matches=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Version mismatch! package.json has $PKG_VERSION but tag is $TAG_VERSION"
+            echo "matches=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  build:
+    needs: verify-version
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: jacsnpm
+
+      - name: Build native module
+        run: npx napi build --platform --release --target ${{ matrix.target }}
+        working-directory: jacsnpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: jacsnpm/*.node
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: jacsnpm/artifacts
+
+      - name: Copy binaries
+        run: cp artifacts/**/*.node .
+        working-directory: jacsnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        run: npm publish --provenance
+        working-directory: jacsnpm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

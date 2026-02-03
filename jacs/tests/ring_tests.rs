@@ -5,38 +5,13 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
-use std::env;
-use std::fs;
-
-fn get_ring_config() -> String {
-    let fixtures_dir = utils::find_fixtures_dir();
-    unsafe {
-        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "testpassword");
-    }
-    format!("{}/raw/ring.jacs.config.json", fixtures_dir.display())
-}
-
-// Helper function to convert bytes to hex string for display
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<String>>()
-        .join("")
-}
+use utils::{create_ring_test_agent, read_new_agent_fixture};
 
 #[test]
 #[ignore]
 fn test_ring_Ed25519_create() {
-    let fixtures_dir = utils::find_fixtures_dir();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    agent.load_by_config(get_ring_config()).unwrap();
-    let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
-        .expect("REASON");
+    let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let _result = agent.create_agent_and_load(&json_data, false, None);
     // does this modify the agent sig?
     agent.generate_keys().expect("Reason");
@@ -44,15 +19,8 @@ fn test_ring_Ed25519_create() {
 
 #[test]
 fn test_ring_Ed25519_create_and_verify_signature() {
-    let fixtures_dir = utils::find_fixtures_dir();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    agent.load_by_config(get_ring_config()).unwrap();
-    let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
-        .expect("REASON");
+    let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let _result = agent.create_agent_and_load(&json_data, false, None);
 
     // Explicitly load keys before trying to access them

@@ -1,6 +1,6 @@
 use crate::Agent;
 use crate::agent::document::{DocumentTraits, JACSDocument};
-use chrono::Utc;
+use crate::time_utils;
 use serde_json::{Value, json};
 use std::error::Error;
 
@@ -16,12 +16,12 @@ pub fn create_message(
     attachments: Option<Vec<String>>,
     embed: Option<bool>,
 ) -> Result<JACSDocument, Box<dyn Error>> {
-    let datetime = Utc::now();
+    let datetime = time_utils::now_rfc3339();
     let schema = "https://hai.ai/schemas/message/v1/message.schema.json";
 
     let message = json!({
         "$schema": schema,
-        "datetime": datetime.to_rfc3339(),
+        "datetime": datetime,
         "content": content,
         "to": to,
         "from": from,

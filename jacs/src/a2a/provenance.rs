@@ -1,9 +1,12 @@
 //! Provenance wrapping for A2A artifacts (v0.4.0)
 
-use crate::a2a::{A2AArtifact, A2AMessage};
+use crate::a2a::A2AArtifact;
+// HYGIENE-006: A2AMessage import removed - only used by commented-out wrap_a2a_message_with_provenance
 use crate::agent::{
     AGENT_SIGNATURE_FIELDNAME, Agent, boilerplate::BoilerPlate, document::DocumentTraits,
 };
+use crate::schema::utils::ValueExt;
+use crate::time_utils;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::error::Error;
@@ -61,7 +64,7 @@ pub fn wrap_artifact_with_provenance(
         "jacsType": format!("a2a-{}", artifact_type),
         "jacsLevel": "artifact",
         "jacsPreviousVersion": null,
-        "jacsVersionDate": chrono::Utc::now().to_rfc3339(),
+        "jacsVersionDate": time_utils::now_rfc3339(),
         "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
         "a2aArtifact": artifact,
     });
@@ -93,6 +96,11 @@ pub fn wrap_a2a_artifact_with_provenance(
     wrap_artifact_with_provenance(agent, artifact_value, "artifact", parent_signatures)
 }
 
+/* HYGIENE-006: Potentially dead code - verify tests pass before removal
+ * wrap_a2a_message_with_provenance has no callers in the codebase.
+ * It is a typed wrapper around wrap_artifact_with_provenance for A2AMessage.
+ * Consider removing after confirming no external consumers need it.
+ *
 /// Wrap a typed A2A Message (v0.4.0) with JACS provenance signature.
 pub fn wrap_a2a_message_with_provenance(
     agent: &mut Agent,
@@ -102,6 +110,7 @@ pub fn wrap_a2a_message_with_provenance(
     let message_value = serde_json::to_value(message)?;
     wrap_artifact_with_provenance(agent, message_value, "message", parent_signatures)
 }
+*/
 
 /// Verify a JACS-wrapped A2A artifact
 ///
@@ -130,16 +139,8 @@ pub fn verify_wrapped_artifact(
             valid: false,
             signer_id: String::new(),
             signer_version: String::new(),
-            artifact_type: wrapped_artifact
-                .get("jacsType")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            timestamp: wrapped_artifact
-                .get("jacsVersionDate")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+            artifact_type: wrapped_artifact.get_str_or("jacsType", "unknown"),
+            timestamp: wrapped_artifact.get_str_or("jacsVersionDate", ""),
             parent_signatures_valid: false,
             parent_verification_results: vec![],
             original_artifact: wrapped_artifact
@@ -154,21 +155,14 @@ pub fn verify_wrapped_artifact(
         .get(AGENT_SIGNATURE_FIELDNAME)
         .ok_or("No JACS signature found")?;
 
-    let agent_id = signature_info
-        .get("agentID")
-        .and_then(|v| v.as_str())
-        .ok_or("No agent ID in signature")?;
-
-    let agent_version = signature_info
-        .get("agentVersion")
-        .and_then(|v| v.as_str())
-        .ok_or("No agent version in signature")?;
+    let agent_id = signature_info.get_str("agentID").ok_or("No agent ID in signature")?;
+    let agent_version = signature_info.get_str("agentVersion").ok_or("No agent version in signature")?;
 
     // Check if this is a self-signed document
     let current_agent_id = agent.get_id().ok();
     let is_self_signed = current_agent_id
         .as_ref()
-        .map(|id| id == agent_id)
+        .map(|id| id == &agent_id)
         .unwrap_or(false);
 
     // Determine verification status
@@ -226,18 +220,10 @@ pub fn verify_wrapped_artifact(
     Ok(VerificationResult {
         status,
         valid,
-        signer_id: agent_id.to_string(),
-        signer_version: agent_version.to_string(),
-        artifact_type: wrapped_artifact
-            .get("jacsType")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string(),
-        timestamp: wrapped_artifact
-            .get("jacsVersionDate")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
+        signer_id: agent_id.clone(),
+        signer_version: agent_version.clone(),
+        artifact_type: wrapped_artifact.get_str_or("jacsType", "unknown"),
+        timestamp: wrapped_artifact.get_str_or("jacsVersionDate", ""),
         parent_signatures_valid,
         parent_verification_results,
         original_artifact: original_artifact.clone(),
@@ -254,7 +240,7 @@ fn verify_parent_signatures(
 ) -> Result<(bool, Vec<ParentVerificationResult>), Box<dyn Error>> {
     let parents = match wrapped_artifact.get("jacsParentSignatures") {
         Some(Value::Array(arr)) => arr,
-        Some(_) => return Err("jacsParentSignatures must be an array".into()),
+        Some(_) => return Err("Invalid jacsParentSignatures: must be an array".into()),
         None => return Ok((true, vec![])), // No parents = valid chain
     };
 
@@ -266,18 +252,8 @@ fn verify_parent_signatures(
     let mut all_valid = true;
 
     for (index, parent) in parents.iter().enumerate() {
-        let parent_id = parent
-            .get("jacsId")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string();
-
-        let parent_signer = parent
-            .get(AGENT_SIGNATURE_FIELDNAME)
-            .and_then(|sig| sig.get("agentID"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string();
+        let parent_id = parent.get_str_or("jacsId", "unknown");
+        let parent_signer = parent.get_path_str_or(&[AGENT_SIGNATURE_FIELDNAME, "agentID"], "unknown");
 
         // Try to verify each parent signature
         // Note: This recursively calls verify_wrapped_artifact
@@ -375,7 +351,7 @@ pub fn create_chain_of_custody(artifacts: Vec<Value>) -> Result<Value, Box<dyn E
 
     Ok(json!({
         "chainOfCustody": chain,
-        "created": chrono::Utc::now().to_rfc3339(),
+        "created": time_utils::now_rfc3339(),
         "totalArtifacts": chain.len(),
     }))
 }
@@ -446,7 +422,7 @@ mod tests {
             signer_id: "test-agent".to_string(),
             signer_version: "v1".to_string(),
             artifact_type: "a2a-task".to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: time_utils::now_rfc3339(),
             parent_signatures_valid: true,
             parent_verification_results: vec![],
             original_artifact: json!({"test": "data"}),

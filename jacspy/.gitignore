@@ -3,3 +3,6 @@ target
 build
 *.so
 __pycache__
+
+# Test fixtures - use jacs/tests/scratch/ as source of truth
+tests/fixtures/

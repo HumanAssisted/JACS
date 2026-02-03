@@ -46,9 +46,10 @@ Signatures provide proof of origin:
 |--------|------------|
 | **Tampering** | Content hashes detect modifications |
 | **Impersonation** | Cryptographic signatures verify identity |
-| **Replay Attacks** | Timestamps and version IDs ensure freshness |
-| **Man-in-the-Middle** | DNS verification via DNSSEC |
+| **Replay Attacks** | Timestamps and version IDs ensure freshness; future timestamps rejected |
+| **Man-in-the-Middle** | DNS verification via DNSSEC; TLS certificate validation |
 | **Key Compromise** | Key rotation through versioning |
+| **Weak Passwords** | Minimum 28-bit entropy enforcement (35-bit for single class) |
 
 ### Trust Assumptions
 
@@ -121,6 +122,21 @@ Use environment variables instead:
 export JACS_AGENT_PRIVATE_KEY_PASSWORD="secure-password"
 ```
 
+**Password Entropy Requirements**:
+
+JACS enforces password entropy minimums for private key encryption. Password validation is performed at encryption time, and weak passwords are rejected with helpful error messages:
+
+- Minimum **28-bit entropy** for passwords with 2+ character classes (mixed case, numbers, symbols)
+- Minimum **35-bit entropy** for single-character-class passwords (e.g., all lowercase)
+- Entropy is calculated based on character class diversity and length
+- Weak passwords result in immediate rejection during key encryption
+- Error messages guide users toward stronger password choices
+
+Example of rejected weak passwords:
+- `password` - Too common and predictable
+- `12345678` - Insufficient character diversity
+- `abc` - Too short
+
 **File Permissions**:
 
 ```bash
@@ -136,6 +152,74 @@ Update agent version to rotate keys:
 2. Create new agent version
 3. Sign new version with old key
 4. Update configuration to use new keys
+
+## TLS Certificate Validation
+
+JACS includes configurable TLS certificate validation for secure network communication.
+
+### Default Behavior (Development)
+
+By default, JACS warns about invalid TLS certificates but accepts them to facilitate development environments with self-signed certificates:
+
+```
+WARNING: Invalid TLS certificate detected. Set JACS_STRICT_TLS=true for production.
+```
+
+### Production Configuration
+
+For production deployments, enable strict TLS validation:
+
+```bash
+export JACS_STRICT_TLS=true
+```
+
+When enabled, JACS will:
+- Reject connections with invalid, expired, or self-signed certificates
+- Enforce proper certificate chain validation
+- Fail fast with clear error messages for certificate issues
+
+**Implementation**: Certificate validation logic is located in `jacs/src/schema/utils.rs`.
+
+### Security Implications
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| Default (dev) | Warn on invalid certs, allow connection | Local development, testing |
+| Strict (`JACS_STRICT_TLS=true`) | Reject invalid certs | Production, staging |
+
+## Signature Timestamp Validation
+
+JACS signatures include timestamps to prevent replay attacks and ensure temporal integrity.
+
+### How It Works
+
+1. **Timestamp Inclusion**: Every signature includes a UTC timestamp recording when it was created
+2. **Future Timestamp Rejection**: Signatures with timestamps more than 5 minutes in the future are rejected
+3. **Validation**: Timestamp validation occurs during signature verification
+
+### Protection Against Replay Attacks
+
+The 5-minute future tolerance window:
+- Allows for reasonable clock skew between systems
+- Prevents attackers from creating signatures with future timestamps
+- Ensures signatures cannot be pre-generated for later fraudulent use
+
+```json
+{
+  "jacsSignature": {
+    "agentID": "550e8400-e29b-41d4-a716-446655440000",
+    "signature": "...",
+    "date": "2024-01-15T10:30:00Z"  // Must be within 5 min of verifier's clock
+  }
+}
+```
+
+### Clock Synchronization
+
+For reliable timestamp validation across distributed systems:
+- Ensure all agents use NTP or similar time synchronization
+- Monitor for clock drift in production environments
+- Consider the 5-minute tolerance when debugging verification failures
 
 ## DNS-Based Verification
 
@@ -166,6 +250,45 @@ JACS supports DNSSEC-validated identity verification:
 | `jacs_dns_validate: true` | Attempt DNS verification, allow fallback |
 | `jacs_dns_strict: true` | Require DNSSEC validation |
 | `jacs_dns_required: true` | Fail if domain not present |
+
+## Trust Store Management
+
+JACS maintains a trust store for managing trusted agent relationships.
+
+### Trusting Agents
+
+Before trusting an agent, JACS performs public key hash verification:
+
+```python
+# Trust an agent after verifying their public key hash
+agent.trust_agent(agent_id, public_key_hash)
+```
+
+### Untrusting Agents
+
+The `untrust_agent()` method properly handles the case when an agent is not in the trust store:
+
+```python
+try:
+    agent.untrust_agent(agent_id)
+except AgentNotTrusted as e:
+    # Agent was not in the trust store
+    print(f"Agent {agent_id} was not trusted: {e}")
+```
+
+### Trust Store Security
+
+| Operation | Validation |
+|-----------|------------|
+| `trust_agent()` | Public key hash verification before adding |
+| `untrust_agent()` | Returns `AgentNotTrusted` error if agent not found |
+| `is_trusted()` | Safe lookup without side effects |
+
+### Best Practices
+
+1. **Verify Before Trust**: Always verify an agent's public key hash through an out-of-band channel before trusting
+2. **Audit Trust Changes**: Log all trust store modifications for security auditing
+3. **Periodic Review**: Regularly review and prune the trust store
 
 ## Agreement Security
 
@@ -317,6 +440,10 @@ Enable observability for security auditing:
 - [ ] Use TLS for all network transport
 - [ ] Restrict key file permissions
 - [ ] Implement key rotation policy
+- [ ] Set `JACS_STRICT_TLS=true` for certificate validation
+- [ ] Use strong passwords (28+ bit entropy, 35+ for single character class)
+- [ ] Enable signature timestamp validation
+- [ ] Verify public key hashes before trusting agents
 
 ### Verification
 

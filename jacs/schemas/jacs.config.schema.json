@@ -48,8 +48,9 @@
       "type": "string"
     },
      "jacs_private_key_password": {
-      "description": "encryption password. Do not use in production and instead only keep in ENV with JACS_AGENT_PRIVATE_KEY_PASSWORD",
-      "type": "string"
+      "description": "DEPRECATED - DO NOT USE. Passwords in config files are a security risk. Use the JACS_PRIVATE_KEY_PASSWORD environment variable instead. This field will trigger a security warning and be ignored.",
+      "type": "string",
+      "deprecated": true
     },
     "jacs_default_storage": {
       "description": "default storage to use",

@@ -1,3 +1,13 @@
+/* HYGIENE-003: Potentially dead code - verify tests pass before removal
+
+This entire module is dead code because it is not declared in schema/mod.rs.
+The eval_crud module contains CRUD helpers that were generated but never integrated.
+
+To restore this module:
+1. Add `pub mod eval_crud;` to schema/mod.rs
+2. Uncomment the code below
+3. Add appropriate uses where needed
+
 use crate::agent::document::DocumentTraits;
 use crate::Agent;
 use chrono::Utc;
@@ -68,4 +78,4 @@ pub fn create_eval (
     Ok(eval)
 }
 
-
+*/

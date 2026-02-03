@@ -439,6 +439,42 @@ test('MCP client with mock transport', async () => {
 
 ## Test Coverage
 
+### Rust Coverage
+
+For Rust coverage, we recommend **cargo-llvm-cov** for its cross-platform support and accuracy with cryptographic code.
+
+**Installation:**
+
+```bash
+cargo install cargo-llvm-cov
+```
+
+**Running coverage:**
+
+```bash
+# Print coverage summary to stdout
+cargo llvm-cov
+
+# Generate and open HTML report in browser
+cargo llvm-cov --open
+
+# With specific features enabled
+cargo llvm-cov --features cli
+
+# Export LCOV format for CI integration
+cargo llvm-cov --lcov --output-path lcov.info
+```
+
+**Why cargo-llvm-cov?**
+
+| Factor | cargo-llvm-cov | tarpaulin |
+|--------|---------------|-----------|
+| Platform support | Linux, macOS, Windows | Linux primarily |
+| Accuracy | LLVM source-based (highly accurate) | Ptrace-based (some inaccuracies) |
+| Coverage types | Line, region, branch | Line primarily |
+
+For CI integration, export to LCOV format and upload to Codecov or similar services.
+
 ### Python Coverage
 
 ```bash
@@ -504,13 +540,137 @@ export JACS_TEST_MODE=1
 export JACS_TEST_CONFIG=./jacs.test.config.json
 ```
 
+## RAII Test Fixtures (Rust)
+
+For Rust tests that modify global state (environment variables, file system, etc.), use RAII guards to ensure cleanup even on panic. This pattern is essential for test isolation and reliability.
+
+### TrustTestGuard Pattern
+
+The JACS codebase uses a `TrustTestGuard` pattern for tests that modify the HOME environment variable:
+
+```rust
+use std::env;
+use tempfile::TempDir;
+
+/// RAII guard for test isolation that ensures HOME is restored even on panic.
+struct TrustTestGuard {
+    _temp_dir: TempDir,
+    original_home: Option<String>,
+}
+
+impl TrustTestGuard {
+    fn new() -> Self {
+        // Save original HOME before modifying
+        let original_home = env::var("HOME").ok();
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+
+        // SAFETY: Only used in #[serial] tests - no concurrent access
+        unsafe {
+            env::set_var("HOME", temp_dir.path().to_str().unwrap());
+        }
+
+        Self {
+            _temp_dir: temp_dir,
+            original_home,
+        }
+    }
+}
+
+impl Drop for TrustTestGuard {
+    fn drop(&mut self) {
+        // Restore original HOME even during panic unwinding
+        unsafe {
+            match &self.original_home {
+                Some(home) => env::set_var("HOME", home),
+                None => env::remove_var("HOME"),
+            }
+        }
+    }
+}
+
+// Usage in tests:
+#[test]
+#[serial]  // Use serial_test crate to prevent parallel execution
+fn test_with_isolated_home() {
+    let _guard = TrustTestGuard::new();  // Setup
+
+    // Test code here - HOME points to temp directory
+
+    // Guard automatically restores HOME on drop, even if test panics
+}
+```
+
+**Key benefits:**
+
+- **Panic safety**: Cleanup runs even if the test panics
+- **No manual cleanup**: Drop trait handles restoration automatically
+- **Environment isolation**: Each test gets a fresh temporary directory
+- **Composable**: Multiple guards can be combined for complex setups
+
+## Property-Based Testing
+
+For cryptographic code, property-based testing helps verify invariants that hold across many random inputs. We recommend [proptest](https://crates.io/crates/proptest) for Rust.
+
+### Key Properties to Test
+
+1. **Round-trip**: Sign then verify should always succeed
+2. **Tamper detection**: Modified content should fail verification
+3. **Key independence**: Different keys produce different signatures
+
+```rust
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn signature_roundtrip(content in ".*") {
+        let signed = sign_content(&content)?;
+        prop_assert!(verify_signature(&signed).is_ok());
+    }
+
+    #[test]
+    fn tamper_detection(content in ".*", tamper_pos in 0usize..1000) {
+        let signed = sign_content(&content)?;
+        let tampered = tamper_at_position(&signed, tamper_pos);
+        prop_assert!(verify_signature(&tampered).is_err());
+    }
+}
+```
+
+## Fuzzing
+
+Fuzz testing is recommended for parsing and decoding functions to discover edge cases and potential security issues.
+
+### Recommended Tool: cargo-fuzz
+
+```bash
+# Install
+cargo install cargo-fuzz
+
+# Create a fuzz target
+cargo fuzz init
+cargo fuzz add base64_decode
+
+# Run fuzzing
+cargo +nightly fuzz run base64_decode
+```
+
+### Priority Fuzz Targets for JACS
+
+1. **Base64 decoding** - Handles untrusted input from signatures
+2. **Agent JSON parsing** - Complex nested structures
+3. **Document validation** - Schema compliance checking
+4. **Timestamp parsing** - Date/time format handling
+
+Fuzzing documentation will be expanded as fuzz targets are added to the JACS test suite.
+
 ## Best Practices
 
 ### 1. Isolate Tests
 
 - Use separate test configurations
 - Create temporary directories for each test run
-- Clean up after tests
+- Clean up after tests (use RAII guards in Rust)
 
 ### 2. Test Edge Cases
 

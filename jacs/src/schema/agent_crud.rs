@@ -58,6 +58,8 @@ pub fn create_minimal_agent(
 ///
 /// * `Ok(())` - If the service was added successfully.
 /// * `Err(String)` - If an error occurred while adding the service.
+// CRUD operations for future public API - will be exposed in upcoming releases
+#[allow(dead_code)]
 fn add_service_to_agent(agent: &mut Value, service: Value) -> Result<(), String> {
     agent["jacsServices"]
         .as_array_mut()
@@ -78,6 +80,7 @@ fn add_service_to_agent(agent: &mut Value, service: Value) -> Result<(), String>
 ///
 /// * `Ok(())` - If the service was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the service.
+#[allow(dead_code)]
 fn update_service_in_agent(
     agent: &mut Value,
     old_service: Value,
@@ -107,6 +110,7 @@ fn update_service_in_agent(
 ///
 /// * `Ok(())` - If the service was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the service.
+#[allow(dead_code)]
 fn remove_service_from_agent(agent: &mut Value, service: Value) -> Result<(), String> {
     let services = agent["jacsServices"]
         .as_array_mut()
@@ -132,6 +136,7 @@ fn remove_service_from_agent(agent: &mut Value, service: Value) -> Result<(), St
 ///
 /// * `Ok(())` - If the contact was added successfully.
 /// * `Err(String)` - If an error occurred while adding the contact.
+#[allow(dead_code)]
 fn add_contact_to_agent(agent: &mut Value, contact: Value) -> Result<(), String> {
     if agent.get("jacsContacts").is_none() {
         agent["jacsContacts"] = json!([]);
@@ -155,6 +160,7 @@ fn add_contact_to_agent(agent: &mut Value, contact: Value) -> Result<(), String>
 ///
 /// * `Ok(())` - If the contact was updated successfully.
 /// * `Err(String)` - If an error occurred while updating the contact.
+#[allow(dead_code)]
 fn update_contact_in_agent(
     agent: &mut Value,
     old_contact: Value,
@@ -184,6 +190,7 @@ fn update_contact_in_agent(
 ///
 /// * `Ok(())` - If the contact was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the contact.
+#[allow(dead_code)]
 fn remove_contact_from_agent(agent: &mut Value, contact: Value) -> Result<(), String> {
     let contacts = agent["jacsContacts"]
         .as_array_mut()

@@ -6,19 +6,20 @@ use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::loaders::FileLoader;
 use crate::agent::security::SecurityTraits;
+use crate::error::JacsError;
 use crate::storage::StorageDocumentTraits;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::crypt::hash::hash_string;
+use crate::crypt::hash::{hash_bytes, hash_string};
 use crate::schema::utils::ValueExt;
-use chrono::{DateTime, Local, Utc};
+use crate::time_utils;
+use chrono::Local;
 use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -56,13 +57,14 @@ impl JACSDocument {
         {
             return Ok(schema_str.to_string());
         }
-        Err("no schema in doc or schema is not a string".into())
+        Err("Schema extraction failed: no schema in doc or schema is not a string".into())
     }
 
     /// use this to get the name of the
     pub fn getshortschema(&self) -> Result<String, Box<dyn Error>> {
         let longschema = self.getschema()?;
-        let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
+        let re = Regex::new(r"/([^/]+)\.schema\.json$")
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
 
         if let Some(caps) = re.captures(&longschema)
             && let Some(matched) = caps.get(1)
@@ -123,10 +125,10 @@ impl JACSDocument {
         {
             return Ok(agents_array
                 .iter()
-                .map(|v| v.as_str().unwrap().to_string())
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect());
         }
-        Err("no agreement or agents in agreement".into())
+        Err("Agreement lookup failed: no agreement or agents in agreement".into())
     }
 
     pub fn signing_agent(&self) -> Result<String, Box<dyn Error>> {
@@ -140,7 +142,7 @@ impl JACSDocument {
                 .ok_or_else(|| "'agentID' in signature is not a string".to_string())?
                 .to_string());
         }
-        Err("no agreement or signatures in agreement".into())
+        Err("Agreement lookup failed: no agreement or signatures in agreement".into())
     }
 
     pub fn signing_agent_str(&self) -> Result<&str, Box<dyn Error>> {
@@ -152,7 +154,7 @@ impl JACSDocument {
                 .as_str()
                 .ok_or_else(|| "'agentID' in signature is not a string".to_string())?);
         }
-        Err("no agreement or signatures in agreement".into())
+        Err("Agreement lookup failed: no agreement or signatures in agreement".into())
     }
 
     pub fn agreement_signed_agents(
@@ -181,7 +183,7 @@ impl JACSDocument {
             }
             return Ok(signed_agents);
         }
-        Err("no agreement or signatures in agreement".into())
+        Err("Agreement lookup failed: no agreement or signatures in agreement".into())
     }
 }
 
@@ -267,6 +269,30 @@ pub trait DocumentTraits {
     /// util function for parsing arguments for attachments
     fn parse_attachement_arg(&mut self, attachments: Option<&str>) -> Option<Vec<String>>;
     fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String);
+
+    /// Creates and signs multiple documents in a batch operation.
+    ///
+    /// This is more efficient than calling `create_document_and_load` repeatedly
+    /// because it amortizes key decryption overhead across all documents.
+    ///
+    /// # Arguments
+    ///
+    /// * `documents` - A slice of JSON strings representing documents to sign
+    ///
+    /// # Returns
+    ///
+    /// A vector of `JACSDocument` objects, one for each input document, in the
+    /// same order as the input slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if creating/signing any document fails. Documents created
+    /// before the failure are stored but the partial results are not returned
+    /// (all-or-nothing return semantics).
+    fn create_documents_batch(
+        &mut self,
+        documents: &[&str],
+    ) -> Result<Vec<JACSDocument>, Box<dyn std::error::Error + 'static>>;
 }
 
 impl DocumentTraits for Agent {
@@ -276,13 +302,21 @@ impl DocumentTraits for Agent {
         schema_path: &str,
         json: &Value,
     ) -> Result<(), String> {
-        let schemas = self.document_schemas.lock().unwrap();
+        let schemas = self.document_schemas.lock()
+            .map_err(|e| format!("Failed to acquire schema lock: {}", e))?;
         let validator = schemas
             .get(schema_path)
-            .ok_or_else(|| format!("Validator not found for path: {}", schema_path))?;
+            .ok_or_else(|| format!("Validator not found for schema path: '{}'. Ensure the schema is registered.", schema_path))?;
 
         let validation_result = validator.validate(json);
-        validation_result.map_err(|error| error.to_string())?;
+        validation_result.map_err(|error| {
+            let doc_id = json.get("jacsId").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            let doc_type = json.get("jacsType").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            format!(
+                "Custom schema validation failed for document '{}' (type: '{}') against schema '{}': {}",
+                doc_id, doc_type, schema_path, error
+            )
+        })?;
 
         Ok(())
     }
@@ -301,9 +335,7 @@ impl DocumentTraits for Agent {
             .to_string();
 
         // Calculate the SHA256 hash of the contents
-        let mut hasher = Sha256::new();
-        hasher.update(&base64_contents);
-        let sha256_hash = format!("{:x}", hasher.finalize());
+        let sha256_hash = hash_bytes(base64_contents.as_bytes());
 
         // Create the JSON object
         let file_json = json!({
@@ -315,13 +347,14 @@ impl DocumentTraits for Agent {
 
         // Add the contents field if embed is true
         let file_json = if embed {
-            file_json
-                .as_object()
-                .unwrap()
-                .clone()
-                .into_iter()
-                .chain(vec![("contents".to_string(), json!(base64_contents))])
-                .collect()
+            match file_json.as_object() {
+                Some(obj) => obj
+                    .clone()
+                    .into_iter()
+                    .chain(vec![("contents".to_string(), json!(base64_contents))])
+                    .collect(),
+                None => file_json, // Should never happen with json! macro
+            }
         } else {
             file_json
         };
@@ -348,13 +381,14 @@ impl DocumentTraits for Agent {
                 let base64_contents = self.fs_get_document_content(file_path.to_string())?;
 
                 // Calculate the SHA256 hash of the loaded contents
-                let mut hasher = Sha256::new();
-                hasher.update(&base64_contents);
-                let actual_hash = format!("{:x}", hasher.finalize());
+                let actual_hash = hash_bytes(base64_contents.as_bytes());
 
                 // Compare the actual hash with the expected hash
                 if actual_hash != expected_hash {
-                    return Err(format!("Hash mismatch for file: {}", file_path).into());
+                    return Err(JacsError::HashMismatch {
+                        expected: expected_hash.to_string(),
+                        got: actual_hash,
+                    }.into());
                 }
             }
         }
@@ -381,7 +415,7 @@ impl DocumentTraits for Agent {
                     // iterate over attachment files
                     for file in &file_paths {
                         let final_embed = embed.unwrap_or(false);
-                        let file_json = self.create_file_json(file, final_embed).unwrap();
+                        let file_json = self.create_file_json(file, final_embed)?;
 
                         // Add the file JSON to the files array
                         files_array.push(file_json);
@@ -390,7 +424,9 @@ impl DocumentTraits for Agent {
             }
 
             // Create a new "files" field in the document
-            let instance_map = instance.as_object_mut().unwrap();
+            let instance_map = instance.as_object_mut()
+                .ok_or("Invalid document structure: expected a JSON object but got a different type. \
+                    Ensure your document JSON is a valid object (starts with '{' and ends with '}').")?;
             instance_map.insert("jacsFiles".to_string(), Value::Array(files_array));
         }
 
@@ -434,13 +470,11 @@ impl DocumentTraits for Agent {
                         (doc["jacsId"].as_str(), doc["jacsVersionDate"].as_str())
                 {
                     // Convert jacsVersionDate to timestamp (i64)
-                    let timestamp = match DateTime::parse_from_rfc3339(jacs_version_date) {
-                        Ok(dt) => dt.with_timezone(&Utc).timestamp(),
-                        Err(e) => {
+                    let timestamp = time_utils::parse_rfc3339_to_timestamp(jacs_version_date)
+                        .unwrap_or_else(|e| {
                             println!("Failed to parse timestamp: {}", e);
-                            Utc::now().timestamp()
-                        }
-                    };
+                            time_utils::now_timestamp()
+                        });
 
                     let entry = most_recent_docs
                         .entry(jacs_id.to_string())
@@ -492,18 +526,33 @@ impl DocumentTraits for Agent {
     }
 
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
-        // Use ok_or_else for mandatory fields
+        // Use ok_or_else for mandatory fields with actionable error messages
         let id = value
             .get_str("jacsId")
-            .ok_or_else(|| "Missing 'jacsId' field".to_string())?
+            .ok_or_else(|| {
+                "Invalid document: missing required field 'jacsId'. \
+                Documents must have jacsId, jacsVersion, and jacsType fields. \
+                Use create_document_and_load() to create a properly structured document."
+                    .to_string()
+            })?
             .to_string();
         let version = value
             .get_str("jacsVersion")
-            .ok_or_else(|| "Missing 'jacsVersion' field".to_string())?
+            .ok_or_else(|| {
+                "Invalid document: missing required field 'jacsVersion'. \
+                Documents must have jacsId, jacsVersion, and jacsType fields. \
+                Use create_document_and_load() to create a properly structured document."
+                    .to_string()
+            })?
             .to_string();
         let jacs_type = value
             .get_str("jacsType")
-            .ok_or_else(|| "Missing 'jacsType' field".to_string())?
+            .ok_or_else(|| {
+                "Invalid document: missing required field 'jacsType'. \
+                Documents must have jacsId, jacsVersion, and jacsType fields. \
+                Use create_document_and_load() to create a properly structured document."
+                    .to_string()
+            })?
             .to_string();
 
         let doc = JACSDocument {
@@ -550,14 +599,13 @@ impl DocumentTraits for Agent {
     ) -> Result<JACSDocument, Box<dyn Error>> {
         // check that old document is found
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
-        let error_message = format!("original document {} not found", document_key);
-        let original_document = self.get_document(document_key).expect(&error_message);
+        let original_document = self.get_document(document_key)?;
         let value = original_document.value.clone();
         let jacs_level = new_document
             .get_str("jacsLevel")
             .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());
         if !EDITABLE_JACS_DOCS.contains(&jacs_level.as_str()) {
-            return Err(format!("JACS docs of type {} are not editable", jacs_level).into());
+            return Err(JacsError::DocumentError(format!("JACS docs of type {} are not editable", jacs_level)).into());
         };
 
         let mut files_array: Vec<Value> = new_document
@@ -569,7 +617,7 @@ impl DocumentTraits for Agent {
         // now re-verify these files
 
         self.verify_document_files(&new_document)
-            .expect("file verification");
+            ?;
         if let Some(attachment_list) = attachments {
             // Iterate over each attachment
             for attachment_path in attachment_list {
@@ -594,10 +642,13 @@ impl DocumentTraits for Agent {
         let new_doc_orginal_id = &new_document.get_str("jacsId");
         let new_doc_orginal_version = &new_document.get_str("jacsVersion");
         if (orginal_id != new_doc_orginal_id) || (orginal_version != new_doc_orginal_version) {
-            return Err(format!(
-                "The id/versions do not match found for key: {}. {:?}{:?}",
-                document_key, new_doc_orginal_id, new_doc_orginal_version
-            )
+            return Err(JacsError::DocumentMalformed {
+                field: "jacsId/jacsVersion".to_string(),
+                reason: format!(
+                    "The id/versions do not match found for key: {}. {:?}{:?}",
+                    document_key, new_doc_orginal_id, new_doc_orginal_version
+                ),
+            }
             .into());
         }
 
@@ -606,7 +657,7 @@ impl DocumentTraits for Agent {
         // validate schema
         let new_version = Uuid::new_v4().to_string();
         let last_version = &value["jacsVersion"];
-        let versioncreated = Utc::now().to_rfc3339();
+        let versioncreated = time_utils::now_rfc3339();
 
         new_document["jacsPreviousVersion"] = last_version.clone();
         new_document["jacsVersion"] = json!(format!("{}", new_version));
@@ -640,11 +691,11 @@ impl DocumentTraits for Agent {
 
     /// copys document without modifications
     fn copy_document(&mut self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>> {
-        let original_document = self.get_document(document_key).unwrap();
+        let original_document = self.get_document(document_key)?;
         let mut value = original_document.value;
         let new_version = Uuid::new_v4().to_string();
         let last_version = &value["jacsVersion"];
-        let versioncreated = Utc::now().to_rfc3339();
+        let versioncreated = time_utils::now_rfc3339();
 
         value["jacsPreviousVersion"] = last_version.clone();
         value["jacsVersion"] = json!(format!("{}", new_version));
@@ -665,7 +716,7 @@ impl DocumentTraits for Agent {
         export_embedded: Option<bool>,
         extract_only: Option<bool>,
     ) -> Result<(), Box<dyn Error>> {
-        let original_document = self.get_document(document_key).unwrap();
+        let original_document = self.get_document(document_key)?;
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
 
         let is_extract_only = extract_only.unwrap_or_default();
@@ -719,7 +770,7 @@ impl DocumentTraits for Agent {
         &mut self,
         document_key: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let document = self.get_document(document_key).unwrap();
+        let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
         let public_key_hash: String = json_value[signature_key_from]["publicKeyHash"]
@@ -743,7 +794,7 @@ impl DocumentTraits for Agent {
         &mut self,
         document_key: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let document = self.get_document(document_key).unwrap();
+        let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
         let angent_id: String = json_value[signature_key_from]["agentID"]
@@ -766,7 +817,7 @@ impl DocumentTraits for Agent {
         &mut self,
         document_key: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let document = self.get_document(document_key).unwrap();
+        let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
         let date: String = json_value[signature_key_from]["date"]
@@ -786,10 +837,10 @@ impl DocumentTraits for Agent {
         public_key_enc_type: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         // check that public key exists
-        let document = self.get_document(document_key).expect("Reason");
+        let document = self.get_document(document_key)?;
         let document_value = document.getvalue();
         self.verify_document_files(document_value)
-            .expect("file verification");
+            ?;
         // this is innefficient since I generate a whole document
         let used_public_key = match public_key {
             Some(public_key) => public_key,
@@ -894,5 +945,52 @@ impl DocumentTraits for Agent {
         }
 
         (same, add, rem)
+    }
+
+    fn create_documents_batch(
+        &mut self,
+        documents: &[&str],
+    ) -> Result<Vec<JACSDocument>, Box<dyn std::error::Error + 'static>> {
+        use tracing::info;
+
+        if documents.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        info!(
+            batch_size = documents.len(),
+            "Creating batch of documents"
+        );
+
+        let mut results = Vec::with_capacity(documents.len());
+
+        for (index, json) in documents.iter().enumerate() {
+            // Validate and create the document structure
+            let mut instance = self.schema.create(json)?;
+
+            // Sign the document
+            instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
+                self.signing_procedure(&instance, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
+
+            // Hash the document
+            let document_hash = self.hash_doc(&instance)?;
+            instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+
+            // Store and collect the result
+            let doc = self.store_jacs_document(&instance)?;
+            results.push(doc);
+
+            tracing::trace!(
+                batch_index = index,
+                "Batch document created"
+            );
+        }
+
+        info!(
+            batch_size = documents.len(),
+            "Batch document creation completed successfully"
+        );
+
+        Ok(results)
     }
 }

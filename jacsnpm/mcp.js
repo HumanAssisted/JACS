@@ -3,7 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createJACSTransportProxyAsync = exports.createJACSTransportProxy = exports.JACSTransportProxy = void 0;
+exports.JACSTransportProxy = void 0;
+exports.createJACSTransportProxy = createJACSTransportProxy;
+exports.createJACSTransportProxyAsync = createJACSTransportProxyAsync;
 const index_js_1 = __importDefault(require("./index.js"));
 // Add near the top, after imports:
 const isStdioTransport = (transport) => {
@@ -504,11 +506,9 @@ function createJACSTransportProxy(transport, configPath, role) {
     jacslog(`Creating JACS Transport Proxy for role: ${role}`);
     return new JACSTransportProxy(transport, role, configPath);
 }
-exports.createJACSTransportProxy = createJACSTransportProxy;
 async function createJACSTransportProxyAsync(transport, configPath, role) {
     jacslog(`Creating JACS Transport Proxy (async) for role: ${role}`);
     await ensureJacsLoaded(configPath);
     return new JACSTransportProxy(transport, role, configPath);
 }
-exports.createJACSTransportProxyAsync = createJACSTransportProxyAsync;
 //# sourceMappingURL=mcp.js.map

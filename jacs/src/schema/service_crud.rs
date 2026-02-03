@@ -1,3 +1,6 @@
+// CRUD operations for future public API - will be exposed in upcoming releases
+#![allow(dead_code)]
+
 use serde_json::{Value, json};
 
 /// Creates a minimal service with required fields and optional tools and PII desired.

@@ -1,6 +1,7 @@
+use crate::error::JacsError;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use crate::schema::utils::ValueExt;
-use chrono::prelude::*;
+use crate::time_utils;
 use jsonschema::{Draft, Retrieve, Validator};
 use referencing::Uri;
 use tracing::{debug, error, warn};
@@ -28,6 +29,164 @@ use utils::{DEFAULT_SCHEMA_STRINGS, EmbeddedSchemaResolver};
 use std::error::Error;
 use std::fmt;
 
+/// Builds a JSON Schema validator with standard JACS configuration.
+///
+/// This helper consolidates the repeated pattern of creating validators with
+/// Draft7 and the embedded schema resolver.
+///
+/// # Arguments
+/// * `schema` - The parsed JSON schema value to compile
+/// * `schema_name` - A descriptive name for error messages (e.g., "agentschema", "taskschema")
+///
+/// # Returns
+/// * `Ok(Validator)` - The compiled validator ready for use
+/// * `Err(JacsError)` - If schema compilation fails
+fn build_validator(schema: &Value, schema_name: &str) -> Result<Validator, JacsError> {
+    Validator::options()
+        .with_draft(Draft::Draft7)
+        .with_retriever(EmbeddedSchemaResolver::new())
+        .build(schema)
+        .map_err(|e| JacsError::SchemaError(format!("Failed to compile {}: {}", schema_name, e)))
+}
+
+/// Formats a schema validation error with detailed, actionable information.
+///
+/// This function extracts the field path, expected type/value, and actual value
+/// from a jsonschema validation error to produce human-readable error messages.
+///
+/// # Arguments
+/// * `error` - The jsonschema validation error
+/// * `schema_name` - The name of the schema that failed (e.g., "agent.schema.json")
+/// * `instance` - The JSON value that was being validated
+///
+/// # Returns
+/// A formatted error string with field path, expected vs actual values
+///
+/// # Example output
+/// ```text
+/// Schema validation failed for 'agent.schema.json' at field 'jacsServices.0.name': "name" is not of type "string" [expected string, got number (42)]
+/// ```
+pub fn format_schema_validation_error(
+    error: &jsonschema::ValidationError,
+    schema_name: &str,
+    instance: &Value,
+) -> String {
+    let path = error.instance_path.to_string();
+    let field_path = if path.is_empty() || path == "/" {
+        "root".to_string()
+    } else {
+        path.trim_start_matches('/').replace('/', ".").to_string()
+    };
+
+    // Extract the actual invalid value from the instance using the path
+    let actual_value: Option<String> = if !path.is_empty() && path != "/" {
+        let path_parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+        let mut current = instance;
+        for part in &path_parts {
+            match current {
+                Value::Object(obj) => {
+                    if let Some(val) = obj.get(*part) {
+                        current = val;
+                    } else {
+                        break;
+                    }
+                }
+                Value::Array(arr) => {
+                    if let Ok(idx) = part.parse::<usize>() {
+                        if let Some(val) = arr.get(idx) {
+                            current = val;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        if current != instance {
+            let type_name = match current {
+                Value::Null => "null".to_string(),
+                Value::Bool(_) => "boolean".to_string(),
+                Value::Number(_) => "number".to_string(),
+                Value::String(_) => "string".to_string(),
+                Value::Array(_) => "array".to_string(),
+                Value::Object(_) => "object".to_string(),
+            };
+            let value_str = current.to_string();
+            let truncated = if value_str.len() > 50 {
+                format!("{}...", &value_str[..47])
+            } else {
+                value_str
+            };
+            Some(format!("{} ({})", type_name, truncated))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Parse the error message to extract expected type information
+    let error_str = error.to_string();
+    let expected = extract_expected_type(&error_str);
+
+    // Build the detailed error message
+    let mut msg = format!(
+        "Schema validation failed for '{}' at field '{}': {}",
+        schema_name, field_path, error
+    );
+
+    // Add expected vs actual comparison if we have the information
+    if let Some(exp) = expected {
+        if let Some(ref actual) = actual_value {
+            msg.push_str(&format!(" [expected {}, got {}]", exp, actual));
+        } else {
+            msg.push_str(&format!(" [expected {}]", exp));
+        }
+    } else if let Some(ref actual) = actual_value {
+        msg.push_str(&format!(" [got {}]", actual));
+    }
+
+    msg
+}
+
+/// Extracts the expected type or value pattern from a validation error message.
+fn extract_expected_type(error_msg: &str) -> Option<String> {
+    // Handle "is not of type X" errors
+    if let Some(pos) = error_msg.find("is not of type ") {
+        let rest = &error_msg[pos + 15..];
+        if let Some(end) = rest.find([',', ')', ']']) {
+            return Some(rest[..end].trim_matches('"').to_string());
+        }
+        return Some(rest.trim_matches('"').to_string());
+    }
+
+    // Handle "is not one of" enum errors
+    if let Some(pos) = error_msg.find("is not one of ") {
+        let rest = &error_msg[pos + 14..];
+        return Some(format!("one of {}", rest));
+    }
+
+    // Handle "is a required property" errors
+    if error_msg.contains("is a required property") {
+        return Some("required property".to_string());
+    }
+
+    // Handle "is missing" errors
+    if error_msg.contains("is missing") {
+        return Some("required field".to_string());
+    }
+
+    // Handle pattern/format errors
+    if error_msg.contains("does not match") {
+        return Some("matching pattern".to_string());
+    }
+
+    None
+}
+
 // Custom error type
 #[derive(Debug)]
 pub struct ValidationError(pub String);
@@ -40,7 +199,10 @@ impl fmt::Display for ValidationError {
 
 impl Error for ValidationError {}
 
+// Schema validators are pre-compiled for future document types
+// They will be exposed as validation methods are added
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Schema {
     /// used to validate any JACS document
     pub headerschema: Validator,
@@ -97,8 +259,7 @@ impl Schema {
         let url = base_url.join(schema_url)?;
         let schema_value_result =
             schema_resolver.retrieve(&Uri::try_from(url.as_str().to_string())?);
-        let schema_value: Arc<Value>;
-        match schema_value_result {
+        let schema_value: Arc<Value> = match schema_value_result {
             Err(_) => {
                 let default_url =
                     Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")?;
@@ -108,10 +269,10 @@ impl Schema {
                     Ok(value) => value,
                     Err(e) => return Err(e.to_string().into()),
                 };
-                schema_value = Arc::new(result);
+                Arc::new(result)
             }
-            Ok(value) => schema_value = Arc::new(value),
-        }
+            Ok(value) => Arc::new(value),
+        };
 
         match schema_value.as_ref() {
             Value::Object(schema_map) => {
@@ -129,10 +290,11 @@ impl Schema {
                                     level,
                                     processed_fields,
                                 )?;
-                                result
-                                    .as_object_mut()
-                                    .unwrap()
-                                    .extend(child_result.as_object().unwrap().clone());
+                                if let (Some(result_obj), Some(child_obj)) =
+                                    (result.as_object_mut(), child_result.as_object())
+                                {
+                                    result_obj.extend(child_obj.clone());
+                                }
                             }
 
                             if let Some(properties) = item.get("properties") {
@@ -239,7 +401,7 @@ impl Schema {
             return Ok(());
         }
 
-        Err("properies map failed".into())
+        Err("Properties map failed: could not extract from schema".into())
     }
 
     fn process_field_value(
@@ -337,21 +499,28 @@ impl Schema {
             default_version
         );
 
-        let headerdata = DEFAULT_SCHEMA_STRINGS.get(&header_path).unwrap();
-        let agentdata = DEFAULT_SCHEMA_STRINGS.get(&agentversion_path).unwrap();
-        let agreementdata = DEFAULT_SCHEMA_STRINGS.get(&agreementversion_path).unwrap();
-        let signaturedata = DEFAULT_SCHEMA_STRINGS.get(&signatureversion_path).unwrap();
-        let servicedata = DEFAULT_SCHEMA_STRINGS.get(&service_path).unwrap();
-        let unitdata = DEFAULT_SCHEMA_STRINGS.get(&unit_path).unwrap();
-        let actiondata = DEFAULT_SCHEMA_STRINGS.get(&action_path).unwrap();
-        let tooldata = DEFAULT_SCHEMA_STRINGS.get(&tool_path).unwrap();
-        let contactdata = DEFAULT_SCHEMA_STRINGS.get(&contact_path).unwrap();
-        let taskdata = DEFAULT_SCHEMA_STRINGS.get(&task_path).unwrap();
-        let messagedata = DEFAULT_SCHEMA_STRINGS.get(&message_path).unwrap();
-        let evaldata = DEFAULT_SCHEMA_STRINGS.get(&eval_path).unwrap();
-        let programdata = DEFAULT_SCHEMA_STRINGS.get(&program_path).unwrap();
-        let nodedata = DEFAULT_SCHEMA_STRINGS.get(&node_path).unwrap();
-        let embeddingdata = DEFAULT_SCHEMA_STRINGS.get(&embedding_path).unwrap();
+        // Helper to get schema with better error messages
+        let get_schema = |path: &str| -> Result<&str, Box<dyn std::error::Error>> {
+            DEFAULT_SCHEMA_STRINGS.get(path)
+                .copied()
+                .ok_or_else(|| format!("Schema not found: {}", path).into())
+        };
+
+        let headerdata = get_schema(&header_path)?;
+        let agentdata = get_schema(&agentversion_path)?;
+        let agreementdata = get_schema(&agreementversion_path)?;
+        let signaturedata = get_schema(&signatureversion_path)?;
+        let servicedata = get_schema(&service_path)?;
+        let unitdata = get_schema(&unit_path)?;
+        let actiondata = get_schema(&action_path)?;
+        let tooldata = get_schema(&tool_path)?;
+        let contactdata = get_schema(&contact_path)?;
+        let taskdata = get_schema(&task_path)?;
+        let messagedata = get_schema(&message_path)?;
+        let evaldata = get_schema(&eval_path)?;
+        let programdata = get_schema(&program_path)?;
+        let nodedata = get_schema(&node_path)?;
+        let embeddingdata = get_schema(&embedding_path)?;
 
         let agentschema_result: Value = serde_json::from_str(agentdata)?;
         let headerchema_result: Value = serde_json::from_str(headerdata)?;
@@ -370,141 +539,22 @@ impl Schema {
         let programschema_result: Value = serde_json::from_str(programdata)?;
         let embeddingschema_result: Value = serde_json::from_str(embeddingdata)?;
 
-        let agentschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&agentschema_result)
-            .map_err(|_| format!("Failed to compile agentschema: {}", &agentversion_path))?;
-
-        let headerschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&headerchema_result)
-            .map_err(|_| format!("Failed to compile headerschema: {}", &header_path))?;
-
-        let signatureschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&signatureschema_result)
-            .map_err(|_| {
-                format!(
-                    "Failed to compile signatureschema: {}",
-                    &signatureversion_path
-                )
-            })?;
-
-        let jacsconfigschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&jacsconfigschema_result)
-            .map_err(|_| "Failed to compile jacsconfigschema")?;
-
-        let serviceschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&serviceschema_result)
-            .map_err(|_| format!("Failed to compile serviceschema: {}", &service_path))?;
-
-        let unitschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&unitschema_result)
-            .map_err(|_| format!("Failed to compile unitschema: {}", &unit_path))?;
-
-        let actionschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&actionschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(format!("Failed to compile actionschema: {}", &action_path).into());
-            }
-        };
-
-        let toolschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&toolschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => return Err(format!("Failed to compile toolschema: {}", &tool_path).into()),
-        };
-
-        let agreementschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&agreementschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(format!(
-                    "Failed to compile agreementschema: {}",
-                    &agreementversion_path
-                )
-                .into());
-            }
-        };
-
-        let evalschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&evalschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => return Err(format!("Failed to compile evalschema: {}", &eval_path).into()),
-        };
-
-        let nodeschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&nodeschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => return Err(format!("Failed to compile headerschema: {}", &node_path).into()),
-        };
-
-        let programschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&programschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(format!("Failed to compile headerschema: {}", &program_path).into());
-            }
-        };
-
-        let embeddingschema = match Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&embeddingschema_result)
-        {
-            Ok(schema) => schema,
-            Err(_) => {
-                return Err(
-                    format!("Failed to compile embeddingschema: {}", &embedding_path).into(),
-                );
-            }
-        };
-
-        let contactschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&contactschema_result)
-            .map_err(|_| format!("Failed to compile contactschema: {}", &contact_path))?;
-
-        let taskschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&taskschema_result)
-            .map_err(|_| format!("Failed to compile taskschema: {}", &task_path))?;
-
-        let messageschema = Validator::options()
-            .with_draft(Draft::Draft7)
-            .with_retriever(EmbeddedSchemaResolver::new())
-            .build(&messageschema_result)
-            .map_err(|_| format!("Failed to compile messageschema: {}", &message_path))?;
+        let agentschema = build_validator(&agentschema_result, &agentversion_path)?;
+        let headerschema = build_validator(&headerchema_result, &header_path)?;
+        let signatureschema = build_validator(&signatureschema_result, &signatureversion_path)?;
+        let jacsconfigschema = build_validator(&jacsconfigschema_result, "jacsconfigschema")?;
+        let serviceschema = build_validator(&serviceschema_result, &service_path)?;
+        let unitschema = build_validator(&unitschema_result, &unit_path)?;
+        let actionschema = build_validator(&actionschema_result, &action_path)?;
+        let toolschema = build_validator(&toolschema_result, &tool_path)?;
+        let agreementschema = build_validator(&agreementschema_result, &agreementversion_path)?;
+        let evalschema = build_validator(&evalschema_result, &eval_path)?;
+        let nodeschema = build_validator(&nodeschema_result, &node_path)?;
+        let programschema = build_validator(&programschema_result, &program_path)?;
+        let embeddingschema = build_validator(&embeddingschema_result, &embedding_path)?;
+        let contactschema = build_validator(&contactschema_result, &contact_path)?;
+        let taskschema = build_validator(&taskschema_result, &task_path)?;
+        let messageschema = build_validator(&messageschema_result, &message_path)?;
 
         Ok(Self {
             headerschema,
@@ -550,8 +600,13 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(error) => {
-                error!("error validating header schema");
-                Err(error.to_string().into())
+                let schema_name = instance
+                    .get("$schema")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("header.schema.json");
+                let error_message = format_schema_validation_error(&error, schema_name, &instance);
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -576,8 +631,13 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(error) => {
-                error!("error validating task schema");
-                Err(error.to_string().into())
+                let schema_name = instance
+                    .get("$schema")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("task.schema.json");
+                let error_message = format_schema_validation_error(&error, schema_name, &instance);
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -593,8 +653,10 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(()),
             Err(error) => {
-                error!("error validating signature schema");
-                Err(error.to_string().into())
+                let error_message =
+                    format_schema_validation_error(&error, "signature.schema.json", signature);
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -620,8 +682,13 @@ impl Schema {
         match validation_result {
             Ok(_) => Ok(instance.clone()),
             Err(error) => {
-                error!("error validating agent schema");
-                Err(error.to_string().into())
+                let schema_name = instance
+                    .get("$schema")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("agent.schema.json");
+                let error_message = format_schema_validation_error(&error, schema_name, &instance);
+                error!("{}", error_message);
+                Err(error_message.into())
             }
         }
     }
@@ -641,13 +708,14 @@ impl Schema {
         {
             return Ok(schema_str.to_string());
         }
-        Err("no schema in doc or schema is not a string".into())
+        Err("Schema extraction failed: no schema in doc or schema is not a string".into())
     }
 
     /// use this to get the name of the
     pub fn getshortschema(&self, value: Value) -> Result<String, Box<dyn Error>> {
         let longschema = self.getschema(value)?;
-        let re = Regex::new(r"/([^/]+)\.schema\.json$").unwrap();
+        let re = Regex::new(r"/([^/]+)\.schema\.json$")
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
 
         if let Some(caps) = re.captures(&longschema)
             && let Some(matched) = caps.get(1)
@@ -686,8 +754,7 @@ impl Schema {
         let id = Uuid::new_v4().to_string();
         let version = Uuid::new_v4().to_string();
         let original_version = version.clone();
-        // let now: DateTime<Utc> = Utc::now();
-        let versioncreated = Utc::now().to_rfc3339();
+        let versioncreated = time_utils::now_rfc3339();
 
         instance["jacsId"] = json!(format!("{}", id));
         instance["jacsVersion"] = json!(format!("{}", version));
@@ -718,7 +785,14 @@ impl Schema {
         match validation_result {
             Ok(instance) => instance,
             Err(error) => {
-                let error_message = error.to_string();
+                let schema_name = instance
+                    .get("$schema")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("header.schema.json");
+                let error_message = format!(
+                    "Document creation failed: {}",
+                    format_schema_validation_error(&error, schema_name, &instance)
+                );
                 error!("{}", error_message);
                 return Err(Box::new(ValidationError(error_message))
                     as Box<dyn std::error::Error + 'static>);

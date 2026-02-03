@@ -1,98 +1,228 @@
 # JACS Python Library
 
-Python bindings for JACS (JSON Agent Communication Standard) with A2A protocol support.
+Python bindings for JACS (JSON AI Communication Standard) - cryptographic signing and verification for AI agents.
 
-```
+```bash
+# Using uv (recommended)
+uv pip install jacs
+
+# Or with pip
 pip install jacs
+
+# With HAI.ai integration
+uv pip install jacs[hai]
 ```
 
-## Quick Start
+## Quick Start (Simplified API)
+
+The simplified API gets you signing in under 2 minutes:
 
 ```python
-import jacs
+import jacs.simple as jacs
 
-# Load JACS configuration
-jacs.load("jacs.config.json")
+# Load your agent
+agent = jacs.load("./jacs.config.json")
 
-# Sign and verify documents
-signed_doc = jacs.sign_request({"data": "value"})
-is_valid = jacs.verify_request(signed_doc)
+# Sign a message (accepts dict, list, str, or any JSON-serializable data)
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+print(f"Signed by: {signed.agent_id}")
+
+# Verify it
+result = jacs.verify(signed.raw)
+print(f"Valid: {result.valid}")
+
+# Sign a file
+signed_file = jacs.sign_file("document.pdf", embed=True)
+
+# Update agent metadata
+agent_doc = json.loads(jacs.export_agent())
+agent_doc["jacsAgentType"] = "updated-service"
+updated = jacs.update_agent(agent_doc)
+
+# Update a document
+doc = json.loads(signed.raw)
+doc["content"]["status"] = "approved"
+updated_doc = jacs.update_document(signed.document_id, doc)
 ```
 
-## A2A Protocol Integration
+## Core Operations
 
-JACS Python includes support for Google's A2A (Agent-to-Agent) protocol:
+The simplified API provides 8 core operations:
+
+| Operation | Description |
+|-----------|-------------|
+| `create()` | Create a new agent with cryptographic keys |
+| `load()` | Load an existing agent from config |
+| `verify_self()` | Verify the loaded agent's integrity |
+| `update_agent()` | Update the agent document with new data |
+| `update_document()` | Update an existing document with new data |
+| `sign_message()` | Sign a text message or JSON data |
+| `sign_file()` | Sign a file with optional embedding |
+| `verify()` | Verify any signed document |
+
+## Type Definitions
+
+```python
+from jacs import AgentInfo, SignedDocument, VerificationResult
+
+# All return types are dataclasses with clear fields
+agent: AgentInfo = jacs.load()
+signed: SignedDocument = jacs.sign_message({"data": "hello"})
+result: VerificationResult = jacs.verify(signed.raw)
+```
+
+## MCP Integration
+
+For AI tool servers using the Model Context Protocol:
+
+```python
+from fastmcp import FastMCP
+import jacs.simple as jacs
+
+mcp = FastMCP("My Server")
+jacs.load("./jacs.config.json")
+
+@mcp.tool()
+def signed_hello(name: str) -> dict:
+    signed = jacs.sign_message({"greeting": f"Hello, {name}!"})
+    return {"response": signed.raw}
+```
+
+## JacsAgent Class (Advanced)
+
+For more control, use the `JacsAgent` class directly:
+
+```python
+from jacs import JacsAgent
+
+agent = JacsAgent()
+agent.load("./jacs.config.json")
+
+# Sign raw strings
+signature = agent.sign_string("data to sign")
+
+# Verify documents
+is_valid = agent.verify_document(document_json)
+
+# Create documents with schemas
+doc = agent.create_document(json_string, schema=None)
+```
+
+## A2A Protocol Support
+
+JACS supports Google's Agent-to-Agent (A2A) protocol:
 
 ```python
 from jacs.a2a import JACSA2AIntegration
 
-# Initialize A2A integration
 a2a = JACSA2AIntegration("jacs.config.json")
-
-# Export JACS agent to A2A Agent Card
 agent_card = a2a.export_agent_card(agent_data)
-
-# Wrap A2A artifacts with JACS provenance
 wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
-
-# Verify wrapped artifacts
-result = a2a.verify_wrapped_artifact(wrapped)
-
-# Create chain of custody for workflows
-chain = a2a.create_chain_of_custody([wrapped1, wrapped2, wrapped3])
 ```
 
-See [examples/fastmcp/a2a_agent_server.py](./examples/fastmcp/a2a_agent_server.py) for a complete MCP server with A2A support.
+## HAI.ai Integration
 
-## Usage
+HAI.ai is a platform for agent-to-agent agreements and conflict resolution, providing cryptographic attestation of agent capabilities.
 
+### Quick Registration
 
+```python
+from jacs.hai import HaiClient
+import jacs.simple as jacs
 
+# Load your JACS agent
+jacs.load("./jacs.config.json")
 
+# Connect to HAI.ai
+hai = HaiClient()
 
-
-## Development Setup
-
-This project uses Rust for the core library and Python bindings generated via [PyO3](https://pyo3.rs/) and packaged using [maturin](https://github.com/PyO3/maturin). The [uv](https://github.com/astral-sh/uv) tool is recommended for managing Python environments and dependencies.
+# Test connection
+if hai.testconnection("https://hai.ai"):
+    # Register your agent
+    result = hai.register("https://hai.ai", api_key="your-api-key")
+    print(f"Registered: {result.agent_id}")
+```
 
 ### Prerequisites
 
-1.  **Rust Toolchain:** Install Rust via [rustup](https://rustup.rs/):
-2.  **uv:** Install the `uv` Python package manager:
-    ```bash
-    # macOS / Linux
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    # Windows / Other methods: See https://github.com/astral-sh/uv#installation
-    ```
-3.  **Docker:** Required for building Linux (`manylinux`) wheels using the `make build-wheel-linux` command. Install Docker Desktop or Docker Engine for your platform.
+- JACS agent created (see [Quick Start](#quick-start-simplified-api))
+- API key from HAI.ai (visit https://hai.ai/developers)
 
-### Setup Steps
+### Available Methods
 
-1.  **Create and Activate Virtual Environment:**
-    Use `uv` to create a virtual environment. This isolates project dependencies.
-    ```bash
-    uv venv
-    source .venv/bin/activate  
-    uv pip install maturin twine
-    ```
-    *Note: This project itself might not have runtime Python dependencies listed in `pyproject.toml`, but these tools are needed for the build/packaging process.*
+| Method | Description |
+|--------|-------------|
+| `testconnection()` | Test HAI.ai connectivity |
+| `register()` | Register agent with HAI.ai |
+| `verify_agent()` | Verify another agent's trust level |
+| `status()` | Check registration status |
+| `benchmark()` | Run benchmark suite |
+| `connect()` | Connect to SSE event stream |
 
-2.  **Build Wheels using Makefile:**
-    *   **macOS:**
-        ```bash
-        make build-wheel-mac
-        ```
-    *   **Linux (manylinux):** (Requires Docker running)
-        ```bash
-        make build-wheel-linux
-        ```
-    Wheels will be placed in the `dist/` directory.
+### Agent Verification Levels
 
+JACS agents can be verified at three trust levels:
 
-### Running Tests
+| Level | Badge | What it proves |
+|-------|-------|----------------|
+| 1 | Basic | Agent holds a valid private key (self-signed) |
+| 2 | Domain | Agent owner controls a DNS domain |
+| 3 | Attested | HAI.ai has verified and co-signed the agent |
 
-Rust unit tests can be run directly using `cargo`:
+```python
+from jacs.hai import verify_agent
+
+# Verify another agent meets your trust requirements
+result = verify_agent(sender_agent_doc, min_level=2)
+
+if result.valid:
+    print(f"Verified: {result.agent_id} (Level {result.level}: {result.level_name})")
+else:
+    print(f"Verification failed: {result.errors}")
+```
+
+### Examples
+
+- `examples/hai_quickstart.py` - 5-minute quickstart
+- `examples/register_with_hai.py` - Complete registration example
+
+## Installation
+
 ```bash
-cargo test -- --nocapture
+# Basic installation
+pip install jacs
+
+# With MCP support
+pip install jacs[mcp]
+
+# With HAI.ai integration
+pip install jacs[hai]
 ```
+
+## Examples
+
+See the [examples/](./examples/) directory:
+- `quickstart.py` - Basic signing and verification
+- `sign_file.py` - File signing with embeddings
+- `mcp_server.py` - Authenticated MCP server
+- `p2p_exchange.py` - Peer-to-peer trust establishment
+
+## Development
+
+```bash
+# Setup
+uv venv && source .venv/bin/activate
+uv pip install maturin
+
+# Build
+maturin develop
+
+# Test
+pytest tests/
 ```
+
+## Documentation
+
+- [JACS Book](https://humanassisted.github.io/JACS) - Full documentation
+- [API Reference](https://humanassisted.github.io/JACS/api/python) - Python API docs
+- [Migration Guide](https://humanassisted.github.io/JACS/migration) - Upgrading from v0.4.x

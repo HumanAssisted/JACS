@@ -2,6 +2,53 @@ use crate::config::{LogConfig, LogDestination};
 use std::io;
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
+/// Initialize logging with a simple, sensible default configuration.
+///
+/// This function provides a quick way to set up logging that:
+/// - Outputs to stderr
+/// - Defaults to `info` level for JACS modules
+/// - Uses the `RUST_LOG` environment variable for customization
+/// - Suppresses verbose output from common networking crates
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use jacs::observability::logs::init_logging;
+///
+/// fn main() {
+///     init_logging();  // Set up logging with defaults
+///     // Your application code here
+/// }
+/// ```
+///
+/// # Environment Variables
+///
+/// - `RUST_LOG`: Standard Rust logging configuration. Defaults to `jacs=info` if not set.
+///   Examples:
+///   - `RUST_LOG=debug` - Enable debug logging for all modules
+///   - `RUST_LOG=jacs=debug` - Enable debug logging for JACS only
+///   - `RUST_LOG=jacs=trace,jacs::crypt=debug` - Fine-grained control
+///
+/// # Panics
+///
+/// This function will not panic even if a global subscriber is already set.
+/// It will silently return in that case.
+pub fn init_logging() {
+    // Build filter from RUST_LOG env var, defaulting to jacs=info
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("jacs=info"))
+        .add_directive("hyper=warn".parse().expect("valid directive"))
+        .add_directive("tonic=warn".parse().expect("valid directive"))
+        .add_directive("h2=warn".parse().expect("valid directive"))
+        .add_directive("reqwest=warn".parse().expect("valid directive"));
+
+    // Try to initialize; if a subscriber already exists, this is a no-op
+    let _ = Registry::default()
+        .with(filter)
+        .with(fmt::layer().with_writer(io::stderr))
+        .try_init();
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 use tracing_appender::non_blocking::WorkerGuard;
 #[cfg(not(target_arch = "wasm32"))]
@@ -75,7 +122,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             }
             #[cfg(any(target_arch = "wasm32", not(feature = "otlp-logs")))]
             {
-                Err("otlp-logs feature is not enabled; rebuild with --features otlp-logs".into())
+                Err("OTLP logs feature not enabled: rebuild with --features otlp-logs".into())
             }
         }
         LogDestination::Null => Ok(None),

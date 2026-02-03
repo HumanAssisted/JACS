@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -71,6 +71,8 @@ difference = "2.0.0"
 rpassword = "7.3.1"
 validator = "0.20.0"
 uuid = { version = "1.16.0", features = ["v4", "v7", "js"] }
+lazy_static = "1.5"
+dirs = "5.0"
 env_logger = "0.11.8"
 futures-util = "0.3.31"
 referencing = "0.33.0"

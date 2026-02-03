@@ -1,1 +1,16 @@
-public_keys*
+# Ignore all ephemeral test-generated files
+
+# UUID-named document files (format: uuid:uuid or uuid:uuid.json)
+*-*-*-*-*:*
+
+# Generated documents directory
+documents/
+
+# Public keys cache (regenerated during tests)
+public_keys/
+
+# Keep only the essential static fixtures:
+# - jacs.config.json
+# - jacs_keys/ (encrypted private key + public key)
+# - agent/ (the agent document)
+# - Static test data files (agent.raw.json, ddl.json, mobius.jpeg, fruit.json)

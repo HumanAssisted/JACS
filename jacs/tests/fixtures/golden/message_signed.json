@@ -1,0 +1,40 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "jacsType": "message",
+  "jacsLevel": "raw",
+  "content": {
+    "type": "test_message",
+    "text": "Hello, JACS! This is a golden fixture for cross-language testing.",
+    "data": {
+      "key": "value",
+      "number": 42,
+      "array": [1, 2, 3]
+    }
+  },
+  "jacsId": "golden-message-001",
+  "jacsVersion": "v1",
+  "jacsOriginalVersion": "v1",
+  "jacsVersionDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsOriginalDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsSha256": "REGENERATE_WITH_ACTUAL_AGENT",
+  "jacsSignature": {
+    "agentID": "golden-test-agent",
+    "agentVersion": "v1",
+    "date": "2025-01-01T00:00:00.000000+00:00",
+    "fields": [
+      "$schema",
+      "content",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "REGENERATE_WITH_ACTUAL_AGENT",
+    "signature": "REGENERATE_WITH_ACTUAL_AGENT",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "_golden_fixture_note": "This fixture must be regenerated with a real agent. Run: cargo test generate_golden_fixtures -- --ignored"
+}

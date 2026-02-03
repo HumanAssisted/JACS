@@ -1,3 +1,6 @@
+// Allow deprecated config functions during 12-Factor migration (see task ARCH-005)
+#![allow(deprecated)]
+
 use crate::agent::boilerplate::BoilerPlate;
 use crate::config::{Config, check_env_vars, set_env_vars};
 use crate::create_minimal_blank_agent;
@@ -213,8 +216,10 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     }
     */
 
-    let mut file = File::create(config_path).unwrap(); // Keep std::fs::File::create
-    file.write_all(serialized.as_bytes()).unwrap(); // Keep std::fs::write_all
+    let mut file = File::create(config_path)
+        .map_err(|e| format!("Failed to create config file '{}': {}", config_path, e))?;
+    file.write_all(serialized.as_bytes())
+        .map_err(|e| format!("Failed to write to config file '{}': {}", config_path, e))?;
 
     println!("jacs.config.json file generated successfully!");
     Ok(())

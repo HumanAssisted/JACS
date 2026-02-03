@@ -1,0 +1,48 @@
+name: Release crates.io
+
+on:
+  push:
+    tags:
+      - 'crate/v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: extract
+        run: |
+          TAG="${GITHUB_REF#refs/tags/crate/v}"
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check Cargo.toml version matches tag
+        run: |
+          CARGO_VERSION=$(grep '^version = ' jacs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          echo "Cargo version: $CARGO_VERSION"
+          echo "Tag version: $TAG_VERSION"
+          if [ "$CARGO_VERSION" = "$TAG_VERSION" ]; then
+            echo "Version match confirmed"
+          else
+            echo "::error::Version mismatch! Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+            exit 1
+          fi
+
+  publish:
+    needs: verify-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Publish to crates.io
+        working-directory: jacs
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}

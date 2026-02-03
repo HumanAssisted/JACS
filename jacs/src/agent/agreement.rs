@@ -11,7 +11,9 @@ use crate::agent::{
 
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::hash::hash_string;
+use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
+use crate::validation::normalize_agent_id;
 use serde::ser::StdError;
 use serde_json::Value;
 use serde_json::json;
@@ -59,8 +61,10 @@ pub trait Agreement {
         agreement_fieldname: Option<String>,
     ) -> Result<String, Box<dyn Error>>;
 
+    /* HYGIENE-004: Potentially dead code - verify tests pass before removal
     /// given a document, check all agreement signatures
     fn has_agreement(&self, document_key: &str) -> Result<bool, Box<dyn Error>>;
+    */
 
     /// agreements update documents
     /// however this updates the document, which updates, version, lastversion and version date
@@ -98,6 +102,7 @@ impl Agreement for Agent {
         Ok(hash_string(&values_as_string))
     }
 
+    /* HYGIENE-004: Potentially dead code - verify tests pass before removal
     /// ineffienct because it doesn't pull from the document
     fn has_agreement(&self, document_key: &str) -> Result<bool, Box<dyn Error>> {
         let document = self.get_document(document_key)?;
@@ -108,6 +113,7 @@ impl Agreement for Agent {
         }
         Ok(false)
     }
+    */
     // ignore these extra fields will change
     fn trim_fields_for_hashing_and_signing(
         &self,
@@ -163,15 +169,15 @@ impl Agreement for Agent {
             json!(self.agreement_hash(updated_document.value.clone(), &agreement_fieldname_key)?);
         // could be unit test, but want this in for safety
         if agreement_hash_value != agreement_hash_value_after {
-            return Err(format!(
+            return Err(JacsError::DocumentError(format!(
                 "Agreement field hashes don't match for document_key {}",
                 document_key
-            )
+            ))
             .into());
         }
 
         if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
-            return Err(format!("document hashes should have changed {}", document_key).into());
+            return Err(JacsError::DocumentError(format!("document hashes should have changed {}", document_key)).into());
         };
 
         Ok(updated_document)
@@ -202,13 +208,13 @@ impl Agreement for Agent {
                     let merged_agents = subtract_vecs(&agents_vec, agentids);
                     *agents = json!(merged_agents);
                 } else {
-                    return Err("no agreement  agents  present".into());
+                    return Err("Agreement modification failed: no agents present in agreement".into());
                 }
             } else {
-                return Err("no agreement  agents present".into());
+                return Err("Agreement modification failed: agents field not found".into());
             }
         } else {
-            return Err("no agreement   present".into());
+            return Err("Agreement modification failed: no agreement field present".into());
         }
 
         let updated_document =
@@ -312,11 +318,7 @@ impl Agreement for Agent {
         )?;
 
         // Normalize signing agent ID to avoid duplicates - extract just the ID part
-        let normalized_agent_id = if let Some(pos) = signing_agent_id.find(':') {
-            signing_agent_id[0..pos].to_string()
-        } else {
-            signing_agent_id.clone()
-        };
+        let normalized_agent_id = normalize_agent_id(&signing_agent_id).to_string();
 
         // Check if agent ID (normalized) is already in the agreement
         let mut agent_already_in_agreement = false;
@@ -326,12 +328,7 @@ impl Agreement for Agent {
         {
             for agent in agents_array {
                 let agent_str = agent.as_str().unwrap_or("");
-                let agent_normalized = if let Some(pos) = agent_str.find(':') {
-                    agent_str[0..pos].to_string()
-                } else {
-                    agent_str.to_string()
-                };
-                if agent_normalized == normalized_agent_id {
+                if normalize_agent_id(agent_str) == normalized_agent_id {
                     agent_already_in_agreement = true;
                     break;
                 }
@@ -342,7 +339,7 @@ impl Agreement for Agent {
         let agent_complete_document = if !agent_already_in_agreement {
             self.add_agents_to_agreement(
                 document_key,
-                &[normalized_agent_id.clone()],
+                std::slice::from_ref(&normalized_agent_id),
                 agreement_fieldname.clone(),
             )?
         } else {
@@ -386,15 +383,15 @@ impl Agreement for Agent {
 
         // could be unit test, but want this in for safety
         if original_agreement_hash_value != Some(&agreement_hash_value_after) {
-            return Err(format!(
+            return Err(JacsError::DocumentError(format!(
                 "aborting signature on agreement. field hashes don't match for document_key {} \n {} {}",
                 agent_complete_key, original_agreement_hash_value.expect("original_agreement_hash_value"), agreement_hash_value_after
-            )
+            ))
             .into());
         }
 
         if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
-            return Err(format!("document hashes should have changed {}", document_key).into());
+            return Err(JacsError::DocumentError(format!("document hashes should have changed {}", document_key)).into());
         };
 
         Ok(updated_document)
@@ -419,7 +416,7 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("check_agreement: agreement hashes don't match".into());
+            return Err("Agreement verification failed: agreement hashes do not match".into());
         }
 
         if let Some(jacs_agreement) = document.value.get(agreement_fieldname_key) {
@@ -432,7 +429,7 @@ impl Agreement for Agent {
 
             return Ok((question.to_string(), context.to_string()));
         }
-        Err("check_agreement: document has no agreement".into())
+        Err("Agreement verification failed: document has no agreement".into())
     }
 
     /// checking agreements requires you have the public key of each signatory
@@ -456,16 +453,16 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("check_agreement: agreement hashes don't match".into());
+            return Err("Agreement verification failed: agreement hashes do not match".into());
         }
 
         let unsigned = document.agreement_unsigned_agents(agreement_fieldname.clone())?;
         if !unsigned.is_empty() {
-            return Err(format!(
+            return Err(JacsError::DocumentError(format!(
                 "not all agents have signed: {:?} {:?}",
                 unsigned,
                 document.value.get(agreement_fieldname_key).unwrap()
-            )
+            ))
             .into());
         }
 
@@ -502,10 +499,10 @@ impl Agreement for Agent {
                 let agents_public_key = self.fs_load_public_key(&noted_hash)?;
                 let new_hash = hash_public_key(agents_public_key.clone());
                 if new_hash != noted_hash {
-                    return Err(format!(
+                    return Err(JacsError::CryptoError(format!(
                         "wrong public key for {} , {}",
                         agent_id_and_version, noted_hash
-                    )
+                    ))
                     .into());
                 }
                 debug!(
@@ -528,7 +525,7 @@ impl Agreement for Agent {
             }
             return Ok("All signatures passed".to_string());
         }
-        Err("check_agreement: document has no agreement".into())
+        Err("Agreement verification failed: document has no agreement".into())
     }
 }
 

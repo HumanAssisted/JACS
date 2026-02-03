@@ -1,3 +1,6 @@
+// CRUD operations for future public API - will be exposed in upcoming releases
+#![allow(dead_code)]
+
 use serde_json::{Value, json};
 use validator::ValidateEmail;
 
@@ -26,6 +29,7 @@ use validator::ValidateEmail;
 ///
 /// Returns an error if:
 /// - `email` is provided but is not a valid email address.
+#[allow(clippy::too_many_arguments)]
 pub fn create_minimal_contact(
     first_name: Option<&str>,
     last_name: Option<&str>,

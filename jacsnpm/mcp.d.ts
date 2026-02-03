@@ -1,4 +1,3 @@
-/// <reference types="node" />
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { IncomingMessage, ServerResponse } from "node:http";

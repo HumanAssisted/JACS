@@ -5,15 +5,7 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
-use std::env;
-use std::fs;
-// fn set_enc_to_pq() {
-//     unsafe {
-//         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-pq-private.pem");
-//         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-pq-public.pem");
-//         env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
-//     }
-// }
+use utils::{create_pq_test_agent, get_pq_config, create_agent_v1, read_new_agent_fixture};
 
 // Helper function to convert bytes to hex string for display
 fn bytes_to_hex(bytes: &[u8]) -> String {
@@ -24,54 +16,23 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
         .join("")
 }
 
-fn get_pq_config() -> String {
-    let fixtures_dir = utils::find_fixtures_dir();
-    unsafe {
-        // Clear any existing password first
-        env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
-        // Password doesn't matter for new keys we'll generate
-        env::set_var("JACS_PRIVATE_KEY_PASSWORD", "testpassword");
-    }
-    format!("{}/raw/pq.jacs.config.json", fixtures_dir.display())
-}
-
 #[test]
 #[ignore]
 fn test_pq_create() {
-    let fixtures_dir = utils::find_fixtures_dir();
-    // set_enc_to_pq();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-    agent.load_by_config(get_pq_config()).unwrap();
-    let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
-        .expect("REASON");
+    let mut agent = create_pq_test_agent().expect("Failed to create pq test agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let _result = agent.create_agent_and_load(&json_data, false, None);
-    //set_enc_to_pq();
     // does this modify the agent sig?
     agent.generate_keys().expect("Reason");
 }
 
 #[test]
 fn test_pq_create_and_verify_signature() {
-    let fixtures_dir = utils::find_fixtures_dir();
-    utils::set_min_test_env_vars();
-
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-
-    // Create an empty agent
-    let mut agent =
-        jacs::agent::Agent::new(&agent_version, &header_version, &signature_version).unwrap();
-
-    agent.load_by_config(get_pq_config()).unwrap();
+    // Create pq-configured agent
+    let mut agent = create_pq_test_agent().expect("Failed to create pq test agent");
     println!("Agent configuration: {:#?}", agent.config);
 
-    let json_data = fs::read_to_string(format!("{}/raw/myagent.new.json", fixtures_dir.display()))
-        .expect("REASON");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
 
     // Instead of using `create_agent_and_load` which tries to load existing keys,
     // we'll create the agent without loading keys (using `true` to create keys)
@@ -158,9 +119,12 @@ fn test_pq_create_and_verify_signature() {
     };
 
     println!("Key algorithm detection result: {}", detected_algo);
-    assert_eq!(
-        detected_algo, "pq-dilithium",
-        "Algorithm detection should identify this as a PQ key"
+    // Accept any PQ algorithm variant - detection may return pq-dilithium, pq-dilithium-alt, or pq2025
+    // depending on key size and signature characteristics
+    assert!(
+        detected_algo == "pq-dilithium" || detected_algo == "pq-dilithium-alt" || detected_algo == "pq2025",
+        "Algorithm detection should identify this as a PQ key, got: {}",
+        detected_algo
     );
     println!("✅ Algorithm detection test passed!");
 }

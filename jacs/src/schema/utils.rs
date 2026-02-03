@@ -1,3 +1,4 @@
+use crate::error::JacsError;
 use crate::storage::MultiStorage;
 use jsonschema::Retrieve;
 use phf::phf_map;
@@ -5,9 +6,51 @@ use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, warn};
 
-pub const ACCEPT_INVALID_CERTS: bool = true;
+/// Whether to accept invalid TLS certificates when fetching remote schemas.
+///
+/// **Default behavior**: `true` - accepts invalid certs with a warning.
+/// This allows the application to continue working in development environments
+/// with self-signed certificates while alerting users to the security risk.
+///
+/// To enforce strict TLS validation (recommended for production), set:
+/// `JACS_STRICT_TLS=true`
+///
+/// **Security Warning**: Accepting invalid certificates allows MITM attacks.
+pub const ACCEPT_INVALID_CERTS_DEFAULT: bool = true;
+
+/// Returns whether to accept invalid TLS certificates.
+///
+/// By default, accepts invalid certs but logs a warning.
+/// Set `JACS_STRICT_TLS=true` to enforce certificate validation (recommended for production).
+#[cfg(not(target_arch = "wasm32"))]
+fn should_accept_invalid_certs() -> bool {
+    // Check for strict mode first - if enabled, always validate certs
+    if let Ok(val) = std::env::var("JACS_STRICT_TLS") {
+        if val.eq_ignore_ascii_case("true") || val == "1" {
+            return false; // Don't accept invalid certs in strict mode
+        }
+    }
+
+    // Check legacy env var for explicit override
+    if let Ok(val) = std::env::var("JACS_ACCEPT_INVALID_CERTS") {
+        let accept = val.eq_ignore_ascii_case("true") || val == "1";
+        if accept {
+            warn!("SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true");
+        }
+        return accept;
+    }
+
+    // Default: accept invalid certs but warn
+    if ACCEPT_INVALID_CERTS_DEFAULT {
+        warn!(
+            "TLS certificate validation is disabled by default. \
+            For production, set JACS_STRICT_TLS=true to enforce certificate validation."
+        );
+    }
+    ACCEPT_INVALID_CERTS_DEFAULT
+}
 pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
     "schemas/agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
     "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),
@@ -58,7 +101,9 @@ pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {
 
 pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
 
+// Error type for future schema resolution error handling
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SchemaResolverErrorWrapper(String);
 
 impl fmt::Display for SchemaResolverErrorWrapper {
@@ -68,28 +113,139 @@ impl fmt::Display for SchemaResolverErrorWrapper {
 }
 impl Error for SchemaResolverErrorWrapper {}
 
-// todo move
+/// Extension trait for `serde_json::Value` providing convenient accessor methods.
+///
+/// These helpers reduce boilerplate for common JSON access patterns like:
+/// - `value.get("field").and_then(|v| v.as_str())` -> `value.get_str("field")`
+/// - `value["a"]["b"].as_str().unwrap_or("")` -> `value.get_path_str_or(&["a", "b"], "")`
+/// - `value["a"]["b"].as_str().ok_or_else(...)` -> `value.get_path_str_required(&["a", "b"])`
 pub trait ValueExt {
+    /// Gets a string field, returning `Some(String)` if present and a string.
     fn get_str(&self, field: &str) -> Option<String>;
+
+    /// Gets a string field, returning the provided default if missing or not a string.
+    fn get_str_or(&self, field: &str, default: &str) -> String;
+
+    /// Gets a required string field, returning an error if missing.
+    fn get_str_required(&self, field: &str) -> Result<String, JacsError>;
+
+    /// Gets an i64 field, returning `Some(i64)` if present and numeric.
     fn get_i64(&self, key: &str) -> Option<i64>;
+
+    /// Gets a bool field, returning `Some(bool)` if present and boolean.
     fn get_bool(&self, key: &str) -> Option<bool>;
+
+    /// Serializes the value to a pretty-printed JSON string.
     fn as_string(&self) -> String;
+
+    /// Traverses a path of keys and returns the value at that path.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let sig = value.get_path(&["jacsSignature", "publicKeyHash"]);
+    /// ```
+    fn get_path(&self, path: &[&str]) -> Option<&Value>;
+
+    /// Traverses a path of keys and returns the string value at that path.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let hash = value.get_path_str(&["jacsSignature", "publicKeyHash"]);
+    /// ```
+    fn get_path_str(&self, path: &[&str]) -> Option<String>;
+
+    /// Traverses a path and returns the string value, or a default if not found.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let agent_id = value.get_path_str_or(&["jacsSignature", "agentID"], "");
+    /// ```
+    fn get_path_str_or(&self, path: &[&str], default: &str) -> String;
+
+    /// Traverses a path and returns a required string value, or an error.
+    ///
+    /// The error message includes the full dotted path for debugging.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let hash = value.get_path_str_required(&["jacsSignature", "publicKeyHash"])?;
+    /// ```
+    fn get_path_str_required(&self, path: &[&str]) -> Result<String, JacsError>;
+
+    /// Traverses a path and returns the array value at that path.
+    fn get_path_array(&self, path: &[&str]) -> Option<&Vec<Value>>;
+
+    /// Traverses a path and returns a required array, or an error.
+    fn get_path_array_required(&self, path: &[&str]) -> Result<&Vec<Value>, JacsError>;
 }
 
 impl ValueExt for Value {
     fn as_string(&self) -> String {
-        serde_json::to_string_pretty(self).expect("error")
+        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
+            format!("{{\"error\": \"Failed to serialize JSON: {}\"}}", e)
+        })
     }
 
     fn get_str(&self, field: &str) -> Option<String> {
         self.get(field)?.as_str().map(String::from)
     }
+
+    fn get_str_or(&self, field: &str, default: &str) -> String {
+        self.get(field)
+            .and_then(|v| v.as_str())
+            .unwrap_or(default)
+            .to_string()
+    }
+
+    fn get_str_required(&self, field: &str) -> Result<String, JacsError> {
+        self.get_str(field).ok_or_else(|| JacsError::DocumentMalformed {
+            field: field.to_string(),
+            reason: format!("Missing or invalid field: {}", field),
+        })
+    }
+
     fn get_i64(&self, key: &str) -> Option<i64> {
         self.get(key).and_then(|v| v.as_i64())
     }
 
     fn get_bool(&self, key: &str) -> Option<bool> {
         self.get(key).and_then(|v| v.as_bool())
+    }
+
+    fn get_path(&self, path: &[&str]) -> Option<&Value> {
+        let mut current = self;
+        for key in path {
+            current = current.get(key)?;
+        }
+        Some(current)
+    }
+
+    fn get_path_str(&self, path: &[&str]) -> Option<String> {
+        self.get_path(path)?.as_str().map(String::from)
+    }
+
+    fn get_path_str_or(&self, path: &[&str], default: &str) -> String {
+        self.get_path_str(path).unwrap_or_else(|| default.to_string())
+    }
+
+    fn get_path_str_required(&self, path: &[&str]) -> Result<String, JacsError> {
+        let dotted_path = path.join(".");
+        self.get_path_str(path).ok_or_else(|| JacsError::DocumentMalformed {
+            field: dotted_path.clone(),
+            reason: format!("Missing or invalid field: {}", dotted_path),
+        })
+    }
+
+    fn get_path_array(&self, path: &[&str]) -> Option<&Vec<Value>> {
+        self.get_path(path)?.as_array()
+    }
+
+    fn get_path_array_required(&self, path: &[&str]) -> Result<&Vec<Value>, JacsError> {
+        let dotted_path = path.join(".");
+        self.get_path_array(path).ok_or_else(|| JacsError::DocumentMalformed {
+            field: dotted_path.clone(),
+            reason: format!("Missing or invalid array field: {}", dotted_path),
+        })
     }
 }
 
@@ -124,14 +280,21 @@ impl Retrieve for EmbeddedSchemaResolver {
 
 /// Fetches a schema from a remote URL using reqwest.
 ///
-/// Security: This function accepts invalid certificates and makes unrestricted HTTP requests.
-/// It should only be used in development or controlled environments.
+/// # Security
+///
+/// By default, this function accepts invalid TLS certificates but logs a warning.
+/// This allows development environments with self-signed certs to work out of the box.
+///
+/// For production, set `JACS_STRICT_TLS=true` to enforce certificate validation.
+///
+/// **Warning**: Accepting invalid certificates allows MITM attacks.
 ///
 /// Not available in WASM builds.
 #[cfg(not(target_arch = "wasm32"))]
 fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
+    let accept_invalid = should_accept_invalid_certs();
     let client = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(ACCEPT_INVALID_CERTS)
+        .danger_accept_invalid_certs(accept_invalid)
         .build()?;
 
     let response = client.get(url).send()?;
@@ -140,7 +303,7 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
         let schema_value: Value = response.json()?;
         Ok(Arc::new(schema_value))
     } else {
-        Err(format!("Failed to get schema from URL {}", url).into())
+        Err(JacsError::SchemaError(format!("Failed to get schema from URL {}", url)).into())
     }
 }
 
@@ -148,7 +311,7 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
 /// Always returns an error indicating remote schemas are not supported.
 #[cfg(target_arch = "wasm32")]
 fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
-    Err(format!("Remote URL schemas disabled in WASM: {}", url).into())
+    Err(JacsError::SchemaError(format!("Remote URL schemas disabled in WASM: {}", url)).into())
 }
 
 /// Resolves a schema from various sources based on the provided path.
@@ -156,7 +319,7 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
 /// # Arguments
 /// * `rawpath` - The path or URL to the schema. Can be:
 ///   - A key in DEFAULT_SCHEMA_STRINGS
-///   - A https://hai.ai URL (will be converted to embedded schema)
+///   - A <https://hai.ai> URL (will be converted to embedded schema)
 ///   - A remote URL (will attempt fetch)
 ///   - A local filesystem path
 ///
@@ -174,11 +337,7 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
 /// - Accepts invalid SSL certificates for remote fetching
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
-    let path = if rawpath.starts_with('/') {
-        &rawpath[1..]
-    } else {
-        rawpath
-    };
+    let path = rawpath.strip_prefix('/').unwrap_or(rawpath);
 
     // Check embedded schemas
     if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
@@ -194,7 +353,10 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
                 let schema_value: Value = serde_json::from_str(schema_json)?;
                 return Ok(Arc::new(schema_value));
             }
-            Err("Schema not found".into())
+            Err(JacsError::SchemaError(format!(
+                "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
+                path, relative_path, DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
+            )).into())
         } else {
             get_remote_schema(path)
         }
@@ -206,7 +368,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
             let schema_value: Value = serde_json::from_str(&schema_json)?;
             Ok(Arc::new(schema_value))
         } else {
-            Err(format!("Schema file not found: {}", path).into())
+            Err(JacsError::FileNotFound { path: path.to_string() }.into())
         }
     }
 }

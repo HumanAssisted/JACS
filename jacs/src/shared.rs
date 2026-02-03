@@ -5,6 +5,7 @@ use crate::agent::TASK_START_AGREEMENT_FIELDNAME;
 use crate::agent::agreement::Agreement;
 use crate::agent::document::DocumentTraits;
 use crate::agent::document::JACSDocument;
+use crate::error::JacsError;
 use std::error::Error;
 use tracing::{debug, info};
 
@@ -74,6 +75,9 @@ pub fn document_load_and_save(
     }
 }
 
+// Task workflow functions for future public API
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 fn create_task_start(
     agent: &mut Agent,
     document_string: &str,
@@ -103,6 +107,8 @@ fn create_task_start(
     )
 }
 
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 fn create_task_complete(
     agent: &mut Agent,
     document_string: &str,
@@ -131,6 +137,7 @@ fn create_task_complete(
     )
 }
 
+#[allow(dead_code)]
 fn agree_task_start(
     agent: &mut Agent,
     document_string: &str,
@@ -153,6 +160,7 @@ fn agree_task_start(
     )
 }
 
+#[allow(dead_code)]
 fn agree_task_complete(
     agent: &mut Agent,
     document_string: &str,
@@ -175,6 +183,7 @@ fn agree_task_complete(
     )
 }
 
+#[allow(dead_code)]
 fn check_task_complete(
     agent: &mut Agent,
     document_string: &str,
@@ -189,6 +198,7 @@ fn check_task_complete(
     )
 }
 
+#[allow(dead_code)]
 fn check_task_start(
     agent: &mut Agent,
     document_string: &str,
@@ -223,7 +233,7 @@ pub fn document_check_agreement(
     let document_key = docresult.getkey();
     let result = agent.check_agreement(&document_key, Some(agreement_fieldname_key));
     match result {
-        Err(err) => Err(format!("{}", err).into()),
+        Err(err) => Err(JacsError::DocumentError(format!("Agreement check failed: {}", err)).into()),
         Ok(_) => Ok(format!(
             "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
             docresult
@@ -239,6 +249,7 @@ pub fn document_check_agreement(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn document_sign_agreement(
     agent: &mut Agent,
     document_string: &str,
@@ -276,6 +287,7 @@ pub fn document_sign_agreement(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn document_add_agreement(
     agent: &mut Agent,
     document_string: &str,
@@ -349,10 +361,10 @@ pub fn save_document(
                         info!("document specialised schema {} validated", document_key);
                     }
                     Err(e) => {
-                        return Err(format!(
+                        return Err(JacsError::SchemaError(format!(
                             "document specialised schema {} validation failed {}",
                             document_key, e
-                        )
+                        ))
                         .into());
                     }
                 }
@@ -361,6 +373,6 @@ pub fn save_document(
             agent.save_document(&document_key, save_filename, export_embedded, extract_only)?;
             Ok(format!("saved  {}", document_key))
         }
-        Err(ref e) => Err(format!("document  validation failed {}", e).into()),
+        Err(ref e) => Err(JacsError::ValidationError(format!("Document validation failed: {}", e)).into()),
     }
 }

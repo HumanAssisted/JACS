@@ -5,6 +5,7 @@ use crate::a2a::{
     JACS_EXTENSION_URI, SecurityScheme,
 };
 use crate::agent::Agent;
+use crate::schema::utils::ValueExt;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::error::Error;
@@ -14,29 +15,13 @@ pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, Box<dyn Error>> {
     let agent_value = agent.get_value().ok_or("Agent value not loaded")?;
 
     // Extract basic agent information
-    let name = agent_value
-        .get("jacsName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Unnamed Agent");
-
-    let description = agent_value
-        .get("jacsDescription")
-        .and_then(|v| v.as_str())
-        .unwrap_or("JACS-enabled agent");
-
-    let agent_id = agent_value
-        .get("jacsId")
-        .and_then(|v| v.as_str())
-        .ok_or("Agent ID not found")?;
-
-    let agent_version = agent_value
-        .get("jacsVersion")
-        .and_then(|v| v.as_str())
-        .unwrap_or("1");
+    let name = agent_value.get_str_or("jacsName", "Unnamed Agent");
+    let description = agent_value.get_str_or("jacsDescription", "JACS-enabled agent");
+    let agent_id = agent_value.get_str("jacsId").ok_or("Agent ID not found")?;
+    let agent_version = agent_value.get_str_or("jacsVersion", "1");
 
     // Build supported interfaces from jacsAgentDomain or agent ID
-    let base_url = if let Some(domain) = agent_value.get("jacsAgentDomain").and_then(|d| d.as_str())
-    {
+    let base_url = if let Some(domain) = agent_value.get_str("jacsAgentDomain") {
         format!("https://{}/agent/{}", domain, agent_id)
     } else {
         format!("https://agent-{}.jacs.localhost", agent_id)
@@ -113,35 +98,24 @@ fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, Bo
         for service in services {
             // Extract service name and description
             let service_name = service
-                .get("name")
-                .or_else(|| service.get("serviceDescription"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unnamed_service");
+                .get_str("name")
+                .or_else(|| service.get_str("serviceDescription"))
+                .unwrap_or_else(|| "unnamed_service".to_string());
 
-            let service_desc = service
-                .get("serviceDescription")
-                .and_then(|v| v.as_str())
-                .unwrap_or("No description available");
+            let service_desc = service.get_str_or("serviceDescription", "No description available");
 
             // Convert tools to skills
             if let Some(tools) = service.get("tools").and_then(|v| v.as_array()) {
                 for tool in tools {
                     if let Some(function) = tool.get("function") {
-                        let fn_name = function
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(service_name);
-
-                        let fn_desc = function
-                            .get("description")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(service_desc);
+                        let fn_name = function.get_str_or("name", &service_name);
+                        let fn_desc = function.get_str_or("description", &service_desc);
 
                         let skill = AgentSkill {
-                            id: slugify(fn_name),
+                            id: slugify(&fn_name),
                             name: fn_name.to_string(),
                             description: fn_desc.to_string(),
-                            tags: derive_tags(service_name, fn_name),
+                            tags: derive_tags(&service_name, &fn_name),
                             examples: None,
                             input_modes: None,
                             output_modes: None,
@@ -153,10 +127,10 @@ fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, Bo
             } else {
                 // Create a skill for the service itself if no tools are defined
                 let skill = AgentSkill {
-                    id: slugify(service_name),
+                    id: slugify(&service_name),
                     name: service_name.to_string(),
                     description: service_desc.to_string(),
-                    tags: derive_tags(service_name, service_name),
+                    tags: derive_tags(&service_name, &service_name),
                     examples: None,
                     input_modes: None,
                     output_modes: None,

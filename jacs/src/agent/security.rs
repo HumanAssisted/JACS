@@ -1,13 +1,11 @@
 use crate::agent::Agent;
 use crate::agent::FileLoader;
-use crate::error;
 use std::error::Error;
 use std::fs;
-use tracing::info;
+use tracing::{error, info};
 
 use std::fs::Permissions;
-#[cfg(not(target_arch = "wasm32"))]
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -69,48 +67,36 @@ impl SecurityTraits for Agent {
     fn use_fs_security(&self) -> bool {
         self.use_filesystem()
     }
-    // Mark the file as not executable
-    #[cfg(not(target_arch = "wasm32"))]
-    #[cfg(not(target_os = "windows"))]
+    // Mark the file as not executable (Unix)
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
     fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), Box<dyn Error>> {
         std::fs::set_permissions(Path::new(path), Permissions::from_mode(0o600))?;
         Ok(())
     }
 
-    // Mark the file as not executable
-    #[cfg(not(target_arch = "wasm32"))]
-    #[cfg(target_os = "windows")]
+    // Mark the file as not executable (Windows)
+    // On Windows, we can't easily remove execute permissions via standard Rust APIs.
+    // The file has already been moved to quarantine, which is the primary security measure.
+    #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
     fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), Box<dyn Error>> {
-        use std::os::windows::fs::MetadataExt;
-        use windows::Win32::Security::ACL;
-        use windows::Win32::Security::Authorization::{
-            DACL_SECURITY_INFORMATION, SetNamedSecurityInfoW,
-        };
-
-        // Remove execute permissions by modifying the ACL
-        let wide_path = windows::core::PWSTR::from_raw(
-            dest_path
-                .as_os_str()
-                .encode_wide()
-                .chain(Some(0))
-                .collect::<Vec<_>>()
-                .as_mut_ptr(),
+        // On Windows, files are executable based on extension, not permissions.
+        // We could use Windows ACL APIs via the `windows` crate, but for now
+        // we rely on quarantine and log a warning.
+        warn!(
+            "Windows: Cannot modify execute permissions for {:?}. File has been quarantined.",
+            path
         );
-        unsafe {
-            SetNamedSecurityInfoW(
-                wide_path,
-                SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                None,
-                None,
-                Some(&ACL::default()),
-                None,
-            )?;
-        }
         Ok(())
     }
 
-    #[cfg(not(target_os = "windows"))]
+    // WASM stub - no filesystem permissions
+    #[cfg(target_arch = "wasm32")]
+    fn mark_file_not_executable(&self, _path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+
+    // Check if file is executable (Unix)
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
     fn is_executable(&self, path: &std::path::Path) -> bool {
         if !self.use_fs_security() {
             info!(
@@ -129,45 +115,49 @@ impl SecurityTraits for Agent {
         metadata.permissions().mode() & 0o111 != 0
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    #[cfg(target_os = "windows")]
+    // Check if file is executable (Windows)
+    #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
     fn is_executable(&self, path: &std::path::Path) -> bool {
-        if !use_fs_security() {
+        use std::io::Read;
+
+        if !self.use_fs_security() {
             info!(
-                "is_executable  not detectable on window: {}",
+                "is_executable check on Windows: {}",
                 path.to_string_lossy()
             );
             return false;
         }
 
-        // First, check the file extension
+        // On Windows, check file extension for known executable types
         if let Some(ext) = path.extension() {
-            match ext.to_str().unwrap_or("").to_lowercase().as_str() {
-                "exe" | "bat" | "cmd" | "ps1" => {
-                    let _ = quarantine_file(path)?;
-                }
-                _ => (),
+            let ext_lower = ext.to_str().unwrap_or("").to_lowercase();
+            if matches!(ext_lower.as_str(), "exe" | "bat" | "cmd" | "ps1" | "com" | "scr") {
+                return true;
             }
         }
 
-        // check for the MZ header indicative of PE files
-        // This requires reading the first two bytes of the file
+        // Also check for the MZ header indicative of PE files
+        // This catches executables that may have been renamed
         if let Ok(mut file) = std::fs::File::open(path) {
-            let mut buffer = [0; 2];
-            if std::io::Read::read(&mut file, &mut buffer).is_ok() {
-                if buffer == [0x4D, 0x5A] {
-                    // MZ header in hex
-                    return true;
-                }
+            let mut buffer = [0u8; 2];
+            if file.read_exact(&mut buffer).is_ok() && buffer == [0x4D, 0x5A] {
+                // MZ header
+                return true;
             }
         }
 
         false
     }
+
+    // WASM stub - no filesystem
+    #[cfg(target_arch = "wasm32")]
+    fn is_executable(&self, _path: &std::path::Path) -> bool {
+        false
+    }
     fn quarantine_file(&self, file_path: &Path) -> Result<(), Box<dyn Error>> {
         if !self.use_fs_security() {
             info!(
-                "is_executable not possible because filesystem is not used: {}",
+                "quarantine not possible because filesystem is not used: {}",
                 file_path.to_string_lossy()
             );
             return Ok(());
@@ -180,14 +170,29 @@ impl SecurityTraits for Agent {
             .jacs_data_directory()
             .as_deref()
             .unwrap_or_default();
-        let mut quarantine_dir = Path::new(&data_dir);
-        let binding = quarantine_dir.join("quarantine");
-        quarantine_dir = &binding;
+        let quarantine_dir = Path::new(&data_dir).join("quarantine");
 
         if !quarantine_dir.exists() {
-            fs::create_dir_all(quarantine_dir)?;
-            let permissions = Permissions::from_mode(0o644);
-            fs::set_permissions(quarantine_dir, permissions)?;
+            fs::create_dir_all(&quarantine_dir).map_err(|e| {
+                format!(
+                    "Failed to create quarantine directory '{}': {}. \
+                    Check that the parent directory exists and has write permissions.",
+                    quarantine_dir.display(),
+                    e
+                )
+            })?;
+            // Set directory permissions (Unix only)
+            #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
+            {
+                let permissions = Permissions::from_mode(0o755);
+                fs::set_permissions(&quarantine_dir, permissions).map_err(|e| {
+                    format!(
+                        "Failed to set permissions on quarantine directory '{}': {}",
+                        quarantine_dir.display(),
+                        e
+                    )
+                })?;
+            }
         }
 
         let file_name = match file_path.file_name() {

@@ -18,18 +18,56 @@ pub mod agent;
 pub mod config;
 pub mod crypt;
 pub mod dns;
+pub mod error;
+pub mod health;
 pub mod keystore;
+pub mod mime;
 pub mod observability;
+pub mod paths;
+pub mod rate_limit;
 pub mod schema;
 pub mod shared;
+pub mod shutdown;
+pub mod simple;
 pub mod storage;
+pub mod time_utils;
+pub mod trust;
+pub mod validation;
 
 // #[cfg(feature = "cli")]
 pub mod cli_utils;
+// Re-export error types for convenience
+pub use error::JacsError;
+
+// Re-export health check types for convenience
+pub use health::{
+    health_check, network_health_check, ComponentHealth, HealthCheckResult, HealthStatus,
+};
+
+// Re-export shutdown types for convenience
+pub use shutdown::{ShutdownGuard, install_signal_handler, is_shutdown_requested, shutdown};
+
+// Re-export rate limiting types for convenience
+pub use rate_limit::{RateLimitConfig, RateLimiter};
+
 // Re-export observability types for convenience
 pub use observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-    ResourceConfig, SamplingConfig, TracingConfig, TracingDestination, init_observability,
+    ResourceConfig, SamplingConfig, TracingConfig, TracingDestination, init_logging,
+    init_observability,
+};
+
+// Re-export validation types for convenience
+pub use validation::{
+    AgentId, are_valid_uuid_parts, format_agent_id, is_valid_agent_id, normalize_agent_id,
+    parse_agent_id, split_agent_id, validate_agent_id,
+};
+
+// Re-export time utilities for convenience
+pub use time_utils::{
+    backup_timestamp_suffix, now_rfc3339, now_timestamp, now_utc, parse_rfc3339,
+    parse_rfc3339_to_timestamp, validate_signature_timestamp, validate_timestamp_not_expired,
+    validate_timestamp_not_future,
 };
 
 /// Initialize observability with a default configuration suitable for most applications.
@@ -99,12 +137,12 @@ fn load_path_agent(filepath: String) -> Agent {
     // Pass ONLY the logical ID (without .json) to fs_agent_load
     let agent_string = agent
         .fs_agent_load(agent_id) // Pass ID string
-        .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))
-        .expect("Agent file loading failed");
+        .map_err(|e| format!("Agent file loading failed for ID '{}': {}", agent_id, e))
+        .expect("Agent file loading failed: could not load from storage");
 
     agent
         .load(&agent_string)
-        .expect("agent loading from string failed");
+        .expect("Agent loading failed: could not parse agent data");
     debug!(
         "[load_path_agent] Agent loaded and validated successfully using ID: {}",
         agent_id
@@ -117,7 +155,7 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
     if let Some(file) = agentfile {
         Ok(load_path_agent(file.to_string()))
     } else {
-        Err("No agent file provided".into())
+        Err("No agent file provided: specify an agent file path".into())
     }
 }
 
@@ -140,7 +178,7 @@ pub fn load_agent_with_dns_strict(
 
     let agent_string = agent
         .fs_agent_load(agent_id)
-        .map_err(|e| format!("agent file loading using ID '{}': {}", agent_id, e))?;
+        .map_err(|e| format!("Agent file loading failed for ID '{}': {}", agent_id, e))?;
 
     agent.load(&agent_string)?;
     Ok(agent)
@@ -204,9 +242,16 @@ pub fn create_task(
     let validation_result = agent.schema.taskschema.validate(&task_value);
     match validation_result {
         Ok(_) => Ok(task_value.to_string()),
-        Err(error) => {
-            error!("error validating task");
-            let error_message = error.to_string();
+        Err(err) => {
+            let schema_name = task_value
+                .get("$schema")
+                .and_then(|v| v.as_str())
+                .unwrap_or("task.schema.json");
+            let error_message = format!(
+                "Task creation failed: {}",
+                schema::format_schema_validation_error(&err, schema_name, &task_value)
+            );
+            error!("{}", error_message);
             Err(error_message.into())
         }
     }

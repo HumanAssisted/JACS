@@ -1,0 +1,46 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "jacsType": "file",
+  "jacsLevel": "raw",
+  "description": "Golden fixture with embedded file content",
+  "filename": "test-document.txt",
+  "mimetype": "text/plain",
+  "jacsFiles": [
+    {
+      "embed": true,
+      "mimetype": "text/plain",
+      "path": "test-document.txt",
+      "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      "contents": "aGVsbG8gd29ybGQ="
+    }
+  ],
+  "jacsId": "golden-file-001",
+  "jacsVersion": "v1",
+  "jacsOriginalVersion": "v1",
+  "jacsVersionDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsOriginalDate": "2025-01-01T00:00:00.000000+00:00",
+  "jacsSha256": "REGENERATE_WITH_ACTUAL_AGENT",
+  "jacsSignature": {
+    "agentID": "golden-test-agent",
+    "agentVersion": "v1",
+    "date": "2025-01-01T00:00:00.000000+00:00",
+    "fields": [
+      "$schema",
+      "description",
+      "filename",
+      "jacsFiles",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "mimetype"
+    ],
+    "publicKeyHash": "REGENERATE_WITH_ACTUAL_AGENT",
+    "signature": "REGENERATE_WITH_ACTUAL_AGENT",
+    "signingAlgorithm": "RSA-PSS"
+  },
+  "_golden_fixture_note": "This fixture must be regenerated with a real agent. The embedded content is base64-encoded 'hello world'. Run: cargo test generate_golden_fixtures -- --ignored"
+}

@@ -1,3 +1,7 @@
+/* HYGIENE-002: Potentially dead code - verify tests pass before removal
+ * This entire module is orphaned - it is not declared in schema/mod.rs
+ * and therefore never compiled or used.
+
 use serde_json::{json, Value};
 use std::error::Error;
 use uuid::Uuid;
@@ -65,4 +69,4 @@ pub fn create_unit (
     Ok(unit)
 }
 
-
+*/
