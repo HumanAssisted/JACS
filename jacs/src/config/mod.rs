@@ -165,6 +165,7 @@ Environment Variables Supported:
 - JACS_DNS_VALIDATE
 - JACS_DNS_STRICT
 - JACS_DNS_REQUIRED
+- JACS_KEY_RESOLUTION (comma-separated: local,dns,hai - controls key lookup order)
 
 Usage:
 ```rust
