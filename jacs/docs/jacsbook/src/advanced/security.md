@@ -221,6 +221,73 @@ For reliable timestamp validation across distributed systems:
 - Monitor for clock drift in production environments
 - Consider the 5-minute tolerance when debugging verification failures
 
+## Verification Claims
+
+Agents can claim a verification level that determines security requirements. This follows the principle: **"If you claim it, you must prove it."**
+
+### Claim Levels
+
+| Claim | Required Conditions | Behavior |
+|-------|---------------------|----------|
+| `unverified` (default) | None | Relaxed DNS/TLS settings allowed; self-asserted identity |
+| `verified` | Domain with DNSSEC | Strict TLS, strict DNS with DNSSEC validation required |
+| `verified-hai.ai` | Above + HAI.ai registration | Must be registered and verified with HAI.ai |
+
+### Setting a Verification Claim
+
+Add the `jacsVerificationClaim` field to your agent definition:
+
+```json
+{
+  "jacsAgentType": "ai",
+  "jacsVerificationClaim": "verified",
+  "jacsAgentDomain": "myagent.example.com",
+  "jacsServices": [...]
+}
+```
+
+### Claim Enforcement
+
+When an agent claims `verified` or `verified-hai.ai`:
+
+1. **Domain Required**: The `jacsAgentDomain` field must be set
+2. **Strict DNS**: DNS lookup uses DNSSEC validation (no insecure fallback)
+3. **DNS Required**: Public key fingerprint must match DNS TXT record
+4. **Strict TLS**: TLS certificate validation is mandatory (no self-signed certs)
+
+For `verified-hai.ai` claims, additional enforcement:
+
+5. **HAI.ai Registration**: Agent must be registered at [hai.ai](https://hai.ai)
+6. **Public Key Match**: Registered public key must match the agent's key
+7. **Network Required**: Verification fails if HAI.ai API is unreachable
+
+### Backward Compatibility
+
+- Agents without `jacsVerificationClaim` are treated as `unverified`
+- Existing agents continue to work with their current DNS settings
+- No breaking changes for agents that don't opt into verified status
+
+### Error Messages
+
+If verification fails, clear error messages explain what's wrong:
+
+```
+Verification claim 'verified' failed: Verified agents must have jacsAgentDomain set.
+Agents claiming 'verified' must meet the required security conditions.
+```
+
+```
+Verification claim 'verified-hai.ai' failed: Agent 'uuid' is not registered with HAI.ai.
+Agents claiming 'verified-hai.ai' must be registered at https://hai.ai
+```
+
+### Security Considerations
+
+1. **No Downgrade**: Once an agent claims `verified`, it cannot be verified with relaxed settings
+2. **Claim Changes**: Changing the claim requires creating a new agent version
+3. **Network Dependency**: `verified-hai.ai` requires network access to HAI.ai
+4. **Audit Trail**: Verification claim and enforcement results are logged
+
 ## DNS-Based Verification
 
 JACS supports DNSSEC-validated identity verification:
@@ -471,6 +538,106 @@ Enable observability for security auditing:
 - Backup key material securely
 - Document key recovery procedures
 - Plan for key compromise scenarios
+
+## Troubleshooting Verification Claims
+
+### Common Issues and Solutions
+
+#### "Verified agents must have jacsAgentDomain set"
+
+**Problem**: You set `jacsVerificationClaim` to `verified` but didn't specify a domain.
+
+**Solution**: Either add a domain or use unverified:
+
+```json
+// Option 1: Add a domain (recommended for production)
+{
+  "jacsVerificationClaim": "verified",
+  "jacsAgentDomain": "myagent.example.com"
+}
+
+// Option 2: Use unverified if DNS verification isn't needed
+{
+  "jacsVerificationClaim": "unverified"
+}
+```
+
+#### "Agent is not registered with HAI.ai"
+
+**Problem**: You're using `verified-hai.ai` but the agent isn't registered.
+
+**Solution**:
+1. Register your agent at [hai.ai](https://hai.ai)
+2. Or use `verified` for DNS-only verification:
+
+```json
+{
+  "jacsVerificationClaim": "verified",
+  "jacsAgentDomain": "myagent.example.com"
+}
+```
+
+#### "Cannot downgrade from 'verified' to 'unverified'"
+
+**Problem**: You're trying to change an existing agent's claim to a lower level.
+
+**Solution**: Verification claims cannot be downgraded for security. Options:
+1. Keep the current claim level
+2. Create a new agent with the desired claim level
+3. If this is a test/development scenario, start fresh
+
+```bash
+# Create a new agent instead
+jacs create --type ai --claim unverified
+```
+
+#### "DNS fingerprint mismatch"
+
+**Problem**: The public key hash in DNS doesn't match your agent's key.
+
+**Solution**:
+1. Regenerate the DNS record with your current keys:
+   ```bash
+   jacs dns-record
+   ```
+2. Update your DNS TXT record with the new value
+3. Wait for DNS propagation (can take up to 48 hours)
+
+#### "Strict DNSSEC validation failed"
+
+**Problem**: Your domain doesn't have DNSSEC enabled.
+
+**Solution**:
+1. Enable DNSSEC with your domain registrar
+2. Publish DS records at the parent zone
+3. Or use `verified` with non-strict DNS (development only)
+
+### Claim Level Reference
+
+| Claim | Security Level | Requirements |
+|-------|----------------|--------------|
+| `unverified` | 0 (lowest) | None - self-asserted identity |
+| `verified` | 1 | Domain + DNS TXT record + DNSSEC |
+| `verified-hai.ai` | 2 (highest) | Above + HAI.ai registration |
+
+### Upgrade vs Downgrade Rules
+
+- **Upgrades allowed**: `unverified` → `verified` → `verified-hai.ai`
+- **Downgrades blocked**: Cannot go from higher to lower claim
+- **Same level allowed**: Can update agent while keeping same claim
+
+### Quick Diagnostic Commands
+
+```bash
+# Check your agent's current claim
+jacs info | grep jacsVerificationClaim
+
+# Verify DNS record is correct
+jacs dns-check
+
+# Test verification
+jacs verify --agent your-agent-id:version
+```
 
 ## See Also
 

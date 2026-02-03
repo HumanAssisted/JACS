@@ -157,6 +157,51 @@ fn should_accept_invalid_certs() -> bool {
     }
     ACCEPT_INVALID_CERTS_DEFAULT
 }
+
+/// Check TLS strictness considering verification claim.
+///
+/// Verified claims (`verified` or `verified-hai.ai`) ALWAYS require strict TLS.
+/// This enforces the principle: "If you claim it, you must prove it."
+///
+/// # Arguments
+/// * `claim` - The agent's verification claim, if any
+///
+/// # Returns
+/// * `false` for verified claims (never accept invalid certs)
+/// * Falls back to `should_accept_invalid_certs()` for unverified/missing claims
+///
+/// # Security
+///
+/// This function ensures that agents claiming verified status cannot have their
+/// connections intercepted via MITM attacks using invalid TLS certificates.
+///
+/// # Example
+/// ```rust,ignore
+/// use jacs::schema::utils::should_accept_invalid_certs_for_claim;
+///
+/// // Verified agents always require strict TLS
+/// assert!(!should_accept_invalid_certs_for_claim(Some("verified")));
+/// assert!(!should_accept_invalid_certs_for_claim(Some("verified-hai.ai")));
+///
+/// // Unverified agents use env-var based logic
+/// let result = should_accept_invalid_certs_for_claim(None);
+/// let result2 = should_accept_invalid_certs_for_claim(Some("unverified"));
+/// ```
+#[cfg(not(target_arch = "wasm32"))]
+pub fn should_accept_invalid_certs_for_claim(claim: Option<&str>) -> bool {
+    // Verified claims ALWAYS require strict TLS
+    match claim {
+        Some("verified") | Some("verified-hai.ai") => false,
+        _ => should_accept_invalid_certs(), // existing env-var check
+    }
+}
+
+/// WASM version of claim-aware TLS check.
+/// Always returns false (strict TLS) since WASM doesn't support relaxed TLS.
+#[cfg(target_arch = "wasm32")]
+pub fn should_accept_invalid_certs_for_claim(_claim: Option<&str>) -> bool {
+    false
+}
 pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
     "schemas/agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
     "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),

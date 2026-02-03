@@ -255,6 +255,16 @@ pub enum JacsError {
         reason: String,
     },
 
+    // === Verification Claim Errors ===
+    /// Agent's verification claim could not be satisfied.
+    ///
+    /// This occurs when an agent claims a verification level (e.g., "verified" or
+    /// "verified-hai.ai") but the required security conditions are not met.
+    VerificationClaimFailed {
+        claim: String,
+        reason: String,
+    },
+
     // === Agent State Errors ===
     /// No agent is currently loaded. Call create() or load() first.
     AgentNotLoaded,
@@ -428,6 +438,50 @@ impl fmt::Display for JacsError {
             // Registration
             JacsError::RegistrationFailed { reason } => {
                 write!(f, "Registration failed: {}", reason)
+            }
+
+            // Verification Claims
+            JacsError::VerificationClaimFailed { claim, reason } => {
+                write!(
+                    f,
+                    "Verification claim '{}' failed: {}\n\n\
+                    Fix: ",
+                    claim, reason
+                )?;
+                // Provide claim-specific actionable guidance
+                match claim.as_str() {
+                    "verified" | "verified-hai.ai" if reason.contains("jacsAgentDomain") || reason.contains("domain") => {
+                        write!(
+                            f,
+                            "Add \"jacsAgentDomain\": \"your-domain.com\" to your agent,\n     \
+                            or use \"jacsVerificationClaim\": \"unverified\" if DNS verification is not needed."
+                        )?;
+                    }
+                    "verified-hai.ai" if reason.contains("not registered") || reason.contains("HAI.ai") => {
+                        write!(
+                            f,
+                            "Register your agent at https://hai.ai before using the 'verified-hai.ai' claim,\n     \
+                            or use \"jacsVerificationClaim\": \"verified\" for DNS-only verification."
+                        )?;
+                    }
+                    _ if reason.contains("downgrade") || reason.contains("Cannot downgrade") => {
+                        write!(
+                            f,
+                            "Verification claims cannot be downgraded for security. Create a new agent if you need a lower claim level."
+                        )?;
+                    }
+                    _ => {
+                        write!(
+                            f,
+                            "Ensure all security requirements for '{}' are met.",
+                            claim
+                        )?;
+                    }
+                }
+                write!(
+                    f,
+                    "\n\nSee: https://hai.ai/docs/jacs/security#verification-claims"
+                )
             }
 
             // Agent state
@@ -678,5 +732,47 @@ mod tests {
         assert!(msg.contains("/path/to/new_dir"), "Should include the directory path");
         assert!(msg.contains("permission denied"), "Should include the reason");
         assert!(msg.contains("parent") || msg.contains("Check"), "Should suggest checking parent directory");
+    }
+
+    // ==========================================================================
+    // VERIFICATION CLAIM ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_verification_claim_domain_error_is_actionable() {
+        let err = JacsError::VerificationClaimFailed {
+            claim: "verified".to_string(),
+            reason: "Verified agents must have jacsAgentDomain set".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("verified"), "Should state the claim");
+        assert!(msg.contains("jacsAgentDomain"), "Should mention the required field");
+        assert!(msg.contains("Fix:"), "Should provide fix guidance");
+        assert!(msg.contains("hai.ai/docs"), "Should include docs link");
+    }
+
+    #[test]
+    fn test_verification_claim_hai_registration_error_is_actionable() {
+        let err = JacsError::VerificationClaimFailed {
+            claim: "verified-hai.ai".to_string(),
+            reason: "Agent 'test-agent' is not registered with HAI.ai".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("verified-hai.ai"), "Should state the claim");
+        assert!(msg.contains("not registered") || msg.contains("HAI.ai"), "Should mention registration");
+        assert!(msg.contains("Fix:"), "Should provide fix guidance");
+        assert!(msg.contains("https://hai.ai"), "Should include registration link");
+    }
+
+    #[test]
+    fn test_verification_claim_downgrade_error_is_actionable() {
+        let err = JacsError::VerificationClaimFailed {
+            claim: "unverified".to_string(),
+            reason: "Cannot downgrade from 'verified' to 'unverified'. Create a new agent instead.".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("downgrade") || msg.contains("Cannot"), "Should explain downgrade block");
+        assert!(msg.contains("Fix:"), "Should provide fix guidance");
+        assert!(msg.contains("new agent"), "Should suggest creating new agent");
     }
 }
