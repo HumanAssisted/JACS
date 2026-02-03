@@ -4,7 +4,9 @@
 //! shared `jacs-binding-core` crate for common functionality.
 
 use ::jacs as jacs_core;
-use jacs_binding_core::hai::{HaiClient, HaiError, RegistrationResult};
+use jacs_binding_core::hai::{
+    BenchmarkResult, ConnectionState, HaiClient, HaiError, RegistrationResult, StatusResult,
+};
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -487,7 +489,7 @@ fn hai_err_to_py(e: HaiError) -> PyErr {
 ///     if client.testconnection():
 ///         result = client.register(agent)
 ///         print(result["agent_id"])
-#[pyclass]
+#[pyclass(name = "HaiClient")]
 pub struct PyHaiClient {
     inner: HaiClient,
 }
@@ -581,6 +583,136 @@ impl PyHaiClient {
         dict.set_item("signatures", signatures_list)?;
 
         Ok(dict.into())
+    }
+
+    /// Check registration status of an agent with HAI.
+    ///
+    /// Args:
+    ///     agent: A loaded JacsAgent instance
+    ///
+    /// Returns:
+    ///     dict with registered, agent_id, registration_id, registered_at, hai_signatures
+    ///
+    /// Raises:
+    ///     RuntimeError: If status check fails or no API key is set
+    fn status(&self, py: Python, agent: &JacsAgent) -> PyResult<PyObject> {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create runtime: {}",
+                e
+            ))
+        })?;
+
+        let result: StatusResult = rt
+            .block_on(self.inner.status(&agent.inner))
+            .map_err(hai_err_to_py)?;
+
+        // Convert StatusResult to Python dict
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("registered", result.registered)?;
+        dict.set_item("agent_id", &result.agent_id)?;
+        dict.set_item("registration_id", &result.registration_id)?;
+        dict.set_item("registered_at", &result.registered_at)?;
+        dict.set_item("hai_signatures", &result.hai_signatures)?;
+
+        Ok(dict.into())
+    }
+
+    /// Run a benchmark suite for an agent.
+    ///
+    /// Args:
+    ///     agent: A loaded JacsAgent instance
+    ///     suite: The benchmark suite name (e.g., "latency", "accuracy", "safety")
+    ///
+    /// Returns:
+    ///     dict with run_id, suite, score, results, completed_at
+    ///
+    /// Raises:
+    ///     RuntimeError: If benchmark fails or no API key is set
+    fn benchmark(&self, py: Python, agent: &JacsAgent, suite: &str) -> PyResult<PyObject> {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create runtime: {}",
+                e
+            ))
+        })?;
+
+        let result: BenchmarkResult = rt
+            .block_on(self.inner.benchmark(&agent.inner, suite))
+            .map_err(hai_err_to_py)?;
+
+        // Convert BenchmarkResult to Python dict
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("run_id", &result.run_id)?;
+        dict.set_item("suite", &result.suite)?;
+        dict.set_item("score", result.score)?;
+        dict.set_item("completed_at", &result.completed_at)?;
+
+        // Convert individual test results to list of dicts
+        let results_list = pyo3::types::PyList::empty(py);
+        for test_result in &result.results {
+            let test_dict = pyo3::types::PyDict::new(py);
+            test_dict.set_item("name", &test_result.name)?;
+            test_dict.set_item("passed", test_result.passed)?;
+            test_dict.set_item("score", test_result.score)?;
+            test_dict.set_item("message", &test_result.message)?;
+            results_list.append(test_dict)?;
+        }
+        dict.set_item("results", results_list)?;
+
+        Ok(dict.into())
+    }
+
+    /// Get the current SSE connection state.
+    ///
+    /// Returns:
+    ///     str: One of "disconnected", "connecting", "connected", "reconnecting"
+    fn connection_state(&self) -> PyResult<String> {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create runtime: {}",
+                e
+            ))
+        })?;
+
+        let state = rt.block_on(self.inner.connection_state());
+
+        Ok(match state {
+            ConnectionState::Disconnected => "disconnected".to_string(),
+            ConnectionState::Connecting => "connecting".to_string(),
+            ConnectionState::Connected => "connected".to_string(),
+            ConnectionState::Reconnecting => "reconnecting".to_string(),
+        })
+    }
+
+    /// Check if currently connected to the SSE stream.
+    ///
+    /// Returns:
+    ///     bool: True if connected or reconnecting
+    fn is_connected(&self) -> PyResult<bool> {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create runtime: {}",
+                e
+            ))
+        })?;
+
+        Ok(rt.block_on(self.inner.is_connected()))
+    }
+
+    /// Disconnect from the SSE event stream.
+    ///
+    /// This is a no-op if not connected.
+    fn disconnect(&self) -> PyResult<()> {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create runtime: {}",
+                e
+            ))
+        })?;
+
+        rt.block_on(self.inner.disconnect());
+        Ok(())
     }
 }
 
