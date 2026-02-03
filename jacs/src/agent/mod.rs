@@ -21,7 +21,9 @@ use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
 
-use crate::dns::bootstrap::verify_pubkey_via_dns_or_embedded;
+use crate::dns::bootstrap::{verify_pubkey_via_dns_or_embedded, pubkey_digest_hex};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dns::bootstrap::verify_hai_registration_sync;
 #[cfg(feature = "observability-convenience")]
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
@@ -267,6 +269,18 @@ impl Agent {
         self.value.as_ref()
     }
 
+    /// Get the verification claim from the agent's value.
+    ///
+    /// Returns the claim as a string, or None if not set.
+    /// Valid claims are: "unverified", "verified", "verified-hai.ai"
+    fn get_verification_claim(&self) -> Option<String> {
+        self.value
+            .as_ref()?
+            .get("jacsVerificationClaim")?
+            .as_str()
+            .map(|s| s.to_string())
+    }
+
     /// Get the agent's key algorithm
     pub fn get_key_algorithm(&self) -> Option<&String> {
         self.key_algorithm.as_ref()
@@ -492,11 +506,31 @@ impl Agent {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        // Effective policy
+        // Claim-based policy enforcement
+        // "If you claim it, you must prove it"
+        let verification_claim = self.get_verification_claim();
         let domain_present = maybe_domain.is_some();
-        let validate = self.dns_validate_enabled.unwrap_or(domain_present);
-        let strict = self.dns_strict;
-        let required = self.dns_required.unwrap_or(domain_present);
+        let (validate, strict, required) = match verification_claim.as_deref() {
+            Some("verified") | Some("verified-hai.ai") => {
+                // Verified claims MUST use strict settings
+                if !domain_present {
+                    return Err(JacsError::VerificationClaimFailed {
+                        claim: verification_claim.unwrap_or_default(),
+                        reason: "Verified agents must have jacsAgentDomain set".to_string(),
+                    }
+                    .into());
+                }
+                // For verified claims: validate=true, strict=true, required=true
+                (true, true, true)
+            }
+            _ => {
+                // Unverified or missing claim: use existing defaults (presence of domain)
+                let validate = self.dns_validate_enabled.unwrap_or(domain_present);
+                let strict = self.dns_strict;
+                let required = self.dns_required.unwrap_or(domain_present);
+                (validate, strict, required)
+            }
+        };
 
         if validate && domain_present {
             if let (Some(domain), Some(agent_id_for_dns)) =
@@ -539,6 +573,34 @@ impl Agent {
                 }
 
                 return Err(error_message.into());
+            }
+        }
+
+        // HAI.ai verification for verified-hai.ai claims
+        // This MUST succeed for agents claiming verified-hai.ai status
+        #[cfg(not(target_arch = "wasm32"))]
+        if verification_claim.as_deref() == Some("verified-hai.ai") {
+            let agent_id_for_hai = maybe_agent_id.clone().unwrap_or_else(|| {
+                self.id.clone().unwrap_or_default()
+            });
+            let pk_hash = pubkey_digest_hex(&public_key);
+
+            match verify_hai_registration_sync(&agent_id_for_hai, &pk_hash) {
+                Ok(registration) => {
+                    info!(
+                        "HAI.ai verification successful for agent '{}': verified at {:?}",
+                        agent_id_for_hai,
+                        registration.verified_at
+                    );
+                }
+                Err(e) => {
+                    error!("HAI.ai verification failed for agent '{}': {}", agent_id_for_hai, e);
+                    return Err(JacsError::VerificationClaimFailed {
+                        claim: "verified-hai.ai".to_string(),
+                        reason: e,
+                    }
+                    .into());
+                }
             }
         }
 
@@ -799,6 +861,36 @@ impl Agent {
                 "The id/versions do not match for old and new agent:  . {:?}{:?}",
                 new_doc_orginal_id, new_doc_orginal_version
             ))
+            .into());
+        }
+
+        // Prevent verification claim downgrade
+        // Security: Once an agent claims verified status, it cannot be downgraded
+        fn claim_level(claim: &str) -> u8 {
+            match claim {
+                "verified-hai.ai" => 2,
+                "verified" => 1,
+                _ => 0, // "unverified" or missing
+            }
+        }
+
+        let original_claim = original_self
+            .get("jacsVerificationClaim")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unverified");
+        let new_claim = new_self
+            .get("jacsVerificationClaim")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unverified");
+
+        if claim_level(new_claim) < claim_level(original_claim) {
+            return Err(JacsError::VerificationClaimFailed {
+                claim: new_claim.to_string(),
+                reason: format!(
+                    "Cannot downgrade from '{}' to '{}'. Create a new agent instead.",
+                    original_claim, new_claim
+                ),
+            }
             .into());
         }
 

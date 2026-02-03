@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/components/signature/v1/signature.schema.json",
   "title": "Signature",
-  "description": "Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.",
+  "description": "SACRED CRYPTOGRAPHIC COMMITMENT: A signature is a permanent, irreversible cryptographic proof binding the signer to document content. Once signed, the signer cannot deny their attestation (non-repudiation). Signatures should only be created after careful review of document content. The signer is forever accountable for what they sign.",
   "type": "object",
   "properties": {
     "agentID": {

@@ -1,5 +1,6 @@
 use crate::crypt::hash::{hash_bytes_raw, hash_public_key};
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DnsRecord {
@@ -292,4 +293,154 @@ pub fn verify_pubkey_via_dns_or_embedded(
     }
 
     Err("DNS TXT lookup required: domain configured or provide embedded fingerprint".to_string())
+}
+
+// =============================================================================
+// HAI.ai Registration Verification
+// =============================================================================
+
+/// Information about an agent's HAI.ai registration.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HaiRegistration {
+    /// Whether the agent is verified by HAI.ai
+    pub verified: bool,
+    /// ISO 8601 timestamp of when the agent was verified
+    pub verified_at: Option<String>,
+    /// Type of registration (e.g., "agent", "organization")
+    pub registration_type: String,
+    /// The agent ID as registered with HAI.ai
+    pub agent_id: String,
+    /// The public key hash registered with HAI.ai
+    pub public_key_hash: String,
+}
+
+/// Response from HAI.ai API for agent lookup
+#[derive(Clone, Debug, Deserialize)]
+struct HaiApiResponse {
+    #[serde(default)]
+    verified: bool,
+    #[serde(default)]
+    verified_at: Option<String>,
+    #[serde(default)]
+    registration_type: Option<String>,
+    #[serde(default)]
+    agent_id: Option<String>,
+    #[serde(default)]
+    public_key_hash: Option<String>,
+}
+
+/// Check if an agent is registered with HAI.ai.
+///
+/// This function queries the HAI.ai API to verify that an agent claiming
+/// "verified-hai.ai" status is actually registered.
+///
+/// # Arguments
+///
+/// * `agent_id` - The JACS agent ID (UUID format)
+/// * `public_key_hash` - The SHA-256 hash of the agent's public key (hex encoded)
+///
+/// # Returns
+///
+/// * `Ok(HaiRegistration)` - Agent is registered and public key matches
+/// * `Err(String)` - Verification failed with reason
+///
+/// # Errors
+///
+/// This function returns an error if:
+/// - HAI.ai API is unreachable (network error)
+/// - Agent is not registered with HAI.ai
+/// - Public key hash doesn't match the registered key
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use jacs::dns::bootstrap::verify_hai_registration_sync;
+///
+/// let result = verify_hai_registration_sync(
+///     "550e8400-e29b-41d4-a716-446655440000",
+///     "sha256-hash-of-public-key"
+/// );
+///
+/// match result {
+///     Ok(reg) => println!("Agent verified at: {:?}", reg.verified_at),
+///     Err(e) => println!("Verification failed: {}", e),
+/// }
+/// ```
+#[cfg(not(target_arch = "wasm32"))]
+pub fn verify_hai_registration_sync(
+    agent_id: &str,
+    public_key_hash: &str,
+) -> Result<HaiRegistration, String> {
+    // HAI.ai API endpoint for agent verification
+    let api_url = std::env::var("HAI_API_URL")
+        .unwrap_or_else(|_| "https://api.hai.ai".to_string());
+    let url = format!("{}/v1/agents/{}", api_url, agent_id);
+
+    // Build blocking HTTP client with TLS
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    // Make request to HAI.ai API
+    let response = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            format!(
+                "HAI.ai verification failed: unable to reach API at {}: {}",
+                url, e
+            )
+        })?;
+
+    // Check response status
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(format!(
+            "Agent '{}' is not registered with HAI.ai. \
+            Agents claiming 'verified-hai.ai' must be registered at https://hai.ai",
+            agent_id
+        ));
+    }
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "HAI.ai API returned error status {}: agent verification failed",
+            response.status()
+        ));
+    }
+
+    // Parse response
+    let api_response: HaiApiResponse = response
+        .json()
+        .map_err(|e| format!("Failed to parse HAI.ai API response: {}", e))?;
+
+    // Verify the agent is actually verified
+    if !api_response.verified {
+        return Err(format!(
+            "Agent '{}' is registered with HAI.ai but not yet verified. \
+            Complete the verification process at https://hai.ai",
+            agent_id
+        ));
+    }
+
+    // Verify public key hash matches
+    let registered_hash = api_response.public_key_hash.as_deref().unwrap_or("");
+    if !registered_hash.eq_ignore_ascii_case(public_key_hash) {
+        return Err(format!(
+            "Public key mismatch: agent '{}' is registered with HAI.ai \
+            but with a different public key. Expected hash '{}', got '{}'",
+            agent_id,
+            &public_key_hash[..public_key_hash.len().min(16)],
+            &registered_hash[..registered_hash.len().min(16)]
+        ));
+    }
+
+    Ok(HaiRegistration {
+        verified: true,
+        verified_at: api_response.verified_at,
+        registration_type: api_response.registration_type.unwrap_or_else(|| "agent".to_string()),
+        agent_id: api_response.agent_id.unwrap_or_else(|| agent_id.to_string()),
+        public_key_hash: registered_hash.to_string(),
+    })
 }

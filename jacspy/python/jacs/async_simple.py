@@ -83,7 +83,7 @@ from .types import (
 async def create(
     name: Optional[str] = None,
     agent_type: str = "service",
-    algorithm: str = "RSA",
+    algorithm: str = "pq2025",
     config_path: Optional[str] = None,
 ) -> AgentInfo:
     """Create a new JACS agent with cryptographic keys.

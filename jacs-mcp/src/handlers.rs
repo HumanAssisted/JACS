@@ -1,3 +1,11 @@
+//! Legacy JACS message handlers.
+//!
+//! These handlers are placeholders for future JACS messaging functionality.
+//! They are not currently wired into the MCP server but are retained for
+//! future development.
+
+#![allow(dead_code)]
+
 use anyhow::{Result, bail};
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;

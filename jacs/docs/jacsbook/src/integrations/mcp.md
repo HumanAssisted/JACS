@@ -278,6 +278,34 @@ app.get('/sse', (req, res) => {
 
 ## Security Model
 
+### Signing is Sacred
+
+**CRITICAL GUIDANCE FOR AI AGENTS AND DEVELOPERS**
+
+Signing a document or message with JACS is a **sacred, irreversible act**. When an agent signs:
+
+1. **Permanent Commitment**: The signature creates permanent cryptographic proof that the signer attested to the content. This proof exists forever and can be verified by anyone.
+
+2. **Non-Repudiation**: The signer cannot later deny having signed. The signature is mathematically bound to their private key.
+
+3. **Accountability**: The signer is accountable for the content they signed. In multi-agent systems, signatures establish trust chains and responsibility.
+
+4. **Irreversibility**: There is no "unsign" operation. Once signed, the commitment exists permanently.
+
+**Before signing any document, message, or agreement:**
+- Read and understand the complete content
+- Verify the content represents your actual intent
+- Confirm you have authority to make this commitment
+- Understand the implications of your signature
+
+**For AI agents**: Do not sign automatically or without verification. Signing carelessly can:
+- Create binding commitments you didn't intend
+- Establish false audit trails
+- Damage trust relationships with other agents
+- Create legal or ethical liability
+
+**For MCP tool implementations**: When exposing signing capabilities as tools, include appropriate warnings and consider requiring explicit confirmation.
+
 ### What Gets Signed
 
 - All JSON-RPC requests and responses

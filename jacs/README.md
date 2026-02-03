@@ -58,6 +58,10 @@ jacs verify doc.json     # Verify a document
 - TLS certificate validation (warns by default; set `JACS_STRICT_TLS=true` for production)
 - Private key zeroization on drop
 - Algorithm identification embedded in signatures
+- Verification claim enforcement with downgrade prevention
+- DNSSEC-validated identity verification for verified agents
+
+**Test Coverage**: JACS includes 260+ automated tests covering cryptographic operations (RSA, Ed25519, post-quantum ML-DSA), password validation, agent lifecycle, DNS identity verification, trust store operations, and claim-based security enforcement. Security-critical paths are tested with boundary conditions, failure cases, and attack scenarios (replay attacks, downgrade attempts, key mismatches).
 
 **Reporting Vulnerabilities**: Please report security issues responsibly.
 - Email: security@hai.ai
@@ -76,4 +80,4 @@ jacs verify doc.json     # Verify a document
 - [Python](https://pypi.org/project/jacs/)
 - [Crates.io](https://crates.io/crates/jacs)
 
-**Version**: 0.4.0 | [HAI.AI](https://hai.ai)
+**Version**: 0.5.1 | [HAI.AI](https://hai.ai)

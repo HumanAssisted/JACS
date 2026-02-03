@@ -209,17 +209,30 @@ See the [examples/](./examples/) directory:
 
 ## Development
 
+Using uv (recommended):
+
 ```bash
-# Setup
+# Quick start with Makefile
+make setup   # Install all dependencies
+make dev     # Build for development
+make test    # Run all tests
+
+# Or manually:
 uv venv && source .venv/bin/activate
-uv pip install maturin
-
-# Build
-maturin develop
-
-# Test
-pytest tests/
+uv pip install maturin pytest httpx httpx-sse
+uv run maturin develop
+uv run python -m pytest tests/ -v
 ```
+
+### Available Make Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Install dev dependencies with uv |
+| `make dev` | Build Rust extension for development |
+| `make test` | Run all tests (Python + HAI) |
+| `make test-hai` | Run HAI integration tests only |
+| `make check-imports` | Verify all imports work |
 
 ## Documentation
 

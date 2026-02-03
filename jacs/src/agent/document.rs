@@ -4,8 +4,9 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::loaders::FileLoader;
+use crate::agent::loaders::{fetch_public_key_from_hai, FileLoader};
 use crate::agent::security::SecurityTraits;
+use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::error::JacsError;
 use crate::storage::StorageDocumentTraits;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -25,7 +26,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
-use tracing::error;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -773,20 +774,159 @@ impl DocumentTraits for Agent {
         let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
+
+        // Extract signature metadata
         let public_key_hash: String = json_value[signature_key_from]["publicKeyHash"]
             .as_str()
             .unwrap_or("")
             .trim_matches('"')
             .to_string();
 
-        let public_key = self.fs_load_public_key(&public_key_hash)?;
-        let public_key_enc_type = self.fs_load_public_key_type(&public_key_hash)?;
+        let agent_id: String = json_value[signature_key_from]["agentID"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        let agent_version: String = json_value[signature_key_from]["agentVersion"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"')
+            .to_string();
+
+        // Get the configured resolution order
+        let resolution_order = get_key_resolution_order();
+        info!(
+            "Verifying external document signature for {} using resolution order: {:?}",
+            document_key, resolution_order
+        );
+
+        let mut last_error: Option<Box<dyn Error>> = None;
+        let mut public_key: Option<Vec<u8>> = None;
+        let mut public_key_enc_type: Option<String> = None;
+
+        // Try each source in order until we find the key
+        for source in &resolution_order {
+            debug!("Trying key resolution source: {:?}", source);
+
+            match source {
+                KeyResolutionSource::Local => {
+                    match self.fs_load_public_key(&public_key_hash) {
+                        Ok(key) => {
+                            match self.fs_load_public_key_type(&public_key_hash) {
+                                Ok(enc_type) => {
+                                    info!(
+                                        "Found public key locally for hash: {}...",
+                                        &public_key_hash[..public_key_hash.len().min(16)]
+                                    );
+                                    public_key = Some(key);
+                                    public_key_enc_type = Some(enc_type);
+                                    break;
+                                }
+                                Err(e) => {
+                                    debug!("Local key found but enc_type missing: {}", e);
+                                    last_error = Some(e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Local key not found: {}", e);
+                            last_error = Some(e);
+                        }
+                    }
+                }
+
+                KeyResolutionSource::Dns => {
+                    // DNS verification requires the agent domain from config
+                    // DNS is used to verify the key hash against a published TXT record,
+                    // not to fetch the key itself. Skip to next source if we need the key.
+                    debug!(
+                        "DNS source configured but DNS verifies key hashes, not fetches keys. \
+                         Skipping to next source."
+                    );
+                    continue;
+                }
+
+                KeyResolutionSource::Hai => {
+                    if agent_id.is_empty() {
+                        debug!("Cannot fetch from HAI: agent_id is empty");
+                        continue;
+                    }
+
+                    // Use agent_version if available, otherwise use "latest"
+                    let version = if agent_version.is_empty() {
+                        "latest".to_string()
+                    } else {
+                        agent_version.clone()
+                    };
+
+                    match fetch_public_key_from_hai(&agent_id, &version) {
+                        Ok(key_info) => {
+                            info!(
+                                "Found public key from HAI for agent {} version {}: algorithm={}",
+                                agent_id, version, key_info.algorithm
+                            );
+
+                            // Verify the hash matches what's in the signature (if HAI returns a hash)
+                            if !key_info.hash.is_empty() && key_info.hash != public_key_hash {
+                                warn!(
+                                    "HAI key hash mismatch: expected {}..., got {}...",
+                                    &public_key_hash[..public_key_hash.len().min(16)],
+                                    &key_info.hash[..key_info.hash.len().min(16)]
+                                );
+                                last_error = Some(format!(
+                                    "HAI key hash mismatch for agent {}: document expects {}..., HAI returned {}...",
+                                    agent_id,
+                                    &public_key_hash[..public_key_hash.len().min(16)],
+                                    &key_info.hash[..key_info.hash.len().min(16)]
+                                ).into());
+                                continue;
+                            }
+
+                            public_key = Some(key_info.public_key.clone());
+                            public_key_enc_type = Some(key_info.algorithm.clone());
+
+                            // Cache the key locally for future use (non-fatal if this fails)
+                            if let Err(e) = self.fs_save_remote_public_key(
+                                &public_key_hash,
+                                &key_info.public_key,
+                                key_info.algorithm.as_bytes(),
+                            ) {
+                                debug!("Failed to cache HAI key locally (non-fatal): {}", e);
+                            }
+
+                            break;
+                        }
+                        Err(e) => {
+                            debug!("HAI key fetch failed: {}", e);
+                            last_error = Some(format!("HAI key service: {}", e).into());
+                        }
+                    }
+                }
+            }
+        }
+
+        // If we couldn't find the key from any source, return an error
+        let (final_key, final_enc_type) = match (public_key, public_key_enc_type) {
+            (Some(k), Some(e)) => (k, e),
+            _ => {
+                let err_msg = format!(
+                    "Could not resolve public key for hash '{}...' from any configured source ({:?}). Last error: {}",
+                    &public_key_hash[..public_key_hash.len().min(16)],
+                    resolution_order,
+                    last_error.map(|e| e.to_string()).unwrap_or_else(|| "unknown".to_string())
+                );
+                error!("{}", err_msg);
+                return Err(err_msg.into());
+            }
+        };
+
         self.verify_document_signature(
             document_key,
             Some(signature_key_from),
             None,
-            Some(public_key),
-            Some(public_key_enc_type),
+            Some(final_key),
+            Some(final_enc_type),
         )
     }
 

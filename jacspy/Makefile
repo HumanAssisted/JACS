@@ -1,5 +1,47 @@
 .PHONY: build-jacspy build-jacspy-mac build-jacspy-linux build-wheel-mac publish-wheels build-wheel-linux test
 
+# =============================================================================
+# Development Commands (using uv - recommended)
+# =============================================================================
+
+# Install dev dependencies with uv
+setup:
+	@echo "Setting up development environment with uv..."
+	uv venv
+	uv pip install maturin pytest httpx httpx-sse
+
+# Build and install the Rust extension for development (fast iteration)
+dev:
+	@echo "Building jacspy in development mode..."
+	uv run maturin develop
+
+# Run all tests
+test: dev
+	@echo "Running tests..."
+	uv run python -m pytest tests/ -v
+	uv run python -m pytest python/jacs/ -v
+
+# Run Python tests only (assumes already built)
+test-py:
+	@echo "Running Python tests..."
+	uv run python -m pytest tests/ -v
+
+# Run HAI integration tests
+test-hai: dev
+	@echo "Running HAI integration tests..."
+	uv run python -m pytest python/jacs/test_register_new_agent.py -v
+
+# Verify imports work
+check-imports: dev
+	@echo "Checking imports..."
+	uv run python -c "from jacs import JacsAgent, HaiClient; print('OK: JacsAgent, HaiClient')"
+	uv run python -c "from jacs.hai import register_new_agent, verify_agent; print('OK: register_new_agent, verify_agent')"
+	uv run python -c "from jacs.simple import create, load, sign_message; print('OK: simple API')"
+
+# =============================================================================
+# Build Commands (for releases)
+# =============================================================================
+
 # # Build wheel for the current macOS environment
 build-wheel-mac:
 	@echo "Building macOS wheel..."

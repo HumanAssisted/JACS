@@ -3,11 +3,20 @@ JACS HAI.ai Integration Module
 
 Provides methods for integrating JACS agents with HAI.ai platform:
 - register_new_agent(): Create a new JACS agent AND register with HAI.ai in one step
+- verify_agent(): Verify another agent's trust level (basic, domain, attested)
 - register(): Register an existing agent with HAI.ai
+- status(): Check registration status
 - testconnection(): Test connectivity to HAI.ai
 - benchmark(): Run benchmarks via HAI.ai
 - connect(): Connect to HAI.ai SSE stream
 - disconnect(): Close SSE connection
+
+Installation:
+    # Using uv (recommended)
+    uv pip install jacs[hai]
+
+    # Or with pip
+    pip install jacs[hai]
 
 Quick Start (recommended for new developers):
     from jacs.hai import register_new_agent
@@ -19,6 +28,14 @@ Quick Start (recommended for new developers):
     )
     print(f"Agent registered: {result.agent_id}")
     print(f"Config saved to: ./jacs.config.json")
+
+Verifying Other Agents:
+    from jacs.hai import verify_agent
+
+    # Verify another agent meets trust requirements
+    result = verify_agent(other_agent_doc, min_level=2)
+    if result.valid:
+        print(f"Verified: {result.level_name}")  # "basic", "domain", or "attested"
 
 Advanced Usage (existing agents):
     import jacs.simple as jacs
@@ -35,6 +52,12 @@ Advanced Usage (existing agents):
         # Register agent
         result = hai.register("https://hai.ai", api_key="your-api-key")
         print(f"Registered: {result}")
+
+Note:
+    This module uses a hybrid approach:
+    - Rust (via PyO3): Fast sync methods (testconnection, register, status, benchmark)
+    - Python (httpx-sse): SSE streaming (connect, disconnect)
+    Both implementations are available and work together.
 """
 
 import json
@@ -1176,6 +1199,81 @@ class HaiClient:
         # All retries exhausted
         raise last_error or HaiError("Status check failed after all retries")
 
+    # =========================================================================
+    # SDK-PY-008: get_agent_attestation() method - for verifying OTHER agents
+    # =========================================================================
+
+    def get_agent_attestation(
+        self,
+        hai_url: str,
+        agent_id: str,
+        api_key: Optional[str] = None,
+    ) -> HaiStatusResult:
+        """Get HAI.ai attestation status for ANY agent by ID.
+
+        Unlike status() which checks the currently loaded agent, this method
+        can query the attestation status of any agent by its JACS ID.
+        Use this when verifying other agents in agent-to-agent scenarios.
+
+        Args:
+            hai_url: Base URL of the HAI.ai server (e.g., "https://hai.ai")
+            agent_id: The JACS agent ID to check
+            api_key: Optional API key for authentication
+
+        Returns:
+            HaiStatusResult with registration and attestation details
+
+        Example:
+            from jacs.hai import HaiClient
+
+            hai = HaiClient()
+            # Check if another agent is HAI-attested
+            result = hai.get_agent_attestation("https://hai.ai", "other-agent-id")
+            if result.registered and result.hai_signatures:
+                print("Agent is HAI-attested (Level 3)")
+        """
+        import os
+        httpx = self._get_httpx()
+
+        # Get API key from parameter or environment
+        if api_key is None:
+            api_key = os.environ.get("HAI_API_KEY")
+
+        # Build request
+        url = self._make_url(hai_url, f"/api/v1/agents/{agent_id}/status")
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        try:
+            response = httpx.get(url, headers=headers, timeout=self._timeout)
+
+            if response.status_code == 200:
+                data = response.json()
+                return HaiStatusResult(
+                    registered=True,
+                    agent_id=data.get("agent_id", data.get("agentId", agent_id)),
+                    registration_id=data.get("registration_id", data.get("registrationId", "")),
+                    registered_at=data.get("registered_at", data.get("registeredAt", "")),
+                    hai_signatures=data.get("hai_signatures", data.get("haiSignatures", [])),
+                    raw_response=data,
+                )
+            elif response.status_code == 404:
+                return HaiStatusResult(
+                    registered=False,
+                    agent_id=agent_id,
+                    raw_response=response.json() if response.text else {},
+                )
+            else:
+                raise HaiError(
+                    f"Failed to get attestation: HTTP {response.status_code}",
+                    status_code=response.status_code,
+                )
+        except Exception as e:
+            if isinstance(e, HaiError):
+                raise
+            raise HaiError(f"Failed to get attestation: {e}")
+
 
 # =============================================================================
 # Module-level convenience functions
@@ -1414,11 +1512,12 @@ def verify_agent(
     if jacs_valid and agent_id:
         try:
             client = HaiClient()
-            status = client.status(hai_url, agent_id=agent_id)
-            hai_attested = status.registered and len(status.hai_signatures) > 0
+            # Query status for the OTHER agent by ID
+            attestation = client.get_agent_attestation(hai_url, agent_id)
+            hai_attested = attestation.registered and len(attestation.hai_signatures) > 0
             if hai_attested:
-                hai_signatures = status.hai_signatures
-            raw_response = status.raw_response
+                hai_signatures = attestation.hai_signatures
+            raw_response = attestation.raw_response
         except Exception as e:
             errors.append(f"HAI verification error: {e}")
 

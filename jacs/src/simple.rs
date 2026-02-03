@@ -3,6 +3,21 @@
 //! This module provides a clean, developer-friendly API for the most common
 //! JACS operations: creating agents, signing messages/files, and verification.
 //!
+//! # IMPORTANT: Signing is Sacred
+//!
+//! **Signing a document is a permanent, irreversible cryptographic commitment.**
+//!
+//! When an agent signs a document:
+//! - The signature creates proof that binds the signer to the content forever
+//! - The signer cannot deny having signed (non-repudiation)
+//! - Anyone can verify the signature at any time
+//! - The signer is accountable for what they signed
+//!
+//! **Always review documents carefully before signing.** Do not sign:
+//! - Content you haven't read or don't understand
+//! - Documents whose implications you haven't considered
+//! - Anything you wouldn't want permanently associated with your identity
+//!
 //! # Quick Start (Instance-based API - Recommended)
 //!
 //! ```rust,ignore
@@ -11,7 +26,7 @@
 //! // Create a new agent identity
 //! let agent = SimpleAgent::create("my-agent", None, None)?;
 //!
-//! // Sign a message
+//! // Sign a message (REVIEW CONTENT FIRST!)
 //! let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
 //!
 //! // Verify the signed document
@@ -38,12 +53,13 @@
 //! - **Safety**: Errors include actionable guidance
 //! - **Consistency**: Same API shape across Rust, Python, Go, and NPM
 //! - **Thread Safety**: Instance-based design avoids global mutable state
+//! - **Signing Gravity**: Documentation emphasizes the sacred nature of signing
 
 use crate::agent::document::DocumentTraits;
 use crate::agent::Agent;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
-use crate::schema::utils::ValueExt;
+use crate::schema::utils::{check_document_size, ValueExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs;
@@ -501,6 +517,9 @@ impl SimpleAgent {
     /// ```
     #[must_use = "updated agent JSON must be used or stored"]
     pub fn update_agent(&self, new_agent_data: &str) -> Result<String, JacsError> {
+        // Check document size before processing
+        check_document_size(new_agent_data)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -557,6 +576,9 @@ impl SimpleAgent {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> Result<SignedDocument, JacsError> {
+        // Check document size before processing
+        check_document_size(new_data)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -584,6 +606,19 @@ impl SimpleAgent {
 
     /// Signs arbitrary data as a JACS message.
     ///
+    /// # IMPORTANT: Signing is Sacred
+    ///
+    /// **Signing a document is an irreversible, permanent commitment.** Once signed:
+    /// - The signature creates cryptographic proof binding you to the content
+    /// - You cannot deny having signed (non-repudiation)
+    /// - The signed document can be verified by anyone forever
+    /// - You are accountable for the content you signed
+    ///
+    /// **Before signing, always:**
+    /// - Read and understand the complete document content
+    /// - Verify the data represents your actual intent
+    /// - Confirm you have authority to make this commitment
+    ///
     /// The data can be a JSON object, string, or any serializable value.
     ///
     /// # Arguments
@@ -601,16 +636,13 @@ impl SimpleAgent {
     /// use serde_json::json;
     ///
     /// let agent = SimpleAgent::load(None)?;
+    /// // Review data carefully before signing!
     /// let signed = agent.sign_message(&json!({"action": "approve", "amount": 100}))?;
     /// println!("Document ID: {}", signed.document_id);
     /// ```
     #[must_use = "signed document must be used or stored"]
     pub fn sign_message(&self, data: &Value) -> Result<SignedDocument, JacsError> {
         debug!("sign_message() called");
-
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
 
         // Wrap the data in a minimal document structure
         let doc_content = json!({
@@ -619,8 +651,16 @@ impl SimpleAgent {
             "content": data
         });
 
+        // Check document size before processing
+        let doc_string = doc_content.to_string();
+        check_document_size(&doc_string)?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
         let jacs_doc = agent
-            .create_document_and_load(&doc_content.to_string(), None, None)
+            .create_document_and_load(&doc_string, None, None)
             .map_err(|e| JacsError::SigningFailed {
                 reason: format!(
                     "{}. Ensure the agent is properly initialized with load() or create() and has valid keys.",
@@ -647,6 +687,20 @@ impl SimpleAgent {
 
     /// Signs a file with optional content embedding.
     ///
+    /// # IMPORTANT: Signing is Sacred
+    ///
+    /// **Signing a file is an irreversible, permanent commitment.** Your signature:
+    /// - Cryptographically binds you to the file's exact contents
+    /// - Cannot be revoked or denied (non-repudiation)
+    /// - Creates permanent proof that you attested to this file
+    /// - Makes you accountable for the file content forever
+    ///
+    /// **Before signing any file:**
+    /// - Review the complete file contents
+    /// - Verify the file has not been tampered with
+    /// - Confirm you intend to attest to this specific file
+    /// - Understand your signature is permanent and verifiable
+    ///
     /// # Arguments
     ///
     /// * `file_path` - Path to the file to sign
@@ -663,7 +717,7 @@ impl SimpleAgent {
     ///
     /// let agent = SimpleAgent::load(None)?;
     ///
-    /// // Embed the file content
+    /// // Review file before signing! Embed the file content
     /// let signed = agent.sign_file("contract.pdf", true)?;
     ///
     /// // Or just reference it by hash
@@ -724,6 +778,15 @@ impl SimpleAgent {
 
     /// Signs multiple messages in a batch operation.
     ///
+    /// # IMPORTANT: Each Signature is Sacred
+    ///
+    /// **Every signature in the batch is an irreversible, permanent commitment.**
+    /// Batch signing is convenient, but each document is independently signed with
+    /// full cryptographic weight. Before batch signing:
+    /// - Review ALL messages in the batch
+    /// - Verify each message represents your intent
+    /// - Understand you are making multiple permanent commitments
+    ///
     /// This is more efficient than calling `sign_message` repeatedly because it
     /// amortizes the overhead of acquiring locks and key operations across all
     /// messages.
@@ -751,6 +814,7 @@ impl SimpleAgent {
     ///
     /// let agent = SimpleAgent::load(None)?;
     ///
+    /// // Review ALL messages before batch signing!
     /// let messages = vec![
     ///     json!({"action": "approve", "item": 1}),
     ///     json!({"action": "approve", "item": 2}),
@@ -783,10 +847,6 @@ impl SimpleAgent {
             "Signing batch of messages"
         );
 
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
         // Prepare all document JSON strings
         let doc_strings: Vec<String> = messages
             .iter()
@@ -799,6 +859,15 @@ impl SimpleAgent {
                 doc_content.to_string()
             })
             .collect();
+
+        // Check size of each document before processing
+        for doc_str in &doc_strings {
+            check_document_size(doc_str)?;
+        }
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
 
         // Convert to slice of &str for the batch API
         let doc_refs: Vec<&str> = doc_strings.iter().map(|s| s.as_str()).collect();
@@ -867,6 +936,9 @@ impl SimpleAgent {
     #[must_use = "verification result must be checked"]
     pub fn verify(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
         debug!("verify() called");
+
+        // Check document size before processing
+        check_document_size(signed_document)?;
 
         // Parse the document to validate JSON
         let _: Value = serde_json::from_str(signed_document).map_err(|e| {
@@ -1083,6 +1155,9 @@ impl SimpleAgent {
 
         debug!("create_agreement() called with {} signers", agent_ids.len());
 
+        // Check document size before processing
+        check_document_size(document)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -1120,6 +1195,25 @@ impl SimpleAgent {
 
     /// Signs an existing multi-party agreement as the current agent.
     ///
+    /// # IMPORTANT: Signing Agreements is Sacred
+    ///
+    /// **Signing an agreement is a binding, irreversible commitment.** When you sign:
+    /// - You cryptographically commit to the agreement terms
+    /// - Your signature is permanent and cannot be revoked
+    /// - All parties can verify your commitment forever
+    /// - You are legally and ethically bound to the agreement content
+    ///
+    /// **Multi-party agreements are especially significant** because:
+    /// - Your signature joins a binding consensus
+    /// - Other parties rely on your commitment
+    /// - Breaking the agreement may harm other signers
+    ///
+    /// **Before signing any agreement:**
+    /// - Read the complete agreement document carefully
+    /// - Verify all terms are acceptable to you
+    /// - Confirm you have authority to bind yourself/your organization
+    /// - Understand the obligations you are accepting
+    ///
     /// When an agreement is created, each required signer must call this function
     /// to add their signature. The agreement is complete when all signers have signed.
     ///
@@ -1141,7 +1235,7 @@ impl SimpleAgent {
     /// // Receive agreement from coordinator
     /// let agreement_json = receive_agreement_from_coordinator();
     ///
-    /// // Sign it
+    /// // REVIEW CAREFULLY before signing!
     /// let signed = agent.sign_agreement(&agreement_json)?;
     ///
     /// // Send back to coordinator or pass to next signer
@@ -1150,6 +1244,9 @@ impl SimpleAgent {
     #[must_use = "signed agreement must be used or stored"]
     pub fn sign_agreement(&self, document: &str) -> Result<SignedDocument, JacsError> {
         use crate::agent::agreement::Agreement;
+
+        // Check document size before processing
+        check_document_size(document)?;
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -1221,6 +1318,9 @@ impl SimpleAgent {
     /// ```
     #[must_use = "agreement status must be checked"]
     pub fn check_agreement(&self, document: &str) -> Result<AgreementStatus, JacsError> {
+        // Check document size before processing
+        check_document_size(document)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;

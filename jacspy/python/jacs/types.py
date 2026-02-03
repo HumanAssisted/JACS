@@ -29,7 +29,7 @@ class AgentInfo:
     name: Optional[str] = None
     public_key_hash: str = ""
     created_at: str = ""
-    algorithm: str = "RSA"
+    algorithm: str = "pq2025"
     config_path: Optional[str] = None
     public_key_path: Optional[str] = None
 
@@ -247,6 +247,52 @@ class TrustError(JacsError):
     pass
 
 
+class KeyNotFoundError(JacsError):
+    """Public key not found in HAI key service."""
+    pass
+
+
+class NetworkError(JacsError):
+    """Network error when communicating with HAI key service."""
+    pass
+
+
+@dataclass
+class PublicKeyInfo:
+    """Information about a public key fetched from HAI's key service.
+
+    This type represents the result of fetching a public key from
+    the HAI key distribution service.
+
+    Attributes:
+        public_key: Raw public key bytes (DER encoded)
+        algorithm: Cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
+        public_key_hash: SHA-256 hash of the public key
+        agent_id: The agent ID this key belongs to
+        version: The version of the key
+    """
+    public_key: bytes
+    algorithm: str
+    public_key_hash: str
+    agent_id: str
+    version: str
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PublicKeyInfo":
+        """Create PublicKeyInfo from a dictionary."""
+        public_key = data.get("public_key", b"")
+        # Handle case where public_key might be passed as bytes or as a list of ints
+        if isinstance(public_key, list):
+            public_key = bytes(public_key)
+        return cls(
+            public_key=public_key,
+            algorithm=data.get("algorithm", ""),
+            public_key_hash=data.get("public_key_hash", ""),
+            agent_id=data.get("agent_id", ""),
+            version=data.get("version", ""),
+        )
+
+
 @dataclass
 class SignerStatus:
     """Status of a single signer in a multi-party agreement.
@@ -304,10 +350,13 @@ __all__ = [
     "VerificationResult",
     "SignerStatus",
     "AgreementStatus",
+    "PublicKeyInfo",
     "JacsError",
     "ConfigError",
     "AgentNotLoadedError",
     "SigningError",
     "VerificationError",
     "TrustError",
+    "KeyNotFoundError",
+    "NetworkError",
 ]

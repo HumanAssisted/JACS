@@ -26,6 +26,10 @@ pub mod utils;
 use crate::agent::document::DEFAULT_JACS_DOC_LEVEL;
 use utils::{DEFAULT_SCHEMA_STRINGS, EmbeddedSchemaResolver};
 
+// Re-export claim-aware TLS function for tests and external use
+#[cfg(not(target_arch = "wasm32"))]
+pub use utils::should_accept_invalid_certs_for_claim;
+
 use std::error::Error;
 use std::fmt;
 

@@ -399,7 +399,7 @@ impl HaiClient {
             .get_agent_json()
             .map_err(|e| HaiError::RegistrationFailed(e.to_string()))?;
 
-        let url = format!("{}/v1/agents/register", self.endpoint);
+        let url = format!("{}/api/v1/agents/register", self.endpoint);
 
         let request = RegisterRequest { agent_json };
 
@@ -470,7 +470,7 @@ impl HaiClient {
             .ok_or_else(|| HaiError::InvalidResponse("Agent JSON missing jacsId field".to_string()))?
             .to_string();
 
-        let url = format!("{}/v1/agents/{}/status", self.endpoint, agent_id);
+        let url = format!("{}/api/v1/agents/{}/status", self.endpoint, agent_id);
 
         let response = self
             .client
@@ -556,7 +556,7 @@ impl HaiClient {
             .ok_or_else(|| HaiError::InvalidResponse("Agent JSON missing jacsId field".to_string()))?
             .to_string();
 
-        let url = format!("{}/v1/benchmarks/run", self.endpoint);
+        let url = format!("{}/api/v1/benchmarks/run", self.endpoint);
 
         let request = BenchmarkRequest {
             agent_id,

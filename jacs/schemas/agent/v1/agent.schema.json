@@ -25,6 +25,13 @@
           "type": "string",
           "description": "Optional domain used for DNSSEC-validated public key fingerprint (_v1.agent.jacs.<domain>.)",
           "hai": "meta"
+        },
+        "jacsVerificationClaim": {
+          "type": "string",
+          "enum": ["unverified", "verified", "verified-hai.ai"],
+          "default": "unverified",
+          "description": "Agent's claim about verification status. 'unverified' (default) allows relaxed DNS/TLS settings. 'verified' requires strict DNS with DNSSEC and domain must be set. 'verified-hai.ai' additionally requires HAI.ai registration.",
+          "hai": "meta"
         }
       },
       "jacsServices": {

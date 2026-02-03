@@ -174,9 +174,9 @@ fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, Box<dyn Error>
         || key_algorithm.contains("sphincs");
 
     let desc = if is_pqc {
-        "JACS cryptographic document signing and verification with post-quantum support"
+        "JACS cryptographic document signing (sacred, irreversible commitment) and verification with post-quantum support. Signing creates permanent, non-repudiable proof."
     } else {
-        "JACS cryptographic document signing and verification"
+        "JACS cryptographic document signing (sacred, irreversible commitment) and verification. Signing creates permanent, non-repudiable proof."
     };
 
     Ok(AgentExtension {
@@ -198,14 +198,26 @@ pub fn create_extension_descriptor() -> Value {
         "a2aProtocolVersion": A2A_PROTOCOL_VERSION,
         "description": "Provides cryptographic document signing and verification with post-quantum support",
         "specification": "https://hai.ai/jacs/specs/a2a-extension",
+        "signingGuidance": {
+            "importance": "CRITICAL",
+            "message": "Signing a document is a sacred, irreversible act. A signature creates permanent cryptographic proof that binds the signer to the document content. Once signed, the commitment cannot be undone. The signer is accountable forever for what they sign. Only sign after careful review and full understanding of the document contents.",
+            "nonRepudiation": "Signatures provide non-repudiation: the signer cannot later deny having signed the document.",
+            "beforeSigning": [
+                "Read and understand the complete document content",
+                "Verify the document represents your intent",
+                "Confirm you have authority to make this commitment",
+                "Understand this creates a permanent, verifiable record"
+            ]
+        },
         "capabilities": {
             "documentSigning": {
-                "description": "Sign documents with JACS signatures",
+                "description": "SACRED OPERATION: Sign documents with JACS signatures. Creates permanent, non-repudiable cryptographic proof of commitment. The signer is forever accountable for signed content. Do not sign without fully understanding the document.",
                 "algorithms": ["dilithium", "falcon", "sphincs+", "rsa", "ecdsa"],
-                "formats": ["jacs-v1", "jws-detached"]
+                "formats": ["jacs-v1", "jws-detached"],
+                "warning": "Signing is irreversible. Review document carefully before signing."
             },
             "documentVerification": {
-                "description": "Verify JACS signatures on documents",
+                "description": "Verify JACS signatures on documents. Confirms document integrity and signer identity.",
                 "offlineCapable": true,
                 "chainOfCustody": true
             },
@@ -218,7 +230,8 @@ pub fn create_extension_descriptor() -> Value {
             "sign": {
                 "path": "/jacs/sign",
                 "method": "POST",
-                "description": "Sign a document with JACS"
+                "description": "SACRED OPERATION: Sign a document with JACS. Creates permanent cryptographic commitment. Review document carefully before calling.",
+                "warning": "This operation is irreversible and creates non-repudiable proof of commitment."
             },
             "verify": {
                 "path": "/jacs/verify",
