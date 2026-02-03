@@ -137,7 +137,7 @@ JACS supports NIST-standardized post-quantum algorithms:
 
 ## Version
 
-Current version: **0.4.4**
+Current version: **0.5.1**
 
 ## License
 
