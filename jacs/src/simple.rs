@@ -3,6 +3,21 @@
 //! This module provides a clean, developer-friendly API for the most common
 //! JACS operations: creating agents, signing messages/files, and verification.
 //!
+//! # IMPORTANT: Signing is Sacred
+//!
+//! **Signing a document is a permanent, irreversible cryptographic commitment.**
+//!
+//! When an agent signs a document:
+//! - The signature creates proof that binds the signer to the content forever
+//! - The signer cannot deny having signed (non-repudiation)
+//! - Anyone can verify the signature at any time
+//! - The signer is accountable for what they signed
+//!
+//! **Always review documents carefully before signing.** Do not sign:
+//! - Content you haven't read or don't understand
+//! - Documents whose implications you haven't considered
+//! - Anything you wouldn't want permanently associated with your identity
+//!
 //! # Quick Start (Instance-based API - Recommended)
 //!
 //! ```rust,ignore
@@ -11,7 +26,7 @@
 //! // Create a new agent identity
 //! let agent = SimpleAgent::create("my-agent", None, None)?;
 //!
-//! // Sign a message
+//! // Sign a message (REVIEW CONTENT FIRST!)
 //! let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
 //!
 //! // Verify the signed document
@@ -38,6 +53,7 @@
 //! - **Safety**: Errors include actionable guidance
 //! - **Consistency**: Same API shape across Rust, Python, Go, and NPM
 //! - **Thread Safety**: Instance-based design avoids global mutable state
+//! - **Signing Gravity**: Documentation emphasizes the sacred nature of signing
 
 use crate::agent::document::DocumentTraits;
 use crate::agent::Agent;
@@ -590,6 +606,19 @@ impl SimpleAgent {
 
     /// Signs arbitrary data as a JACS message.
     ///
+    /// # IMPORTANT: Signing is Sacred
+    ///
+    /// **Signing a document is an irreversible, permanent commitment.** Once signed:
+    /// - The signature creates cryptographic proof binding you to the content
+    /// - You cannot deny having signed (non-repudiation)
+    /// - The signed document can be verified by anyone forever
+    /// - You are accountable for the content you signed
+    ///
+    /// **Before signing, always:**
+    /// - Read and understand the complete document content
+    /// - Verify the data represents your actual intent
+    /// - Confirm you have authority to make this commitment
+    ///
     /// The data can be a JSON object, string, or any serializable value.
     ///
     /// # Arguments
@@ -607,6 +636,7 @@ impl SimpleAgent {
     /// use serde_json::json;
     ///
     /// let agent = SimpleAgent::load(None)?;
+    /// // Review data carefully before signing!
     /// let signed = agent.sign_message(&json!({"action": "approve", "amount": 100}))?;
     /// println!("Document ID: {}", signed.document_id);
     /// ```
@@ -657,6 +687,20 @@ impl SimpleAgent {
 
     /// Signs a file with optional content embedding.
     ///
+    /// # IMPORTANT: Signing is Sacred
+    ///
+    /// **Signing a file is an irreversible, permanent commitment.** Your signature:
+    /// - Cryptographically binds you to the file's exact contents
+    /// - Cannot be revoked or denied (non-repudiation)
+    /// - Creates permanent proof that you attested to this file
+    /// - Makes you accountable for the file content forever
+    ///
+    /// **Before signing any file:**
+    /// - Review the complete file contents
+    /// - Verify the file has not been tampered with
+    /// - Confirm you intend to attest to this specific file
+    /// - Understand your signature is permanent and verifiable
+    ///
     /// # Arguments
     ///
     /// * `file_path` - Path to the file to sign
@@ -673,7 +717,7 @@ impl SimpleAgent {
     ///
     /// let agent = SimpleAgent::load(None)?;
     ///
-    /// // Embed the file content
+    /// // Review file before signing! Embed the file content
     /// let signed = agent.sign_file("contract.pdf", true)?;
     ///
     /// // Or just reference it by hash
@@ -734,6 +778,15 @@ impl SimpleAgent {
 
     /// Signs multiple messages in a batch operation.
     ///
+    /// # IMPORTANT: Each Signature is Sacred
+    ///
+    /// **Every signature in the batch is an irreversible, permanent commitment.**
+    /// Batch signing is convenient, but each document is independently signed with
+    /// full cryptographic weight. Before batch signing:
+    /// - Review ALL messages in the batch
+    /// - Verify each message represents your intent
+    /// - Understand you are making multiple permanent commitments
+    ///
     /// This is more efficient than calling `sign_message` repeatedly because it
     /// amortizes the overhead of acquiring locks and key operations across all
     /// messages.
@@ -761,6 +814,7 @@ impl SimpleAgent {
     ///
     /// let agent = SimpleAgent::load(None)?;
     ///
+    /// // Review ALL messages before batch signing!
     /// let messages = vec![
     ///     json!({"action": "approve", "item": 1}),
     ///     json!({"action": "approve", "item": 2}),
@@ -1141,6 +1195,25 @@ impl SimpleAgent {
 
     /// Signs an existing multi-party agreement as the current agent.
     ///
+    /// # IMPORTANT: Signing Agreements is Sacred
+    ///
+    /// **Signing an agreement is a binding, irreversible commitment.** When you sign:
+    /// - You cryptographically commit to the agreement terms
+    /// - Your signature is permanent and cannot be revoked
+    /// - All parties can verify your commitment forever
+    /// - You are legally and ethically bound to the agreement content
+    ///
+    /// **Multi-party agreements are especially significant** because:
+    /// - Your signature joins a binding consensus
+    /// - Other parties rely on your commitment
+    /// - Breaking the agreement may harm other signers
+    ///
+    /// **Before signing any agreement:**
+    /// - Read the complete agreement document carefully
+    /// - Verify all terms are acceptable to you
+    /// - Confirm you have authority to bind yourself/your organization
+    /// - Understand the obligations you are accepting
+    ///
     /// When an agreement is created, each required signer must call this function
     /// to add their signature. The agreement is complete when all signers have signed.
     ///
@@ -1162,7 +1235,7 @@ impl SimpleAgent {
     /// // Receive agreement from coordinator
     /// let agreement_json = receive_agreement_from_coordinator();
     ///
-    /// // Sign it
+    /// // REVIEW CAREFULLY before signing!
     /// let signed = agent.sign_agreement(&agreement_json)?;
     ///
     /// // Send back to coordinator or pass to next signer
