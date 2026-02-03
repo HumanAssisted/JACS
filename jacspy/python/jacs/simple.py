@@ -159,7 +159,7 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
 def create(
     name: Optional[str] = None,
     agent_type: str = "service",
-    algorithm: str = "RSA",
+    algorithm: str = "pq2025",
     config_path: Optional[str] = None,
 ) -> AgentInfo:
     """Create a new JACS agent with cryptographic keys.

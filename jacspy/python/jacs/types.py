@@ -29,7 +29,7 @@ class AgentInfo:
     name: Optional[str] = None
     public_key_hash: str = ""
     created_at: str = ""
-    algorithm: str = "RSA"
+    algorithm: str = "pq2025"
     config_path: Optional[str] = None
     public_key_path: Optional[str] = None
 
