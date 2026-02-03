@@ -8,8 +8,95 @@ The JACS MCP Server allows LLMs to interact with HAI services through the MCP pr
 
 - **Agent Key Management**: Fetch public keys from HAI's key distribution service
 - **Agent Registration**: Register agents with HAI to establish identity
-- **Agent Verification**: Verify other agents' attestation levels
+- **Agent Verification**: Verify other agents' attestation levels (0-3)
 - **Status Checking**: Check registration status with HAI
+- **Agent Unregistration**: Remove agent registration from HAI
+
+## Quick Start
+
+### Step 1: Install JACS CLI
+
+First, install the JACS command-line tool:
+
+```bash
+# From the JACS repository root
+cargo install --path jacs
+```
+
+### Step 2: Generate Keys
+
+Generate cryptographic keys for your agent:
+
+```bash
+# Set a secure password for key encryption
+export JACS_PRIVATE_KEY_PASSWORD="your-secure-password"
+
+# Create a directory for your keys
+mkdir -p jacs_keys
+
+# Generate keys (choose an algorithm)
+jacs create-keys --algorithm pq-dilithium --output-dir jacs_keys
+# Or for Ed25519: jacs create-keys --algorithm ring-Ed25519 --output-dir jacs_keys
+```
+
+### Step 3: Create Agent
+
+Create a new JACS agent:
+
+```bash
+# Create data directory
+mkdir -p jacs_data
+
+# Create a new agent
+jacs create-agent --name "My Agent" --description "My HAI-enabled agent"
+```
+
+### Step 4: Create Configuration File
+
+Create a `jacs.config.json` file:
+
+```json
+{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_agent_private_key_filename": "jacs.private.pem.enc",
+  "jacs_agent_public_key_filename": "jacs.public.pem",
+  "jacs_agent_key_algorithm": "pq-dilithium",
+  "jacs_agent_id_and_version": "YOUR-AGENT-ID:YOUR-VERSION-ID",
+  "jacs_default_storage": "fs"
+}
+```
+
+Replace `YOUR-AGENT-ID:YOUR-VERSION-ID` with your actual agent ID (found in the agent file created in Step 3).
+
+### Step 5: Build and Run the MCP Server
+
+```bash
+cd jacs-mcp
+cargo build --release
+```
+
+The binary will be at `target/release/jacs-mcp`.
+
+### Step 6: Configure Your MCP Client
+
+Add to your MCP client configuration (e.g., Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "jacs-hai": {
+      "command": "/path/to/jacs-mcp",
+      "env": {
+        "JACS_CONFIG": "/path/to/jacs.config.json",
+        "JACS_PRIVATE_KEY_PASSWORD": "your-secure-password",
+        "HAI_API_KEY": "your-hai-api-key"
+      }
+    }
+  }
+}
+```
 
 ## Installation
 
@@ -29,12 +116,18 @@ The server requires a JACS agent configuration to operate. Set the following env
 ### Required
 
 - `JACS_CONFIG` - Path to your `jacs.config.json` file
+- `JACS_PRIVATE_KEY_PASSWORD` - Password for decrypting your private key
 
 ### Optional
 
-- `HAI_ENDPOINT` - HAI API endpoint (default: `https://api.hai.ai`)
+- `HAI_ENDPOINT` - HAI API endpoint (default: `https://api.hai.ai`). Must be an allowed host.
 - `HAI_API_KEY` - API key for HAI authentication
 - `RUST_LOG` - Logging level (default: `info,rmcp=warn`)
+
+### Security Options
+
+- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable the register_agent tool (default: disabled)
+- `JACS_MCP_ALLOW_UNREGISTRATION` - Set to `true` to enable the unregister_agent tool (default: disabled)
 
 ### Example Configuration
 
@@ -186,12 +279,64 @@ Check registration status of an agent with HAI.
 }
 ```
 
+### unregister_agent
+
+Unregister the local agent from HAI. **Requires `JACS_MCP_ALLOW_UNREGISTRATION=true`.**
+
+**Parameters:**
+- `preview` (optional): If true (default), validates without actually unregistering
+
+**Returns:**
+- `success`: Whether the operation succeeded
+- `agent_id`: The unregistered agent's JACS ID
+- `preview_mode`: Whether this was preview-only
+- `message`: Human-readable status message
+
+**Example:**
+```json
+{
+  "name": "unregister_agent",
+  "arguments": {
+    "preview": false
+  }
+}
+```
+
 ## Security
 
-- The server requires a properly configured JACS agent with cryptographic keys
-- All logging goes to stderr to keep stdout clean for MCP protocol
-- Sensitive operations require HAI API key authentication
-- Public keys are distributed through HAI's verified key service
+### Key Security Features
+
+- **Registration Authorization**: The `register_agent` and `unregister_agent` tools are disabled by default. This prevents prompt injection attacks from registering agents without user consent.
+- **Preview Mode by Default**: Even when enabled, registration defaults to preview mode for additional safety.
+- **Endpoint Validation**: The `HAI_ENDPOINT` URL is validated against an allowlist to prevent request redirection attacks.
+- **Password Protection**: Private keys are encrypted with a password. Never store passwords in config files - use the `JACS_PRIVATE_KEY_PASSWORD` environment variable.
+- **Stdio Transport**: The server uses stdio transport, which is inherently local with no network exposure.
+
+### Enabling Registration
+
+To enable agent registration (only do this if you trust the LLM):
+
+```bash
+export JACS_MCP_ALLOW_REGISTRATION=true
+export JACS_MCP_ALLOW_UNREGISTRATION=true  # Optional
+```
+
+### Allowed HAI Endpoints
+
+The server validates `HAI_ENDPOINT` against this allowlist:
+- `api.hai.ai`
+- `dev.api.hai.ai`
+- `staging.api.hai.ai`
+- `localhost` / `127.0.0.1` (for development)
+- Any subdomain of `*.hai.ai`
+
+### Best Practices
+
+- Use strong passwords for key encryption (12+ characters)
+- Never commit config files with passwords to version control
+- Use environment variables or secrets management for sensitive values
+- Keep private key files secure (mode 0600)
+- Review agent registrations before enabling automatic registration
 
 ## Development
 
