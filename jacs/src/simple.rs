@@ -43,7 +43,7 @@ use crate::agent::document::DocumentTraits;
 use crate::agent::Agent;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
-use crate::schema::utils::ValueExt;
+use crate::schema::utils::{check_document_size, ValueExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs;
@@ -501,6 +501,9 @@ impl SimpleAgent {
     /// ```
     #[must_use = "updated agent JSON must be used or stored"]
     pub fn update_agent(&self, new_agent_data: &str) -> Result<String, JacsError> {
+        // Check document size before processing
+        check_document_size(new_agent_data)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -557,6 +560,9 @@ impl SimpleAgent {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> Result<SignedDocument, JacsError> {
+        // Check document size before processing
+        check_document_size(new_data)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -608,10 +614,6 @@ impl SimpleAgent {
     pub fn sign_message(&self, data: &Value) -> Result<SignedDocument, JacsError> {
         debug!("sign_message() called");
 
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
         // Wrap the data in a minimal document structure
         let doc_content = json!({
             "jacsType": "message",
@@ -619,8 +621,16 @@ impl SimpleAgent {
             "content": data
         });
 
+        // Check document size before processing
+        let doc_string = doc_content.to_string();
+        check_document_size(&doc_string)?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
         let jacs_doc = agent
-            .create_document_and_load(&doc_content.to_string(), None, None)
+            .create_document_and_load(&doc_string, None, None)
             .map_err(|e| JacsError::SigningFailed {
                 reason: format!(
                     "{}. Ensure the agent is properly initialized with load() or create() and has valid keys.",
@@ -783,10 +793,6 @@ impl SimpleAgent {
             "Signing batch of messages"
         );
 
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
         // Prepare all document JSON strings
         let doc_strings: Vec<String> = messages
             .iter()
@@ -799,6 +805,15 @@ impl SimpleAgent {
                 doc_content.to_string()
             })
             .collect();
+
+        // Check size of each document before processing
+        for doc_str in &doc_strings {
+            check_document_size(doc_str)?;
+        }
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
 
         // Convert to slice of &str for the batch API
         let doc_refs: Vec<&str> = doc_strings.iter().map(|s| s.as_str()).collect();
@@ -867,6 +882,9 @@ impl SimpleAgent {
     #[must_use = "verification result must be checked"]
     pub fn verify(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
         debug!("verify() called");
+
+        // Check document size before processing
+        check_document_size(signed_document)?;
 
         // Parse the document to validate JSON
         let _: Value = serde_json::from_str(signed_document).map_err(|e| {
@@ -1083,6 +1101,9 @@ impl SimpleAgent {
 
         debug!("create_agreement() called with {} signers", agent_ids.len());
 
+        // Check document size before processing
+        check_document_size(document)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -1150,6 +1171,9 @@ impl SimpleAgent {
     #[must_use = "signed agreement must be used or stored"]
     pub fn sign_agreement(&self, document: &str) -> Result<SignedDocument, JacsError> {
         use crate::agent::agreement::Agreement;
+
+        // Check document size before processing
+        check_document_size(document)?;
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -1221,6 +1245,9 @@ impl SimpleAgent {
     /// ```
     #[must_use = "agreement status must be checked"]
     pub fn check_agreement(&self, document: &str) -> Result<AgreementStatus, JacsError> {
+        // Check document size before processing
+        check_document_size(document)?;
+
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;

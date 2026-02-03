@@ -205,6 +205,15 @@ pub enum JacsError {
         reason: String,
     },
 
+    // === Size Limit Errors ===
+    /// Document exceeds the maximum allowed size.
+    ///
+    /// The default maximum size is 10MB, configurable via `JACS_MAX_DOCUMENT_SIZE`.
+    DocumentTooLarge {
+        size: usize,
+        max_size: usize,
+    },
+
     // === File Errors ===
     /// File not found at the specified path.
     FileNotFound {
@@ -358,6 +367,16 @@ impl fmt::Display for JacsError {
             }
             JacsError::DnsRecordInvalid { domain, reason } => {
                 write!(f, "Invalid DNS record for '{}': {}", domain, reason)
+            }
+
+            // Size limits
+            JacsError::DocumentTooLarge { size, max_size } => {
+                write!(
+                    f,
+                    "Document too large: {} bytes exceeds maximum allowed size of {} bytes. \
+                    To increase the limit, set JACS_MAX_DOCUMENT_SIZE environment variable.",
+                    size, max_size
+                )
             }
 
             // Files
