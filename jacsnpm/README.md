@@ -131,7 +131,46 @@ const server = new JacsMcpServer({
 });
 ```
 
+## HAI Integration
+
+The JACS package includes integration with HAI's key distribution service for fetching public keys without requiring local key storage.
+
+### Fetch Remote Keys
+
+```javascript
+const { fetchRemoteKey } = require('@hai-ai/jacs');
+
+// Fetch a public key from HAI's key service
+const keyInfo = fetchRemoteKey('550e8400-e29b-41d4-a716-446655440000', 'latest');
+console.log('Algorithm:', keyInfo.algorithm);
+console.log('Public Key Hash:', keyInfo.publicKeyHash);
+console.log('Agent ID:', keyInfo.agentId);
+console.log('Version:', keyInfo.version);
+
+// Use the public key for verification
+const publicKeyBytes = keyInfo.publicKey; // Buffer containing DER-encoded key
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HAI_KEYS_BASE_URL` | Base URL for the HAI key service | `https://keys.hai.ai` |
+
+### HAI Types
+
+```typescript
+interface RemotePublicKeyInfo {
+  publicKey: Buffer;      // DER-encoded public key bytes
+  algorithm: string;      // e.g., "ed25519", "rsa-pss-sha256"
+  publicKeyHash: string;  // SHA-256 hash of the public key
+  agentId: string;        // The agent's unique identifier
+  version: string;        // The key version
+}
+```
+
 ## See Also
 
 - [JACS Documentation](https://hai.ai/jacs)
+- [HAI Developer Portal](https://hai.ai/dev)
 - [Examples](./examples/)

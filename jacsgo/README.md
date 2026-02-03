@@ -108,6 +108,109 @@ signed, _ := jacs.SignFile("contract.pdf", false)
 signed, _ := jacs.SignFile("contract.pdf", true)
 ```
 
+## HAI Integration
+
+The Go bindings include a pure Go HTTP client for interacting with HAI.ai services.
+
+### HAI Client
+
+```go
+import jacs "github.com/HumanAssisted/JACS/jacsgo"
+
+// Create a HAI client
+client := jacs.NewHaiClient("https://api.hai.ai",
+    jacs.WithAPIKey("your-api-key"),
+    jacs.WithTimeout(30 * time.Second))
+
+// Test connectivity
+ok, err := client.TestConnection()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Check agent registration status
+status, err := client.Status("agent-uuid")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Registered: %t\n", status.Registered)
+
+// Register an agent (requires agent JSON)
+result, err := client.RegisterWithJSON(agentJSON)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Registered with JACS ID: %s\n", result.JacsID)
+```
+
+### Fetch Remote Keys
+
+Fetch public keys from HAI's key distribution service for signature verification:
+
+```go
+// Fetch by agent ID and version
+keyInfo, err := jacs.FetchRemoteKey("agent-uuid", "latest")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Algorithm: %s\n", keyInfo.Algorithm)
+fmt.Printf("Public Key Hash: %s\n", keyInfo.PublicKeyHash)
+
+// Fetch by public key hash
+keyInfo, err = jacs.FetchKeyByHash("abc123...")
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### HAI API Reference
+
+| Function | Description |
+|----------|-------------|
+| `NewHaiClient(endpoint, opts...)` | Create HAI client with options |
+| `client.TestConnection()` | Verify HAI server connectivity |
+| `client.Status(agentID)` | Check agent registration status |
+| `client.RegisterWithJSON(json)` | Register agent with HAI |
+| `client.Benchmark(agentID, suite)` | Run benchmark suite |
+| `FetchRemoteKey(agentID, version)` | Fetch public key from HAI |
+| `FetchKeyByHash(hash)` | Fetch public key by hash |
+
+### HAI Types
+
+```go
+// Registration result
+type RegistrationResult struct {
+    AgentID     string         // Agent's unique identifier
+    JacsID      string         // JACS document ID from HAI
+    DNSVerified bool           // DNS verification status
+    Signatures  []HaiSignature // HAI attestation signatures
+}
+
+// Registration status
+type StatusResult struct {
+    Registered     bool     // Whether agent is registered
+    AgentID        string   // Agent's JACS ID
+    RegistrationID string   // HAI registration ID
+    RegisteredAt   string   // ISO 8601 timestamp
+    HaiSignatures  []string // HAI signature IDs
+}
+
+// Public key info from HAI key service
+type PublicKeyInfo struct {
+    PublicKey     []byte // Raw public key (DER encoded)
+    Algorithm     string // e.g., "ed25519", "rsa-pss-sha256"
+    PublicKeyHash string // SHA-256 hash
+    AgentID       string // Agent ID
+    Version       string // Key version
+}
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HAI_KEYS_BASE_URL` | Base URL for HAI key service | `https://keys.hai.ai` |
+
 ## Building
 
 Requires the Rust library. From the jacsgo directory:
@@ -119,4 +222,5 @@ make build
 ## See Also
 
 - [JACS Documentation](https://hai.ai/jacs)
+- [HAI.ai](https://hai.ai)
 - [Examples](./examples/)

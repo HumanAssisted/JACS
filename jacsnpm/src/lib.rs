@@ -601,3 +601,70 @@ pub fn verify_response_with_agent_id(env: Env, document_string: String) -> Resul
 
     Ok(result_obj)
 }
+
+// ============================================================================
+// HAI Functions (using binding-core HAI module)
+// ============================================================================
+
+/// Information about a public key fetched from HAI key service.
+///
+/// This struct contains the public key data and metadata returned by
+/// the HAI key distribution service.
+#[napi(object)]
+pub struct RemotePublicKeyInfo {
+    /// The raw public key bytes (DER encoded).
+    pub public_key: Buffer,
+    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
+    pub algorithm: String,
+    /// The hash of the public key (SHA-256).
+    pub public_key_hash: String,
+    /// The agent ID the key belongs to.
+    pub agent_id: String,
+    /// The version of the key.
+    pub version: String,
+}
+
+/// Fetch a public key from HAI's key distribution service.
+///
+/// This function retrieves the public key for a specific agent and version
+/// from the HAI key distribution service. It is used to obtain trusted public
+/// keys for verifying agent signatures without requiring local key storage.
+///
+/// # Arguments
+///
+/// * `agent_id` - The unique identifier of the agent whose key to fetch.
+/// * `version` - The version of the agent's key to fetch. Use "latest" for
+///   the most recent version. If not provided, defaults to "latest".
+///
+/// # Returns
+///
+/// Returns a `RemotePublicKeyInfo` object containing the public key, algorithm, and hash.
+///
+/// # Environment Variables
+///
+/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
+///
+/// # Example
+///
+/// ```javascript
+/// const { fetchRemoteKey } = require('@hai-ai/jacs');
+///
+/// const keyInfo = fetchRemoteKey('550e8400-e29b-41d4-a716-446655440000', 'latest');
+/// console.log('Algorithm:', keyInfo.algorithm);
+/// console.log('Hash:', keyInfo.publicKeyHash);
+/// ```
+#[napi]
+pub fn fetch_remote_key(agent_id: String, version: Option<String>) -> Result<RemotePublicKeyInfo> {
+    let version_str = version.as_deref().unwrap_or("latest");
+
+    let key_info = jacs_binding_core::fetch_remote_key(&agent_id, version_str)
+        .map_err(|e| Error::new(Status::GenericFailure, e.message))?;
+
+    Ok(RemotePublicKeyInfo {
+        public_key: Buffer::from(key_info.public_key),
+        algorithm: key_info.algorithm,
+        public_key_hash: key_info.public_key_hash,
+        agent_id: key_info.agent_id,
+        version: key_info.version,
+    })
+}

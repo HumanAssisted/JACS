@@ -53,6 +53,10 @@ pub enum ErrorKind {
     InvalidArgument,
     /// Trust store operation failed
     TrustFailed,
+    /// Network operation failed
+    NetworkFailed,
+    /// Key not found
+    KeyNotFound,
     /// Generic failure
     Generic,
 }
@@ -103,6 +107,14 @@ impl BindingCoreError {
 
     pub fn trust_failed(message: impl Into<String>) -> Self {
         Self::new(ErrorKind::TrustFailed, message)
+    }
+
+    pub fn network_failed(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::NetworkFailed, message)
+    }
+
+    pub fn key_not_found(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::KeyNotFound, message)
     }
 
     pub fn generic(message: impl Into<String>) -> Self {
@@ -606,6 +618,106 @@ pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Bind
 pub fn handle_config_create() -> BindingResult<()> {
     jacs::cli_utils::create::handle_config_create()
         .map_err(|e| BindingCoreError::generic(e.to_string()))
+}
+
+// =============================================================================
+// Remote Key Fetch Functions
+// =============================================================================
+
+/// Information about a public key fetched from HAI key service.
+///
+/// This struct contains the public key data and metadata returned by
+/// the HAI key distribution service.
+#[derive(Debug, Clone)]
+pub struct RemotePublicKeyInfo {
+    /// The raw public key bytes (DER encoded).
+    pub public_key: Vec<u8>,
+    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
+    pub algorithm: String,
+    /// The hash of the public key (SHA-256).
+    pub public_key_hash: String,
+    /// The agent ID the key belongs to.
+    pub agent_id: String,
+    /// The version of the key.
+    pub version: String,
+}
+
+/// Fetch a public key from HAI's key distribution service.
+///
+/// This function retrieves the public key for a specific agent and version
+/// from the HAI key distribution service. It is used to obtain trusted public
+/// keys for verifying agent signatures without requiring local key storage.
+///
+/// # Arguments
+///
+/// * `agent_id` - The unique identifier of the agent whose key to fetch.
+/// * `version` - The version of the agent's key to fetch. Use "latest" for
+///   the most recent version.
+///
+/// # Returns
+///
+/// Returns `Ok(RemotePublicKeyInfo)` containing the public key, algorithm, and hash
+/// on success.
+///
+/// # Errors
+///
+/// * `ErrorKind::KeyNotFound` - The agent or key version was not found (404).
+/// * `ErrorKind::NetworkFailed` - Connection, timeout, or other HTTP errors.
+/// * `ErrorKind::Generic` - The returned key has invalid encoding.
+///
+/// # Environment Variables
+///
+/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
+/// * `JACS_KEY_RESOLUTION` - Controls key resolution order. Options:
+///   - "hai-only" - Only use HAI key service (default when set)
+///   - "local-first" - Try local trust store, fall back to HAI
+///   - "hai-first" - Try HAI first, fall back to local trust store
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use jacs_binding_core::fetch_remote_key;
+///
+/// let key_info = fetch_remote_key(
+///     "550e8400-e29b-41d4-a716-446655440000",
+///     "latest"
+/// )?;
+///
+/// println!("Algorithm: {}", key_info.algorithm);
+/// println!("Hash: {}", key_info.public_key_hash);
+/// ```
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fetch_remote_key(agent_id: &str, version: &str) -> BindingResult<RemotePublicKeyInfo> {
+    use jacs::agent::loaders::fetch_public_key_from_hai;
+
+    let key_info = fetch_public_key_from_hai(agent_id, version).map_err(|e| {
+        // Map JacsError to appropriate BindingCoreError
+        let error_str = e.to_string();
+        if error_str.contains("not found") || error_str.contains("404") {
+            BindingCoreError::key_not_found(format!(
+                "Public key not found for agent '{}' version '{}': {}",
+                agent_id, version, e
+            ))
+        } else if error_str.contains("network")
+            || error_str.contains("connect")
+            || error_str.contains("timeout")
+        {
+            BindingCoreError::network_failed(format!(
+                "Failed to fetch public key from HAI: {}",
+                e
+            ))
+        } else {
+            BindingCoreError::generic(format!("Failed to fetch public key: {}", e))
+        }
+    })?;
+
+    Ok(RemotePublicKeyInfo {
+        public_key: key_info.public_key,
+        algorithm: key_info.algorithm,
+        public_key_hash: key_info.hash,
+        agent_id: agent_id.to_string(),
+        version: version.to_string(),
+    })
 }
 
 // =============================================================================

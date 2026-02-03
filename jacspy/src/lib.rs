@@ -830,6 +830,60 @@ fn get_trusted_agent(agent_id: &str) -> PyResult<String> {
 }
 
 // =============================================================================
+// Remote Key Fetch Functions
+// =============================================================================
+
+/// Fetch a public key from HAI's key distribution service.
+///
+/// This function retrieves the public key for a specific agent and version
+/// from the HAI key distribution service. It is used to obtain trusted public
+/// keys for verifying agent signatures without requiring local key storage.
+///
+/// Args:
+///     agent_id: The unique identifier of the agent whose key to fetch.
+///     version: The version of the agent's key to fetch. Use "latest" for
+///              the most recent version. Defaults to "latest".
+///
+/// Returns:
+///     dict with:
+///         - public_key: bytes - The raw public key (DER encoded)
+///         - algorithm: str - The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
+///         - public_key_hash: str - SHA-256 hash of the public key
+///         - agent_id: str - The agent ID the key belongs to
+///         - version: str - The version of the key
+///
+/// Raises:
+///     RuntimeError: If the key is not found or network error occurs
+///
+/// Environment Variables:
+///     HAI_KEYS_BASE_URL: Base URL for the key service. Defaults to "https://keys.hai.ai".
+///     JACS_KEY_RESOLUTION: Controls key resolution order:
+///         - "hai-only": Only use HAI key service (default)
+///         - "local-first": Try local trust store, fall back to HAI
+///         - "hai-first": Try HAI first, fall back to local trust store
+///
+/// Example:
+///     key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
+///     print(f"Algorithm: {key_info['algorithm']}")
+///     print(f"Hash: {key_info['public_key_hash']}")
+#[pyfunction]
+#[pyo3(signature = (agent_id, version = "latest"))]
+fn fetch_remote_key(py: Python, agent_id: &str, version: &str) -> PyResult<PyObject> {
+    let key_info = jacs_binding_core::fetch_remote_key(agent_id, version).to_py()?;
+
+    let dict = pyo3::types::PyDict::new(py);
+    // Convert Vec<u8> to Python bytes
+    let public_key_bytes = pyo3::types::PyBytes::new(py, &key_info.public_key);
+    dict.set_item("public_key", public_key_bytes)?;
+    dict.set_item("algorithm", &key_info.algorithm)?;
+    dict.set_item("public_key_hash", &key_info.public_key_hash)?;
+    dict.set_item("agent_id", &key_info.agent_id)?;
+    dict.set_item("version", &key_info.version)?;
+
+    Ok(dict.into())
+}
+
+// =============================================================================
 // Legacy Module-Level Functions (Deprecated)
 // =============================================================================
 // These functions are provided for backward compatibility only.
@@ -1217,6 +1271,11 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(untrust_agent, m)?)?;
     m.add_function(wrap_pyfunction!(is_trusted, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
+
+    // =============================================================================
+    // Remote Key Fetch Functions
+    // =============================================================================
+    m.add_function(wrap_pyfunction!(fetch_remote_key, m)?)?;
 
     // =============================================================================
     // Legacy Functions (Deprecated - for backward compatibility)

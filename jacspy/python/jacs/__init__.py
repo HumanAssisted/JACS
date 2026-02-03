@@ -64,12 +64,15 @@ from .types import (
     Attachment,
     SignedDocument,
     VerificationResult,
+    PublicKeyInfo,
     JacsError,
     ConfigError,
     AgentNotLoadedError,
     SigningError,
     VerificationError,
     TrustError,
+    KeyNotFoundError,
+    NetworkError,
 )
 
 # Make simplified API available as jacs.simple
@@ -103,11 +106,13 @@ __all__ = [
     "verify_document",
     "sign_request",
     "verify_response",
+    "fetch_remote_key",
     # Type definitions
     "AgentInfo",
     "Attachment",
     "SignedDocument",
     "VerificationResult",
+    "PublicKeyInfo",
     # Error types
     "JacsError",
     "ConfigError",
@@ -115,6 +120,8 @@ __all__ = [
     "SigningError",
     "VerificationError",
     "TrustError",
+    "KeyNotFoundError",
+    "NetworkError",
     # Submodules
     "simple",
     "async_simple",

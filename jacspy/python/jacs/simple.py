@@ -13,6 +13,17 @@ A streamlined interface for the most common JACS operations:
 - create_agreement(): Create a multi-party agreement
 - sign_agreement(): Sign an existing agreement
 - check_agreement(): Check agreement status
+- fetch_remote_key(): Fetch a public key from HAI's key service
+
+Environment Variables:
+    HAI_KEYS_BASE_URL: Base URL for HAI's key distribution service.
+                       Defaults to "https://keys.hai.ai".
+
+    JACS_KEY_RESOLUTION: Controls the order of key resolution when
+                         verifying signatures. Options:
+                         - "hai-only": Only use HAI key service (default)
+                         - "local-first": Try local trust store first, fall back to HAI
+                         - "hai-first": Try HAI first, fall back to local trust store
 
 Example:
     import jacs.simple as jacs
@@ -38,6 +49,10 @@ Example:
     # Check agreement status
     status = jacs.check_agreement(agreement)
     print(f"Complete: {status.complete}, Pending: {status.pending}")
+
+    # Fetch a remote public key (no agent required)
+    key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
+    print(f"Algorithm: {key_info.algorithm}")
 """
 
 import json
@@ -57,21 +72,26 @@ from .types import (
     VerificationResult,
     SignerStatus,
     AgreementStatus,
+    PublicKeyInfo,
     JacsError,
     ConfigError,
     AgentNotLoadedError,
     SigningError,
     VerificationError,
     TrustError,
+    KeyNotFoundError,
+    NetworkError,
 )
 
 # Import the Rust bindings
 try:
     from . import JacsAgent
+    from .jacs import fetch_remote_key as _fetch_remote_key
 except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
     JacsAgent = _jacs_module.JacsAgent
+    _fetch_remote_key = _jacs_module.fetch_remote_key
 
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
@@ -862,6 +882,93 @@ def is_loaded() -> bool:
     return _global_agent is not None
 
 
+def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
+    """Fetch a public key from HAI's key distribution service.
+
+    This function retrieves the public key for a specific agent and version
+    from the HAI key distribution service. It is used to obtain trusted public
+    keys for verifying agent signatures without requiring local key storage.
+
+    This is a stateless operation that does not require an agent to be loaded.
+
+    Args:
+        agent_id: The unique identifier of the agent whose key to fetch.
+        version: The version of the agent's key to fetch. Use "latest" for
+                 the most recent version. Defaults to "latest".
+
+    Returns:
+        PublicKeyInfo containing:
+            - public_key: Raw public key bytes (DER encoded)
+            - algorithm: Cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
+            - public_key_hash: SHA-256 hash of the public key
+            - agent_id: The agent ID this key belongs to
+            - version: The version of the key
+
+    Raises:
+        KeyNotFoundError: If the agent or key version was not found (404)
+        NetworkError: If there was a connection, timeout, or other HTTP error
+        JacsError: For other errors (e.g., invalid key encoding)
+
+    Environment Variables:
+        HAI_KEYS_BASE_URL: Base URL for the key service.
+                          Defaults to "https://keys.hai.ai".
+        JACS_KEY_RESOLUTION: Controls key resolution order:
+            - "hai-only": Only use HAI key service (default)
+            - "local-first": Try local trust store, fall back to HAI
+            - "hai-first": Try HAI first, fall back to local trust store
+
+    Example:
+        # Fetch the latest key for an agent
+        key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
+        print(f"Algorithm: {key_info.algorithm}")
+        print(f"Hash: {key_info.public_key_hash}")
+
+        # Fetch a specific version
+        key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000", "1")
+
+        # Use with a custom key service
+        import os
+        os.environ["HAI_KEYS_BASE_URL"] = "https://keys.example.com"
+        key_info = jacs.fetch_remote_key("my-agent-id")
+    """
+    logger.debug("fetch_remote_key() called: agent_id=%s, version=%s", agent_id, version)
+
+    try:
+        result = _fetch_remote_key(agent_id, version)
+
+        key_info = PublicKeyInfo(
+            public_key=result["public_key"],
+            algorithm=result["algorithm"],
+            public_key_hash=result["public_key_hash"],
+            agent_id=result["agent_id"],
+            version=result["version"],
+        )
+
+        logger.info(
+            "Fetched remote key: agent_id=%s, version=%s, algorithm=%s",
+            agent_id,
+            version,
+            key_info.algorithm,
+        )
+        return key_info
+
+    except RuntimeError as e:
+        error_str = str(e)
+        logger.error("Failed to fetch remote key: %s", error_str)
+
+        # Map error messages to appropriate exception types
+        if "not found" in error_str.lower() or "404" in error_str:
+            raise KeyNotFoundError(
+                f"Public key not found for agent '{agent_id}' version '{version}'"
+            ) from e
+        elif "network" in error_str.lower() or "connect" in error_str.lower() or "timeout" in error_str.lower():
+            raise NetworkError(
+                f"Network error fetching key for agent '{agent_id}': {error_str}"
+            ) from e
+        else:
+            raise JacsError(f"Failed to fetch remote key: {error_str}") from e
+
+
 __all__ = [
     # Core operations
     "create",
@@ -881,6 +988,8 @@ __all__ = [
     "export_agent",
     "get_agent_info",
     "is_loaded",
+    # Remote key fetch
+    "fetch_remote_key",
     # Types (re-exported for convenience)
     "AgentInfo",
     "Attachment",
@@ -888,6 +997,7 @@ __all__ = [
     "VerificationResult",
     "SignerStatus",
     "AgreementStatus",
+    "PublicKeyInfo",
     # Errors
     "JacsError",
     "ConfigError",
@@ -895,4 +1005,6 @@ __all__ = [
     "SigningError",
     "VerificationError",
     "TrustError",
+    "KeyNotFoundError",
+    "NetworkError",
 ]

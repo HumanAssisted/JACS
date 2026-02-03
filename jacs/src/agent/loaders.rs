@@ -679,12 +679,94 @@ pub struct PublicKeyInfo {
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, serde::Deserialize)]
 struct HaiKeysApiResponse {
-    /// Base64-encoded public key.
+    /// Public key in either PEM or Base64 format.
     public_key: String,
     /// The cryptographic algorithm used.
     algorithm: String,
     /// Hash of the public key.
     public_key_hash: String,
+}
+
+/// Decodes a public key from either PEM or Base64 format.
+///
+/// The HAI key service may return public keys in two formats:
+/// - PEM format: starts with "-----BEGIN" and contains Base64-encoded data between headers
+/// - Raw Base64: direct Base64 encoding of the key bytes
+///
+/// This function auto-detects the format and decodes accordingly.
+#[cfg(not(target_arch = "wasm32"))]
+fn decode_public_key(key_data: &str) -> Result<Vec<u8>, JacsError> {
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+
+    let trimmed = key_data.trim();
+
+    if trimmed.starts_with("-----BEGIN") {
+        // PEM format - extract the Base64 content between headers
+        decode_pem_public_key(trimmed)
+    } else {
+        // Assume raw Base64
+        BASE64_STANDARD.decode(trimmed).map_err(|e| {
+            JacsError::CryptoError(format!(
+                "Invalid base64 encoding in public key from HAI key service: {}",
+                e
+            ))
+        })
+    }
+}
+
+/// Decodes a PEM-encoded public key.
+///
+/// Extracts the Base64 content between the BEGIN and END markers,
+/// removes whitespace, and decodes the resulting Base64 string.
+#[cfg(not(target_arch = "wasm32"))]
+fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+
+    // Find the end of the BEGIN header line (after "-----BEGIN ... -----")
+    // We need to find the closing "-----" of the BEGIN line
+    let begin_marker = "-----BEGIN";
+    let begin_start = pem_data.find(begin_marker).ok_or_else(|| {
+        JacsError::CryptoError("Invalid PEM format: missing BEGIN marker".to_string())
+    })?;
+
+    // Find the closing "-----" after BEGIN
+    let after_begin = begin_start + begin_marker.len();
+    let begin_close = pem_data[after_begin..]
+        .find("-----")
+        .map(|pos| after_begin + pos + 5)
+        .ok_or_else(|| {
+            JacsError::CryptoError("Invalid PEM format: incomplete BEGIN header".to_string())
+        })?;
+
+    // Find the END marker
+    let end_start = pem_data.rfind("-----END").ok_or_else(|| {
+        JacsError::CryptoError("Invalid PEM format: missing END marker".to_string())
+    })?;
+
+    if end_start <= begin_close {
+        return Err(JacsError::CryptoError(
+            "Invalid PEM format: no content between headers".to_string(),
+        ));
+    }
+
+    // Extract the Base64 content between headers, removing all whitespace
+    let base64_content: String = pem_data[begin_close..end_start]
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+
+    if base64_content.is_empty() {
+        return Err(JacsError::CryptoError(
+            "Invalid PEM format: no content between headers".to_string(),
+        ));
+    }
+
+    BASE64_STANDARD.decode(&base64_content).map_err(|e| {
+        JacsError::CryptoError(format!(
+            "Invalid base64 encoding in PEM public key from HAI key service: {}",
+            e
+        ))
+    })
 }
 
 /// Fetches a public key from the HAI key service.
@@ -726,9 +808,19 @@ struct HaiKeysApiResponse {
 /// println!("Algorithm: {}", key_info.algorithm);
 /// println!("Hash: {}", key_info.hash);
 /// ```
+///
+/// # Environment Variables
+///
+/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
+/// * `HAI_KEY_FETCH_RETRIES` - Number of retry attempts for network errors. Defaults to 3.
+///   Set to 0 to disable retries.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<PublicKeyInfo, JacsError> {
-    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    // Get retry count from environment or use default of 3
+    let max_retries: u32 = std::env::var("HAI_KEY_FETCH_RETRIES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
 
     // Get base URL from environment or use default
     let base_url =
@@ -747,9 +839,72 @@ pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<Public
         .build()
         .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
 
+    // Retry loop with exponential backoff
+    let mut last_error: JacsError =
+        JacsError::NetworkError("No attempts made to fetch public key".to_string());
+
+    for attempt in 1..=max_retries + 1 {
+        match fetch_public_key_attempt(&client, &url, agent_id, version) {
+            Ok(result) => return Ok(result),
+            Err(err) => {
+                // Don't retry on 404 - the key doesn't exist
+                if matches!(err, JacsError::KeyNotFound { .. }) {
+                    return Err(err);
+                }
+
+                // Don't retry on non-retryable errors (e.g., parse errors, crypto errors)
+                if !is_retryable_error(&err) {
+                    return Err(err);
+                }
+
+                last_error = err;
+
+                // Check if we've exhausted retries (attempt is 1-indexed, so max_retries+1 is the last attempt)
+                if attempt > max_retries {
+                    warn!(
+                        "Exhausted {} retries fetching public key for agent_id={}, version={}",
+                        max_retries, agent_id, version
+                    );
+                    break;
+                }
+
+                // Calculate exponential backoff: 1s, 2s, 4s, ...
+                let backoff_secs = 1u64 << (attempt - 1);
+                warn!(
+                    "Retry {}/{} for agent_id={}, version={} after {}s backoff",
+                    attempt, max_retries, agent_id, version, backoff_secs
+                );
+                std::thread::sleep(std::time::Duration::from_secs(backoff_secs));
+            }
+        }
+    }
+
+    // Return the last error if all retries failed
+    Err(last_error)
+}
+
+/// Determines if an error is retryable (network errors) or not (parse errors, 404s).
+#[cfg(not(target_arch = "wasm32"))]
+fn is_retryable_error(err: &JacsError) -> bool {
+    matches!(err, JacsError::NetworkError(msg) if
+        msg.contains("timed out") ||
+        msg.contains("connect") ||
+        msg.contains("HTTP request") ||
+        msg.contains("error status 5") // Retry on 5xx server errors
+    )
+}
+
+/// Single attempt to fetch a public key from the HAI key service.
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_public_key_attempt(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    agent_id: &str,
+    version: &str,
+) -> Result<PublicKeyInfo, JacsError> {
     // Make request to HAI keys API
     let response = client
-        .get(&url)
+        .get(url)
         .header("Accept", "application/json")
         .send()
         .map_err(|e| {
@@ -794,15 +949,8 @@ pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<Public
         ))
     })?;
 
-    // Decode base64 public key
-    let public_key = BASE64_STANDARD
-        .decode(&api_response.public_key)
-        .map_err(|e| {
-            JacsError::CryptoError(format!(
-                "Invalid base64 encoding in public key from HAI key service: {}",
-                e
-            ))
-        })?;
+    // Decode public key - supports both PEM and Base64 formats
+    let public_key = decode_public_key(&api_response.public_key)?;
 
     info!(
         "Successfully fetched public key from HAI: agent_id={}, version={}, algorithm={}",
@@ -844,15 +992,156 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    mod decode_tests {
+        use super::*;
+
+        #[test]
+        fn test_decode_public_key_base64() {
+            // Test raw Base64 decoding
+            let key_bytes = vec![1, 2, 3, 4, 5, 6, 7, 8];
+            let base64_encoded = base64::engine::general_purpose::STANDARD.encode(&key_bytes);
+
+            let decoded = decode_public_key(&base64_encoded).unwrap();
+            assert_eq!(decoded, key_bytes);
+        }
+
+        #[test]
+        fn test_decode_public_key_base64_with_whitespace() {
+            // Test Base64 with leading/trailing whitespace
+            let key_bytes = vec![10, 20, 30, 40];
+            let base64_encoded =
+                format!("  {}  ", base64::engine::general_purpose::STANDARD.encode(&key_bytes));
+
+            let decoded = decode_public_key(&base64_encoded).unwrap();
+            assert_eq!(decoded, key_bytes);
+        }
+
+        #[test]
+        fn test_decode_public_key_pem_ed25519() {
+            // Test PEM-encoded public key with valid Base64
+            // This is a real Ed25519 public key ASN.1 structure
+            let pem = r#"-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAGb9bTBTn3X0IA4i+S6KAHA==
+-----END PUBLIC KEY-----"#;
+
+            let result = decode_public_key(pem);
+            assert!(result.is_ok(), "Failed to decode PEM: {:?}", result.err());
+            let decoded = result.unwrap();
+            // Just verify we got non-empty bytes back
+            assert!(!decoded.is_empty());
+        }
+
+        #[test]
+        fn test_decode_public_key_pem_multiline() {
+            // Test PEM with multiple lines of Base64 content
+            let pem = r#"-----BEGIN PUBLIC KEY-----
+AQAB
+CDEF
+-----END PUBLIC KEY-----"#;
+
+            let result = decode_public_key(pem);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_decode_public_key_invalid_pem_no_end() {
+            let pem = "-----BEGIN PUBLIC KEY-----\nAQAB\n";
+
+            let result = decode_public_key(pem);
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                JacsError::CryptoError(msg) => {
+                    assert!(msg.contains("END marker"), "Error: {}", msg);
+                }
+                other => panic!("Expected CryptoError, got: {:?}", other),
+            }
+        }
+
+        #[test]
+        fn test_decode_public_key_invalid_base64() {
+            let invalid = "not-valid-base64!!!";
+
+            let result = decode_public_key(invalid);
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                JacsError::CryptoError(msg) => {
+                    assert!(msg.contains("base64"), "Error: {}", msg);
+                }
+                other => panic!("Expected CryptoError, got: {:?}", other),
+            }
+        }
+
+        #[test]
+        fn test_decode_pem_public_key_empty_content() {
+            let pem = "-----BEGIN PUBLIC KEY----------END PUBLIC KEY-----";
+
+            let result = decode_pem_public_key(pem);
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                JacsError::CryptoError(msg) => {
+                    assert!(msg.contains("no content"), "Error: {}", msg);
+                }
+                other => panic!("Expected CryptoError, got: {:?}", other),
+            }
+        }
+
+        #[test]
+        fn test_is_retryable_error_timeout() {
+            let err = JacsError::NetworkError("Request timed out after 30s".to_string());
+            assert!(is_retryable_error(&err));
+        }
+
+        #[test]
+        fn test_is_retryable_error_connect() {
+            let err = JacsError::NetworkError("Failed to connect to server".to_string());
+            assert!(is_retryable_error(&err));
+        }
+
+        #[test]
+        fn test_is_retryable_error_http_request() {
+            let err = JacsError::NetworkError("HTTP request failed".to_string());
+            assert!(is_retryable_error(&err));
+        }
+
+        #[test]
+        fn test_is_retryable_error_5xx() {
+            let err = JacsError::NetworkError("error status 503".to_string());
+            assert!(is_retryable_error(&err));
+        }
+
+        #[test]
+        fn test_is_retryable_error_not_retryable_parse() {
+            let err = JacsError::NetworkError("Failed to parse JSON response".to_string());
+            assert!(!is_retryable_error(&err));
+        }
+
+        #[test]
+        fn test_is_retryable_error_not_retryable_key_not_found() {
+            let err = JacsError::KeyNotFound {
+                path: "test".to_string(),
+            };
+            assert!(!is_retryable_error(&err));
+        }
+
+        #[test]
+        fn test_is_retryable_error_not_retryable_crypto() {
+            let err = JacsError::CryptoError("Invalid key format".to_string());
+            assert!(!is_retryable_error(&err));
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     mod http_tests {
         use super::*;
 
         #[test]
         fn test_fetch_public_key_invalid_url() {
             // Set an invalid base URL to test error handling
+            // Disable retries for faster test execution
             // SAFETY: This test is run in isolation and the env var is cleaned up after
             unsafe {
                 std::env::set_var("HAI_KEYS_BASE_URL", "http://localhost:1");
+                std::env::set_var("HAI_KEY_FETCH_RETRIES", "0");
             }
 
             let result = fetch_public_key_from_hai("test-agent-id", "1");
@@ -860,6 +1149,7 @@ mod tests {
             // Clean up first to ensure it happens even if assertions fail
             unsafe {
                 std::env::remove_var("HAI_KEYS_BASE_URL");
+                std::env::remove_var("HAI_KEY_FETCH_RETRIES");
             }
 
             // Should fail with network error (connection refused)
@@ -880,13 +1170,21 @@ mod tests {
         #[test]
         fn test_fetch_public_key_default_url() {
             // Verify default URL is used when env var is not set
+            // Disable retries for faster test execution
             // SAFETY: This test is run in isolation
             unsafe {
                 std::env::remove_var("HAI_KEYS_BASE_URL");
+                std::env::set_var("HAI_KEY_FETCH_RETRIES", "0");
             }
 
             // This will fail (no server), but we can verify it attempted the right URL
             let result = fetch_public_key_from_hai("nonexistent-agent", "1");
+
+            // Clean up
+            unsafe {
+                std::env::remove_var("HAI_KEY_FETCH_RETRIES");
+            }
+
             assert!(result.is_err());
             // The error should be network-related (DNS or connection)
             match result.unwrap_err() {
@@ -895,6 +1193,39 @@ mod tests {
                 }
                 other => panic!("Expected NetworkError or KeyNotFound, got: {:?}", other),
             }
+        }
+
+        #[test]
+        fn test_fetch_public_key_retries_env_var() {
+            // Test that HAI_KEY_FETCH_RETRIES is respected
+            // SAFETY: This test is run in isolation
+            unsafe {
+                std::env::set_var("HAI_KEY_FETCH_RETRIES", "1");
+                std::env::set_var("HAI_KEYS_BASE_URL", "http://localhost:1");
+            }
+
+            let start = std::time::Instant::now();
+            let _ = fetch_public_key_from_hai("test-agent", "1");
+            let elapsed = start.elapsed();
+
+            // Clean up
+            unsafe {
+                std::env::remove_var("HAI_KEY_FETCH_RETRIES");
+                std::env::remove_var("HAI_KEYS_BASE_URL");
+            }
+
+            // With 1 retry and 1s backoff, should take at least 1 second
+            // but less than what 3 retries would take (1+2+4=7s)
+            assert!(
+                elapsed >= std::time::Duration::from_millis(900),
+                "Expected at least ~1s for 1 retry, got {:?}",
+                elapsed
+            );
+            assert!(
+                elapsed < std::time::Duration::from_secs(5),
+                "Should not take as long as 3 retries, got {:?}",
+                elapsed
+            );
         }
     }
 }
