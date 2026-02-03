@@ -256,6 +256,8 @@ pub fn set_min_test_env_vars() {
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
         env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
+        // Enable filesystem schema loading for tests that use custom schemas
+        env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
     }
 }
 
@@ -360,6 +362,8 @@ pub fn set_test_env_vars() {
             "JACS_AGENT_ID_AND_VERSION",
             "123e4567-e89b-12d3-a456-426614174000:123e4567-e89b-12d3-a456-426614174001",
         );
+        // Enable filesystem schema loading for tests that use custom schemas
+        env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
     }
 }
 
@@ -380,6 +384,7 @@ pub fn clear_test_env_vars() {
         "JACS_DNS_VALIDATE",
         "JACS_DNS_STRICT",
         "JACS_DNS_REQUIRED",
+        "JACS_ALLOW_FILESYSTEM_SCHEMAS",
     ];
     for var in vars {
         // Clear from thread-safe override store (used by jenv)

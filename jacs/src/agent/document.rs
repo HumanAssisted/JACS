@@ -4,8 +4,9 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::loaders::FileLoader;
+use crate::agent::loaders::{fetch_public_key_from_hai, FileLoader};
 use crate::agent::security::SecurityTraits;
+use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::error::JacsError;
 use crate::storage::StorageDocumentTraits;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -25,7 +26,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
-use tracing::error;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -779,8 +780,50 @@ impl DocumentTraits for Agent {
             .trim_matches('"')
             .to_string();
 
-        let public_key = self.fs_load_public_key(&public_key_hash)?;
-        let public_key_enc_type = self.fs_load_public_key_type(&public_key_hash)?;
+        // Try local key first, fall back to HAI key service
+        let (public_key, public_key_enc_type) = match self.fs_load_public_key(&public_key_hash) {
+            Ok(key) => {
+                let enc_type = self.fs_load_public_key_type(&public_key_hash)?;
+                (key, enc_type)
+            }
+            Err(_) => {
+                // Extract agent info from signature for remote fetch
+                let agent_id = json_value[signature_key_from]["agentID"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim_matches('"');
+                let agent_version = json_value[signature_key_from]["agentVersion"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim_matches('"');
+
+                if agent_id.is_empty() || agent_version.is_empty() {
+                    return Err(format!(
+                        "Cannot fetch remote key: agentID or agentVersion missing from signature in document '{}'",
+                        document_key
+                    ).into());
+                }
+
+                // Fetch from HAI key service
+                let key_info = fetch_public_key_from_hai(agent_id, agent_version)
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!(
+                            "Failed to fetch public key for agent '{}' version '{}' from HAI: {}",
+                            agent_id, agent_version, e
+                        ).into()
+                    })?;
+
+                // Cache the fetched key locally for future use
+                self.fs_save_remote_public_key(
+                    &public_key_hash,
+                    &key_info.public_key,
+                    key_info.algorithm.as_bytes(),
+                )?;
+
+                (key_info.public_key, key_info.algorithm)
+            }
+        };
+
         self.verify_document_signature(
             document_key,
             Some(signature_key_from),

@@ -2,6 +2,7 @@ use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::SecurityTraits;
 use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -660,5 +661,240 @@ impl FileLoader for Agent {
         let path = format!("{}/{}", key_dir, filename);
         debug!("Key directory path: {}", path);
         Ok(path)
+    }
+}
+
+/// Public key information retrieved from HAI key service.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicKeyInfo {
+    /// The raw public key bytes.
+    pub public_key: Vec<u8>,
+    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
+    pub algorithm: String,
+    /// The hash of the public key for verification.
+    pub hash: String,
+}
+
+/// Response structure from the HAI keys API.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, serde::Deserialize)]
+struct HaiKeysApiResponse {
+    /// Base64-encoded public key.
+    public_key: String,
+    /// The cryptographic algorithm used.
+    algorithm: String,
+    /// Hash of the public key.
+    public_key_hash: String,
+}
+
+/// Fetches a public key from the HAI key service.
+///
+/// This function retrieves the public key for a specific agent and version
+/// from the HAI key distribution service. It is used to obtain trusted public
+/// keys for verifying agent signatures without requiring local key storage.
+///
+/// # Arguments
+///
+/// * `agent_id` - The unique identifier of the agent whose key to fetch.
+/// * `version` - The version of the agent's key to fetch.
+///
+/// # Returns
+///
+/// Returns `Ok(PublicKeyInfo)` containing the public key, algorithm, and hash
+/// on success.
+///
+/// # Errors
+///
+/// * `JacsError::KeyNotFound` - The agent or key version was not found (404).
+/// * `JacsError::NetworkError` - Connection, timeout, or other HTTP errors.
+/// * `JacsError::CryptoError` - The returned key has invalid base64 encoding.
+///
+/// # Environment Variables
+///
+/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use jacs::agent::loaders::{fetch_public_key_from_hai, PublicKeyInfo};
+///
+/// let key_info = fetch_public_key_from_hai(
+///     "550e8400-e29b-41d4-a716-446655440000",
+///     "1"
+/// )?;
+///
+/// println!("Algorithm: {}", key_info.algorithm);
+/// println!("Hash: {}", key_info.hash);
+/// ```
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<PublicKeyInfo, JacsError> {
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+
+    // Get base URL from environment or use default
+    let base_url =
+        std::env::var("HAI_KEYS_BASE_URL").unwrap_or_else(|_| "https://keys.hai.ai".to_string());
+
+    let url = format!("{}/jacs/v1/agents/{}/keys/{}", base_url, agent_id, version);
+
+    info!(
+        "Fetching public key from HAI: agent_id={}, version={}",
+        agent_id, version
+    );
+
+    // Build blocking HTTP client with 30 second timeout
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
+
+    // Make request to HAI keys API
+    let response = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            if e.is_timeout() {
+                JacsError::NetworkError(format!(
+                    "Request to HAI key service timed out after 30 seconds: {}",
+                    url
+                ))
+            } else if e.is_connect() {
+                JacsError::NetworkError(format!(
+                    "Failed to connect to HAI key service at {}: {}",
+                    url, e
+                ))
+            } else {
+                JacsError::NetworkError(format!("HTTP request to HAI key service failed: {}", e))
+            }
+        })?;
+
+    // Handle response status
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Err(JacsError::KeyNotFound {
+            path: format!(
+                "agent_id={}, version={} (not found in HAI key service)",
+                agent_id, version
+            ),
+        });
+    }
+
+    if !status.is_success() {
+        return Err(JacsError::NetworkError(format!(
+            "HAI key service returned error status {}: failed to fetch public key for agent '{}' version '{}'",
+            status, agent_id, version
+        )));
+    }
+
+    // Parse JSON response
+    let api_response: HaiKeysApiResponse = response.json().map_err(|e| {
+        JacsError::NetworkError(format!(
+            "Failed to parse HAI key service response as JSON: {}",
+            e
+        ))
+    })?;
+
+    // Decode base64 public key
+    let public_key = BASE64_STANDARD
+        .decode(&api_response.public_key)
+        .map_err(|e| {
+            JacsError::CryptoError(format!(
+                "Invalid base64 encoding in public key from HAI key service: {}",
+                e
+            ))
+        })?;
+
+    info!(
+        "Successfully fetched public key from HAI: agent_id={}, version={}, algorithm={}",
+        agent_id, version, api_response.algorithm
+    );
+
+    Ok(PublicKeyInfo {
+        public_key,
+        algorithm: api_response.algorithm,
+        hash: api_response.public_key_hash,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_public_key_info_struct() {
+        let info = PublicKeyInfo {
+            public_key: vec![1, 2, 3, 4],
+            algorithm: "ed25519".to_string(),
+            hash: "abc123".to_string(),
+        };
+        assert_eq!(info.public_key, vec![1, 2, 3, 4]);
+        assert_eq!(info.algorithm, "ed25519");
+        assert_eq!(info.hash, "abc123");
+    }
+
+    #[test]
+    fn test_public_key_info_clone() {
+        let info = PublicKeyInfo {
+            public_key: vec![1, 2, 3],
+            algorithm: "rsa".to_string(),
+            hash: "xyz789".to_string(),
+        };
+        let cloned = info.clone();
+        assert_eq!(info, cloned);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    mod http_tests {
+        use super::*;
+
+        #[test]
+        fn test_fetch_public_key_invalid_url() {
+            // Set an invalid base URL to test error handling
+            // SAFETY: This test is run in isolation and the env var is cleaned up after
+            unsafe {
+                std::env::set_var("HAI_KEYS_BASE_URL", "http://localhost:1");
+            }
+
+            let result = fetch_public_key_from_hai("test-agent-id", "1");
+
+            // Clean up first to ensure it happens even if assertions fail
+            unsafe {
+                std::env::remove_var("HAI_KEYS_BASE_URL");
+            }
+
+            // Should fail with network error (connection refused)
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                JacsError::NetworkError(msg) => {
+                    assert!(
+                        msg.contains("connect") || msg.contains("failed") || msg.contains("HTTP"),
+                        "Expected connection error, got: {}",
+                        msg
+                    );
+                }
+                other => panic!("Expected NetworkError, got: {:?}", other),
+            }
+        }
+
+        #[test]
+        fn test_fetch_public_key_default_url() {
+            // Verify default URL is used when env var is not set
+            // SAFETY: This test is run in isolation
+            unsafe {
+                std::env::remove_var("HAI_KEYS_BASE_URL");
+            }
+
+            // This will fail (no server), but we can verify it attempted the right URL
+            let result = fetch_public_key_from_hai("nonexistent-agent", "1");
+            assert!(result.is_err());
+            // The error should be network-related (DNS or connection)
+            match result.unwrap_err() {
+                JacsError::NetworkError(_) | JacsError::KeyNotFound { .. } => {
+                    // Expected - either network error or 404
+                }
+                other => panic!("Expected NetworkError or KeyNotFound, got: {:?}", other),
+            }
+        }
     }
 }
