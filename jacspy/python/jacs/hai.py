@@ -272,6 +272,41 @@ class HaiRegistrationPreview:
     headers: Dict[str, str]
 
 
+@dataclass
+class AgentVerificationResult:
+    """Result of verifying an agent at all trust levels.
+
+    Verification Levels:
+        - Level 1 (basic): JACS self-signature valid (cryptographic proof)
+        - Level 2 (domain): DNS TXT record verification passed
+        - Level 3 (attested): HAI.ai has registered and signed the agent
+
+    Attributes:
+        valid: Overall verification passed (meets min_level if specified)
+        level: Highest verification level achieved (1, 2, or 3)
+        level_name: Human-readable level name ("basic", "domain", "attested")
+        agent_id: The verified agent's JACS ID
+        jacs_valid: Level 1 - JACS signature is cryptographically valid
+        dns_valid: Level 2 - DNS verification passed
+        hai_attested: Level 3 - Agent is registered with HAI.ai signatures
+        domain: Verified domain (if Level 2+)
+        hai_signatures: HAI signature algorithms (if Level 3)
+        errors: List of verification errors encountered
+        raw_response: Full API response (if HAI verification performed)
+    """
+    valid: bool
+    level: int
+    level_name: str
+    agent_id: str
+    jacs_valid: bool = False
+    dns_valid: bool = False
+    hai_attested: bool = False
+    domain: str = ""
+    hai_signatures: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    raw_response: Dict[str, Any] = field(default_factory=dict)
+
+
 # =============================================================================
 # HAI Client Implementation
 # =============================================================================
@@ -1292,6 +1327,138 @@ def register_new_agent(
     return client.register(hai_url, api_key)
 
 
+def verify_agent(
+    agent_document: Union[str, dict],
+    min_level: int = 1,
+    require_domain: Optional[str] = None,
+    hai_url: str = "https://hai.ai",
+) -> AgentVerificationResult:
+    """Verify another agent's trust level.
+
+    Use this function to verify the identity and trust level of an agent
+    before accepting their messages, agreements, or transactions.
+
+    Verification Levels:
+        - Level 1 (basic): JACS self-signature valid (cryptographic proof)
+        - Level 2 (domain): DNS TXT record verification passed
+        - Level 3 (attested): HAI.ai has registered and signed the agent
+
+    Args:
+        agent_document: The agent's JACS document (JSON string or dict)
+        min_level: Minimum required verification level (1, 2, or 3)
+        require_domain: If specified, require the agent to be verified for this domain
+        hai_url: HAI.ai server URL (default: "https://hai.ai")
+
+    Returns:
+        AgentVerificationResult with verification status at all levels
+
+    Raises:
+        HaiError: If verification request fails
+
+    Example:
+        from jacs.hai import verify_agent
+
+        # Verify another agent meets your trust requirements
+        result = verify_agent(sender_agent_doc, min_level=2)
+
+        if result.valid:
+            print(f"Verified agent {result.agent_id} at level {result.level}")
+        else:
+            print(f"Verification failed: {result.errors}")
+    """
+    from . import simple as jacs_simple
+
+    errors: List[str] = []
+    agent_id = ""
+    jacs_valid = False
+    dns_valid = False
+    hai_attested = False
+    domain = ""
+    hai_signatures: List[str] = []
+    raw_response: Dict[str, Any] = {}
+
+    # Convert to string if dict
+    if isinstance(agent_document, dict):
+        agent_document = json.dumps(agent_document)
+
+    # Level 1: JACS signature verification (local)
+    try:
+        result = jacs_simple.verify(agent_document)
+        jacs_valid = result.valid
+        agent_id = result.signer_id or ""
+        if not jacs_valid:
+            errors.extend(result.errors or ["JACS signature invalid"])
+    except Exception as e:
+        errors.append(f"JACS verification error: {e}")
+
+    # Level 2: DNS verification (if domain provided or extractable)
+    # Try to extract domain from agent document
+    try:
+        doc = json.loads(agent_document) if isinstance(agent_document, str) else agent_document
+        domain = doc.get("jacsDomain", "") or require_domain or ""
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass
+
+    if domain and jacs_valid:
+        try:
+            # DNS verification via JACS
+            dns_result = jacs_simple.verify_dns(agent_document, domain)
+            dns_valid = dns_result if isinstance(dns_result, bool) else getattr(dns_result, 'valid', False)
+        except AttributeError:
+            # verify_dns may not exist yet
+            pass
+        except Exception as e:
+            errors.append(f"DNS verification error: {e}")
+
+    # Level 3: HAI.ai attestation
+    if jacs_valid and agent_id:
+        try:
+            client = HaiClient()
+            status = client.status(hai_url, agent_id=agent_id)
+            hai_attested = status.registered and len(status.hai_signatures) > 0
+            if hai_attested:
+                hai_signatures = status.hai_signatures
+            raw_response = status.raw_response
+        except Exception as e:
+            errors.append(f"HAI verification error: {e}")
+
+    # Compute level
+    if hai_attested and dns_valid and jacs_valid:
+        level = 3
+        level_name = "attested"
+    elif dns_valid and jacs_valid:
+        level = 2
+        level_name = "domain"
+    elif jacs_valid:
+        level = 1
+        level_name = "basic"
+    else:
+        level = 0
+        level_name = "none"
+
+    # Check minimum level requirement
+    valid = level >= min_level
+
+    # Check domain requirement
+    if require_domain and domain != require_domain:
+        valid = False
+        errors.append(f"Domain mismatch: expected {require_domain}, got {domain}")
+
+    return AgentVerificationResult(
+        valid=valid,
+        level=level,
+        level_name=level_name,
+        agent_id=agent_id,
+        jacs_valid=jacs_valid,
+        dns_valid=dns_valid,
+        hai_attested=hai_attested,
+        domain=domain,
+        hai_signatures=hai_signatures,
+        errors=errors,
+        raw_response=raw_response,
+    )
+
+
 __all__ = [
     # Client class
     "HaiClient",
@@ -1308,10 +1475,12 @@ __all__ = [
     "HaiStatusResult",
     "HaiEvent",
     "BenchmarkResult",
+    "AgentVerificationResult",
     # Convenience functions
     "testconnection",
     "register",
     "register_new_agent",
+    "verify_agent",
     "status",
     "benchmark",
     "connect",

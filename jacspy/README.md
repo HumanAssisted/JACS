@@ -154,8 +154,32 @@ if hai.testconnection("https://hai.ai"):
 |--------|-------------|
 | `testconnection()` | Test HAI.ai connectivity |
 | `register()` | Register agent with HAI.ai |
+| `verify_agent()` | Verify another agent's trust level |
+| `status()` | Check registration status |
 | `benchmark()` | Run benchmark suite |
 | `connect()` | Connect to SSE event stream |
+
+### Agent Verification Levels
+
+JACS agents can be verified at three trust levels:
+
+| Level | Badge | What it proves |
+|-------|-------|----------------|
+| 1 | Basic | Agent holds a valid private key (self-signed) |
+| 2 | Domain | Agent owner controls a DNS domain |
+| 3 | Attested | HAI.ai has verified and co-signed the agent |
+
+```python
+from jacs.hai import verify_agent
+
+# Verify another agent meets your trust requirements
+result = verify_agent(sender_agent_doc, min_level=2)
+
+if result.valid:
+    print(f"Verified: {result.agent_id} (Level {result.level}: {result.level_name})")
+else:
+    print(f"Verification failed: {result.errors}")
+```
 
 ### Examples
 
