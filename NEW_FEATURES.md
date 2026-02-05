@@ -4,7 +4,7 @@
 
 **Date**: 2026-02-05
 **Status**: Architecture refined through Q&A + restored removed items, ready for implementation
-**Estimated Steps**: 285+ (TDD-driven, phased)
+**Estimated Steps**: 281+ (TDD-driven, phased)
 
 ---
 
@@ -23,8 +23,8 @@
 11. [Phase 1: Schema Design & CRUD](#phase-1-schema-design--crud-steps-1-95)
 12. [Phase 2: Database Storage Backend](#phase-2-database-storage-backend-steps-96-175)
 13. [Phase 3: Runtime Configuration](#phase-3-runtime-configuration-steps-176-225)
-14. [Phase 4: MCP & Bindings Integration](#phase-4-mcp--bindings-integration-steps-226-265)
-15. [Phase 5: End-to-End, Docs & Polish](#phase-5-end-to-end-docs--polish-steps-266-285)
+14. [Phase 4: MCP & Bindings Integration](#phase-4-mcp--bindings-integration-steps-226-261)
+15. [Phase 5: End-to-End, Docs & Polish](#phase-5-end-to-end-docs--polish-steps-262-281)
 16. [Verification & Testing Strategy](#verification--testing-strategy)
 17. [How to Run Tests](#how-to-run-tests)
 
@@ -224,7 +224,7 @@ Through iterative design review and Q&A, we identified **four distinct document 
 
 ### 4. Update (Semantic Change Tracking, Independently Signed)
 
-**What it is**: An update is an independently signed document that records a semantic change to another document (goal, task, commitment, or todo list). Each update captures not just WHAT changed, but WHY -- using action types from HAI-2024.
+**What it is**: An update is an independently signed document that records a semantic change to another document (task, commitment, or todo list). Each update captures not just WHAT changed, but WHY -- using action types from HAI-2024.
 
 **Why we want it**: When a todo list is re-signed, the version diff shows what changed but not WHY. For a mediation and conflict resolution platform, the WHY is critical. "Agent A delayed the commitment" vs "Agent A expressed doubt about the commitment" vs "Agent A informed about progress" are all different semantic actions that have different implications for dispute resolution. The 15 action types from HAI-2024 capture this rich context.
 
@@ -232,7 +232,7 @@ Through iterative design review and Q&A, we identified **four distinct document 
 
 **How it works**:
 - Each update is a separate signed JACS document (like messages in a conversation)
-- Updates target a specific document by `jacsUpdateTargetId` (UUID) and `jacsUpdateTargetType` (enum: goal, task, commitment, todo)
+- Updates target a specific document by `jacsUpdateTargetId` (UUID) and `jacsUpdateTargetType` (enum: task, commitment, todo)
 - Updates have an `jacsUpdateAction` with one of 15 semantic action types:
   - **Closure actions**: `close-success` (completed successfully), `close-ignore` (abandoned/deprioritized), `close-fail` (failed), `close-reject` (rejected by counterparty)
   - **Lifecycle actions**: `reopen` (reactivated), `commit` (committed to doing), `doubt` (expressing uncertainty), `assign` (assigned to agent)
@@ -743,7 +743,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 **Why**: This ensures every status change has a corresponding signed Update with semantic context. You cannot change a document's status without recording WHY. The Update document is created first, then the target document is versioned. The Update chain is the authoritative semantic history.
 
 ### Decision 15: Completion Requires Multi-Agent Agreement
-**Choice**: For shared documents (commitments, shared goals), terminal status changes (completed, failed) require agreement from ALL signing parties. Unilateral completion claims are not possible.
+**Choice**: For shared documents (commitments), terminal status changes (completed, failed) require agreement from ALL signing parties. Unilateral completion claims are not possible.
 **Why**: Agent A cannot declare a commitment "completed" without Agent B confirming. If they disagree on completion, the document enters "disputed" state. This uses the existing `jacsEndAgreement` pattern from task.schema.json. This is fundamental to fair mediation -- both parties must agree on outcomes.
 
 ### Decision 16: Only Agreement Signers Can Create Updates
@@ -769,7 +769,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 | `jacs/src/error.rs` | whole | `JacsError` enum -- add `StorageError`, `DatabaseError` variants |
 | `jacs/Cargo.toml` | 99 | Existing tokio optional dep -- `database` feature activates it |
 | `jacs/schemas/message/v1/message.schema.json` | whole | Existing message schema -- add `jacsMessagePreviousId` for ordering |
-| `jacs/schemas/components/agreement/v1/agreement.schema.json` | whole | Existing agreement schema -- used by commitments and goals |
+| `jacs/schemas/components/agreement/v1/agreement.schema.json` | whole | Existing agreement schema -- used by commitments (extended with disagreements array) |
 | `jacs/schemas/header/v1/header.schema.json` | whole | Header with jacsEmbedding, jacsAgreement -- used by all document types |
 | `jacs-mcp/` | whole | MCP server -- add all new tools |
 | `jacspy/` | whole | Python bindings -- expose new functions |
@@ -815,9 +815,9 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - **Why**: Multi-agent commitments use existing agreement system.
 - **What**: Create commitment, add `jacsAgreement` with two agent IDs, validate.
 
-**Step 9.** Write test `test_commitment_linked_to_goal` -- optional goal reference.
-- **Why**: Commitments can reference a goal they serve.
-- **What**: Create commitment with `jacsCommitmentGoalId: "goal-uuid"`, validate.
+**Step 9.** Write test `test_commitment_linked_to_todo_item` -- optional todo item reference.
+- **Why**: Commitments can reference the todo item they formalize into a shared agreement.
+- **What**: Create commitment with `jacsCommitmentTodoRef: "todo-list-uuid:item-uuid"`, validate format.
 
 **Step 10.** Write test `test_commitment_linked_to_task` -- optional task reference.
 - **Why**: Commitments can reference a task they serve.
@@ -857,10 +857,9 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
   - `jacsCommitmentTerms` (object, optional) -- flexible terms object
   - `jacsCommitmentStatus` (enum: "pending", "active", "completed", "failed", "renegotiated", "disputed", "revoked", REQUIRED)
   - `jacsCommitmentDisputeReason` (string, optional)
-  - `jacsCommitmentGoalId` (UUID string, optional) -- goal this serves
   - `jacsCommitmentTaskId` (UUID string, optional) -- task this serves
   - `jacsCommitmentConversationRef` (UUID string, optional) -- thread that produced this
-  - `jacsCommitmentTodoRef` (string, optional) -- "todo-list-uuid:item-index"
+  - `jacsCommitmentTodoRef` (string, optional) -- "todo-list-uuid:item-uuid" format linking to private todo item
   - `jacsCommitmentQuestion` (string, optional) -- prompt question
   - `jacsCommitmentAnswer` (string, optional) -- answer to prompt
   - `jacsCommitmentCompletionQuestion` (string, optional)
@@ -888,7 +887,6 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - `revoke_commitment(commitment: &mut Value, reason: &str) -> Result<(), String>`
 - `set_conversation_ref(commitment: &mut Value, thread_id: &str) -> Result<(), String>`
 - `set_todo_ref(commitment: &mut Value, todo_ref: &str) -> Result<(), String>`
-- `set_goal_ref(commitment: &mut Value, goal_id: &str) -> Result<(), String>`
 - `set_task_ref(commitment: &mut Value, task_id: &str) -> Result<(), String>`
 - Add `pub mod commitment_crud;` to `src/schema/mod.rs`.
 
@@ -922,7 +920,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 **Step 29.** Write test `test_update_all_target_types` -- every target type accepted.
 - **Why**: Positive test covering all target types.
-- **What**: For each of `goal`, `task`, `commitment`, `todo`: create update targeting it, validate.
+- **What**: For each of `task`, `commitment`, `todo`: create update targeting it, validate.
 
 **Step 30.** Write test `test_update_invalid_target_type` -- rejects unknown target type.
 - **Why**: Negative test for target type enum.
@@ -959,7 +957,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 **Step 38.** Create component schema `jacs/schemas/components/update/v1/update.schema.json`:
 - **What**: Component schema defining update fields:
   - `jacsUpdateTargetId` (UUID string, required) -- document being updated
-  - `jacsUpdateTargetType` (enum: "goal", "task", "commitment", "todo", required) -- type of target
+  - `jacsUpdateTargetType` (enum: "task", "commitment", "todo", required) -- type of target
   - `jacsUpdateAction` (enum of 15 action types, required) -- semantic action
   - `jacsUpdateNote` (string, optional) -- human-readable context
   - `jacsUpdatePreviousUpdateId` (UUID string, optional) -- previous update in chain
@@ -978,7 +976,6 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 **Step 44.** Create `src/schema/update_crud.rs`:
 - `create_minimal_update(target_id: &str, target_type: &str, action: &str, note: Option<&str>) -> Result<Value, String>`
-- `create_goal_update(goal_id: &str, action: &str, note: Option<&str>) -> Result<Value, String>` -- convenience for goal updates
 - `create_task_update(task_id: &str, action: &str, note: Option<&str>) -> Result<Value, String>` -- convenience for task updates
 - `create_commitment_update(commitment_id: &str, action: &str, note: Option<&str>) -> Result<Value, String>` -- convenience for commitment updates
 - `create_todo_update(todo_id: &str, action: &str, note: Option<&str>) -> Result<Value, String>` -- convenience for todo updates
@@ -997,7 +994,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - **What**: Create 3 updates chained by previousUpdateId, sign each, verify all signatures and chain integrity.
 
 **Step 47.** Write test `test_update_from_different_agents` -- two agents update same target.
-- **Why**: Multiple agents can submit updates about the same commitment/goal.
+- **Why**: Multiple agents can submit updates about the same commitment.
 - **What**: Agent A creates "inform" update, Agent B creates "doubt" update, both targeting same commitment. Verify independent signatures.
 
 **Step 48.** Write test `test_update_header_fields_present` -- verify header fields populated.
@@ -1024,9 +1021,9 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - **Why**: Todo lists contain tasks (smaller, detailed items).
 - **What**: Create list, add task item with `itemType: "task"`, `description: "Write auth module"`, `status: "pending"`.
 
-**Step 54.** Write test `test_todo_goal_with_child_tasks` -- childItems referencing.
-- **Why**: Goals reference child tasks within the same list (by index) or in other lists (by UUID).
-- **What**: Create list with a goal at index 0 and tasks at indices 1, 2. Set goal's `childItems: [1, 2]`. Verify structure.
+**Step 54.** Write test `test_todo_goal_with_child_tasks` -- childItemIds referencing.
+- **Why**: Goals reference child tasks within the same list by stable itemId UUID.
+- **What**: Create list with a goal item and two task items. Set goal's `childItemIds: ["task-item-uuid-1", "task-item-uuid-2"]`. Verify structure.
 
 **Step 55.** Write test `test_todo_item_all_valid_statuses` -- every item status accepted.
 - **Why**: Positive test covering all status values.
@@ -1044,9 +1041,9 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - **Why**: Todo items can reference a commitment UUID (the shared agreement this task fulfills).
 - **What**: Create task item with `relatedCommitmentId: "some-uuid"`, validate.
 
-**Step 59.** Write test `test_todo_item_references_goal_document` -- relatedGoalId.
-- **Why**: Todo items can reference a standalone Goal document UUID.
-- **What**: Create goal item with `relatedGoalId: "goal-doc-uuid"`, validate.
+**Step 59.** Write test `test_todo_item_with_tags` -- tags for categorization.
+- **Why**: Todo items can have tags for filtering and organizing.
+- **What**: Create item with `tags: ["q1", "high-priority"]`, validate.
 
 **Step 60.** Write test `test_todo_item_references_conversation` -- relatedConversationThread.
 - **Why**: Items can link to conversation threads.
@@ -1085,9 +1082,9 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
   - `description` (string, required)
   - `status` (enum: "pending", "in-progress", "completed", "abandoned", required)
   - `priority` (enum: "low", "medium", "high", "critical", optional)
-  - `childItems` (array of integers or UUID strings, optional)
-  - `relatedCommitmentId` (UUID string, optional)
-  - `relatedGoalId` (UUID string, optional)
+  - `itemId` (UUID string, required) -- stable ID for this item, immutable across re-signing
+  - `childItemIds` (array of UUID strings, optional) -- references to child items by itemId
+  - `relatedCommitmentId` (UUID string, optional) -- commitment that formalizes this item
   - `relatedConversationThread` (UUID string, optional)
   - `completedDate` (date-time, optional)
   - `assignedAgent` (UUID string, optional)
@@ -1108,11 +1105,10 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 **Step 74.** Create `src/schema/todo_crud.rs`:
 - `create_minimal_todo_list(name: &str) -> Result<Value, String>` -- empty list
 - `add_todo_item(list: &mut Value, item_type: &str, description: &str, priority: Option<&str>) -> Result<(), String>`
-- `update_todo_item_status(list: &mut Value, index: usize, new_status: &str) -> Result<(), String>`
-- `mark_todo_item_complete(list: &mut Value, index: usize) -> Result<(), String>` -- status -> completed + sets completedDate
-- `add_child_to_goal(list: &mut Value, goal_index: usize, child_index: usize) -> Result<(), String>`
-- `set_item_commitment_ref(list: &mut Value, index: usize, commitment_id: &str) -> Result<(), String>`
-- `set_item_goal_ref(list: &mut Value, index: usize, goal_id: &str) -> Result<(), String>`
+- `update_todo_item_status(list: &mut Value, item_id: &str, new_status: &str) -> Result<(), String>`
+- `mark_todo_item_complete(list: &mut Value, item_id: &str) -> Result<(), String>` -- status -> completed + sets completedDate
+- `add_child_to_item(list: &mut Value, parent_item_id: &str, child_item_id: &str) -> Result<(), String>`
+- `set_item_commitment_ref(list: &mut Value, item_id: &str, commitment_id: &str) -> Result<(), String>`
 - `add_archive_ref(list: &mut Value, archive_list_id: &str) -> Result<(), String>`
 - `remove_completed_items(list: &mut Value) -> Result<Value, String>` -- returns removed items (for archiving)
 - Add `pub mod todo_crud;` to `src/schema/mod.rs`.
@@ -1187,12 +1183,12 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - Add `pub mod reference_utils;` to `src/schema/mod.rs`.
 
 **Step 93.** Write test `test_full_workflow_conversation_to_commitment_to_todo_with_updates` -- end-to-end.
-- **Why**: Integration of all five document types.
-- **What**: Agent A and B converse (messages in thread) -> agree on commitment (signed agreement) -> commitment linked to shared goal -> Agent A adds task to todo referencing commitment -> Agent B creates "inform" update on commitment -> Agent A creates "delay" update -> verify all signatures and references.
+- **Why**: Integration of all four document types.
+- **What**: Agent A and B converse (messages in thread) -> agree on commitment (signed agreement) -> commitment linked to todo item via todoRef -> Agent A adds task to todo referencing commitment -> Agent B creates "inform" update on commitment -> Agent A creates "delay" update -> verify all signatures and references.
 
-**Step 94.** **API ergonomics validation**: Write Python/Node binding function signatures for all five types.
+**Step 94.** **API ergonomics validation**: Write Python/Node binding function signatures for all four types.
 - **Why**: Validate Rust API translates cleanly.
-- **What**: In `jacspy/`, define: `create_goal()`, `create_commitment()`, `create_update()`, `create_todo_list()`, `start_conversation()`, etc.
+- **What**: In `jacspy/`, define: `create_commitment()`, `create_update()`, `create_todo_list()`, `add_todo_item()`, `start_conversation()`, `promote_todo_to_commitment()`, etc.
 
 **Step 95.** Run full Phase 1 test suite: `cargo test`. All existing + new tests pass.
 
@@ -1226,7 +1222,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 **Step 107.** Implement `StorageDocumentTraits` for `DatabaseStorage`: store, get, remove, list, exists, get_by_agent, get_versions, get_latest. Convert `sqlx::Error` to `JacsError::DatabaseError { operation, reason }` at boundary.
 
-**Step 108.** Implement `DatabaseDocumentTraits` for `DatabaseStorage`: query_by_type, query_by_field, search_text, count_by_type, query_updates_for_target, query_goals_by_status, query_commitments_for_goal, query_overdue_commitments.
+**Step 108.** Implement `DatabaseDocumentTraits` for `DatabaseStorage`: query_by_type, query_by_field, search_text, count_by_type, query_updates_for_target, query_commitments_by_status, query_todos_for_agent, query_overdue_commitments.
 
 **Step 109.** Add `pub mod database;` and `pub mod database_traits;` to `src/storage/mod.rs` (cfg-gated).
 
@@ -1240,7 +1236,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 **Step 114.** Write test `test_database_query_updates_for_target` -- retrieve update chain from DB.
 
-**Step 115.** Write test `test_database_query_goals_by_status`.
+**Step 115.** Write test `test_database_query_commitments_by_status`.
 
 ### Phase 2B: Vector Search (Steps 116-130)
 
@@ -1264,7 +1260,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 **Step 125.** Add JSONB query methods: `query_documents_jsonb()`.
 
-**Step 126.** Write test `test_jsonb_query_goal_status`.
+**Step 126.** Write test `test_jsonb_query_commitment_status`.
 
 **Step 127.** Write test `test_jsonb_query_commitments_by_date_range`.
 
@@ -1318,25 +1314,25 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 ### Phase 2D: Domain Queries & Index Generator (Steps 151-175)
 
-**Step 151-154.** Tests: query goals by status, commitments for goal, updates for target, overdue commitments.
+**Step 151-154.** Tests: commitments by status, todos for agent, updates for target, overdue commitments.
 
-**Step 155.** Domain-specific query methods: `query_goals_by_status()`, `query_commitments_for_goal()`, `query_updates_for_target()`, `query_overdue_commitments()`, `query_todos_for_agent()`.
+**Step 155.** Domain-specific query methods: `query_commitments_by_status()`, `query_todos_for_agent()`, `query_updates_for_target()`, `query_overdue_commitments()`.
 
-**Step 156.** Write test `test_semantic_goal_search` (vector search).
+**Step 156.** Write test `test_semantic_commitment_search` (vector search).
 
 **Step 157.** Add full-text search (tsvector + GIN index).
 
 **Step 158-159.** Tests: fulltext search, combined vector + text search.
 
-**Step 160.** Aggregation queries: `count_documents_by_type()`, `count_goals_by_status()`, `count_commitments_by_status()`, `count_updates_by_action()`.
+**Step 160.** Aggregation queries: `count_documents_by_type()`, `count_commitments_by_status()`, `count_todos_by_agent()`, `count_updates_by_action()`.
 
 **Step 161.** Write test `test_aggregation_queries`.
 
-**Step 162.** Transaction support: `create_goal_with_commitments()`.
+**Step 162.** Transaction support: `create_commitment_with_updates()`.
 
-**Step 163.** Write test `test_transactional_goal_creation`.
+**Step 163.** Write test `test_transactional_commitment_creation`.
 
-**Step 164.** Write test `test_suggest_indexes_for_all_types` -- index generator for goal, todo, commitment, update.
+**Step 164.** Write test `test_suggest_indexes_for_all_types` -- index generator for todo, commitment, update.
 
 **Step 165.** Create `src/storage/index_advisor.rs`:
 - `pub struct IndexRecommendation { table, column_expr, index_type, condition, sql }`
@@ -1346,7 +1342,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 **Step 167.** Implement generic recommendations for non-Postgres backends.
 
-**Step 168.** Add CLI subcommand: `jacs db suggest-indexes --backend postgres --types goal,todo,commitment,update`.
+**Step 168.** Add CLI subcommand: `jacs db suggest-indexes --backend postgres --types todo,commitment,update`.
 
 **Step 169.** Write CLI test for index suggestion.
 
@@ -1466,92 +1462,85 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 ---
 
-## Phase 4: MCP & Bindings Integration (Steps 226-265)
+## Phase 4: MCP & Bindings Integration (Steps 226-261)
 
-### Phase 4A: MCP Server Tools (Steps 226-245)
+### Phase 4A: MCP Server Tools (Steps 226-242)
 
-**Step 226.** Add MCP tool: `create_goal` -- creates and signs a goal document.
+**Step 226.** Add MCP tool: `create_todo_list` -- creates and signs a new todo list.
 
-**Step 227.** Add MCP tool: `update_goal` -- updates goal status, re-signs.
+**Step 227.** Add MCP tool: `add_todo_item` -- adds item to list, re-signs.
 
-**Step 228.** Add MCP tool: `sign_goal` -- agent signs shared goal agreement.
+**Step 228.** Add MCP tool: `complete_todo_item` -- marks complete, re-signs.
 
-**Step 229.** Add MCP tool: `create_todo_list` -- creates and signs a new todo list.
+**Step 229.** Add MCP tool: `get_todo_list` -- retrieves a todo list by ID.
 
-**Step 230.** Add MCP tool: `add_todo_item` -- adds item to list, re-signs.
+**Step 230.** Add MCP tool: `archive_completed_items` -- moves completed items to archive list.
 
-**Step 231.** Add MCP tool: `complete_todo_item` -- marks complete, re-signs.
+**Step 231.** Add MCP tool: `create_commitment` -- creates a commitment document.
 
-**Step 232.** Add MCP tool: `get_todo_list` -- retrieves a todo list by ID.
+**Step 232.** Add MCP tool: `sign_commitment` -- agent signs agreement.
 
-**Step 233.** Add MCP tool: `archive_completed_items` -- moves completed items to archive list.
+**Step 233.** Add MCP tool: `verify_commitment` -- verifies all signatures.
 
-**Step 234.** Add MCP tool: `create_commitment` -- creates a commitment document.
+**Step 234.** Add MCP tool: `list_commitments` -- list with optional status filter.
 
-**Step 235.** Add MCP tool: `sign_commitment` -- agent signs agreement.
+**Step 235.** Add MCP tool: `create_update` -- creates a semantic update document.
 
-**Step 236.** Add MCP tool: `verify_commitment` -- verifies all signatures.
+**Step 236.** Add MCP tool: `get_updates_for_target` -- all updates targeting a document.
 
-**Step 237.** Add MCP tool: `list_commitments` -- list with optional status filter.
+**Step 237.** Add MCP tool: `get_update_chain` -- ordered update chain for a target.
 
-**Step 238.** Add MCP tool: `create_update` -- creates a semantic update document.
+**Step 238.** Add MCP tool: `send_message` -- signed message in conversation thread.
 
-**Step 239.** Add MCP tool: `get_updates_for_target` -- all updates targeting a document.
+**Step 239.** Add MCP tool: `get_conversation` -- all messages in a thread.
 
-**Step 240.** Add MCP tool: `get_update_chain` -- ordered update chain for a target.
+**Step 240.** Add MCP tool: `find_overdue_commitments` -- query for past-deadline commitments.
 
-**Step 241.** Add MCP tool: `send_message` -- signed message in conversation thread.
+**Step 241.** Add MCP tool: `search_documents` -- text/semantic search.
 
-**Step 242.** Add MCP tool: `get_conversation` -- all messages in a thread.
+**Step 242.** Write MCP integration tests for all tools.
 
-**Step 243.** Add MCP tool: `find_overdue_commitments` -- query for past-deadline commitments.
+### Phase 4B: Language Bindings (Steps 243-257)
 
-**Step 244.** Add MCP tool: `search_documents` -- text/semantic search.
+**Step 243-247.** Python bindings (`jacspy/`): implement all todo/commitment/update/conversation functions + MCP server examples.
 
-**Step 245.** Write MCP integration tests for all tools.
+**Step 248-252.** Node bindings (`jacsnpm/`): implement all functions + MCP server examples.
 
-### Phase 4B: Language Bindings (Steps 246-260)
+**Step 253-255.** Go bindings (`jacsgo/`): implement core functions.
 
-**Step 246-250.** Python bindings (`jacspy/`): implement all goal/todo/commitment/update/conversation functions + MCP server examples.
+**Step 256-257.** Run all binding test suites.
 
-**Step 251-255.** Node bindings (`jacsnpm/`): implement all functions + MCP server examples.
+### Phase 4C: CLI Integration (Steps 258-261)
 
-**Step 256-258.** Go bindings (`jacsgo/`): implement core functions.
-
-**Step 259-260.** Run all binding test suites.
-
-### Phase 4C: CLI Integration (Steps 261-265)
-
-**Step 261.** CLI: `jacs goal create/list/update/sign`
-**Step 262.** CLI: `jacs todo create/list/complete/archive`
-**Step 263.** CLI: `jacs commitment create/list/sign/verify/dispute`
-**Step 264.** CLI: `jacs update create/list/chain`
-**Step 265.** CLI: `jacs conversation start/reply/list`
+**Step 258.** CLI: `jacs todo create/list/complete/archive`
+**Step 259.** CLI: `jacs commitment create/list/sign/verify/dispute`
+**Step 260.** CLI: `jacs update create/list/chain`
+**Step 261.** CLI: `jacs conversation start/reply/list`
 
 ---
 
-## Phase 5: End-to-End, Docs & Polish (Steps 266-285)
+## Phase 5: End-to-End, Docs & Polish (Steps 262-281)
 
-**Step 266-270.** End-to-end tests:
-- Full hierarchy: goal -> commitments -> updates -> todo with signing
-- Database round-trips for all 5 document types
+**Step 262-266.** End-to-end tests:
+- Full commitment lifecycle: create commitment -> sign agreement -> update -> complete with all four document types
+- Database round-trips for all 4 document types
 - Mixed storage: fs for keys, db for documents
 - Concurrent agents updating same commitment
 - Storage migration: filesystem <-> database with signature verification
 
-**Step 271-275.** Rustdoc comments for all new public types/functions.
+**Step 267-271.** Rustdoc comments for all new public types/functions.
 
-**Step 276-278.** Documentation: `todo-tracking.md`, `database-storage.md`, `runtime-configuration.md`, updated README, CHANGELOG.
+**Step 272-274.** Documentation: `todo-tracking.md`, `database-storage.md`, `runtime-configuration.md`, updated README, CHANGELOG.
 
-**Step 279-280.** JSON examples, config examples, `cargo doc` verification.
+**Step 275-276.** JSON examples, config examples, `cargo doc` verification.
 
-**Step 281-282.** Benchmarks: goal creation/signing, db round-trip, vector search.
+**Step 277-278.** Benchmarks: commitment creation/signing, todo list operations, db round-trip, vector search.
 
-**Step 283.** `cargo clippy --all-features -- -D warnings` + `cargo fmt`.
+**Step 279.** `cargo clippy --all-features -- -D warnings` + `cargo fmt`.
 
-**Step 284.** WASM check + fuzz tests for all schema validation.
+**Step 280.** WASM check + fuzz tests for all schema validation.
 
-**Step 285.** Full test: `cargo test --all-features` AND `cargo test` (without database). Version bump.
+**Step 281.** Full test: `cargo test --all-features` AND `cargo test` (without database). Version bump.
 
 ---
 
@@ -1573,12 +1562,12 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 ### Key Verification Scenarios
 
-1. **Goal lifecycle**: Create goal -> sign -> share via agreement -> two agents sign -> update status -> verify all signatures
-2. **Todo list lifecycle**: Create list -> add goals/tasks -> complete items -> archive -> verify all versions signed
-3. **Commitment agreement**: Agent A proposes -> Agent B signs -> verify both signatures -> try to modify -> verification fails
+1. **Todo list lifecycle**: Create list -> add goal/task items -> complete items -> archive -> verify all versions signed
+2. **Commitment agreement**: Agent A proposes -> Agent B signs -> verify both signatures -> try to modify -> verification fails
+3. **Commitment disagreement**: Agent A proposes -> Agent B formally disagrees with reason -> document enters contested state -> Agent A amends terms -> Agent B agrees
 4. **Update chain**: Create commitment -> "commit" update -> "inform" update -> "delay" update -> "close-success" update -> verify chain integrity and all signatures
 5. **Conversation to commitment**: Create thread -> exchange messages -> create commitment referencing thread -> sign agreement -> create "inform" update
-6. **Full hierarchy**: Goal (shared) -> Commitments (per-agent) -> Updates (semantic tracking) -> Todo items (private) -> Archive completed
+6. **Todo-to-commitment promotion**: Private goal item -> create commitment with todoRef -> sign agreement -> todo item gets relatedCommitmentId
 7. **Database round-trip**: Store signed document in DB -> retrieve -> verify signature matches
 8. **Storage migration**: Filesystem docs -> import to DB -> verify signatures -> export back to filesystem -> verify again
 9. **Mixed storage**: Keys from filesystem, documents from database, same agent
@@ -1588,10 +1577,9 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 | Schema | Positive Tests | Negative Tests | Integration Tests |
 |--------|---------------|----------------|-------------------|
-| Goal | minimal, all statuses, embedding, tasks, parent, tags, agreement | missing name, missing desc, invalid status, bad UUID | signing, resign, two-agent agreement, header fields |
-| Commitment | minimal, terms, dates, Q&A, completion Q&A, recurrence, agreement, goal ref, task ref, conversation ref, todo ref, owner, all statuses, dispute, standalone | invalid status, bad dates, invalid date format | signing, two-agent agreement, immutable after agreement |
-| Update | minimal, all 15 action types, all 4 target types, note, chain, agent assignment | invalid action, invalid target, non-UUID target, missing target, missing action | signing, chain verification, multi-agent updates, header fields, semantic category coverage |
-| Todo | minimal, goal item, task item, child tasks, all statuses, all priorities, commitment ref, goal ref, conversation ref, archive refs | invalid status, invalid itemtype, missing description, missing status, missing itemtype, missing name, comprehensive rejects | signing, resign, versioning, archive workflow, multiple lists |
+| Commitment | minimal, terms, dates, Q&A, completion Q&A, recurrence, agreement, task ref, conversation ref, todo ref, owner, all statuses, dispute, standalone | invalid status, bad dates, invalid date format | signing, two-agent agreement, immutable after agreement, disagreement workflow |
+| Update | minimal, all 15 action types, all 3 target types, note, chain, agent assignment | invalid action, invalid target, non-UUID target, missing target, missing action | signing, chain verification, multi-agent updates, header fields, semantic category coverage |
+| Todo | minimal, goal item, task item, childItemIds, all statuses, all priorities, commitment ref, conversation ref, archive refs, tags | invalid status, invalid itemtype, missing description, missing status, missing itemtype, missing name, comprehensive rejects | signing, resign, versioning, archive workflow, multiple lists |
 | Conversation | message with thread, ordering, multi-agent, produces commitment | (uses existing message schema tests) | signing, multi-agent messages |
 
 ---
