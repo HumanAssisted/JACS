@@ -4,7 +4,7 @@
 
 **Date**: 2026-02-05
 **Status**: Architecture refined through Q&A + restored removed items, ready for implementation
-**Estimated Steps**: 310+ (TDD-driven, phased)
+**Estimated Steps**: 285+ (TDD-driven, phased)
 
 ---
 
@@ -20,11 +20,11 @@
 8. [Review Findings](#review-findings)
 9. [Key Architectural Decisions](#key-architectural-decisions)
 10. [Critical Files Reference](#critical-files-reference)
-11. [Phase 1: Schema Design & CRUD](#phase-1-schema-design--crud-steps-1-120)
-12. [Phase 2: Database Storage Backend](#phase-2-database-storage-backend-steps-121-200)
-13. [Phase 3: Runtime Configuration](#phase-3-runtime-configuration-steps-201-250)
-14. [Phase 4: MCP & Bindings Integration](#phase-4-mcp--bindings-integration-steps-251-290)
-15. [Phase 5: End-to-End, Docs & Polish](#phase-5-end-to-end-docs--polish-steps-291-310)
+11. [Phase 1: Schema Design & CRUD](#phase-1-schema-design--crud-steps-1-95)
+12. [Phase 2: Database Storage Backend](#phase-2-database-storage-backend-steps-96-175)
+13. [Phase 3: Runtime Configuration](#phase-3-runtime-configuration-steps-176-225)
+14. [Phase 4: MCP & Bindings Integration](#phase-4-mcp--bindings-integration-steps-226-265)
+15. [Phase 5: End-to-End, Docs & Polish](#phase-5-end-to-end-docs--polish-steps-266-285)
 16. [Verification & Testing Strategy](#verification--testing-strategy)
 17. [How to Run Tests](#how-to-run-tests)
 
@@ -777,83 +777,81 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 ---
 
-## Phase 1: Schema Design & CRUD (Steps 1-120)
-
-### Phase 1A: Commitment Schema (Steps 1-25)
+## Phase 1: Schema Design & CRUD (Steps 1-95)
 
 > **Note**: Goals are NOT standalone documents. Goals are inline todo items (`itemType: "goal"`) within a private todo list. When goals need to be shared, they are expressed as Commitments. Therefore, commitment is the FIRST schema we implement -- it's the primary shared document type.
 
 ### Phase 1A: Commitment Schema (Steps 1-25)
 
-**Step 26.** Write test `test_create_minimal_commitment` in `jacs/tests/commitment_tests.rs`.
+**Step 1.** Write test `test_create_minimal_commitment` in `jacs/tests/commitment_tests.rs`.
 - **Why**: TDD. Simplest commitment -- just a description and status.
 - **What**: Call `create_minimal_commitment("Deliver Q1 report")`, assert `jacsCommitmentDescription`, `jacsCommitmentStatus` = "pending", NO requirement for goal/task/thread refs.
 
-**Step 27.** Write test `test_commitment_with_terms` -- structured terms object.
+**Step 2.** Write test `test_commitment_with_terms` -- structured terms object.
 - **Why**: Commitments have structured terms (deliverable, deadline, compensation).
 - **What**: Create commitment with `jacsCommitmentTerms` object containing deadline, format, compensation.
 
-**Step 28.** Write test `test_commitment_with_dates` -- date-time format validation.
+**Step 3.** Write test `test_commitment_with_dates` -- date-time format validation.
 - **Why**: Start/end dates must be valid date-time format.
 - **What**: Create commitment with `jacsCommitmentStartDate` and `jacsCommitmentEndDate`, validate dates.
 
-**Step 29.** Write test `test_commitment_invalid_date_format` -- rejects malformed dates.
+**Step 4.** Write test `test_commitment_invalid_date_format` -- rejects malformed dates.
 - **Why**: Negative test for date-time format.
 - **What**: Set dates to "not-a-date", validate, expect format error.
 
-**Step 30.** Write test `test_commitment_question_answer` -- Q&A fields.
+**Step 5.** Write test `test_commitment_question_answer` -- Q&A fields.
 - **Why**: HAI-2024 used question/answer fields for structured prompts.
 - **What**: Create commitment with `jacsCommitmentQuestion`, `jacsCommitmentAnswer`, validate.
 
-**Step 31.** Write test `test_commitment_completion_question_answer` -- completion Q&A.
+**Step 6.** Write test `test_commitment_completion_question_answer` -- completion Q&A.
 - **Why**: Separate question/answer for completion verification.
 - **What**: Create commitment with `jacsCommitmentCompletionQuestion`, `jacsCommitmentCompletionAnswer`.
 
-**Step 32.** Write test `test_commitment_recurrence` -- recurrence pattern.
+**Step 7.** Write test `test_commitment_recurrence` -- recurrence pattern.
 - **Why**: Recurring commitments (e.g., weekly standup).
 - **What**: Create commitment with `jacsCommitmentRecurrence: {frequency: "weekly", interval: 1}`, validate.
 
-**Step 33.** Write test `test_commitment_with_agreement` -- multi-agent commitment.
+**Step 8.** Write test `test_commitment_with_agreement` -- multi-agent commitment.
 - **Why**: Multi-agent commitments use existing agreement system.
 - **What**: Create commitment, add `jacsAgreement` with two agent IDs, validate.
 
-**Step 34.** Write test `test_commitment_linked_to_goal` -- optional goal reference.
+**Step 9.** Write test `test_commitment_linked_to_goal` -- optional goal reference.
 - **Why**: Commitments can reference a goal they serve.
 - **What**: Create commitment with `jacsCommitmentGoalId: "goal-uuid"`, validate.
 
-**Step 35.** Write test `test_commitment_linked_to_task` -- optional task reference.
+**Step 10.** Write test `test_commitment_linked_to_task` -- optional task reference.
 - **Why**: Commitments can reference a task they serve.
 - **What**: Create commitment with `jacsCommitmentTaskId: "task-uuid"`, validate.
 
-**Step 36.** Write test `test_commitment_references_conversation` -- thread reference.
+**Step 11.** Write test `test_commitment_references_conversation` -- thread reference.
 - **Why**: Commitments can reference the negotiation thread that produced them.
 - **What**: Create commitment with `jacsCommitmentConversationRef: "thread-uuid"`, validate.
 
-**Step 37.** Write test `test_commitment_references_todo_item` -- todo ref.
+**Step 12.** Write test `test_commitment_references_todo_item` -- todo ref.
 - **Why**: An agent's todo item can link to the commitment it fulfills.
 - **What**: Create commitment with `jacsCommitmentTodoRef: "todo-list-uuid:2"`, validate.
 
-**Step 38.** Write test `test_commitment_status_lifecycle` -- all valid status transitions.
+**Step 13.** Write test `test_commitment_status_lifecycle` -- all valid status transitions.
 - **Why**: Status transitions: pending -> active -> completed (or failed/disputed/revoked).
 - **What**: Test each valid status value: pending, active, completed, failed, renegotiated, disputed, revoked.
 
-**Step 39.** Write test `test_commitment_invalid_status` -- rejects invalid status.
+**Step 14.** Write test `test_commitment_invalid_status` -- rejects invalid status.
 - **Why**: Negative test for status enum.
 - **What**: Set status to "invalid", validate, expect enum error.
 
-**Step 40.** Write test `test_commitment_dispute` -- dispute with reason.
+**Step 15.** Write test `test_commitment_dispute` -- dispute with reason.
 - **Why**: DevRel review: dispute flow is critical for conflict resolution platform.
 - **What**: Create active commitment, set status to "disputed", add `jacsCommitmentDisputeReason`, validate.
 
-**Step 41.** Write test `test_commitment_standalone_without_refs` -- no goal/task/thread refs needed.
+**Step 16.** Write test `test_commitment_standalone_without_refs` -- no goal/task/thread refs needed.
 - **Why**: Commitments MUST work without any goal/task/thread references. This is commitment-first onboarding.
 - **What**: Create commitment with only description + status, validate passes.
 
-**Step 42.** Write test `test_commitment_owner_signature` -- single-agent commitment.
+**Step 17.** Write test `test_commitment_owner_signature` -- single-agent commitment.
 - **Why**: Not all commitments are multi-agent. Single-agent commitments use `jacsCommitmentOwner`.
 - **What**: Create commitment with `jacsCommitmentOwner` signature ref, validate.
 
-**Step 43.** Create schema file `jacs/schemas/commitment/v1/commitment.schema.json`.
+**Step 18.** Create schema file `jacs/schemas/commitment/v1/commitment.schema.json`.
 - **What**: JSON Schema Draft 7, `allOf` with header. Properties:
   - `jacsCommitmentDescription` (string, REQUIRED)
   - `jacsCommitmentTerms` (object, optional) -- flexible terms object
@@ -873,13 +871,13 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
   - `jacsCommitmentOwner` -- `$ref` to signature.schema.json (optional)
   - Uses `jacsAgreement` from header for multi-agent signing
 
-**Step 44.** Add commitment schema to `Cargo.toml`, `DEFAULT_SCHEMA_STRINGS`, `SCHEMA_SHORT_NAME`.
+**Step 19.** Add commitment schema to `Cargo.toml`, `DEFAULT_SCHEMA_STRINGS`, `SCHEMA_SHORT_NAME`.
 
-**Step 45.** Add `commitmentschema: Validator` to `Schema` struct, compile in `Schema::new()`.
+**Step 20.** Add `commitmentschema: Validator` to `Schema` struct, compile in `Schema::new()`.
 
-**Step 46.** Add `validate_commitment()` method.
+**Step 21.** Add `validate_commitment()` method.
 
-**Step 47.** Create `src/schema/commitment_crud.rs`:
+**Step 22.** Create `src/schema/commitment_crud.rs`:
 - `create_minimal_commitment(description: &str) -> Result<Value, String>`
 - `create_commitment_with_terms(description: &str, terms: Value) -> Result<Value, String>`
 - `update_commitment_status(commitment: &mut Value, new_status: &str) -> Result<(), String>`
@@ -894,71 +892,71 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - `set_task_ref(commitment: &mut Value, task_id: &str) -> Result<(), String>`
 - Add `pub mod commitment_crud;` to `src/schema/mod.rs`.
 
-### Phase 1B continued: Commitment Integration Tests (Steps 48-50)
+### Phase 1A continued: Commitment Integration Tests (Steps 23-25)
 
-**Step 48.** Write test `test_commitment_signing_workflow` -- create, sign, verify.
+**Step 23.** Write test `test_commitment_signing_workflow` -- create, sign, verify.
 - **Why**: Full signing pipeline for commitments.
 - **What**: Create commitment, sign via agent, verify signature intact.
 
-**Step 49.** Write test `test_commitment_two_agent_agreement` -- agent A proposes, agent B signs agreement.
+**Step 24.** Write test `test_commitment_two_agent_agreement` -- agent A proposes, agent B signs agreement.
 - **Why**: Multi-agent commitment is the core use case.
 - **What**: Agent A creates commitment with agreement, Agent B signs, verify both signatures.
 
-**Step 50.** Write test `test_commitment_immutable_after_agreement` -- content changes should fail verification.
+**Step 25.** Write test `test_commitment_immutable_after_agreement` -- content changes should fail verification.
 - **Why**: Once both agents sign, modifying the commitment must invalidate signatures.
 - **What**: Both agents sign, modify description, verify signature fails.
 
-### Phase 1C: Update Tracking Schema (Steps 51-75)
+### Phase 1B: Update Tracking Schema (Steps 26-50)
 
-**Step 51.** Write test `test_create_minimal_update` in `jacs/tests/update_tests.rs`.
+**Step 26.** Write test `test_create_minimal_update` in `jacs/tests/update_tests.rs`.
 - **Why**: TDD. Simplest update -- target ID, type, and action.
 - **What**: Call `create_minimal_update("commitment-uuid", "commitment", "inform", "Progress update")`, assert fields present.
 
-**Step 52.** Write test `test_update_all_action_types` -- every action type accepted.
+**Step 27.** Write test `test_update_all_action_types` -- every action type accepted.
 - **Why**: Positive test covering all 15 HAI-2024 action types.
 - **What**: For each of `close-success`, `close-ignore`, `close-fail`, `close-reject`, `reopen`, `commit`, `doubt`, `assign`, `create`, `update`, `recommit`, `reschedule`, `delay`, `inform`, `renegotiate`: create update, validate, assert success.
 
-**Step 53.** Write test `test_update_invalid_action_type` -- rejects unknown action.
+**Step 28.** Write test `test_update_invalid_action_type` -- rejects unknown action.
 - **Why**: Negative test for action enum.
 - **What**: Set `jacsUpdateAction` to "invalid-action", validate, expect error.
 
-**Step 54.** Write test `test_update_all_target_types` -- every target type accepted.
+**Step 29.** Write test `test_update_all_target_types` -- every target type accepted.
 - **Why**: Positive test covering all target types.
 - **What**: For each of `goal`, `task`, `commitment`, `todo`: create update targeting it, validate.
 
-**Step 55.** Write test `test_update_invalid_target_type` -- rejects unknown target type.
+**Step 30.** Write test `test_update_invalid_target_type` -- rejects unknown target type.
 - **Why**: Negative test for target type enum.
 - **What**: Set `jacsUpdateTargetType` to "invalid", validate, expect error.
 
-**Step 56.** Write test `test_update_references_parent_document` -- UUID target ref.
+**Step 31.** Write test `test_update_references_parent_document` -- UUID target ref.
 - **Why**: Updates target a specific document by ID.
 - **What**: Create update with `jacsUpdateTargetId: "some-uuid"`, validate.
 
-**Step 57.** Write test `test_update_invalid_target_not_uuid` -- rejects non-UUID target.
+**Step 32.** Write test `test_update_invalid_target_not_uuid` -- rejects non-UUID target.
 - **Why**: Negative test for UUID format.
 - **What**: Set `jacsUpdateTargetId` to "not-a-uuid", validate, expect format error.
 
-**Step 58.** Write test `test_update_with_note` -- optional note field.
+**Step 33.** Write test `test_update_with_note` -- optional note field.
 - **Why**: Notes provide human-readable context for the update.
 - **What**: Create update with `jacsUpdateNote: "Delayed due to dependency"`, validate.
 
-**Step 59.** Write test `test_update_chain` -- chained via `jacsUpdatePreviousUpdateId`.
+**Step 34.** Write test `test_update_chain` -- chained via `jacsUpdatePreviousUpdateId`.
 - **Why**: Updates form a linked list per target document.
 - **What**: Create update1, create update2 with `jacsUpdatePreviousUpdateId: update1.jacsId`, validate chain.
 
-**Step 60.** Write test `test_update_with_agent_assignment` -- `jacsUpdateAssignedAgent`.
+**Step 35.** Write test `test_update_with_agent_assignment` -- `jacsUpdateAssignedAgent`.
 - **Why**: Some actions involve assigning work to an agent.
 - **What**: Create update with action "assign" and `jacsUpdateAssignedAgent: "agent-uuid"`, validate.
 
-**Step 61.** Write test `test_update_missing_required_target_id` -- rejects missing target.
+**Step 36.** Write test `test_update_missing_required_target_id` -- rejects missing target.
 - **Why**: Negative test. Target ID is required.
 - **What**: Create update without `jacsUpdateTargetId`, validate, expect error.
 
-**Step 62.** Write test `test_update_missing_required_action` -- rejects missing action.
+**Step 37.** Write test `test_update_missing_required_action` -- rejects missing action.
 - **Why**: Negative test. Action is required.
 - **What**: Create update without `jacsUpdateAction`, validate, expect error.
 
-**Step 63.** Create component schema `jacs/schemas/components/update/v1/update.schema.json`:
+**Step 38.** Create component schema `jacs/schemas/components/update/v1/update.schema.json`:
 - **What**: Component schema defining update fields:
   - `jacsUpdateTargetId` (UUID string, required) -- document being updated
   - `jacsUpdateTargetType` (enum: "goal", "task", "commitment", "todo", required) -- type of target
@@ -967,18 +965,18 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
   - `jacsUpdatePreviousUpdateId` (UUID string, optional) -- previous update in chain
   - `jacsUpdateAssignedAgent` (UUID string, optional) -- agent assigned (for "assign" action)
 
-**Step 64.** Create top-level `jacs/schemas/update/v1/update.schema.json`.
+**Step 39.** Create top-level `jacs/schemas/update/v1/update.schema.json`.
 - **What**: `allOf` with header.schema.json + `$ref` to update component schema. This makes updates full JACS documents with signatures, IDs, versions.
 
-**Step 65.** Add update schemas (both component and top-level) to `Cargo.toml`.
+**Step 40.** Add update schemas (both component and top-level) to `Cargo.toml`.
 
-**Step 66.** Add to `DEFAULT_SCHEMA_STRINGS` and `SCHEMA_SHORT_NAME`.
+**Step 41.** Add to `DEFAULT_SCHEMA_STRINGS` and `SCHEMA_SHORT_NAME`.
 
-**Step 67.** Add `updateschema: Validator` to `Schema` struct, compile in `Schema::new()`.
+**Step 42.** Add `updateschema: Validator` to `Schema` struct, compile in `Schema::new()`.
 
-**Step 68.** Add `validate_update()` method to `Schema`.
+**Step 43.** Add `validate_update()` method to `Schema`.
 
-**Step 69.** Create `src/schema/update_crud.rs`:
+**Step 44.** Create `src/schema/update_crud.rs`:
 - `create_minimal_update(target_id: &str, target_type: &str, action: &str, note: Option<&str>) -> Result<Value, String>`
 - `create_goal_update(goal_id: &str, action: &str, note: Option<&str>) -> Result<Value, String>` -- convenience for goal updates
 - `create_task_update(task_id: &str, action: &str, note: Option<&str>) -> Result<Value, String>` -- convenience for task updates
@@ -988,99 +986,99 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - `set_assigned_agent(update: &mut Value, agent_id: &str) -> Result<(), String>` -- set agent
 - Add `pub mod update_crud;` to `src/schema/mod.rs`.
 
-### Phase 1C continued: Update Integration Tests (Steps 70-75)
+### Phase 1B continued: Update Integration Tests (Steps 45-50)
 
-**Step 70.** Write test `test_update_signing_and_verification` -- full signing pipeline.
+**Step 45.** Write test `test_update_signing_and_verification` -- full signing pipeline.
 - **Why**: Updates must be independently signed for auditability.
 - **What**: Create update, sign via agent, verify signature.
 
-**Step 71.** Write test `test_update_chain_verification` -- chain of signed updates.
+**Step 46.** Write test `test_update_chain_verification` -- chain of signed updates.
 - **Why**: Update chains must be verifiable end-to-end.
 - **What**: Create 3 updates chained by previousUpdateId, sign each, verify all signatures and chain integrity.
 
-**Step 72.** Write test `test_update_from_different_agents` -- two agents update same target.
+**Step 47.** Write test `test_update_from_different_agents` -- two agents update same target.
 - **Why**: Multiple agents can submit updates about the same commitment/goal.
 - **What**: Agent A creates "inform" update, Agent B creates "doubt" update, both targeting same commitment. Verify independent signatures.
 
-**Step 73.** Write test `test_update_header_fields_present` -- verify header fields populated.
+**Step 48.** Write test `test_update_header_fields_present` -- verify header fields populated.
 - **Why**: Ensure update schema properly inherits header fields.
 - **What**: Create and sign update, verify jacsId, jacsVersion, jacsVersionDate, etc.
 
-**Step 74.** Write test `test_update_semantic_action_coverage` -- closure, lifecycle, renegotiation, info actions.
+**Step 49.** Write test `test_update_semantic_action_coverage` -- closure, lifecycle, renegotiation, info actions.
 - **Why**: Ensure all categories of actions work with full signing pipeline.
 - **What**: Create and sign one update for each category: `close-success`, `commit`, `reschedule`, `inform`.
 
-**Step 75.** Run all update tests + regression.
+**Step 50.** Run all update tests + regression.
 
-### Phase 1D: Todo List Schema (Steps 76-100)
+### Phase 1C: Todo List Schema (Steps 51-75)
 
-**Step 76.** Write test `test_create_minimal_todo_list` in `jacs/tests/todo_tests.rs`.
+**Step 51.** Write test `test_create_minimal_todo_list` in `jacs/tests/todo_tests.rs`.
 - **Why**: TDD. Test the simplest todo list creation.
 - **What**: Call `create_minimal_todo_list("Active Work")`, assert JSON has `$schema`, `jacsType` = "todo", `jacsTodoName`, empty `jacsTodoItems` array, `jacsLevel` = "config".
 
-**Step 77.** Write test `test_todo_list_with_goal_item` -- goal-type inline item.
+**Step 52.** Write test `test_todo_list_with_goal_item` -- goal-type inline item.
 - **Why**: Todo lists contain goals (broad, long-term items).
 - **What**: Create list, add goal item with `itemType: "goal"`, `description: "Ship Q1 features"`, `status: "active"`.
 
-**Step 78.** Write test `test_todo_list_with_task_item` -- task-type inline item.
+**Step 53.** Write test `test_todo_list_with_task_item` -- task-type inline item.
 - **Why**: Todo lists contain tasks (smaller, detailed items).
 - **What**: Create list, add task item with `itemType: "task"`, `description: "Write auth module"`, `status: "pending"`.
 
-**Step 79.** Write test `test_todo_goal_with_child_tasks` -- childItems referencing.
+**Step 54.** Write test `test_todo_goal_with_child_tasks` -- childItems referencing.
 - **Why**: Goals reference child tasks within the same list (by index) or in other lists (by UUID).
 - **What**: Create list with a goal at index 0 and tasks at indices 1, 2. Set goal's `childItems: [1, 2]`. Verify structure.
 
-**Step 80.** Write test `test_todo_item_all_valid_statuses` -- every item status accepted.
+**Step 55.** Write test `test_todo_item_all_valid_statuses` -- every item status accepted.
 - **Why**: Positive test covering all status values.
 - **What**: For each of `pending`, `in-progress`, `completed`, `abandoned`: create item, validate.
 
-**Step 81.** Write test `test_todo_item_invalid_status` -- rejects invalid item status.
+**Step 56.** Write test `test_todo_item_invalid_status` -- rejects invalid item status.
 - **Why**: Negative test for item status enum.
 - **What**: Set item status to "invalid", validate, expect error.
 
-**Step 82.** Write test `test_todo_item_all_priorities` -- every priority accepted.
+**Step 57.** Write test `test_todo_item_all_priorities` -- every priority accepted.
 - **Why**: Positive test for priority enum.
 - **What**: For each of `low`, `medium`, `high`, `critical`: create item, validate.
 
-**Step 83.** Write test `test_todo_item_references_commitment` -- relatedCommitmentId.
+**Step 58.** Write test `test_todo_item_references_commitment` -- relatedCommitmentId.
 - **Why**: Todo items can reference a commitment UUID (the shared agreement this task fulfills).
 - **What**: Create task item with `relatedCommitmentId: "some-uuid"`, validate.
 
-**Step 84.** Write test `test_todo_item_references_goal_document` -- relatedGoalId.
+**Step 59.** Write test `test_todo_item_references_goal_document` -- relatedGoalId.
 - **Why**: Todo items can reference a standalone Goal document UUID.
 - **What**: Create goal item with `relatedGoalId: "goal-doc-uuid"`, validate.
 
-**Step 85.** Write test `test_todo_item_references_conversation` -- relatedConversationThread.
+**Step 60.** Write test `test_todo_item_references_conversation` -- relatedConversationThread.
 - **Why**: Items can link to conversation threads.
 - **What**: Create item with `relatedConversationThread: "thread-uuid"`, validate.
 
-**Step 86.** Write test `test_todo_list_archive_refs` -- archived list references.
+**Step 61.** Write test `test_todo_list_archive_refs` -- archived list references.
 - **Why**: Active lists reference archived completed lists.
 - **What**: Create list with `jacsTodoArchiveRefs: ["completed-list-uuid"]`, validate.
 
-**Step 87.** Write test `test_todo_list_schema_validation_rejects_invalid` -- multiple negative cases.
+**Step 62.** Write test `test_todo_list_schema_validation_rejects_invalid` -- multiple negative cases.
 - **Why**: Comprehensive negative testing.
 - **What**: Test missing `jacsTodoName`, invalid `itemType` (not "goal" or "task"), missing item `description`, missing item `status`.
 
-**Step 88.** Write test `test_todo_item_missing_required_description` -- rejects item without description.
+**Step 63.** Write test `test_todo_item_missing_required_description` -- rejects item without description.
 - **Why**: Negative test for required item field.
 - **What**: Create item without `description`, validate, expect error.
 
-**Step 89.** Write test `test_todo_item_missing_required_status` -- rejects item without status.
+**Step 64.** Write test `test_todo_item_missing_required_status` -- rejects item without status.
 - **Why**: Negative test for required item field.
 - **What**: Create item without `status`, validate, expect error.
 
-**Step 90.** Write test `test_todo_item_missing_required_itemtype` -- rejects item without itemType.
+**Step 65.** Write test `test_todo_item_missing_required_itemtype` -- rejects item without itemType.
 - **Why**: Negative test for required item field.
 - **What**: Create item without `itemType`, validate, expect error.
 
-**Step 91.** Create schema file `jacs/schemas/todo/v1/todo.schema.json`.
+**Step 66.** Create schema file `jacs/schemas/todo/v1/todo.schema.json`.
 - **What**: JSON Schema Draft 7 with `allOf` header reference. Properties:
   - `jacsTodoName` (string, required) -- name of this todo list
   - `jacsTodoItems` (array of objects, required) -- the items, each referencing todoitem component
   - `jacsTodoArchiveRefs` (array of UUID strings, optional) -- references to archived completed lists
 
-**Step 92.** Create todo item component schema `jacs/schemas/components/todoitem/v1/todoitem.schema.json`.
+**Step 67.** Create todo item component schema `jacs/schemas/components/todoitem/v1/todoitem.schema.json`.
 - **Why**: The item structure is complex enough to be a reusable component (like action, service, etc.).
 - **What**: Defines the item object:
   - `itemType` (enum: "goal", "task", required)
@@ -1095,19 +1093,19 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
   - `assignedAgent` (UUID string, optional)
   - `tags` (array of strings, optional)
 
-**Step 93.** Add todo and todoitem schemas to `Cargo.toml` include list.
+**Step 68.** Add todo and todoitem schemas to `Cargo.toml` include list.
 
-**Step 94.** Add to `DEFAULT_SCHEMA_STRINGS` phf_map.
+**Step 69.** Add to `DEFAULT_SCHEMA_STRINGS` phf_map.
 
-**Step 95.** Add to `SCHEMA_SHORT_NAME` map.
+**Step 70.** Add to `SCHEMA_SHORT_NAME` map.
 
-**Step 96.** Add `todoschema: Validator` to `Schema` struct.
+**Step 71.** Add `todoschema: Validator` to `Schema` struct.
 
-**Step 97.** Compile todo validator in `Schema::new()`.
+**Step 72.** Compile todo validator in `Schema::new()`.
 
-**Step 98.** Add `validate_todo()` method to `Schema`.
+**Step 73.** Add `validate_todo()` method to `Schema`.
 
-**Step 99.** Create `src/schema/todo_crud.rs`:
+**Step 74.** Create `src/schema/todo_crud.rs`:
 - `create_minimal_todo_list(name: &str) -> Result<Value, String>` -- empty list
 - `add_todo_item(list: &mut Value, item_type: &str, description: &str, priority: Option<&str>) -> Result<(), String>`
 - `update_todo_item_status(list: &mut Value, index: usize, new_status: &str) -> Result<(), String>`
@@ -1119,441 +1117,441 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - `remove_completed_items(list: &mut Value) -> Result<Value, String>` -- returns removed items (for archiving)
 - Add `pub mod todo_crud;` to `src/schema/mod.rs`.
 
-### Phase 1D continued: Todo Integration Tests (Steps 100-105)
+### Phase 1C continued: Todo Integration Tests (Steps 75-80)
 
-**Step 100.** Write test `test_todo_list_signing_and_verification` -- full signing pipeline.
+**Step 75.** Write test `test_todo_list_signing_and_verification` -- full signing pipeline.
 - **Why**: Todo lists participate in standard JACS signing.
 - **What**: Create list, sign via agent, verify.
 
-**Step 101.** Write test `test_todo_list_update_and_resign` -- modify list, re-sign.
+**Step 76.** Write test `test_todo_list_update_and_resign` -- modify list, re-sign.
 - **Why**: The core lifecycle -- modify list, re-sign, verify new signature.
 - **What**: Create and sign list, add item, call update (bumps version + re-signs), verify.
 
-**Step 102.** Write test `test_todo_list_versioning_on_update` -- version changes tracked.
+**Step 77.** Write test `test_todo_list_versioning_on_update` -- version changes tracked.
 - **Why**: Re-signing must bump jacsVersion.
 - **What**: Create list, sign, note version, add item, re-sign, verify version changed.
 
-**Step 103.** Write test `test_todo_list_archive_workflow` -- archive completed items.
+**Step 78.** Write test `test_todo_list_archive_workflow` -- archive completed items.
 - **Why**: Lifecycle of archiving completed items.
 - **What**: Create list with completed/active items. Call `remove_completed_items()`. Create archive list. Add archive ref. Sign both.
 
-**Step 104.** Write test `test_multiple_todo_lists_per_agent` -- agent has multiple lists.
+**Step 79.** Write test `test_multiple_todo_lists_per_agent` -- agent has multiple lists.
 - **Why**: Agents can have multiple lists (work, personal, archived).
 - **What**: Create 3 lists with same agent, verify each has unique jacsId.
 
-**Step 105.** Run all todo tests + regression.
+**Step 80.** Run all todo tests + regression.
 
-### Phase 1E: Conversation Enhancements (Steps 106-112)
+### Phase 1D: Conversation Enhancements (Steps 81-87)
 
-**Step 106.** Write test `test_create_conversation_message` in `jacs/tests/conversation_tests.rs`.
+**Step 81.** Write test `test_create_conversation_message` in `jacs/tests/conversation_tests.rs`.
 - **Why**: Verify message creation with thread ID for conversation grouping.
 - **What**: Create message with `threadID`, sign, verify.
 
-**Step 107.** Write test `test_conversation_thread_ordering` -- previousId chain.
+**Step 82.** Write test `test_conversation_thread_ordering` -- previousId chain.
 - **Why**: Messages in a thread must be orderable.
 - **What**: Create 3 messages in same thread, each referencing previous via `jacsMessagePreviousId`. Verify chain.
 
-**Step 108.** Write test `test_conversation_produces_commitment` -- core workflow.
+**Step 83.** Write test `test_conversation_produces_commitment` -- core workflow.
 - **Why**: Negotiation thread leads to signed commitment.
 - **What**: Create message thread between 2 agents, create commitment referencing thread ID, sign agreement.
 
-**Step 109.** Write test `test_conversation_message_from_different_agents` -- multi-agent.
+**Step 84.** Write test `test_conversation_message_from_different_agents` -- multi-agent.
 - **Why**: Conversations are between multiple agents; each signs their own messages.
 - **What**: Agent A creates message 1, agent B creates message 2 (same thread). Verify each signature independently.
 
-**Step 110.** Review/enhance `message.schema.json` for conversation support.
+**Step 85.** Review/enhance `message.schema.json` for conversation support.
 - **What**: Add `jacsMessagePreviousId` (UUID string, optional) for message ordering within a thread.
 
-**Step 111.** Create `src/schema/conversation_crud.rs`:
+**Step 86.** Create `src/schema/conversation_crud.rs`:
 - `create_conversation_message(thread_id: &str, content: &str, previous_message_id: Option<&str>) -> Result<Value, String>`
 - `start_new_conversation(content: &str) -> Result<(Value, String), String>` -- returns (message, new_thread_id)
 - `get_thread_id(message: &Value) -> Result<String, String>`
 - Add `pub mod conversation_crud;` to `src/schema/mod.rs`.
 
-**Step 112.** Run all conversation tests + regression.
+**Step 87.** Run all conversation tests + regression.
 
-### Phase 1F: Cross-References, Integrity, and Full Workflow (Steps 113-120)
+### Phase 1E: Cross-References, Integrity, and Full Workflow (Steps 88-95)
 
-**Step 113.** Write test `test_todo_references_valid_commitment` -- todo item refs resolve.
+**Step 88.** Write test `test_todo_references_valid_commitment` -- todo item refs resolve.
 - **What**: Create commitment, create todo with reference, verify reference resolves.
 
-**Step 114.** Write test `test_commitment_references_valid_thread` -- commitment thread ref resolves.
+**Step 89.** Write test `test_commitment_references_valid_thread` -- commitment thread ref resolves.
 
-**Step 115.** Write test `test_update_references_valid_target` -- update target ID resolves.
+**Step 90.** Write test `test_update_references_valid_target` -- update target ID resolves.
 
-**Step 116.** Write test `test_cross_reference_integrity_check` -- utility function validates all UUID references.
+**Step 91.** Write test `test_cross_reference_integrity_check` -- utility function validates all UUID references.
 - **What**: `validate_references(doc, storage)` returns list of references with status (valid, missing, wrong_type).
 
-**Step 117.** Create `src/schema/reference_utils.rs`:
+**Step 92.** Create `src/schema/reference_utils.rs`:
 - `validate_references(doc: &Value, storage: &impl StorageDocumentTraits) -> Result<Vec<ReferenceValidation>, ...>`
 - Add `pub mod reference_utils;` to `src/schema/mod.rs`.
 
-**Step 118.** Write test `test_full_workflow_conversation_to_commitment_to_todo_with_updates` -- end-to-end.
+**Step 93.** Write test `test_full_workflow_conversation_to_commitment_to_todo_with_updates` -- end-to-end.
 - **Why**: Integration of all five document types.
 - **What**: Agent A and B converse (messages in thread) -> agree on commitment (signed agreement) -> commitment linked to shared goal -> Agent A adds task to todo referencing commitment -> Agent B creates "inform" update on commitment -> Agent A creates "delay" update -> verify all signatures and references.
 
-**Step 119.** **API ergonomics validation**: Write Python/Node binding function signatures for all five types.
+**Step 94.** **API ergonomics validation**: Write Python/Node binding function signatures for all five types.
 - **Why**: Validate Rust API translates cleanly.
 - **What**: In `jacspy/`, define: `create_goal()`, `create_commitment()`, `create_update()`, `create_todo_list()`, `start_conversation()`, etc.
 
-**Step 120.** Run full Phase 1 test suite: `cargo test`. All existing + new tests pass.
+**Step 95.** Run full Phase 1 test suite: `cargo test`. All existing + new tests pass.
 
 ---
 
-## Phase 2: Database Storage Backend (Steps 121-200)
+## Phase 2: Database Storage Backend (Steps 96-175)
 
-### Phase 2A: Generic Database Trait (Steps 121-140)
+### Phase 2A: Generic Database Trait (Steps 96-115)
 
-**Step 121.** Write test `test_database_document_traits_definition` -- trait is object-safe and can be used as `dyn DatabaseDocumentTraits`.
+**Step 96.** Write test `test_database_document_traits_definition` -- trait is object-safe and can be used as `dyn DatabaseDocumentTraits`.
 
-**Step 122.** Define `DatabaseDocumentTraits` trait in `src/storage/database_traits.rs`.
+**Step 97.** Define `DatabaseDocumentTraits` trait in `src/storage/database_traits.rs`.
 
-**Step 123.** Write test `test_database_document_traits_with_mock` -- mock implementation validates trait contract.
+**Step 98.** Write test `test_database_document_traits_with_mock` -- mock implementation validates trait contract.
 
-**Step 124.** Add `DatabaseError { operation: String, reason: String }` and `StorageError(String)` to `JacsError` enum.
+**Step 99.** Add `DatabaseError { operation: String, reason: String }` and `StorageError(String)` to `JacsError` enum.
 
-**Step 125.** Write test `test_jacs_error_send_sync` -- verify JacsError remains Send + Sync.
+**Step 100.** Write test `test_jacs_error_send_sync` -- verify JacsError remains Send + Sync.
 
-**Step 126.** Add `StorageType::Database` variant (cfg-gated).
+**Step 101.** Add `StorageType::Database` variant (cfg-gated).
 
-**Step 127.** Add sqlx optional dep in `Cargo.toml` under wasm32-excluded section.
+**Step 102.** Add sqlx optional dep in `Cargo.toml` under wasm32-excluded section.
 
-**Step 128.** Add pgvector optional dep, define feature flags: `database = ["dep:sqlx", "dep:tokio"]`, `database-vector = ["database", "dep:pgvector"]`.
+**Step 103.** Add pgvector optional dep, define feature flags: `database = ["dep:sqlx", "dep:tokio"]`, `database-vector = ["database", "dep:pgvector"]`.
 
-**Step 129.** Create `src/storage/database.rs` -- `DatabaseStorage` struct with `PgPool` + `tokio::runtime::Handle`.
+**Step 104.** Create `src/storage/database.rs` -- `DatabaseStorage` struct with `PgPool` + `tokio::runtime::Handle`.
 
-**Step 130.** Define SQL migration: `jacs_document` table (jacs_id UUID, jacs_version UUID, agent_id UUID, jacs_type TEXT, file_contents JSONB, timestamps, PK on jacs_id+jacs_version).
+**Step 105.** Define SQL migration: `jacs_document` table (jacs_id UUID, jacs_version UUID, agent_id UUID, jacs_type TEXT, file_contents JSONB, timestamps, PK on jacs_id+jacs_version).
 
-**Step 131.** Define vector migration (behind `database-vector`): vector column + HNSW index.
+**Step 106.** Define vector migration (behind `database-vector`): vector column + HNSW index.
 
-**Step 132.** Implement `StorageDocumentTraits` for `DatabaseStorage`: store, get, remove, list, exists, get_by_agent, get_versions, get_latest. Convert `sqlx::Error` to `JacsError::DatabaseError { operation, reason }` at boundary.
+**Step 107.** Implement `StorageDocumentTraits` for `DatabaseStorage`: store, get, remove, list, exists, get_by_agent, get_versions, get_latest. Convert `sqlx::Error` to `JacsError::DatabaseError { operation, reason }` at boundary.
 
-**Step 133.** Implement `DatabaseDocumentTraits` for `DatabaseStorage`: query_by_type, query_by_field, search_text, count_by_type, query_updates_for_target, query_goals_by_status, query_commitments_for_goal, query_overdue_commitments.
+**Step 108.** Implement `DatabaseDocumentTraits` for `DatabaseStorage`: query_by_type, query_by_field, search_text, count_by_type, query_updates_for_target, query_goals_by_status, query_commitments_for_goal, query_overdue_commitments.
 
-**Step 134.** Add `pub mod database;` and `pub mod database_traits;` to `src/storage/mod.rs` (cfg-gated).
+**Step 109.** Add `pub mod database;` and `pub mod database_traits;` to `src/storage/mod.rs` (cfg-gated).
 
-**Step 135.** Write integration test `test_database_storage_new_connection` (feature-gated + testcontainers).
+**Step 110.** Write integration test `test_database_storage_new_connection` (feature-gated + testcontainers).
 
-**Step 136.** Write test `test_database_storage_migration`.
+**Step 111.** Write test `test_database_storage_migration`.
 
-**Step 137.** Write test `test_database_store_and_retrieve`.
+**Step 112.** Write test `test_database_store_and_retrieve`.
 
-**Step 138.** Write test `test_database_list_by_type`.
+**Step 113.** Write test `test_database_list_by_type`.
 
-**Step 139.** Write test `test_database_query_updates_for_target` -- retrieve update chain from DB.
+**Step 114.** Write test `test_database_query_updates_for_target` -- retrieve update chain from DB.
 
-**Step 140.** Write test `test_database_query_goals_by_status`.
+**Step 115.** Write test `test_database_query_goals_by_status`.
 
-### Phase 2B: Vector Search (Steps 141-155)
+### Phase 2B: Vector Search (Steps 116-130)
 
-**Step 141.** Write test `test_database_vector_storage`.
+**Step 116.** Write test `test_database_vector_storage`.
 
-**Step 142.** Write test `test_database_vector_search` (cosine similarity).
+**Step 117.** Write test `test_database_vector_search` (cosine similarity).
 
-**Step 143.** Add vector storage/search methods to `DatabaseStorage`.
+**Step 118.** Add vector storage/search methods to `DatabaseStorage`.
 
-**Step 144.** Write test `test_vector_search_by_type`.
+**Step 119.** Write test `test_vector_search_by_type`.
 
-**Step 145.** Write test `test_vector_search_ranking`.
+**Step 120.** Write test `test_vector_search_ranking`.
 
-**Step 146.** Add `extract_embedding_vector()` utility.
+**Step 121.** Add `extract_embedding_vector()` utility.
 
-**Step 147.** Write test `test_extract_embedding_from_document`.
+**Step 122.** Write test `test_extract_embedding_from_document`.
 
-**Step 148.** Auto-extract embeddings on store.
+**Step 123.** Auto-extract embeddings on store.
 
-**Step 149.** Write test `test_auto_vector_extraction_on_store`.
+**Step 124.** Write test `test_auto_vector_extraction_on_store`.
 
-**Step 150.** Add JSONB query methods: `query_documents_jsonb()`.
+**Step 125.** Add JSONB query methods: `query_documents_jsonb()`.
 
-**Step 151.** Write test `test_jsonb_query_goal_status`.
+**Step 126.** Write test `test_jsonb_query_goal_status`.
 
-**Step 152.** Write test `test_jsonb_query_commitments_by_date_range`.
+**Step 127.** Write test `test_jsonb_query_commitments_by_date_range`.
 
-**Step 153.** Add pagination (offset/limit).
+**Step 128.** Add pagination (offset/limit).
 
-**Step 154.** Write test `test_paginated_query`.
+**Step 129.** Write test `test_paginated_query`.
 
-**Step 155.** Run full vector search integration suite.
+**Step 130.** Run full vector search integration suite.
 
-### Phase 2C: MultiStorage Integration (Steps 156-175)
+### Phase 2C: MultiStorage Integration (Steps 131-150)
 
-**Step 156.** Write test `test_multi_storage_with_database`.
+**Step 131.** Write test `test_multi_storage_with_database`.
 
-**Step 157.** Modify `MultiStorage::_new()` for `StorageType::Database`.
+**Step 132.** Modify `MultiStorage::_new()` for `StorageType::Database`.
 
-**Step 158.** Add `database: Option<Arc<DatabaseStorage>>` to `MultiStorage` (cfg-gated).
+**Step 133.** Add `database: Option<Arc<DatabaseStorage>>` to `MultiStorage` (cfg-gated).
 
-**Step 159.** Create `StorageBackend` enum: `ObjectStore(MultiStorage) | Database(Arc<DatabaseStorage>)`.
+**Step 134.** Create `StorageBackend` enum: `ObjectStore(MultiStorage) | Database(Arc<DatabaseStorage>)`.
 
-**Step 160.** Route document operations through `StorageDocumentTraits` for database backend.
+**Step 135.** Route document operations through `StorageDocumentTraits` for database backend.
 
-**Step 161.** Write test `test_database_backed_document_create`.
+**Step 136.** Write test `test_database_backed_document_create`.
 
-**Step 162.** Write test `test_database_backed_document_update`.
+**Step 137.** Write test `test_database_backed_document_update`.
 
-**Step 163.** Write test `test_database_backed_document_verify` -- signature survives JSONB round-trip.
+**Step 138.** Write test `test_database_backed_document_verify` -- signature survives JSONB round-trip.
 
-**Step 164.** Implement `CachedMultiStorage` support for database.
+**Step 139.** Implement `CachedMultiStorage` support for database.
 
-**Step 165.** Write test `test_cached_database_storage`.
+**Step 140.** Write test `test_cached_database_storage`.
 
-**Step 166.** Add `JACS_DATABASE_URL` to Config struct + env var loading.
+**Step 141.** Add `JACS_DATABASE_URL` to Config struct + env var loading.
 
-**Step 167.** Update `jacs.config.schema.json`.
+**Step 142.** Update `jacs.config.schema.json`.
 
-**Step 168.** Write test `test_config_database_url`.
+**Step 143.** Write test `test_config_database_url`.
 
-**Step 169.** Write test `test_config_database_url_env_override`.
+**Step 144.** Write test `test_config_database_url_env_override`.
 
-**Step 170.** Add pool config: `JACS_DATABASE_MAX_CONNECTIONS`, `JACS_DATABASE_MIN_CONNECTIONS`, `JACS_DATABASE_CONNECT_TIMEOUT_SECS`.
+**Step 145.** Add pool config: `JACS_DATABASE_MAX_CONNECTIONS`, `JACS_DATABASE_MIN_CONNECTIONS`, `JACS_DATABASE_CONNECT_TIMEOUT_SECS`.
 
-**Step 171.** Write test `test_database_pool_configuration`.
+**Step 146.** Write test `test_database_pool_configuration`.
 
-**Step 172.** Write test `test_optimistic_locking_on_concurrent_update` -- two agents update same doc, one fails.
+**Step 147.** Write test `test_optimistic_locking_on_concurrent_update` -- two agents update same doc, one fails.
 
-**Step 173.** Storage migration tooling: `export_to_filesystem()`, `import_from_filesystem()`.
+**Step 148.** Storage migration tooling: `export_to_filesystem()`, `import_from_filesystem()`.
 
-**Step 174.** Write test `test_documents_verifiable_after_migration`.
+**Step 149.** Write test `test_documents_verifiable_after_migration`.
 
-**Step 175.** Add CI: `cargo check --target wasm32-unknown-unknown`.
+**Step 150.** Add CI: `cargo check --target wasm32-unknown-unknown`.
 
-### Phase 2D: Domain Queries & Index Generator (Steps 176-200)
+### Phase 2D: Domain Queries & Index Generator (Steps 151-175)
 
-**Step 176-179.** Tests: query goals by status, commitments for goal, updates for target, overdue commitments.
+**Step 151-154.** Tests: query goals by status, commitments for goal, updates for target, overdue commitments.
 
-**Step 180.** Domain-specific query methods: `query_goals_by_status()`, `query_commitments_for_goal()`, `query_updates_for_target()`, `query_overdue_commitments()`, `query_todos_for_agent()`.
+**Step 155.** Domain-specific query methods: `query_goals_by_status()`, `query_commitments_for_goal()`, `query_updates_for_target()`, `query_overdue_commitments()`, `query_todos_for_agent()`.
 
-**Step 181.** Write test `test_semantic_goal_search` (vector search).
+**Step 156.** Write test `test_semantic_goal_search` (vector search).
 
-**Step 182.** Add full-text search (tsvector + GIN index).
+**Step 157.** Add full-text search (tsvector + GIN index).
 
-**Step 183-184.** Tests: fulltext search, combined vector + text search.
+**Step 158-159.** Tests: fulltext search, combined vector + text search.
 
-**Step 185.** Aggregation queries: `count_documents_by_type()`, `count_goals_by_status()`, `count_commitments_by_status()`, `count_updates_by_action()`.
+**Step 160.** Aggregation queries: `count_documents_by_type()`, `count_goals_by_status()`, `count_commitments_by_status()`, `count_updates_by_action()`.
 
-**Step 186.** Write test `test_aggregation_queries`.
+**Step 161.** Write test `test_aggregation_queries`.
 
-**Step 187.** Transaction support: `create_goal_with_commitments()`.
+**Step 162.** Transaction support: `create_goal_with_commitments()`.
 
-**Step 188.** Write test `test_transactional_goal_creation`.
+**Step 163.** Write test `test_transactional_goal_creation`.
 
-**Step 189.** Write test `test_suggest_indexes_for_all_types` -- index generator for goal, todo, commitment, update.
+**Step 164.** Write test `test_suggest_indexes_for_all_types` -- index generator for goal, todo, commitment, update.
 
-**Step 190.** Create `src/storage/index_advisor.rs`:
+**Step 165.** Create `src/storage/index_advisor.rs`:
 - `pub struct IndexRecommendation { table, column_expr, index_type, condition, sql }`
 - `pub fn suggest_indexes(schema_types: &[&str], backend: &str) -> Vec<IndexRecommendation>`
 
-**Step 191.** Implement Postgres-specific index generation (GIN, HNSW, partial).
+**Step 166.** Implement Postgres-specific index generation (GIN, HNSW, partial).
 
-**Step 192.** Implement generic recommendations for non-Postgres backends.
+**Step 167.** Implement generic recommendations for non-Postgres backends.
 
-**Step 193.** Add CLI subcommand: `jacs db suggest-indexes --backend postgres --types goal,todo,commitment,update`.
+**Step 168.** Add CLI subcommand: `jacs db suggest-indexes --backend postgres --types goal,todo,commitment,update`.
 
-**Step 194.** Write CLI test for index suggestion.
+**Step 169.** Write CLI test for index suggestion.
 
-**Step 195-196.** CLI: `jacs db migrate`, `jacs db status`.
+**Step 170-171.** CLI: `jacs db migrate`, `jacs db status`.
 
-**Step 197-198.** CLI: `jacs db export`, `jacs db import` with verification.
+**Step 172-173.** CLI: `jacs db export`, `jacs db import` with verification.
 
-**Step 199.** Write test `test_cli_full_database_workflow`.
+**Step 174.** Write test `test_cli_full_database_workflow`.
 
-**Step 200.** Run full Phase 2 suite + WASM check.
-
----
-
-## Phase 3: Runtime Configuration (Steps 201-250)
-
-### Phase 3A: JacsConfigProvider Trait (Steps 201-220)
-
-**Step 201.** Write test `test_jacs_config_provider_trait` (mock).
-
-**Step 202.** Write test `test_config_provider_override_chain` (defaults -> config -> env -> provider).
-
-**Step 203.** Define `JacsConfigProvider` trait in `src/config/mod.rs` with `get_config()`, `get_storage_type()`, `get_database_url()`, `get_data_directory()`, `get_key_directory()`, `get_observability_config()`.
-
-**Step 204.** Default impl of `JacsConfigProvider` for `Config`.
-
-**Step 205.** Write test `test_default_config_provider`.
-
-**Step 206.** Create `EnvConfigProvider` impl.
-
-**Step 207.** Write test `test_env_config_provider`.
-
-**Step 208.** Add `config_provider: Option<Arc<dyn JacsConfigProvider>>` to `Agent`.
-
-**Step 209.** Add `config_provider()` to `AgentBuilder` (accepts `Arc<dyn JacsConfigProvider>`).
-
-**Step 210.** Modify `AgentBuilder::build()` to use provider if set, fallback to existing config.
-
-**Step 211.** Write test `test_agent_builder_with_config_provider`.
-
-**Step 212.** Add `jacs_database_url: Option<String>` to `Config`.
-
-**Step 213.** Add `database_url` to `ConfigBuilder`.
-
-**Step 214.** Add `JACS_DATABASE_URL` to `apply_env_overrides()` and `check_env_vars()`.
-
-**Step 215.** Update `Config::merge()` and `Config::Display` (redacted URL).
-
-**Step 216.** Write test `test_config_database_url_12factor`.
-
-**Step 217.** Create `src/config/runtime.rs`: `RuntimeConfig` with `RwLock<Config>`, mutation methods. Handle lock poisoning with proper errors.
-
-**Step 218.** Write test `test_runtime_config_mutation`.
-
-**Step 219-220.** Backward compatibility tests: old configs still load, missing fields default correctly.
-
-### Phase 3B: HAI Integration Pattern (Steps 221-235)
-
-**Step 221.** Write test `test_hai_config_provider` simulating HAI's pattern.
-
-**Step 222.** Create `HaiConfigProvider` example struct (documentation/example).
-
-**Step 223.** Write test replicating `hai_signing::init_from_env()` pattern.
-
-**Step 224.** Add `init_agent_from_provider()` convenience function.
-
-**Step 225.** Write test `test_init_agent_from_provider`.
-
-**Step 226.** Add `init_agent_from_config()` convenience function.
-
-**Step 227.** Write test `test_init_agent_from_config`.
-
-**Step 228.** Document security constraint: keys MUST load from secure locations only.
-
-**Step 229.** Add validation in `AgentBuilder::build()`: if storage=Database, keys still from filesystem.
-
-**Step 230.** Write test `test_database_storage_keys_still_from_filesystem`.
-
-**Step 231.** Add `with_storage()` to `AgentBuilder`.
-
-**Step 232.** Write test `test_agent_builder_with_storage`.
-
-**Step 233.** Add `with_storage_and_database()` (cfg-gated).
-
-**Step 234.** Write test `test_agent_builder_with_database`.
-
-**Step 235.** Run all tests.
-
-### Phase 3C: Observability Runtime Config (Steps 236-250)
-
-**Step 236.** Write test `test_observability_runtime_reconfiguration`.
-
-**Step 237.** Add `reconfigure_observability()` in `src/observability/mod.rs`.
-
-**Step 238.** Write test `test_observability_toggle_at_runtime`.
-
-**Step 239.** Add `ObservabilityConfig` to `JacsConfigProvider` and `RuntimeConfig`.
-
-**Step 240.** Write test `test_runtime_config_observability`.
-
-**Step 241.** Add `JACS_OBSERVABILITY_CONFIG` env var.
-
-**Step 242.** Write test `test_observability_config_from_env`.
-
-**Step 243.** Config validation for db + observability combinations.
-
-**Step 244.** Write test `test_config_validation_complete`.
-
-**Step 245.** Update `jacs.config.schema.json` with all new fields.
-
-**Step 246.** Write test `test_config_schema_validation_with_new_fields`.
-
-**Step 247-248.** Backward compatibility tests (old configs, missing fields, env overrides).
-
-**Step 249.** Add `JACS_MIGRATION_VERSION` tracking.
-
-**Step 250.** Full regression suite.
+**Step 175.** Run full Phase 2 suite + WASM check.
 
 ---
 
-## Phase 4: MCP & Bindings Integration (Steps 251-290)
+## Phase 3: Runtime Configuration (Steps 176-225)
 
-### Phase 4A: MCP Server Tools (Steps 251-270)
+### Phase 3A: JacsConfigProvider Trait (Steps 176-195)
 
-**Step 251.** Add MCP tool: `create_goal` -- creates and signs a goal document.
+**Step 176.** Write test `test_jacs_config_provider_trait` (mock).
 
-**Step 252.** Add MCP tool: `update_goal` -- updates goal status, re-signs.
+**Step 177.** Write test `test_config_provider_override_chain` (defaults -> config -> env -> provider).
 
-**Step 253.** Add MCP tool: `sign_goal` -- agent signs shared goal agreement.
+**Step 178.** Define `JacsConfigProvider` trait in `src/config/mod.rs` with `get_config()`, `get_storage_type()`, `get_database_url()`, `get_data_directory()`, `get_key_directory()`, `get_observability_config()`.
 
-**Step 254.** Add MCP tool: `create_todo_list` -- creates and signs a new todo list.
+**Step 179.** Default impl of `JacsConfigProvider` for `Config`.
 
-**Step 255.** Add MCP tool: `add_todo_item` -- adds item to list, re-signs.
+**Step 180.** Write test `test_default_config_provider`.
 
-**Step 256.** Add MCP tool: `complete_todo_item` -- marks complete, re-signs.
+**Step 181.** Create `EnvConfigProvider` impl.
 
-**Step 257.** Add MCP tool: `get_todo_list` -- retrieves a todo list by ID.
+**Step 182.** Write test `test_env_config_provider`.
 
-**Step 258.** Add MCP tool: `archive_completed_items` -- moves completed items to archive list.
+**Step 183.** Add `config_provider: Option<Arc<dyn JacsConfigProvider>>` to `Agent`.
 
-**Step 259.** Add MCP tool: `create_commitment` -- creates a commitment document.
+**Step 184.** Add `config_provider()` to `AgentBuilder` (accepts `Arc<dyn JacsConfigProvider>`).
 
-**Step 260.** Add MCP tool: `sign_commitment` -- agent signs agreement.
+**Step 185.** Modify `AgentBuilder::build()` to use provider if set, fallback to existing config.
 
-**Step 261.** Add MCP tool: `verify_commitment` -- verifies all signatures.
+**Step 186.** Write test `test_agent_builder_with_config_provider`.
 
-**Step 262.** Add MCP tool: `list_commitments` -- list with optional status filter.
+**Step 187.** Add `jacs_database_url: Option<String>` to `Config`.
 
-**Step 263.** Add MCP tool: `create_update` -- creates a semantic update document.
+**Step 188.** Add `database_url` to `ConfigBuilder`.
 
-**Step 264.** Add MCP tool: `get_updates_for_target` -- all updates targeting a document.
+**Step 189.** Add `JACS_DATABASE_URL` to `apply_env_overrides()` and `check_env_vars()`.
 
-**Step 265.** Add MCP tool: `get_update_chain` -- ordered update chain for a target.
+**Step 190.** Update `Config::merge()` and `Config::Display` (redacted URL).
 
-**Step 266.** Add MCP tool: `send_message` -- signed message in conversation thread.
+**Step 191.** Write test `test_config_database_url_12factor`.
 
-**Step 267.** Add MCP tool: `get_conversation` -- all messages in a thread.
+**Step 192.** Create `src/config/runtime.rs`: `RuntimeConfig` with `RwLock<Config>`, mutation methods. Handle lock poisoning with proper errors.
 
-**Step 268.** Add MCP tool: `find_overdue_commitments` -- query for past-deadline commitments.
+**Step 193.** Write test `test_runtime_config_mutation`.
 
-**Step 269.** Add MCP tool: `search_documents` -- text/semantic search.
+**Step 194-195.** Backward compatibility tests: old configs still load, missing fields default correctly.
 
-**Step 270.** Write MCP integration tests for all tools.
+### Phase 3B: HAI Integration Pattern (Steps 196-210)
 
-### Phase 4B: Language Bindings (Steps 271-285)
+**Step 196.** Write test `test_hai_config_provider` simulating HAI's pattern.
 
-**Step 271-275.** Python bindings (`jacspy/`): implement all goal/todo/commitment/update/conversation functions + MCP server examples.
+**Step 197.** Create `HaiConfigProvider` example struct (documentation/example).
 
-**Step 276-280.** Node bindings (`jacsnpm/`): implement all functions + MCP server examples.
+**Step 198.** Write test replicating `hai_signing::init_from_env()` pattern.
 
-**Step 281-283.** Go bindings (`jacsgo/`): implement core functions.
+**Step 199.** Add `init_agent_from_provider()` convenience function.
 
-**Step 284-285.** Run all binding test suites.
+**Step 200.** Write test `test_init_agent_from_provider`.
 
-### Phase 4C: CLI Integration (Steps 286-290)
+**Step 201.** Add `init_agent_from_config()` convenience function.
 
-**Step 286.** CLI: `jacs goal create/list/update/sign`
-**Step 287.** CLI: `jacs todo create/list/complete/archive`
-**Step 288.** CLI: `jacs commitment create/list/sign/verify/dispute`
-**Step 289.** CLI: `jacs update create/list/chain`
-**Step 290.** CLI: `jacs conversation start/reply/list`
+**Step 202.** Write test `test_init_agent_from_config`.
+
+**Step 203.** Document security constraint: keys MUST load from secure locations only.
+
+**Step 204.** Add validation in `AgentBuilder::build()`: if storage=Database, keys still from filesystem.
+
+**Step 205.** Write test `test_database_storage_keys_still_from_filesystem`.
+
+**Step 206.** Add `with_storage()` to `AgentBuilder`.
+
+**Step 207.** Write test `test_agent_builder_with_storage`.
+
+**Step 208.** Add `with_storage_and_database()` (cfg-gated).
+
+**Step 209.** Write test `test_agent_builder_with_database`.
+
+**Step 210.** Run all tests.
+
+### Phase 3C: Observability Runtime Config (Steps 211-225)
+
+**Step 211.** Write test `test_observability_runtime_reconfiguration`.
+
+**Step 212.** Add `reconfigure_observability()` in `src/observability/mod.rs`.
+
+**Step 213.** Write test `test_observability_toggle_at_runtime`.
+
+**Step 214.** Add `ObservabilityConfig` to `JacsConfigProvider` and `RuntimeConfig`.
+
+**Step 215.** Write test `test_runtime_config_observability`.
+
+**Step 216.** Add `JACS_OBSERVABILITY_CONFIG` env var.
+
+**Step 217.** Write test `test_observability_config_from_env`.
+
+**Step 218.** Config validation for db + observability combinations.
+
+**Step 219.** Write test `test_config_validation_complete`.
+
+**Step 220.** Update `jacs.config.schema.json` with all new fields.
+
+**Step 221.** Write test `test_config_schema_validation_with_new_fields`.
+
+**Step 222-223.** Backward compatibility tests (old configs, missing fields, env overrides).
+
+**Step 224.** Add `JACS_MIGRATION_VERSION` tracking.
+
+**Step 225.** Full regression suite.
 
 ---
 
-## Phase 5: End-to-End, Docs & Polish (Steps 291-310)
+## Phase 4: MCP & Bindings Integration (Steps 226-265)
 
-**Step 291-295.** End-to-end tests:
+### Phase 4A: MCP Server Tools (Steps 226-245)
+
+**Step 226.** Add MCP tool: `create_goal` -- creates and signs a goal document.
+
+**Step 227.** Add MCP tool: `update_goal` -- updates goal status, re-signs.
+
+**Step 228.** Add MCP tool: `sign_goal` -- agent signs shared goal agreement.
+
+**Step 229.** Add MCP tool: `create_todo_list` -- creates and signs a new todo list.
+
+**Step 230.** Add MCP tool: `add_todo_item` -- adds item to list, re-signs.
+
+**Step 231.** Add MCP tool: `complete_todo_item` -- marks complete, re-signs.
+
+**Step 232.** Add MCP tool: `get_todo_list` -- retrieves a todo list by ID.
+
+**Step 233.** Add MCP tool: `archive_completed_items` -- moves completed items to archive list.
+
+**Step 234.** Add MCP tool: `create_commitment` -- creates a commitment document.
+
+**Step 235.** Add MCP tool: `sign_commitment` -- agent signs agreement.
+
+**Step 236.** Add MCP tool: `verify_commitment` -- verifies all signatures.
+
+**Step 237.** Add MCP tool: `list_commitments` -- list with optional status filter.
+
+**Step 238.** Add MCP tool: `create_update` -- creates a semantic update document.
+
+**Step 239.** Add MCP tool: `get_updates_for_target` -- all updates targeting a document.
+
+**Step 240.** Add MCP tool: `get_update_chain` -- ordered update chain for a target.
+
+**Step 241.** Add MCP tool: `send_message` -- signed message in conversation thread.
+
+**Step 242.** Add MCP tool: `get_conversation` -- all messages in a thread.
+
+**Step 243.** Add MCP tool: `find_overdue_commitments` -- query for past-deadline commitments.
+
+**Step 244.** Add MCP tool: `search_documents` -- text/semantic search.
+
+**Step 245.** Write MCP integration tests for all tools.
+
+### Phase 4B: Language Bindings (Steps 246-260)
+
+**Step 246-250.** Python bindings (`jacspy/`): implement all goal/todo/commitment/update/conversation functions + MCP server examples.
+
+**Step 251-255.** Node bindings (`jacsnpm/`): implement all functions + MCP server examples.
+
+**Step 256-258.** Go bindings (`jacsgo/`): implement core functions.
+
+**Step 259-260.** Run all binding test suites.
+
+### Phase 4C: CLI Integration (Steps 261-265)
+
+**Step 261.** CLI: `jacs goal create/list/update/sign`
+**Step 262.** CLI: `jacs todo create/list/complete/archive`
+**Step 263.** CLI: `jacs commitment create/list/sign/verify/dispute`
+**Step 264.** CLI: `jacs update create/list/chain`
+**Step 265.** CLI: `jacs conversation start/reply/list`
+
+---
+
+## Phase 5: End-to-End, Docs & Polish (Steps 266-285)
+
+**Step 266-270.** End-to-end tests:
 - Full hierarchy: goal -> commitments -> updates -> todo with signing
 - Database round-trips for all 5 document types
 - Mixed storage: fs for keys, db for documents
 - Concurrent agents updating same commitment
 - Storage migration: filesystem <-> database with signature verification
 
-**Step 296-300.** Rustdoc comments for all new public types/functions.
+**Step 271-275.** Rustdoc comments for all new public types/functions.
 
-**Step 301-303.** Documentation: `todo-tracking.md`, `database-storage.md`, `runtime-configuration.md`, updated README, CHANGELOG.
+**Step 276-278.** Documentation: `todo-tracking.md`, `database-storage.md`, `runtime-configuration.md`, updated README, CHANGELOG.
 
-**Step 304-305.** JSON examples, config examples, `cargo doc` verification.
+**Step 279-280.** JSON examples, config examples, `cargo doc` verification.
 
-**Step 306-307.** Benchmarks: goal creation/signing, db round-trip, vector search.
+**Step 281-282.** Benchmarks: goal creation/signing, db round-trip, vector search.
 
-**Step 308.** `cargo clippy --all-features -- -D warnings` + `cargo fmt`.
+**Step 283.** `cargo clippy --all-features -- -D warnings` + `cargo fmt`.
 
-**Step 309.** WASM check + fuzz tests for all schema validation.
+**Step 284.** WASM check + fuzz tests for all schema validation.
 
-**Step 310.** Full test: `cargo test --all-features` AND `cargo test` (without database). Version bump.
+**Step 285.** Full test: `cargo test --all-features` AND `cargo test` (without database). Version bump.
 
 ---
 
