@@ -10,10 +10,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use walkdir::WalkDir;
 
-/// off by default
-/// /// This environment variable determine if files are saved to the filesystem at all
-/// if you are building something that passing data through to a database, you'd set this flag to 0 or False
-const _JACS_USE_SECURITY: &str = "JACS_USE_SECURITY";
+/// Controls filesystem quarantine of executable files found in the data directory.
+/// Off by default. Set `JACS_ENABLE_FILESYSTEM_QUARANTINE=true` to enable.
+/// Legacy env var `JACS_USE_SECURITY` is also supported but deprecated.
+///
+/// NOTE: This does NOT affect cryptographic signing or verification.
+const _JACS_ENABLE_FILESYSTEM_QUARANTINE: &str = "JACS_ENABLE_FILESYSTEM_QUARANTINE";
 
 pub trait SecurityTraits {
     fn use_security(&self) -> bool;
@@ -30,7 +32,10 @@ impl SecurityTraits for Agent {
     /// /// it will move all exuctable documents in JACS_DATA_DIRECTORY a quarantine directory
     fn check_data_directory(&self) -> Result<(), Box<dyn Error>> {
         if !self.use_security() {
-            info!("JACS_USE_SECURITY security is off");
+            info!(
+                "Filesystem quarantine is disabled. Set JACS_ENABLE_FILESYSTEM_QUARANTINE=true to enable. \
+                Note: this does NOT affect cryptographic signing or verification."
+            );
             return Ok(());
         }
         if !self.use_fs_security() {

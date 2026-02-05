@@ -1,5 +1,6 @@
 use crate::error::JacsError;
 use std::error::Error;
+use tracing::warn;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -196,6 +197,14 @@ impl KeyStore for FsEncryptedStore {
             })?;
             return Ok(decrypted.as_slice().to_vec());
         }
+
+        warn!(
+            "SECURITY WARNING: Loaded unencrypted private key from '{}'. \
+            Private keys should be encrypted for production use. \
+            Set JACS_PRIVATE_KEY_PASSWORD to encrypt your private key.",
+            priv_path
+        );
+
         Ok(bytes)
     }
 

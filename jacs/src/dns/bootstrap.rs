@@ -371,6 +371,14 @@ pub fn verify_hai_registration_sync(
     agent_id: &str,
     public_key_hash: &str,
 ) -> Result<HaiRegistration, String> {
+    // Validate agent_id is a valid UUID to prevent URL path traversal
+    uuid::Uuid::parse_str(agent_id).map_err(|e| {
+        format!(
+            "Invalid agent_id '{}' for HAI registration: must be a valid UUID. {}",
+            agent_id, e
+        )
+    })?;
+
     // HAI.ai API endpoint for agent verification
     let api_url = std::env::var("HAI_API_URL")
         .unwrap_or_else(|_| "https://api.hai.ai".to_string());

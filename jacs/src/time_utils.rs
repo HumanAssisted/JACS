@@ -10,10 +10,10 @@ use chrono::{DateTime, Utc};
 /// Signatures dated more than this many seconds in the future are rejected.
 pub const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
 
-/// Optional maximum signature age (in seconds).
-/// Set to 0 to disable expiration checking.
-/// Default: 0 (no expiration - signatures don't expire)
-pub const MAX_SIGNATURE_AGE_SECONDS: i64 = 0;
+/// Default maximum signature age (in seconds).
+/// Default: 90 days (7,776,000 seconds).
+/// Set `JACS_MAX_SIGNATURE_AGE_SECONDS=0` to disable expiration checking.
+pub const MAX_SIGNATURE_AGE_SECONDS: i64 = 7_776_000; // 90 days
 
 /// Returns the current UTC timestamp in RFC 3339 format.
 ///
@@ -173,6 +173,18 @@ pub fn validate_timestamp_not_expired(
     Ok(())
 }
 
+/// Returns the effective maximum signature age in seconds.
+///
+/// Checks `JACS_MAX_SIGNATURE_AGE_SECONDS` environment variable first,
+/// falls back to the compiled-in default (90 days).
+/// Set to 0 to disable expiration checking.
+pub fn max_signature_age() -> i64 {
+    std::env::var("JACS_MAX_SIGNATURE_AGE_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(MAX_SIGNATURE_AGE_SECONDS)
+}
+
 /// Validates a signature timestamp.
 ///
 /// This combines both future and expiration checks.
@@ -190,7 +202,8 @@ pub fn validate_timestamp_not_expired(
 /// 1. The timestamp must be a valid RFC 3339 / ISO 8601 format
 /// 2. The timestamp must not be more than `MAX_FUTURE_TIMESTAMP_SECONDS` in the future
 ///    (allows for small clock drift between systems)
-/// 3. If `MAX_SIGNATURE_AGE_SECONDS` > 0, the timestamp must not be older than that
+/// 3. If signature age limit > 0 (default 90 days), the timestamp must not be older than that.
+///    Override with `JACS_MAX_SIGNATURE_AGE_SECONDS` env var. Set to 0 to disable.
 pub fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError> {
     // Parse the timestamp (validates format)
     let signature_time = parse_rfc3339(timestamp_str).map_err(|_| {
@@ -214,14 +227,16 @@ pub fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError
     }
 
     // Check for expired signatures (if expiration is enabled)
-    if MAX_SIGNATURE_AGE_SECONDS > 0 {
-        let expiry_limit = now - chrono::Duration::seconds(MAX_SIGNATURE_AGE_SECONDS);
+    let age_limit = max_signature_age();
+    if age_limit > 0 {
+        let expiry_limit = now - chrono::Duration::seconds(age_limit);
         if signature_time < expiry_limit {
             return Err(JacsError::SignatureVerificationFailed {
                 reason: format!(
-                    "Signature timestamp {} is too old (max age {} seconds). \
-                    The agent document may need to be re-signed.",
-                    timestamp_str, MAX_SIGNATURE_AGE_SECONDS
+                    "Signature timestamp {} is too old (max age {} seconds / {} days). \
+                    The agent document may need to be re-signed. \
+                    Set JACS_MAX_SIGNATURE_AGE_SECONDS=0 to disable expiration.",
+                    timestamp_str, age_limit, age_limit / 86400
                 ),
             });
         }
