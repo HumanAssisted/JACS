@@ -8,6 +8,29 @@ JACS maintains backward compatibility for document verification:
 - Documents signed with older versions can be verified with newer versions
 - Older JACS versions cannot verify documents using newer cryptographic algorithms
 
+## Migrating from 0.5.1 to 0.5.2
+
+### Migration Notes
+
+**PBKDF2 Iteration Count**: New key encryptions use 600,000 iterations (up from 100,000). Existing encrypted keys are decrypted automatically via fallback. To upgrade existing keys, re-encrypt them:
+
+```bash
+# Re-generate keys to use the new iteration count
+jacs keygen
+```
+
+### Deprecated Environment Variables
+
+- `JACS_USE_SECURITY` is now `JACS_ENABLE_FILESYSTEM_QUARANTINE`. The old name still works with a deprecation warning.
+
+### New Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JACS_MAX_SIGNATURE_AGE_SECONDS` | `0` (no expiration) | Maximum age of valid signatures. Set to a positive value to enable (e.g., `7776000` for 90 days). |
+| `JACS_REQUIRE_EXPLICIT_ALGORITHM` | `false` | When `true`, reject verification if `signingAlgorithm` is missing. |
+| `JACS_ENABLE_FILESYSTEM_QUARANTINE` | `false` | Enable filesystem quarantine (replaces `JACS_USE_SECURITY`). |
+
 ## Migrating from 0.2.x to 0.3.x
 
 ### Configuration Changes

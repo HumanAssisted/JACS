@@ -357,12 +357,13 @@ fn test_is_trusted_returns_false_for_unknown() {
 fn test_untrust_nonexistent_agent_fails() {
     let _temp = setup_trust_test_env();
 
-    let result = trust::untrust_agent("nonexistent-agent-id");
+    let fake_id = "00000000-0000-0000-0000-000000000000:00000000-0000-0000-0000-000000000001";
+    let result = trust::untrust_agent(fake_id);
     assert!(result.is_err(), "Untrusting non-existent agent should fail");
 
     match result {
         Err(jacs::JacsError::AgentNotTrusted { agent_id }) => {
-            assert_eq!(agent_id, "nonexistent-agent-id");
+            assert_eq!(agent_id, fake_id);
         }
         _ => panic!("Expected AgentNotTrusted error"),
     }

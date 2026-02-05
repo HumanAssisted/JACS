@@ -2,9 +2,9 @@ use crate::crypt::constants::{
     AES_256_KEY_SIZE, AES_GCM_NONCE_SIZE, DIGIT_POOL_SIZE, LOWERCASE_POOL_SIZE,
     MAX_CONSECUTIVE_IDENTICAL_CHARS, MAX_SEQUENTIAL_CHARS, MIN_ENCRYPTED_HEADER_SIZE,
     MIN_ENTROPY_BITS, MIN_PASSWORD_LENGTH, MODERATE_UNIQUENESS_PENALTY,
-    MODERATE_UNIQUENESS_THRESHOLD, PBKDF2_ITERATIONS, PBKDF2_SALT_SIZE, SEVERE_UNIQUENESS_PENALTY,
-    SEVERE_UNIQUENESS_THRESHOLD, SINGLE_CLASS_MIN_ENTROPY_BITS, SPECIAL_CHAR_POOL_SIZE,
-    UPPERCASE_POOL_SIZE,
+    MODERATE_UNIQUENESS_THRESHOLD, PBKDF2_ITERATIONS, PBKDF2_ITERATIONS_LEGACY, PBKDF2_SALT_SIZE,
+    SEVERE_UNIQUENESS_PENALTY, SEVERE_UNIQUENESS_THRESHOLD, SINGLE_CLASS_MIN_ENTROPY_BITS,
+    SPECIAL_CHAR_POOL_SIZE, UPPERCASE_POOL_SIZE,
 };
 use crate::crypt::private_key::ZeroizingVec;
 use crate::error::JacsError;
@@ -17,6 +17,7 @@ use aes_gcm::{
 use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
 use sha2::Sha256;
+use tracing::warn;
 use zeroize::Zeroize;
 
 /// Common weak passwords that should be rejected regardless of calculated entropy.
@@ -238,18 +239,27 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Derive a 256-bit key from a password using PBKDF2-HMAC-SHA256 with a specific iteration count.
+fn derive_key_with_iterations(
+    password: &str,
+    salt: &[u8],
+    iterations: u32,
+) -> [u8; AES_256_KEY_SIZE] {
+    let mut key = [0u8; AES_256_KEY_SIZE];
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, iterations, &mut key);
+    key
+}
+
 /// Derive a 256-bit key from a password using PBKDF2-HMAC-SHA256.
 fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZE] {
-    let mut key = [0u8; AES_256_KEY_SIZE];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, PBKDF2_ITERATIONS, &mut key);
-    key
+    derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS)
 }
 
 /// Encrypt a private key with a password using AES-256-GCM.
 ///
 /// The encrypted output format is: salt (16 bytes) || nonce (12 bytes) || ciphertext
 ///
-/// Key derivation uses PBKDF2-HMAC-SHA256 with 100,000 iterations.
+/// Key derivation uses PBKDF2-HMAC-SHA256 with 600,000 iterations (OWASP 2024).
 ///
 /// # Security Requirements
 ///
@@ -294,7 +304,8 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
 ///
 /// Expects input format: salt (16 bytes) || nonce (12 bytes) || ciphertext
 ///
-/// Key derivation uses PBKDF2-HMAC-SHA256 with 100,000 iterations.
+/// Key derivation uses PBKDF2-HMAC-SHA256 with 600,000 iterations (OWASP 2024),
+/// with automatic fallback to legacy 100,000 iterations for pre-0.6.0 keys.
 ///
 /// # Security Requirements
 ///
@@ -307,6 +318,7 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
 /// This function returns a regular `Vec<u8>` for backwards compatibility.
 /// For new code, prefer `decrypt_private_key_secure` which returns a
 /// `ZeroizingVec` that automatically zeroizes memory on drop.
+#[deprecated(since = "0.6.0", note = "Use decrypt_private_key_secure() which returns ZeroizingVec for automatic memory zeroization")]
 pub fn decrypt_private_key(
     encrypted_key_with_salt_and_nonce: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -324,7 +336,9 @@ pub fn decrypt_private_key(
 ///
 /// Expects input format: salt (16 bytes) || nonce (12 bytes) || ciphertext
 ///
-/// Key derivation uses PBKDF2-HMAC-SHA256 with 100,000 iterations.
+/// Key derivation uses PBKDF2-HMAC-SHA256 with 600,000 iterations (OWASP 2024).
+/// For backwards compatibility, if decryption fails with the current iteration count,
+/// it falls back to the legacy 100,000 iterations and logs a migration warning.
 ///
 /// # Security Requirements
 ///
@@ -361,25 +375,42 @@ pub fn decrypt_private_key_secure(
     let (salt, rest) = encrypted_key_with_salt_and_nonce.split_at(PBKDF2_SALT_SIZE);
     let (nonce, encrypted_data) = rest.split_at(AES_GCM_NONCE_SIZE);
 
-    // Derive key using PBKDF2-HMAC-SHA256
-    let mut key = derive_key_from_password(&password, salt);
+    // Try decryption with current iteration count first, then fall back to legacy.
+    // This allows seamless migration from pre-0.6.0 keys encrypted with 100k iterations
+    // to the new 600k iteration count.
+    let nonce_slice = Nonce::from_slice(nonce);
 
-    // Create cipher instance
+    // Attempt with current iterations (600k)
+    let mut key = derive_key_from_password(&password, salt);
     let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
     let cipher = Aes256Gcm::new(cipher_key);
-
-    // Zeroize the derived key immediately after creating the cipher
     key.zeroize();
 
-    // Decrypt private key
-    let decrypted_data = cipher
-        .decrypt(Nonce::from_slice(nonce), encrypted_data)
+    if let Ok(decrypted_data) = cipher.decrypt(nonce_slice, encrypted_data) {
+        return Ok(ZeroizingVec::new(decrypted_data));
+    }
+
+    // Fall back to legacy iterations (100k) for pre-0.6.0 encrypted keys
+    let mut legacy_key = derive_key_with_iterations(&password, salt, PBKDF2_ITERATIONS_LEGACY);
+    let legacy_cipher_key = Key::<Aes256Gcm>::from_slice(&legacy_key);
+    let legacy_cipher = Aes256Gcm::new(legacy_cipher_key);
+    legacy_key.zeroize();
+
+    let decrypted_data = legacy_cipher
+        .decrypt(nonce_slice, encrypted_data)
         .map_err(|_| {
             "Private key decryption failed: incorrect password or corrupted key file. \
             Check that JACS_PRIVATE_KEY_PASSWORD matches the password used during key generation. \
             If the key file is corrupted, you may need to regenerate your keys."
                 .to_string()
         })?;
+
+    warn!(
+        "MIGRATION: Private key was decrypted using legacy PBKDF2 iteration count ({}). \
+        Re-encrypt your private key to upgrade to the current iteration count ({}) \
+        for improved security. Run 'jacs keygen' to regenerate keys.",
+        PBKDF2_ITERATIONS_LEGACY, PBKDF2_ITERATIONS
+    );
 
     Ok(ZeroizingVec::new(decrypted_data))
 }

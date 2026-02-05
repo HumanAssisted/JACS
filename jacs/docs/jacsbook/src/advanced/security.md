@@ -46,7 +46,7 @@ Signatures provide proof of origin:
 |--------|------------|
 | **Tampering** | Content hashes detect modifications |
 | **Impersonation** | Cryptographic signatures verify identity |
-| **Replay Attacks** | Timestamps and version IDs ensure freshness; future timestamps rejected |
+| **Replay Attacks** | Timestamps and version IDs ensure freshness; future timestamps rejected; optional signature expiration via `JACS_MAX_SIGNATURE_AGE_SECONDS` |
 | **Man-in-the-Middle** | DNS verification via DNSSEC; TLS certificate validation |
 | **Key Compromise** | Key rotation through versioning |
 | **Weak Passwords** | Minimum 28-bit entropy enforcement (35-bit for single class) |
@@ -195,7 +195,20 @@ JACS signatures include timestamps to prevent replay attacks and ensure temporal
 
 1. **Timestamp Inclusion**: Every signature includes a UTC timestamp recording when it was created
 2. **Future Timestamp Rejection**: Signatures with timestamps more than 5 minutes in the future are rejected
-3. **Validation**: Timestamp validation occurs during signature verification
+3. **Optional Signature Expiration**: Configurable via `JACS_MAX_SIGNATURE_AGE_SECONDS` (disabled by default since JACS documents are designed to be eternal)
+4. **Validation**: Timestamp validation occurs during signature verification
+
+### Configuring Signature Expiration
+
+By default, signatures do not expire. JACS documents are designed to be idempotent and eternal. For use cases that require expiration:
+
+```bash
+# Enable expiration (e.g., 90 days)
+export JACS_MAX_SIGNATURE_AGE_SECONDS=7776000
+
+# Default: no expiration (0)
+export JACS_MAX_SIGNATURE_AGE_SECONDS=0
+```
 
 ### Protection Against Replay Attacks
 
@@ -470,7 +483,7 @@ client = JACSMCPClient("https://localhost:8000/sse")  # Good
 {
   "jacs_dns_strict": true,
   "jacs_dns_required": true,
-  "jacs_use_security": "1"
+  "jacs_enable_filesystem_quarantine": "true"
 }
 ```
 

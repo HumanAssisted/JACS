@@ -26,9 +26,12 @@ pub const MIN_ENCRYPTED_HEADER_SIZE: usize = PBKDF2_SALT_SIZE + AES_GCM_NONCE_SI
 // ============================================================================
 
 /// Number of PBKDF2 iterations for key derivation.
-/// 100,000 iterations provides reasonable security against brute-force attacks.
-/// This adds approximately 17 bits of work factor.
-pub const PBKDF2_ITERATIONS: u32 = 100_000;
+/// 600,000 iterations per OWASP 2024 recommendation for PBKDF2-HMAC-SHA256.
+/// This adds approximately 19.2 bits of work factor.
+pub const PBKDF2_ITERATIONS: u32 = 600_000;
+
+/// Legacy iteration count for migration from pre-0.6.0 keys.
+pub const PBKDF2_ITERATIONS_LEGACY: u32 = 100_000;
 
 /// Minimum password length for key encryption.
 pub const MIN_PASSWORD_LENGTH: usize = 8;

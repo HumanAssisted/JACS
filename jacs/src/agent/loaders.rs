@@ -3,6 +3,7 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::SecurityTraits;
 use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::error::JacsError;
+use crate::rate_limit::RateLimiter;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -13,7 +14,15 @@ use crate::time_utils;
 use std::error::Error;
 use std::io::Write;
 use std::path::Path;
+use std::sync::OnceLock;
 use tracing::{debug, error, info, warn};
+
+/// Rate limiter for HAI key service requests (2 req/s, burst of 3).
+static HAI_KEY_RATE_LIMITER: OnceLock<RateLimiter> = OnceLock::new();
+
+fn hai_key_rate_limiter() -> &'static RateLimiter {
+    HAI_KEY_RATE_LIMITER.get_or_init(|| RateLimiter::new(2.0, 3))
+}
 
 /// This environment variable determine if files are saved to the filesystem at all
 /// if you are building something that passing data through to a database, you'd set this flag to 0 or False
@@ -816,6 +825,20 @@ fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
 ///   Set to 0 to disable retries.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<PublicKeyInfo, JacsError> {
+    // Validate agent_id and version are valid UUIDs to prevent URL path traversal
+    uuid::Uuid::parse_str(agent_id).map_err(|e| {
+        JacsError::ValidationError(format!(
+            "Invalid agent_id '{}' for HAI key fetch: must be a valid UUID. {}",
+            agent_id, e
+        ))
+    })?;
+    uuid::Uuid::parse_str(version).map_err(|e| {
+        JacsError::ValidationError(format!(
+            "Invalid version '{}' for HAI key fetch: must be a valid UUID. {}",
+            version, e
+        ))
+    })?;
+
     // Get retry count from environment or use default of 3
     let max_retries: u32 = std::env::var("HAI_KEY_FETCH_RETRIES")
         .ok()
@@ -825,6 +848,15 @@ pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<Public
     // Get base URL from environment or use default
     let base_url =
         std::env::var("HAI_KEYS_BASE_URL").unwrap_or_else(|_| "https://keys.hai.ai".to_string());
+
+    // Enforce HTTPS for security (prevent MITM on key fetch)
+    if !base_url.starts_with("https://") && !base_url.starts_with("http://localhost") && !base_url.starts_with("http://127.0.0.1") {
+        return Err(JacsError::ConfigError(format!(
+            "HAI_KEYS_BASE_URL must use HTTPS (got '{}'). \
+            Only localhost URLs are allowed over HTTP for testing.",
+            base_url
+        )));
+    }
 
     let url = format!("{}/jacs/v1/agents/{}/keys/{}", base_url, agent_id, version);
 
@@ -844,6 +876,9 @@ pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<Public
         JacsError::NetworkError("No attempts made to fetch public key".to_string());
 
     for attempt in 1..=max_retries + 1 {
+        // Rate limit outgoing requests to avoid overwhelming the key service
+        hai_key_rate_limiter().acquire();
+
         match fetch_public_key_attempt(&client, &url, agent_id, version) {
             Ok(result) => return Ok(result),
             Err(err) => {
@@ -1144,7 +1179,10 @@ CDEF
                 std::env::set_var("HAI_KEY_FETCH_RETRIES", "0");
             }
 
-            let result = fetch_public_key_from_hai("test-agent-id", "1");
+            let result = fetch_public_key_from_hai(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001",
+            );
 
             // Clean up first to ensure it happens even if assertions fail
             unsafe {
@@ -1178,7 +1216,10 @@ CDEF
             }
 
             // This will fail (no server), but we can verify it attempted the right URL
-            let result = fetch_public_key_from_hai("nonexistent-agent", "1");
+            let result = fetch_public_key_from_hai(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001",
+            );
 
             // Clean up
             unsafe {
@@ -1205,7 +1246,10 @@ CDEF
             }
 
             let start = std::time::Instant::now();
-            let _ = fetch_public_key_from_hai("test-agent", "1");
+            let _ = fetch_public_key_from_hai(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001",
+            );
             let elapsed = start.elapsed();
 
             // Clean up

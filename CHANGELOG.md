@@ -1,3 +1,35 @@
+## 0.5.2
+
+### Security
+
+- **[CRITICAL] Fixed trust store path traversal**: Agent IDs used in trust store file operations are now validated as proper UUID:UUID format and resulting paths are canonicalized to prevent directory traversal attacks via malicious agent IDs.
+
+- **[CRITICAL] Fixed URL injection in HAI key fetch**: `agent_id` and `version` parameters in `fetch_public_key_from_hai()` and `verify_hai_registration_sync()` are now validated as UUIDs before URL interpolation, preventing path traversal in HTTP requests.
+
+- **[HIGH] Added configurable signature expiration**: Signatures can now be configured to expire via `JACS_MAX_SIGNATURE_AGE_SECONDS` env var (e.g., `7776000` for 90 days). Default is `0` (no expiration) since JACS documents are designed to be idempotent and eternal.
+
+- **[HIGH] Added strict algorithm enforcement mode**: Set `JACS_REQUIRE_EXPLICIT_ALGORITHM=true` to reject signature verification when `signingAlgorithm` is missing, preventing heuristic-based algorithm detection.
+
+- **[HIGH] Fixed memory leak in schema domain whitelist**: Replaced `Box::leak()` with `OnceLock` for one-time parsing of `JACS_SCHEMA_ALLOWED_DOMAINS`, preventing unbounded memory growth.
+
+- **[MEDIUM] Improved signed content canonicalization**: Fields are now sorted alphabetically before signing, non-string fields use canonical JSON serialization, and verification fails if zero fields are extracted.
+
+- **[MEDIUM] Added HTTPS enforcement for HAI key service**: `HAI_KEYS_BASE_URL` must use HTTPS (localhost exempted for testing).
+
+- **[MEDIUM] Added plaintext key warning**: Loading unencrypted private keys now emits a `tracing::warn` recommending encryption.
+
+- **[LOW] Increased PBKDF2 iterations to 600,000**: Per OWASP 2024 recommendation (was 100,000). Automatic migration fallback: decryption tries new count first, then falls back to legacy 100,000 with a warning to re-encrypt.
+
+- **[LOW] Deprecated `decrypt_private_key()`**: Use `decrypt_private_key_secure()` which returns `ZeroizingVec` for automatic memory zeroization.
+
+- **[LOW] Added rate limiting on HAI key fetch**: Outgoing requests to the HAI key service are now rate-limited (2 req/s, burst of 3) using the existing `RateLimiter`.
+
+- **[LOW] Renamed `JACS_USE_SECURITY` to `JACS_ENABLE_FILESYSTEM_QUARANTINE`**: Clarifies that this setting only controls filesystem quarantine of executable files, not cryptographic verification. Old name still works with a deprecation warning.
+
+### Migration Notes
+
+- Keys encrypted with pre-0.5.2 PBKDF2 iterations (100k) are automatically decrypted via fallback, but new encryptions use 600k iterations. Re-encrypt existing keys for improved security.
+
 # PLANNED
 -  machine fingerprinting v2
 - passkey-client integration

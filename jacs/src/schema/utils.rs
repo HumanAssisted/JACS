@@ -85,6 +85,23 @@ pub fn check_document_size(data: &str) -> Result<(), JacsError> {
     Ok(())
 }
 
+/// Extra allowed domains parsed from `JACS_SCHEMA_ALLOWED_DOMAINS`, cached once.
+static EXTRA_ALLOWED_SCHEMA_DOMAINS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+fn get_extra_allowed_domains() -> &'static Vec<String> {
+    EXTRA_ALLOWED_SCHEMA_DOMAINS.get_or_init(|| {
+        std::env::var("JACS_SCHEMA_ALLOWED_DOMAINS")
+            .map(|env_domains| {
+                env_domains
+                    .split(',')
+                    .map(|d| d.trim().to_string())
+                    .filter(|d| !d.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
 fn is_schema_url_allowed(url: &str) -> Result<(), JacsError> {
     // Parse the URL to extract the host
     let parsed = url::Url::parse(url).map_err(|e| {
@@ -95,17 +112,11 @@ fn is_schema_url_allowed(url: &str) -> Result<(), JacsError> {
         JacsError::SchemaError(format!("URL '{}' has no host", url))
     })?;
 
-    // Build the list of allowed domains
+    // Build the list of allowed domains from defaults + cached env var
+    let extra = get_extra_allowed_domains();
     let mut allowed_domains: Vec<&str> = DEFAULT_ALLOWED_SCHEMA_DOMAINS.to_vec();
-
-    // Add domains from environment variable if set
-    if let Ok(env_domains) = std::env::var("JACS_SCHEMA_ALLOWED_DOMAINS") {
-        for domain in env_domains.split(',') {
-            let trimmed = domain.trim();
-            if !trimmed.is_empty() {
-                allowed_domains.push(Box::leak(trimmed.to_string().into_boxed_str()));
-            }
-        }
+    for domain in extra {
+        allowed_domains.push(domain.as_str());
     }
 
     // Check if the host matches any allowed domain

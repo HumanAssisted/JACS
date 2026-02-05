@@ -364,6 +364,21 @@ impl KeyManager for Agent {
                 CryptoSigningAlgorithm::from_str(enc_type)?
             }
             None => {
+                warn!(
+                    "SECURITY: signingAlgorithm not provided for verification. \
+                    Auto-detection is deprecated and may be removed in a future version. \
+                    Set JACS_REQUIRE_EXPLICIT_ALGORITHM=true to enforce explicit algorithms."
+                );
+
+                // Check if strict mode is enabled
+                let strict = std::env::var("JACS_REQUIRE_EXPLICIT_ALGORITHM")
+                    .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                    .unwrap_or(false);
+                if strict {
+                    return Err("Signature verification requires explicit signingAlgorithm field. \
+                        Re-sign the document to include the signingAlgorithm field.".into());
+                }
+
                 // Try to auto-detect the algorithm type from the public key
                 match detect_algorithm_from_public_key(&public_key) {
                     Ok(detected_algo) => {

@@ -327,7 +327,7 @@ All other JACS settings are **configuration file fields** that have sensible def
 - `jacs_key_directory` - Where cryptographic keys are stored (default: `./jacs_keys`)
 - `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `RSA-PSS`)
 - `jacs_default_storage` - Storage backend (default: `fs`)
-- `jacs_use_security` - Enable security features (default: `false`)
+- `jacs_use_security` / `JACS_ENABLE_FILESYSTEM_QUARANTINE` - Enable filesystem quarantine of executable files (default: `false`). The env var `JACS_USE_SECURITY` is deprecated; use `JACS_ENABLE_FILESYSTEM_QUARANTINE` instead.
 
 These can be overridden by environment variables if needed, but they are primarily configured through the `jacs.config.json` file.
 
