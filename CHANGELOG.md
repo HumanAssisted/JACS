@@ -6,7 +6,7 @@
 
 - **[CRITICAL] Fixed URL injection in HAI key fetch**: `agent_id` and `version` parameters in `fetch_public_key_from_hai()` and `verify_hai_registration_sync()` are now validated as UUIDs before URL interpolation, preventing path traversal in HTTP requests.
 
-- **[HIGH] Added signature expiration**: Signatures now expire after 90 days by default (was unlimited). Configurable via `JACS_MAX_SIGNATURE_AGE_SECONDS` env var. Set to `0` to disable (backwards compatible).
+- **[HIGH] Added configurable signature expiration**: Signatures can now be configured to expire via `JACS_MAX_SIGNATURE_AGE_SECONDS` env var (e.g., `7776000` for 90 days). Default is `0` (no expiration) since JACS documents are designed to be idempotent and eternal.
 
 - **[HIGH] Added strict algorithm enforcement mode**: Set `JACS_REQUIRE_EXPLICIT_ALGORITHM=true` to reject signature verification when `signingAlgorithm` is missing, preventing heuristic-based algorithm detection.
 
@@ -26,9 +26,8 @@
 
 - **[LOW] Renamed `JACS_USE_SECURITY` to `JACS_ENABLE_FILESYSTEM_QUARANTINE`**: Clarifies that this setting only controls filesystem quarantine of executable files, not cryptographic verification. Old name still works with a deprecation warning.
 
-### Breaking Changes
+### Migration Notes
 
-- Signatures older than 90 days are now rejected by default. Set `JACS_MAX_SIGNATURE_AGE_SECONDS=0` to restore previous behavior.
 - Keys encrypted with pre-0.5.2 PBKDF2 iterations (100k) are automatically decrypted via fallback, but new encryptions use 600k iterations. Re-encrypt existing keys for improved security.
 
 # PLANNED

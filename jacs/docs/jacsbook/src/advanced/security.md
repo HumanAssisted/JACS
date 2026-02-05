@@ -46,7 +46,7 @@ Signatures provide proof of origin:
 |--------|------------|
 | **Tampering** | Content hashes detect modifications |
 | **Impersonation** | Cryptographic signatures verify identity |
-| **Replay Attacks** | Timestamps and version IDs ensure freshness; future timestamps rejected; signatures expire after 90 days by default |
+| **Replay Attacks** | Timestamps and version IDs ensure freshness; future timestamps rejected; optional signature expiration via `JACS_MAX_SIGNATURE_AGE_SECONDS` |
 | **Man-in-the-Middle** | DNS verification via DNSSEC; TLS certificate validation |
 | **Key Compromise** | Key rotation through versioning |
 | **Weak Passwords** | Minimum 28-bit entropy enforcement (35-bit for single class) |
@@ -195,18 +195,18 @@ JACS signatures include timestamps to prevent replay attacks and ensure temporal
 
 1. **Timestamp Inclusion**: Every signature includes a UTC timestamp recording when it was created
 2. **Future Timestamp Rejection**: Signatures with timestamps more than 5 minutes in the future are rejected
-3. **Signature Expiration**: Signatures older than 90 days are rejected by default
+3. **Optional Signature Expiration**: Configurable via `JACS_MAX_SIGNATURE_AGE_SECONDS` (disabled by default since JACS documents are designed to be eternal)
 4. **Validation**: Timestamp validation occurs during signature verification
 
 ### Configuring Signature Expiration
 
-The default expiration of 90 days (7,776,000 seconds) can be overridden:
+By default, signatures do not expire. JACS documents are designed to be idempotent and eternal. For use cases that require expiration:
 
 ```bash
-# Custom expiration (e.g., 30 days)
-export JACS_MAX_SIGNATURE_AGE_SECONDS=2592000
+# Enable expiration (e.g., 90 days)
+export JACS_MAX_SIGNATURE_AGE_SECONDS=7776000
 
-# Disable expiration (not recommended for production)
+# Default: no expiration (0)
 export JACS_MAX_SIGNATURE_AGE_SECONDS=0
 ```
 
@@ -217,16 +217,12 @@ The 5-minute future tolerance window:
 - Prevents attackers from creating signatures with future timestamps
 - Ensures signatures cannot be pre-generated for later fraudulent use
 
-The 90-day expiration window:
-- Limits the window of exposure if a signing key is compromised
-- Ensures stale signatures are not accepted indefinitely
-
 ```json
 {
   "jacsSignature": {
     "agentID": "550e8400-e29b-41d4-a716-446655440000",
     "signature": "...",
-    "date": "2024-01-15T10:30:00Z"  // Must be within 5 min future / 90 days past
+    "date": "2024-01-15T10:30:00Z"  // Must be within 5 min of verifier's clock
   }
 }
 ```

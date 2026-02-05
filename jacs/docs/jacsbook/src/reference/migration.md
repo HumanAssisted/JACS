@@ -10,13 +10,7 @@ JACS maintains backward compatibility for document verification:
 
 ## Migrating from 0.5.1 to 0.5.2
 
-### Breaking Changes
-
-**Signature Expiration**: Signatures now expire after 90 days by default. If you have documents with signatures older than 90 days that still need to verify, set:
-
-```bash
-export JACS_MAX_SIGNATURE_AGE_SECONDS=0  # Disable expiration
-```
+### Migration Notes
 
 **PBKDF2 Iteration Count**: New key encryptions use 600,000 iterations (up from 100,000). Existing encrypted keys are decrypted automatically via fallback. To upgrade existing keys, re-encrypt them:
 
@@ -33,7 +27,7 @@ jacs keygen
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JACS_MAX_SIGNATURE_AGE_SECONDS` | `7776000` (90 days) | Maximum age of valid signatures. Set to `0` to disable. |
+| `JACS_MAX_SIGNATURE_AGE_SECONDS` | `0` (no expiration) | Maximum age of valid signatures. Set to a positive value to enable (e.g., `7776000` for 90 days). |
 | `JACS_REQUIRE_EXPLICIT_ALGORITHM` | `false` | When `true`, reject verification if `signingAlgorithm` is missing. |
 | `JACS_ENABLE_FILESYSTEM_QUARANTINE` | `false` | Enable filesystem quarantine (replaces `JACS_USE_SECURITY`). |
 

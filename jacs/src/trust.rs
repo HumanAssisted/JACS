@@ -725,22 +725,23 @@ mod tests {
     }
 
     #[test]
-    #[serial]
-    fn test_valid_old_timestamp_with_expiry_disabled() {
-        // A timestamp from a year ago should be valid when expiration is explicitly disabled
-        unsafe { env::set_var("JACS_MAX_SIGNATURE_AGE_SECONDS", "0"); }
+    fn test_valid_old_timestamp() {
+        // A timestamp from a year ago should be valid by default (no expiration)
+        // JACS documents are designed to be idempotent and eternal
         let old = (now_utc() - chrono::Duration::days(365)).to_rfc3339();
         let result = validate_signature_timestamp(&old);
-        unsafe { env::remove_var("JACS_MAX_SIGNATURE_AGE_SECONDS"); }
-        assert!(result.is_ok(), "Old timestamp should be valid when expiration is disabled: {:?}", result);
+        assert!(result.is_ok(), "Old timestamp should be valid by default (no expiration): {:?}", result);
     }
 
     #[test]
-    fn test_old_timestamp_rejected_with_default_expiry() {
-        // A timestamp from a year ago should be rejected with default 90-day expiry
+    #[serial]
+    fn test_old_timestamp_rejected_when_expiry_enabled() {
+        // When expiration is explicitly enabled, old timestamps should be rejected
+        unsafe { env::set_var("JACS_MAX_SIGNATURE_AGE_SECONDS", "7776000"); } // 90 days
         let old = (now_utc() - chrono::Duration::days(365)).to_rfc3339();
         let result = validate_signature_timestamp(&old);
-        assert!(result.is_err(), "Year-old timestamp should be rejected with default expiry");
+        unsafe { env::remove_var("JACS_MAX_SIGNATURE_AGE_SECONDS"); }
+        assert!(result.is_err(), "Year-old timestamp should be rejected when 90-day expiry is enabled");
     }
 
     #[test]
@@ -799,7 +800,7 @@ mod tests {
 
     #[test]
     fn test_timestamp_various_valid_formats() {
-        // Various valid RFC 3339 formats should work (use recent timestamps within 90-day window)
+        // Various valid RFC 3339 formats should work
         let now = now_utc();
         let valid_timestamps = [
             (now - chrono::Duration::hours(1)).to_rfc3339(),
@@ -995,13 +996,15 @@ mod tests {
     }
 
     #[test]
-    fn test_timestamp_unix_epoch_rejected_with_default_expiry() {
-        // Unix epoch (1970-01-01) should be rejected with default 90-day expiry
+    fn test_timestamp_unix_epoch_valid_by_default() {
+        // Unix epoch (1970-01-01) should be valid by default (no expiration)
+        // JACS documents are eternal
         let epoch = "1970-01-01T00:00:00Z";
         let result = validate_signature_timestamp(epoch);
         assert!(
-            result.is_err(),
-            "Unix epoch should be rejected with default 90-day expiry"
+            result.is_ok(),
+            "Unix epoch should be valid by default (no expiration): {:?}",
+            result
         );
     }
 

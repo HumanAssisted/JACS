@@ -11,9 +11,10 @@ use chrono::{DateTime, Utc};
 pub const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
 
 /// Default maximum signature age (in seconds).
-/// Default: 90 days (7,776,000 seconds).
-/// Set `JACS_MAX_SIGNATURE_AGE_SECONDS=0` to disable expiration checking.
-pub const MAX_SIGNATURE_AGE_SECONDS: i64 = 7_776_000; // 90 days
+/// Default: 0 (no expiration). JACS documents are designed to be idempotent and eternal.
+/// Set `JACS_MAX_SIGNATURE_AGE_SECONDS` to a positive value to enable expiration
+/// (e.g., 7776000 for 90 days).
+pub const MAX_SIGNATURE_AGE_SECONDS: i64 = 0;
 
 /// Returns the current UTC timestamp in RFC 3339 format.
 ///
@@ -176,8 +177,8 @@ pub fn validate_timestamp_not_expired(
 /// Returns the effective maximum signature age in seconds.
 ///
 /// Checks `JACS_MAX_SIGNATURE_AGE_SECONDS` environment variable first,
-/// falls back to the compiled-in default (90 days).
-/// Set to 0 to disable expiration checking.
+/// falls back to the compiled-in default (0 = no expiration).
+/// Set to a positive value to enable expiration (e.g., 7776000 for 90 days).
 pub fn max_signature_age() -> i64 {
     std::env::var("JACS_MAX_SIGNATURE_AGE_SECONDS")
         .ok()
@@ -202,8 +203,8 @@ pub fn max_signature_age() -> i64 {
 /// 1. The timestamp must be a valid RFC 3339 / ISO 8601 format
 /// 2. The timestamp must not be more than `MAX_FUTURE_TIMESTAMP_SECONDS` in the future
 ///    (allows for small clock drift between systems)
-/// 3. If signature age limit > 0 (default 90 days), the timestamp must not be older than that.
-///    Override with `JACS_MAX_SIGNATURE_AGE_SECONDS` env var. Set to 0 to disable.
+/// 3. If signature age limit > 0 (default: disabled), the timestamp must not be older than that.
+///    Set `JACS_MAX_SIGNATURE_AGE_SECONDS` to a positive value to enable (e.g., 7776000 for 90 days).
 pub fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError> {
     // Parse the timestamp (validates format)
     let signature_time = parse_rfc3339(timestamp_str).map_err(|_| {
