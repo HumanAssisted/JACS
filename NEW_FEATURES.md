@@ -1,39 +1,34 @@
-# NEW_FEATURES.md - JACS Feature Enhancement Plan
+# JACS 0.6.0 Feature Enhancement Plan
 
-## Todo Tracking, Database Storage, Runtime Configuration
+## Signed Agent State, Todo Tracking, Database Storage, Runtime Configuration
 
 **Date**: 2026-02-05
-**Status**: Architecture refined through Q&A + restored removed items, ready for implementation
-**Estimated Steps**: 281+ (TDD-driven, phased across 6 phases)
+**Version**: 0.6.0
+**Status**: Architecture complete, ready for implementation
+**Total Steps**: 321+ (40 Phase 0 + 281 Phases 1-5, TDD-driven, phased)
 
 ---
 
-## Phase Implementation Files
+## Table of Contents -- Phase Documents
 
-- [Phase 0: Signed Agent State Documents](./NEW_FEATURES_0.md) - Agent state tracking with cryptographic signing
-- [Phase 1: Schema Design & CRUD](./NEW_FEATURES_1.md) - Steps 1-95
-- [Phase 2: Database Storage Backend](./NEW_FEATURES_2.md) - Steps 96-175
-- [Phase 3: Runtime Configuration](./NEW_FEATURES_3.md) - Steps 176-225
-- [Phase 4: MCP & Bindings Integration](./NEW_FEATURES_4.md) - Steps 226-261
-- [Phase 5: End-to-End, Docs & Polish](./NEW_FEATURES_5.md) - Steps 262-281
+| Phase | Document | Steps | Summary |
+|-------|----------|-------|---------|
+| **0** | [NEW_FEATURES_0.md](./NEW_FEATURES_0.md) | 0.1-0.40 (40) | **Signed Agent State Documents** -- Sign MEMORY.md, SKILL.md, plans, configs, hooks. Generic `agentstate.schema.json` wrapper. MCP tools for sign/verify/load/adopt. |
+| **1** | [NEW_FEATURES_1.md](./NEW_FEATURES_1.md) | 1-95 (95) | **Schema Design & CRUD** -- Four document types: Commitment, Update, Todo List, Conversation enhancements. Agreement/Disagreement architecture. Cross-reference integrity. |
+| **2** | [NEW_FEATURES_2.md](./NEW_FEATURES_2.md) | 96-175 (80) | **Database Storage Backend** -- Generic `DatabaseDocumentTraits` trait, PostgreSQL reference impl, vector search, MultiStorage integration, domain queries, index generator CLI. |
+| **3** | [NEW_FEATURES_3.md](./NEW_FEATURES_3.md) | 176-225 (50) | **Runtime Configuration** -- `JacsConfigProvider` trait, `AgentBuilder` integration, HAI pattern, observability runtime config, backward compatibility. |
+| **4** | [NEW_FEATURES_4.md](./NEW_FEATURES_4.md) | 226-261 (36) | **MCP & Bindings Integration** -- MCP server tools for all types, Python/Node/Go bindings, CLI integration. |
+| **5** | [NEW_FEATURES_5.md](./NEW_FEATURES_5.md) | 262-281 (20) | **End-to-End, Docs & Polish** -- Integration tests, documentation, benchmarks, WASM verification, release. |
 
 ---
 
-## Table of Contents
+## The Big Idea: Signed Everything
 
-1. [Background & Motivation](#background--motivation)
-2. [Original Requirements](#original-requirements)
-3. [Architecture: The Four Document Types](#architecture-the-four-document-types)
-4. [Architecture: Formal Agreement, Disagreement, and Conflict Resolution](#architecture-formal-agreement-disagreement-and-conflict-resolution)
-5. [Architecture: Database Storage](#architecture-database-storage)
-6. [Architecture: Runtime Configuration](#architecture-runtime-configuration)
-7. [Architecture: MCP Integration](#architecture-mcp-integration)
-8. [Codebase Exploration Findings](#codebase-exploration-findings)
-9. [Review Findings](#review-findings)
-10. [Key Architectural Decisions](#key-architectural-decisions)
-11. [Critical Files Reference](#critical-files-reference)
-12. [Verification & Testing Strategy](#verification--testing-strategy)
-13. [How to Run Tests](#how-to-run-tests)
+**No agent framework signs its state files.** Claude Code's MEMORY.md, OpenClaw's SKILL.md, LangGraph's checkpoints -- all unsigned. Any process can modify them without detection.
+
+JACS 0.6.0 changes this. Starting with **Phase 0**, every agent state file gets a cryptographically signed wrapper. Then Phases 1-5 add the document types needed for agent-to-agent collaboration: commitments (shared agreements), todo lists (private work tracking), updates (semantic change history), and conversations (signed message threads).
+
+This positions JACS as the universal signing layer for ALL agent frameworks.
 
 ---
 
@@ -61,9 +56,7 @@ JACS (JSON Agent Communication Standard) is a Rust library that creates cryptogr
 
 - **hai** (`/personal/hai/`): Production system using JACS 0.5.1 for 3-tier agent verification. Configures JACS via env vars at runtime, stores JACS documents in PostgreSQL. Shows what a JACS consumer needs from runtime configuration.
 
----
-
-## Original Requirements
+### Original Requirements
 
 > 1. We want to use JACS to track todo lists. In 2024 we would track todo lists. You can look at the python code to see how we stored commitments - there are todo lists that are separate from plans/commitments. This is a key idea to retain.
 >
@@ -73,556 +66,9 @@ JACS (JSON Agent Communication Standard) is a Rust library that creates cryptogr
 
 ---
 
-## Architecture: The Four Document Types
-
-Through iterative design review and Q&A, we identified **four distinct document types** that JACS needs to support. Each has different ownership, signing, and lifecycle semantics.
-
-**Design principle: Goals are NOT standalone documents.** Goals are todo items (`itemType: "goal"`) within a private todo list. When a goal needs to be SHARED between agents, you create a Commitment referencing that todo item. The Commitment carries the agreement/disagreement mechanism. This keeps the schema count minimal while preserving full functionality.
-
-### 1. Todo List (Private, Inline Items, Versioned)
-
-**What it is**: A todo list is a PRIVATE document belonging to a single agent. It contains inline items -- goals (broad, long-term objectives) and tasks (smaller, detailed actions). The entire list is one signed document.
-
-**Why we want it**: In HAI-2024, agents tracked their work via todo lists. An agent needs a private, signed record of what it intends to do, what's in progress, and what's done. This is the agent's internal state -- not shared with other agents.
-
-**How it works**:
-- Each todo list is a single signed JACS document with its own `jacsId` and `jacsVersion`
-- Items are inline within the document (not separate documents). This is like how `task.schema.json` embeds `jacsTaskActionsDesired` inline as an array of action objects
-- Goals are broad items (e.g., "Ship Q1 features") that may contain or reference smaller tasks (e.g., "Write auth module", "Add tests")
-- Items have states (pending, in-progress, completed, abandoned)
-- When anything changes (item added, completed, reprioritized), the ENTIRE list is re-signed with a new `jacsVersion`. The version history provides the audit trail.
-- An agent can have **multiple todo lists** -- partitioned by context (e.g., "active work", "completed-2026-01", "completed-2026-02"). Over time, completed items accumulate. Archiving completed items into dated lists keeps active lists performant.
-- Todo lists reference each other and reference commitments/conversations by UUID
-- Todo items can reference Commitment documents (via `relatedCommitmentId`) when a private goal/task has been formalized into a shared agreement
-- **Each todo item has a stable UUID (`itemId`)** for referencing. References between items use `itemId` (not array indices) so they survive list mutations.
-
-**How goals become shared**: An agent has a private goal in their todo list. When they need another agent to commit to it, they create a Commitment document. The commitment's `jacsCommitmentTodoRef` points to `list-uuid:item-uuid`. The todo item's `relatedCommitmentId` points back. The commitment carries the `jacsAgreement` with agreement/disagreement mechanism.
-
-**Tree structure**: Todo items form a tree by level of abstraction. Goals (broad) have `childItemIds` pointing to sub-goals and tasks (detailed). This tree is within a single list or across lists (by referencing items in other lists via `list-uuid:item-uuid`).
-
-**Schema design considerations**:
-- Uses existing JSON Schema `$ref` composition: todo items reference the todoitem component schema for structure
-- The list document uses `allOf` with `header.schema.json` for standard JACS fields
-- Items within the list are defined as a JSON array of objects with their own sub-schema
-- Goals vs tasks within the list: goals are items with `itemType: "goal"`, tasks are items with `itemType: "task"`. Goals can have `childItemIds` referencing other items by UUID.
-- Each item has a stable `itemId` (UUID) assigned on creation, immutable across re-signing
-- `jacsLevel: "config"` (private working document, not derived)
-
-**Example structure**:
-```json
-{
-  "$schema": "https://hai.ai/schemas/todo/v1/todo.schema.json",
-  "jacsId": "uuid-of-this-list",
-  "jacsVersion": "version-uuid",
-  "jacsType": "todo",
-  "jacsLevel": "config",
-  "jacsTodoName": "Active Work",
-  "jacsTodoItems": [
-    {
-      "itemId": "item-uuid-aaa",
-      "itemType": "goal",
-      "description": "Ship Q1 features",
-      "status": "active",
-      "childItemIds": ["item-uuid-bbb", "item-uuid-ccc"]
-    },
-    {
-      "itemId": "item-uuid-bbb",
-      "itemType": "task",
-      "description": "Write auth module",
-      "status": "completed",
-      "completedDate": "2026-01-15T10:00:00Z"
-    },
-    {
-      "itemId": "item-uuid-ccc",
-      "itemType": "task",
-      "description": "Add integration tests",
-      "status": "in-progress",
-      "assignedAgent": "agent-uuid",
-      "relatedCommitmentId": "commitment-uuid"
-    }
-  ],
-  "jacsTodoArchiveRefs": ["completed-2026-01-list-uuid"],
-  "jacsSignature": { ... }
-}
-```
-
-### 2. Commitment (Shared, Agreement-Based, Standalone)
-
-**What it is**: A commitment is a SHARED document representing a binding agreement between agents. It contains specific terms, dates, amounts, and conditions. Multi-agent signing uses the existing `jacsAgreement` system.
-
-**Why we want it**: When agents negotiate and agree to do something, we need a cryptographically signed record of what was agreed, by whom, and when. This is the foundation for accountability and conflict resolution. Unlike todo lists (which are private), commitments are shared between all parties.
-
-**How it works**:
-- Each commitment is a standalone signed JACS document
-- Multi-agent commitments use the existing `agreement.schema.json` component -- the `jacsAgreement` field requires signatures from all specified `agentIDs`
-- A commitment can reference the conversation thread that produced it (via UUID to a message thread)
-- A commitment can reference a todo list item (via `jacsCommitmentTodoRef: "list-uuid:item-uuid"`) -- this is how private goals become shared commitments
-- A commitment can reference a task (via `jacsCommitmentTaskId`) but this is optional -- commitments work standalone
-- Commitments are effectively immutable once all parties sign the agreement. If terms need to change, a NEW commitment is created (possibly referencing the old one)
-- Status tracks the commitment lifecycle: pending (proposed), active (all parties signed), completed, failed, renegotiated, disputed, revoked
-- Question/Answer fields support structured prompts: `jacsCommitmentQuestion`/`jacsCommitmentAnswer` for the initial agreement, `jacsCommitmentCompletionQuestion`/`jacsCommitmentCompletionAnswer` for completion verification
-- Recurrence patterns for recurring commitments (e.g., weekly standup)
-- Owner signature field for single-agent commitments
-
-**Why separate from todo lists**: Todo lists are private and mutable (re-signed on each change). Commitments are shared and effectively immutable once agreed. Mixing these in one document would mean a private todo change invalidates a shared agreement's signature. They MUST be separate documents.
-
-**Schema design considerations**:
-- Uses `allOf` with `header.schema.json` for standard JACS fields
-- References `agreement.schema.json` component via `$ref` for multi-agent signing
-- References `signature.schema.json` component for individual agent signatures (owner)
-- Can reference a conversation thread via UUID (the negotiation that led to this commitment)
-- Can reference todo list items via `list-uuid:item-uuid` (what this commitment fulfills)
-- Dispute/revocation fields per DevRel review: `jacsCommitmentDisputeReason`
-- `jacsAgreement.disagreements` array for formal disagreement (see Agreement architecture section)
-
-**Example structure**:
-```json
-{
-  "$schema": "https://hai.ai/schemas/commitment/v1/commitment.schema.json",
-  "jacsId": "commitment-uuid",
-  "jacsVersion": "version-uuid",
-  "jacsType": "commitment",
-  "jacsLevel": "config",
-  "jacsCommitmentDescription": "Agent A delivers Q1 report to Agent B by March 1, 2026",
-  "jacsCommitmentTerms": {
-    "deliverable": "Q1 financial report",
-    "deadline": "2026-03-01T17:00:00Z",
-    "format": "PDF",
-    "compensation": { "amount": 500, "currency": "USD" }
-  },
-  "jacsCommitmentQuestion": "Do you agree to deliver the Q1 report by March 1?",
-  "jacsCommitmentAnswer": "Yes, I agree to the terms.",
-  "jacsCommitmentStatus": "active",
-  "jacsCommitmentStartDate": "2026-01-15T00:00:00Z",
-  "jacsCommitmentEndDate": "2026-03-01T17:00:00Z",
-  "jacsCommitmentConversationRef": "thread-uuid-of-negotiation",
-  "jacsCommitmentTodoRef": "todo-list-uuid:item-uuid-aaa",
-  "jacsCommitmentOwner": { "agentID": "agent-a-uuid", "signature": "..." },
-  "jacsAgreement": {
-    "agentIDs": ["agent-a-uuid", "agent-b-uuid"],
-    "question": "Do you agree to these terms?",
-    "context": "Negotiated in thread thread-uuid",
-    "signatures": [
-      { "agentID": "agent-a-uuid", "signature": "...", "date": "..." },
-      { "agentID": "agent-b-uuid", "signature": "...", "date": "..." }
-    ]
-  },
-  "jacsSignature": { ... }
-}
-```
-
-### 3. Conversation (Linked Messages, Individually Signed)
-
-**What it is**: A conversation is a series of individually signed message documents linked by a thread ID. Each statement in the conversation is its own JACS document with its own signature. This uses the existing `message.schema.json`.
-
-**Why we want it**: When agents negotiate, discuss, or exchange information, every statement needs to be independently verifiable. "Agent A said X at time T" must be provable. You can't achieve this with a single document -- each statement needs its own signature.
-
-**How it works**:
-- Each message is a separate signed JACS document using `message.schema.json`
-- Messages share a `threadID` to group into a conversation
-- Messages reference the previous message in the thread for ordering (via `jacsMessagePreviousId`)
-- A conversation is NOT a single document -- it's a collection of message documents with a shared thread ID
-- When a conversation produces a commitment, the commitment references the thread ID
-- Conversations can be between 2 or more agents
-
-**Why this pattern for conversations (not nesting)**: If you nested messages inside a conversation document, adding a new message would invalidate the parent's signature. Each message must be independently signed because each comes from a different agent at a different time. The thread ID provides grouping without requiring a single signed container.
-
-**How this relates to existing JACS**: `message.schema.json` already exists in JACS with `threadID`, `to`, `from`, `content`, `attachments`. The conversation pattern is already partially implemented via task messages and thread IDs. What's NEW is formalizing the link between conversations and commitments, adding `jacsMessagePreviousId` for ordering, and ensuring MCP tools can create/query message threads.
-
-### 4. Update (Semantic Change Tracking, Independently Signed)
-
-**What it is**: An update is an independently signed document that records a semantic change to another document (task, commitment, or todo list). Each update captures not just WHAT changed, but WHY -- using action types from HAI-2024.
-
-**Why we want it**: When a todo list is re-signed, the version diff shows what changed but not WHY. For a mediation and conflict resolution platform, the WHY is critical. "Agent A delayed the commitment" vs "Agent A expressed doubt about the commitment" vs "Agent A informed about progress" are all different semantic actions that have different implications for dispute resolution. The 15 action types from HAI-2024 capture this rich context.
-
-**Why this was temporarily removed and why it's back**: During Q&A, updates were replaced by "re-sign the todo list and version history provides the audit trail." This lost all semantic context for changes. The version history shows diffs, but a diff saying `status: "active" -> "failed"` doesn't tell you whether it was `close-fail` (deliberate failure), `close-reject` (rejection by counterparty), or `close-ignore` (abandoned/deprioritized). For mediation use cases, this semantic information is essential.
-
-**How it works**:
-- Each update is a separate signed JACS document (like messages in a conversation)
-- Updates target a specific document by `jacsUpdateTargetId` (UUID) and `jacsUpdateTargetType` (enum: task, commitment, todo)
-- Updates have an `jacsUpdateAction` with one of 15 semantic action types:
-  - **Closure actions**: `close-success` (completed successfully), `close-ignore` (abandoned/deprioritized), `close-fail` (failed), `close-reject` (rejected by counterparty)
-  - **Lifecycle actions**: `reopen` (reactivated), `commit` (committed to doing), `doubt` (expressing uncertainty), `assign` (assigned to agent)
-  - **CRUD actions**: `create` (initial creation), `update` (modified content)
-  - **Renegotiation actions**: `recommit` (recommitting after setback), `reschedule` (changing timeline), `delay` (explicit delay notification), `renegotiate` (changing terms)
-  - **Information actions**: `inform` (progress update without status change)
-- Updates chain via `jacsUpdatePreviousUpdateId` -- forming a linked list of changes to a document, enabling reconstruction of the full timeline
-- Updates include an optional `jacsUpdateNote` for human-readable context
-- A component schema defines the update fields, and a top-level schema wraps it with header for signing
-
-**Why updates are separate documents (not embedded)**: Each update needs its own signature because updates come from different agents at different times. Agent A creates a commitment, Agent B sends an update with action `doubt`. These must be independently verifiable. Also, update chains can be queried independently (e.g., "show me all updates with action `delay` for commitments in Q1").
-
-**Example structure**:
-```json
-{
-  "$schema": "https://hai.ai/schemas/update/v1/update.schema.json",
-  "jacsId": "update-uuid",
-  "jacsVersion": "version-uuid",
-  "jacsType": "update",
-  "jacsLevel": "config",
-  "jacsUpdateTargetId": "commitment-uuid",
-  "jacsUpdateTargetType": "commitment",
-  "jacsUpdateAction": "delay",
-  "jacsUpdateNote": "Delivery delayed by 2 weeks due to dependency on external API. New target: March 15.",
-  "jacsUpdatePreviousUpdateId": "previous-update-uuid",
-  "jacsUpdateAssignedAgent": "agent-uuid",
-  "jacsSignature": { ... }
-}
-```
-
-### How The Four Types Reference Each Other
-
-```
-                    +--------------+
-                    | Conversation |  (series of signed messages, threadID links them)
-                    | msg1 -> msg2 |
-                    |   -> msg3    |
-                    +------+-------+
-                           |
-                           | commitment references threadId
-                           v
-                    +--------------+
-                    | Commitment   |  (shared, agreement-signed by multiple agents)
-                    | terms, dates |
-                    | jacsAgreement|
-                    +------+-------+
-                           ^
-                           | todo items reference commitments
-                           |
-+----------+        +--------------+        +--------+
-|  Update  | -----> | Todo List    | -----> | Task   |
-|  action  | targets| (private)    |  refs  |(exists)|
-|  chain   |        | [goal items] |        +--------+
-|  doubt/  |        |   [tasks]    |
-|  delay/  |        +--------------+
-|  inform  |              ^
-+----------+              |
-     |                    | also targets
-     | also targets       | commitments, tasks
-     | commitments,       |
-     | tasks         -----+
-```
-
-- **Conversations produce commitments**: A negotiation thread leads to a signed agreement.
-- **Commitments are shared agreements**: Created when a private goal/task needs multi-agent agreement. Todo items reference commitments via `relatedCommitmentId`.
-- **Todo lists are private views**: An agent's private checklist. Contains goal items (broad) and task items (detailed). Goals that need sharing become Commitments.
-- **Updates track semantic changes**: Any document (task, commitment, todo list) can have an update chain recording WHY changes happened.
-- **All references are by UUID**: No nesting of signed documents inside other signed documents (that would break signatures on parent update).
-
----
-
-## Architecture: Formal Agreement, Disagreement, and Conflict Resolution
-
-### THIS IS A CORE DESIGN PRINCIPLE
-
-JACS is a mediation and conflict resolution platform. The agreement system is not just "multi-agent signing" -- it is the foundation for formally recording consent, dissent, and conflict between agents. Three distinct states must be clearly distinguished:
-
-### The Three Agreement States
-
-**1. Pending (unsigned)**: An agent has been asked to agree but has NOT yet responded. This is the DEFAULT state when a document lists an agent in `jacsAgreement.agentIDs` but that agent has no entry in `jacsAgreement.signatures`. Pending means "hasn't seen it yet" or "hasn't decided yet."
-
-**2. Agreed (signed affirmatively)**: An agent has formally, cryptographically signed the agreement. Their signature appears in `jacsAgreement.signatures`. This is irrevocable for that version -- the agent provably agreed at that point in time.
-
-**3. Disagreed (signed refusal)**: An agent has formally, cryptographically signed a REFUSAL. This is NOT the same as pending. This is an active, signed statement: "I have reviewed this and I disagree." This must be a signed action (not just the absence of a signature) because:
-- It proves the agent SAW the document (unlike pending, where they may not have)
-- It creates an auditable record of dissent for mediation
-- It prevents "I never saw it" defenses in disputes
-- It distinguishes "hasn't responded" from "explicitly refused"
-
-### How Disagreement Works
-
-The existing `agreement.schema.json` component needs to be extended:
-
-```json
-{
-  "signatures": [...],
-  "agentIDs": ["agent-a-uuid", "agent-b-uuid"],
-  "disagreements": [
-    {
-      "agentID": "agent-b-uuid",
-      "reason": "Terms are unacceptable. Deadline is too short.",
-      "date": "2026-02-05T10:00:00Z",
-      "signature": "..."
-    }
-  ],
-  "question": "Do you agree to these terms?",
-  "context": "..."
-}
-```
-
-**Key properties of disagreements:**
-- A `disagreement` is cryptographically signed, just like an agreement signature. The agent proves they authored the refusal.
-- The `reason` field is required -- you must state WHY you disagree. This is critical for mediation.
-- A disagreement is for a specific `jacsVersion` of the document. If the document is amended (new version), the disagreement applies to the OLD version. The agent must re-evaluate the new version.
-- An agent cannot both agree AND disagree on the same version. If they have a signature in `signatures`, they cannot also have an entry in `disagreements` for the same version.
-
-### Document States Derived from Agreement
-
-When a document has a `jacsAgreement`, its effective state depends on the agreement status:
-
-| State | Condition | Meaning |
-|-------|-----------|---------|
-| **Draft** | No signatures, no disagreements | Proposed but no one has responded |
-| **Partially Agreed** | Some signatures, not all required | Some agents agreed, others haven't responded |
-| **Fully Agreed** | All required agents have signatures | Consensus reached, document is active |
-| **Contested** | At least one disagreement exists | Explicit conflict -- an agent formally disagrees |
-| **Mixed** | Some signatures AND some disagreements | Partial agreement with explicit dissent from others |
-
-### Contested State and Conflict Resolution
-
-When a document enters **Contested** state (any agent has formally disagreed):
-
-1. The document's effective status should reflect the conflict (e.g., commitment status becomes "disputed")
-2. An Update document with action type `close-reject` is automatically created (or should be created by the disagreeing agent)
-3. The disagreement reason becomes part of the mediation record
-4. Resolution requires either:
-   - The original document is amended (new `jacsVersion`) with updated terms, and ALL agents re-evaluate
-   - A new document is created superseding the contested one
-   - A mediator/arbitrator creates an Update with resolution action
-
-### Completion Requires Agreement
-
-For commitments (the mechanism by which private goals become shared agreements), status changes to terminal states (`completed`, `failed`) require agreement from all signing parties:
-
-- Agent A cannot unilaterally declare a commitment "completed" -- Agent B must also agree
-- If Agent A says "completed" and Agent B says "not completed" (disagreement), the commitment enters "disputed" state
-- This prevents one party from claiming success without the counterparty's confirmation
-- The `jacsEndAgreement` pattern from `task.schema.json` already supports this: a separate agreement specifically for confirming completion
-
-### How This Interacts with jacsVersion and Updates
-
-**The commitment document itself is the source of truth for terms.** The agreement hash (`jacsAgreementHash`) covers the terms/content, NOT the status field. This means:
-
-1. When agents sign the agreement, they sign the TERMS (description, dates, deliverables, compensation)
-2. Status changes (pending -> active -> completed) create new `jacsVersion` but do NOT invalidate the agreement hash
-3. `jacsAgreementHash` is computed from a subset of fields (the terms) not from the entire document
-4. If the TERMS need to change, that's a new commitment (or a new version that requires re-signing the agreement)
-
-**Updates drive status changes.** When an agent creates an Update document targeting a commitment:
-1. The Update document is created and signed (records WHO did WHAT and WHY)
-2. JACS automatically creates a new version of the target document with the updated status (new `jacsVersion`)
-3. The agreement signatures survive because `jacsAgreementHash` only covers terms, not status
-4. The Update chain provides the full semantic history
-
-**Disagreements are recorded on the document itself**, not as separate Update documents. A formal disagreement modifies the `jacsAgreement.disagreements` array on the commitment (new `jacsVersion`). This is because disagreement is about the DOCUMENT ITSELF, not about a status change.
-
-### Example: Full Commitment Lifecycle with Disagreement
-
-```
-1. Agent A creates commitment with terms, adds Agent B to agreement
-   -> Status: "pending", Agreement: {agentIDs: [A, B], signatures: []}
-
-2. Agent B reviews and DISAGREES
-   -> New jacsVersion
-   -> Status: "disputed"
-   -> Agreement: {agentIDs: [A, B], signatures: [], disagreements: [{agentID: B, reason: "Deadline too short"}]}
-
-3. Agent A creates new version with amended terms (longer deadline)
-   -> New jacsVersion, new jacsAgreementHash (terms changed)
-   -> Status: "pending" (reset because terms changed)
-   -> Agreement: {agentIDs: [A, B], signatures: [], disagreements: []} (cleared for new version)
-
-4. Agent B reviews amended terms and AGREES
-   -> New jacsVersion
-   -> Agreement: {agentIDs: [A, B], signatures: [B's sig]}
-
-5. Agent A also signs
-   -> New jacsVersion
-   -> Status: "active" (both signed)
-   -> Agreement: {agentIDs: [A, B], signatures: [B's sig, A's sig]}
-
-6. Work proceeds. Agent A creates Update with action "delay"
-   -> Update document created (signed by A)
-   -> Commitment gets new jacsVersion with no status change (delay is informational)
-   -> Agreement signatures survive (terms didn't change)
-
-7. Agent A creates Update with action "close-success"
-   -> Update document created (signed by A)
-   -> Commitment status NOT yet "completed" -- needs Agent B's agreement
-   -> jacsEndAgreement initiated: {agentIDs: [A, B], question: "Is this completed?", signatures: [A's sig]}
-
-8. Agent B disagrees with completion
-   -> jacsEndAgreement: {disagreements: [{agentID: B, reason: "Deliverable missing section 3"}]}
-   -> Status: "disputed"
-
-9. Agent A fixes and creates new Update with action "update"
-   -> Then creates another Update with action "close-success"
-   -> Agent B now agrees
-   -> Status: "completed"
-```
-
----
-
-## Architecture: Database Storage
-
-### What We Want
-
-A generic database storage trait that any backend can implement. JACS ships with the trait definition and a PostgreSQL reference implementation, but users can implement it for any database in any programming language (via the language bindings).
-
-### Why Generic Trait
-
-- Different deployments need different databases (Postgres in production, SQLite for local dev, DuckDB for analytics)
-- Higher-level libraries (hai, libhai) have their own database preferences
-- The JACS core shouldn't be coupled to a specific database
-- Language bindings (Python, Node, Go) may want to use their native database drivers
-
-### How It Works
-
-**The trait** (`DatabaseDocumentTraits`) extends the existing `StorageDocumentTraits` with database-specific operations:
-
-```rust
-/// Base trait (already exists): store, get, remove, list, exists
-pub trait StorageDocumentTraits { ... }
-
-/// Extended trait for database backends: adds query, search, indexing guidance
-pub trait DatabaseDocumentTraits: StorageDocumentTraits {
-    fn query_by_type(&self, jacs_type: &str, limit: usize, offset: usize) -> Result<Vec<JACSDocument>, ...>;
-    fn query_by_field(&self, field_path: &str, value: &str) -> Result<Vec<JACSDocument>, ...>;
-    fn search_text(&self, query: &str, jacs_type: Option<&str>) -> Result<Vec<JACSDocument>, ...>;
-    fn search_vector(&self, vector: &[f32], limit: usize) -> Result<Vec<(JACSDocument, f32)>, ...>;
-    fn suggest_indexes(&self, document_types: &[&str]) -> Result<Vec<IndexRecommendation>, ...>;
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, ...>;
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, ...>;
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, ...>;
-    fn query_updates_for_target(&self, target_id: &str) -> Result<Vec<JACSDocument>, ...>;
-    fn query_commitments_by_status(&self, status: &str) -> Result<Vec<JACSDocument>, ...>;
-    fn query_todos_for_agent(&self, agent_id: &str) -> Result<Vec<JACSDocument>, ...>;
-    fn query_overdue_commitments(&self) -> Result<Vec<JACSDocument>, ...>;
-}
-```
-
-**The trait is sync**, matching the existing `StorageDocumentTraits` and `MultiStorage` pattern. Database implementations bridge async internally (e.g., Postgres uses `tokio::runtime::Handle::block_on()`).
-
-**One active backend** at a time per agent. The "multiple databases" capability means different deployments choose different backends, not that one agent routes to multiple DBs simultaneously.
-
-**Consistency with concurrent agents**: When multiple agent instances access the same database, consistency comes from the database itself (transactions, constraints). JACS uses **optimistic locking** via `jacsVersion` -- UPDATE WHERE jacs_version = expected_version, fail if another instance updated first.
-
-### Runtime Index Generator
-
-Instead of auto-creating indexes or shipping static SQL files, JACS provides a **runtime CLI tool** that generates recommended indexes:
-
-```bash
-# Generate Postgres-specific index recommendations for all new document types
-jacs db suggest-indexes --backend postgres --types todo,commitment,update
-
-# Output:
-# Recommended indexes for PostgreSQL:
-# -- For 'todo' documents:
-# CREATE INDEX idx_todo_name ON jacs_document((file_contents->>'jacsTodoName')) WHERE jacs_type = 'todo';
-# -- For 'commitment' documents:
-# CREATE INDEX idx_commitment_status ON jacs_document((file_contents->>'jacsCommitmentStatus')) WHERE jacs_type = 'commitment';
-# CREATE INDEX idx_commitment_deadline ON jacs_document((file_contents->'jacsCommitmentTerms'->>'deadline')) WHERE jacs_type = 'commitment';
-# -- For 'update' documents:
-# CREATE INDEX idx_update_target ON jacs_document((file_contents->>'jacsUpdateTargetId')) WHERE jacs_type = 'update';
-# CREATE INDEX idx_update_action ON jacs_document((file_contents->>'jacsUpdateAction')) WHERE jacs_type = 'update';
-```
-
-The generator:
-- Knows the schema for each document type (from the embedded schemas)
-- Generates backend-specific SQL (Postgres JSONB indexes, SQLite JSON_EXTRACT, etc.)
-- Outputs Postgres as the primary target (most common) plus generic field recommendations for other DBs
-- Users review, customize, and apply the recommendations
-
-### Storage Backend Selection
-
-The existing `MultiStorage` / `StorageType` pattern is extended:
-
-- `StorageType::FS` -- filesystem (existing, default)
-- `StorageType::AWS` -- S3 (existing)
-- `StorageType::HAI` -- HTTP (existing)
-- `StorageType::Memory` -- in-memory (existing)
-- `StorageType::Database` -- any `DatabaseDocumentTraits` implementation (NEW)
-
-Configuration via `JACS_DEFAULT_STORAGE=database` + `JACS_DATABASE_URL=postgres://...`
-
-Keys and agent.json ALWAYS load from filesystem or keyservers, regardless of document storage backend.
-
----
-
-## Architecture: Runtime Configuration
-
-### What We Want
-
-A trait-based configuration system where higher-level libraries (hai, libhai, custom apps) provide JACS configuration at runtime. This formalizes the pattern hai already uses (setting env vars before initialization) into a clean, testable interface.
-
-### Why Runtime, Not Compile-Time
-
-- Higher-level libraries discover their configuration at startup (reading their own config files, env vars, cloud metadata)
-- The same JACS binary should work in multiple environments (dev with SQLite, staging with Postgres, prod with managed Postgres)
-- Observability backends should be toggleable without recompilation
-- Compile-time feature flags gate dependency INCLUSION (does the binary contain sqlx?), runtime config gates ACTIVATION (is the database actually used?)
-
-### How It Works
-
-```rust
-/// Higher-level libraries implement this trait to configure JACS at runtime.
-///
-/// SECURITY: No key-related methods. Keys always from filesystem/keyservers.
-pub trait JacsConfigProvider: Send + Sync {
-    fn get_config(&self) -> Result<Config, Box<dyn Error>>;
-    fn get_storage_type(&self) -> Option<String>;
-    fn get_database_url(&self) -> Option<String>;
-    fn get_data_directory(&self) -> Option<String>;
-    fn get_key_directory(&self) -> Option<String>;
-    fn get_observability_config(&self) -> Option<ObservabilityConfig>;
-}
-```
-
-**Override chain** (highest precedence last):
-1. Built-in defaults
-2. Config file (`jacs.config.json`)
-3. Environment variables (`JACS_*`)
-4. Runtime config provider (the trait)
-
-**Agent initialization**:
-```rust
-let provider = Arc::new(MyAppConfigProvider::new());
-let agent = AgentBuilder::new()
-    .config_provider(provider)
-    .build()?;
-```
-
----
-
-## Architecture: MCP Integration
-
-### What We Want
-
-All new todo/commitment/conversation/update functionality exposed as MCP tools in jacs-mcp, jacspy, and jacsnpm. These are low-level functions available in all MCP server implementations.
-
-### What MCP Tools Expose
-
-**Full CRUD** for all document types:
-- `create_todo_list`, `get_todo_list`, `update_todo_list` (re-signs), `archive_todo_list`
-- `create_commitment`, `get_commitment`, `list_commitments`
-- `create_update`, `get_updates_for_target`, `get_update_chain`
-- `create_message` (adds to conversation thread), `get_thread`
-
-**Sign + Verify** for agreements:
-- `sign_commitment` -- agent signs their part of a commitment's agreement
-- `verify_commitment` -- verify all signatures on a commitment are valid
-- `disagree_commitment` -- agent formally disagrees with signed reason
-- Negotiation happens externally (in conversations, chat, etc.). JACS handles the crypto, not the negotiation flow.
-
-**Workflow helpers**:
-- `complete_todo_item` -- marks item complete, re-signs list
-- `regenerate_todo_from_commitments` -- refreshes a todo list based on active commitments
-- `create_update_for_commitment` -- creates a semantic update targeting a commitment
-- `promote_todo_to_commitment` -- creates a commitment from a private todo item, linking via `jacsCommitmentTodoRef`
-
-**Query & Search**:
-- `list_todos_by_status` -- filter by item status
-- `search_commitments` -- find commitments by text or semantic similarity
-- `find_overdue_commitments` -- commitments past deadline that aren't completed
-- `get_conversation_thread` -- retrieve all messages in a thread
-- `query_updates_by_action` -- find updates by action type (e.g., all "delay" updates)
-- `get_update_chain_for_target` -- full semantic history of changes to a document
-
----
-
 ## Codebase Exploration Findings
 
-### JACS Current Architecture (from `/personal/jacs/`)
+### JACS Current Architecture
 
 **Workspace structure**: Monorepo with `jacs/` (core), `binding-core/`, `jacspy/`, `jacsnpm/`, `jacsgo/lib`, `jacs-mcp/`.
 
@@ -635,39 +81,19 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 **Header fields** (from `header.schema.json`): `jacsId`, `jacsVersion`, `jacsVersionDate`, `jacsBranch`, `jacsType`, `jacsSignature`, `jacsRegistration`, `jacsAgreement`, `jacsAgreementHash`, `jacsPreviousVersion`, `jacsOriginalVersion`, `jacsOriginalDate`, `jacsSha256`, `jacsFiles`, `jacsEmbedding`, `jacsLevel` (enum: raw/config/artifact/derived). Required: jacsId, jacsType, jacsVersion, jacsVersionDate, jacsOriginalVersion, jacsOriginalDate, jacsLevel, $schema.
 
-**Document lifecycle**: `Schema::create()` assigns `jacsId`, `jacsVersion`, `jacsVersionDate`, etc. Then `Agent::create_document_and_load()` signs and hashes it. Documents stored via `MultiStorage` implementing `StorageDocumentTraits`.
-
 **CRUD pattern**: Each type has `{type}_crud.rs` in `src/schema/` (e.g., `task_crud.rs`) with `create_minimal_{type}()` returning `serde_json::Value`. Follow `task_crud.rs`, NOT `eval_crud.rs` (commented out, not wired in).
 
 **Storage**: `MultiStorage` wraps `object_store` crate. `StorageType` enum: AWS, FS, HAI, Memory, WebLocal. `StorageDocumentTraits` is synchronous. Async bridged via `futures_executor::block_on()`.
 
-**Message system**: `message.schema.json` has `threadID`, `to`, `from`, `content`, `attachments`. Already supports conversation threading.
+### Agent Framework Landscape (No Signing Today)
 
-**Task system**: `task.schema.json` has 7 states (creating, rfp, proposal, negotiation, started, review, completed), `jacsStartAgreement` and `jacsEndAgreement` for multi-agent agreements, subtask/copy/merge references, action arrays.
-
-**Eval system**: `eval.schema.json` references a task by `taskID`, has quality descriptions, quantification units. Uses its own `signature` field (not via header). Currently has an anti-pattern: `eval_crud.rs` is entirely commented out and not declared in `mod.rs`.
-
-### HAI-2024 Python Patterns (from `/personal/HAI-2024/`)
-
-- **Goal > Task > Commitment** hierarchy in PostgreSQL with vector embeddings
-- **Commitment fields**: description, question/answer, completion question/answer, start/end dates, recurrence, owner signature, agreement reference
-- **Update tracking** with 15 action types: close-success, close-ignore, close-fail, close-reject, reopen, commit, doubt, assign, create, update, recommit, reschedule, delay, inform, renegotiate
-- **Update chaining**: each update references previous update, forming linked list per target
-- **Key insight**: "Todo = manifestation of a goal and goal updates (regenerated, ORDER MATTERS)"
-
-### libhai Patterns (from `/personal/libhai/`)
-
-- PostgreSQL via `sqlx` with `PgPool`, `jacs_document` table with JSONB + vector columns
-- Runtime config: `set_haiai_env_vars()` reads config file, sets env vars
-- Token/evaluation metrics to file and PostgreSQL
-- HNSW vector indexes for semantic search
-
-### hai Production Usage (from `/personal/hai/`)
-
-- JACS 0.5.1 for 3-tier agent verification badge system
-- Runtime config via env vars, graceful degradation
-- PostgreSQL for JACS document storage
-- Gaps: no JACS-specific telemetry, no key rotation, no batch signing
+| Framework | Memory File | Skill File | Plan File | Config File | Hook File | Signs Files? |
+|-----------|------------|------------|-----------|-------------|-----------|-------------|
+| **Claude Code** | MEMORY.md, CLAUDE.md | SKILL.md | plans/*.md | settings.json | hooks in settings | **No** |
+| **OpenAI Codex** | AGENTS.md | -- | PLANS.md | -- | -- | **No** |
+| **OpenClaw** | workspace memory | SKILL.md + scripts/ | -- | openclaw.plugin.json | -- | **No** |
+| **LangGraph** | checkpoints (JSON/DB) | tool definitions | -- | -- | -- | **No** |
+| **AutoGPT** | AutoGpt.json | -- | -- | ai_settings.yaml | -- | **No** |
 
 ---
 
@@ -685,7 +111,7 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 - **WASM double-gating**: `#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]` everywhere
 - **Error handling**: Convert `sqlx::Error` to String at boundary, never change `JacsError` shape between features
 - **Testing**: Feature-gated test modules + `testcontainers` for CI
-- **Schema struct**: Add fields to existing `Schema` struct (pragmatic). Optional refactor to `HashMap<String, Validator>` + typed accessors as separate step.
+- **Schema struct**: Add fields to existing `Schema` struct (pragmatic)
 - **StorageBackend enum**: `ObjectStore(MultiStorage) | Database(Arc<DatabaseStorage>)`
 - **Don't repeat eval_crud.rs anti-pattern**: Wire all new CRUD modules into `schema/mod.rs` properly
 
@@ -694,68 +120,67 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 ## Key Architectural Decisions
 
 ### Decision 1: Todo Lists Are Private, Commitments Are Shared
-**Choice**: Todo lists belong to a single agent and are re-signed on every change. Commitments are shared between agents and use the agreement system.
-**Why**: Mixing private mutable state with shared immutable agreements in one document would break signatures. An agent updating their private todo shouldn't invalidate a shared commitment's signatures.
+Todo lists belong to a single agent and are re-signed on every change. Commitments are shared between agents and use the agreement system. Mixing private mutable state with shared immutable agreements in one document would break signatures.
 
 ### Decision 2: Inline Items (Not Separate Documents) for Todo Lists
-**Choice**: Todo items (goals, tasks) are inline within the todo list document, not separate JACS documents.
-**Why**: A todo list is conceptually one thing -- a checklist. Making each item a separate signed document would create massive overhead for checking off a task. The entire list is the signed unit. Version history provides the audit trail.
+Todo items (goals, tasks) are inline within the todo list document, not separate JACS documents. The entire list is the signed unit. Version history provides the audit trail.
 
 ### Decision 3: Multiple Todo Lists Per Agent (Partitioned)
-**Choice**: Agents can have multiple named todo lists, partitioned by context or time.
-**Why**: Over time, completed items accumulate. An active todo list from 2026-01 shouldn't carry every completed item from the past year. Archiving completed items into dated lists (e.g., "completed-2026-01") keeps active lists performant while preserving history.
+Agents can have multiple named todo lists, partitioned by context or time. Archiving completed items into dated lists keeps active lists performant while preserving history.
 
 ### Decision 4: Conversations Are Linked Messages, Not Nested Documents
-**Choice**: Each message in a conversation is a separate signed document linked by thread ID.
-**Why**: Messages come from different agents at different times. Each needs its own signature for independent verification. Nesting messages in a container document would require re-signing the container for every new message, breaking all previous signatures.
+Each message in a conversation is a separate signed document linked by thread ID. Messages come from different agents at different times.
 
 ### Decision 5: Goals Are Private Todo Items, Shared via Commitments
-**Choice**: Goals are inline items (`itemType: "goal"`) within a private todo list. There is NO standalone goal.schema.json. When a goal needs to be shared between agents, it is expressed as a Commitment document.
-**Why**: This keeps the schema count minimal. A private goal in a todo list doesn't need multi-agent signing -- it's one agent's plan. When sharing is needed, the Commitment document already has the full agreement/disagreement mechanism. The todo item's `relatedCommitmentId` links back to the shared commitment. This avoids duplicating the agreement system in a separate goal schema.
+Goals are inline items (`itemType: "goal"`) within a private todo list. There is NO standalone goal.schema.json. When a goal needs to be shared between agents, it is expressed as a Commitment document.
 
 ### Decision 6: Update Tracking Preserves Semantic Context
-**Choice**: Updates are independently signed documents with 15 semantic action types from HAI-2024. They chain via `previousUpdateId`.
-**Why**: For mediation and conflict resolution, knowing WHY something changed is as important as knowing WHAT changed. A version diff shows the state change; an update document records the intent. "delay" vs "doubt" vs "renegotiate" have very different implications for dispute resolution.
+Updates are independently signed documents with 15 semantic action types from HAI-2024. They chain via `previousUpdateId`. For mediation, knowing WHY something changed is as important as knowing WHAT changed.
 
 ### Decision 7: Generic Database Trait, Not Postgres-Specific
-**Choice**: Define `DatabaseDocumentTraits` as a generic trait. Ship Postgres as the reference implementation.
-**Why**: Different deployments use different databases. The trait lets anyone implement storage for their database of choice. JACS core shouldn't be coupled to Postgres.
+Define `DatabaseDocumentTraits` as a generic trait. Ship Postgres as the reference implementation.
 
 ### Decision 8: Sync Traits, Async Bridged Internally
-**Choice**: `StorageDocumentTraits` and `DatabaseDocumentTraits` are sync. Database implementations bridge async internally.
-**Why**: The entire JACS codebase is synchronous. Making traits async would require rewriting every caller. Database impls use `Handle::block_on()` internally.
+`StorageDocumentTraits` and `DatabaseDocumentTraits` are sync. Database implementations bridge async internally via `Handle::block_on()`.
 
 ### Decision 9: Runtime Index Generator, Not Auto-Indexing
-**Choice**: CLI tool generates recommended indexes. Users review and apply.
-**Why**: Auto-indexing removes user control and may create unwanted indexes. Users know their query patterns better than JACS does. The generator provides intelligent recommendations based on schema knowledge.
+CLI tool generates recommended indexes. Users review and apply.
 
 ### Decision 10: Sign + Verify for MCP, Not Full Negotiation
-**Choice**: MCP tools handle signing and verification. Negotiation happens in conversations.
-**Why**: Negotiation is a conversation between agents (back-and-forth messages). JACS records the conversation as signed messages. When agents reach agreement, they sign a commitment. JACS handles the crypto (sign, verify), not the negotiation logic.
+MCP tools handle signing and verification. Negotiation happens in conversations.
 
 ### Decision 11: Keys Always From Secure Locations
-**Choice**: Even with database storage, keys and agent.json load from filesystem or keyservers only.
-**Why**: The attack surface for agent identity must be minimal. Database connections can be compromised. Filesystem permissions and keyserver authentication are better-understood security boundary.
+Even with database storage, keys and agent.json load from filesystem or keyservers only.
 
 ### Decision 12: Formal Disagreement Is a Signed Cryptographic Action
-**Choice**: Agents can formally DISAGREE with a document by signing a disagreement entry in `jacsAgreement.disagreements`. This is distinct from not signing (pending) and from agreeing (signing).
-**Why**: For mediation, the difference between "hasn't responded" and "explicitly refuses" is critical. A signed disagreement proves the agent SAW the document, provides a required reason, and creates an auditable dissent record. This is the foundation of conflict resolution -- you cannot mediate without knowing who disagrees and why.
+Agents can formally DISAGREE by signing a disagreement entry. This is distinct from not signing (pending) and from agreeing. For mediation, "hasn't responded" vs "explicitly refuses" is critical.
 
 ### Decision 13: Agreement Hash Covers Terms, Not Status
-**Choice**: `jacsAgreementHash` is computed from the document's TERMS (content fields) not from status or metadata fields. Agreement signatures survive status changes.
-**Why**: Status transitions (pending -> active -> completed) are lifecycle events, not term changes. If Agent A and B agreed to "deliver report by March 1", that agreement is valid whether the current status is "active" or "delayed". Only changes to the TERMS (description, dates, deliverables) require re-signing the agreement.
+`jacsAgreementHash` is computed from the document's TERMS (content fields) not from status or metadata. Agreement signatures survive status changes.
 
 ### Decision 14: Updates Drive Status Changes
-**Choice**: When an agent creates an Update document targeting another document, JACS automatically creates a new version of the target with updated status. The Update is the API; the version change is the side effect.
-**Why**: This ensures every status change has a corresponding signed Update with semantic context. You cannot change a document's status without recording WHY. The Update document is created first, then the target document is versioned. The Update chain is the authoritative semantic history.
+When an agent creates an Update document targeting another document, JACS automatically creates a new version of the target with updated status. The Update is the API; the version change is the side effect.
 
 ### Decision 15: Completion Requires Multi-Agent Agreement
-**Choice**: For shared documents (commitments), terminal status changes (completed, failed) require agreement from ALL signing parties. Unilateral completion claims are not possible.
-**Why**: Agent A cannot declare a commitment "completed" without Agent B confirming. If they disagree on completion, the document enters "disputed" state. This uses the existing `jacsEndAgreement` pattern from task.schema.json. This is fundamental to fair mediation -- both parties must agree on outcomes.
+For shared documents (commitments), terminal status changes require agreement from ALL signing parties.
 
 ### Decision 16: Only Agreement Signers Can Create Updates
-**Choice**: Only agents listed in a document's `jacsAgreement.agentIDs` can create Update documents targeting that document.
-**Why**: Updates have legal/mediation significance (recording delays, disputes, completions). Allowing arbitrary agents to create updates about other agents' commitments would undermine trust. The signing agent's identity is verified against the agreement's agent list.
+Only agents listed in a document's `jacsAgreement.agentIDs` can create Update documents targeting that document.
+
+### Decision P0-1: Generic Schema, Not Per-Type Schemas
+One `agentstate.schema.json` with `jacsAgentStateType` enum, not separate `memory.schema.json`, `skill.schema.json`, etc.
+
+### Decision P0-2: `jacsFiles` for File References, Not Custom Fields
+Reuse the existing `jacsFiles` array from header for file path + hash + embed.
+
+### Decision P0-3: Hooks Always Embed Content
+Hook-type agentstate documents MUST embed their code content to prevent TOCTOU attacks.
+
+### Decision P0-4: Origin Tracking for Trust Differentiation
+`jacsAgentStateOrigin` distinguishes authored, adopted, generated, and imported content.
+
+### Decision P0-5: Framework Field for Cross-Platform Compatibility
+`jacsAgentStateFramework` records which agent framework the file is for.
 
 ---
 
@@ -763,8 +188,8 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 
 | File | Line | Role |
 |------|------|------|
-| `jacs/src/schema/mod.rs` | 210 | `Schema` struct -- add `todoschema`, `commitmentschema`, `updateschema` Validator fields |
-| `jacs/src/schema/mod.rs` | 16-24 | Module declarations -- add `pub mod todo_crud;`, `pub mod commitment_crud;`, `pub mod update_crud;`, `pub mod conversation_crud;`, `pub mod reference_utils;` |
+| `jacs/src/schema/mod.rs` | 210 | `Schema` struct -- add `agentstateschema`, `todoschema`, `commitmentschema`, `updateschema` Validator fields |
+| `jacs/src/schema/mod.rs` | 16-24 | Module declarations -- add new CRUD module declarations |
 | `jacs/src/schema/mod.rs` | 48 | `build_validator()` helper -- reuse for all new schemas |
 | `jacs/src/schema/utils.rs` | 216 | `DEFAULT_SCHEMA_STRINGS` phf_map -- add new include_str! entries |
 | `jacs/src/schema/utils.rs` | 235 | `SCHEMA_SHORT_NAME` phf_map -- add short name mappings |
@@ -775,52 +200,12 @@ All new todo/commitment/conversation/update functionality exposed as MCP tools i
 | `jacs/src/config/mod.rs` | whole | Config struct, 12-Factor loading -- add database_url, JacsConfigProvider trait |
 | `jacs/src/error.rs` | whole | `JacsError` enum -- add `StorageError`, `DatabaseError` variants |
 | `jacs/Cargo.toml` | 99 | Existing tokio optional dep -- `database` feature activates it |
-| `jacs/schemas/message/v1/message.schema.json` | whole | Existing message schema -- add `jacsMessagePreviousId` for ordering |
-| `jacs/schemas/components/agreement/v1/agreement.schema.json` | whole | Existing agreement schema -- used by commitments (extended with disagreements array) |
-| `jacs/schemas/header/v1/header.schema.json` | whole | Header with jacsEmbedding, jacsAgreement -- used by all document types |
+| `jacs/schemas/message/v1/message.schema.json` | whole | Add `jacsMessagePreviousId` for ordering |
+| `jacs/schemas/components/agreement/v1/agreement.schema.json` | whole | Extend with disagreements array |
+| `jacs/schemas/header/v1/header.schema.json` | whole | Header with jacsEmbedding, jacsAgreement |
 | `jacs-mcp/` | whole | MCP server -- add all new tools |
 | `jacspy/` | whole | Python bindings -- expose new functions |
 | `jacsnpm/` | whole | Node bindings -- expose new functions |
-
----
-
-## Verification & Testing Strategy
-
-### Test Categories
-
-| Category | What | How to Run |
-|----------|------|-----------|
-| Unit | Schema validation (positive + negative), CRUD, config parsing | `cargo test` |
-| Schema Positive | Every valid enum value, optional field combinations | `cargo test` |
-| Schema Negative | Missing required fields, invalid enums, bad UUID format, bad dates | `cargo test` |
-| Integration (DB) | Database storage, queries, migrations, optimistic locking | `cargo test --features database,database-tests` |
-| MCP | Tool execution, response format | `cargo test` (jacs-mcp crate) |
-| CLI | Command-line workflows | `cargo test --features cli` |
-| Bindings | Python/Node/Go function calls | `cd jacspy && pytest` / `cd jacsnpm && npm test` |
-| WASM | Compilation check (no runtime) | `cargo check --target wasm32-unknown-unknown` |
-| Regression | All existing tests unchanged | `cargo test` |
-
-### Key Verification Scenarios
-
-1. **Todo list lifecycle**: Create list -> add goal/task items -> complete items -> archive -> verify all versions signed
-2. **Commitment agreement**: Agent A proposes -> Agent B signs -> verify both signatures -> try to modify -> verification fails
-3. **Commitment disagreement**: Agent A proposes -> Agent B formally disagrees with reason -> document enters contested state -> Agent A amends terms -> Agent B agrees
-4. **Update chain**: Create commitment -> "commit" update -> "inform" update -> "delay" update -> "close-success" update -> verify chain integrity and all signatures
-5. **Conversation to commitment**: Create thread -> exchange messages -> create commitment referencing thread -> sign agreement -> create "inform" update
-6. **Todo-to-commitment promotion**: Private goal item -> create commitment with todoRef -> sign agreement -> todo item gets relatedCommitmentId
-7. **Database round-trip**: Store signed document in DB -> retrieve -> verify signature matches
-8. **Storage migration**: Filesystem docs -> import to DB -> verify signatures -> export back to filesystem -> verify again
-9. **Mixed storage**: Keys from filesystem, documents from database, same agent
-10. **Cross-language**: Create commitment in Python, verify in Rust via MCP, create update from Node
-
-### Schema Test Coverage Matrix
-
-| Schema | Positive Tests | Negative Tests | Integration Tests |
-|--------|---------------|----------------|-------------------|
-| Commitment | minimal, terms, dates, Q&A, completion Q&A, recurrence, agreement, task ref, conversation ref, todo ref, owner, all statuses, dispute, standalone | invalid status, bad dates, invalid date format | signing, two-agent agreement, immutable after agreement, disagreement workflow |
-| Update | minimal, all 15 action types, all 3 target types, note, chain, agent assignment | invalid action, invalid target, non-UUID target, missing target, missing action | signing, chain verification, multi-agent updates, header fields, semantic category coverage |
-| Todo | minimal, goal item, task item, childItemIds, all statuses, all priorities, commitment ref, conversation ref, archive refs, tags | invalid status, invalid itemtype, missing description, missing status, missing itemtype, missing name, comprehensive rejects | signing, resign, versioning, archive workflow, multiple lists |
-| Conversation | message with thread, ordering, multi-agent, produces commitment | (uses existing message schema tests) | signing, multi-agent messages |
 
 ---
 
