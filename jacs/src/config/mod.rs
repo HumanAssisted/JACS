@@ -225,6 +225,19 @@ pub struct Config {
     jacs_dns_required: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
+    // Database storage configuration
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_url: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_max_connections: Option<u32>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_min_connections: Option<u32>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_connect_timeout_secs: Option<u64>,
 }
 
 fn default_schema() -> String {
@@ -315,6 +328,10 @@ impl Default for Config {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 }
@@ -472,6 +489,10 @@ impl ConfigBuilder {
             jacs_dns_strict: self.dns_strict,
             jacs_dns_required: self.dns_required,
             observability: self.observability,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 }
@@ -531,6 +552,10 @@ impl Config {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 
@@ -585,6 +610,18 @@ impl Config {
         }
         if other.observability.is_some() {
             self.observability = other.observability;
+        }
+        if other.jacs_database_url.is_some() {
+            self.jacs_database_url = other.jacs_database_url;
+        }
+        if other.jacs_database_max_connections.is_some() {
+            self.jacs_database_max_connections = other.jacs_database_max_connections;
+        }
+        if other.jacs_database_min_connections.is_some() {
+            self.jacs_database_min_connections = other.jacs_database_min_connections;
+        }
+        if other.jacs_database_connect_timeout_secs.is_some() {
+            self.jacs_database_connect_timeout_secs = other.jacs_database_connect_timeout_secs;
         }
     }
 
@@ -666,6 +703,26 @@ impl Config {
             self.jacs_dns_required = Some(val);
         }
 
+        // Database configuration
+        if let Some(val) = env_opt("JACS_DATABASE_URL") {
+            self.jacs_database_url = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_DATABASE_MAX_CONNECTIONS") {
+            if let Ok(n) = val.parse::<u32>() {
+                self.jacs_database_max_connections = Some(n);
+            }
+        }
+        if let Some(val) = env_opt("JACS_DATABASE_MIN_CONNECTIONS") {
+            if let Ok(n) = val.parse::<u32>() {
+                self.jacs_database_min_connections = Some(n);
+            }
+        }
+        if let Some(val) = env_opt("JACS_DATABASE_CONNECT_TIMEOUT_SECS") {
+            if let Ok(n) = val.parse::<u64>() {
+                self.jacs_database_connect_timeout_secs = Some(n);
+            }
+        }
+
         // Note: Password is intentionally NOT loaded from env into config
         // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
     }
@@ -689,6 +746,10 @@ impl Config {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 
@@ -758,6 +819,7 @@ impl fmt::Display for Config {
             JACS_PRIVATE_KEY_PASSWORD:       REDACTED,
             JACS_AGENT_ID_AND_VERSION:       {},
             JACS_DEFAULT_STORAGE:            {},
+            JACS_DATABASE_URL:               {},
         "#,
             self.jacs_use_security.as_deref().unwrap_or(""),
             self.jacs_data_directory.as_deref().unwrap_or(""),
@@ -768,7 +830,8 @@ impl fmt::Display for Config {
             self.jacs_agent_public_key_filename.as_deref().unwrap_or(""),
             self.jacs_agent_key_algorithm.as_deref().unwrap_or(""),
             self.jacs_agent_id_and_version.as_deref().unwrap_or(""),
-            self.jacs_default_storage.as_deref().unwrap_or("")
+            self.jacs_default_storage.as_deref().unwrap_or(""),
+            if self.jacs_database_url.is_some() { "REDACTED" } else { "" }
         )
     }
 }
@@ -1435,6 +1498,10 @@ mod tests {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         };
 
         base.merge(override_config);
@@ -1507,6 +1574,10 @@ mod tests {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         };
         config.merge(file_config);
 

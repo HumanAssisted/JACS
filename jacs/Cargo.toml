@@ -121,6 +121,8 @@ predicates = "3.1"
 tempfile = "3.19.1"
 serial_test = "3.2.0"
 futures = "0.3"
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -136,6 +138,8 @@ object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "ht
 # Post-quantum 2025 standards (ML-DSA and ML-KEM)
 fips203 = "0.4.3"
 fips204 = "0.4.3"
+# Database storage (optional, behind "database" feature)
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "json", "uuid", "chrono"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
@@ -154,6 +158,11 @@ observability-convenience = []
 
 # Server integration surfaces (no deps by default; used by sibling binaries)
 mcp-server = []
+
+# Database storage backend (PostgreSQL via sqlx)
+database = ["dep:sqlx", "dep:tokio"]
+# Database integration tests (requires Docker or local PostgreSQL)
+database-tests = ["database"]
 
 # Observability backends are gated behind compile-time features.
 # Default is a minimal core: stderr/file logs only, no remote backends.

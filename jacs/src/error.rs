@@ -255,6 +255,17 @@ pub enum JacsError {
         reason: String,
     },
 
+    // === Storage Errors ===
+    /// Generic storage backend error.
+    StorageError(String),
+
+    // === Database Errors ===
+    /// Database operation failed.
+    DatabaseError {
+        operation: String,
+        reason: String,
+    },
+
     // === Verification Claim Errors ===
     /// Agent's verification claim could not be satisfied.
     ///
@@ -438,6 +449,18 @@ impl fmt::Display for JacsError {
             // Registration
             JacsError::RegistrationFailed { reason } => {
                 write!(f, "Registration failed: {}", reason)
+            }
+
+            // Storage
+            JacsError::StorageError(msg) => write!(f, "Storage error: {}", msg),
+
+            // Database
+            JacsError::DatabaseError { operation, reason } => {
+                write!(
+                    f,
+                    "Database error during '{}': {}",
+                    operation, reason
+                )
             }
 
             // Verification Claims
@@ -762,6 +785,47 @@ mod tests {
         assert!(msg.contains("not registered") || msg.contains("HAI.ai"), "Should mention registration");
         assert!(msg.contains("Fix:"), "Should provide fix guidance");
         assert!(msg.contains("https://hai.ai"), "Should include registration link");
+    }
+
+    // ==========================================================================
+    // STORAGE & DATABASE ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_storage_error_display() {
+        let err = JacsError::StorageError("backend unavailable".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Storage error"));
+        assert!(msg.contains("backend unavailable"));
+    }
+
+    #[test]
+    fn test_database_error_display() {
+        let err = JacsError::DatabaseError {
+            operation: "store".to_string(),
+            reason: "connection refused".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("Database error"));
+        assert!(msg.contains("store"));
+        assert!(msg.contains("connection refused"));
+    }
+
+    #[test]
+    fn test_database_error_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<JacsError>();
+
+        // Verify new variants specifically work across threads
+        let err = JacsError::DatabaseError {
+            operation: "query".to_string(),
+            reason: "timeout".to_string(),
+        };
+        let handle = std::thread::spawn(move || {
+            err.to_string()
+        });
+        let msg = handle.join().unwrap();
+        assert!(msg.contains("timeout"));
     }
 
     #[test]
