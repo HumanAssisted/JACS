@@ -46,6 +46,7 @@ JACS schemas follow a hierarchical composition pattern:
 | `node/v1/node.schema.json` | Graph node representation |
 | `program/v1/program.schema.json` | Executable program definitions |
 | `eval/v1/eval.schema.json` | Evaluation and assessment records |
+| `agentstate/v1/agentstate.schema.json` | Signed agent state files (memory, skills, plans, configs, hooks, other) |
 
 ### Component Schemas
 
@@ -292,6 +293,7 @@ For detailed documentation on specific schemas:
 - [Agent Schema](agent.md) - Agent identity and capabilities
 - [Document Schema](document.md) - Document header and structure
 - [Task Schema](task.md) - Task workflow management
+- [Agent State Schema](agentstate.md) - Signed agent state documents
 - [Configuration](configuration.md) - Configuration file format
 
 ## See Also

@@ -38,6 +38,7 @@ assert!(result.valid);
 - RSA, Ed25519, and post-quantum (ML-DSA) cryptography
 - JSON Schema validation
 - Multi-agent agreements
+- Signed agent state (memory, skills, plans, configs, hooks, or any document)
 - MCP and A2A protocol support
 - Python, Go, and NPM bindings
 

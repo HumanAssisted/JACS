@@ -39,6 +39,7 @@
 - [Agent Schema](schemas/agent.md)
 - [Document Schema](schemas/document.md)
 - [Task Schema](schemas/task.md)
+- [Agent State Schema](schemas/agentstate.md)
 - [Configuration](schemas/configuration.md)
 
 ## Advanced Topics
