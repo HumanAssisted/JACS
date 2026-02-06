@@ -230,7 +230,8 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
      "schemas/program/v1/program.schema.json" => include_str!("../../schemas/program/v1/program.schema.json"),
      "schemas/node/v1/node.schema.json" => include_str!("../../schemas/node/v1/node.schema.json"),
      "schemas/components/embedding/v1/embedding.schema.json" => include_str!("../../schemas/components/embedding/v1/embedding.schema.json"),
-     "schemas/agentstate/v1/agentstate.schema.json" => include_str!("../../schemas/agentstate/v1/agentstate.schema.json")
+     "schemas/agentstate/v1/agentstate.schema.json" => include_str!("../../schemas/agentstate/v1/agentstate.schema.json"),
+     "schemas/commitment/v1/commitment.schema.json" => include_str!("../../schemas/commitment/v1/commitment.schema.json")
 };
 
 pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
@@ -251,6 +252,7 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "https://hai.ai/schemas/task/v1/task-schema.json" => "task" ,
     "document" => "document" ,
     "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json" => "agentstate" ,
+    "https://hai.ai/schemas/commitment/v1/commitment.schema.json" => "commitment" ,
 };
 
 pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {

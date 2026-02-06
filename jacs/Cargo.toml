@@ -34,6 +34,7 @@ include = [
     "benches/sign_and_check_sig.rs",
     "schemas/components/embedding/v1/embedding.schema.json",
     "schemas/agentstate/v1/agentstate.schema.json",
+    "schemas/commitment/v1/commitment.schema.json",
 ]
 description = "JACS JSON AI Communication Standard"
 readme = "README.md"

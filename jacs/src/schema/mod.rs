@@ -16,6 +16,7 @@ use uuid::Uuid;
 pub mod action_crud;
 pub mod agent_crud;
 pub mod agentstate_crud;
+pub mod commitment_crud;
 pub mod contact_crud;
 pub mod message_crud;
 pub mod service_crud;
@@ -229,6 +230,7 @@ pub struct Schema {
     programschema: Validator,
     embeddingschema: Validator,
     pub agentstateschema: Validator,
+    pub commitmentschema: Validator,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
@@ -510,6 +512,12 @@ impl Schema {
             default_version
         );
 
+        let commitment_path = format!(
+            "schemas/commitment/{}/commitment.schema.json",
+            default_version
+        );
+
+
         // Helper to get schema with better error messages
         let get_schema = |path: &str| -> Result<&str, Box<dyn std::error::Error>> {
             DEFAULT_SCHEMA_STRINGS.get(path)
@@ -533,6 +541,7 @@ impl Schema {
         let nodedata = get_schema(&node_path)?;
         let embeddingdata = get_schema(&embedding_path)?;
         let agentstatedata = get_schema(&agentstate_path)?;
+        let commitmentdata = get_schema(&commitment_path)?;
 
         let agentschema_result: Value = serde_json::from_str(agentdata)?;
         let headerchema_result: Value = serde_json::from_str(headerdata)?;
@@ -551,6 +560,7 @@ impl Schema {
         let programschema_result: Value = serde_json::from_str(programdata)?;
         let embeddingschema_result: Value = serde_json::from_str(embeddingdata)?;
         let agentstateschema_result: Value = serde_json::from_str(agentstatedata)?;
+        let commitmentschema_result: Value = serde_json::from_str(commitmentdata)?;
 
         let agentschema = build_validator(&agentschema_result, &agentversion_path)?;
         let headerschema = build_validator(&headerchema_result, &header_path)?;
@@ -569,6 +579,7 @@ impl Schema {
         let taskschema = build_validator(&taskschema_result, &task_path)?;
         let messageschema = build_validator(&messageschema_result, &message_path)?;
         let agentstateschema = build_validator(&agentstateschema_result, &agentstate_path)?;
+        let commitmentschema = build_validator(&commitmentschema_result, &commitment_path)?;
 
         Ok(Self {
             headerschema,
@@ -589,6 +600,7 @@ impl Schema {
             programschema,
             embeddingschema,
             agentstateschema,
+            commitmentschema,
         })
     }
 
@@ -683,6 +695,39 @@ impl Schema {
                     .get("$schema")
                     .and_then(|v| v.as_str())
                     .unwrap_or("agentstate.schema.json");
+                let error_message = format_schema_validation_error(&error, schema_name, &instance);
+                error!("{}", error_message);
+                Err(error_message.into())
+            }
+        }
+    }
+
+    /// Validates a JSON string against the commitment schema.
+    pub fn validate_commitment(
+        &self,
+        json: &str,
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        let instance: serde_json::Value = match serde_json::from_str(json) {
+            Ok(value) => {
+                debug!("validate json {:?}", value);
+                value
+            }
+            Err(e) => {
+                let error_message = format!("Invalid JSON: {}", e);
+                warn!("validate error {:?}", error_message);
+                return Err(error_message.into());
+            }
+        };
+
+        let validation_result = self.commitmentschema.validate(&instance);
+
+        match validation_result {
+            Ok(_) => Ok(instance.clone()),
+            Err(error) => {
+                let schema_name = instance
+                    .get("$schema")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("commitment.schema.json");
                 let error_message = format_schema_validation_error(&error, schema_name, &instance);
                 error!("{}", error_message);
                 Err(error_message.into())
