@@ -35,6 +35,12 @@
           "hai": "agent",
           "type": "object"
         },
+        "jacsMessagePreviousId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "UUID of the previous message in this thread for ordering.",
+          "hai": "meta"
+        },
         "attachments": {
           "type": "array",
           "description": "list of files  ",

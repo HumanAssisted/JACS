@@ -35,6 +35,8 @@ include = [
     "schemas/components/embedding/v1/embedding.schema.json",
     "schemas/agentstate/v1/agentstate.schema.json",
     "schemas/commitment/v1/commitment.schema.json",
+    "schemas/todo/v1/todo.schema.json",
+    "schemas/components/todoitem/v1/todoitem.schema.json",
 ]
 description = "JACS JSON AI Communication Standard"
 readme = "README.md"

@@ -231,7 +231,9 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
      "schemas/node/v1/node.schema.json" => include_str!("../../schemas/node/v1/node.schema.json"),
      "schemas/components/embedding/v1/embedding.schema.json" => include_str!("../../schemas/components/embedding/v1/embedding.schema.json"),
      "schemas/agentstate/v1/agentstate.schema.json" => include_str!("../../schemas/agentstate/v1/agentstate.schema.json"),
-     "schemas/commitment/v1/commitment.schema.json" => include_str!("../../schemas/commitment/v1/commitment.schema.json")
+     "schemas/commitment/v1/commitment.schema.json" => include_str!("../../schemas/commitment/v1/commitment.schema.json"),
+     "schemas/todo/v1/todo.schema.json" => include_str!("../../schemas/todo/v1/todo.schema.json"),
+     "schemas/components/todoitem/v1/todoitem.schema.json" => include_str!("../../schemas/components/todoitem/v1/todoitem.schema.json")
 };
 
 pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
@@ -253,6 +255,7 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "document" => "document" ,
     "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json" => "agentstate" ,
     "https://hai.ai/schemas/commitment/v1/commitment.schema.json" => "commitment" ,
+    "https://hai.ai/schemas/todo/v1/todo.schema.json" => "todo" ,
 };
 
 pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {

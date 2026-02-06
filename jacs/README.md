@@ -39,6 +39,9 @@ assert!(result.valid);
 - JSON Schema validation
 - Multi-agent agreements
 - Signed agent state (memory, skills, plans, configs, hooks, or any document)
+- Commitments (shared signed agreements between agents)
+- Todo lists (private signed task tracking with cross-references)
+- Conversation threading (ordered, signed message chains)
 - MCP and A2A protocol support
 - Python, Go, and NPM bindings
 

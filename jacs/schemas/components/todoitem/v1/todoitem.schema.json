@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/components/todoitem/v1/todoitem.schema.json",
+  "title": "Todo Item",
+  "description": "An inline item within a todo list. Can be a goal (broad objective) or task (specific action). Each item has a stable UUID for cross-referencing.",
+  "type": "object",
+  "properties": {
+    "itemId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable UUID for this item. Does not change when the list is re-signed."
+    },
+    "itemType": {
+      "type": "string",
+      "enum": ["goal", "task"],
+      "description": "Whether this is a broad goal or a specific task."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the item."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "in-progress", "completed", "abandoned"],
+      "description": "Current status of the item."
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "description": "Priority level of the item."
+    },
+    "childItemIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "UUIDs of child items (sub-goals or tasks under a goal)."
+    },
+    "relatedCommitmentId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of a commitment that formalizes this item."
+    },
+    "relatedConversationThread": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of a conversation thread related to this item."
+    },
+    "completedDate": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this item was completed."
+    },
+    "assignedAgent": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the agent assigned to this item."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for categorization."
+    }
+  },
+  "required": [
+    "itemId",
+    "itemType",
+    "description",
+    "status"
+  ]
+}

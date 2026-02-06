@@ -40,6 +40,9 @@
 - [Document Schema](schemas/document.md)
 - [Task Schema](schemas/task.md)
 - [Agent State Schema](schemas/agentstate.md)
+- [Commitment Schema](schemas/commitment.md)
+- [Todo List Schema](schemas/todo.md)
+- [Conversation Schema](schemas/conversation.md)
 - [Configuration](schemas/configuration.md)
 
 ## Advanced Topics
