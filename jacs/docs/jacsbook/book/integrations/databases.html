@@ -174,23 +174,33 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="databases"><a class="header" href="#databases">Databases</a></h1>
-<p>While JACS provides built-in storage backends (filesystem, S3, HAI Cloud), you may need to integrate JACS documents with traditional databases for querying, indexing, or application-specific requirements.</p>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>JACS includes a <strong>built-in PostgreSQL storage backend</strong> (behind the <code>database</code> feature flag) that handles document storage, JSONB queries, and signature preservation automatically. For most use cases, this is the recommended approach.</p>
+<p>For custom integrations with other databases, see the examples below.</p>
+<h2 id="built-in-postgresql-backend"><a class="header" href="#built-in-postgresql-backend">Built-in PostgreSQL Backend</a></h2>
+<p>JACS ships with native PostgreSQL support via the <code>database</code> Cargo feature. This uses a TEXT + JSONB dual-column strategy to preserve cryptographic signatures while enabling efficient queries. See <a href="../advanced/storage.html">Storage Backends</a> for full documentation.</p>
+<pre><code class="language-bash"># Enable at compile time
+cargo build --features database
+
+# Configure via environment
+export JACS_DATABASE_URL="postgres://user:pass@localhost:5432/jacs"
+</code></pre>
+<h2 id="custom-database-integrations"><a class="header" href="#custom-database-integrations">Custom Database Integrations</a></h2>
+<p>If you need to integrate JACS documents with other databases (MongoDB, SQLite, Redis) or need application-specific table structures, you can store JACS documents directly.</p>
 <p>JACS documents are JSON objects with cryptographic signatures. They can be stored in any database that supports JSON or text storage:</p>
 <div class="table-wrapper"><table><thead><tr><th>Database Type</th><th>Storage Method</th><th>Best For</th></tr></thead><tbody>
-<tr><td>PostgreSQL</td><td>JSONB column</td><td>Complex queries, relations</td></tr>
+<tr><td>PostgreSQL (built-in)</td><td>TEXT + JSONB</td><td>Complex queries, signature preservation</td></tr>
+<tr><td>PostgreSQL (custom)</td><td>JSONB column</td><td>Application-specific schemas</td></tr>
 <tr><td>MongoDB</td><td>Native documents</td><td>Document-centric apps</td></tr>
 <tr><td>SQLite</td><td>TEXT column</td><td>Local/embedded apps</td></tr>
 <tr><td>Redis</td><td>Key-value</td><td>Caching, high-speed access</td></tr>
 </tbody></table>
 </div>
-<h2 id="why-use-a-database"><a class="header" href="#why-use-a-database">Why Use a Database?</a></h2>
-<p>The built-in JACS storage backends are optimized for document integrity and versioning. Use a database when you need:</p>
+<h2 id="why-use-a-custom-database-integration"><a class="header" href="#why-use-a-custom-database-integration">Why Use a Custom Database Integration?</a></h2>
+<p>The built-in PostgreSQL backend covers most query needs. Use a custom integration when you need:</p>
 <ul>
-<li><strong>Complex Queries</strong>: Search across document fields</li>
-<li><strong>Indexing</strong>: Fast lookups on specific attributes</li>
-<li><strong>Relations</strong>: Link JACS documents to other data</li>
-<li><strong>Transactions</strong>: Atomic operations across multiple documents</li>
+<li><strong>Different Database</strong>: MongoDB, SQLite, Redis, etc.</li>
+<li><strong>Custom Schema</strong>: Application-specific table structures</li>
+<li><strong>Relations</strong>: Link JACS documents to non-JACS data</li>
 <li><strong>Existing Infrastructure</strong>: Integrate with current systems</li>
 </ul>
 <h2 id="postgresql-integration"><a class="header" href="#postgresql-integration">PostgreSQL Integration</a></h2>

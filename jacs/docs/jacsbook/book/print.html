@@ -11280,6 +11280,7 @@ new_agent = agent.update_agent(json.dumps({
 <tr><td>Filesystem</td><td><code>fs</code></td><td>Local file storage (default)</td></tr>
 <tr><td>AWS S3</td><td><code>aws</code></td><td>Amazon S3 object storage</td></tr>
 <tr><td>HAI Cloud</td><td><code>hai</code></td><td>HAI managed storage</td></tr>
+<tr><td>PostgreSQL</td><td><code>database</code></td><td>PostgreSQL with JSONB queries (requires <code>database</code> feature)</td></tr>
 </tbody></table>
 </div>
 <h2 id="configuration-13"><a class="header" href="#configuration-13">Configuration</a></h2>
@@ -11447,6 +11448,104 @@ doc = agent.create_document(json.dumps({
 <li>Managed deployments</li>
 <li>Integration with HAI services</li>
 </ul>
+<h2 id="postgresql-database-storage-database"><a class="header" href="#postgresql-database-storage-database">PostgreSQL Database Storage (database)</a></h2>
+<p>The <code>database</code> storage backend stores JACS documents in PostgreSQL, enabling JSONB queries, pagination, and agent-based lookups while preserving cryptographic signatures.</p>
+<p>This backend is behind a compile-time feature flag and requires the <code>database</code> Cargo feature to be enabled.</p>
+<h3 id="compile-time-setup"><a class="header" href="#compile-time-setup">Compile-Time Setup</a></h3>
+<pre><code class="language-bash"># Build with database support
+cargo build --features database
+
+# Run tests with database support (requires Docker for testcontainers)
+cargo test --features database-tests
+</code></pre>
+<h3 id="configuration-17"><a class="header" href="#configuration-17">Configuration</a></h3>
+<pre><code class="language-json">{
+  "jacs_default_storage": "database"
+}
+</code></pre>
+<p>Environment variables (12-Factor compliant):</p>
+<pre><code class="language-bash">export JACS_DATABASE_URL="postgres://user:password@localhost:5432/jacs"
+export JACS_DATABASE_MAX_CONNECTIONS=10       # optional, default 10
+export JACS_DATABASE_MIN_CONNECTIONS=1        # optional, default 1
+export JACS_DATABASE_CONNECT_TIMEOUT_SECS=30  # optional, default 30
+</code></pre>
+<h3 id="how-it-works-3"><a class="header" href="#how-it-works-3">How It Works</a></h3>
+<p>JACS uses a <strong>TEXT + JSONB dual-column</strong> strategy:</p>
+<ul>
+<li><strong><code>raw_contents</code> (TEXT)</strong>: Stores the exact JSON bytes as-is. This is used when retrieving documents to preserve cryptographic signatures (PostgreSQL JSONB normalizes key ordering, which would break signatures).</li>
+<li><strong><code>file_contents</code> (JSONB)</strong>: Stores the same document as JSONB for efficient queries, field extraction, and indexing.</li>
+</ul>
+<h3 id="table-schema"><a class="header" href="#table-schema">Table Schema</a></h3>
+<pre><code class="language-sql">CREATE TABLE jacs_document (
+    jacs_id TEXT NOT NULL,
+    jacs_version TEXT NOT NULL,
+    agent_id TEXT,
+    jacs_type TEXT NOT NULL,
+    raw_contents TEXT NOT NULL,
+    file_contents JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (jacs_id, jacs_version)
+);
+</code></pre>
+<h3 id="append-only-model"><a class="header" href="#append-only-model">Append-Only Model</a></h3>
+<p>Documents are <strong>immutable once stored</strong>. New versions create new rows keyed by <code>(jacs_id, jacs_version)</code>. There are no UPDATE operations on existing rows. Inserting a duplicate <code>(jacs_id, jacs_version)</code> is silently ignored (<code>ON CONFLICT DO NOTHING</code>).</p>
+<h3 id="query-capabilities"><a class="header" href="#query-capabilities">Query Capabilities</a></h3>
+<p>The database backend provides additional query methods beyond basic CRUD:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>query_by_type(type, limit, offset)</code></td><td>Paginated queries by document type</td></tr>
+<tr><td><code>query_by_field(field, value, type, limit, offset)</code></td><td>JSONB field queries</td></tr>
+<tr><td><code>count_by_type(type)</code></td><td>Count documents by type</td></tr>
+<tr><td><code>get_versions(id)</code></td><td>All versions of a document</td></tr>
+<tr><td><code>get_latest(id)</code></td><td>Most recent version</td></tr>
+<tr><td><code>query_by_agent(agent_id, type, limit, offset)</code></td><td>Documents by signing agent</td></tr>
+</tbody></table>
+</div>
+<h3 id="rust-api-example"><a class="header" href="#rust-api-example">Rust API Example</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::storage::{DatabaseStorage, DatabaseDocumentTraits, StorageDocumentTraits};
+
+// Create storage (requires tokio runtime)
+let storage = DatabaseStorage::new(
+    "postgres://localhost/jacs",
+    Some(10),  // max connections
+    Some(1),   // min connections
+    Some(30),  // timeout seconds
+)?;
+
+// Run migrations (creates table + indexes)
+storage.run_migrations()?;
+
+// Store a document
+storage.store_document(&amp;doc)?;
+
+// Query by type with pagination
+let commitments = storage.query_by_type("commitment", 10, 0)?;
+
+// Query by JSONB field
+let active = storage.query_by_field(
+    "jacsCommitmentStatus", "active", Some("commitment"), 10, 0
+)?;
+
+// Get latest version
+let latest = storage.get_latest("some-document-id")?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="security-note"><a class="header" href="#security-note">Security Note</a></h3>
+<p>Even when using database storage, <strong>keys are always loaded from the filesystem or keyservers</strong> -- never from the database or configuration providers. The database stores only signed documents.</p>
+<h3 id="use-cases-7"><a class="header" href="#use-cases-7">Use Cases</a></h3>
+<ul>
+<li>Production deployments requiring complex queries</li>
+<li>Multi-agent systems with shared document visibility</li>
+<li>Applications needing pagination and aggregation</li>
+<li>Environments where JSONB indexing provides significant query performance</li>
+</ul>
+<h3 id="considerations-5"><a class="header" href="#considerations-5">Considerations</a></h3>
+<ul>
+<li>Requires PostgreSQL 14+</li>
+<li>Requires tokio runtime (not available in WASM)</li>
+<li>Compile-time feature flag (<code>database</code>)</li>
+<li>Network dependency on PostgreSQL server</li>
+</ul>
 <h2 id="in-memory-storage"><a class="header" href="#in-memory-storage">In-Memory Storage</a></h2>
 <p>For testing and temporary operations, documents can be created without saving:</p>
 <pre><code class="language-python"># Create document without saving
@@ -11466,6 +11565,8 @@ doc = agent.create_document(
 <div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Backend</th></tr></thead><tbody>
 <tr><td>Development</td><td><code>fs</code></td></tr>
 <tr><td>Single server</td><td><code>fs</code></td></tr>
+<tr><td>Complex queries needed</td><td><code>database</code></td></tr>
+<tr><td>Multi-agent with shared queries</td><td><code>database</code></td></tr>
 <tr><td>Cloud deployment</td><td><code>aws</code></td></tr>
 <tr><td>High availability</td><td><code>aws</code></td></tr>
 <tr><td>Multi-organization</td><td><code>hai</code></td></tr>
@@ -12758,7 +12859,7 @@ def test_large_document():
 │           (STDIO / SSE / WebSocket)                         │
 └─────────────────────────────────────────────────────────────┘
 </code></pre>
-<h3 id="how-it-works-3"><a class="header" href="#how-it-works-3">How It Works</a></h3>
+<h3 id="how-it-works-4"><a class="header" href="#how-it-works-4">How It Works</a></h3>
 <ol>
 <li><strong>Outgoing Messages</strong>: The proxy intercepts JSON-RPC messages and signs them with the agent's private key</li>
 <li><strong>Incoming Messages</strong>: The proxy verifies signatures before passing messages to the application</li>
@@ -12883,7 +12984,7 @@ if __name__ == "__main__":
   }
 }
 </code></pre>
-<h2 id="configuration-17"><a class="header" href="#configuration-17">Configuration</a></h2>
+<h2 id="configuration-18"><a class="header" href="#configuration-18">Configuration</a></h2>
 <h3 id="server-configuration"><a class="header" href="#server-configuration">Server Configuration</a></h3>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
@@ -13122,7 +13223,7 @@ openclaw jacs init
 <li>Create an agent identity</li>
 <li>Store keys in <code>~/.openclaw/jacs_keys/</code></li>
 </ol>
-<h3 id="configuration-18"><a class="header" href="#configuration-18">Configuration</a></h3>
+<h3 id="configuration-19"><a class="header" href="#configuration-19">Configuration</a></h3>
 <p>The plugin configuration is stored in <code>~/.openclaw/openclaw.json</code>:</p>
 <pre><code class="language-json">{
   "plugins": {
@@ -13798,23 +13899,33 @@ logging.basicConfig(level=logging.DEBUG)
 <li><a href="integrations/../advanced/security.html">Security Model</a> - JACS security architecture</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="databases"><a class="header" href="#databases">Databases</a></h1>
-<p>While JACS provides built-in storage backends (filesystem, S3, HAI Cloud), you may need to integrate JACS documents with traditional databases for querying, indexing, or application-specific requirements.</p>
-<h2 id="overview-16"><a class="header" href="#overview-16">Overview</a></h2>
+<p>JACS includes a <strong>built-in PostgreSQL storage backend</strong> (behind the <code>database</code> feature flag) that handles document storage, JSONB queries, and signature preservation automatically. For most use cases, this is the recommended approach.</p>
+<p>For custom integrations with other databases, see the examples below.</p>
+<h2 id="built-in-postgresql-backend"><a class="header" href="#built-in-postgresql-backend">Built-in PostgreSQL Backend</a></h2>
+<p>JACS ships with native PostgreSQL support via the <code>database</code> Cargo feature. This uses a TEXT + JSONB dual-column strategy to preserve cryptographic signatures while enabling efficient queries. See <a href="integrations/../advanced/storage.html">Storage Backends</a> for full documentation.</p>
+<pre><code class="language-bash"># Enable at compile time
+cargo build --features database
+
+# Configure via environment
+export JACS_DATABASE_URL="postgres://user:pass@localhost:5432/jacs"
+</code></pre>
+<h2 id="custom-database-integrations"><a class="header" href="#custom-database-integrations">Custom Database Integrations</a></h2>
+<p>If you need to integrate JACS documents with other databases (MongoDB, SQLite, Redis) or need application-specific table structures, you can store JACS documents directly.</p>
 <p>JACS documents are JSON objects with cryptographic signatures. They can be stored in any database that supports JSON or text storage:</p>
 <div class="table-wrapper"><table><thead><tr><th>Database Type</th><th>Storage Method</th><th>Best For</th></tr></thead><tbody>
-<tr><td>PostgreSQL</td><td>JSONB column</td><td>Complex queries, relations</td></tr>
+<tr><td>PostgreSQL (built-in)</td><td>TEXT + JSONB</td><td>Complex queries, signature preservation</td></tr>
+<tr><td>PostgreSQL (custom)</td><td>JSONB column</td><td>Application-specific schemas</td></tr>
 <tr><td>MongoDB</td><td>Native documents</td><td>Document-centric apps</td></tr>
 <tr><td>SQLite</td><td>TEXT column</td><td>Local/embedded apps</td></tr>
 <tr><td>Redis</td><td>Key-value</td><td>Caching, high-speed access</td></tr>
 </tbody></table>
 </div>
-<h2 id="why-use-a-database"><a class="header" href="#why-use-a-database">Why Use a Database?</a></h2>
-<p>The built-in JACS storage backends are optimized for document integrity and versioning. Use a database when you need:</p>
+<h2 id="why-use-a-custom-database-integration"><a class="header" href="#why-use-a-custom-database-integration">Why Use a Custom Database Integration?</a></h2>
+<p>The built-in PostgreSQL backend covers most query needs. Use a custom integration when you need:</p>
 <ul>
-<li><strong>Complex Queries</strong>: Search across document fields</li>
-<li><strong>Indexing</strong>: Fast lookups on specific attributes</li>
-<li><strong>Relations</strong>: Link JACS documents to other data</li>
-<li><strong>Transactions</strong>: Atomic operations across multiple documents</li>
+<li><strong>Different Database</strong>: MongoDB, SQLite, Redis, etc.</li>
+<li><strong>Custom Schema</strong>: Application-specific table structures</li>
+<li><strong>Relations</strong>: Link JACS documents to non-JACS data</li>
 <li><strong>Existing Infrastructure</strong>: Integrate with current systems</li>
 </ul>
 <h2 id="postgresql-integration"><a class="header" href="#postgresql-integration">PostgreSQL Integration</a></h2>
@@ -16401,7 +16512,7 @@ if __name__ == "__main__":
 <p>This chapter provides complete, production-ready integration examples combining multiple JACS features.</p>
 <h2 id="multi-agent-contract-signing-system"><a class="header" href="#multi-agent-contract-signing-system">Multi-Agent Contract Signing System</a></h2>
 <p>A complete example of a contract signing workflow with multiple agents.</p>
-<h3 id="overview-17"><a class="header" href="#overview-17">Overview</a></h3>
+<h3 id="overview-16"><a class="header" href="#overview-16">Overview</a></h3>
 <pre><code>┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │   Seller     │     │   Contract   │     │   Buyer      │
 │   Agent      │────&gt;│   Document   │&lt;────│   Agent      │
@@ -17517,7 +17628,7 @@ jacs document verify -f document.json -s schema.json
 <li><strong>Extracted files</strong> - Original format of embedded attachments</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="configuration-reference"><a class="header" href="#configuration-reference">Configuration Reference</a></h1>
-<h2 id="overview-18"><a class="header" href="#overview-18">Overview</a></h2>
+<h2 id="overview-17"><a class="header" href="#overview-17">Overview</a></h2>
 <h2 id="complete-example-configuration"><a class="header" href="#complete-example-configuration">Complete Example Configuration</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",

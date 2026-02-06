@@ -42,6 +42,7 @@ assert!(result.valid);
 - Commitments (shared signed agreements between agents)
 - Todo lists (private signed task tracking with cross-references)
 - Conversation threading (ordered, signed message chains)
+- PostgreSQL database storage (optional, `database` feature flag)
 - MCP and A2A protocol support
 - Python, Go, and NPM bindings
 

@@ -1,26 +1,42 @@
 # Databases
 
-While JACS provides built-in storage backends (filesystem, S3, HAI Cloud), you may need to integrate JACS documents with traditional databases for querying, indexing, or application-specific requirements.
+JACS includes a **built-in PostgreSQL storage backend** (behind the `database` feature flag) that handles document storage, JSONB queries, and signature preservation automatically. For most use cases, this is the recommended approach.
 
-## Overview
+For custom integrations with other databases, see the examples below.
+
+## Built-in PostgreSQL Backend
+
+JACS ships with native PostgreSQL support via the `database` Cargo feature. This uses a TEXT + JSONB dual-column strategy to preserve cryptographic signatures while enabling efficient queries. See [Storage Backends](../advanced/storage.md) for full documentation.
+
+```bash
+# Enable at compile time
+cargo build --features database
+
+# Configure via environment
+export JACS_DATABASE_URL="postgres://user:pass@localhost:5432/jacs"
+```
+
+## Custom Database Integrations
+
+If you need to integrate JACS documents with other databases (MongoDB, SQLite, Redis) or need application-specific table structures, you can store JACS documents directly.
 
 JACS documents are JSON objects with cryptographic signatures. They can be stored in any database that supports JSON or text storage:
 
 | Database Type | Storage Method | Best For |
 |---------------|----------------|----------|
-| PostgreSQL | JSONB column | Complex queries, relations |
+| PostgreSQL (built-in) | TEXT + JSONB | Complex queries, signature preservation |
+| PostgreSQL (custom) | JSONB column | Application-specific schemas |
 | MongoDB | Native documents | Document-centric apps |
 | SQLite | TEXT column | Local/embedded apps |
 | Redis | Key-value | Caching, high-speed access |
 
-## Why Use a Database?
+## Why Use a Custom Database Integration?
 
-The built-in JACS storage backends are optimized for document integrity and versioning. Use a database when you need:
+The built-in PostgreSQL backend covers most query needs. Use a custom integration when you need:
 
-- **Complex Queries**: Search across document fields
-- **Indexing**: Fast lookups on specific attributes
-- **Relations**: Link JACS documents to other data
-- **Transactions**: Atomic operations across multiple documents
+- **Different Database**: MongoDB, SQLite, Redis, etc.
+- **Custom Schema**: Application-specific table structures
+- **Relations**: Link JACS documents to non-JACS data
 - **Existing Infrastructure**: Integrate with current systems
 
 ## PostgreSQL Integration

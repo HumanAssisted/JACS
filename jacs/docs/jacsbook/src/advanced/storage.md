@@ -9,6 +9,7 @@ JACS supports multiple storage backends for persisting documents and agents. Thi
 | Filesystem | `fs` | Local file storage (default) |
 | AWS S3 | `aws` | Amazon S3 object storage |
 | HAI Cloud | `hai` | HAI managed storage |
+| PostgreSQL | `database` | PostgreSQL with JSONB queries (requires `database` feature) |
 
 ## Configuration
 
@@ -213,6 +214,127 @@ Managed storage provided by HAI.
 - Managed deployments
 - Integration with HAI services
 
+## PostgreSQL Database Storage (database)
+
+The `database` storage backend stores JACS documents in PostgreSQL, enabling JSONB queries, pagination, and agent-based lookups while preserving cryptographic signatures.
+
+This backend is behind a compile-time feature flag and requires the `database` Cargo feature to be enabled.
+
+### Compile-Time Setup
+
+```bash
+# Build with database support
+cargo build --features database
+
+# Run tests with database support (requires Docker for testcontainers)
+cargo test --features database-tests
+```
+
+### Configuration
+
+```json
+{
+  "jacs_default_storage": "database"
+}
+```
+
+Environment variables (12-Factor compliant):
+
+```bash
+export JACS_DATABASE_URL="postgres://user:password@localhost:5432/jacs"
+export JACS_DATABASE_MAX_CONNECTIONS=10       # optional, default 10
+export JACS_DATABASE_MIN_CONNECTIONS=1        # optional, default 1
+export JACS_DATABASE_CONNECT_TIMEOUT_SECS=30  # optional, default 30
+```
+
+### How It Works
+
+JACS uses a **TEXT + JSONB dual-column** strategy:
+
+- **`raw_contents` (TEXT)**: Stores the exact JSON bytes as-is. This is used when retrieving documents to preserve cryptographic signatures (PostgreSQL JSONB normalizes key ordering, which would break signatures).
+- **`file_contents` (JSONB)**: Stores the same document as JSONB for efficient queries, field extraction, and indexing.
+
+### Table Schema
+
+```sql
+CREATE TABLE jacs_document (
+    jacs_id TEXT NOT NULL,
+    jacs_version TEXT NOT NULL,
+    agent_id TEXT,
+    jacs_type TEXT NOT NULL,
+    raw_contents TEXT NOT NULL,
+    file_contents JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (jacs_id, jacs_version)
+);
+```
+
+### Append-Only Model
+
+Documents are **immutable once stored**. New versions create new rows keyed by `(jacs_id, jacs_version)`. There are no UPDATE operations on existing rows. Inserting a duplicate `(jacs_id, jacs_version)` is silently ignored (`ON CONFLICT DO NOTHING`).
+
+### Query Capabilities
+
+The database backend provides additional query methods beyond basic CRUD:
+
+| Method | Description |
+|--------|-------------|
+| `query_by_type(type, limit, offset)` | Paginated queries by document type |
+| `query_by_field(field, value, type, limit, offset)` | JSONB field queries |
+| `count_by_type(type)` | Count documents by type |
+| `get_versions(id)` | All versions of a document |
+| `get_latest(id)` | Most recent version |
+| `query_by_agent(agent_id, type, limit, offset)` | Documents by signing agent |
+
+### Rust API Example
+
+```rust
+use jacs::storage::{DatabaseStorage, DatabaseDocumentTraits, StorageDocumentTraits};
+
+// Create storage (requires tokio runtime)
+let storage = DatabaseStorage::new(
+    "postgres://localhost/jacs",
+    Some(10),  // max connections
+    Some(1),   // min connections
+    Some(30),  // timeout seconds
+)?;
+
+// Run migrations (creates table + indexes)
+storage.run_migrations()?;
+
+// Store a document
+storage.store_document(&doc)?;
+
+// Query by type with pagination
+let commitments = storage.query_by_type("commitment", 10, 0)?;
+
+// Query by JSONB field
+let active = storage.query_by_field(
+    "jacsCommitmentStatus", "active", Some("commitment"), 10, 0
+)?;
+
+// Get latest version
+let latest = storage.get_latest("some-document-id")?;
+```
+
+### Security Note
+
+Even when using database storage, **keys are always loaded from the filesystem or keyservers** -- never from the database or configuration providers. The database stores only signed documents.
+
+### Use Cases
+
+- Production deployments requiring complex queries
+- Multi-agent systems with shared document visibility
+- Applications needing pagination and aggregation
+- Environments where JSONB indexing provides significant query performance
+
+### Considerations
+
+- Requires PostgreSQL 14+
+- Requires tokio runtime (not available in WASM)
+- Compile-time feature flag (`database`)
+- Network dependency on PostgreSQL server
+
 ## In-Memory Storage
 
 For testing and temporary operations, documents can be created without saving:
@@ -240,6 +362,8 @@ const doc = agent.createDocument(
 |----------|---------------------|
 | Development | `fs` |
 | Single server | `fs` |
+| Complex queries needed | `database` |
+| Multi-agent with shared queries | `database` |
 | Cloud deployment | `aws` |
 | High availability | `aws` |
 | Multi-organization | `hai` |
