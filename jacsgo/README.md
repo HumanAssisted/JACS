@@ -1,6 +1,6 @@
 # JACS Go Bindings
 
-Go bindings for JACS - sign and verify AI agent communications.
+Go bindings for JACS (JSON Agent Communication Standard) -- an open data provenance toolkit for signing and verifying AI agent communications. JACS works standalone with no server required; optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
 
 ## Installation
 
@@ -49,8 +49,8 @@ func main() {
 | `SignMessage(data)` | Sign any JSON data |
 | `SignFile(path, embed)` | Sign a file |
 | `Verify(doc)` | Verify signed document (JSON string) |
-| `VerifyById(id)` | Verify a document by storage ID (`uuid:version`) |
-| `ReencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
+| `VerifyById(id)` | Verify a document by storage ID (planned -- use CLI for now) |
+| `ReencryptKey(oldPw, newPw)` | Re-encrypt private key (planned -- use CLI: `jacs key reencrypt`) |
 | `GetPublicKeyPEM()` | Get public key for sharing |
 
 ## Types

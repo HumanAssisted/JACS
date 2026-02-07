@@ -1,76 +1,62 @@
 # JACS MCP Server
 
-A Model Context Protocol (MCP) server providing HAI (Human AI Interface) tools for agent registration, verification, and key management.
+A Model Context Protocol (MCP) server for **data provenance and cryptographic signing** of agent state, plus optional [HAI.ai](https://hai.ai) integration for cross-organization key discovery and attestation.
 
-## Overview
+JACS (JSON Agent Communication Standard) ensures that every file, memory, or configuration an AI agent touches can be signed, verified, and traced back to its origin -- no server required.
 
-The JACS MCP Server allows LLMs to interact with HAI services through the MCP protocol. It provides tools for:
+## What can it do?
 
-- **Agent Key Management**: Fetch public keys from HAI's key distribution service
-- **Agent Registration**: Register agents with HAI to establish identity
-- **Agent Verification**: Verify other agents' attestation levels (0-3)
-- **Status Checking**: Check registration status with HAI
-- **Agent Unregistration**: Remove agent registration from HAI
+The server exposes **11 tools** in two categories:
+
+### Agent State (Data Provenance)
+
+Sign, verify, and manage files that represent agent state (memories, skills, plans, configs, hooks):
+
+| Tool | Description |
+|------|-------------|
+| `jacs_sign_state` | Sign a file to create a cryptographically signed JACS document |
+| `jacs_verify_state` | Verify file integrity and signature authenticity |
+| `jacs_load_state` | Load a signed state document, optionally verifying before returning content |
+| `jacs_update_state` | Update a previously signed file -- re-hashes and re-signs |
+| `jacs_list_state` | List signed agent state documents with optional filtering |
+| `jacs_adopt_state` | Adopt an external file as signed state, recording its origin |
+
+### HAI Integration (Optional)
+
+Register with [HAI.ai](https://hai.ai) for cross-organization trust and key distribution:
+
+| Tool | Description |
+|------|-------------|
+| `fetch_agent_key` | Fetch a public key from HAI's key distribution service |
+| `register_agent` | Register the local agent with HAI (disabled by default) |
+| `verify_agent` | Verify another agent's attestation level (0-3) |
+| `check_agent_status` | Check registration status with HAI |
+| `unregister_agent` | Unregister from HAI (disabled by default, not yet implemented) |
 
 ## Quick Start
 
 ### Step 1: Install JACS CLI
-
-First, install the JACS command-line tool:
 
 ```bash
 # From the JACS repository root
 cargo install --path jacs
 ```
 
-### Step 2: Generate Keys
-
-Generate cryptographic keys for your agent:
+### Step 2: Create Agent and Keys
 
 ```bash
-# Set a secure password for key encryption
-export JACS_PRIVATE_KEY_PASSWORD="your-secure-password"
-
-# Create a directory for your keys
-mkdir -p jacs_keys
-
-# Generate keys (choose an algorithm)
-jacs create-keys --algorithm pq-dilithium --output-dir jacs_keys
-# Or for Ed25519: jacs create-keys --algorithm ring-Ed25519 --output-dir jacs_keys
+# Create an agent (generates keys, config, and data directories)
+jacs init
 ```
 
-### Step 3: Create Agent
-
-Create a new JACS agent:
+Or programmatically:
 
 ```bash
-# Create data directory
-mkdir -p jacs_data
-
-# Create a new agent
-jacs create-agent --name "My Agent" --description "My HAI-enabled agent"
+export JACS_AGENT_PRIVATE_KEY_PASSWORD="Your-Str0ng-P@ss!"
+jacs agent create --create-keys true
 ```
 
-### Step 4: Create Configuration File
-
-Create a `jacs.config.json` file:
-
-```json
-{
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys",
-  "jacs_agent_private_key_filename": "jacs.private.pem.enc",
-  "jacs_agent_public_key_filename": "jacs.public.pem",
-  "jacs_agent_key_algorithm": "pq-dilithium",
-  "jacs_agent_id_and_version": "YOUR-AGENT-ID:YOUR-VERSION-ID",
-  "jacs_default_storage": "fs"
-}
-```
-
-Replace `YOUR-AGENT-ID:YOUR-VERSION-ID` with your actual agent ID (found in the agent file created in Step 3).
-
-### Step 5: Build and Run the MCP Server
+### Step 3: Build the MCP Server
 
 ```bash
 cd jacs-mcp
@@ -79,14 +65,30 @@ cargo build --release
 
 The binary will be at `target/release/jacs-mcp`.
 
-### Step 6: Configure Your MCP Client
+### Step 4: Configure Your MCP Client
 
 Add to your MCP client configuration (e.g., Claude Desktop):
 
 ```json
 {
   "mcpServers": {
-    "jacs-hai": {
+    "jacs": {
+      "command": "/path/to/jacs-mcp",
+      "env": {
+        "JACS_CONFIG": "/path/to/jacs.config.json",
+        "JACS_PRIVATE_KEY_PASSWORD": "your-secure-password"
+      }
+    }
+  }
+}
+```
+
+To enable HAI integration, add `HAI_API_KEY`:
+
+```json
+{
+  "mcpServers": {
+    "jacs": {
       "command": "/path/to/jacs-mcp",
       "env": {
         "JACS_CONFIG": "/path/to/jacs.config.json",
@@ -98,82 +100,100 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 }
 ```
 
-## Installation
-
-Build from source:
-
-```bash
-cd jacs-mcp
-cargo build --release
-```
-
-The binary will be at `target/release/jacs-mcp`.
-
 ## Configuration
 
-The server requires a JACS agent configuration to operate. Set the following environment variables:
-
-### Required
+### Required Environment Variables
 
 - `JACS_CONFIG` - Path to your `jacs.config.json` file
 - `JACS_PRIVATE_KEY_PASSWORD` - Password for decrypting your private key
 
-### Optional
+### Optional Environment Variables
 
-- `HAI_ENDPOINT` - HAI API endpoint (default: `https://api.hai.ai`). Must be an allowed host.
+- `HAI_ENDPOINT` - HAI API endpoint (default: `https://api.hai.ai`). Validated against an allowlist.
 - `HAI_API_KEY` - API key for HAI authentication
 - `RUST_LOG` - Logging level (default: `info,rmcp=warn`)
 
 ### Security Options
 
-- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable the register_agent tool (default: disabled)
-- `JACS_MCP_ALLOW_UNREGISTRATION` - Set to `true` to enable the unregister_agent tool (default: disabled)
+- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `register_agent` (default: disabled)
+- `JACS_MCP_ALLOW_UNREGISTRATION` - Set to `true` to enable `unregister_agent` (default: disabled)
 
-### Example Configuration
+### Example jacs.config.json
 
 ```json
 {
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_data_directory": "./jacs_data",
   "jacs_key_directory": "./jacs_keys",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
   "jacs_agent_public_key_filename": "jacs.public.pem",
-  "jacs_agent_key_algorithm": "pq-dilithium",
-  "jacs_agent_id_and_version": "your-agent-id:version",
+  "jacs_agent_key_algorithm": "pq2025",
+  "jacs_agent_id_and_version": "YOUR-AGENT-ID:YOUR-VERSION-ID",
   "jacs_default_storage": "fs"
 }
 ```
 
-## Usage
+## Tools Reference
 
-### Starting the Server
+### jacs_sign_state
 
-```bash
-export JACS_CONFIG=/path/to/jacs.config.json
-export HAI_API_KEY=your-api-key  # optional
-./jacs-mcp
-```
+Sign an agent state file to create a cryptographically signed JACS document.
 
-The server communicates over stdin/stdout using the MCP JSON-RPC protocol.
+**Parameters:**
+- `file_path` (required): Path to the file to sign
+- `state_type` (required): Type of state: `memory`, `skill`, `plan`, `config`, or `hook`
+- `name` (required): Human-readable name for the document
+- `description` (optional): Description of the state document
+- `framework` (optional): Framework identifier (e.g., `claude-code`, `openclaw`)
+- `tags` (optional): Tags for categorization
+- `embed` (optional): Whether to embed file content inline (always true for hooks)
 
-### MCP Client Configuration
+### jacs_verify_state
 
-Add to your MCP client configuration (e.g., Claude Desktop):
+Verify the integrity and authenticity of a signed agent state.
 
-```json
-{
-  "mcpServers": {
-    "jacs-hai": {
-      "command": "/path/to/jacs-mcp",
-      "env": {
-        "JACS_CONFIG": "/path/to/jacs.config.json",
-        "HAI_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
+**Parameters:**
+- `file_path` (optional): Path to the file to verify
+- `jacs_id` (optional): JACS document ID to verify
 
-## Tools
+At least one of `file_path` or `jacs_id` must be provided.
+
+### jacs_load_state
+
+Load a signed agent state document, optionally verifying before returning content.
+
+**Parameters:**
+- `file_path` (optional): Path to the file to load
+- `jacs_id` (optional): JACS document ID to load
+- `require_verified` (optional): Whether to require verification before loading (default: true)
+
+### jacs_update_state
+
+Update a previously signed agent state file with new content and re-sign.
+
+**Parameters:**
+- `file_path` (required): Path to the file to update
+- `new_content` (optional): New content to write. If omitted, re-signs current content.
+
+### jacs_list_state
+
+List signed agent state documents with optional filtering.
+
+**Parameters:**
+- `state_type` (optional): Filter by type (`memory`, `skill`, `plan`, `config`, `hook`)
+- `framework` (optional): Filter by framework identifier
+- `tags` (optional): Filter by tags (documents must have all specified tags)
+
+### jacs_adopt_state
+
+Adopt an external file as signed agent state, marking its origin as "adopted".
+
+**Parameters:**
+- `file_path` (required): Path to the file to adopt
+- `state_type` (required): Type of state
+- `name` (required): Human-readable name
+- `source_url` (optional): URL where the content was originally obtained
+- `description` (optional): Description of the adopted state
 
 ### fetch_agent_key
 
@@ -181,51 +201,14 @@ Fetch a public key from HAI's key distribution service.
 
 **Parameters:**
 - `agent_id` (required): The JACS agent ID (UUID format)
-- `version` (optional): Key version to fetch, or "latest" for most recent
-
-**Returns:**
-- `success`: Whether the operation succeeded
-- `agent_id`: The agent ID
-- `version`: The key version
-- `algorithm`: Cryptographic algorithm (e.g., "ed25519", "pq-dilithium")
-- `public_key_hash`: SHA-256 hash of the public key
-- `public_key_base64`: Base64-encoded public key
-
-**Example:**
-```json
-{
-  "name": "fetch_agent_key",
-  "arguments": {
-    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-    "version": "latest"
-  }
-}
-```
+- `version` (optional): Key version to fetch, or `latest`
 
 ### register_agent
 
-Register the local agent with HAI to establish identity and enable attestation.
+Register the local agent with HAI. **Requires `JACS_MCP_ALLOW_REGISTRATION=true`.**
 
 **Parameters:**
-- `preview` (optional): If true, validates without actually registering
-
-**Returns:**
-- `success`: Whether the operation succeeded
-- `agent_id`: The registered agent's JACS ID
-- `jacs_id`: The JACS document ID
-- `dns_verified`: Whether DNS verification was successful
-- `preview_mode`: Whether this was preview-only
-- `message`: Human-readable status message
-
-**Example:**
-```json
-{
-  "name": "register_agent",
-  "arguments": {
-    "preview": false
-  }
-}
-```
+- `preview` (optional): If true (default), validates without actually registering
 
 ### verify_agent
 
@@ -233,28 +216,13 @@ Verify another agent's attestation level with HAI.
 
 **Parameters:**
 - `agent_id` (required): The JACS agent ID to verify
-- `version` (optional): Agent version to verify, or "latest"
+- `version` (optional): Agent version to verify, or `latest`
 
-**Returns:**
-- `success`: Whether the verification succeeded
-- `agent_id`: The verified agent ID
-- `attestation_level`: Trust level (0-3):
-  - Level 0: No attestation
-  - Level 1: Key registered with HAI
-  - Level 2: DNS verified
-  - Level 3: Full HAI signature attestation
-- `attestation_description`: Human-readable description
-- `key_found`: Whether the agent's public key was found
-
-**Example:**
-```json
-{
-  "name": "verify_agent",
-  "arguments": {
-    "agent_id": "550e8400-e29b-41d4-a716-446655440000"
-  }
-}
-```
+**Attestation levels:**
+- Level 0: No attestation
+- Level 1: Key registered with HAI
+- Level 2: DNS verified
+- Level 3: Full HAI signature attestation
 
 ### check_agent_status
 
@@ -263,22 +231,6 @@ Check registration status of an agent with HAI.
 **Parameters:**
 - `agent_id` (optional): Agent ID to check. If omitted, checks the local agent.
 
-**Returns:**
-- `success`: Whether the operation succeeded
-- `agent_id`: The checked agent ID
-- `registered`: Whether the agent is registered with HAI
-- `registration_id`: HAI registration ID (if registered)
-- `registered_at`: Registration timestamp (if registered)
-- `signature_count`: Number of HAI signatures on the registration
-
-**Example:**
-```json
-{
-  "name": "check_agent_status",
-  "arguments": {}
-}
-```
-
 ### unregister_agent
 
 Unregister the local agent from HAI. **Requires `JACS_MCP_ALLOW_UNREGISTRATION=true`.**
@@ -286,77 +238,25 @@ Unregister the local agent from HAI. **Requires `JACS_MCP_ALLOW_UNREGISTRATION=t
 **Parameters:**
 - `preview` (optional): If true (default), validates without actually unregistering
 
-**Returns:**
-- `success`: Whether the operation succeeded
-- `agent_id`: The unregistered agent's JACS ID
-- `preview_mode`: Whether this was preview-only
-- `message`: Human-readable status message
-
-**Example:**
-```json
-{
-  "name": "unregister_agent",
-  "arguments": {
-    "preview": false
-  }
-}
-```
-
 ## Security
 
-### Key Security Features
-
-- **Registration Authorization**: The `register_agent` and `unregister_agent` tools are disabled by default. This prevents prompt injection attacks from registering agents without user consent.
-- **Preview Mode by Default**: Even when enabled, registration defaults to preview mode for additional safety.
-- **Endpoint Validation**: The `HAI_ENDPOINT` URL is validated against an allowlist to prevent request redirection attacks.
-- **Password Protection**: Private keys are encrypted with a password. Never store passwords in config files - use the `JACS_PRIVATE_KEY_PASSWORD` environment variable.
-- **Stdio Transport**: The server uses stdio transport, which is inherently local with no network exposure.
-
-### Enabling Registration
-
-To enable agent registration (only do this if you trust the LLM):
-
-```bash
-export JACS_MCP_ALLOW_REGISTRATION=true
-export JACS_MCP_ALLOW_UNREGISTRATION=true  # Optional
-```
-
-### Allowed HAI Endpoints
-
-The server validates `HAI_ENDPOINT` against this allowlist:
-- `api.hai.ai`
-- `dev.api.hai.ai`
-- `staging.api.hai.ai`
-- `localhost` / `127.0.0.1` (for development)
-- Any subdomain of `*.hai.ai`
-
-### Best Practices
-
-- Use strong passwords for key encryption (12+ characters)
-- Never commit config files with passwords to version control
-- Use environment variables or secrets management for sensitive values
-- Keep private key files secure (mode 0600)
-- Review agent registrations before enabling automatic registration
+- **Registration disabled by default**: `register_agent` and `unregister_agent` require explicit opt-in via environment variables, preventing prompt injection attacks.
+- **Preview mode by default**: Even when enabled, registration defaults to preview mode.
+- **Endpoint validation**: `HAI_ENDPOINT` is validated against an allowlist (`*.hai.ai`, localhost).
+- **Password protection**: Private keys are encrypted. Never store passwords in config files.
+- **Stdio transport**: No network exposure -- communicates over stdin/stdout.
 
 ## Development
 
-### Running Tests
-
 ```bash
+# Run tests
 cargo test
-```
 
-### Building Debug Version
-
-```bash
+# Build debug version
 cargo build
-```
 
-### Environment for Development
-
-```bash
-export JACS_CONFIG=/path/to/test/jacs.config.json
-export HAI_ENDPOINT=https://dev.api.hai.ai
+# Run with debug logging
+export JACS_CONFIG=/path/to/jacs.config.json
 export RUST_LOG=debug
 cargo run
 ```

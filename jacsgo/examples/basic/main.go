@@ -23,11 +23,13 @@ func main() {
 		log.Printf("No agent found. Creating one...")
 
 		// Create a new agent
-		info, err := jacs.Create("example-agent", "Demo agent for Go", "ed25519")
+		info, err := jacs.Create("example-agent", &jacs.CreateAgentOptions{
+			Algorithm: "ring-Ed25519",
+		})
 		if err != nil {
 			log.Fatalf("Failed to create agent: %v", err)
 		}
-		fmt.Printf("Created agent: %s\n", info.Name)
+		fmt.Printf("Created agent: %s (%s)\n", info.Name, info.AgentID)
 	} else {
 		fmt.Println("Agent loaded successfully")
 	}

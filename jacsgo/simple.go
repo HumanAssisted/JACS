@@ -101,8 +101,19 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 		return nil, NewSimpleError("create", err)
 	}
 
+	// Read the config file to extract the agent ID
+	agentID := ""
+	if cfgData, err := os.ReadFile(configPath); err == nil {
+		var cfg map[string]interface{}
+		if err := json.Unmarshal(cfgData, &cfg); err == nil {
+			if idStr, ok := cfg["jacs_agent_id_and_version"].(string); ok {
+				agentID = idStr
+			}
+		}
+	}
+
 	info := &AgentInfo{
-		AgentID:       "", // Populated from agent
+		AgentID:       agentID,
 		Name:          name,
 		PublicKeyPath: keyDir + "/jacs.public.pem",
 		ConfigPath:    configPath,

@@ -1,6 +1,6 @@
 # JACS Python Library
 
-Python bindings for JACS (JSON AI Communication Standard) - cryptographic signing and verification for AI agents.
+Python bindings for JACS (JSON Agent Communication Standard) -- an open data provenance toolkit for signing and verifying AI agent communications. JACS works standalone with no server required; optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
 
 ```bash
 # Using uv (recommended)

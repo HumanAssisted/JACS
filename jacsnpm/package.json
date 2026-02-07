@@ -1,7 +1,7 @@
 {
   "name": "@hai-ai/jacs",
   "version": "0.6.0",
-  "description": "JACS - Sign and verify AI agent communications with cryptographic signatures",
+  "description": "JACS (JSON Agent Communication Standard) - Data provenance and cryptographic signing for AI agents",
   "main": "index.js",
   "types": "index.d.ts",
   "overrides": {
@@ -24,10 +24,13 @@
       "require": "./src/a2a.js"
     },
     "./mcp": {
-      "import": "./mcp.ts"
+      "import": "./mcp.js",
+      "require": "./mcp.js",
+      "types": "./mcp.d.ts"
     },
     "./http": {
       "import": "./http.js",
+      "require": "./http.js",
       "types": "./http.d.ts"
     }
   },

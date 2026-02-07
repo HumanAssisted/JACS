@@ -253,6 +253,95 @@ pub struct UnregisterAgentResult {
 }
 
 // =============================================================================
+// Agent Management Request/Response Types
+// =============================================================================
+
+/// Parameters for creating a new JACS agent programmatically.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateAgentProgrammaticParams {
+    /// Name for the new agent.
+    #[schemars(description = "Name for the new agent")]
+    pub name: String,
+
+    /// Password for encrypting the private key.
+    #[schemars(
+        description = "Password for encrypting the private key. Must be at least 8 characters with uppercase, lowercase, digit, and special character."
+    )]
+    pub password: String,
+
+    /// Cryptographic algorithm. Default: "pq2025" (ML-DSA-87, FIPS-204).
+    #[schemars(
+        description = "Cryptographic algorithm: 'pq2025' (default, post-quantum), 'ring-Ed25519', or 'RSA-PSS'"
+    )]
+    pub algorithm: Option<String>,
+
+    /// Directory for data files. Default: "./jacs_data".
+    #[schemars(description = "Directory for data files (default: ./jacs_data)")]
+    pub data_directory: Option<String>,
+
+    /// Directory for key files. Default: "./jacs_keys".
+    #[schemars(description = "Directory for key files (default: ./jacs_keys)")]
+    pub key_directory: Option<String>,
+
+    /// Optional agent type (e.g., "ai", "human").
+    #[schemars(description = "Agent type (default: 'ai')")]
+    pub agent_type: Option<String>,
+
+    /// Optional description of the agent.
+    #[schemars(description = "Description of the agent")]
+    pub description: Option<String>,
+}
+
+/// Result of creating an agent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateAgentProgrammaticResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The new agent's ID (UUID).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+
+    /// The agent name.
+    pub name: String,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for re-encrypting the agent's private key.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReencryptKeyParams {
+    /// Current password for the private key.
+    #[schemars(description = "Current password for the private key")]
+    pub old_password: String,
+
+    /// New password to encrypt the private key with.
+    #[schemars(
+        description = "New password. Must be at least 8 characters with uppercase, lowercase, digit, and special character."
+    )]
+    pub new_password: String,
+}
+
+/// Result of re-encrypting the private key.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReencryptKeyResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
 // Agent State Request/Response Types
 // =============================================================================
 
@@ -669,6 +758,19 @@ impl HaiMcpServer {
                  origin as 'adopted' and optionally records the source URL.",
                 Self::jacs_adopt_state_schema(),
             ),
+            Tool::new(
+                "jacs_create_agent",
+                "Create a new JACS agent with cryptographic keys. This is the programmatic \
+                 equivalent of 'jacs create'. Returns agent ID and key paths. \
+                 SECURITY: Requires JACS_MCP_ALLOW_REGISTRATION=true environment variable.",
+                Self::jacs_create_agent_schema(),
+            ),
+            Tool::new(
+                "jacs_reencrypt_key",
+                "Re-encrypt the agent's private key with a new password. Use this to rotate \
+                 the password protecting the private key without changing the key itself.",
+                Self::jacs_reencrypt_key_schema(),
+            ),
         ]
     }
 
@@ -754,6 +856,22 @@ impl HaiMcpServer {
 
     fn jacs_adopt_state_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(AdoptStateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_create_agent_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(CreateAgentProgrammaticParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_reencrypt_key_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(ReencryptKeyParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -1299,24 +1417,41 @@ impl HaiMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        // If jacs_id is provided, try to verify the document signature
+        // If jacs_id is provided, verify the document by ID from storage
         if let Some(jacs_id) = &params.jacs_id {
-            // For now, document index/storage lookup is not yet implemented.
-            // Return a clear message about the limitation.
-            let result = VerifyStateResult {
-                success: false,
-                hash_match: false,
-                signature_valid: false,
-                signing_info: None,
-                message: format!(
-                    "Document lookup by JACS ID '{}' is not yet implemented. \
-                     Please provide a file_path to verify against the file's hash.",
-                    jacs_id
-                ),
-                error: Some("NOT_YET_IMPLEMENTED".to_string()),
-            };
-            return serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|e| format!("Error: {}", e));
+            match self.agent.verify_document_by_id(jacs_id) {
+                Ok(valid) => {
+                    let result = VerifyStateResult {
+                        success: true,
+                        hash_match: valid,
+                        signature_valid: valid,
+                        signing_info: None,
+                        message: if valid {
+                            format!("Document '{}' verified successfully", jacs_id)
+                        } else {
+                            format!("Document '{}' signature verification failed", jacs_id)
+                        },
+                        error: None,
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+                Err(e) => {
+                    let result = VerifyStateResult {
+                        success: false,
+                        hash_match: false,
+                        signature_valid: false,
+                        signing_info: None,
+                        message: format!(
+                            "Failed to verify document '{}': {}",
+                            jacs_id, e
+                        ),
+                        error: Some(e.to_string()),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            }
         }
 
         // file_path-based verification: read the file and check if a signed
@@ -1882,6 +2017,103 @@ impl HaiMcpServer {
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
+
+    /// Create a new JACS agent programmatically.
+    ///
+    /// This is the programmatic equivalent of `jacs create`. It generates
+    /// a new agent with cryptographic keys and returns the agent info.
+    /// Requires JACS_MCP_ALLOW_REGISTRATION=true for security.
+    #[tool(
+        name = "jacs_create_agent",
+        description = "Create a new JACS agent with cryptographic keys (programmatic)."
+    )]
+    pub async fn jacs_create_agent(
+        &self,
+        Parameters(params): Parameters<CreateAgentProgrammaticParams>,
+    ) -> String {
+        // Require explicit opt-in for agent creation (same gate as registration)
+        if !self.registration_allowed {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Agent creation is disabled. Set JACS_MCP_ALLOW_REGISTRATION=true \
+                          environment variable to enable."
+                    .to_string(),
+                error: Some("REGISTRATION_NOT_ALLOWED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        let result = match jacs_binding_core::create_agent_programmatic(
+            &params.name,
+            &params.password,
+            params.algorithm.as_deref(),
+            params.data_directory.as_deref(),
+            params.key_directory.as_deref(),
+            None, // config_path
+            params.agent_type.as_deref(),
+            params.description.as_deref(),
+            None, // domain
+            None, // default_storage
+        ) {
+            Ok(info_json) => {
+                // Parse the info JSON to extract agent_id
+                let agent_id = serde_json::from_str::<serde_json::Value>(&info_json)
+                    .ok()
+                    .and_then(|v| v.get("agent_id").and_then(|a| a.as_str()).map(String::from));
+
+                CreateAgentProgrammaticResult {
+                    success: true,
+                    agent_id,
+                    name: params.name,
+                    message: "Agent created successfully".to_string(),
+                    error: None,
+                }
+            }
+            Err(e) => CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Failed to create agent".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    ///
+    /// Decrypts the private key with the old password and re-encrypts it
+    /// with the new password. The key itself does not change.
+    #[tool(
+        name = "jacs_reencrypt_key",
+        description = "Re-encrypt the agent's private key with a new password."
+    )]
+    pub async fn jacs_reencrypt_key(
+        &self,
+        Parameters(params): Parameters<ReencryptKeyParams>,
+    ) -> String {
+        let result = match self
+            .agent
+            .reencrypt_key(&params.old_password, &params.new_password)
+        {
+            Ok(()) => ReencryptKeyResult {
+                success: true,
+                message: "Private key re-encrypted successfully with new password".to_string(),
+                error: None,
+            },
+            Err(e) => ReencryptKeyResult {
+                success: false,
+                message: "Failed to re-encrypt private key".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
 }
 
 // Implement the tool handler for the server
@@ -1904,10 +2136,21 @@ impl ServerHandler for HaiMcpServer {
                 website_url: Some("https://hai.ai".to_string()),
             },
             instructions: Some(
-                "This MCP server provides HAI (Human AI Interface) tools for agent \
-                 registration, verification, and key management. Use fetch_agent_key \
-                 to get public keys, register_agent to register with HAI, verify_agent \
-                 to check attestation levels, and check_agent_status for registration info."
+                "This MCP server provides data provenance and cryptographic signing for \
+                 agent state files, plus optional HAI.ai integration for key distribution \
+                 and attestation. \
+                 \
+                 Agent state tools: jacs_sign_state (sign files), jacs_verify_state \
+                 (verify integrity), jacs_load_state (load with verification), \
+                 jacs_update_state (update and re-sign), jacs_list_state (list signed docs), \
+                 jacs_adopt_state (adopt external files). \
+                 \
+                 Agent management: jacs_create_agent (create new agent with keys), \
+                 jacs_reencrypt_key (rotate private key password). \
+                 \
+                 HAI tools: fetch_agent_key (get public keys), register_agent (register \
+                 with HAI), verify_agent (check attestation 0-3), check_agent_status \
+                 (registration info), unregister_agent (remove registration)."
                     .to_string(),
             ),
         }
@@ -2002,7 +2245,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = HaiMcpServer::tools();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 13);
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"fetch_agent_key"));
@@ -2016,6 +2259,8 @@ mod tests {
         assert!(names.contains(&"jacs_update_state"));
         assert!(names.contains(&"jacs_list_state"));
         assert!(names.contains(&"jacs_adopt_state"));
+        assert!(names.contains(&"jacs_create_agent"));
+        assert!(names.contains(&"jacs_reencrypt_key"));
     }
 
     #[test]
@@ -2069,6 +2314,25 @@ mod tests {
         assert!(json.contains("state_type"));
         assert!(json.contains("name"));
         assert!(json.contains("source_url"));
+    }
+
+    #[test]
+    fn test_create_agent_params_schema() {
+        let schema = schemars::schema_for!(CreateAgentProgrammaticParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("name"));
+        assert!(json.contains("password"));
+        assert!(json.contains("algorithm"));
+        assert!(json.contains("data_directory"));
+        assert!(json.contains("key_directory"));
+    }
+
+    #[test]
+    fn test_reencrypt_key_params_schema() {
+        let schema = schemars::schema_for!(ReencryptKeyParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("old_password"));
+        assert!(json.contains("new_password"));
     }
 
     #[test]

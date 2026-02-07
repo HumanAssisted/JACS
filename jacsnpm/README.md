@@ -1,6 +1,6 @@
 # JACS for Node.js
 
-Sign and verify AI agent communications with cryptographic signatures.
+Node.js bindings for JACS (JSON Agent Communication Standard) -- an open data provenance toolkit for signing and verifying AI agent communications. JACS works standalone with no server required; optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
 
 **Dependencies**: The `overrides` in `package.json` for `body-parser` and `qs` are for security (CVE-2024-45590). Do not remove them without re-auditing.
 
@@ -162,15 +162,20 @@ const embedded = jacs.signFile('contract.pdf', true);
 
 ### MCP Integration
 
-```javascript
-import { JacsMcpServer } from '@hai-ai/jacs/mcp';
+JACS provides a transport proxy that wraps any MCP transport with automatic signing and verification at the network boundary:
 
-const server = new JacsMcpServer({
-  name: 'MyServer',
-  version: '1.0.0',
-  configPath: './jacs.config.json'
-});
+```javascript
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+// Wrap any MCP transport with JACS signing
+const baseTransport = new StdioServerTransport();
+const jacsTransport = createJACSTransportProxy(
+  baseTransport, './jacs.config.json', 'server'
+);
 ```
+
+See `examples/mcp.simple.server.js` for a complete MCP server example with JACS-signed tools.
 
 ## HAI Integration
 

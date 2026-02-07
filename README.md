@@ -1,16 +1,22 @@
 # JACS
 
-**JSON Agent Communication Standard** - Cryptographic signing and verification for AI agents.
+**JSON Agent Communication Standard** - Data provenance and cryptographic signing for AI agents.
 
 **[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://humanassisted.github.io/JACS/nodejs/api.html)**
 
 ## What is JACS?
 
-JACS provides cryptographic signatures for AI agent communications. Every message, file, or artifact can be signed and verified, ensuring:
+JACS is an open data provenance toolkit that lets any AI agent or application sign, verify, and track the origin of data. It works standalone -- no server, no account required. Optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery and attestation.
 
-- **Authenticity**: Prove who created the data
-- **Integrity**: Detect tampering
+Available as a library for **Python**, **Node.js**, **Go**, and **Rust**, plus a CLI and MCP servers.
+
+**Why use JACS?**
+
+- **Data provenance**: Know who created data, when, and whether it's been modified
+- **Decentralized by default**: Runs entirely local -- keys and signatures stay on your machine
+- **Tamper detection**: Cryptographic hashes catch any change, accidental or malicious
 - **Non-repudiation**: Signed actions can't be denied
+- **Post-quantum ready**: NIST-standardized ML-DSA (FIPS-204) signatures out of the box
 
 ## First run (minimal setup)
 
@@ -152,6 +158,17 @@ JACS supports NIST-standardized post-quantum algorithms:
 }
 ```
 
+## How to use JACS
+
+JACS fits into many workflows:
+
+- **Sign AI outputs** so downstream consumers can verify who generated them
+- **Sign files and documents** to prove integrity (contracts, reports, configs)
+- **Build MCP servers** where every tool call is signed with agent identity
+- **Establish agent-to-agent trust** with agreements and multi-party signatures
+- **Track data provenance** through pipelines where data changes hands
+- **Air-gapped environments**: JACS works fully offline with local key storage
+
 ## Repository Structure
 
 | Directory | Description |
@@ -160,6 +177,7 @@ JACS supports NIST-standardized post-quantum algorithms:
 | [jacspy/](./jacspy/) | Python bindings |
 | [jacsnpm/](./jacsnpm/) | Node.js bindings |
 | [jacsgo/](./jacsgo/) | Go bindings |
+| [jacs-mcp/](./jacs-mcp/) | MCP server for agent state and HAI integration |
 
 ## Version
 
