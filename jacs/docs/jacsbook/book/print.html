@@ -460,6 +460,16 @@ agent.load("./config.json")
 <li><strong>Updates</strong>: Version changes while maintaining identity</li>
 <li><strong>Verification</strong>: Other agents validate signatures</li>
 </ol>
+<h3 id="verification-load-vs-verify_standalone"><a class="header" href="#verification-load-vs-verify_standalone">Verification: load() vs verify_standalone()</a></h3>
+<p>When <strong>consuming</strong> signed documents, you can verify in two ways:</p>
+<ul>
+<li>
+<p><strong>With a loaded agent</strong> (<code>load(config)</code> first): Call <code>verify(signedDocument)</code>. The loaded agent uses its config (trust store, key resolution) to resolve the signer’s public key and verify the signature. Use this when your process already has a JACS config (e.g. it also signs) or when you want to use a specific key directory and resolution order.</p>
+</li>
+<li>
+<p><strong>Without loading an agent</strong> (one-off verification): Call <code>verify_standalone(signedDocument, options)</code> (or the language equivalent: <code>verifyStandalone</code>, <code>VerifyStandalone</code>). This verifies the document using only the options you pass (e.g. <code>keyResolution</code>, <code>keyDirectory</code>). No config file or persistent agent state is required. Use this in lightweight services that only need to verify incoming documents.</p>
+</li>
+</ul>
 <h2 id="documents-1"><a class="header" href="#documents-1">Documents</a></h2>
 <p>A <strong>Document</strong> is any JSON object that follows JACS conventions for identity, versioning, and cryptographic integrity.</p>
 <h3 id="document-structure"><a class="header" href="#document-structure">Document Structure</a></h3>
@@ -1252,19 +1262,19 @@ print(f'Agreement complete: {agreement_valid}')
 <p>For detailed narratives (scenario, technical flow, outcome), see <strong><a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md">USECASES.md</a></strong> in the JACS repo.</p>
 <hr />
 <h2 id="1-verifying-that-json-came-from-a-specific-program"><a class="header" href="#1-verifying-that-json-came-from-a-specific-program">1. Verifying that JSON came from a specific program</a></h2>
-<p><strong>Summary.</strong> You have a pipeline or service that emits JSON (configs, reports, compliance data). Consumers need to trust that a given file or payload was produced by that program and not modified. With JACS, the program has one agent identity: it signs each artifact with <code>sign_message</code> or <code>sign_file</code> at emission; consumers verify with <code>verify()</code> or <code>verify_by_id()</code>. No central server is required.</p>
+<p><strong>Summary.</strong> You have a pipeline or service that emits JSON (configs, reports, compliance data). Consumers need to trust that a given file or payload was produced by that program and not modified. With JACS, the program has one agent identity: it signs each artifact with <code>sign_message</code> or <code>sign_file</code> at emission; consumers verify with <code>verify()</code> or <code>verify_by_id()</code> (local storage), or use <code>verify_standalone()</code> for one-off verification without loading an agent. No central server is required.</p>
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#1-verifying-that-json-files-came-from-a-specific-program">USECASES.md § 1</a> for the full scenario.</p>
 <hr />
 <h2 id="2-protecting-your-agents-identity-on-the-internet"><a class="header" href="#2-protecting-your-agents-identity-on-the-internet">2. Protecting your agent's identity on the internet</a></h2>
-<p><strong>Summary.</strong> You run a public-facing agent and want its messages to be verifiable (signed) without exposing who operates it. JACS supports this by keeping signing internal-only and publishing only the public key (via DNS and optionally HAI). Recipients use <code>jacs_verify_auto</code> to confirm origin and integrity; they never learn who runs the agent.</p>
+<p><strong>Summary.</strong> You run a public-facing agent and want its messages to be verifiable (signed) without exposing who operates it. JACS supports this by keeping signing internal-only and publishing only the public key (via DNS and optionally HAI). Recipients use <code>verify()</code> (core JACS) or <code>jacs_verify_auto</code> (OpenClaw/moltyjacs) to confirm origin and integrity; they never learn who runs the agent.</p>
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#2-protecting-your-agents-identity-on-the-internet">USECASES.md § 2</a> for the full scenario.</p>
 <hr />
 <h2 id="3-registering-and-testing-your-agent-on-haiai"><a class="header" href="#3-registering-and-testing-your-agent-on-haiai">3. Registering and testing your agent on HAI.ai</a></h2>
-<p><strong>Summary.</strong> You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the HAI registration flow (e.g. <code>register_with_hai.py</code>, <code>hai_quickstart.py</code>, or <code>openclaw jacs register</code>) with <code>HAI_API_KEY</code>, then check attestation and run verification with <code>JACS_KEY_RESOLUTION=local,hai</code>.</p>
+<p><strong>Summary.</strong> You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the HAI registration flow: from Node <code>registerWithHai()</code> (jacsnpm), from Go <code>RegisterWithHai()</code> (jacsgo), from Python <code>register_with_hai</code> / <code>register_new_agent()</code> (jacspy), or <code>openclaw jacs register</code> (moltyjacs). Set <code>HAI_API_KEY</code>, then check attestation and run verification with <code>JACS_KEY_RESOLUTION=local,hai</code>.</p>
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#3-registering-and-testing-your-agent-on-haiai">USECASES.md § 3</a> for the full scenario.</p>
 <hr />
 <h2 id="4-a-go-node-or-python-agent-with-strong-data-provenance"><a class="header" href="#4-a-go-node-or-python-agent-with-strong-data-provenance">4. A Go, Node, or Python agent with strong data provenance</a></h2>
-<p><strong>Summary.</strong> Your agent (in Go, Node, or Python) must prove the origin and integrity of every important output for compliance. Use the simple API in jacspy, jacsnpm, or jacsgo: <code>load(config)</code>, <code>sign_message(payload)</code> for each output, and <code>verify(signed.raw)</code> wherever you consume signed data. Keys stay local; use <code>JACS_KEY_RESOLUTION</code> for external signers or air-gapped use.</p>
+<p><strong>Summary.</strong> Your agent (in Go, Node, or Python) must prove the origin and integrity of every important output for compliance. Use the simple API in jacspy, jacsnpm, or jacsgo: <code>load(config)</code>, <code>sign_message(payload)</code> for each output, and <code>verify(signed.raw)</code> (or <code>verify_standalone()</code> for one-off verification without agent setup) wherever you consume signed data. Keys stay local; use <code>JACS_KEY_RESOLUTION</code> for external signers or air-gapped use.</p>
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#4-a-go-node-or-python-agent-with-strong-data-provenance">USECASES.md § 4</a> for the full scenario.</p>
 <hr />
 <h2 id="5-openclaw-moltyjacs-proving-your-agent-sent-a-message"><a class="header" href="#5-openclaw-moltyjacs-proving-your-agent-sent-a-message">5. OpenClaw (moltyjacs): proving your agent sent a message</a></h2>
@@ -3931,6 +3941,18 @@ if (result.valid) {
 }
 </code></pre>
 <hr />
+<h3 id="verifystandalonesigneddocument-options"><a class="header" href="#verifystandalonesigneddocument-options">verifyStandalone(signedDocument, options?)</a></h3>
+<p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API). Does not use the global agent.</p>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>signedDocument</code> (string): The signed JACS document JSON</li>
+<li><code>options</code> (object, optional): <code>{ keyResolution?, dataDirectory?, keyDirectory? }</code></li>
+</ul>
+<p><strong>Returns:</strong> <code>VerificationResult</code> (same shape as <code>verify()</code>)</p>
+<pre><code class="language-javascript">const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
+console.log(result.valid, result.signerId);
+</code></pre>
+<hr />
 <h3 id="updateagentnewagentdata"><a class="header" href="#updateagentnewagentdata">updateAgent(newAgentData)</a></h3>
 <p>Update the agent document with new data and re-sign it.</p>
 <p>This function expects a <strong>complete agent document</strong> (not partial updates). Use <code>exportAgent()</code> to get the current document, modify it, then pass it here.</p>
@@ -3993,6 +4015,20 @@ console.log(agentDoc);
 const agent = JSON.parse(agentDoc);
 console.log(`Agent type: ${agent.jacsAgentType}`);
 </code></pre>
+<hr />
+<h3 id="registerwithhaioptions"><a class="header" href="#registerwithhaioptions">registerWithHai(options?)</a></h3>
+<p>Register the loaded agent with HAI.ai. Requires a loaded agent and an API key (<code>options.apiKey</code> or <code>HAI_API_KEY</code>).</p>
+<p><strong>Parameters:</strong> <code>options</code> (object, optional): <code>{ apiKey?, haiUrl?, preview? }</code></p>
+<p><strong>Returns:</strong> <code>Promise&lt;HaiRegistrationResult&gt;</code> with <code>agentId</code>, <code>jacsId</code>, <code>dnsVerified</code>, <code>signatures</code></p>
+<hr />
+<h3 id="getdnsrecorddomain-ttl"><a class="header" href="#getdnsrecorddomain-ttl">getDnsRecord(domain, ttl?)</a></h3>
+<p>Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: <code>_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."</code>.</p>
+<p><strong>Parameters:</strong> <code>domain</code> (string), <code>ttl</code> (number, optional, default 3600)</p>
+<p><strong>Returns:</strong> string</p>
+<hr />
+<h3 id="getwellknownjson"><a class="header" href="#getwellknownjson">getWellKnownJson()</a></h3>
+<p>Return the well-known JSON object for the loaded agent (e.g. for <code>/.well-known/jacs-pubkey.json</code>). Keys: <code>publicKey</code>, <code>publicKeyHash</code>, <code>algorithm</code>, <code>agentId</code>.</p>
+<p><strong>Returns:</strong> object</p>
 <hr />
 <h3 id="getpublickey"><a class="header" href="#getpublickey">getPublicKey()</a></h3>
 <p>Get the loaded agent's public key in PEM format for sharing with others.</p>
@@ -6764,6 +6800,11 @@ else:
     print(f"Invalid: {', '.join(result.errors)}")
 </code></pre>
 <hr />
+<h3 id="verify_standalonedocument-key_resolutionlocal-data_directorynone-key_directorynone"><a class="header" href="#verify_standalonedocument-key_resolutionlocal-data_directorynone-key_directorynone">verify_standalone(document, key_resolution="local", data_directory=None, key_directory=None)</a></h3>
+<p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API).</p>
+<p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
+<p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
 <h3 id="update_agentnew_agent_data"><a class="header" href="#update_agentnew_agent_data">update_agent(new_agent_data)</a></h3>
 <p>Update the agent document with new data and re-sign it.</p>
 <p>This function expects a <strong>complete agent document</strong> (not partial updates). Use <code>export_agent()</code> to get the current document, modify it, then pass it here.</p>
@@ -6830,6 +6871,14 @@ print(agent_doc)
 agent = json.loads(agent_doc)
 print(f"Agent type: {agent['jacsAgentType']}")
 </code></pre>
+<hr />
+<h3 id="get_dns_recorddomain-ttl3600"><a class="header" href="#get_dns_recorddomain-ttl3600">get_dns_record(domain, ttl=3600)</a></h3>
+<p>Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: <code>_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."</code>.</p>
+<p><strong>Returns:</strong> str</p>
+<hr />
+<h3 id="get_well_known_json"><a class="header" href="#get_well_known_json">get_well_known_json()</a></h3>
+<p>Return the well-known JSON object for the loaded agent (e.g. for <code>/.well-known/jacs-pubkey.json</code>). Keys: <code>publicKey</code>, <code>publicKeyHash</code>, <code>algorithm</code>, <code>agentId</code>.</p>
+<p><strong>Returns:</strong> dict</p>
 <hr />
 <h3 id="get_public_key"><a class="header" href="#get_public_key">get_public_key()</a></h3>
 <p>Get the loaded agent's public key in PEM format for sharing with others.</p>
@@ -17737,6 +17786,8 @@ jacs document verify -f document.json -s schema.json
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="configuration-reference"><a class="header" href="#configuration-reference">Configuration Reference</a></h1>
 <h2 id="overview-17"><a class="header" href="#overview-17">Overview</a></h2>
+<h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
+<p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (trust store), <code>dns</code> (DNS TXT record), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that returns a key for the signer’s ID is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
 <h2 id="complete-example-configuration"><a class="header" href="#complete-example-configuration">Complete Example Configuration</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",

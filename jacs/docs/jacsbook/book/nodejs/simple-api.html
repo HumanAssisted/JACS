@@ -296,6 +296,18 @@ if (result.valid) {
 }
 </code></pre>
 <hr />
+<h3 id="verifystandalonesigneddocument-options"><a class="header" href="#verifystandalonesigneddocument-options">verifyStandalone(signedDocument, options?)</a></h3>
+<p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API). Does not use the global agent.</p>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>signedDocument</code> (string): The signed JACS document JSON</li>
+<li><code>options</code> (object, optional): <code>{ keyResolution?, dataDirectory?, keyDirectory? }</code></li>
+</ul>
+<p><strong>Returns:</strong> <code>VerificationResult</code> (same shape as <code>verify()</code>)</p>
+<pre><code class="language-javascript">const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
+console.log(result.valid, result.signerId);
+</code></pre>
+<hr />
 <h3 id="updateagentnewagentdata"><a class="header" href="#updateagentnewagentdata">updateAgent(newAgentData)</a></h3>
 <p>Update the agent document with new data and re-sign it.</p>
 <p>This function expects a <strong>complete agent document</strong> (not partial updates). Use <code>exportAgent()</code> to get the current document, modify it, then pass it here.</p>
@@ -358,6 +370,20 @@ console.log(agentDoc);
 const agent = JSON.parse(agentDoc);
 console.log(`Agent type: ${agent.jacsAgentType}`);
 </code></pre>
+<hr />
+<h3 id="registerwithhaioptions"><a class="header" href="#registerwithhaioptions">registerWithHai(options?)</a></h3>
+<p>Register the loaded agent with HAI.ai. Requires a loaded agent and an API key (<code>options.apiKey</code> or <code>HAI_API_KEY</code>).</p>
+<p><strong>Parameters:</strong> <code>options</code> (object, optional): <code>{ apiKey?, haiUrl?, preview? }</code></p>
+<p><strong>Returns:</strong> <code>Promise&lt;HaiRegistrationResult&gt;</code> with <code>agentId</code>, <code>jacsId</code>, <code>dnsVerified</code>, <code>signatures</code></p>
+<hr />
+<h3 id="getdnsrecorddomain-ttl"><a class="header" href="#getdnsrecorddomain-ttl">getDnsRecord(domain, ttl?)</a></h3>
+<p>Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: <code>_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."</code>.</p>
+<p><strong>Parameters:</strong> <code>domain</code> (string), <code>ttl</code> (number, optional, default 3600)</p>
+<p><strong>Returns:</strong> string</p>
+<hr />
+<h3 id="getwellknownjson"><a class="header" href="#getwellknownjson">getWellKnownJson()</a></h3>
+<p>Return the well-known JSON object for the loaded agent (e.g. for <code>/.well-known/jacs-pubkey.json</code>). Keys: <code>publicKey</code>, <code>publicKeyHash</code>, <code>algorithm</code>, <code>agentId</code>.</p>
+<p><strong>Returns:</strong> object</p>
 <hr />
 <h3 id="getpublickey"><a class="header" href="#getpublickey">getPublicKey()</a></h3>
 <p>Get the loaded agent's public key in PEM format for sharing with others.</p>

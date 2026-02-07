@@ -202,6 +202,16 @@
 <li><strong>Updates</strong>: Version changes while maintaining identity</li>
 <li><strong>Verification</strong>: Other agents validate signatures</li>
 </ol>
+<h3 id="verification-load-vs-verify_standalone"><a class="header" href="#verification-load-vs-verify_standalone">Verification: load() vs verify_standalone()</a></h3>
+<p>When <strong>consuming</strong> signed documents, you can verify in two ways:</p>
+<ul>
+<li>
+<p><strong>With a loaded agent</strong> (<code>load(config)</code> first): Call <code>verify(signedDocument)</code>. The loaded agent uses its config (trust store, key resolution) to resolve the signer’s public key and verify the signature. Use this when your process already has a JACS config (e.g. it also signs) or when you want to use a specific key directory and resolution order.</p>
+</li>
+<li>
+<p><strong>Without loading an agent</strong> (one-off verification): Call <code>verify_standalone(signedDocument, options)</code> (or the language equivalent: <code>verifyStandalone</code>, <code>VerifyStandalone</code>). This verifies the document using only the options you pass (e.g. <code>keyResolution</code>, <code>keyDirectory</code>). No config file or persistent agent state is required. Use this in lightweight services that only need to verify incoming documents.</p>
+</li>
+</ul>
 <h2 id="documents"><a class="header" href="#documents">Documents</a></h2>
 <p>A <strong>Document</strong> is any JSON object that follows JACS conventions for identity, versioning, and cryptographic integrity.</p>
 <h3 id="document-structure"><a class="header" href="#document-structure">Document Structure</a></h3>

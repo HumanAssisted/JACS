@@ -292,6 +292,11 @@ else:
     print(f"Invalid: {', '.join(result.errors)}")
 </code></pre>
 <hr />
+<h3 id="verify_standalonedocument-key_resolutionlocal-data_directorynone-key_directorynone"><a class="header" href="#verify_standalonedocument-key_resolutionlocal-data_directorynone-key_directorynone">verify_standalone(document, key_resolution="local", data_directory=None, key_directory=None)</a></h3>
+<p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API).</p>
+<p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
+<p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
 <h3 id="update_agentnew_agent_data"><a class="header" href="#update_agentnew_agent_data">update_agent(new_agent_data)</a></h3>
 <p>Update the agent document with new data and re-sign it.</p>
 <p>This function expects a <strong>complete agent document</strong> (not partial updates). Use <code>export_agent()</code> to get the current document, modify it, then pass it here.</p>
@@ -358,6 +363,14 @@ print(agent_doc)
 agent = json.loads(agent_doc)
 print(f"Agent type: {agent['jacsAgentType']}")
 </code></pre>
+<hr />
+<h3 id="get_dns_recorddomain-ttl3600"><a class="header" href="#get_dns_recorddomain-ttl3600">get_dns_record(domain, ttl=3600)</a></h3>
+<p>Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: <code>_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."</code>.</p>
+<p><strong>Returns:</strong> str</p>
+<hr />
+<h3 id="get_well_known_json"><a class="header" href="#get_well_known_json">get_well_known_json()</a></h3>
+<p>Return the well-known JSON object for the loaded agent (e.g. for <code>/.well-known/jacs-pubkey.json</code>). Keys: <code>publicKey</code>, <code>publicKeyHash</code>, <code>algorithm</code>, <code>agentId</code>.</p>
+<p><strong>Returns:</strong> dict</p>
 <hr />
 <h3 id="get_public_key"><a class="header" href="#get_public_key">get_public_key()</a></h3>
 <p>Get the loaded agent's public key in PEM format for sharing with others.</p>
