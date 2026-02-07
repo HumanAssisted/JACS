@@ -63,6 +63,11 @@ The simplified API provides these core operations:
 | `verify()` | Verify any signed document (JSON string) |
 | `verify_by_id()` | Verify a document by its storage ID (`uuid:version`) |
 | `reencrypt_key()` | Re-encrypt the private key with a new password |
+| `trust_agent()` | Add an agent to the local trust store |
+| `list_trusted_agents()` | List all trusted agent IDs |
+| `untrust_agent()` | Remove an agent from the trust store |
+| `is_trusted()` | Check if an agent is trusted |
+| `get_trusted_agent()` | Get a trusted agent's JSON document |
 
 ### Programmatic Agent Creation
 
