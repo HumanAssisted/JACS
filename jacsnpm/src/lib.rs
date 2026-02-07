@@ -216,6 +216,22 @@ impl JacsAgent {
             .to_napi()
     }
 
+    /// Verify a document looked up by ID from storage.
+    ///
+    /// The document_id should be in "uuid:version" format.
+    #[napi]
+    pub fn verify_document_by_id(&self, document_id: String) -> Result<bool> {
+        self.inner.verify_document_by_id(&document_id).to_napi()
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    #[napi]
+    pub fn reencrypt_key(&self, old_password: String, new_password: String) -> Result<()> {
+        self.inner
+            .reencrypt_key(&old_password, &new_password)
+            .to_napi()
+    }
+
     /// Sign a request payload (wraps in a JACS document).
     #[napi(ts_args_type = "params: any")]
     pub fn sign_request(&self, env: Env, params_obj: JsObject) -> Result<String> {
@@ -293,6 +309,35 @@ pub fn create_config(
         jacs_private_key_password,
         jacs_agent_id_and_version,
         jacs_default_storage,
+    )
+    .to_napi()
+}
+
+/// Create a JACS agent programmatically (non-interactive).
+#[napi]
+pub fn create_agent(
+    name: String,
+    password: String,
+    algorithm: Option<String>,
+    data_directory: Option<String>,
+    key_directory: Option<String>,
+    config_path: Option<String>,
+    agent_type: Option<String>,
+    description: Option<String>,
+    domain: Option<String>,
+    default_storage: Option<String>,
+) -> Result<String> {
+    jacs_binding_core::create_agent_programmatic(
+        &name,
+        &password,
+        algorithm.as_deref(),
+        data_directory.as_deref(),
+        key_directory.as_deref(),
+        config_path.as_deref(),
+        agent_type.as_deref(),
+        description.as_deref(),
+        domain.as_deref(),
+        default_storage.as_deref(),
     )
     .to_napi()
 }

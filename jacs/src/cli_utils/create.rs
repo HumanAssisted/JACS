@@ -19,6 +19,18 @@ use std::io::Write;
 use std::path::Path;
 use std::process;
 
+use crate::simple::{AgentInfo, CreateAgentParams, SimpleAgent};
+
+/// Programmatic agent creation for non-interactive use.
+///
+/// Accepts pre-built `CreateAgentParams` and delegates to `SimpleAgent::create_with_params()`.
+/// Use this when integrating CLI commands with the programmatic API.
+pub fn handle_agent_create_programmatic(params: CreateAgentParams) -> Result<AgentInfo, Box<dyn Error>> {
+    let (_agent, info) = SimpleAgent::create_with_params(params)
+        .map_err(|e| -> Box<dyn Error> { Box::new(e) })?;
+    Ok(info)
+}
+
 fn request_string(message: &str, default: &str) -> String {
     let mut input = String::new();
     println!("{}: (default: {})", message, default);
@@ -110,7 +122,7 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     let jacs_agent_public_key_filename =
         request_string("Enter the public key filename:", "jacs.public.pem");
     let jacs_agent_key_algorithm = request_string(
-        "Enter the agent key algorithm (pq2025, pq-dilithium, ring-Ed25519, or RSA-PSS)",
+        "Enter the agent key algorithm (pq2025, ring-Ed25519, or RSA-PSS)",
         "pq2025",
     );
     let jacs_default_storage = request_string("Enter the default storage (fs, aws, hai)", "fs");
@@ -123,6 +135,7 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
         }
         _ => {
             // Environment variable not set or empty, prompt user interactively.
+            println!("\n{}", crate::crypt::aes_encrypt::password_requirements());
             loop {
                 println!("Please enter a password (used to encrypt private key):");
                 let password = match read_password() {

@@ -524,6 +524,90 @@ impl AgentWrapper {
             .map_err(|e| BindingCoreError::verification_failed(e.to_string()))
     }
 
+    /// Verify a document looked up by its ID from storage.
+    ///
+    /// This is a convenience method for when you have a document ID rather than
+    /// the full JSON string. The document ID should be in "uuid:version" format.
+    pub fn verify_document_by_id(&self, document_id: &str) -> BindingResult<bool> {
+        use jacs::storage::StorageDocumentTraits;
+
+        // Validate format
+        if !document_id.contains(':') {
+            return Err(BindingCoreError::invalid_argument(format!(
+                "Document ID must be in 'uuid:version' format, got '{}'. \
+                Use verify_document() with the full JSON string instead.",
+                document_id
+            )));
+        }
+
+        let storage = jacs::storage::MultiStorage::default_new().map_err(|e| {
+            BindingCoreError::generic(format!("Failed to initialize storage: {}", e))
+        })?;
+
+        let doc = storage.get_document(document_id).map_err(|e| {
+            BindingCoreError::document_failed(format!(
+                "Failed to load document '{}' from storage: {}",
+                document_id, e
+            ))
+        })?;
+
+        let doc_str = serde_json::to_string(&doc.value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize document '{}': {}",
+                document_id, e
+            ))
+        })?;
+
+        self.verify_document(&doc_str)
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    ///
+    /// Reads the encrypted private key file, decrypts with old_password,
+    /// validates new_password, re-encrypts, and writes the updated file.
+    pub fn reencrypt_key(
+        &self,
+        old_password: &str,
+        new_password: &str,
+    ) -> BindingResult<()> {
+        use jacs::crypt::aes_encrypt::reencrypt_private_key;
+
+        // Find key path from config
+        let agent = self.lock()?;
+        let key_path = if let Some(config) = &agent.config {
+            let key_dir = config.jacs_key_directory().as_deref().unwrap_or("./jacs_keys");
+            let key_file = config
+                .jacs_agent_private_key_filename()
+                .as_deref()
+                .unwrap_or("jacs.private.pem.enc");
+            format!("{}/{}", key_dir, key_file)
+        } else {
+            "./jacs_keys/jacs.private.pem.enc".to_string()
+        };
+        drop(agent);
+
+        let encrypted_data = std::fs::read(&key_path).map_err(|e| {
+            BindingCoreError::generic(format!(
+                "Failed to read private key file '{}': {}",
+                key_path, e
+            ))
+        })?;
+
+        let re_encrypted = reencrypt_private_key(&encrypted_data, old_password, new_password)
+            .map_err(|e| {
+                BindingCoreError::generic(format!("Re-encryption failed: {}", e))
+            })?;
+
+        std::fs::write(&key_path, &re_encrypted).map_err(|e| {
+            BindingCoreError::generic(format!(
+                "Failed to write re-encrypted key to '{}': {}",
+                key_path, e
+            ))
+        })?;
+
+        Ok(())
+    }
+
     /// Get the agent's JSON representation as a string.
     ///
     /// Returns the agent's full JSON document, suitable for registration
@@ -614,6 +698,47 @@ pub fn get_trusted_agent(agent_id: &str) -> BindingResult<String> {
 // =============================================================================
 // CLI Utility Functions
 // =============================================================================
+
+/// Create a JACS agent programmatically (non-interactive).
+///
+/// Accepts all creation parameters and returns a JSON string containing agent info.
+pub fn create_agent_programmatic(
+    name: &str,
+    password: &str,
+    algorithm: Option<&str>,
+    data_directory: Option<&str>,
+    key_directory: Option<&str>,
+    config_path: Option<&str>,
+    agent_type: Option<&str>,
+    description: Option<&str>,
+    domain: Option<&str>,
+    default_storage: Option<&str>,
+) -> BindingResult<String> {
+    use jacs::simple::{CreateAgentParams, SimpleAgent};
+
+    let params = CreateAgentParams {
+        name: name.to_string(),
+        password: password.to_string(),
+        algorithm: algorithm.unwrap_or("pq2025").to_string(),
+        data_directory: data_directory.unwrap_or("./jacs_data").to_string(),
+        key_directory: key_directory.unwrap_or("./jacs_keys").to_string(),
+        config_path: config_path.unwrap_or("./jacs.config.json").to_string(),
+        agent_type: agent_type.unwrap_or("ai").to_string(),
+        description: description.unwrap_or("").to_string(),
+        domain: domain.unwrap_or("").to_string(),
+        default_storage: default_storage.unwrap_or("fs").to_string(),
+        hai_api_key: String::new(),
+        hai_endpoint: String::new(),
+    };
+
+    let (_agent, info) = SimpleAgent::create_with_params(params).map_err(|e| {
+        BindingCoreError::agent_load(format!("Failed to create agent: {}", e))
+    })?;
+
+    serde_json::to_string_pretty(&info).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize agent info: {}", e))
+    })
+}
 
 /// Create agent and config files interactively.
 pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> BindingResult<()> {

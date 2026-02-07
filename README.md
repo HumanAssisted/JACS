@@ -86,10 +86,13 @@ jacs document create -f mydata.json
 
 | Function | Description |
 |----------|-------------|
+| `create(name, options)` | Create a new agent programmatically (non-interactive) |
 | `load(config)` | Load agent from config file |
 | `sign_message(data)` | Sign any JSON data |
 | `sign_file(path, embed)` | Sign a file |
-| `verify(document)` | Verify a signed document |
+| `verify(document)` | Verify a signed document (JSON string) |
+| `verify_by_id(id)` | Verify a document by storage ID (`uuid:version`) |
+| `reencrypt_key(old, new)` | Re-encrypt the private key with a new password |
 | `verify_self()` | Verify agent integrity |
 | `get_public_key()` | Get public key for sharing |
 
@@ -127,7 +130,7 @@ When verifying signatures, JACS looks up signers' public keys in an order contro
 
 ## Supported algorithms
 
-Signing and verification support: **ring-Ed25519**, **RSA-PSS**, **pq-dilithium**, **pq2025** (ML-DSA). Set `jacs_agent_key_algorithm` in config or `JACS_AGENT_KEY_ALGORITHM` in the environment.
+Signing and verification support: **ring-Ed25519**, **RSA-PSS**, **pq2025** (ML-DSA-87, FIPS-204, recommended). `pq-dilithium` is deprecated -- use `pq2025` instead. Set `jacs_agent_key_algorithm` in config or `JACS_AGENT_KEY_ALGORITHM` in the environment.
 
 ## Troubleshooting
 

@@ -56,6 +56,7 @@
 //! - **Signing Gravity**: Documentation emphasizes the sacred nature of signing
 
 use crate::agent::Agent;
+use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::DocumentTraits;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
@@ -82,6 +83,30 @@ pub struct AgentInfo {
     pub public_key_path: String,
     /// Path to the configuration file.
     pub config_path: String,
+    /// Agent version string.
+    #[serde(default)]
+    pub version: String,
+    /// Signing algorithm used.
+    #[serde(default)]
+    pub algorithm: String,
+    /// Path to the private key file.
+    #[serde(default)]
+    pub private_key_path: String,
+    /// Data directory path.
+    #[serde(default)]
+    pub data_directory: String,
+    /// Key directory path.
+    #[serde(default)]
+    pub key_directory: String,
+    /// Agent domain (if configured).
+    #[serde(default)]
+    pub domain: String,
+    /// DNS TXT record to publish (if domain was configured).
+    #[serde(default)]
+    pub dns_record: String,
+    /// Whether the agent was registered with HAI.
+    #[serde(default)]
+    pub hai_registered: bool,
 }
 
 /// A signed JACS document.
@@ -203,6 +228,147 @@ mod base64_bytes {
         STANDARD.decode(&s).map_err(serde::de::Error::custom)
     }
 }
+
+// =============================================================================
+// Programmatic Creation Parameters
+// =============================================================================
+
+/// Parameters for programmatic agent creation.
+///
+/// Provides full control over agent creation without interactive prompts.
+/// Use `CreateAgentParams::builder()` for a fluent API, or construct directly.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use jacs::simple::CreateAgentParams;
+///
+/// let params = CreateAgentParams::builder()
+///     .name("my-agent")
+///     .password("MyStr0ng!Pass#2024")
+///     .algorithm("pq2025")
+///     .build();
+///
+/// let (agent, info) = SimpleAgent::create_with_params(params)?;
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAgentParams {
+    /// Human-readable name for the agent (required).
+    pub name: String,
+    /// Password for encrypting the private key.
+    /// If empty, falls back to JACS_PRIVATE_KEY_PASSWORD env var.
+    #[serde(default)]
+    pub password: String,
+    /// Signing algorithm. Default: "pq2025".
+    #[serde(default = "default_algorithm")]
+    pub algorithm: String,
+    /// Directory for data storage. Default: "./jacs_data".
+    #[serde(default = "default_data_directory")]
+    pub data_directory: String,
+    /// Directory for keys. Default: "./jacs_keys".
+    #[serde(default = "default_key_directory")]
+    pub key_directory: String,
+    /// Path to the config file. Default: "./jacs.config.json".
+    #[serde(default = "default_config_path")]
+    pub config_path: String,
+    /// Agent type (e.g., "ai", "human", "hybrid"). Default: "ai".
+    #[serde(default = "default_agent_type")]
+    pub agent_type: String,
+    /// Description of the agent's purpose.
+    #[serde(default)]
+    pub description: String,
+    /// Agent domain for DNSSEC fingerprint (optional).
+    #[serde(default)]
+    pub domain: String,
+    /// Default storage backend. Default: "fs".
+    #[serde(default = "default_storage")]
+    pub default_storage: String,
+    /// HAI API key for registration (optional).
+    #[serde(default)]
+    pub hai_api_key: String,
+    /// HAI endpoint URL (optional).
+    #[serde(default)]
+    pub hai_endpoint: String,
+}
+
+fn default_algorithm() -> String { "pq2025".to_string() }
+fn default_data_directory() -> String { "./jacs_data".to_string() }
+fn default_key_directory() -> String { "./jacs_keys".to_string() }
+fn default_config_path() -> String { "./jacs.config.json".to_string() }
+fn default_agent_type() -> String { "ai".to_string() }
+fn default_storage() -> String { "fs".to_string() }
+
+impl Default for CreateAgentParams {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            password: String::new(),
+            algorithm: default_algorithm(),
+            data_directory: default_data_directory(),
+            key_directory: default_key_directory(),
+            config_path: default_config_path(),
+            agent_type: default_agent_type(),
+            description: String::new(),
+            domain: String::new(),
+            default_storage: default_storage(),
+            hai_api_key: String::new(),
+            hai_endpoint: String::new(),
+        }
+    }
+}
+
+impl CreateAgentParams {
+    /// Returns a new builder for `CreateAgentParams`.
+    pub fn builder() -> CreateAgentParamsBuilder {
+        CreateAgentParamsBuilder::default()
+    }
+}
+
+/// Fluent builder for `CreateAgentParams`.
+#[derive(Debug, Clone, Default)]
+pub struct CreateAgentParamsBuilder {
+    params: CreateAgentParams,
+}
+
+impl CreateAgentParamsBuilder {
+    pub fn name(mut self, name: &str) -> Self { self.params.name = name.to_string(); self }
+    pub fn password(mut self, password: &str) -> Self { self.params.password = password.to_string(); self }
+    pub fn algorithm(mut self, algorithm: &str) -> Self { self.params.algorithm = algorithm.to_string(); self }
+    pub fn data_directory(mut self, dir: &str) -> Self { self.params.data_directory = dir.to_string(); self }
+    pub fn key_directory(mut self, dir: &str) -> Self { self.params.key_directory = dir.to_string(); self }
+    pub fn config_path(mut self, path: &str) -> Self { self.params.config_path = path.to_string(); self }
+    pub fn agent_type(mut self, agent_type: &str) -> Self { self.params.agent_type = agent_type.to_string(); self }
+    pub fn description(mut self, desc: &str) -> Self { self.params.description = desc.to_string(); self }
+    pub fn domain(mut self, domain: &str) -> Self { self.params.domain = domain.to_string(); self }
+    pub fn default_storage(mut self, storage: &str) -> Self { self.params.default_storage = storage.to_string(); self }
+    pub fn hai_api_key(mut self, key: &str) -> Self { self.params.hai_api_key = key.to_string(); self }
+    pub fn hai_endpoint(mut self, endpoint: &str) -> Self { self.params.hai_endpoint = endpoint.to_string(); self }
+
+    /// Build the `CreateAgentParams`. Name is required.
+    pub fn build(self) -> CreateAgentParams {
+        self.params
+    }
+}
+
+/// Information returned from HAI registration during agent creation.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RegistrationInfo {
+    /// DNS TXT record to publish (if domain was provided).
+    #[serde(default)]
+    pub dns_record: String,
+    /// Route53-specific DNS record (if applicable).
+    #[serde(default)]
+    pub dns_route53: String,
+    /// Whether HAI registration succeeded.
+    #[serde(default)]
+    pub hai_registered: bool,
+    /// Error from HAI registration (if any).
+    #[serde(default)]
+    pub hai_error: String,
+}
+
+/// Mutex to prevent concurrent environment variable stomping during creation.
+static CREATE_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Status of a single signer in a multi-party agreement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -378,12 +544,219 @@ impl SimpleAgent {
             name: name.to_string(),
             public_key_path: "./jacs_keys/jacs.public.pem".to_string(),
             config_path: config_path.to_string(),
+            version,
+            algorithm: algorithm.to_string(),
+            private_key_path: "./jacs_keys/jacs.private.pem.enc".to_string(),
+            data_directory: "./jacs_data".to_string(),
+            key_directory: "./jacs_keys".to_string(),
+            domain: String::new(),
+            dns_record: String::new(),
+            hai_registered: false,
         };
 
         Ok((
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(config_path.to_string()),
+            },
+            info,
+        ))
+    }
+
+    /// Creates a new JACS agent with full programmatic control.
+    ///
+    /// Unlike `create()`, this method accepts all parameters explicitly, making it
+    /// suitable for non-interactive use from bindings and automation.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - `CreateAgentParams` with all creation parameters
+    ///
+    /// # Returns
+    ///
+    /// A `SimpleAgent` instance and `AgentInfo` with the created agent's details.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::{SimpleAgent, CreateAgentParams};
+    ///
+    /// let params = CreateAgentParams::builder()
+    ///     .name("my-agent")
+    ///     .password("MyStr0ng!Pass#2024")
+    ///     .algorithm("pq2025")
+    ///     .data_directory("/tmp/test_data")
+    ///     .key_directory("/tmp/test_keys")
+    ///     .config_path("/tmp/test.config.json")
+    ///     .build();
+    ///
+    /// let (agent, info) = SimpleAgent::create_with_params(params)?;
+    /// ```
+    #[must_use = "agent creation result must be checked for errors"]
+    pub fn create_with_params(
+        params: CreateAgentParams,
+    ) -> Result<(Self, AgentInfo), JacsError> {
+        // Acquire creation mutex to prevent concurrent env var stomping
+        let _lock = CREATE_MUTEX.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire creation lock: {}", e),
+        })?;
+
+        // Resolve password: params > env var > error
+        let password = if !params.password.is_empty() {
+            params.password.clone()
+        } else {
+            std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default()
+        };
+
+        if password.is_empty() {
+            return Err(JacsError::ConfigError(
+                "Password is required for agent creation. \
+                Either pass it in CreateAgentParams.password or set the JACS_PRIVATE_KEY_PASSWORD environment variable."
+                    .to_string(),
+            ));
+        }
+
+        let algorithm = if params.algorithm.is_empty() {
+            "pq2025".to_string()
+        } else {
+            params.algorithm.clone()
+        };
+
+        info!(
+            "Creating new agent '{}' with algorithm '{}' (programmatic)",
+            params.name, algorithm
+        );
+
+        // Create directories
+        let keys_dir = Path::new(&params.key_directory);
+        let data_dir = Path::new(&params.data_directory);
+
+        fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: keys_dir.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+        fs::create_dir_all(data_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: data_dir.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+
+        // Set env vars for the keystore layer (within the mutex lock)
+        // SAFETY: We hold CREATE_MUTEX, ensuring no concurrent env var access
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
+            std::env::set_var("JACS_DATA_DIRECTORY", &params.data_directory);
+            std::env::set_var("JACS_KEY_DIRECTORY", &params.key_directory);
+            std::env::set_var("JACS_AGENT_KEY_ALGORITHM", &algorithm);
+            std::env::set_var("JACS_DEFAULT_STORAGE", &params.default_storage);
+            std::env::set_var(
+                "JACS_AGENT_PRIVATE_KEY_FILENAME",
+                "jacs.private.pem.enc",
+            );
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        // Create a minimal agent JSON
+        let description = if params.description.is_empty() {
+            "JACS agent".to_string()
+        } else {
+            params.description.clone()
+        };
+
+        let agent_json = json!({
+            "jacsAgentType": params.agent_type,
+            "name": params.name,
+            "description": description,
+        });
+
+        // Create the agent
+        let mut agent = crate::get_empty_agent();
+
+        let instance = agent
+            .create_agent_and_load(&agent_json.to_string(), true, Some(&algorithm))
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to create agent: {}", e),
+            })?;
+
+        // Extract agent info
+        let agent_id = instance["jacsId"].as_str().unwrap_or("unknown").to_string();
+        let version = instance["jacsVersion"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+
+        let lookup_id = format!("{}:{}", agent_id, version);
+
+        // Save the agent
+        agent.save().map_err(|e| JacsError::Internal {
+            message: format!("Failed to save agent: {}", e),
+        })?;
+
+        // Create config file using Config::builder
+        let config_json = json!({
+            "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+            "jacs_agent_id_and_version": lookup_id,
+            "jacs_data_directory": params.data_directory,
+            "jacs_key_directory": params.key_directory,
+            "jacs_agent_key_algorithm": algorithm,
+            "jacs_default_storage": params.default_storage,
+        });
+
+        let config_str =
+            serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize config: {}", e),
+            })?;
+        fs::write(&params.config_path, &config_str).map_err(|e| JacsError::Internal {
+            message: format!("Failed to write config to '{}': {}", params.config_path, e),
+        })?;
+
+        // Handle DNS record generation if domain is set
+        let mut dns_record = String::new();
+        if !params.domain.is_empty() {
+            if let Ok(pk) = agent.get_public_key() {
+                let digest = crate::dns::bootstrap::pubkey_digest_b64(&pk);
+                let rr = crate::dns::bootstrap::build_dns_record(
+                    &params.domain,
+                    3600,
+                    &agent_id,
+                    &digest,
+                    crate::dns::bootstrap::DigestEncoding::Base64,
+                );
+                dns_record = crate::dns::bootstrap::emit_plain_bind(&rr);
+            }
+        }
+
+        // Clean up password from env after use
+        unsafe {
+            std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+        }
+
+        let private_key_path = format!("{}/jacs.private.pem.enc", params.key_directory);
+        let public_key_path = format!("{}/jacs.public.pem", params.key_directory);
+
+        info!(
+            "Agent '{}' created successfully with ID {} (programmatic)",
+            params.name, agent_id
+        );
+
+        let info = AgentInfo {
+            agent_id,
+            name: params.name.clone(),
+            public_key_path,
+            config_path: params.config_path.clone(),
+            version,
+            algorithm: algorithm.clone(),
+            private_key_path,
+            data_directory: params.data_directory.clone(),
+            key_directory: params.key_directory.clone(),
+            domain: params.domain.clone(),
+            dns_record,
+            hai_registered: false,
+        };
+
+        Ok((
+            Self {
+                agent: Mutex::new(agent),
+                config_path: Some(params.config_path),
             },
             info,
         ))
@@ -956,6 +1329,20 @@ impl SimpleAgent {
     pub fn verify(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
         debug!("verify() called");
 
+        // Pre-check: if input doesn't look like JSON, give a helpful error
+        let trimmed = signed_document.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+            return Err(JacsError::DocumentMalformed {
+                field: "json".to_string(),
+                reason: format!(
+                    "Input does not appear to be a JSON document. \
+                    If you have a document ID (e.g., 'uuid:version'), use verify_by_id() instead. \
+                    Received: '{}'",
+                    if trimmed.len() > 60 { &trimmed[..60] } else { trimmed }
+                ),
+            });
+        }
+
         // Check document size before processing
         check_document_size(signed_document)?;
 
@@ -1026,6 +1413,125 @@ impl SimpleAgent {
             attachments,
             errors,
         })
+    }
+
+    /// Re-encrypts the agent's private key from one password to another.
+    ///
+    /// This reads the encrypted private key file, decrypts with the old password,
+    /// validates the new password, re-encrypts, and writes the updated file.
+    ///
+    /// # Arguments
+    ///
+    /// * `old_password` - The current password protecting the private key
+    /// * `new_password` - The new password (must meet password requirements)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let agent = SimpleAgent::load(None)?;
+    /// agent.reencrypt_key("OldP@ss123!", "NewStr0ng!Pass#2025")?;
+    /// println!("Key re-encrypted successfully");
+    /// ```
+    pub fn reencrypt_key(&self, old_password: &str, new_password: &str) -> Result<(), JacsError> {
+        use crate::crypt::aes_encrypt::reencrypt_private_key;
+
+        // Find the private key file
+        let key_path = if let Some(ref config_path) = self.config_path {
+            // Try to read config to find key directory
+            let config_str = fs::read_to_string(config_path).map_err(|e| JacsError::FileReadFailed {
+                path: config_path.clone(),
+                reason: e.to_string(),
+            })?;
+            let config: Value = serde_json::from_str(&config_str).map_err(|e| JacsError::ConfigInvalid {
+                field: "json".to_string(),
+                reason: e.to_string(),
+            })?;
+            let key_dir = config["jacs_key_directory"]
+                .as_str()
+                .unwrap_or("./jacs_keys");
+            let key_filename = config["jacs_agent_private_key_filename"]
+                .as_str()
+                .unwrap_or("jacs.private.pem.enc");
+            format!("{}/{}", key_dir, key_filename)
+        } else {
+            "./jacs_keys/jacs.private.pem.enc".to_string()
+        };
+
+        info!("Re-encrypting private key at: {}", key_path);
+
+        // Read encrypted key
+        let encrypted_data = fs::read(&key_path).map_err(|e| JacsError::FileReadFailed {
+            path: key_path.clone(),
+            reason: e.to_string(),
+        })?;
+
+        // Re-encrypt
+        let re_encrypted = reencrypt_private_key(&encrypted_data, old_password, new_password)
+            .map_err(|e| JacsError::CryptoError(format!("Re-encryption failed: {}", e)))?;
+
+        // Write back
+        fs::write(&key_path, &re_encrypted).map_err(|e| JacsError::Internal {
+            message: format!("Failed to write re-encrypted key to '{}': {}", key_path, e),
+        })?;
+
+        info!("Private key re-encrypted successfully");
+        Ok(())
+    }
+
+    /// Verifies a signed document looked up by its document ID from storage.
+    ///
+    /// This is a convenience method for when you have a document ID (e.g., "uuid:version")
+    /// rather than the full JSON string.
+    ///
+    /// # Arguments
+    ///
+    /// * `document_id` - The document ID in "uuid:version" format
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let agent = SimpleAgent::load(None)?;
+    /// let result = agent.verify_by_id("abc123:1")?;
+    /// assert!(result.valid);
+    /// ```
+    #[must_use = "verification result must be checked"]
+    pub fn verify_by_id(&self, document_id: &str) -> Result<VerificationResult, JacsError> {
+        use crate::storage::StorageDocumentTraits;
+
+        debug!("verify_by_id() called with id: {}", document_id);
+
+        // Validate document_id format
+        let parts: Vec<&str> = document_id.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            return Err(JacsError::DocumentMalformed {
+                field: "document_id".to_string(),
+                reason: format!(
+                    "Expected format 'uuid:version', got '{}'. \
+                    Use verify() with the full JSON document string instead.",
+                    document_id
+                ),
+            });
+        }
+
+        // Load the document from storage
+        let storage = crate::storage::MultiStorage::default_new().map_err(|e| JacsError::Internal {
+            message: format!("Failed to initialize storage: {}", e),
+        })?;
+
+        let jacs_doc = storage.get_document(document_id).map_err(|e| JacsError::Internal {
+            message: format!("Failed to load document '{}' from storage: {}", document_id, e),
+        })?;
+
+        // Serialize the document value back to a JSON string for verify()
+        let doc_str = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize document '{}': {}", document_id, e),
+        })?;
+
+        self.verify(&doc_str)
     }
 
     /// Exports the agent's identity JSON for P2P exchange.
@@ -1461,6 +1967,20 @@ pub fn create(
     Ok(info)
 }
 
+/// Creates a new JACS agent with full programmatic control.
+///
+/// # Deprecated
+///
+/// This function uses thread-local global state. Prefer `SimpleAgent::create_with_params()` instead.
+#[deprecated(since = "0.6.0", note = "Use SimpleAgent::create_with_params() instead")]
+pub fn create_with_params(params: CreateAgentParams) -> Result<AgentInfo, JacsError> {
+    let (agent, info) = SimpleAgent::create_with_params(params)?;
+    THREAD_AGENT.with(|cell| {
+        *cell.borrow_mut() = Some(agent);
+    });
+    Ok(info)
+}
+
 /// Loads an existing agent from a configuration file.
 ///
 /// # Deprecated
@@ -1562,6 +2082,16 @@ pub fn sign_file(file_path: &str, embed: bool) -> Result<SignedDocument, JacsErr
 #[deprecated(since = "0.3.0", note = "Use SimpleAgent::verify() instead")]
 pub fn verify(signed_document: &str) -> Result<VerificationResult, JacsError> {
     with_thread_agent(|agent| agent.verify(signed_document))
+}
+
+/// Verifies a signed document looked up by ID from storage.
+///
+/// # Deprecated
+///
+/// This function uses thread-local global state. Prefer `SimpleAgent::verify_by_id()` instead.
+#[deprecated(since = "0.6.0", note = "Use SimpleAgent::verify_by_id() instead")]
+pub fn verify_by_id(document_id: &str) -> Result<VerificationResult, JacsError> {
+    with_thread_agent(|agent| agent.verify_by_id(document_id))
 }
 
 /// Exports the current agent's identity JSON for P2P exchange.
@@ -1675,11 +2205,48 @@ mod tests {
             name: "Test Agent".to_string(),
             public_key_path: "./keys/public.pem".to_string(),
             config_path: "./config.json".to_string(),
+            version: "v1".to_string(),
+            algorithm: "pq2025".to_string(),
+            private_key_path: "./keys/private.pem.enc".to_string(),
+            data_directory: "./data".to_string(),
+            key_directory: "./keys".to_string(),
+            domain: String::new(),
+            dns_record: String::new(),
+            hai_registered: false,
         };
 
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("test-id"));
         assert!(json.contains("Test Agent"));
+        assert!(json.contains("pq2025"));
+    }
+
+    #[test]
+    fn test_create_agent_params_defaults() {
+        let params = CreateAgentParams::default();
+        assert_eq!(params.algorithm, "pq2025");
+        assert_eq!(params.data_directory, "./jacs_data");
+        assert_eq!(params.key_directory, "./jacs_keys");
+        assert_eq!(params.config_path, "./jacs.config.json");
+        assert_eq!(params.agent_type, "ai");
+        assert_eq!(params.default_storage, "fs");
+    }
+
+    #[test]
+    fn test_create_agent_params_builder() {
+        let params = CreateAgentParams::builder()
+            .name("test-agent")
+            .password("test-pass")
+            .algorithm("ring-Ed25519")
+            .data_directory("/tmp/data")
+            .key_directory("/tmp/keys")
+            .build();
+
+        assert_eq!(params.name, "test-agent");
+        assert_eq!(params.password, "test-pass");
+        assert_eq!(params.algorithm, "ring-Ed25519");
+        assert_eq!(params.data_directory, "/tmp/data");
+        assert_eq!(params.key_directory, "/tmp/keys");
     }
 
     #[test]
@@ -1901,5 +2468,57 @@ mod tests {
         assert_eq!(result.data, json!(null));
         assert!(result.timestamp.is_empty());
         assert!(result.attachments.is_empty());
+    }
+
+    #[test]
+    fn test_verify_non_json_returns_helpful_error() {
+        // Create a dummy SimpleAgent for testing verify() pre-check
+        // The pre-check happens before agent lock, so we need a valid agent struct
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+        };
+
+        // Plain text that's not JSON
+        let result = agent.verify("not-json-at-all");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        assert!(
+            err_str.contains("verify_by_id"),
+            "Error should suggest verify_by_id(): {}",
+            err_str
+        );
+    }
+
+    #[test]
+    fn test_verify_uuid_like_input_returns_helpful_error() {
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+        };
+
+        // A document ID like "uuid:version"
+        let result = agent.verify("550e8400-e29b-41d4-a716-446655440000:1");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        assert!(
+            err_str.contains("verify_by_id"),
+            "Error for UUID-like input should suggest verify_by_id(): {}",
+            err_str
+        );
+    }
+
+    #[test]
+    fn test_verify_empty_string_returns_error() {
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+        };
+
+        // Empty string should fail at JSON parse, not at pre-check
+        let result = agent.verify("");
+        assert!(result.is_err());
     }
 }

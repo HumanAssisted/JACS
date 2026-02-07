@@ -34,13 +34,16 @@ console.log(`Signer: ${result.signerId}`);
 
 | Function | Description |
 |----------|-------------|
+| `create(options)` | Create a new agent programmatically (non-interactive) |
 | `load(configPath)` | Load agent from config file |
 | `verifySelf()` | Verify agent's own integrity |
 | `updateAgent(data)` | Update agent document with new data |
 | `updateDocument(id, data)` | Update existing document with new data |
 | `signMessage(data)` | Sign any JSON data |
 | `signFile(path, embed)` | Sign a file |
-| `verify(doc)` | Verify signed document |
+| `verify(doc)` | Verify signed document (JSON string) |
+| `verifyById(id)` | Verify a document by storage ID (`uuid:version`) |
+| `reencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
 | `getPublicKey()` | Get public key for sharing |
 | `isLoaded()` | Check if agent is loaded |
 
@@ -63,6 +66,42 @@ interface VerificationResult {
   errors: string[];
 }
 ```
+
+## Programmatic Agent Creation
+
+```typescript
+const jacs = require('@hai-ai/jacs/simple');
+
+const agent = jacs.create({
+  name: 'my-agent',
+  password: process.env.JACS_PASSWORD,  // required
+  algorithm: 'pq2025',                  // default; also: "ring-Ed25519", "RSA-PSS"
+  dataDirectory: './jacs_data',
+  keyDirectory: './jacs_keys',
+});
+console.log(`Created: ${agent.agentId}`);
+```
+
+### Verify by Document ID
+
+```javascript
+const result = jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
+console.log(`Valid: ${result.valid}`);
+```
+
+### Re-encrypt Private Key
+
+```javascript
+jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
+```
+
+### Password Requirements
+
+Passwords must be at least 8 characters and include uppercase, lowercase, a digit, and a special character.
+
+### Algorithm Deprecation Notice
+
+The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings.
 
 ## Examples
 

@@ -474,6 +474,119 @@ impl SimpleAgent {
             ))
         })
     }
+
+    /// Create a new JACS agent with full programmatic control.
+    ///
+    /// Args:
+    ///     name: Human-readable name for the agent
+    ///     password: Password for encrypting the private key
+    ///     algorithm: Signing algorithm (default: "pq2025")
+    ///     data_directory: Directory for data storage (default: "./jacs_data")
+    ///     key_directory: Directory for keys (default: "./jacs_keys")
+    ///     config_path: Config file path (default: "./jacs.config.json")
+    ///     agent_type: Agent type (default: "ai")
+    ///     description: Agent description (default: "")
+    ///     domain: Agent domain for DNSSEC (optional)
+    ///     default_storage: Storage backend (default: "fs")
+    ///
+    /// Returns:
+    ///     Tuple of (SimpleAgent, dict with agent info)
+    #[staticmethod]
+    #[pyo3(signature = (name, password, algorithm=None, data_directory=None, key_directory=None, config_path=None, agent_type=None, description=None, domain=None, default_storage=None))]
+    fn create_agent(
+        py: Python,
+        name: &str,
+        password: &str,
+        algorithm: Option<&str>,
+        data_directory: Option<&str>,
+        key_directory: Option<&str>,
+        config_path: Option<&str>,
+        agent_type: Option<&str>,
+        description: Option<&str>,
+        domain: Option<&str>,
+        default_storage: Option<&str>,
+    ) -> PyResult<(Self, PyObject)> {
+        let params = jacs_core::simple::CreateAgentParams {
+            name: name.to_string(),
+            password: password.to_string(),
+            algorithm: algorithm.unwrap_or("pq2025").to_string(),
+            data_directory: data_directory.unwrap_or("./jacs_data").to_string(),
+            key_directory: key_directory.unwrap_or("./jacs_keys").to_string(),
+            config_path: config_path.unwrap_or("./jacs.config.json").to_string(),
+            agent_type: agent_type.unwrap_or("ai").to_string(),
+            description: description.unwrap_or("").to_string(),
+            domain: domain.unwrap_or("").to_string(),
+            default_storage: default_storage.unwrap_or("fs").to_string(),
+            hai_api_key: String::new(),
+            hai_endpoint: String::new(),
+        };
+
+        let (agent, info) = jacs_core::simple::SimpleAgent::create_with_params(params)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create agent: {}",
+                    e
+                ))
+            })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("agent_id", &info.agent_id)?;
+        dict.set_item("name", &info.name)?;
+        dict.set_item("public_key_path", &info.public_key_path)?;
+        dict.set_item("config_path", &info.config_path)?;
+        dict.set_item("version", &info.version)?;
+        dict.set_item("algorithm", &info.algorithm)?;
+        dict.set_item("private_key_path", &info.private_key_path)?;
+        dict.set_item("data_directory", &info.data_directory)?;
+        dict.set_item("key_directory", &info.key_directory)?;
+        dict.set_item("domain", &info.domain)?;
+        dict.set_item("dns_record", &info.dns_record)?;
+        dict.set_item("hai_registered", info.hai_registered)?;
+
+        Ok((SimpleAgent { inner: agent }, dict.into()))
+    }
+
+    /// Verify a document by its ID from storage.
+    ///
+    /// Args:
+    ///     document_id: Document ID in "uuid:version" format
+    ///
+    /// Returns:
+    ///     dict with valid, data, signer_id, timestamp, attachments, errors
+    fn verify_by_id(&self, py: Python, document_id: &str) -> PyResult<PyObject> {
+        let result = self.inner.verify_by_id(document_id).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify by ID: {}",
+                e
+            ))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("valid", result.valid)?;
+        dict.set_item("signer_id", &result.signer_id)?;
+        dict.set_item("timestamp", &result.timestamp)?;
+        let errors: Vec<String> = result.errors;
+        dict.set_item("errors", errors)?;
+        let py_data = conversion_utils::value_to_pyobject(py, &result.data)?;
+        dict.set_item("data", py_data)?;
+        Ok(dict.into())
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    ///
+    /// Args:
+    ///     old_password: Current password
+    ///     new_password: New password (must meet password requirements)
+    fn reencrypt_key(&self, old_password: &str, new_password: &str) -> PyResult<()> {
+        self.inner
+            .reencrypt_key(old_password, new_password)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to re-encrypt key: {}",
+                    e
+                ))
+            })
+    }
 }
 
 // =============================================================================

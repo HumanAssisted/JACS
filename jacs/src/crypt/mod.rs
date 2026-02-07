@@ -122,6 +122,10 @@ pub fn detect_algorithm_from_public_key(
             algorithm = "pq-dilithium",
             "Detected PQ-Dilithium from public key format"
         );
+        warn!(
+            "DEPRECATED: Detected 'pq-dilithium' algorithm from public key. \
+            'pq-dilithium' is deprecated; use 'pq2025' (ML-DSA-87, FIPS-204) for new agents."
+        );
         return Ok(CryptoSigningAlgorithm::PqDilithium);
     }
 

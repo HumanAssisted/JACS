@@ -65,15 +65,15 @@ func (e JACSError) Error() string {
 
 // Config represents JACS configuration options
 type Config struct {
-	UseSecurity            *string `json:"jacs_use_security,omitempty"`
-	DataDirectory          *string `json:"jacs_data_directory,omitempty"`
-	KeyDirectory           *string `json:"jacs_key_directory,omitempty"`
-	AgentPrivateKeyFile    *string `json:"jacs_agent_private_key_filename,omitempty"`
-	AgentPublicKeyFile     *string `json:"jacs_agent_public_key_filename,omitempty"`
-	AgentKeyAlgorithm      *string `json:"jacs_agent_key_algorithm,omitempty"`
-	PrivateKeyPassword     *string `json:"jacs_private_key_password,omitempty"`
-	AgentIDAndVersion      *string `json:"jacs_agent_id_and_version,omitempty"`
-	DefaultStorage         *string `json:"jacs_default_storage,omitempty"`
+	UseSecurity         *string `json:"jacs_use_security,omitempty"`
+	DataDirectory       *string `json:"jacs_data_directory,omitempty"`
+	KeyDirectory        *string `json:"jacs_key_directory,omitempty"`
+	AgentPrivateKeyFile *string `json:"jacs_agent_private_key_filename,omitempty"`
+	AgentPublicKeyFile  *string `json:"jacs_agent_public_key_filename,omitempty"`
+	AgentKeyAlgorithm   *string `json:"jacs_agent_key_algorithm,omitempty"`
+	PrivateKeyPassword  *string `json:"jacs_private_key_password,omitempty"`
+	AgentIDAndVersion   *string `json:"jacs_agent_id_and_version,omitempty"`
+	DefaultStorage      *string `json:"jacs_default_storage,omitempty"`
 }
 
 // ============================================================================

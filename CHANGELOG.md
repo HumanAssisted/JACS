@@ -1,5 +1,16 @@
 ## 0.6.0
 
+### DX Improvements
+
+- **Programmatic `create()` API**: New `CreateAgentParams` struct and `create_with_params()` method for non-interactive agent creation across all bindings (Rust, Python, Node.js, Go)
+- **`verify_by_id()` method**: Load and verify documents by ID from storage, with helpful error when `verify()` is called with non-JSON input
+- **Key re-encryption**: New `reencrypt_key(old_password, new_password)` API and `jacs key reencrypt` CLI command
+- **Password requirements documentation**: `password_requirements()` function, requirements shown before password prompts, clearer error messages
+- **`pq-dilithium` deprecated**: Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings
+- **Go default algorithm fix**: Changed default from `ed25519` to `pq2025`
+- **Improved error messages**: `user_message()` method on errors, categorized `From<Box<dyn Error>>` conversion
+- **Version alignment**: All packages (jacs-mcp, binding-core, jacspy, jacsnpm) aligned to 0.6.0
+
 ### Security
 
 - **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).

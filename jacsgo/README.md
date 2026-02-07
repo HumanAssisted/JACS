@@ -44,11 +44,13 @@ func main() {
 | Function | Description |
 |----------|-------------|
 | `Load(configPath)` | Load agent from config file |
-| `Create(name, purpose, algo)` | Create new agent with keys |
+| `Create(name, opts)` | Create new agent with keys (programmatic) |
 | `VerifySelf()` | Verify agent's own integrity |
 | `SignMessage(data)` | Sign any JSON data |
 | `SignFile(path, embed)` | Sign a file |
-| `Verify(doc)` | Verify signed document |
+| `Verify(doc)` | Verify signed document (JSON string) |
+| `VerifyById(id)` | Verify a document by storage ID (`uuid:version`) |
+| `ReencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
 | `GetPublicKeyPEM()` | Get public key for sharing |
 
 ## Types
@@ -72,6 +74,44 @@ type VerificationResult struct {
     Errors      []string
 }
 ```
+
+## Programmatic Agent Creation
+
+```go
+import jacs "github.com/HumanAssisted/JACS/jacsgo"
+
+info, err := jacs.Create("my-agent", &jacs.CreateAgentOptions{
+    Password:  os.Getenv("JACS_PASSWORD"),  // required
+    Algorithm: "pq2025",                     // default; also: "ring-Ed25519", "RSA-PSS"
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Created: %s\n", info.AgentID)
+```
+
+### Verify by Document ID
+
+```go
+result, err := jacs.VerifyById("550e8400-e29b-41d4-a716-446655440000:1")
+if err == nil && result.Valid {
+    fmt.Println("Document verified")
+}
+```
+
+### Re-encrypt Private Key
+
+```go
+err := jacs.ReencryptKey("old-password-123!", "new-Str0ng-P@ss!")
+```
+
+### Password Requirements
+
+Passwords must be at least 8 characters and include uppercase, lowercase, a digit, and a special character.
+
+### Algorithm Deprecation Notice
+
+The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings.
 
 ## Examples
 

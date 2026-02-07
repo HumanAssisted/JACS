@@ -80,7 +80,13 @@ impl KeyStore for FsEncryptedStore {
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
-            "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
+            "pq-dilithium" => {
+                warn!(
+                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated and will be removed in a future release. \
+                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
+                );
+                CryptoSigningAlgorithm::PqDilithium
+            }
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => return Err(JacsError::CryptoError(format!(
                 "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'RSA-PSS', 'pq-dilithium', 'pq2025'. \
@@ -238,7 +244,13 @@ impl KeyStore for FsEncryptedStore {
         let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
-            "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
+            "pq-dilithium" => {
+                warn!(
+                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated for signing. \
+                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
+                );
+                CryptoSigningAlgorithm::PqDilithium
+            }
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
                 return Err(

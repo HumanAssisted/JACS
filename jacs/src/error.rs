@@ -453,11 +453,54 @@ impl fmt::Display for JacsError {
 
 impl Error for JacsError {}
 
+impl JacsError {
+    /// Extracts a concise, actionable message from the error chain.
+    ///
+    /// For deeply nested error chains (common with `Box<dyn Error>` conversions),
+    /// this returns the last meaningful segment instead of the full chain.
+    /// For direct JacsError variants, it returns the Display output.
+    pub fn user_message(&self) -> String {
+        let full = self.to_string();
+        // For Internal errors that wrap chains, extract the last segment
+        if let JacsError::Internal { message } = self {
+            // Split on common chain separators and take the last meaningful part
+            let parts: Vec<&str> = message.split(": ").collect();
+            if parts.len() > 1 {
+                // Return the last non-empty segment
+                if let Some(last) = parts.last() {
+                    if !last.is_empty() {
+                        return last.to_string();
+                    }
+                }
+            }
+        }
+        full
+    }
+}
+
 impl From<Box<dyn Error>> for JacsError {
     fn from(err: Box<dyn Error>) -> Self {
-        JacsError::Internal {
-            message: err.to_string(),
+        let msg = err.to_string();
+        let lower = msg.to_lowercase();
+
+        // Categorize known error patterns into specific variants
+        if lower.contains("password") || lower.contains("encrypt") || lower.contains("decrypt")
+            || lower.contains("pbkdf2") || lower.contains("aes")
+        {
+            return JacsError::CryptoError(msg);
         }
+        if lower.contains("config") || lower.contains("environment variable")
+            || lower.contains("jacs_") || lower.contains("not found at")
+        {
+            return JacsError::ConfigError(msg);
+        }
+        if lower.contains("key") && (lower.contains("generate") || lower.contains("load")
+            || lower.contains("not found"))
+        {
+            return JacsError::CryptoError(msg);
+        }
+
+        JacsError::Internal { message: msg }
     }
 }
 
@@ -776,6 +819,44 @@ mod tests {
         assert!(msg.contains("Database error"));
         assert!(msg.contains("store"));
         assert!(msg.contains("connection refused"));
+    }
+
+    #[test]
+    fn test_user_message_extracts_last_segment() {
+        let err = JacsError::Internal {
+            message: "Failed to load config: file not found: /path/to/config.json".to_string(),
+        };
+        let msg = err.user_message();
+        assert_eq!(msg, "/path/to/config.json");
+    }
+
+    #[test]
+    fn test_user_message_on_non_internal() {
+        let err = JacsError::CryptoError("key generation failed".to_string());
+        let msg = err.user_message();
+        assert!(msg.contains("key generation failed"));
+    }
+
+    #[test]
+    fn test_from_box_error_categorizes_password() {
+        let boxed: Box<dyn Error> = "password validation failed".into();
+        let err: JacsError = boxed.into();
+        assert!(
+            matches!(err, JacsError::CryptoError(_)),
+            "password error should be CryptoError, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_from_box_error_categorizes_config() {
+        let boxed: Box<dyn Error> = "config file not found at /path".into();
+        let err: JacsError = boxed.into();
+        assert!(
+            matches!(err, JacsError::ConfigError(_)),
+            "config error should be ConfigError, got: {:?}",
+            err
+        );
     }
 
     #[test]

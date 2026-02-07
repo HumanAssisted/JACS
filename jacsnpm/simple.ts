@@ -38,7 +38,7 @@
  * ```
  */
 
-import { JacsAgent, hashString, verifyString, createConfig } from './index';
+import { JacsAgent, hashString, verifyString, createConfig, createAgent as nativeCreateAgent } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -132,29 +132,73 @@ let agentInfo: AgentInfo | null = null;
 // =============================================================================
 
 /**
+ * Options for creating a new JACS agent.
+ */
+export interface CreateAgentOptions {
+  /** Human-readable name for the agent. */
+  name: string;
+  /** Password for encrypting the private key. Can also be set via JACS_AGENT_PRIVATE_KEY_PASSWORD env var. */
+  password: string;
+  /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". "pq-dilithium" is deprecated. */
+  algorithm?: string;
+  /** Directory for agent data (default: "./jacs_data"). */
+  dataDirectory?: string;
+  /** Directory for cryptographic keys (default: "./jacs_keys"). */
+  keyDirectory?: string;
+  /** Path to write the config file (default: "./jacs.config.json"). */
+  configPath?: string;
+  /** Agent type: "ai" (default), "human", or "hybrid". */
+  agentType?: string;
+  /** Description of the agent's purpose. */
+  description?: string;
+  /** Domain for DNS-based agent discovery. */
+  domain?: string;
+  /** Default storage backend: "fs" (default). */
+  defaultStorage?: string;
+}
+
+/**
  * Creates a new JACS agent with cryptographic keys.
  *
- * @param name - Human-readable name for the agent
- * @param purpose - Optional description of the agent's purpose
- * @param keyAlgorithm - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+ * This is a fully programmatic API that does not require interactive input.
+ * The password must be provided directly or via the JACS_AGENT_PRIVATE_KEY_PASSWORD
+ * environment variable.
+ *
+ * @param options - Agent creation options
  * @returns AgentInfo containing the agent ID, name, and file paths
  *
  * @example
  * ```typescript
- * const agent = await jacs.create('my-agent', 'Signing documents');
+ * const agent = jacs.create({
+ *   name: 'my-agent',
+ *   password: process.env.JACS_PASSWORD!,
+ *   algorithm: 'pq2025',
+ * });
  * console.log(`Created: ${agent.agentId}`);
  * ```
  */
-export function create(
-  name: string,
-  purpose?: string,
-  keyAlgorithm?: string
-): AgentInfo {
-  // This would call the Rust create function when available
-  // For now, throw an error directing to CLI
-  throw new Error(
-    'Agent creation from JS not yet supported. Use CLI: jacs create'
+export function create(options: CreateAgentOptions): AgentInfo {
+  const resultJson = nativeCreateAgent(
+    options.name,
+    options.password,
+    options.algorithm ?? null,
+    options.dataDirectory ?? null,
+    options.keyDirectory ?? null,
+    options.configPath ?? null,
+    options.agentType ?? null,
+    options.description ?? null,
+    options.domain ?? null,
+    options.defaultStorage ?? null,
   );
+
+  const info = JSON.parse(resultJson);
+
+  return {
+    agentId: info.agent_id || '',
+    name: info.name || options.name,
+    publicKeyPath: info.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+    configPath: info.config_path || options.configPath || './jacs.config.json',
+  };
 }
 
 /**
@@ -433,6 +477,20 @@ export function verify(signedDocument: string): VerificationResult {
     throw new Error('No agent loaded. Call load() first.');
   }
 
+  // Detect non-JSON input and provide helpful error
+  const trimmed = signedDocument.trim();
+  if (trimmed.length > 0 && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return {
+      valid: false,
+      signerId: '',
+      timestamp: '',
+      attachments: [],
+      errors: [
+        `Input does not appear to be a JSON document. If you have a document ID (e.g., 'uuid:version'), use verifyById() instead. Received: '${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}'`
+      ],
+    };
+  }
+
   let doc: any;
   try {
     doc = JSON.parse(signedDocument);
@@ -475,6 +533,80 @@ export function verify(signedDocument: string): VerificationResult {
       errors: [String(e)],
     };
   }
+}
+
+/**
+ * Verifies a document by its storage ID.
+ *
+ * Use this when you have a document ID (e.g., "uuid:version") rather than
+ * the full JSON string. The document will be loaded from storage and verified.
+ *
+ * @param documentId - The document ID in "uuid:version" format
+ * @returns VerificationResult with the verification status
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
+ * if (result.valid) {
+ *   console.log('Document verified');
+ * }
+ * ```
+ */
+export function verifyById(documentId: string): VerificationResult {
+  if (!globalAgent) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+
+  if (!documentId.includes(':')) {
+    return {
+      valid: false,
+      signerId: '',
+      timestamp: '',
+      attachments: [],
+      errors: [
+        `Document ID must be in 'uuid:version' format, got '${documentId}'. Use verify() with the full JSON string instead.`
+      ],
+    };
+  }
+
+  try {
+    globalAgent.verifyDocumentById(documentId);
+    return {
+      valid: true,
+      signerId: '',
+      timestamp: '',
+      attachments: [],
+      errors: [],
+    };
+  } catch (e) {
+    return {
+      valid: false,
+      signerId: '',
+      timestamp: '',
+      attachments: [],
+      errors: [String(e)],
+    };
+  }
+}
+
+/**
+ * Re-encrypt the agent's private key with a new password.
+ *
+ * @param oldPassword - The current password for the private key
+ * @param newPassword - The new password to encrypt with (must meet password requirements)
+ *
+ * @example
+ * ```typescript
+ * jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
+ * console.log('Key re-encrypted successfully');
+ * ```
+ */
+export function reencryptKey(oldPassword: string, newPassword: string): void {
+  if (!globalAgent) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+
+  globalAgent.reencryptKey(oldPassword, newPassword);
 }
 
 /**

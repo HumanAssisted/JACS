@@ -156,12 +156,18 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
 
 
 def create(
-    name: Optional[str] = None,
-    agent_type: str = "service",
+    name: str = "jacs-agent",
+    password: Optional[str] = None,
     algorithm: str = "pq2025",
-    config_path: Optional[str] = None,
+    data_directory: str = "./jacs_data",
+    key_directory: str = "./jacs_keys",
+    config_path: str = "./jacs.config.json",
+    agent_type: str = "ai",
+    description: str = "",
+    domain: Optional[str] = None,
+    default_storage: str = "fs",
 ) -> AgentInfo:
-    """Create a new JACS agent with cryptographic keys.
+    """Create a new JACS agent with cryptographic keys (programmatic).
 
     This is the simplest way to get started with JACS. It creates:
     - A new agent identity (UUID)
@@ -170,43 +176,86 @@ def create(
     - A signed agent document
 
     Args:
-        name: Optional human-readable name for the agent
-        agent_type: Type of agent ("service", "user", "system")
-        algorithm: Cryptographic algorithm ("RSA", "ML-DSA", "DILITHIUM")
-        config_path: Where to save the config (default: ./jacs.config.json)
+        name: Human-readable name for the agent
+        password: Password for encrypting the private key.
+                  If not provided, falls back to JACS_PRIVATE_KEY_PASSWORD env var.
+        algorithm: Signing algorithm ("pq2025", "ring-Ed25519", "RSA-PSS").
+                   Note: "pq-dilithium" is deprecated, use "pq2025" instead.
+        data_directory: Directory for data storage (default: "./jacs_data")
+        key_directory: Directory for keys (default: "./jacs_keys")
+        config_path: Where to save the config (default: "./jacs.config.json")
+        agent_type: Type of agent ("ai", "human", "hybrid")
+        description: Optional description of the agent's purpose
+        domain: Optional domain for DNSSEC fingerprint
+        default_storage: Storage backend ("fs", "aws", "hai")
 
     Returns:
         AgentInfo with the new agent's details
 
+    Raises:
+        JacsError: If password is missing or agent creation fails
+
     Example:
-        agent = jacs.create(name="My Agent")
+        agent = jacs.create(
+            name="My Agent",
+            password="MyStr0ng!Pass#2024",
+            algorithm="pq2025",
+        )
         print(f"Created agent: {agent.agent_id}")
     """
     global _global_agent, _agent_info
 
-    # Use default config path if not provided
-    if config_path is None:
-        config_path = "./jacs.config.json"
+    # Resolve password
+    resolved_password = password or os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
+    if not resolved_password:
+        raise ConfigError(
+            "Password is required for agent creation. "
+            "Either pass it as the 'password' argument or set the "
+            "JACS_PRIVATE_KEY_PASSWORD environment variable."
+        )
 
     try:
-        # Import the CLI utilities for agent creation
-        from . import handle_agent_create_py, handle_config_create_py
+        # Try using SimpleAgent.create_agent (programmatic, non-interactive)
+        from . import SimpleAgent as _SimpleAgent
 
-        # Create config file first
-        handle_config_create_py()
+        agent_instance, info_dict = _SimpleAgent.create_agent(
+            name=name,
+            password=resolved_password,
+            algorithm=algorithm,
+            data_directory=data_directory,
+            key_directory=key_directory,
+            config_path=config_path,
+            agent_type=agent_type,
+            description=description,
+            domain=domain or "",
+            default_storage=default_storage,
+        )
 
-        # Create the agent with keys
-        handle_agent_create_py(None, True)
+        # Now load using the global agent path
+        _global_agent = JacsAgent()
+        _global_agent.load(config_path)
 
-        # Now load the created agent
-        return load(config_path)
+        _agent_info = AgentInfo(
+            agent_id=info_dict.get("agent_id", ""),
+            version=info_dict.get("version", ""),
+            name=info_dict.get("name", name),
+            public_key_hash="",
+            created_at="",
+            algorithm=info_dict.get("algorithm", algorithm),
+            config_path=config_path,
+            public_key_path=info_dict.get("public_key_path", ""),
+        )
+
+        logger.info("Agent created: id=%s, name=%s", _agent_info.agent_id, name)
+        return _agent_info
 
     except ImportError:
-        # If the CLI utilities aren't available, create manually
         raise JacsError(
             "Agent creation requires the full JACS package. "
-            "Please use the CLI: jacs create"
+            "Please use the CLI: jacs init"
         )
+    except Exception as e:
+        raise JacsError(f"Failed to create agent: {e}")
 
 
 def load(config_path: Optional[str] = None) -> AgentInfo:
@@ -740,6 +789,18 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
     else:
         doc_str = document
 
+    # Pre-check: if input doesn't look like JSON, give helpful error
+    trimmed = doc_str.strip() if isinstance(doc_str, str) else ""
+    if trimmed and not trimmed.startswith("{") and not trimmed.startswith("["):
+        return VerificationResult(
+            valid=False,
+            errors=[
+                f"Input does not appear to be a JSON document. "
+                f"If you have a document ID (e.g., 'uuid:version'), "
+                f"use verify_by_id() instead. Received: '{trimmed[:60]}'"
+            ],
+        )
+
     try:
         # Verify the document
         is_valid = agent.verify_document(doc_str)
@@ -766,6 +827,96 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
             valid=False,
             errors=[str(e)],
         )
+
+
+def verify_by_id(document_id: str) -> VerificationResult:
+    """Verify a signed document by its storage ID.
+
+    This is a convenience function when you have a document ID (e.g., "uuid:version")
+    rather than the full JSON document string.
+
+    Args:
+        document_id: Document ID in "uuid:version" format
+
+    Returns:
+        VerificationResult with verification status
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If the document is not found or verification fails
+
+    Example:
+        result = jacs.verify_by_id("550e8400-e29b-41d4:1")
+        if result.valid:
+            print(f"Document verified, signed by: {result.signer_id}")
+    """
+    agent = _get_agent()
+    logger.debug("verify_by_id() called with document_id=%s", document_id)
+
+    # Pre-check format
+    if ":" not in document_id:
+        raise JacsError(
+            f"Document ID must be in 'uuid:version' format, got '{document_id}'. "
+            "Use verify() with the full JSON document string instead."
+        )
+
+    try:
+        # Use the underlying Rust verify_document_by_id via binding-core
+        # For now, delegate through the storage lookup
+        from . import SimpleAgent as _SimpleAgent
+
+        # Load a SimpleAgent for the verify_by_id call
+        config_path = _agent_info.config_path if _agent_info else "./jacs.config.json"
+        simple_agent = _SimpleAgent.load(config_path)
+        result_dict = simple_agent.verify_by_id(document_id)
+
+        return VerificationResult(
+            valid=result_dict.get("valid", False),
+            signer_id=result_dict.get("signer_id", ""),
+            content_hash_valid=True,
+            signature_valid=result_dict.get("valid", False),
+            timestamp=result_dict.get("timestamp", ""),
+            errors=result_dict.get("errors", []),
+        )
+    except Exception as e:
+        logger.warning("verify_by_id failed: %s", e)
+        return VerificationResult(
+            valid=False,
+            errors=[str(e)],
+        )
+
+
+def reencrypt_key(old_password: str, new_password: str) -> None:
+    """Re-encrypt the agent's private key with a new password.
+
+    This decrypts the private key with the old password, validates the new
+    password meets requirements, and re-encrypts with the new password.
+
+    Args:
+        old_password: The current password protecting the private key
+        new_password: The new password (must meet password requirements)
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If re-encryption fails (wrong old password, weak new password, etc.)
+
+    Example:
+        jacs.load("./jacs.config.json")
+        jacs.reencrypt_key("OldP@ss123!", "NewStr0ng!Pass#2025")
+        print("Key re-encrypted successfully")
+    """
+    _get_agent()  # Ensure agent is loaded
+    logger.debug("reencrypt_key() called")
+
+    try:
+        from . import SimpleAgent as _SimpleAgent
+
+        config_path = _agent_info.config_path if _agent_info else "./jacs.config.json"
+        simple_agent = _SimpleAgent.load(config_path)
+        simple_agent.reencrypt_key(old_password, new_password)
+        logger.info("Private key re-encrypted successfully")
+    except Exception as e:
+        raise JacsError(f"Failed to re-encrypt key: {e}")
 
 
 def get_public_key() -> str:
@@ -978,6 +1129,8 @@ __all__ = [
     "sign_message",
     "sign_file",
     "verify",
+    "verify_by_id",
+    "reencrypt_key",
     # Agreement functions
     "create_agreement",
     "sign_agreement",
