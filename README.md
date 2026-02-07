@@ -97,7 +97,11 @@ jacs document create -f mydata.json
 | `sign_message(data)` | Sign any JSON data |
 | `sign_file(path, embed)` | Sign a file |
 | `verify(document)` | Verify a signed document (JSON string) |
+| `verify_standalone(document, options)` | Verify without loading an agent (one-off) |
 | `verify_by_id(id)` | Verify a document by storage ID (`uuid:version`) |
+| `register_with_hai(options)` | Register the loaded agent with HAI.ai |
+| `get_dns_record(domain, ttl?)` | Get DNS TXT record line for the agent |
+| `get_well_known_json()` | Get well-known JSON (e.g. for `/.well-known/jacs-pubkey.json`) |
 | `reencrypt_key(old, new)` | Re-encrypt the private key with a new password |
 | `verify_self()` | Verify agent integrity |
 | `get_public_key()` | Get public key for sharing |
@@ -167,6 +171,8 @@ JACS fits into many workflows:
 - **Build MCP servers** where every tool call is signed with agent identity
 - **Establish agent-to-agent trust** with agreements and multi-party signatures
 - **Track data provenance** through pipelines where data changes hands
+- **Verify without loading an agent**: Use `verify_standalone()` for one-off verification in lightweight services (no config or trust store required)
+- **Register with HAI.ai**: Use `registerWithHai()` (Node), `RegisterWithHai()` (Go), or `register_with_hai` (Python) to publish your agent for key discovery
 - **Air-gapped environments**: JACS works fully offline with local key storage
 - **Protect your agent's identity**: Run a public-facing agent with verifiable signatures while keeping the operator's identity off the internet — see [Use cases: Protecting agent identity](USECASES.md#protecting-your-agents-identity-on-the-internet) for a detailed scenario.
 

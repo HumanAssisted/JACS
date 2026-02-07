@@ -31,6 +31,14 @@ An **Agent** is the fundamental entity in JACS - an autonomous participant that 
 4. **Updates**: Version changes while maintaining identity
 5. **Verification**: Other agents validate signatures
 
+### Verification: load() vs verify_standalone()
+
+When **consuming** signed documents, you can verify in two ways:
+
+- **With a loaded agent** (`load(config)` first): Call `verify(signedDocument)`. The loaded agent uses its config (trust store, key resolution) to resolve the signer’s public key and verify the signature. Use this when your process already has a JACS config (e.g. it also signs) or when you want to use a specific key directory and resolution order.
+
+- **Without loading an agent** (one-off verification): Call `verify_standalone(signedDocument, options)` (or the language equivalent: `verifyStandalone`, `VerifyStandalone`). This verifies the document using only the options you pass (e.g. `keyResolution`, `keyDirectory`). No config file or persistent agent state is required. Use this in lightweight services that only need to verify incoming documents.
+
 ## Documents
 
 A **Document** is any JSON object that follows JACS conventions for identity, versioning, and cryptographic integrity.

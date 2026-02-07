@@ -876,6 +876,29 @@ fn hash_string(data: &str) -> PyResult<String> {
     Ok(jacs_binding_core::hash_string(data))
 }
 
+/// Verify a signed JACS document without loading an agent.
+#[pyfunction]
+#[pyo3(signature = (signed_document, key_resolution=None, data_directory=None, key_directory=None))]
+fn verify_document_standalone(
+    py: Python,
+    signed_document: &str,
+    key_resolution: Option<&str>,
+    data_directory: Option<&str>,
+    key_directory: Option<&str>,
+) -> PyResult<PyObject> {
+    let r = jacs_binding_core::verify_document_standalone(
+        signed_document,
+        key_resolution,
+        data_directory,
+        key_directory,
+    )
+    .to_py()?;
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("valid", r.valid)?;
+    dict.set_item("signer_id", r.signer_id)?;
+    Ok(dict.into())
+}
+
 /// Create a JACS configuration JSON string.
 #[pyfunction]
 fn create_config(
@@ -1407,6 +1430,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Stateless Utility Functions
     // =============================================================================
     m.add_function(wrap_pyfunction!(hash_string, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_document_standalone, m)?)?;
     m.add_function(wrap_pyfunction!(create_config, m)?)?;
     m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
     m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;

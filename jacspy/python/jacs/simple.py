@@ -96,11 +96,13 @@ try:
     from .jacs import untrust_agent as _untrust_agent
     from .jacs import is_trusted as _is_trusted
     from .jacs import get_trusted_agent as _get_trusted_agent
+    from .jacs import verify_document_standalone as _verify_document_standalone
 except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
     JacsAgent = _jacs_module.JacsAgent
     _fetch_remote_key = _jacs_module.fetch_remote_key
+    _verify_document_standalone = _jacs_module.verify_document_standalone
     _trust_agent = _jacs_module.trust_agent
     _list_trusted_agents = _jacs_module.list_trusted_agents
     _untrust_agent = _jacs_module.untrust_agent
@@ -772,6 +774,49 @@ def sign_file(
         raise SigningError(f"Failed to sign file: {e}")
 
 
+def verify_standalone(
+    document: Union[str, dict],
+    key_resolution: str = "local",
+    data_directory: Optional[str] = None,
+    key_directory: Optional[str] = None,
+) -> VerificationResult:
+    """Verify a signed JACS document without loading an agent.
+
+    Does not use the global agent; uses caller-supplied key resolution
+    and directories. Use this for one-off verification when you have
+    a signed document string and key directories.
+
+    Args:
+        document: Signed JACS document (JSON string or dict)
+        key_resolution: Key resolution order (default "local")
+        data_directory: Optional path for data/trust store
+        key_directory: Optional path for public keys
+
+    Returns:
+        VerificationResult with valid and signer_id
+
+    Example:
+        result = jacs.verify_standalone(signed_json, key_resolution="local", key_directory="./keys")
+        if result.valid:
+            print(f"Signed by: {result.signer_id}")
+    """
+    doc_str = json.dumps(document) if isinstance(document, dict) else document
+    try:
+        d = _verify_document_standalone(
+            doc_str,
+            key_resolution=key_resolution,
+            data_directory=data_directory,
+            key_directory=key_directory,
+        )
+        # Native returns dict with valid, signer_id
+        return VerificationResult(
+            valid=bool(d.get("valid", False)),
+            signer_id=str(d.get("signer_id", "")),
+        )
+    except Exception as e:
+        return VerificationResult(valid=False, errors=[str(e)])
+
+
 def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
     """Verify any signed JACS document.
 
@@ -993,6 +1038,51 @@ def export_agent() -> str:
         raise JacsError(f"Failed to export agent: {e}")
 
 
+def get_dns_record(domain: str, ttl: int = 3600) -> str:
+    """Return the DNS TXT record line for the loaded agent (for DNS-based discovery).
+
+    Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; ..."
+
+    Args:
+        domain: The domain (e.g. "example.com")
+        ttl: TTL in seconds (default 3600)
+
+    Returns:
+        The full DNS record line
+    """
+    agent = _get_agent()
+    agent_doc = json.loads(agent.get_agent_json())
+    jacs_id = agent_doc.get("jacsId") or agent_doc.get("agentId") or ""
+    sig = agent_doc.get("jacsSignature") or {}
+    public_key_hash = sig.get("publicKeyHash") or ""
+    d = domain.rstrip(".")
+    owner = f"_v1.agent.jacs.{d}."
+    txt = f"v=hai.ai; jacs_agent_id={jacs_id}; alg=SHA-256; enc=base64; jac_public_key_hash={public_key_hash}"
+    return f'{owner} {ttl} IN TXT "{txt}"'
+
+
+def get_well_known_json() -> dict:
+    """Return the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+
+    Keys: publicKey, publicKeyHash, algorithm, agentId.
+    """
+    agent = _get_agent()
+    agent_doc = json.loads(agent.get_agent_json())
+    jacs_id = agent_doc.get("jacsId") or agent_doc.get("agentId") or ""
+    sig = agent_doc.get("jacsSignature") or {}
+    public_key_hash = sig.get("publicKeyHash") or ""
+    try:
+        public_key = get_public_key()
+    except Exception:
+        public_key = ""
+    return {
+        "publicKey": public_key,
+        "publicKeyHash": public_key_hash,
+        "algorithm": "SHA-256",
+        "agentId": jacs_id,
+    }
+
+
 def get_agent_info() -> Optional[AgentInfo]:
     """Get information about the currently loaded agent.
 
@@ -1211,6 +1301,8 @@ __all__ = [
     # Utility functions
     "get_public_key",
     "export_agent",
+    "get_dns_record",
+    "get_well_known_json",
     "get_agent_info",
     "is_loaded",
     # Trust store

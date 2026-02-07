@@ -61,7 +61,10 @@ The simplified API provides these core operations:
 | `sign_message()` | Sign a text message or JSON data |
 | `sign_file()` | Sign a file with optional embedding |
 | `verify()` | Verify any signed document (JSON string) |
+| `verify_standalone()` | Verify without loading an agent (one-off) |
 | `verify_by_id()` | Verify a document by its storage ID (`uuid:version`) |
+| `get_dns_record()` | Get DNS TXT record line for the agent |
+| `get_well_known_json()` | Get well-known JSON for `/.well-known/jacs-pubkey.json` |
 | `reencrypt_key()` | Re-encrypt the private key with a new password |
 | `trust_agent()` | Add an agent to the local trust store |
 | `list_trusted_agents()` | List all trusted agent IDs |

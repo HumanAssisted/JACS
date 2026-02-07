@@ -624,6 +624,131 @@ impl AgentWrapper {
 }
 
 // =============================================================================
+// Standalone verification (no agent required)
+// =============================================================================
+
+/// Result of verifying a signed JACS document (used by verify_document_standalone).
+#[derive(Debug, Clone)]
+pub struct VerificationResult {
+    /// Whether the document's signature and hash are valid.
+    pub valid: bool,
+    /// The signer's agent ID from the document's jacsSignature.agentID (empty if unparseable).
+    pub signer_id: String,
+}
+
+/// Verify a signed JACS document without loading an agent.
+///
+/// Creates a minimal verifier context (config with data/key directories and optional
+/// key resolution), runs verification, and returns a result with valid flag and signer_id.
+/// Does not persist any state.
+///
+/// # Arguments
+///
+/// * `signed_document` - Full signed JACS document JSON string.
+/// * `key_resolution` - Optional key resolution order, e.g. "local" or "local,hai" (default "local").
+/// * `data_directory` - Optional path for data/trust store (defaults to temp/cwd).
+/// * `key_directory` - Optional path for public keys (defaults to temp/cwd).
+///
+/// # Returns
+///
+/// * `Ok(VerificationResult { valid: true, signer_id })` when signature and hash are valid.
+/// * `Ok(VerificationResult { valid: false, signer_id })` when document parses but verification fails.
+/// * `Err` when setup fails (e.g. missing key directory when using local resolution).
+pub fn verify_document_standalone(
+    signed_document: &str,
+    key_resolution: Option<&str>,
+    data_directory: Option<&str>,
+    key_directory: Option<&str>,
+) -> BindingResult<VerificationResult> {
+    fn signer_id_from_doc(doc: &str) -> String {
+        serde_json::from_str::<Value>(doc)
+            .ok()
+            .and_then(|v| {
+                v.get("jacsSignature")
+                    .and_then(|s| s.get("agentID"))
+                    .and_then(|id| id.as_str())
+                    .map(String::from)
+            })
+            .unwrap_or_default()
+    }
+
+    let signer_id = signer_id_from_doc(signed_document);
+
+    let data_dir = data_directory
+        .map(String::from)
+        .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
+    let key_dir = key_directory
+        .map(String::from)
+        .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
+
+    let config = Config::new(
+        Some("false".to_string()),
+        Some(data_dir.clone()),
+        Some(key_dir.clone()),
+        Some("jacs.private.pem.enc".to_string()),
+        Some("jacs.public.pem".to_string()),
+        Some("pq2025".to_string()),
+        None,
+        Some("".to_string()),
+        Some("fs".to_string()),
+    );
+    let config_json = serde_json::to_string_pretty(&config).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize config: {}", e))
+    })?;
+
+    let config_path = std::env::temp_dir().join("jacs_standalone_verify_config.json");
+    std::fs::write(&config_path, &config_json).map_err(|e| {
+        BindingCoreError::generic(format!("Failed to write temp config: {}", e))
+    })?;
+
+    struct EnvGuard(std::option::Option<std::ffi::OsString>);
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(ref prev) = self.0 {
+                // SAFETY: single-threaded test/standalone use; restore of previous value
+                unsafe { std::env::set_var("JACS_KEY_RESOLUTION", prev) }
+            } else {
+                unsafe { std::env::remove_var("JACS_KEY_RESOLUTION") }
+            }
+        }
+    }
+    let _env_guard = if let Some(kr) = key_resolution {
+        let prev = std::env::var_os("JACS_KEY_RESOLUTION");
+        unsafe { std::env::set_var("JACS_KEY_RESOLUTION", kr) }
+        Some(EnvGuard(prev))
+    } else {
+        None
+    };
+
+    let result: BindingResult<VerificationResult> = (|| {
+        let wrapper = AgentWrapper::new();
+        wrapper.load(config_path.to_string_lossy().to_string())?;
+        let valid = wrapper.verify_document(signed_document)?;
+        Ok(VerificationResult {
+            valid,
+            signer_id: signer_id.clone(),
+        })
+    })();
+
+    match result {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            if e.kind == ErrorKind::VerificationFailed
+                || e.kind == ErrorKind::DocumentFailed
+                || e.kind == ErrorKind::InvalidArgument
+            {
+                Ok(VerificationResult {
+                    valid: false,
+                    signer_id,
+                })
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+// =============================================================================
 // Stateless Utility Functions
 // =============================================================================
 
@@ -854,3 +979,56 @@ pub fn fetch_remote_key(agent_id: &str, version: &str) -> BindingResult<RemotePu
 // =============================================================================
 
 pub use jacs;
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_standalone_invalid_json_returns_valid_false() {
+        let result = verify_document_standalone("not json", Some("local"), None, None).unwrap();
+        assert!(!result.valid);
+        assert_eq!(result.signer_id, "");
+    }
+
+    #[test]
+    fn verify_standalone_tampered_document_returns_valid_false_with_signer_id() {
+        let tampered = r#"{"jacsSignature":{"agentID":"golden-test-agent","agentVersion":"v1"},"jacsSha256":"x"}"#;
+        let result = verify_document_standalone(tampered, Some("local"), None, None).unwrap();
+        assert!(!result.valid);
+        assert_eq!(result.signer_id, "golden-test-agent");
+    }
+
+    #[test]
+    fn verify_standalone_golden_invalid_signature_returns_valid_false() {
+        let invalid_sig = std::fs::read_to_string("../jacs/tests/fixtures/golden/invalid_signature.json")
+            .unwrap_or_else(|_| r#"{"jacsSignature":{"agentID":"golden-test-agent"},"jacsSha256":"x"}"#.to_string());
+        let result = verify_document_standalone(
+            &invalid_sig,
+            Some("local"),
+            Some("../jacs/tests/fixtures"),
+            Some("../jacs/tests/fixtures/keys"),
+        )
+        .unwrap();
+        assert!(!result.valid);
+        assert_eq!(result.signer_id, "golden-test-agent");
+    }
+
+    #[test]
+    fn verify_standalone_nonexistent_key_directory_returns_valid_false() {
+        let doc = r#"{"jacsSignature":{"agentID":"some-agent"},"jacsSha256":"x"}"#;
+        let result = verify_document_standalone(
+            doc,
+            Some("local"),
+            Some("/nonexistent_data"),
+            Some("/nonexistent_keys"),
+        )
+        .unwrap();
+        assert!(!result.valid);
+        assert_eq!(result.signer_id, "some-agent");
+    }
+}

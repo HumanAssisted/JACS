@@ -972,6 +972,37 @@ pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int 
     }
 }
 
+/// Verify a signed document without loading an agent (standalone).
+/// Returns a JSON string `{"valid":bool,"signer_id":"..."}` that must be freed with jacs_free_string, or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_verify_document_standalone(
+    signed_document: *const c_char,
+    key_resolution: *const c_char,
+    data_directory: *const c_char,
+    key_directory: *const c_char,
+) -> *mut c_char {
+    if signed_document.is_null() {
+        return ptr::null_mut();
+    }
+    let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let kr = if key_resolution.is_null() { None } else { unsafe { CStr::from_ptr(key_resolution) }.to_str().ok() };
+    let dd = if data_directory.is_null() { None } else { unsafe { CStr::from_ptr(data_directory) }.to_str().ok() };
+    let kd = if key_directory.is_null() { None } else { unsafe { CStr::from_ptr(key_directory) }.to_str().ok() };
+    match jacs_binding_core::verify_document_standalone(doc_str, kr, dd, kd) {
+        Ok(r) => {
+            let json = serde_json::json!({ "valid": r.valid, "signer_id": r.signer_id });
+            match CString::new(json.to_string()) {
+                Ok(cs) => cs.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        Err(_) => ptr::null_mut(),
+    }
+}
+
 /// Update a document
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_update_document(

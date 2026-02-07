@@ -109,14 +109,34 @@ export interface Attachment {
     embedded: boolean;
 }
 /**
+ * Options for HAI registration.
+ */
+export interface HaiRegistrationOptions {
+    /** API key (or set HAI_API_KEY env). */
+    apiKey?: string;
+    /** HAI base URL (default "https://hai.ai"). */
+    haiUrl?: string;
+    /** If true, dry-run without sending. */
+    preview?: boolean;
+}
+/**
+ * Result of registering an agent with HAI.
+ */
+export interface HaiRegistrationResult {
+    agentId: string;
+    jacsId: string;
+    dnsVerified: boolean;
+    signatures: string[];
+}
+/**
  * Options for creating a new JACS agent.
  */
 export interface CreateAgentOptions {
     /** Human-readable name for the agent. */
     name: string;
-    /** Password for encrypting the private key. */
+    /** Password for encrypting the private key. Can also be set via JACS_AGENT_PRIVATE_KEY_PASSWORD env var. */
     password: string;
-    /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". */
+    /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". "pq-dilithium" is deprecated. */
     algorithm?: string;
     /** Directory for agent data (default: "./jacs_data"). */
     dataDirectory?: string;
@@ -135,6 +155,10 @@ export interface CreateAgentOptions {
 }
 /**
  * Creates a new JACS agent with cryptographic keys.
+ *
+ * This is a fully programmatic API that does not require interactive input.
+ * The password must be provided directly or via the JACS_AGENT_PRIVATE_KEY_PASSWORD
+ * environment variable.
  *
  * @param options - Agent creation options
  * @returns AgentInfo containing the agent ID, name, and file paths
@@ -265,6 +289,56 @@ export declare function signFile(filePath: string, embed?: boolean): SignedDocum
  */
 export declare function verify(signedDocument: string): VerificationResult;
 /**
+ * Verify a signed JACS document without loading an agent.
+ * Uses caller-supplied key resolution and directories; does not use global agent state.
+ *
+ * @param signedDocument - Full signed JACS document JSON string
+ * @param options - Optional keyResolution, dataDirectory, keyDirectory
+ * @returns VerificationResult with valid and signerId
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
+ * if (result.valid) console.log(`Signed by: ${result.signerId}`);
+ * ```
+ */
+export declare function verifyStandalone(signedDocument: string, options?: {
+    keyResolution?: string;
+    dataDirectory?: string;
+    keyDirectory?: string;
+}): VerificationResult;
+/**
+ * Verifies a document by its storage ID.
+ *
+ * Use this when you have a document ID (e.g., "uuid:version") rather than
+ * the full JSON string. The document will be loaded from storage and verified.
+ *
+ * @param documentId - The document ID in "uuid:version" format
+ * @returns VerificationResult with the verification status
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
+ * if (result.valid) {
+ *   console.log('Document verified');
+ * }
+ * ```
+ */
+export declare function verifyById(documentId: string): VerificationResult;
+/**
+ * Re-encrypt the agent's private key with a new password.
+ *
+ * @param oldPassword - The current password for the private key
+ * @param newPassword - The new password to encrypt with (must meet password requirements)
+ *
+ * @example
+ * ```typescript
+ * jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
+ * console.log('Key re-encrypted successfully');
+ * ```
+ */
+export declare function reencryptKey(oldPassword: string, newPassword: string): void;
+/**
  * Get the loaded agent's public key in PEM format.
  *
  * @returns The public key as a PEM-encoded string
@@ -300,6 +374,30 @@ export declare function getAgentInfo(): AgentInfo | null;
  * @returns true if an agent is loaded, false otherwise
  */
 export declare function isLoaded(): boolean;
+/**
+ * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
+ * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
+ */
+export declare function getDnsRecord(domain: string, ttl?: number): string;
+/**
+ * Returns the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+ * Keys: publicKey, publicKeyHash, algorithm, agentId.
+ */
+export declare function getWellKnownJson(): {
+    publicKey: string;
+    publicKeyHash: string;
+    algorithm: string;
+    agentId: string;
+};
+/**
+ * Register the loaded agent with HAI.ai.
+ * Requires a loaded agent (uses exportAgent() for the payload).
+ * Calls POST {haiUrl}/api/v1/agents/register with Bearer token and agent JSON.
+ *
+ * @param options - apiKey (or HAI_API_KEY env), haiUrl (default "https://hai.ai"), preview
+ * @returns HaiRegistrationResult with agentId, jacsId, dnsVerified, signatures
+ */
+export declare function registerWithHai(options?: HaiRegistrationOptions): Promise<HaiRegistrationResult>;
 /**
  * Status of a multi-party agreement.
  */
@@ -370,36 +468,43 @@ export declare function signAgreement(document: any, fieldName?: string): Signed
  */
 export declare function checkAgreement(document: any, fieldName?: string): AgreementStatus;
 /**
- * Verifies a document by its storage ID.
- *
- * @param documentId - The document ID in "uuid:version" format
- * @returns VerificationResult with the verification status
- */
-export declare function verifyById(documentId: string): VerificationResult;
-/**
- * Re-encrypt the agent's private key with a new password.
- *
- * @param oldPassword - The current password for the private key
- * @param newPassword - The new password to encrypt with
- */
-export declare function reencryptKey(oldPassword: string, newPassword: string): void;
-/**
  * Add an agent to the local trust store.
  *
- * @param agentJson - The agent's JSON document
+ * The trust store is a local list of agents you trust. When verifying
+ * documents from known agents, the trust store provides signer names
+ * and allows quick lookups.
+ *
+ * @param agentJson - The agent's JSON document (from their exportAgent())
  * @returns The trusted agent's ID
+ *
+ * @example
+ * ```typescript
+ * const trustedId = jacs.trustAgent(partnerAgentJson);
+ * console.log(`Trusted agent: ${trustedId}`);
+ * ```
  */
 export declare function trustAgent(agentJson: string): string;
 /**
  * List all trusted agent IDs in the local trust store.
  *
  * @returns Array of trusted agent UUIDs
+ *
+ * @example
+ * ```typescript
+ * const trustedIds = jacs.listTrustedAgents();
+ * console.log(`${trustedIds.length} trusted agents`);
+ * ```
  */
 export declare function listTrustedAgents(): string[];
 /**
  * Remove an agent from the local trust store.
  *
  * @param agentId - The agent UUID to remove
+ *
+ * @example
+ * ```typescript
+ * jacs.untrustAgent('550e8400-e29b-41d4-a716-446655440000');
+ * ```
  */
 export declare function untrustAgent(agentId: string): void;
 /**
@@ -407,6 +512,13 @@ export declare function untrustAgent(agentId: string): void;
  *
  * @param agentId - The agent UUID to check
  * @returns true if the agent is trusted
+ *
+ * @example
+ * ```typescript
+ * if (jacs.isTrusted(signerId)) {
+ *   console.log('Signer is in our trust store');
+ * }
+ * ```
  */
 export declare function isTrusted(agentId: string): boolean;
 /**
@@ -414,5 +526,11 @@ export declare function isTrusted(agentId: string): boolean;
  *
  * @param agentId - The agent UUID to retrieve
  * @returns The agent's JSON document as a string
+ *
+ * @example
+ * ```typescript
+ * const agentDoc = JSON.parse(jacs.getTrustedAgent(agentId));
+ * console.log(`Agent name: ${agentDoc.jacsAgentName}`);
+ * ```
  */
 export declare function getTrustedAgent(agentId: string): string;

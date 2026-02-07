@@ -479,6 +479,36 @@ pub fn update_agent(new_agent_string: String) -> Result<String> {
     agent.update_agent(&new_agent_string).to_napi()
 }
 
+/// Result of verify_document_standalone. Exposed to JS as { valid, signerId }.
+#[napi(object)]
+pub struct VerifyStandaloneResult {
+    pub valid: bool,
+    /// Signer agent ID; exposed to JS as signerId (camelCase).
+    pub signer_id: String,
+}
+
+/// Verify a signed JACS document without loading an agent.
+/// Returns { valid, signerId }. Does not use global agent state.
+#[napi]
+pub fn verify_document_standalone(
+    signed_document: String,
+    key_resolution: Option<String>,
+    data_directory: Option<String>,
+    key_directory: Option<String>,
+) -> Result<VerifyStandaloneResult> {
+    let r = jacs_binding_core::verify_document_standalone(
+        &signed_document,
+        key_resolution.as_deref(),
+        data_directory.as_deref(),
+        key_directory.as_deref(),
+    )
+    .to_napi()?;
+    Ok(VerifyStandaloneResult {
+        valid: r.valid,
+        signer_id: r.signer_id,
+    })
+}
+
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
 #[napi]
 pub fn verify_document(document_string: String) -> Result<bool> {

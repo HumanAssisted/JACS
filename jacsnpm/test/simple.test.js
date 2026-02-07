@@ -134,6 +134,28 @@ describe('JACS Simple API', function() {
     });
   });
 
+  describe('verifyStandalone', () => {
+    (simpleExists ? it : it.skip)('should not require load() and return valid/signerId', () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tampered = '{"jacsSignature":{"agentID":"test-agent"},"jacsSha256":"x"}';
+      const result = freshSimple.verifyStandalone(tampered, { keyResolution: 'local' });
+      expect(result).to.be.an('object');
+      expect(result).to.have.property('valid');
+      expect(result).to.have.property('signerId');
+      expect(result.valid).to.be.false;
+      expect(result.signerId).to.equal('test-agent');
+    });
+
+    (simpleExists ? it : it.skip)('should return valid false for invalid JSON', () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const result = freshSimple.verifyStandalone('not json', { keyResolution: 'local' });
+      expect(result.valid).to.be.false;
+      expect(result.signerId).to.equal('');
+    });
+  });
+
   describe('signMessage', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
@@ -407,6 +429,83 @@ describe('JACS Simple API', function() {
       } finally {
         fs.unlinkSync(tempFile);
       }
+    });
+  });
+
+  describe('registerWithHai', () => {
+    (simpleExists ? it : it.skip)('should throw when no apiKey and no HAI_API_KEY', async () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const orig = process.env.HAI_API_KEY;
+      delete process.env.HAI_API_KEY;
+      try {
+        if (fixturesExist) {
+          loadSimpleInFixtures();
+          await expect(freshSimple.registerWithHai({ haiUrl: 'https://hai.ai' }))
+            .to.be.rejectedWith(/api key|HAI_API_KEY|required/i);
+        }
+      } finally {
+        if (orig !== undefined) process.env.HAI_API_KEY = orig;
+      }
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should POST to /api/v1/agents/register with Bearer and agent JSON', async () => {
+      const freshSimple = loadSimpleInFixtures();
+      const baseUrl = 'http://mock-hai.test';
+      let capturedRequest = null;
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (url, opts) => {
+        capturedRequest = { url, method: opts?.method, headers: opts?.headers, body: opts?.body };
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            agent_id: 'mock-agent-id',
+            jacs_id: 'mock-jacs-id',
+            dns_verified: true,
+            signatures: [{ key_id: 'k1', signature: 'sig1', algorithm: 'Ed25519', signed_at: '2025-01-01T00:00:00Z' }],
+          }),
+        });
+      };
+      try {
+        const result = await freshSimple.registerWithHai({ apiKey: 'test-key', haiUrl: baseUrl });
+        expect(capturedRequest).to.not.be.null;
+        expect(capturedRequest.url).to.equal(`${baseUrl}/api/v1/agents/register`);
+        expect(capturedRequest.method).to.equal('POST');
+        expect(capturedRequest.headers?.Authorization).to.equal('Bearer test-key');
+        const body = typeof capturedRequest.body === 'string' ? JSON.parse(capturedRequest.body) : capturedRequest.body;
+        expect(body).to.have.property('agent_json');
+        expect(result).to.have.property('agentId', 'mock-agent-id');
+        expect(result).to.have.property('jacsId', 'mock-jacs-id');
+        expect(result).to.have.property('dnsVerified', true);
+        expect(result.signatures).to.be.an('array');
+        expect(result.signatures).to.include('sig1');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  describe('DNS helpers', () => {
+    (simpleExists && fixturesExist ? it : it.skip)('getDnsRecord returns TXT line in expected format', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const record = freshSimple.getDnsRecord('example.com', 3600);
+      expect(record).to.be.a('string');
+      expect(record).to.match(/^_v1\.agent\.jacs\.example\.com\.\s+3600\s+IN\s+TXT\s+"/);
+      expect(record).to.include('v=hai.ai');
+      expect(record).to.include('jacs_agent_id=');
+      expect(record).to.include('alg=SHA-256');
+      expect(record).to.include('enc=base64');
+      expect(record).to.include('jac_public_key_hash=');
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('getWellKnownJson returns object with publicKey, publicKeyHash, algorithm, agentId', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const json = freshSimple.getWellKnownJson();
+      expect(json).to.be.an('object');
+      expect(json).to.have.property('publicKey');
+      expect(json).to.have.property('publicKeyHash');
+      expect(json).to.have.property('algorithm');
+      expect(json).to.have.property('agentId');
     });
   });
 

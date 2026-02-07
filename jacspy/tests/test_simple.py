@@ -97,6 +97,68 @@ class TestVerifySelf:
             simple.verify_self()
 
 
+# Test verify_standalone()
+
+
+class TestVerifyStandalone:
+    """verify_standalone() does not require load()."""
+
+    def test_verify_standalone_invalid_json_returns_valid_false(self):
+        """verify_standalone() with invalid JSON should return valid=False."""
+        import importlib
+        importlib.reload(simple)
+        result = simple.verify_standalone("not json", key_resolution="local")
+        assert isinstance(result, VerificationResult)
+        assert result.valid is False
+        assert result.signer_id == ""
+
+    def test_verify_standalone_tampered_returns_valid_false_with_signer_id(self):
+        """verify_standalone() with tampered doc should return valid=False and signer_id from doc."""
+        import importlib
+        importlib.reload(simple)
+        tampered = '{"jacsSignature":{"agentID":"test-agent"},"jacsSha256":"x"}'
+        result = simple.verify_standalone(tampered, key_resolution="local")
+        assert result.valid is False
+        assert result.signer_id == "test-agent"
+
+
+# Test DNS helpers
+
+
+class TestDnsHelpers:
+    def test_get_dns_record_without_load_raises(self):
+        import importlib
+        importlib.reload(simple)
+        with pytest.raises((AgentNotLoadedError, JacsError)):
+            simple.get_dns_record("example.com", 3600)
+
+    def test_get_dns_record_returns_expected_format(self, loaded_agent):
+        record = simple.get_dns_record("example.com", 3600)
+        assert isinstance(record, str)
+        assert "_v1.agent.jacs.example.com." in record
+        assert "3600" in record
+        assert "IN TXT" in record
+        assert "v=hai.ai" in record
+        assert "jacs_agent_id=" in record
+        assert "alg=SHA-256" in record
+        assert "enc=base64" in record
+        assert "jac_public_key_hash=" in record
+
+    def test_get_well_known_json_without_load_raises(self):
+        import importlib
+        importlib.reload(simple)
+        with pytest.raises((AgentNotLoadedError, JacsError)):
+            simple.get_well_known_json()
+
+    def test_get_well_known_json_has_keys(self, loaded_agent):
+        obj = simple.get_well_known_json()
+        assert isinstance(obj, dict)
+        assert "publicKey" in obj
+        assert "publicKeyHash" in obj
+        assert "algorithm" in obj
+        assert "agentId" in obj
+
+
 # Test update_agent()
 
 

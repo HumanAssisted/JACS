@@ -42,7 +42,11 @@ console.log(`Signer: ${result.signerId}`);
 | `signMessage(data)` | Sign any JSON data |
 | `signFile(path, embed)` | Sign a file |
 | `verify(doc)` | Verify signed document (JSON string) |
+| `verifyStandalone(doc, opts?)` | Verify without loading an agent (one-off) |
 | `verifyById(id)` | Verify a document by storage ID (`uuid:version`) |
+| `registerWithHai(opts?)` | Register the loaded agent with HAI.ai |
+| `getDnsRecord(domain, ttl?)` | Get DNS TXT record line for the agent |
+| `getWellKnownJson()` | Get well-known JSON for `/.well-known/jacs-pubkey.json` |
 | `reencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
 | `getPublicKey()` | Get public key for sharing |
 | `isLoaded()` | Check if agent is loaded |

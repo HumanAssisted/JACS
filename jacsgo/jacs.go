@@ -47,6 +47,7 @@ char* jacs_sign_request(const char* payload_json);
 char* jacs_verify_response(const char* document_string);
 char* jacs_verify_response_with_agent_id(const char* document_string, char** agent_id_out);
 int jacs_verify_signature(const char* document_string, const char* signature_field);
+char* jacs_verify_document_standalone(const char* signed_document, const char* key_resolution, const char* data_directory, const char* key_directory);
 */
 import "C"
 import (
@@ -1057,4 +1058,39 @@ func getErrorMessage(code int, operation string) string {
 	default:
 		return fmt.Sprintf("operation failed with code %d", code)
 	}
+}
+
+// VerifyDocumentStandalone verifies a signed document without loading an agent.
+// Optional keyResolution, dataDirectory, keyDirectory may be empty to use defaults.
+// Returns a VerificationResult; does not require Load() to have been called.
+func VerifyDocumentStandalone(signedDocument, keyResolution, dataDirectory, keyDirectory string) (*VerificationResult, error) {
+	cDoc := C.CString(signedDocument)
+	defer C.free(unsafe.Pointer(cDoc))
+	var cKR, cDD, cKD *C.char
+	if keyResolution != "" {
+		cKR = C.CString(keyResolution)
+		defer C.free(unsafe.Pointer(cKR))
+	}
+	if dataDirectory != "" {
+		cDD = C.CString(dataDirectory)
+		defer C.free(unsafe.Pointer(cDD))
+	}
+	if keyDirectory != "" {
+		cKD = C.CString(keyDirectory)
+		defer C.free(unsafe.Pointer(cKD))
+	}
+	result := C.jacs_verify_document_standalone(cDoc, cKR, cDD, cKD)
+	if result == nil {
+		return nil, errors.New("verify_document_standalone failed")
+	}
+	defer C.jacs_free_string(result)
+	resultStr := C.GoString(result)
+	var out struct {
+		Valid    bool   `json:"valid"`
+		SignerID string `json:"signer_id"`
+	}
+	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
+		return nil, fmt.Errorf("parse standalone result: %w", err)
+	}
+	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID}, nil
 }

@@ -15,7 +15,7 @@ Sign, verify, and manage files that represent agent state (memories, skills, pla
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_state` | Sign a file to create a cryptographically signed JACS document |
-| `jacs_verify_state` | Verify file integrity and signature authenticity (by file path or JACS document ID) |
+| `jacs_verify_state` | Verify file integrity and signature authenticity (by file path or JACS document ID). For one-off verification without loading an agent, use `verify_standalone()` in the language bindings (jacspy, jacsnpm, jacsgo). |
 | `jacs_load_state` | Load a signed state document, optionally verifying before returning content |
 | `jacs_update_state` | Update a previously signed file -- re-hashes and re-signs |
 | `jacs_list_state` | List signed agent state documents with optional filtering |

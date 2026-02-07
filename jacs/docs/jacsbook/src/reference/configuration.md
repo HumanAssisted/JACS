@@ -2,6 +2,10 @@
 
 ## Overview
 
+### Key resolution for verifiers
+
+When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set **`JACS_KEY_RESOLUTION`** (environment variable or in config) to a comma-separated list of sources: `local` (trust store), `dns` (DNS TXT record), `hai` (HAI key service). Example: `JACS_KEY_RESOLUTION=local,hai` or `local,dns,hai`. The first source that returns a key for the signer’s ID is used. Use `verify_standalone()` with explicit `keyResolution` for one-off verification without loading a full config.
+
 ## Complete Example Configuration
 
 ```json

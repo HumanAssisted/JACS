@@ -3,6 +3,7 @@ package jacs
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -400,6 +401,164 @@ func VerifyById(documentId string) (*VerificationResult, error) {
 
 	return &VerificationResult{
 		Valid: true,
+	}, nil
+}
+
+// VerifyOptions configures standalone verification (no agent required).
+type VerifyOptions struct {
+	KeyResolution string // e.g. "local,hai" (default "local")
+	DataDirectory string
+	KeyDirectory  string
+}
+
+// HaiRegistrationOptions configures HAI registration.
+type HaiRegistrationOptions struct {
+	ApiKey  string // or HAI_API_KEY env
+	HaiUrl  string // default "https://hai.ai"
+	Preview bool
+}
+
+// HaiRegistrationResult is the result of registering with HAI.
+type HaiRegistrationResult struct {
+	AgentId     string
+	JacsId      string
+	DnsVerified bool
+	Signatures  []string
+}
+
+// VerifyStandalone verifies a signed document without loading an agent.
+// Does not use globalAgent. Call with opts nil to use defaults.
+func VerifyStandalone(signedDocument string, opts *VerifyOptions) (*VerificationResult, error) {
+	var kr, dd, kd string
+	if opts != nil {
+		kr, dd, kd = opts.KeyResolution, opts.DataDirectory, opts.KeyDirectory
+	}
+	return VerifyDocumentStandalone(signedDocument, kr, dd, kd)
+}
+
+// RegisterWithHai registers the loaded agent with HAI.
+// Requires a loaded agent (uses ExportAgent()). Calls POST {haiUrl}/api/v1/agents/register with Bearer and agent JSON.
+func RegisterWithHai(opts *HaiRegistrationOptions) (*HaiRegistrationResult, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+	apiKey := ""
+	haiUrl := "https://hai.ai"
+	if opts != nil {
+		apiKey = opts.ApiKey
+		if opts.HaiUrl != "" {
+			haiUrl = opts.HaiUrl
+		}
+		if opts.Preview {
+			return &HaiRegistrationResult{AgentId: agentInfo.AgentID}, nil
+		}
+	}
+	if apiKey == "" {
+		apiKey = os.Getenv("HAI_API_KEY")
+	}
+	if apiKey == "" {
+		return nil, errors.New("HAI registration requires an API key: set ApiKey in options or HAI_API_KEY env")
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return nil, err
+	}
+	client := NewHaiClient(haiUrl, WithAPIKey(apiKey))
+	res, err := client.RegisterWithJSON(agentJSON)
+	if err != nil {
+		return nil, err
+	}
+	sigs := make([]string, 0, len(res.Signatures))
+	for _, s := range res.Signatures {
+		if s.Signature != "" {
+			sigs = append(sigs, s.Signature)
+		} else {
+			sigs = append(sigs, s.KeyID)
+		}
+	}
+	return &HaiRegistrationResult{
+		AgentId:     res.AgentID,
+		JacsId:      res.JacsID,
+		DnsVerified: res.DNSVerified,
+		Signatures:  sigs,
+	}, nil
+}
+
+// GetDnsRecord returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
+// Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
+func GetDnsRecord(domain string, ttl uint32) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return "", err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(agentJSON), &doc); err != nil {
+		return "", err
+	}
+	jacsID := getStringField(doc, "jacsId")
+	if jacsID == "" {
+		if v, _ := doc["agentId"].(string); v != "" {
+			jacsID = v
+		}
+	}
+	sig, _ := doc["jacsSignature"].(map[string]interface{})
+	publicKeyHash := ""
+	if sig != nil {
+		if v, _ := sig["publicKeyHash"].(string); v != "" {
+			publicKeyHash = v
+		}
+	}
+	d := strings.TrimSuffix(domain, ".")
+	owner := "_v1.agent.jacs." + d + "."
+	txt := "v=hai.ai; jacs_agent_id=" + jacsID + "; alg=SHA-256; enc=base64; jac_public_key_hash=" + publicKeyHash
+	if ttl == 0 {
+		ttl = 3600
+	}
+	return fmt.Sprintf("%s %d IN TXT \"%s\"", owner, ttl, txt), nil
+}
+
+// GetWellKnownJson returns the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+// Keys: publicKey, publicKeyHash, algorithm, agentId.
+func GetWellKnownJson() (map[string]interface{}, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return nil, err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(agentJSON), &doc); err != nil {
+		return nil, err
+	}
+	jacsID := getStringField(doc, "jacsId")
+	if jacsID == "" {
+		if v, _ := doc["agentId"].(string); v != "" {
+			jacsID = v
+		}
+	}
+	sig, _ := doc["jacsSignature"].(map[string]interface{})
+	publicKeyHash := ""
+	if sig != nil {
+		if v, _ := sig["publicKeyHash"].(string); v != "" {
+			publicKeyHash = v
+		}
+	}
+	publicKey, _ := GetPublicKeyPEM()
+	return map[string]interface{}{
+		"publicKey":     publicKey,
+		"publicKeyHash": publicKeyHash,
+		"algorithm":     "SHA-256",
+		"agentId":       jacsID,
 	}, nil
 }
 

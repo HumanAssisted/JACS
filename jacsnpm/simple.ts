@@ -54,6 +54,7 @@ import {
   untrustAgent as nativeUntrustAgent,
   isTrusted as nativeIsTrusted,
   getTrustedAgent as nativeGetTrustedAgent,
+  verifyDocumentStandalone as nativeVerifyDocumentStandalone,
 } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -134,6 +135,28 @@ export interface Attachment {
   hash: string;
   /** Whether the file was embedded (true) or referenced (false). */
   embedded: boolean;
+}
+
+/**
+ * Options for HAI registration.
+ */
+export interface HaiRegistrationOptions {
+  /** API key (or set HAI_API_KEY env). */
+  apiKey?: string;
+  /** HAI base URL (default "https://hai.ai"). */
+  haiUrl?: string;
+  /** If true, dry-run without sending. */
+  preview?: boolean;
+}
+
+/**
+ * Result of registering an agent with HAI.
+ */
+export interface HaiRegistrationResult {
+  agentId: string;
+  jacsId: string;
+  dnsVerified: boolean;
+  signatures: string[];
 }
 
 // =============================================================================
@@ -552,6 +575,40 @@ export function verify(signedDocument: string): VerificationResult {
 }
 
 /**
+ * Verify a signed JACS document without loading an agent.
+ * Uses caller-supplied key resolution and directories; does not use global agent state.
+ *
+ * @param signedDocument - Full signed JACS document JSON string
+ * @param options - Optional keyResolution, dataDirectory, keyDirectory
+ * @returns VerificationResult with valid and signerId
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
+ * if (result.valid) console.log(`Signed by: ${result.signerId}`);
+ * ```
+ */
+export function verifyStandalone(
+  signedDocument: string,
+  options?: { keyResolution?: string; dataDirectory?: string; keyDirectory?: string }
+): VerificationResult {
+  const doc = typeof signedDocument === 'string' ? signedDocument : JSON.stringify(signedDocument);
+  const r = nativeVerifyDocumentStandalone(
+    doc,
+    options?.keyResolution ?? undefined,
+    options?.dataDirectory ?? undefined,
+    options?.keyDirectory ?? undefined
+  );
+  return {
+    valid: r.valid,
+    signerId: r.signerId,
+    timestamp: '',
+    attachments: [],
+    errors: [],
+  };
+}
+
+/**
  * Verifies a document by its storage ID.
  *
  * Use this when you have a document ID (e.g., "uuid:version") rather than
@@ -693,6 +750,117 @@ export function getAgentInfo(): AgentInfo | null {
  */
 export function isLoaded(): boolean {
   return globalAgent !== null;
+}
+
+/**
+ * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
+ * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
+ */
+export function getDnsRecord(domain: string, ttl: number = 3600): string {
+  if (!agentInfo) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+  const agentDoc = JSON.parse(exportAgent());
+  const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
+  const publicKeyHash =
+    agentDoc.jacsSignature?.publicKeyHash ||
+    agentDoc.jacsSignature?.['publicKeyHash'] ||
+    '';
+  const d = domain.replace(/\.$/, '');
+  const owner = `_v1.agent.jacs.${d}.`;
+  const txt = `v=hai.ai; jacs_agent_id=${jacsId}; alg=SHA-256; enc=base64; jac_public_key_hash=${publicKeyHash}`;
+  return `${owner} ${ttl} IN TXT "${txt}"`;
+}
+
+/**
+ * Returns the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+ * Keys: publicKey, publicKeyHash, algorithm, agentId.
+ */
+export function getWellKnownJson(): {
+  publicKey: string;
+  publicKeyHash: string;
+  algorithm: string;
+  agentId: string;
+} {
+  if (!agentInfo) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+  const agentDoc = JSON.parse(exportAgent());
+  const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
+  const publicKeyHash =
+    agentDoc.jacsSignature?.publicKeyHash ||
+    agentDoc.jacsSignature?.['publicKeyHash'] ||
+    '';
+  let publicKey = '';
+  try {
+    publicKey = getPublicKey();
+  } catch {
+    // optional if key file missing
+  }
+  return {
+    publicKey,
+    publicKeyHash,
+    algorithm: 'SHA-256',
+    agentId: jacsId,
+  };
+}
+
+/**
+ * Register the loaded agent with HAI.ai.
+ * Requires a loaded agent (uses exportAgent() for the payload).
+ * Calls POST {haiUrl}/api/v1/agents/register with Bearer token and agent JSON.
+ *
+ * @param options - apiKey (or HAI_API_KEY env), haiUrl (default "https://hai.ai"), preview
+ * @returns HaiRegistrationResult with agentId, jacsId, dnsVerified, signatures
+ */
+export async function registerWithHai(
+  options?: HaiRegistrationOptions
+): Promise<HaiRegistrationResult> {
+  if (!agentInfo) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+  const apiKey = options?.apiKey ?? process.env.HAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('HAI registration requires an API key. Set apiKey in options or HAI_API_KEY env.');
+  }
+  if (options?.preview) {
+    return {
+      agentId: agentInfo.agentId,
+      jacsId: '',
+      dnsVerified: false,
+      signatures: [],
+    };
+  }
+  const baseUrl = (options?.haiUrl ?? 'https://hai.ai').replace(/\/$/, '');
+  const agentJson = exportAgent();
+  const url = `${baseUrl}/api/v1/agents/register`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ agent_json: agentJson }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HAI registration failed: ${res.status} ${text}`);
+  }
+  const data = (await res.json()) as {
+    agent_id?: string;
+    jacs_id?: string;
+    dns_verified?: boolean;
+    signatures?: Array<{ key_id?: string; signature?: string }>;
+  };
+  const signatures = (data.signatures ?? []).map(
+    (s) => (typeof s === 'string' ? s : s.signature ?? s.key_id ?? '')
+  );
+  return {
+    agentId: data.agent_id ?? '',
+    jacsId: data.jacs_id ?? '',
+    dnsVerified: data.dns_verified ?? false,
+    signatures,
+  };
 }
 
 // =============================================================================

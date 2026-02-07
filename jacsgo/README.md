@@ -49,7 +49,11 @@ func main() {
 | `SignMessage(data)` | Sign any JSON data |
 | `SignFile(path, embed)` | Sign a file |
 | `Verify(doc)` | Verify signed document (JSON string) |
+| `VerifyStandalone(doc, opts?)` | Verify without loading an agent (one-off) |
 | `VerifyById(id)` | Verify a document by storage ID (`uuid:version`) |
+| `RegisterWithHai(opts?)` | Register the loaded agent with HAI.ai |
+| `GetDnsRecord(domain, ttl)` | Get DNS TXT record line for the agent |
+| `GetWellKnownJson()` | Get well-known JSON for `/.well-known/jacs-pubkey.json` |
 | `ReencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
 | `ExportAgent()` | Get agent's JSON for sharing |
 | `GetPublicKeyPEM()` | Get public key for sharing |

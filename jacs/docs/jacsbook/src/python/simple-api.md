@@ -168,6 +168,16 @@ else:
 
 ---
 
+### verify_standalone(document, key_resolution="local", data_directory=None, key_directory=None)
+
+Verify a signed document **without** loading an agent. Use when you only need to verify (e.g. a lightweight API).
+
+**Parameters:** `document` (str|dict), `key_resolution` (str), `data_directory` (str, optional), `key_directory` (str, optional)
+
+**Returns:** `VerificationResult`
+
+---
+
 ### update_agent(new_agent_data)
 
 Update the agent document with new data and re-sign it.
@@ -254,6 +264,22 @@ print(agent_doc)
 agent = json.loads(agent_doc)
 print(f"Agent type: {agent['jacsAgentType']}")
 ```
+
+---
+
+### get_dns_record(domain, ttl=3600)
+
+Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: `_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."`.
+
+**Returns:** str
+
+---
+
+### get_well_known_json()
+
+Return the well-known JSON object for the loaded agent (e.g. for `/.well-known/jacs-pubkey.json`). Keys: `publicKey`, `publicKeyHash`, `algorithm`, `agentId`.
+
+**Returns:** dict
 
 ---
 
