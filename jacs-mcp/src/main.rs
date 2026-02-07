@@ -1,12 +1,12 @@
-mod handlers;
 mod hai_tools;
+mod handlers;
 
 #[cfg(feature = "mcp")]
 use hai_tools::HaiMcpServer;
 #[cfg(feature = "mcp")]
 use jacs_binding_core::AgentWrapper;
 #[cfg(feature = "mcp")]
-use rmcp::{transport::stdio, ServiceExt};
+use rmcp::{ServiceExt, transport::stdio};
 
 /// Allowed HAI endpoint hostnames for security.
 /// This prevents request redirection attacks via malicious HAI_ENDPOINT values.
@@ -55,9 +55,9 @@ fn validate_hai_endpoint(endpoint: &str) -> anyhow::Result<String> {
     }
 
     // Check the host against allowlist
-    let host = url.host_str().ok_or_else(|| {
-        anyhow::anyhow!("HAI_ENDPOINT '{}' has no host component.", endpoint)
-    })?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("HAI_ENDPOINT '{}' has no host component.", endpoint))?;
 
     // Check if host is in allowlist
     let is_allowed = ALLOWED_HAI_HOSTS.iter().any(|allowed| *allowed == host);
@@ -84,9 +84,7 @@ fn validate_hai_endpoint(endpoint: &str) -> anyhow::Result<String> {
 async fn main() -> anyhow::Result<()> {
     // Initialize logging - send to stderr so stdout stays clean for MCP JSON-RPC
     tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,rmcp=warn".to_string()),
-        )
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info,rmcp=warn".to_string()))
         .with_writer(std::io::stderr)
         .init();
 
@@ -112,11 +110,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Create the MCP server with HAI tools
-    let server = HaiMcpServer::new(
-        agent,
-        &hai_endpoint,
-        api_key.as_deref(),
-    );
+    let server = HaiMcpServer::new(agent, &hai_endpoint, api_key.as_deref());
 
     tracing::info!("HAI MCP server ready, waiting for client connection on stdio");
 

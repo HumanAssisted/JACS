@@ -197,8 +197,7 @@ fn test_conversation_thread_chain() {
 
     // Verify chain linkage
     assert!(
-        value1.get("jacsMessagePreviousId").is_none()
-            || value1["jacsMessagePreviousId"].is_null(),
+        value1.get("jacsMessagePreviousId").is_none() || value1["jacsMessagePreviousId"].is_null(),
         "First message should not have a previous message ID"
     );
     assert_eq!(
@@ -513,8 +512,14 @@ fn test_multiple_conversations() {
     );
 
     // Both must have valid signatures
-    assert!(value1.get("jacsSignature").is_some(), "Message 1 must be signed");
-    assert!(value2.get("jacsSignature").is_some(), "Message 2 must be signed");
+    assert!(
+        value1.get("jacsSignature").is_some(),
+        "Message 1 must be signed"
+    );
+    assert!(
+        value2.get("jacsSignature").is_some(),
+        "Message 2 must be signed"
+    );
 
     let verify1 = agent.verify_document_signature(&key1, None, None, None, None);
     assert!(
@@ -589,9 +594,7 @@ fn test_conversation_with_rich_content() {
     assert_eq!(tags[1], "review-needed");
 
     // Multiple recipients must be preserved
-    let to = value["to"]
-        .as_array()
-        .expect("to should be an array");
+    let to = value["to"].as_array().expect("to should be an array");
     assert_eq!(to.len(), 2);
     assert_eq!(to[0], "alice@example.com");
     assert_eq!(to[1], "bob@example.com");
@@ -726,16 +729,10 @@ fn test_conversation_message_header_fields_present() {
     }
 
     // jacsType should be "message"
-    assert_eq!(
-        value["jacsType"], "message",
-        "jacsType must be 'message'"
-    );
+    assert_eq!(value["jacsType"], "message", "jacsType must be 'message'");
 
     // jacsLevel should be "raw"
-    assert_eq!(
-        value["jacsLevel"], "raw",
-        "jacsLevel must be 'raw'"
-    );
+    assert_eq!(value["jacsLevel"], "raw", "jacsLevel must be 'raw'");
 
     // For a newly created document, jacsOriginalVersion should equal jacsVersion
     assert_eq!(
@@ -751,8 +748,7 @@ fn test_conversation_message_header_fields_present() {
 
     // $schema must be the message schema URL
     assert_eq!(
-        value["$schema"],
-        "https://hai.ai/schemas/message/v1/message.schema.json",
+        value["$schema"], "https://hai.ai/schemas/message/v1/message.schema.json",
         "$schema must reference the message schema"
     );
 }

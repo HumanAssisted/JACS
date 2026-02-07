@@ -17,8 +17,8 @@ use utils::load_test_agent_one;
 /// Verify jacsType="todo" and jacsLevel="config".
 #[test]
 fn test_create_minimal_todo_list() {
-    let doc = create_minimal_todo_list("My Active Work")
-        .expect("Should create a minimal todo list");
+    let doc =
+        create_minimal_todo_list("My Active Work").expect("Should create a minimal todo list");
 
     assert_eq!(doc["jacsTodoName"], "My Active Work");
     assert_eq!(
@@ -40,8 +40,7 @@ fn test_create_minimal_todo_list() {
 /// Step 52: Add a goal-type item to the todo list.
 #[test]
 fn test_todo_list_with_goal_item() {
-    let mut list = create_minimal_todo_list("Goals List")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Goals List").expect("Should create todo list");
 
     let goal_id = add_todo_item(&mut list, "goal", "Ship Q1 release", Some("high"))
         .expect("Should add goal item");
@@ -62,8 +61,7 @@ fn test_todo_list_with_goal_item() {
 /// Step 53: Add a task-type item to the todo list.
 #[test]
 fn test_todo_list_with_task_item() {
-    let mut list = create_minimal_todo_list("Task List")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Task List").expect("Should create todo list");
 
     let task_id = add_todo_item(&mut list, "task", "Write integration tests", Some("medium"))
         .expect("Should add task item");
@@ -82,20 +80,17 @@ fn test_todo_list_with_task_item() {
 /// Step 54: Goal with childItemIds referencing task items.
 #[test]
 fn test_todo_goal_with_child_tasks() {
-    let mut list = create_minimal_todo_list("Goal with Children")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Goal with Children").expect("Should create todo list");
 
-    let goal_id = add_todo_item(&mut list, "goal", "Complete Q1 milestones", None)
-        .expect("Should add goal");
-    let task_id_1 = add_todo_item(&mut list, "task", "Review designs", None)
-        .expect("Should add task 1");
-    let task_id_2 = add_todo_item(&mut list, "task", "Implement feature", None)
-        .expect("Should add task 2");
+    let goal_id =
+        add_todo_item(&mut list, "goal", "Complete Q1 milestones", None).expect("Should add goal");
+    let task_id_1 =
+        add_todo_item(&mut list, "task", "Review designs", None).expect("Should add task 1");
+    let task_id_2 =
+        add_todo_item(&mut list, "task", "Implement feature", None).expect("Should add task 2");
 
-    add_child_to_item(&mut list, &goal_id, &task_id_1)
-        .expect("Should add child 1 to goal");
-    add_child_to_item(&mut list, &goal_id, &task_id_2)
-        .expect("Should add child 2 to goal");
+    add_child_to_item(&mut list, &goal_id, &task_id_1).expect("Should add child 1 to goal");
+    add_child_to_item(&mut list, &goal_id, &task_id_2).expect("Should add child 2 to goal");
 
     let items = list["jacsTodoItems"]
         .as_array()
@@ -138,11 +133,10 @@ fn test_todo_item_all_valid_statuses() {
 /// Step 56: Reject an invalid status value.
 #[test]
 fn test_todo_item_invalid_status() {
-    let mut list = create_minimal_todo_list("Invalid status test")
-        .expect("Should create todo list");
+    let mut list =
+        create_minimal_todo_list("Invalid status test").expect("Should create todo list");
 
-    let item_id = add_todo_item(&mut list, "task", "Will fail", None)
-        .expect("Should add item");
+    let item_id = add_todo_item(&mut list, "task", "Will fail", None).expect("Should add item");
 
     let result = update_todo_item_status(&mut list, &item_id, "bogus");
     assert!(result.is_err(), "Invalid status 'bogus' should be rejected");
@@ -191,11 +185,11 @@ fn test_todo_item_all_priorities() {
 /// Step 58: Item references a commitment via relatedCommitmentId.
 #[test]
 fn test_todo_item_references_commitment() {
-    let mut list = create_minimal_todo_list("Commitment ref test")
-        .expect("Should create todo list");
+    let mut list =
+        create_minimal_todo_list("Commitment ref test").expect("Should create todo list");
 
-    let item_id = add_todo_item(&mut list, "task", "Linked to commitment", None)
-        .expect("Should add item");
+    let item_id =
+        add_todo_item(&mut list, "task", "Linked to commitment", None).expect("Should add item");
 
     let commitment_uuid = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
     set_item_commitment_ref(&mut list, &item_id, commitment_uuid)
@@ -211,14 +205,11 @@ fn test_todo_item_references_commitment() {
 /// Step 59: Item with tags array.
 #[test]
 fn test_todo_item_with_tags() {
-    let mut list = create_minimal_todo_list("Tags test")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Tags test").expect("Should create todo list");
 
-    let item_id = add_todo_item(&mut list, "task", "Tagged item", None)
-        .expect("Should add item");
+    let item_id = add_todo_item(&mut list, "task", "Tagged item", None).expect("Should add item");
 
-    set_item_tags(&mut list, &item_id, vec!["urgent", "backend", "Q1"])
-        .expect("Should set tags");
+    set_item_tags(&mut list, &item_id, vec!["urgent", "backend", "Q1"]).expect("Should set tags");
 
     let items = list["jacsTodoItems"].as_array().unwrap();
     let tags = items[0]["tags"]
@@ -233,11 +224,11 @@ fn test_todo_item_with_tags() {
 /// Step 60: Item references a conversation thread.
 #[test]
 fn test_todo_item_references_conversation() {
-    let mut list = create_minimal_todo_list("Conversation ref test")
-        .expect("Should create todo list");
+    let mut list =
+        create_minimal_todo_list("Conversation ref test").expect("Should create todo list");
 
-    let item_id = add_todo_item(&mut list, "task", "From conversation", None)
-        .expect("Should add item");
+    let item_id =
+        add_todo_item(&mut list, "task", "From conversation", None).expect("Should add item");
 
     let thread_uuid = "c0ffee00-dead-beef-cafe-123456789abc";
     set_item_conversation_ref(&mut list, &item_id, thread_uuid)
@@ -253,8 +244,7 @@ fn test_todo_item_references_conversation() {
 /// Step 61: Archive references on a todo list.
 #[test]
 fn test_todo_list_archive_refs() {
-    let mut list = create_minimal_todo_list("Archive ref test")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Archive ref test").expect("Should create todo list");
 
     let archive_uuid_1 = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
     let archive_uuid_2 = "11111111-2222-3333-4444-555555555555";
@@ -273,8 +263,7 @@ fn test_todo_list_archive_refs() {
 /// Step 62: Reject invalid item type.
 #[test]
 fn test_todo_item_invalid_type() {
-    let mut list = create_minimal_todo_list("Invalid type test")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Invalid type test").expect("Should create todo list");
 
     let result = add_todo_item(&mut list, "bug", "Not a valid type", None);
     assert!(result.is_err(), "Item type 'bug' should be rejected");
@@ -293,8 +282,7 @@ fn test_todo_item_invalid_type() {
 /// Step 63: Reject empty description.
 #[test]
 fn test_todo_item_empty_description() {
-    let mut list = create_minimal_todo_list("Empty desc test")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Empty desc test").expect("Should create todo list");
 
     let result = add_todo_item(&mut list, "task", "", None);
     assert!(result.is_err(), "Empty description should be rejected");
@@ -312,13 +300,10 @@ fn test_todo_item_empty_description() {
 fn test_todo_list_signing_and_verification() {
     let mut agent = load_test_agent_one();
 
-    let mut list = create_minimal_todo_list("Signing test list")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Signing test list").expect("Should create todo list");
 
-    add_todo_item(&mut list, "goal", "Ship the feature", Some("high"))
-        .expect("Should add goal");
-    add_todo_item(&mut list, "task", "Write tests", Some("medium"))
-        .expect("Should add task");
+    add_todo_item(&mut list, "goal", "Ship the feature", Some("high")).expect("Should add goal");
+    add_todo_item(&mut list, "task", "Write tests", Some("medium")).expect("Should add task");
 
     // Sign through agent pipeline
     let loaded = agent
@@ -352,7 +337,11 @@ fn test_todo_list_signing_and_verification() {
     let items = value["jacsTodoItems"]
         .as_array()
         .expect("jacsTodoItems should be an array after signing");
-    assert_eq!(items.len(), 2, "Both items should be preserved after signing");
+    assert_eq!(
+        items.len(),
+        2,
+        "Both items should be preserved after signing"
+    );
     assert_eq!(items[0]["itemType"], "goal");
     assert_eq!(items[1]["itemType"], "task");
 
@@ -370,11 +359,10 @@ fn test_todo_list_signing_and_verification() {
 fn test_todo_list_update_and_resign() {
     let mut agent = load_test_agent_one();
 
-    let mut list = create_minimal_todo_list("Update test list")
-        .expect("Should create todo list");
+    let mut list = create_minimal_todo_list("Update test list").expect("Should create todo list");
 
-    let task_id = add_todo_item(&mut list, "task", "Task to update", None)
-        .expect("Should add task");
+    let task_id =
+        add_todo_item(&mut list, "task", "Task to update", None).expect("Should add task");
 
     // Version 1: sign
     let v1 = agent
@@ -391,7 +379,8 @@ fn test_todo_list_update_and_resign() {
     // Modify the item status in the signed document
     let mut v2_input = v1_value.clone();
     // Find the item by iterating and update status
-    if let Some(items) = v2_input.get_mut("jacsTodoItems")
+    if let Some(items) = v2_input
+        .get_mut("jacsTodoItems")
         .and_then(|v| v.as_array_mut())
     {
         for item in items.iter_mut() {
@@ -446,8 +435,7 @@ fn test_todo_list_versioning_on_update() {
     let mut agent = load_test_agent_one();
 
     // Version 1: empty list
-    let list = create_minimal_todo_list("Version chain test")
-        .expect("Should create todo list");
+    let list = create_minimal_todo_list("Version chain test").expect("Should create todo list");
 
     let v1 = agent
         .create_document_and_load(&list.to_string(), None, None)
@@ -494,7 +482,8 @@ fn test_todo_list_versioning_on_update() {
 
     // Version 3: mark item complete
     let mut v3_input = v2_value.clone();
-    if let Some(items) = v3_input.get_mut("jacsTodoItems")
+    if let Some(items) = v3_input
+        .get_mut("jacsTodoItems")
         .and_then(|v| v.as_array_mut())
     {
         for item in items.iter_mut() {
@@ -545,16 +534,14 @@ fn test_todo_list_versioning_on_update() {
 /// Step 67: Archive workflow: add items, complete some, remove completed, add archive ref.
 #[test]
 fn test_todo_list_archive_workflow() {
-    let mut list = create_minimal_todo_list("Archive workflow test")
-        .expect("Should create todo list");
+    let mut list =
+        create_minimal_todo_list("Archive workflow test").expect("Should create todo list");
 
     // Add several items
-    let task_id_1 = add_todo_item(&mut list, "task", "Task one", None)
-        .expect("Should add task 1");
-    let task_id_2 = add_todo_item(&mut list, "task", "Task two", None)
-        .expect("Should add task 2");
-    let _task_id_3 = add_todo_item(&mut list, "task", "Task three", None)
-        .expect("Should add task 3");
+    let task_id_1 = add_todo_item(&mut list, "task", "Task one", None).expect("Should add task 1");
+    let task_id_2 = add_todo_item(&mut list, "task", "Task two", None).expect("Should add task 2");
+    let _task_id_3 =
+        add_todo_item(&mut list, "task", "Task three", None).expect("Should add task 3");
 
     assert_eq!(list["jacsTodoItems"].as_array().unwrap().len(), 3);
 
@@ -600,8 +587,7 @@ fn test_multiple_todo_lists_per_agent() {
     let mut agent = load_test_agent_one();
 
     // First list
-    let mut list1 = create_minimal_todo_list("Work Items")
-        .expect("Should create first todo list");
+    let mut list1 = create_minimal_todo_list("Work Items").expect("Should create first todo list");
     add_todo_item(&mut list1, "task", "Deploy service", Some("high"))
         .expect("Should add item to list 1");
 
@@ -612,8 +598,8 @@ fn test_multiple_todo_lists_per_agent() {
     let value1 = loaded1.getvalue();
 
     // Second list
-    let mut list2 = create_minimal_todo_list("Personal Items")
-        .expect("Should create second todo list");
+    let mut list2 =
+        create_minimal_todo_list("Personal Items").expect("Should create second todo list");
     add_todo_item(&mut list2, "goal", "Learn Rust", Some("medium"))
         .expect("Should add item to list 2");
 
@@ -631,8 +617,14 @@ fn test_multiple_todo_lists_per_agent() {
     );
 
     // Both lists should have signatures
-    assert!(value1.get("jacsSignature").is_some(), "List 1 must be signed");
-    assert!(value2.get("jacsSignature").is_some(), "List 2 must be signed");
+    assert!(
+        value1.get("jacsSignature").is_some(),
+        "List 1 must be signed"
+    );
+    assert!(
+        value2.get("jacsSignature").is_some(),
+        "List 2 must be signed"
+    );
 
     // Both should verify independently
     let verify1 = agent.verify_document_signature(&key1, None, None, None, None);
@@ -659,10 +651,8 @@ fn test_multiple_todo_lists_per_agent() {
 fn test_todo_list_header_fields_present() {
     let mut agent = load_test_agent_one();
 
-    let mut list = create_minimal_todo_list("Header fields test")
-        .expect("Should create todo list");
-    add_todo_item(&mut list, "task", "Verify headers", None)
-        .expect("Should add item");
+    let mut list = create_minimal_todo_list("Header fields test").expect("Should create todo list");
+    add_todo_item(&mut list, "task", "Verify headers", None).expect("Should add item");
 
     let loaded = agent
         .create_document_and_load(&list.to_string(), None, None)
@@ -690,16 +680,10 @@ fn test_todo_list_header_fields_present() {
     }
 
     // jacsType should be "todo"
-    assert_eq!(
-        value["jacsType"], "todo",
-        "jacsType must be 'todo'"
-    );
+    assert_eq!(value["jacsType"], "todo", "jacsType must be 'todo'");
 
     // jacsLevel should be "config"
-    assert_eq!(
-        value["jacsLevel"], "config",
-        "jacsLevel must be 'config'"
-    );
+    assert_eq!(value["jacsLevel"], "config", "jacsLevel must be 'config'");
 
     // For a newly created document, jacsOriginalVersion should equal jacsVersion
     assert_eq!(
@@ -715,8 +699,7 @@ fn test_todo_list_header_fields_present() {
 
     // $schema must be the todo schema URL
     assert_eq!(
-        value["$schema"],
-        "https://hai.ai/schemas/todo/v1/todo.schema.json",
+        value["$schema"], "https://hai.ai/schemas/todo/v1/todo.schema.json",
         "$schema must reference the todo schema"
     );
 }
@@ -726,10 +709,9 @@ fn test_todo_list_header_fields_present() {
 fn test_todo_list_tamper_detection() {
     let mut agent = load_test_agent_one();
 
-    let mut list = create_minimal_todo_list("Tamper detection test")
-        .expect("Should create todo list");
-    add_todo_item(&mut list, "task", "Original task", None)
-        .expect("Should add item");
+    let mut list =
+        create_minimal_todo_list("Tamper detection test").expect("Should create todo list");
+    add_todo_item(&mut list, "task", "Original task", None).expect("Should add item");
 
     let loaded = agent
         .create_document_and_load(&list.to_string(), None, None)
@@ -765,11 +747,10 @@ fn test_todo_list_tamper_detection() {
 fn test_todo_list_schema_validation() {
     let agent = load_test_agent_one();
 
-    let mut list = create_minimal_todo_list("Schema validation test")
-        .expect("Should create todo list");
+    let mut list =
+        create_minimal_todo_list("Schema validation test").expect("Should create todo list");
 
-    add_todo_item(&mut list, "goal", "Validate me", Some("high"))
-        .expect("Should add item");
+    add_todo_item(&mut list, "goal", "Validate me", Some("high")).expect("Should add item");
 
     // Add header fields that the schema requires (via allOf with header schema)
     list["jacsId"] = json!("test-todo-id");

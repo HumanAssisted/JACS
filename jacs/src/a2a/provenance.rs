@@ -155,8 +155,12 @@ pub fn verify_wrapped_artifact(
         .get(AGENT_SIGNATURE_FIELDNAME)
         .ok_or("No JACS signature found")?;
 
-    let agent_id = signature_info.get_str("agentID").ok_or("No agent ID in signature")?;
-    let agent_version = signature_info.get_str("agentVersion").ok_or("No agent version in signature")?;
+    let agent_id = signature_info
+        .get_str("agentID")
+        .ok_or("No agent ID in signature")?;
+    let agent_version = signature_info
+        .get_str("agentVersion")
+        .ok_or("No agent version in signature")?;
 
     // Check if this is a self-signed document
     let current_agent_id = agent.get_id().ok();
@@ -253,7 +257,8 @@ fn verify_parent_signatures(
 
     for (index, parent) in parents.iter().enumerate() {
         let parent_id = parent.get_str_or("jacsId", "unknown");
-        let parent_signer = parent.get_path_str_or(&[AGENT_SIGNATURE_FIELDNAME, "agentID"], "unknown");
+        let parent_signer =
+            parent.get_path_str_or(&[AGENT_SIGNATURE_FIELDNAME, "agentID"], "unknown");
 
         // Try to verify each parent signature
         // Note: This recursively calls verify_wrapped_artifact

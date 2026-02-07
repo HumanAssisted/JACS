@@ -30,6 +30,12 @@ jobs:
       with:
         toolchain: '1.93'
 
+    - name: Install cargo-audit and run audit
+      working-directory: jacs
+      run: |
+        cargo install cargo-audit
+        cargo audit || true
+
     - name: Run jacs tests
       # Specify the working directory for the test command
       working-directory: jacs

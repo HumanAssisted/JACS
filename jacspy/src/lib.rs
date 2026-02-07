@@ -83,7 +83,11 @@ impl JacsAgent {
         public_key_enc_type: &str,
     ) -> PyResult<String> {
         self.inner
-            .sign_agent(agent_string, public_key.to_vec(), public_key_enc_type.to_string())
+            .sign_agent(
+                agent_string,
+                public_key.to_vec(),
+                public_key_enc_type.to_string(),
+            )
             .to_py()
     }
 
@@ -159,7 +163,13 @@ impl JacsAgent {
         agreement_fieldname: Option<String>,
     ) -> PyResult<String> {
         self.inner
-            .create_agreement(&document_string, agentids, question, context, agreement_fieldname)
+            .create_agreement(
+                &document_string,
+                agentids,
+                question,
+                context,
+                agreement_fieldname,
+            )
             .to_py()
     }
 
@@ -298,8 +308,8 @@ impl SimpleAgent {
         purpose: Option<&str>,
         key_algorithm: Option<&str>,
     ) -> PyResult<(Self, PyObject)> {
-        let (agent, info) =
-            jacs_core::simple::SimpleAgent::create(name, purpose, key_algorithm).map_err(|e| {
+        let (agent, info) = jacs_core::simple::SimpleAgent::create(name, purpose, key_algorithm)
+            .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Failed to create agent: {}",
                     e
@@ -390,10 +400,7 @@ impl SimpleAgent {
     ///     dict with raw, document_id, agent_id, timestamp
     fn sign_file(&self, py: Python, file_path: &str, embed: bool) -> PyResult<PyObject> {
         let signed = self.inner.sign_file(file_path, embed).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to sign file: {}",
-                e
-            ))
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign file: {}", e))
         })?;
 
         let dict = pyo3::types::PyDict::new(py);
@@ -924,7 +931,7 @@ fn sign_agent(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_agent() is deprecated. Use JacsAgent().sign_agent() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -957,7 +964,7 @@ fn verify_string(
 fn sign_string(_py: Python, _data: &str) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_string() is deprecated. Use JacsAgent().sign_string() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -968,7 +975,7 @@ fn sign_string(_py: Python, _data: &str) -> PyResult<String> {
 fn verify_agent(_py: Python, _agentfile: Option<String>) -> PyResult<bool> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_agent() is deprecated. Use JacsAgent().verify_agent() or \
-         SimpleAgent.load().verify_self() instead."
+         SimpleAgent.load().verify_self() instead.",
     ))
 }
 
@@ -979,7 +986,7 @@ fn verify_agent(_py: Python, _agentfile: Option<String>) -> PyResult<bool> {
 fn update_agent(_py: Python, _new_agent_string: String) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "update_agent() is deprecated. Use JacsAgent().update_agent() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -990,7 +997,7 @@ fn update_agent(_py: Python, _new_agent_string: String) -> PyResult<String> {
 fn verify_document(_py: Python, _document_string: String) -> PyResult<bool> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_document() is deprecated. Use JacsAgent().verify_document() or \
-         SimpleAgent.load().verify() instead."
+         SimpleAgent.load().verify() instead.",
     ))
 }
 
@@ -1007,7 +1014,7 @@ fn update_document(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "update_document() is deprecated. Use JacsAgent().update_document() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1022,7 +1029,7 @@ fn verify_signature(
 ) -> PyResult<bool> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_signature() is deprecated. Use JacsAgent().verify_signature() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1040,7 +1047,7 @@ fn create_agreement(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "create_agreement() is deprecated. Use JacsAgent().create_agreement() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1055,7 +1062,7 @@ fn sign_agreement(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_agreement() is deprecated. Use JacsAgent().sign_agreement() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1074,7 +1081,7 @@ fn create_document(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "create_document() is deprecated. Use JacsAgent().create_document() or \
-         SimpleAgent.load().sign_message() instead."
+         SimpleAgent.load().sign_message() instead.",
     ))
 }
 
@@ -1089,7 +1096,7 @@ fn check_agreement(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "check_agreement() is deprecated. Use JacsAgent().check_agreement() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1100,7 +1107,7 @@ fn check_agreement(
 fn sign_request(_py: Python, _params_obj: PyObject) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_request() is deprecated. Use JacsAgent().sign_request() or \
-         SimpleAgent.load().sign_message() instead."
+         SimpleAgent.load().sign_message() instead.",
     ))
 }
 
@@ -1111,7 +1118,7 @@ fn sign_request(_py: Python, _params_obj: PyObject) -> PyResult<String> {
 fn verify_response(_py: Python, _document_string: String) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_response() is deprecated. Use JacsAgent().verify_response() or \
-         SimpleAgent.load().verify() instead."
+         SimpleAgent.load().verify() instead.",
     ))
 }
 
@@ -1122,7 +1129,7 @@ fn verify_response(_py: Python, _document_string: String) -> PyResult<PyObject> 
 fn verify_response_with_agent_id(_py: Python, _document_string: String) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_response_with_agent_id() is deprecated. \
-         Use JacsAgent().verify_response_with_agent_id() instead."
+         Use JacsAgent().verify_response_with_agent_id() instead.",
     ))
 }
 
@@ -1143,7 +1150,7 @@ fn create_simple(
 ) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "create_simple() is deprecated. Use SimpleAgent.create() instead, which returns \
-         both the agent instance and info dict."
+         both the agent instance and info dict.",
     ))
 }
 
@@ -1153,7 +1160,7 @@ fn create_simple(
 #[pyfunction]
 fn load_simple(_config_path: Option<&str>) -> PyResult<()> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "load_simple() is deprecated. Use SimpleAgent.load() instead."
+        "load_simple() is deprecated. Use SimpleAgent.load() instead.",
     ))
 }
 
@@ -1163,7 +1170,7 @@ fn load_simple(_config_path: Option<&str>) -> PyResult<()> {
 #[pyfunction]
 fn verify_self_simple() -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "verify_self_simple() is deprecated. Use SimpleAgent.load().verify_self() instead."
+        "verify_self_simple() is deprecated. Use SimpleAgent.load().verify_self() instead.",
     ))
 }
 
@@ -1173,7 +1180,7 @@ fn verify_self_simple() -> PyResult<PyObject> {
 #[pyfunction]
 fn sign_message_simple(_py: Python, _data: PyObject) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "sign_message_simple() is deprecated. Use SimpleAgent.load().sign_message() instead."
+        "sign_message_simple() is deprecated. Use SimpleAgent.load().sign_message() instead.",
     ))
 }
 
@@ -1183,7 +1190,7 @@ fn sign_message_simple(_py: Python, _data: PyObject) -> PyResult<PyObject> {
 #[pyfunction]
 fn sign_file_simple(_file_path: &str, _embed: bool) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "sign_file_simple() is deprecated. Use SimpleAgent.load().sign_file() instead."
+        "sign_file_simple() is deprecated. Use SimpleAgent.load().sign_file() instead.",
     ))
 }
 
@@ -1193,7 +1200,7 @@ fn sign_file_simple(_file_path: &str, _embed: bool) -> PyResult<PyObject> {
 #[pyfunction]
 fn verify_simple(_py: Python, _signed_document: &str) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "verify_simple() is deprecated. Use SimpleAgent.load().verify() instead."
+        "verify_simple() is deprecated. Use SimpleAgent.load().verify() instead.",
     ))
 }
 
@@ -1203,7 +1210,7 @@ fn verify_simple(_py: Python, _signed_document: &str) -> PyResult<PyObject> {
 #[pyfunction]
 fn export_agent_simple() -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "export_agent_simple() is deprecated. Use SimpleAgent.load().export_agent() instead."
+        "export_agent_simple() is deprecated. Use SimpleAgent.load().export_agent() instead.",
     ))
 }
 
@@ -1214,7 +1221,7 @@ fn export_agent_simple() -> PyResult<String> {
 fn get_public_key_pem_simple() -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "get_public_key_pem_simple() is deprecated. \
-         Use SimpleAgent.load().get_public_key_pem() instead."
+         Use SimpleAgent.load().get_public_key_pem() instead.",
     ))
 }
 

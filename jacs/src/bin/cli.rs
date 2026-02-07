@@ -759,7 +759,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("Not specified")
                                     );
-                                    if let Some(pk) = json.get("publicKey").and_then(|v| v.as_str()) {
+                                    if let Some(pk) = json.get("publicKey").and_then(|v| v.as_str())
+                                    {
                                         let preview = if pk.len() > 60 {
                                             format!("{}...", &pk[..60])
                                         } else {

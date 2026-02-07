@@ -462,9 +462,9 @@ func getAgentErrorMessage(code int, operation string) string {
 // The following functions use a global singleton for backwards compatibility.
 // New code should use the JacsAgent type above.
 
-// Load initializes JACS with the given configuration file
-// Deprecated: Use NewJacsAgent() and agent.Load() instead.
-func Load(configPath string) error {
+// LegacyLoad initializes JACS with the given configuration file (legacy C API).
+// Deprecated: Use NewJacsAgent() and agent.Load() instead, or the simple API Load(configPath *string).
+func LegacyLoad(configPath string) error {
 	cPath := C.CString(configPath)
 	defer C.free(unsafe.Pointer(cPath))
 

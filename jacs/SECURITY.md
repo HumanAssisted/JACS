@@ -1,5 +1,14 @@
 # Security Policy
 
+## Security model
+
+- **Passwords**: The private key password must be set only via the `JACS_PRIVATE_KEY_PASSWORD` environment variable. It is never stored in config files.
+- **Keys**: Private keys are encrypted at rest (AES-256-GCM with PBKDF2). Public keys and config may be stored on disk.
+- **Paths**: Paths built from untrusted input (e.g. `publicKeyHash` from documents) are validated to prevent traversal (`require_relative_path_safe`); key and data directory path builders enforce this.
+- **No secrets in config**: Config files and env overrides must not contain passwords or other secrets.
+
+## Reporting vulnerabilities
+
 If you think you have identified a security issue with a JACS, do not open a public issue.
 To responsibly report a security issue, please navigate to the "Security" tab for the repo, and click "Report a vulnerability".
 

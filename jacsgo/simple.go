@@ -38,7 +38,7 @@ func Create(name, purpose, keyAlgorithm string) (*AgentInfo, error) {
 	dataDir := "./jacs_data"
 	keyDir := "./jacs_keys"
 
-	_, err := CreateConfig(&Config{
+	_, err := CreateConfig(Config{
 		DataDirectory:     &dataDir,
 		KeyDirectory:      &keyDir,
 		AgentKeyAlgorithm: &algorithm,
@@ -175,7 +175,7 @@ func SignMessage(data interface{}) (*SignedDocument, error) {
 
 	// Sign using agent
 	noSave := true
-	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, &noSave, nil, nil)
+	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, noSave, nil, nil)
 	if err != nil {
 		return nil, NewSimpleError("sign_message", err)
 	}
@@ -230,8 +230,7 @@ func SignFile(filePath string, embed bool) (*SignedDocument, error) {
 
 	// Sign with attachment
 	noSave := true
-	embedPtr := &embed
-	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, &noSave, &filePath, embedPtr)
+	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, noSave, &filePath, &embed)
 	if err != nil {
 		return nil, NewSimpleError("sign_file", err)
 	}

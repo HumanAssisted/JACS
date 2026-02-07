@@ -12,13 +12,13 @@
 //! Requirements: Docker must be running on the host.
 
 use jacs::agent::document::JACSDocument;
+use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database::DatabaseStorage;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
-use jacs::storage::StorageDocumentTraits;
 use serde_json::json;
 use serial_test::serial;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
+use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 // ---------------------------------------------------------------------------
@@ -28,12 +28,7 @@ use testcontainers_modules::postgres::Postgres;
 /// Create a test document with the given fields.
 /// If `agent_id` is provided, a `jacsSignature` block is attached so that
 /// `store_document` can extract the agent ID column.
-fn make_test_doc(
-    id: &str,
-    version: &str,
-    jacs_type: &str,
-    agent_id: Option<&str>,
-) -> JACSDocument {
+fn make_test_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
     let mut value = json!({
         "jacsId": id,
         "jacsVersion": version,
@@ -135,8 +130,7 @@ async fn test_raw_contents_preserves_json() {
     // the value should deserialize back to an identical serde_json::Value.
     let expected_value = doc.value.clone();
 
-    db.store_document(&doc)
-        .expect("store_document failed");
+    db.store_document(&doc).expect("store_document failed");
 
     let retrieved = db
         .get_document("preserve-1:v1")
@@ -212,14 +206,8 @@ async fn test_list_documents_by_type() {
     db.store_document(&make_test_doc("list-c1", "v1", "config", None))
         .unwrap();
 
-    let agent_docs = db
-        .list_documents("agent")
-        .expect("list_documents failed");
-    assert_eq!(
-        agent_docs.len(),
-        2,
-        "Should list exactly 2 agent documents"
-    );
+    let agent_docs = db.list_documents("agent").expect("list_documents failed");
+    assert_eq!(agent_docs.len(), 2, "Should list exactly 2 agent documents");
     for key in &agent_docs {
         assert!(
             key.starts_with("list-a"),
@@ -228,9 +216,7 @@ async fn test_list_documents_by_type() {
         );
     }
 
-    let config_docs = db
-        .list_documents("config")
-        .expect("list_documents failed");
+    let config_docs = db.list_documents("config").expect("list_documents failed");
     assert_eq!(
         config_docs.len(),
         1,
@@ -244,8 +230,7 @@ async fn test_append_only_same_key() {
     let (db, _container) = setup_db().await;
 
     let doc = make_test_doc("dup-1", "v1", "agent", None);
-    db.store_document(&doc)
-        .expect("First store should succeed");
+    db.store_document(&doc).expect("First store should succeed");
 
     // Storing the same (id, version) again should silently do nothing.
     db.store_document(&doc)
@@ -421,25 +406,16 @@ async fn test_count_by_type() {
     let (db, _container) = setup_db().await;
 
     for i in 0..4 {
-        db.store_document(&make_test_doc(
-            &format!("cnt-{}", i),
-            "v1",
-            "message",
-            None,
-        ))
-        .unwrap();
+        db.store_document(&make_test_doc(&format!("cnt-{}", i), "v1", "message", None))
+            .unwrap();
     }
     db.store_document(&make_test_doc("cnt-other", "v1", "agent", None))
         .unwrap();
 
-    let count = db
-        .count_by_type("message")
-        .expect("count_by_type failed");
+    let count = db.count_by_type("message").expect("count_by_type failed");
     assert_eq!(count, 4, "Should count exactly 4 message documents");
 
-    let agent_count = db
-        .count_by_type("agent")
-        .expect("count_by_type failed");
+    let agent_count = db.count_by_type("agent").expect("count_by_type failed");
     assert_eq!(agent_count, 1, "Should count exactly 1 agent document");
 
     let zero_count = db
@@ -496,17 +472,14 @@ async fn test_bulk_store_and_retrieve() {
         make_test_doc("bulk-3", "v1", "config", None),
     ];
 
-    db.store_documents(docs)
-        .expect("store_documents failed");
+    db.store_documents(docs).expect("store_documents failed");
 
     let keys = vec![
         "bulk-1:v1".to_string(),
         "bulk-2:v1".to_string(),
         "bulk-3:v1".to_string(),
     ];
-    let retrieved = db
-        .get_documents(keys)
-        .expect("get_documents failed");
+    let retrieved = db.get_documents(keys).expect("get_documents failed");
 
     assert_eq!(retrieved.len(), 3, "Should retrieve all 3 documents");
     assert_eq!(retrieved[0].id, "bulk-1");
@@ -545,9 +518,7 @@ async fn test_get_versions_returns_full_documents() {
         .unwrap();
 
     // DatabaseDocumentTraits::get_versions returns full JACSDocument objects.
-    let versions = db
-        .get_versions("gv-1")
-        .expect("get_versions failed");
+    let versions = db.get_versions("gv-1").expect("get_versions failed");
     assert_eq!(versions.len(), 2);
     assert_eq!(versions[0].version, "v1", "Ordered by created_at ASC");
     assert_eq!(versions[1].version, "v2");
@@ -601,7 +572,7 @@ async fn test_store_documents_partial_idempotency() {
 
     let batch = vec![
         make_test_doc("batch-dup", "v1", "agent", None), // duplicate
-        make_test_doc("batch-new", "v1", "agent", None),  // new
+        make_test_doc("batch-new", "v1", "agent", None), // new
     ];
 
     // store_documents should succeed -- the duplicate is silently ignored.

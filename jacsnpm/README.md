@@ -2,6 +2,8 @@
 
 Sign and verify AI agent communications with cryptographic signatures.
 
+**Dependencies**: The `overrides` in `package.json` for `body-parser` and `qs` are for security (CVE-2024-45590). Do not remove them without re-auditing.
+
 ## Installation
 
 ```bash

@@ -68,13 +68,14 @@ use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
 use crate::storage::jenv::{get_env_var, get_required_env_var};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use tracing::debug;
 
 pub struct FsEncryptedStore;
 impl KeyStore for FsEncryptedStore {
     fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
-        eprintln!(
-            "[FsEncryptedStore::generate] Called with algorithm: {}",
-            spec.algorithm
+        debug!(
+            algorithm = %spec.algorithm,
+            "FsEncryptedStore::generate called"
         );
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
@@ -87,22 +88,18 @@ impl KeyStore for FsEncryptedStore {
                 other
             )).into()),
         };
-        eprintln!("[FsEncryptedStore::generate] Matched to enum: {:?}", algo);
         let (priv_key, pub_key) = match algo {
             CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::generate_keys()?,
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
             CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
                 crypt::pq::generate_keys()?
             }
-            CryptoSigningAlgorithm::Pq2025 => {
-                eprintln!("[FsEncryptedStore::generate] Calling pq2025::generate_keys()");
-                crypt::pq2025::generate_keys()?
-            }
+            CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
-        eprintln!(
-            "[FsEncryptedStore::generate] Generated keys: priv={} bytes, pub={} bytes",
-            priv_key.len(),
-            pub_key.len()
+        debug!(
+            priv_len = priv_key.len(),
+            pub_len = pub_key.len(),
+            "FsEncryptedStore::generate keys created"
         );
         // Persist using MultiStorage
         let storage = MultiStorage::default_new().map_err(|e| {
@@ -191,7 +188,11 @@ impl KeyStore for FsEncryptedStore {
             let decrypted = decrypt_private_key_secure(&bytes).map_err(|e| {
                 format!(
                     "Failed to decrypt private key from '{}': {}",
-                    if priv_path.ends_with(".enc") { &priv_path } else { &enc_path },
+                    if priv_path.ends_with(".enc") {
+                        &priv_path
+                    } else {
+                        &enc_path
+                    },
                     e
                 )
             })?;
@@ -239,7 +240,11 @@ impl KeyStore for FsEncryptedStore {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq-dilithium" => CryptoSigningAlgorithm::PqDilithium,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
-            other => return Err(JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into()),
+            other => {
+                return Err(
+                    JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into(),
+                );
+            }
         };
         let data = std::str::from_utf8(message).unwrap_or("").to_string();
         let sig_b64 = match algo {

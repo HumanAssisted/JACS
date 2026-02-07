@@ -13,6 +13,8 @@ pip install jacs
 uv pip install jacs[hai]
 ```
 
+To check dependencies for known vulnerabilities when using optional extras, run `pip audit` (or `safety check`).
+
 ## Quick Start (Simplified API)
 
 The simplified API gets you signing in under 2 minutes:

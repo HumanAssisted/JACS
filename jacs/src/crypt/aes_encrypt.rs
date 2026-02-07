@@ -195,12 +195,17 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Check against common weak passwords (case-insensitive)
     let lower = trimmed.to_lowercase();
     if WEAK_PASSWORDS.contains(&lower.as_str()) {
-        return Err("Password is too common and easily guessable. Please use a unique password.".into());
+        return Err(
+            "Password is too common and easily guessable. Please use a unique password.".into(),
+        );
     }
 
     // Check for excessive repetition
     if has_excessive_repetition(trimmed) {
-        return Err("Password contains too many repeated characters (4+ in a row). Use more variety.".into());
+        return Err(
+            "Password contains too many repeated characters (4+ in a row). Use more variety."
+                .into(),
+        );
     }
 
     // Check for sequential patterns
@@ -220,7 +225,8 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
         return Err(JacsError::CryptoError(format!(
             "Password entropy too low ({:.1} bits, minimum is {:.0} bits). {}",
             entropy, MIN_ENTROPY_BITS, suggestion
-        )).into());
+        ))
+        .into());
     }
 
     // Single character class passwords are allowed if they have sufficient entropy
@@ -318,7 +324,10 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
 /// This function returns a regular `Vec<u8>` for backwards compatibility.
 /// For new code, prefer `decrypt_private_key_secure` which returns a
 /// `ZeroizingVec` that automatically zeroizes memory on drop.
-#[deprecated(since = "0.6.0", note = "Use decrypt_private_key_secure() which returns ZeroizingVec for automatic memory zeroization")]
+#[deprecated(
+    since = "0.6.0",
+    note = "Use decrypt_private_key_secure() which returns ZeroizingVec for automatic memory zeroization"
+)]
 pub fn decrypt_private_key(
     encrypted_key_with_salt_and_nonce: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -581,7 +590,11 @@ mod tests {
 
         let original_key = b"secret data";
         let result = encrypt_private_key(original_key);
-        assert!(result.is_ok(), "8-character varied password should be accepted: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "8-character varied password should be accepted: {:?}",
+            result.err()
+        );
 
         remove_test_password();
     }
@@ -976,10 +989,9 @@ mod tests {
         // This tests the password validation with various unicode strings
         let unicode_passwords = [
             // High entropy unicode (should pass)
-            ("P@ssw0rd\u{1F600}", true),  // With emoji
-            ("密码Tr0ng!Pass", true),      // Chinese characters
+            ("P@ssw0rd\u{1F600}", true),           // With emoji
+            ("密码Tr0ng!Pass", true),              // Chinese characters
             ("\u{0391}\u{0392}Str0ng!P@ss", true), // Greek letters
-
             // Low entropy unicode (should fail)
             ("\u{1F600}\u{1F600}\u{1F600}\u{1F600}", false), // Just 4 emojis
         ];
@@ -1007,11 +1019,7 @@ mod tests {
     fn test_password_with_null_bytes_handled() {
         // Passwords with null bytes could cause issues in C-string contexts
         // These should either be accepted (if they meet entropy) or rejected gracefully
-        let passwords_with_nulls = [
-            "pass\0word12!@AB",
-            "\0passwordAB12!@",
-            "passwordAB12!@\0",
-        ];
+        let passwords_with_nulls = ["pass\0word12!@AB", "\0passwordAB12!@", "passwordAB12!@\0"];
 
         for password in passwords_with_nulls {
             let result = validate_password(password);
@@ -1043,9 +1051,9 @@ mod tests {
     fn test_keyboard_pattern_passwords() {
         // Common keyboard patterns should be rejected
         let keyboard_patterns = [
-            "qwertyuiop",    // Top row
-            "asdfghjkl",     // Middle row
-            "zxcvbnm123",    // Bottom row + numbers
+            "qwertyuiop", // Top row
+            "asdfghjkl",  // Middle row
+            "zxcvbnm123", // Bottom row + numbers
         ];
 
         for pattern in keyboard_patterns {
@@ -1086,7 +1094,9 @@ mod tests {
         );
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("JACS_PRIVATE_KEY_PASSWORD") || err_msg.contains("password") || err_msg.contains("environment"),
+            err_msg.contains("JACS_PRIVATE_KEY_PASSWORD")
+                || err_msg.contains("password")
+                || err_msg.contains("environment"),
             "Error should mention missing password: {}",
             err_msg
         );

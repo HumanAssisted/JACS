@@ -32,14 +32,13 @@ pub fn seal(
     plaintext: &[u8],
 ) -> Result<(Vec<u8>, [u8; AES_GCM_NONCE_SIZE], Vec<u8>), Box<dyn Error>> {
     // Convert slice to fixed-size array
-    let ek_array: [u8; ML_KEM_768_ENCAPS_KEY_SIZE] = recipient_pub
-        .try_into()
-        .map_err(|_| {
-            format!(
-                "Invalid encapsulation key length for ML-KEM-768: expected {} bytes, got {} bytes",
-                ML_KEM_768_ENCAPS_KEY_SIZE, recipient_pub.len()
-            )
-        })?;
+    let ek_array: [u8; ML_KEM_768_ENCAPS_KEY_SIZE] = recipient_pub.try_into().map_err(|_| {
+        format!(
+            "Invalid encapsulation key length for ML-KEM-768: expected {} bytes, got {} bytes",
+            ML_KEM_768_ENCAPS_KEY_SIZE,
+            recipient_pub.len()
+        )
+    })?;
     let ek = ml_kem_768::EncapsKey::try_from_bytes(ek_array)?;
     let (ss, ct) = ek.try_encaps()?;
 
@@ -75,24 +74,22 @@ pub fn open(
     aead_ct: &[u8],
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     // Convert slices to fixed-size arrays
-    let dk_array: [u8; ML_KEM_768_DECAPS_KEY_SIZE] = private_key
-        .try_into()
-        .map_err(|_| {
-            format!(
-                "Invalid decapsulation key length for ML-KEM-768: expected {} bytes, got {} bytes",
-                ML_KEM_768_DECAPS_KEY_SIZE, private_key.len()
-            )
-        })?;
+    let dk_array: [u8; ML_KEM_768_DECAPS_KEY_SIZE] = private_key.try_into().map_err(|_| {
+        format!(
+            "Invalid decapsulation key length for ML-KEM-768: expected {} bytes, got {} bytes",
+            ML_KEM_768_DECAPS_KEY_SIZE,
+            private_key.len()
+        )
+    })?;
     let dk = ml_kem_768::DecapsKey::try_from_bytes(dk_array)?;
 
-    let ct_array: [u8; ML_KEM_768_CIPHERTEXT_SIZE] = kem_ct
-        .try_into()
-        .map_err(|_| {
-            format!(
-                "Invalid KEM ciphertext length for ML-KEM-768: expected {} bytes, got {} bytes",
-                ML_KEM_768_CIPHERTEXT_SIZE, kem_ct.len()
-            )
-        })?;
+    let ct_array: [u8; ML_KEM_768_CIPHERTEXT_SIZE] = kem_ct.try_into().map_err(|_| {
+        format!(
+            "Invalid KEM ciphertext length for ML-KEM-768: expected {} bytes, got {} bytes",
+            ML_KEM_768_CIPHERTEXT_SIZE,
+            kem_ct.len()
+        )
+    })?;
     let ct = ml_kem_768::CipherText::try_from_bytes(ct_array)?;
 
     let ss = dk.try_decaps(&ct)?;

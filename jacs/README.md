@@ -73,7 +73,10 @@ jacs verify doc.json     # Verify a document
 - Do **not** open public issues for security vulnerabilities
 - We aim to respond within 48 hours
 
+**Dependency audit**: To check Rust dependencies for known vulnerabilities, run: `cargo install cargo-audit && cargo audit`.
+
 **Best Practices**:
+- Do not put the private key password in config; set `JACS_PRIVATE_KEY_PASSWORD` only.
 - Use strong passwords (12+ characters with mixed case, numbers, symbols)
 - Store private keys securely with appropriate file permissions
 - Keep JACS and its dependencies updated

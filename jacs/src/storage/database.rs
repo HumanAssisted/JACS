@@ -15,11 +15,11 @@
 
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
-use crate::storage::database_traits::DatabaseDocumentTraits;
 use crate::storage::StorageDocumentTraits;
+use crate::storage::database_traits::DatabaseDocumentTraits;
 use serde_json::Value;
-use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::Row;
+use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use std::error::Error;
 use std::time::Duration;
 use tokio::runtime::Handle;
@@ -51,17 +51,19 @@ impl DatabaseStorage {
             ),
         })?;
 
-        let pool = handle.block_on(async {
-            PgPoolOptions::new()
-                .max_connections(max_connections.unwrap_or(10))
-                .min_connections(min_connections.unwrap_or(1))
-                .acquire_timeout(Duration::from_secs(connect_timeout_secs.unwrap_or(30)))
-                .connect(database_url)
-                .await
-        }).map_err(|e| JacsError::DatabaseError {
-            operation: "connect".to_string(),
-            reason: e.to_string(),
-        })?;
+        let pool = handle
+            .block_on(async {
+                PgPoolOptions::new()
+                    .max_connections(max_connections.unwrap_or(10))
+                    .min_connections(min_connections.unwrap_or(1))
+                    .acquire_timeout(Duration::from_secs(connect_timeout_secs.unwrap_or(30)))
+                    .connect(database_url)
+                    .await
+            })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "connect".to_string(),
+                reason: e.to_string(),
+            })?;
 
         Ok(Self { pool, handle })
     }
@@ -443,20 +445,21 @@ impl DatabaseDocumentTraits for DatabaseStorage {
     }
 
     fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>> {
-        let count: i64 = self.block_on(async {
-            sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM jacs_document WHERE jacs_type = $1",
-            )
-            .bind(jacs_type)
-            .fetch_one(&self.pool)
-            .await
-        })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "count_by_type".to_string(),
-                reason: e.to_string(),
+        let count: i64 = self
+            .block_on(async {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM jacs_document WHERE jacs_type = $1",
+                )
+                .bind(jacs_type)
+                .fetch_one(&self.pool)
+                .await
             })
-        })?;
+            .map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "count_by_type".to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
 
         Ok(count as usize)
     }

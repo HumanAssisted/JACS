@@ -177,7 +177,11 @@ impl Agreement for Agent {
         }
 
         if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
-            return Err(JacsError::DocumentError(format!("document hashes should have changed {}", document_key)).into());
+            return Err(JacsError::DocumentError(format!(
+                "document hashes should have changed {}",
+                document_key
+            ))
+            .into());
         };
 
         Ok(updated_document)
@@ -208,7 +212,9 @@ impl Agreement for Agent {
                     let merged_agents = subtract_vecs(&agents_vec, agentids);
                     *agents = json!(merged_agents);
                 } else {
-                    return Err("Agreement modification failed: no agents present in agreement".into());
+                    return Err(
+                        "Agreement modification failed: no agents present in agreement".into(),
+                    );
                 }
             } else {
                 return Err("Agreement modification failed: agents field not found".into());
@@ -391,7 +397,11 @@ impl Agreement for Agent {
         }
 
         if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
-            return Err(JacsError::DocumentError(format!("document hashes should have changed {}", document_key)).into());
+            return Err(JacsError::DocumentError(format!(
+                "document hashes should have changed {}",
+                document_key
+            ))
+            .into());
         };
 
         Ok(updated_document)

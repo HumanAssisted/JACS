@@ -4,8 +4,8 @@
 //! shared `jacs-binding-core` crate for common functionality.
 
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
-use napi::bindgen_prelude::*;
 use napi::JsObject;
+use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value;
 
@@ -89,7 +89,12 @@ impl JacsAgent {
         public_key_enc_type: String,
     ) -> Result<bool> {
         self.inner
-            .verify_string(&data, &signature_base64, public_key.to_vec(), public_key_enc_type)
+            .verify_string(
+                &data,
+                &signature_base64,
+                public_key.to_vec(),
+                public_key_enc_type,
+            )
             .to_napi()
     }
 
@@ -154,7 +159,13 @@ impl JacsAgent {
         agreement_fieldname: Option<String>,
     ) -> Result<String> {
         self.inner
-            .create_agreement(&document_string, agentids, question, context, agreement_fieldname)
+            .create_agreement(
+                &document_string,
+                agentids,
+                question,
+                context,
+                agreement_fieldname,
+            )
             .to_napi()
     }
 
@@ -378,7 +389,12 @@ pub fn verify_string(
         )
     })?;
     agent
-        .verify_string(&data, &signature_base64, public_key.to_vec(), public_key_enc_type)
+        .verify_string(
+            &data,
+            &signature_base64,
+            public_key.to_vec(),
+            public_key_enc_type,
+        )
         .to_napi()
 }
 
@@ -479,7 +495,13 @@ pub fn create_agreement(
         )
     })?;
     agent
-        .create_agreement(&document_string, agentids, question, context, agreement_fieldname)
+        .create_agreement(
+            &document_string,
+            agentids,
+            question,
+            context,
+            agreement_fieldname,
+        )
         .to_napi()
 }
 

@@ -11,6 +11,7 @@ use secrecy::ExposeSecret;
 
 use crate::storage::jenv::get_env_var;
 use crate::time_utils;
+use crate::validation::require_relative_path_safe;
 use std::error::Error;
 use std::io::Write;
 use std::path::Path;
@@ -192,12 +193,13 @@ impl FileLoader for Agent {
             })?
             .to_string();
 
-        self.set_keys(private_key, agents_public_key, &key_algorithm).map_err(|e| {
-            format!(
-                "fs_load_keys failed: Could not set keys with algorithm '{}': {}",
-                key_algorithm, e
-            )
-        })?;
+        self.set_keys(private_key, agents_public_key, &key_algorithm)
+            .map_err(|e| {
+                format!(
+                    "fs_load_keys failed: Could not set keys with algorithm '{}': {}",
+                    key_algorithm, e
+                )
+            })?;
 
         Ok(())
     }
@@ -265,12 +267,14 @@ impl FileLoader for Agent {
                 private_key_filename, e
             )
         })?;
-        let public_path = self.make_key_directory_path(public_key_filename).map_err(|e| {
-            format!(
-                "fs_preload_keys failed: Could not construct path for public key file '{}': {}",
-                public_key_filename, e
-            )
-        })?;
+        let public_path = self
+            .make_key_directory_path(public_key_filename)
+            .map_err(|e| {
+                format!(
+                    "fs_preload_keys failed: Could not construct path for public key file '{}': {}",
+                    public_key_filename, e
+                )
+            })?;
 
         let private_key = self.storage.get_file(&private_path, None).map_err(|e| {
             format!(
@@ -520,21 +524,22 @@ impl FileLoader for Agent {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.storage
-            .get_file(filename, None)
-            .map_err(|e| {
-                let suggestion = if e.to_string().contains("not found") || e.to_string().contains("NotFound") {
-                    " Ensure the key file exists or run key generation first."
-                } else if e.to_string().contains("permission") || e.to_string().contains("Permission") {
-                    " Check file permissions - the key file may not be readable by the current user."
-                } else {
-                    ""
-                };
-                format!(
-                    "Failed to read key file '{}': {}.{}",
-                    filename, e, suggestion
-                ).into()
-            })
+        self.storage.get_file(filename, None).map_err(|e| {
+            let suggestion = if e.to_string().contains("not found")
+                || e.to_string().contains("NotFound")
+            {
+                " Ensure the key file exists or run key generation first."
+            } else if e.to_string().contains("permission") || e.to_string().contains("Permission") {
+                " Check file permissions - the key file may not be readable by the current user."
+            } else {
+                ""
+            };
+            format!(
+                "Failed to read key file '{}': {}.{}",
+                filename, e, suggestion
+            )
+            .into()
+        })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -618,7 +623,9 @@ impl FileLoader for Agent {
     }
 
     fn make_data_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>> {
-        info!("config!: {:?}", self.config);
+        // Path validated to prevent traversal from untrusted input (e.g. publicKeyHash).
+        require_relative_path_safe(filename)
+            .map_err::<Box<dyn Error>, _>(|e| e.to_string().into())?;
         // Fail if config or specific directory is missing
         let mut data_dir = self
             .config
@@ -646,6 +653,9 @@ impl FileLoader for Agent {
         Ok(path)
     }
     fn make_key_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>> {
+        // Path validated to prevent traversal from untrusted input.
+        require_relative_path_safe(filename)
+            .map_err::<Box<dyn Error>, _>(|e| e.to_string().into())?;
         // Fail if config or specific directory is missing
         let mut key_dir = self
             .config
@@ -824,7 +834,10 @@ fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
 /// * `HAI_KEY_FETCH_RETRIES` - Number of retry attempts for network errors. Defaults to 3.
 ///   Set to 0 to disable retries.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<PublicKeyInfo, JacsError> {
+pub fn fetch_public_key_from_hai(
+    agent_id: &str,
+    version: &str,
+) -> Result<PublicKeyInfo, JacsError> {
     // Validate agent_id and version are valid UUIDs to prevent URL path traversal
     uuid::Uuid::parse_str(agent_id).map_err(|e| {
         JacsError::ValidationError(format!(
@@ -850,7 +863,10 @@ pub fn fetch_public_key_from_hai(agent_id: &str, version: &str) -> Result<Public
         std::env::var("HAI_KEYS_BASE_URL").unwrap_or_else(|_| "https://keys.hai.ai".to_string());
 
     // Enforce HTTPS for security (prevent MITM on key fetch)
-    if !base_url.starts_with("https://") && !base_url.starts_with("http://localhost") && !base_url.starts_with("http://127.0.0.1") {
+    if !base_url.starts_with("https://")
+        && !base_url.starts_with("http://localhost")
+        && !base_url.starts_with("http://127.0.0.1")
+    {
         return Err(JacsError::ConfigError(format!(
             "HAI_KEYS_BASE_URL must use HTTPS (got '{}'). \
             Only localhost URLs are allowed over HTTP for testing.",
@@ -1044,8 +1060,10 @@ mod tests {
         fn test_decode_public_key_base64_with_whitespace() {
             // Test Base64 with leading/trailing whitespace
             let key_bytes = vec![10, 20, 30, 40];
-            let base64_encoded =
-                format!("  {}  ", base64::engine::general_purpose::STANDARD.encode(&key_bytes));
+            let base64_encoded = format!(
+                "  {}  ",
+                base64::engine::general_purpose::STANDARD.encode(&key_bytes)
+            );
 
             let decoded = decode_public_key(&base64_encoded).unwrap();
             assert_eq!(decoded, key_bytes);

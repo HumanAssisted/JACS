@@ -523,10 +523,10 @@ impl Schema {
 
         let todo_path = format!("schemas/todo/{}/todo.schema.json", default_version);
 
-
         // Helper to get schema with better error messages
         let get_schema = |path: &str| -> Result<&str, Box<dyn std::error::Error>> {
-            DEFAULT_SCHEMA_STRINGS.get(path)
+            DEFAULT_SCHEMA_STRINGS
+                .get(path)
                 .copied()
                 .ok_or_else(|| format!("Schema not found: {}", path).into())
         };
@@ -713,10 +713,7 @@ impl Schema {
     }
 
     /// Validates a JSON string against the todo schema.
-    pub fn validate_todo(
-        &self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_todo(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
         let instance: serde_json::Value = match serde_json::from_str(json) {
             Ok(value) => {
                 debug!("validate json {:?}", value);

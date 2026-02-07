@@ -44,6 +44,10 @@ jobs:
         working-directory: jacsnpm
         run: npm ci || npm install
 
+      - name: Run npm audit
+        working-directory: jacsnpm
+        run: npm audit --audit-level=high || true
+
       - name: Build native module
         working-directory: jacsnpm
         run: npm run build

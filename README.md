@@ -12,6 +12,14 @@ JACS provides cryptographic signatures for AI agent communications. Every messag
 - **Integrity**: Detect tampering
 - **Non-repudiation**: Signed actions can't be denied
 
+## First run (minimal setup)
+
+1. Copy `jacs.config.example.json` to `jacs.config.json` (or use `jacs config create`).
+2. Set `JACS_PRIVATE_KEY_PASSWORD` in your environment (never put the password in the config file).
+3. Run `jacs agent create` or `jacs init` as documented, then sign/verify as in Quick Start below.
+
+For runtime signing, set `JACS_PRIVATE_KEY_PASSWORD` (or use a keychain). The CLI can prompt during init; scripts and servers must set the env var.
+
 ## Quick Start
 
 ### Python
@@ -113,6 +121,21 @@ agent_card = a2a.export_agent_card(agent_data)
 wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
 ```
 
+## Verification and key resolution
+
+When verifying signatures, JACS looks up signers' public keys in an order controlled by `JACS_KEY_RESOLUTION` (comma-separated: `local`, `dns`, `hai`). Default is `local,hai` (local trust store first, then HAI key service). For air-gapped use, set `JACS_KEY_RESOLUTION=local`.
+
+## Supported algorithms
+
+Signing and verification support: **ring-Ed25519**, **RSA-PSS**, **pq-dilithium**, **pq2025** (ML-DSA). Set `jacs_agent_key_algorithm` in config or `JACS_AGENT_KEY_ALGORITHM` in the environment.
+
+## Troubleshooting
+
+- **Config not found**: Copy `jacs.config.example.json` to `jacs.config.json` and set required env vars (see First run).
+- **Private key decryption failed**: Wrong password or wrong key file. Ensure `JACS_PRIVATE_KEY_PASSWORD` matches the password used when generating keys.
+- **Required environment variable X not set**: Set the variable per the [config docs](https://humanassisted.github.io/JACS/); common ones are `JACS_KEY_DIRECTORY`, `JACS_DATA_DIRECTORY`, `JACS_AGENT_PRIVATE_KEY_FILENAME`, `JACS_AGENT_PUBLIC_KEY_FILENAME`, `JACS_AGENT_KEY_ALGORITHM`, `JACS_AGENT_ID_AND_VERSION`.
+- **Algorithm detection failed**: Set the `signingAlgorithm` field in the document, or use `JACS_REQUIRE_EXPLICIT_ALGORITHM=true` to require it.
+
 ## Post-Quantum Cryptography
 
 JACS supports NIST-standardized post-quantum algorithms:
@@ -137,7 +160,7 @@ JACS supports NIST-standardized post-quantum algorithms:
 
 ## Version
 
-Current version: **0.5.1**
+Current version: **0.6.0**
 
 ## License
 

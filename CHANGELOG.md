@@ -1,3 +1,19 @@
+## 0.6.0
+
+### Security
+
+- **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).
+- **Config and keystore logging**: Removed config debug log in loaders; keystore key generation no longer prints to stderr by default (uses `tracing::debug`).
+- **Example config**: `jacs.config.example.json` no longer contains `jacs_private_key_password`; use `JACS_PRIVATE_KEY_PASSWORD` environment variable only.
+
+### Documentation
+
+- **SECURITY.md**: Added short "Security model" subsection (password via env only, keys encrypted at rest, path validation, no secrets in config).
+- **README**: First-run minimal setup, verification and key resolution (`JACS_KEY_RESOLUTION`), supported algorithms, troubleshooting, dependency audit instructions, runtime password note.
+- **jacsnpm**: Documented that `overrides` for `body-parser` and `qs` are for security (CVE-2024-45590). Added `npm audit` step in CI.
+- **jacspy**: Aligned key resolution docstring with Rust (comma-separated `local,dns,hai`); added note to run `pip audit` when using optional deps.
+
+
 ## 0.5.2
 
 ### Security

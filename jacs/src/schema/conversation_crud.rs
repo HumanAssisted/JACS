@@ -127,10 +127,7 @@ mod tests {
     #[test]
     fn test_get_previous_message_id() {
         let msg = json!({"jacsMessagePreviousId": "prev-id"});
-        assert_eq!(
-            get_previous_message_id(&msg),
-            Some("prev-id".to_string())
-        );
+        assert_eq!(get_previous_message_id(&msg), Some("prev-id".to_string()));
         let msg2 = json!({});
         assert_eq!(get_previous_message_id(&msg2), None);
     }

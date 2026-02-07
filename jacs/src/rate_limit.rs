@@ -224,7 +224,8 @@ impl RateLimiter {
             }
 
             // Sleep for a short interval before retrying
-            let sleep_duration = Duration::from_secs_f64(1.0 / self.rate).min(Duration::from_millis(100));
+            let sleep_duration =
+                Duration::from_secs_f64(1.0 / self.rate).min(Duration::from_millis(100));
             let remaining = deadline.saturating_duration_since(Instant::now());
             std::thread::sleep(sleep_duration.min(remaining));
         }

@@ -160,13 +160,19 @@ fn test_update_cannot_downgrade_claim() {
     let original = "verified";
     let new_claim = "unverified";
     let is_downgrade = claim_level(new_claim) < claim_level(original);
-    assert!(is_downgrade, "verified -> unverified should be detected as downgrade");
+    assert!(
+        is_downgrade,
+        "verified -> unverified should be detected as downgrade"
+    );
 
     // Test upgrade detection (allowed)
     let original2 = "verified";
     let new_claim2 = "verified-hai.ai";
     let is_upgrade = claim_level(new_claim2) > claim_level(original2);
-    assert!(is_upgrade, "verified -> verified-hai.ai should be detected as upgrade");
+    assert!(
+        is_upgrade,
+        "verified -> verified-hai.ai should be detected as upgrade"
+    );
 
     // Test same level (allowed)
     let original3 = "verified";

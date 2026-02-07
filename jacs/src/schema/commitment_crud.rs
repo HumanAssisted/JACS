@@ -32,20 +32,14 @@ pub fn create_minimal_commitment(description: &str) -> Result<Value, String> {
 }
 
 /// Creates a commitment with structured terms.
-pub fn create_commitment_with_terms(
-    description: &str,
-    terms: Value,
-) -> Result<Value, String> {
+pub fn create_commitment_with_terms(description: &str, terms: Value) -> Result<Value, String> {
     let mut doc = create_minimal_commitment(description)?;
     doc["jacsCommitmentTerms"] = terms;
     Ok(doc)
 }
 
 /// Updates the status of a commitment.
-pub fn update_commitment_status(
-    commitment: &mut Value,
-    new_status: &str,
-) -> Result<(), String> {
+pub fn update_commitment_status(commitment: &mut Value, new_status: &str) -> Result<(), String> {
     if !ALLOWED_STATUSES.contains(&new_status) {
         return Err(format!(
             "Invalid commitment status: '{}'. Must be one of: {:?}",
@@ -147,7 +141,12 @@ pub fn set_commitment_recurrence(
     interval: u32,
 ) -> Result<(), String> {
     let allowed_frequencies = [
-        "daily", "weekly", "biweekly", "monthly", "quarterly", "yearly",
+        "daily",
+        "weekly",
+        "biweekly",
+        "monthly",
+        "quarterly",
+        "yearly",
     ];
     if !allowed_frequencies.contains(&frequency) {
         return Err(format!(
@@ -203,10 +202,7 @@ mod tests {
         let mut doc = create_minimal_commitment("Test").unwrap();
         dispute_commitment(&mut doc, "Terms are unacceptable").unwrap();
         assert_eq!(doc["jacsCommitmentStatus"], "disputed");
-        assert_eq!(
-            doc["jacsCommitmentDisputeReason"],
-            "Terms are unacceptable"
-        );
+        assert_eq!(doc["jacsCommitmentDisputeReason"], "Terms are unacceptable");
     }
 
     #[test]

@@ -136,7 +136,7 @@ mod tests {
         let invalid_signatures = [
             "!!!not-valid-base64!!!",
             "abc@#$%",
-            "====",             // Only padding
+            "====", // Only padding
         ];
 
         for invalid_sig in invalid_signatures {
@@ -151,7 +151,8 @@ mod tests {
 
     #[test]
     fn test_verify_wrong_signature_rejected() {
-        let (private_key, public_key) = generate_test_keys().expect("key generation should succeed");
+        let (private_key, public_key) =
+            generate_test_keys().expect("key generation should succeed");
         let original_data = "original data";
         let tampered_data = "tampered data";
 
@@ -168,7 +169,8 @@ mod tests {
 
     #[test]
     fn test_verify_signature_from_different_key_rejected() {
-        let (private_key_1, _public_key_1) = generate_test_keys().expect("key generation should succeed");
+        let (private_key_1, _public_key_1) =
+            generate_test_keys().expect("key generation should succeed");
         let (_, public_key_2) = generate_test_keys().expect("key generation should succeed");
         let data = "test data";
 
@@ -185,7 +187,8 @@ mod tests {
 
     #[test]
     fn test_verify_truncated_signature_rejected() {
-        let (private_key, public_key) = generate_test_keys().expect("key generation should succeed");
+        let (private_key, public_key) =
+            generate_test_keys().expect("key generation should succeed");
         let data = "test data";
 
         // Sign the data
@@ -199,7 +202,8 @@ mod tests {
 
     #[test]
     fn test_verify_corrupted_signature_rejected() {
-        let (private_key, public_key) = generate_test_keys().expect("key generation should succeed");
+        let (private_key, public_key) =
+            generate_test_keys().expect("key generation should succeed");
         let data = "test data";
 
         // Sign the data
@@ -228,17 +232,14 @@ mod tests {
 
         // Use invalid public keys
         let invalid_public_keys: Vec<Vec<u8>> = vec![
-            vec![],                      // Empty
-            b"not a pem key".to_vec(),   // Invalid format
+            vec![],                    // Empty
+            b"not a pem key".to_vec(), // Invalid format
             b"-----BEGIN PUBLIC KEY-----\nInvalid\n-----END PUBLIC KEY-----".to_vec(),
         ];
 
         for invalid_key in invalid_public_keys {
             let result = verify_string(invalid_key.clone(), data, &signature);
-            assert!(
-                result.is_err(),
-                "Invalid public key should be rejected"
-            );
+            assert!(result.is_err(), "Invalid public key should be rejected");
         }
     }
 
@@ -262,8 +263,8 @@ mod tests {
 
         // Invalid private keys
         let invalid_private_keys: Vec<Vec<u8>> = vec![
-            vec![],                      // Empty
-            b"not a pem key".to_vec(),   // Invalid format
+            vec![],                    // Empty
+            b"not a pem key".to_vec(), // Invalid format
             b"-----BEGIN PRIVATE KEY-----\nInvalid\n-----END PRIVATE KEY-----".to_vec(),
         ];
 
@@ -290,17 +291,23 @@ mod tests {
 
     #[test]
     fn test_sign_verify_roundtrip() {
-        let (private_key, public_key) = generate_test_keys().expect("key generation should succeed");
+        let (private_key, public_key) =
+            generate_test_keys().expect("key generation should succeed");
         let data = "test data for signing";
 
         let signature = sign_string(private_key, data).expect("signing should succeed");
         let result = verify_string(public_key, data, &signature);
-        assert!(result.is_ok(), "Valid signature should verify: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Valid signature should verify: {:?}",
+            result
+        );
     }
 
     #[test]
     fn test_sign_empty_data() {
-        let (private_key, public_key) = generate_test_keys().expect("key generation should succeed");
+        let (private_key, public_key) =
+            generate_test_keys().expect("key generation should succeed");
         let data = "";
 
         let signature = sign_string(private_key, data).expect("signing empty data should succeed");

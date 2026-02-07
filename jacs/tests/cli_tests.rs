@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
 }; // Run programs // To read CARGO_PKG_VERSION
 mod utils;
-use utils::{fixtures_raw_dir, PASSWORD_ENV_VAR, TEST_PASSWORD};
+use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD, fixtures_raw_dir};
 // static INIT: Once = Once::new();
 
 // fn setup() {
@@ -31,7 +31,9 @@ fn test_agent_lookup_help() -> Result<(), Box<dyn Error>> {
     cmd.arg("agent").arg("lookup").arg("--help");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Look up another agent's public key"))
+        .stdout(predicate::str::contains(
+            "Look up another agent's public key",
+        ))
         .stdout(predicate::str::contains("<domain>"))
         .stdout(predicate::str::contains("--no-dns"))
         .stdout(predicate::str::contains("--strict"));

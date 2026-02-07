@@ -9,8 +9,7 @@ use jacs::schema::reference_utils::{
     build_todo_item_ref, get_uuid_ref, parse_todo_item_ref, validate_uuid_ref,
 };
 use jacs::schema::todo_crud::{
-    add_todo_item, create_minimal_todo_list, set_item_commitment_ref,
-    set_item_conversation_ref,
+    add_todo_item, create_minimal_todo_list, set_item_commitment_ref, set_item_conversation_ref,
 };
 use serde_json::json;
 
@@ -116,9 +115,8 @@ fn test_commitment_to_todo_workflow() {
     let mut agent = load_test_agent_one();
 
     // Step 1: Create and sign a commitment.
-    let commitment =
-        create_minimal_commitment("Implement authentication module")
-            .expect("Should create commitment");
+    let commitment = create_minimal_commitment("Implement authentication module")
+        .expect("Should create commitment");
 
     let loaded_commitment = agent
         .create_document_and_load(&commitment.to_string(), None, None)
@@ -132,11 +130,16 @@ fn test_commitment_to_todo_workflow() {
         .to_string();
 
     // Step 2: Create a todo list with a task item linked to the commitment.
-    let mut todo_list = create_minimal_todo_list("Auth Module Tasks")
-        .expect("Should create todo list");
+    let mut todo_list =
+        create_minimal_todo_list("Auth Module Tasks").expect("Should create todo list");
 
-    let task_id = add_todo_item(&mut todo_list, "task", "Write auth middleware", Some("high"))
-        .expect("Should add task item");
+    let task_id = add_todo_item(
+        &mut todo_list,
+        "task",
+        "Write auth middleware",
+        Some("high"),
+    )
+    .expect("Should add task item");
 
     set_item_commitment_ref(&mut todo_list, &task_id, &commitment_jacs_id)
         .expect("Should set commitment reference on todo item");
@@ -261,12 +264,10 @@ fn test_full_lifecycle_conversation_commitment_todo() {
 
     // --- (b) Create a commitment referencing the conversation thread ---
 
-    let mut commitment =
-        create_minimal_commitment("Deliver Q2 release scope as discussed")
-            .expect("Should create commitment");
+    let mut commitment = create_minimal_commitment("Deliver Q2 release scope as discussed")
+        .expect("Should create commitment");
 
-    set_conversation_ref(&mut commitment, &thread_id)
-        .expect("Should set conversation ref");
+    set_conversation_ref(&mut commitment, &thread_id).expect("Should set conversation ref");
 
     let loaded_commitment = agent
         .create_document_and_load(&commitment.to_string(), None, None)
@@ -280,11 +281,16 @@ fn test_full_lifecycle_conversation_commitment_todo() {
 
     // --- (c) Create a todo list with an item linked to the commitment ---
 
-    let mut todo_list = create_minimal_todo_list("Q2 Release Tasks")
-        .expect("Should create todo list");
+    let mut todo_list =
+        create_minimal_todo_list("Q2 Release Tasks").expect("Should create todo list");
 
-    let task_id = add_todo_item(&mut todo_list, "task", "Implement release pipeline", Some("high"))
-        .expect("Should add task item");
+    let task_id = add_todo_item(
+        &mut todo_list,
+        "task",
+        "Implement release pipeline",
+        Some("high"),
+    )
+    .expect("Should add task item");
 
     set_item_commitment_ref(&mut todo_list, &task_id, &commitment_jacs_id)
         .expect("Should link todo item to commitment");
@@ -390,11 +396,16 @@ fn test_todo_ref_format_on_commitment() {
     let mut agent = load_test_agent_one();
 
     // Step 1: Create a todo list and add an item.
-    let mut todo_list = create_minimal_todo_list("Ref Format Test List")
-        .expect("Should create todo list");
+    let mut todo_list =
+        create_minimal_todo_list("Ref Format Test List").expect("Should create todo list");
 
-    let _item_id = add_todo_item(&mut todo_list, "task", "Validate ref format", Some("medium"))
-        .expect("Should add task item");
+    let _item_id = add_todo_item(
+        &mut todo_list,
+        "task",
+        "Validate ref format",
+        Some("medium"),
+    )
+    .expect("Should add task item");
 
     // Step 2: Sign the todo list to get its jacsId.
     let loaded_todo = agent
@@ -418,8 +429,8 @@ fn test_todo_ref_format_on_commitment() {
         .to_string();
 
     // Step 3: Build a todo ref in the format list-uuid:item-uuid.
-    let todo_ref = build_todo_item_ref(&list_jacs_id, &signed_item_id)
-        .expect("Should build todo item ref");
+    let todo_ref =
+        build_todo_item_ref(&list_jacs_id, &signed_item_id).expect("Should build todo item ref");
 
     assert!(
         todo_ref.contains(':'),
@@ -435,9 +446,8 @@ fn test_todo_ref_format_on_commitment() {
     );
 
     // Step 4: Set the todo ref on a commitment.
-    let mut commitment =
-        create_minimal_commitment("Commitment linked to todo item via ref")
-            .expect("Should create commitment");
+    let mut commitment = create_minimal_commitment("Commitment linked to todo item via ref")
+        .expect("Should create commitment");
 
     set_todo_ref(&mut commitment, &todo_ref).expect("Should set todo ref on commitment");
 
@@ -485,9 +495,8 @@ fn test_commitment_dispute_workflow() {
     let mut agent = load_test_agent_one();
 
     // Version 1: Create and sign a pending commitment.
-    let commitment =
-        create_minimal_commitment("Partnership agreement for Q2")
-            .expect("Should create commitment");
+    let commitment = create_minimal_commitment("Partnership agreement for Q2")
+        .expect("Should create commitment");
 
     let v1 = agent
         .create_document_and_load(&commitment.to_string(), None, None)
@@ -507,8 +516,7 @@ fn test_commitment_dispute_workflow() {
 
     // Version 2: Update to "active" and re-sign.
     let mut v2_input = v1_value.clone();
-    update_commitment_status(&mut v2_input, "active")
-        .expect("Should update status to active");
+    update_commitment_status(&mut v2_input, "active").expect("Should update status to active");
 
     let v2 = agent
         .update_document(&v1_key, &v2_input.to_string(), None, None)
@@ -521,7 +529,10 @@ fn test_commitment_dispute_workflow() {
         .expect("v2 should have jacsVersion")
         .to_string();
 
-    assert_ne!(v1_version, v2_version, "v1 and v2 must have different versions");
+    assert_ne!(
+        v1_version, v2_version,
+        "v1 and v2 must have different versions"
+    );
     assert_eq!(
         v2_value["jacsPreviousVersion"].as_str().unwrap(),
         v1_version,
@@ -534,8 +545,11 @@ fn test_commitment_dispute_workflow() {
 
     // Version 3: Dispute with a reason and re-sign.
     let mut v3_input = v2_value.clone();
-    dispute_commitment(&mut v3_input, "Deliverable quality does not meet agreed standards")
-        .expect("Should dispute commitment");
+    dispute_commitment(
+        &mut v3_input,
+        "Deliverable quality does not meet agreed standards",
+    )
+    .expect("Should dispute commitment");
 
     let v3 = agent
         .update_document(&v2_key, &v3_input.to_string(), None, None)
@@ -549,8 +563,14 @@ fn test_commitment_dispute_workflow() {
         .to_string();
 
     // Verify the version chain.
-    assert_ne!(v2_version, v3_version, "v2 and v3 must have different versions");
-    assert_ne!(v1_version, v3_version, "v1 and v3 must have different versions");
+    assert_ne!(
+        v2_version, v3_version,
+        "v2 and v3 must have different versions"
+    );
+    assert_ne!(
+        v1_version, v3_version,
+        "v1 and v3 must have different versions"
+    );
     assert_eq!(
         v3_value["jacsPreviousVersion"].as_str().unwrap(),
         v2_version,
@@ -587,8 +607,7 @@ fn test_todo_item_lifecycle_with_refs() {
 
     // Create and sign a commitment so we have a real jacsId to reference.
     let commitment =
-        create_minimal_commitment("Build the dashboard feature")
-            .expect("Should create commitment");
+        create_minimal_commitment("Build the dashboard feature").expect("Should create commitment");
 
     let loaded_commitment = agent
         .create_document_and_load(&commitment.to_string(), None, None)
@@ -600,14 +619,24 @@ fn test_todo_item_lifecycle_with_refs() {
         .to_string();
 
     // Create a todo list with a goal and a task.
-    let mut todo_list = create_minimal_todo_list("Dashboard Feature Tasks")
-        .expect("Should create todo list");
+    let mut todo_list =
+        create_minimal_todo_list("Dashboard Feature Tasks").expect("Should create todo list");
 
-    let _goal_id = add_todo_item(&mut todo_list, "goal", "Complete dashboard feature", Some("high"))
-        .expect("Should add goal");
+    let _goal_id = add_todo_item(
+        &mut todo_list,
+        "goal",
+        "Complete dashboard feature",
+        Some("high"),
+    )
+    .expect("Should add goal");
 
-    let task_id = add_todo_item(&mut todo_list, "task", "Implement data widgets", Some("medium"))
-        .expect("Should add task");
+    let task_id = add_todo_item(
+        &mut todo_list,
+        "task",
+        "Implement data widgets",
+        Some("medium"),
+    )
+    .expect("Should add task");
 
     // Link the task to the commitment.
     set_item_commitment_ref(&mut todo_list, &task_id, &commitment_jacs_id)
@@ -660,7 +689,10 @@ fn test_todo_item_lifecycle_with_refs() {
         .iter()
         .find(|item| item.get("itemId").and_then(|id| id.as_str()) == Some(&task_id))
         .expect("Task should exist in v2");
-    assert_eq!(v2_task["status"], "in-progress", "Task should be in-progress in v2");
+    assert_eq!(
+        v2_task["status"], "in-progress",
+        "Task should be in-progress in v2"
+    );
     assert_eq!(
         v2_task["relatedCommitmentId"], commitment_jacs_id,
         "Commitment ref should persist through status update"
@@ -692,7 +724,10 @@ fn test_todo_item_lifecycle_with_refs() {
         .iter()
         .find(|item| item.get("itemId").and_then(|id| id.as_str()) == Some(&task_id))
         .expect("Task should exist in v3");
-    assert_eq!(v3_task["status"], "completed", "Task should be completed in v3");
+    assert_eq!(
+        v3_task["status"], "completed",
+        "Task should be completed in v3"
+    );
     assert_eq!(
         v3_task["completedDate"], "2026-02-05T15:00:00Z",
         "completedDate should be set"
@@ -705,9 +740,7 @@ fn test_todo_item_lifecycle_with_refs() {
         .get_mut("jacsTodoItems")
         .and_then(|v| v.as_array_mut())
     {
-        items.retain(|item| {
-            item.get("status").and_then(|s| s.as_str()) != Some("completed")
-        });
+        items.retain(|item| item.get("status").and_then(|s| s.as_str()) != Some("completed"));
     }
 
     let v4 = agent
@@ -770,8 +803,7 @@ fn test_multiple_commitments_one_conversation() {
         let mut commitment =
             create_minimal_commitment(description).expect("Should create commitment");
 
-        set_conversation_ref(&mut commitment, &thread_id)
-            .expect("Should set conversation ref");
+        set_conversation_ref(&mut commitment, &thread_id).expect("Should set conversation ref");
 
         let loaded = agent
             .create_document_and_load(&commitment.to_string(), None, None)
@@ -851,9 +883,8 @@ fn test_reference_utils_with_real_documents() {
     let msg_value = loaded_msg.getvalue().clone();
 
     // Create and sign a commitment.
-    let commitment =
-        create_minimal_commitment("Reference utils test commitment")
-            .expect("Should create commitment");
+    let commitment = create_minimal_commitment("Reference utils test commitment")
+        .expect("Should create commitment");
 
     let loaded_commitment = agent
         .create_document_and_load(&commitment.to_string(), None, None)
@@ -861,11 +892,10 @@ fn test_reference_utils_with_real_documents() {
     let commitment_value = loaded_commitment.getvalue().clone();
 
     // Create and sign a todo list with an item.
-    let mut todo_list = create_minimal_todo_list("Reference Utils Test List")
-        .expect("Should create todo list");
+    let mut todo_list =
+        create_minimal_todo_list("Reference Utils Test List").expect("Should create todo list");
 
-    add_todo_item(&mut todo_list, "task", "Test ref utils", None)
-        .expect("Should add task item");
+    add_todo_item(&mut todo_list, "task", "Test ref utils", None).expect("Should add task item");
 
     let loaded_todo = agent
         .create_document_and_load(&todo_list.to_string(), None, None)
@@ -875,15 +905,18 @@ fn test_reference_utils_with_real_documents() {
     // --- Test get_uuid_ref on real signed documents ---
 
     // Extract jacsId from each document using get_uuid_ref.
-    let msg_jacs_id = get_uuid_ref(&msg_value, "jacsId")
-        .expect("Should extract jacsId from message");
-    let commitment_jacs_id = get_uuid_ref(&commitment_value, "jacsId")
-        .expect("Should extract jacsId from commitment");
-    let todo_jacs_id = get_uuid_ref(&todo_value, "jacsId")
-        .expect("Should extract jacsId from todo list");
+    let msg_jacs_id =
+        get_uuid_ref(&msg_value, "jacsId").expect("Should extract jacsId from message");
+    let commitment_jacs_id =
+        get_uuid_ref(&commitment_value, "jacsId").expect("Should extract jacsId from commitment");
+    let todo_jacs_id =
+        get_uuid_ref(&todo_value, "jacsId").expect("Should extract jacsId from todo list");
 
     // All extracted IDs should be non-empty.
-    assert!(!msg_jacs_id.is_empty(), "Message jacsId should not be empty");
+    assert!(
+        !msg_jacs_id.is_empty(),
+        "Message jacsId should not be empty"
+    );
     assert!(
         !commitment_jacs_id.is_empty(),
         "Commitment jacsId should not be empty"
@@ -891,8 +924,8 @@ fn test_reference_utils_with_real_documents() {
     assert!(!todo_jacs_id.is_empty(), "Todo jacsId should not be empty");
 
     // Extract threadID from the message.
-    let extracted_thread_id = get_uuid_ref(&msg_value, "threadID")
-        .expect("Should extract threadID from message");
+    let extracted_thread_id =
+        get_uuid_ref(&msg_value, "threadID").expect("Should extract threadID from message");
     assert_eq!(
         extracted_thread_id, thread_id,
         "Extracted threadID must match the original"
@@ -907,14 +940,10 @@ fn test_reference_utils_with_real_documents() {
     // --- Test validate_uuid_ref on real document IDs ---
 
     // The jacsId values from signed documents should be valid UUIDs.
-    validate_uuid_ref(&msg_jacs_id)
-        .expect("Message jacsId should be a valid UUID");
-    validate_uuid_ref(&commitment_jacs_id)
-        .expect("Commitment jacsId should be a valid UUID");
-    validate_uuid_ref(&todo_jacs_id)
-        .expect("Todo jacsId should be a valid UUID");
-    validate_uuid_ref(&thread_id)
-        .expect("Thread ID should be a valid UUID");
+    validate_uuid_ref(&msg_jacs_id).expect("Message jacsId should be a valid UUID");
+    validate_uuid_ref(&commitment_jacs_id).expect("Commitment jacsId should be a valid UUID");
+    validate_uuid_ref(&todo_jacs_id).expect("Todo jacsId should be a valid UUID");
+    validate_uuid_ref(&thread_id).expect("Thread ID should be a valid UUID");
 
     // Invalid strings should fail validation.
     assert!(
@@ -938,8 +967,8 @@ fn test_reference_utils_with_real_documents() {
         .to_string();
 
     // Build a todo ref from real document IDs.
-    let todo_ref = build_todo_item_ref(&todo_jacs_id, &item_id)
-        .expect("Should build todo ref from real IDs");
+    let todo_ref =
+        build_todo_item_ref(&todo_jacs_id, &item_id).expect("Should build todo ref from real IDs");
 
     let expected_ref = format!("{}:{}", todo_jacs_id, item_id);
     assert_eq!(

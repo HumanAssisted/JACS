@@ -62,13 +62,9 @@ fn test_agentstate_with_file_reference() {
     fs::write(&file_path, "# Project Memory\n\nThis is test content.")
         .expect("Failed to write test file");
 
-    let doc = create_agentstate_with_file(
-        "memory",
-        "Test Memory",
-        file_path.to_str().unwrap(),
-        false,
-    )
-    .expect("Should create agentstate with file");
+    let doc =
+        create_agentstate_with_file("memory", "Test Memory", file_path.to_str().unwrap(), false)
+            .expect("Should create agentstate with file");
 
     assert_eq!(doc["jacsAgentStateType"], "memory");
     assert_eq!(doc["jacsAgentStateName"], "Test Memory");
@@ -85,14 +81,11 @@ fn test_agentstate_with_file_reference() {
 /// Step 0.5: Test creating an agentstate with embedded content (hooks).
 #[test]
 fn test_agentstate_with_embedded_content() {
-    let hook_content = r#"{"event":"PreToolUse","matcher":{"tool_name":"Bash"},"command":"npm run lint"}"#;
-    let doc = create_agentstate_with_content(
-        "hook",
-        "pre-commit-lint",
-        hook_content,
-        "application/json",
-    )
-    .expect("Should create agentstate with content");
+    let hook_content =
+        r#"{"event":"PreToolUse","matcher":{"tool_name":"Bash"},"command":"npm run lint"}"#;
+    let doc =
+        create_agentstate_with_content("hook", "pre-commit-lint", hook_content, "application/json")
+            .expect("Should create agentstate with content");
 
     assert_eq!(doc["jacsAgentStateType"], "hook");
     assert_eq!(doc["jacsAgentStateContent"], hook_content);
@@ -107,13 +100,9 @@ fn test_agentstate_file_hash_verification() {
     let original_content = "# My Skill\n\nDoes something useful.";
     fs::write(&file_path, original_content).expect("Failed to write test file");
 
-    let doc = create_agentstate_with_file(
-        "skill",
-        "Test Skill",
-        file_path.to_str().unwrap(),
-        false,
-    )
-    .expect("Should create agentstate");
+    let doc =
+        create_agentstate_with_file("skill", "Test Skill", file_path.to_str().unwrap(), false)
+            .expect("Should create agentstate");
 
     // Hash should match original content
     assert!(verify_agentstate_file_hash(&doc).expect("Verify should succeed"));
@@ -228,12 +217,14 @@ fn test_agentstate_hook_always_embeds() {
 
     // Hook should have embedded content
     assert!(
-        doc.get("jacsAgentStateContent").is_some()
-            && !doc["jacsAgentStateContent"].is_null(),
+        doc.get("jacsAgentStateContent").is_some() && !doc["jacsAgentStateContent"].is_null(),
         "Hook should always embed content"
     );
     let files = doc["jacsFiles"].as_array().unwrap();
-    assert_eq!(files[0]["embed"], true, "Hook file entry should have embed=true");
+    assert_eq!(
+        files[0]["embed"], true,
+        "Hook file entry should have embed=true"
+    );
 }
 
 /// Test creating and loading an agentstate document through the full agent pipeline.
@@ -252,7 +243,10 @@ fn test_agentstate_create_document_and_load() {
     assert_eq!(value["jacsAgentStateType"], "memory");
     assert_eq!(value["jacsAgentStateName"], "Project Memory");
     assert!(value.get("jacsId").is_some(), "Should have jacsId");
-    assert!(value.get("jacsVersion").is_some(), "Should have jacsVersion");
+    assert!(
+        value.get("jacsVersion").is_some(),
+        "Should have jacsVersion"
+    );
 }
 
 /// Test agentstate schema validation through the Schema validator.
@@ -272,7 +266,11 @@ fn test_agentstate_schema_validation_valid() {
     full_doc["jacsOriginalDate"] = serde_json::json!("2026-02-05T00:00:00Z");
 
     let result = agent.schema.validate_agentstate(&full_doc.to_string());
-    assert!(result.is_ok(), "Valid agentstate should pass validation: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Valid agentstate should pass validation: {:?}",
+        result.err()
+    );
 }
 
 /// Test invalid agentstate type is rejected by schema validation.
@@ -564,8 +562,7 @@ fn test_agentstate_hook_always_embeds_signing() {
 
     // Hooks must always have embedded content in the signed document
     assert!(
-        value.get("jacsAgentStateContent").is_some()
-            && !value["jacsAgentStateContent"].is_null(),
+        value.get("jacsAgentStateContent").is_some() && !value["jacsAgentStateContent"].is_null(),
         "Hook content must be embedded in the signed document"
     );
 
@@ -606,8 +603,9 @@ fn test_agentstate_multi_file_skill() {
         .expect("Failed to write reference file");
 
     // Build the agentstate manually with multiple jacsFiles entries
-    let mut doc = create_minimal_agentstate("skill", "Multi-File Skill", Some("Skill with 3 files"))
-        .expect("Should create agentstate");
+    let mut doc =
+        create_minimal_agentstate("skill", "Multi-File Skill", Some("Skill with 3 files"))
+            .expect("Should create agentstate");
 
     // Compute hashes for each file
     let file_paths = [&skill_path, &script_path, &ref_path];
@@ -643,11 +641,7 @@ fn test_agentstate_multi_file_skill() {
     let files = value["jacsFiles"]
         .as_array()
         .expect("Should have jacsFiles");
-    assert_eq!(
-        files.len(),
-        3,
-        "Should have 3 file entries in jacsFiles"
-    );
+    assert_eq!(files.len(), 3, "Should have 3 file entries in jacsFiles");
 
     // Verify each entry has required fields
     for (i, file_entry) in files.iter().enumerate() {
@@ -694,8 +688,11 @@ fn test_agentstate_detect_tampered_file() {
     );
 
     // Tamper with the file on disk without re-signing
-    fs::write(&file_path, "# TAMPERED Content\n\nThis was modified by an attacker.")
-        .expect("Failed to modify file");
+    fs::write(
+        &file_path,
+        "# TAMPERED Content\n\nThis was modified by an attacker.",
+    )
+    .expect("Failed to modify file");
 
     // Hash verification should detect the tampering
     assert!(
@@ -744,10 +741,7 @@ fn test_agentstate_header_fields_present() {
     );
 
     // jacsLevel should be "config" (set by create_minimal_agentstate)
-    assert_eq!(
-        value["jacsLevel"], "config",
-        "jacsLevel must be 'config'"
-    );
+    assert_eq!(value["jacsLevel"], "config", "jacsLevel must be 'config'");
 
     // jacsOriginalVersion should equal jacsVersion for a newly created document
     assert_eq!(
@@ -762,19 +756,32 @@ fn test_agentstate_different_content_types_signing() {
     let mut agent = load_test_agent_one();
 
     let content_cases = [
-        ("memory", "text/markdown", "# Memory\n\nSome markdown content."),
-        ("config", "application/json", r#"{"setting": "value", "debug": true}"#),
-        ("hook", "text/x-shellscript", "#!/bin/bash\nset -e\nnpm test"),
+        (
+            "memory",
+            "text/markdown",
+            "# Memory\n\nSome markdown content.",
+        ),
+        (
+            "config",
+            "application/json",
+            r#"{"setting": "value", "debug": true}"#,
+        ),
+        (
+            "hook",
+            "text/x-shellscript",
+            "#!/bin/bash\nset -e\nnpm test",
+        ),
     ];
 
     for (state_type, content_type, content) in &content_cases {
-        let doc = create_agentstate_with_content(state_type, "Content Sign Test", content, content_type)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Failed to create agentstate for {}/{}: {}",
-                    state_type, content_type, e
-                )
-            });
+        let doc =
+            create_agentstate_with_content(state_type, "Content Sign Test", content, content_type)
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to create agentstate for {}/{}: {}",
+                        state_type, content_type, e
+                    )
+                });
 
         let loaded = agent
             .create_document_and_load(&doc.to_string(), None, None)

@@ -177,9 +177,7 @@ pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, Box<dyn std::error:
                 std::io::ErrorKind::PermissionDenied => {
                     " Check that you have write permissions for the parent directory."
                 }
-                std::io::ErrorKind::NotFound => {
-                    " The parent directory path may be invalid."
-                }
+                std::io::ErrorKind::NotFound => " The parent directory path may be invalid.",
                 _ => "",
             };
             format!(

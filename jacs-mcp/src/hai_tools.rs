@@ -19,11 +19,11 @@
 
 use jacs::schema::agentstate_crud;
 use jacs_binding_core::hai::HaiClient;
-use jacs_binding_core::{fetch_remote_key, AgentWrapper};
+use jacs_binding_core::{AgentWrapper, fetch_remote_key};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability};
-use rmcp::{tool, tool_handler, tool_router, ServerHandler};
+use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -284,7 +284,9 @@ pub struct SignStateParams {
     pub tags: Option<Vec<String>>,
 
     /// Whether to embed file content inline. Always true for hooks.
-    #[schemars(description = "Whether to embed file content inline (default false, always true for hooks)")]
+    #[schemars(
+        description = "Whether to embed file content inline (default false, always true for hooks)"
+    )]
     pub embed: Option<bool>,
 }
 
@@ -316,11 +318,15 @@ pub struct SignStateResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct VerifyStateParams {
     /// Path to the original file to verify against.
-    #[schemars(description = "Path to the file to verify (at least one of file_path or jacs_id required)")]
+    #[schemars(
+        description = "Path to the file to verify (at least one of file_path or jacs_id required)"
+    )]
     pub file_path: Option<String>,
 
     /// JACS document ID to verify.
-    #[schemars(description = "JACS document ID to verify (at least one of file_path or jacs_id required)")]
+    #[schemars(
+        description = "JACS document ID to verify (at least one of file_path or jacs_id required)"
+    )]
     pub jacs_id: Option<String>,
 }
 
@@ -352,11 +358,15 @@ pub struct VerifyStateResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LoadStateParams {
     /// Path to the file to load.
-    #[schemars(description = "Path to the file to load (at least one of file_path or jacs_id required)")]
+    #[schemars(
+        description = "Path to the file to load (at least one of file_path or jacs_id required)"
+    )]
     pub file_path: Option<String>,
 
     /// JACS document ID to load.
-    #[schemars(description = "JACS document ID to load (at least one of file_path or jacs_id required)")]
+    #[schemars(
+        description = "JACS document ID to load (at least one of file_path or jacs_id required)"
+    )]
     pub jacs_id: Option<String>,
 
     /// Whether to require verification before loading (default true).
@@ -573,7 +583,9 @@ impl HaiMcpServer {
         if registration_allowed {
             tracing::info!("Agent registration is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
         } else {
-            tracing::info!("Agent registration is DISABLED. Set JACS_MCP_ALLOW_REGISTRATION=true to enable.");
+            tracing::info!(
+                "Agent registration is DISABLED. Set JACS_MCP_ALLOW_REGISTRATION=true to enable."
+            );
         }
 
         Self {
@@ -769,13 +781,17 @@ impl HaiMcpServer {
             let result = FetchAgentKeyResult {
                 success: false,
                 agent_id: params.agent_id.clone(),
-                version: params.version.clone().unwrap_or_else(|| "latest".to_string()),
+                version: params
+                    .version
+                    .clone()
+                    .unwrap_or_else(|| "latest".to_string()),
                 algorithm: String::new(),
                 public_key_hash: String::new(),
                 public_key_base64: String::new(),
                 error: Some(e),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         let version = params.version.as_deref().unwrap_or("latest");
@@ -836,7 +852,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: Some("REGISTRATION_DISABLED".to_string()),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         // Default to preview mode for additional safety
@@ -856,7 +873,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: None,
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         let result = match self.hai_client.register(&self.agent).await {
@@ -909,7 +927,8 @@ impl HaiMcpServer {
                 key_found: false,
                 error: Some(e),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         let version = params.version.as_deref().unwrap_or("latest");
@@ -925,16 +944,14 @@ impl HaiMcpServer {
                 // Check for Level 3: HAI signature attestation
                 // Query the status endpoint to see if HAI has signed the registration
                 match self.hai_client.status(&self.agent).await {
-                    Ok(status) if !status.hai_signatures.is_empty() => {
-                        (
-                            3u8,
-                            format!(
-                                "Level 3: Full HAI attestation ({} signature(s))",
-                                status.hai_signatures.len()
-                            ),
-                            true,
-                        )
-                    }
+                    Ok(status) if !status.hai_signatures.is_empty() => (
+                        3u8,
+                        format!(
+                            "Level 3: Full HAI attestation ({} signature(s))",
+                            status.hai_signatures.len()
+                        ),
+                        true,
+                    ),
                     Ok(status) if status.registered => {
                         // Registered but no HAI signatures yet
                         // Check for Level 2: DNS verification
@@ -1069,11 +1086,7 @@ impl HaiMcpServer {
                         registration_id: None,
                         registered_at: None,
                         signature_count: 0,
-                        error: if registered {
-                            Some(error_str)
-                        } else {
-                            None
-                        },
+                        error: if registered { Some(error_str) } else { None },
                     }
                 }
             }
@@ -1109,7 +1122,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: Some("UNREGISTRATION_DISABLED".to_string()),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         // Default to preview mode for safety
@@ -1126,7 +1140,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: None,
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         // Note: HaiClient doesn't currently have an unregister method
@@ -1152,10 +1167,7 @@ impl HaiMcpServer {
         name = "jacs_sign_state",
         description = "Sign an agent state file (memory/skill/plan/config/hook) to create a signed JACS document."
     )]
-    pub async fn jacs_sign_state(
-        &self,
-        Parameters(params): Parameters<SignStateParams>,
-    ) -> String {
+    pub async fn jacs_sign_state(&self, Parameters(params): Parameters<SignStateParams>) -> String {
         let embed = params.embed.unwrap_or(false);
 
         // Create the agent state document with file reference
@@ -1223,10 +1235,10 @@ impl HaiMcpServer {
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            true,  // no_save
-            None,  // attachments
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
             Some(embed || params.state_type == "hook"),
         ) {
             Ok(signed_doc_string) => {
@@ -1241,7 +1253,10 @@ impl HaiMcpServer {
                     jacs_document_id: Some(doc_id),
                     state_type: params.state_type,
                     name: params.name,
-                    message: format!("Successfully signed agent state file '{}'", params.file_path),
+                    message: format!(
+                        "Successfully signed agent state file '{}'",
+                        params.file_path
+                    ),
                     error: None,
                 }
             }
@@ -1342,15 +1357,12 @@ impl HaiMcpServer {
                 };
 
                 // Verify document signature
-                let signature_valid =
-                    match self.agent.verify_document(&sidecar_content) {
-                        Ok(valid) => valid,
-                        Err(_) => false,
-                    };
+                let signature_valid = match self.agent.verify_document(&sidecar_content) {
+                    Ok(valid) => valid,
+                    Err(_) => false,
+                };
 
-                let signing_info = doc
-                    .get("jacsSignature")
-                    .map(|s| s.to_string());
+                let signing_info = doc.get("jacsSignature").map(|s| s.to_string());
 
                 let result = VerifyStateResult {
                     success: true,
@@ -1392,10 +1404,7 @@ impl HaiMcpServer {
         name = "jacs_load_state",
         description = "Load a signed agent state document, optionally verifying before returning content."
     )]
-    pub async fn jacs_load_state(
-        &self,
-        Parameters(params): Parameters<LoadStateParams>,
-    ) -> String {
+    pub async fn jacs_load_state(&self, Parameters(params): Parameters<LoadStateParams>) -> String {
         // At least one of file_path or jacs_id must be provided
         if params.file_path.is_none() && params.jacs_id.is_none() {
             let result = LoadStateResult {
@@ -1480,8 +1489,7 @@ impl HaiMcpServer {
                     }
                     Err(e) => {
                         verified = false;
-                        warnings
-                            .push(format!("Could not verify document signature: {}", e));
+                        warnings.push(format!("Could not verify document signature: {}", e));
                     }
                 }
             }
@@ -1685,15 +1693,26 @@ impl HaiMcpServer {
         // No existing sidecar or update failed - create a fresh signed document
 
         // Create fresh document
-        match agentstate_crud::create_agentstate_with_file(&state_type, &state_name, &params.file_path, false) {
+        match agentstate_crud::create_agentstate_with_file(
+            &state_type,
+            &state_name,
+            &params.file_path,
+            false,
+        ) {
             Ok(doc) => {
                 let doc_string = doc.to_string();
-                match self.agent.create_document(&doc_string, None, None, true, None, Some(false)) {
+                match self
+                    .agent
+                    .create_document(&doc_string, None, None, true, None, Some(false))
+                {
                     Ok(signed_doc_string) => {
-                        let version_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
-                            .ok()
-                            .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
-                            .unwrap_or_else(|| "unknown".to_string());
+                        let version_id =
+                            serde_json::from_str::<serde_json::Value>(&signed_doc_string)
+                                .ok()
+                                .and_then(|v| {
+                                    v.get("id").and_then(|id| id.as_str()).map(String::from)
+                                })
+                                .unwrap_or_else(|| "unknown".to_string());
 
                         let result = UpdateStateResult {
                             success: true,
@@ -1729,8 +1748,7 @@ impl HaiMcpServer {
                     message: "Failed to create agent state document for re-signing".to_string(),
                     error: Some(e),
                 };
-                serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e))
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
         }
     }
@@ -1823,10 +1841,10 @@ impl HaiMcpServer {
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            true,  // no_save
-            None,  // attachments
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
             Some(false),
         ) {
             Ok(signed_doc_string) => {

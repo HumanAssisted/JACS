@@ -1,16 +1,1 @@
-{
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_use_filesystem": "true",
-  "jacs_use_security": "false",
-  "jacs_data_directory": "tests/fixtures",
-  "jacs_key_directory": "tests/fixtures/keys",
-  "jacs_agent_private_key_filename": "rsa_pss_private.pem.enc",
-  "jacs_agent_public_key_filename": "rsa_pss_public.pem",
-  "jacs_agent_key_algorithm": "RSA-PSS",
-  "jacs_agent_schema_version": "v1",
-  "jacs_header_schema_version": "v1",
-  "jacs_signature_schema_version": "v1",
-  "jacs_private_key_password": "secretpassord",
-  "jacs_agent_id_and_version": "48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41",
-  "jacs_default_storage": "fs"
-}
+{"$schema":"https://hai.ai/schemas/jacs.config.schema.json","jacs_use_filesystem":"true","jacs_use_security":"false","jacs_data_directory":"tests/fixtures","jacs_key_directory":"tests/fixtures/keys","jacs_agent_private_key_filename":"rsa_pss_private.pem.enc","jacs_agent_public_key_filename":"rsa_pss_public.pem","jacs_agent_key_algorithm":"RSA-PSS","jacs_agent_schema_version":"v1","jacs_header_schema_version":"v1","jacs_signature_schema_version":"v1","jacs_agent_id_and_version":"48d074ec-84e2-4d26-adc5-0b2253f1e8ff:12ccba24-8997-47b1-9e6f-d699d7ab0e41","jacs_default_storage":"fs"}

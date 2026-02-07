@@ -45,7 +45,8 @@ impl BoilerPlate for Agent {
                     "get_version failed for agent '{}': Agent version is not set. \
                     The agent may not be fully loaded or created.",
                     agent_id
-                )).into())
+                ))
+                .into())
             }
         }
     }
@@ -55,11 +56,13 @@ impl BoilerPlate for Agent {
     fn as_string(&self) -> Result<String, Box<dyn Error>> {
         match &self.value {
             Some(value) => serde_json::to_string_pretty(value).map_err(|e| {
-                JacsError::AgentError(format!("as_string failed: Could not serialize agent to JSON: {}", e)).into()
+                JacsError::AgentError(format!(
+                    "as_string failed: Could not serialize agent to JSON: {}",
+                    e
+                ))
+                .into()
             }),
-            None => {
-                Err(JacsError::AgentNotLoaded.into())
-            }
+            None => Err(JacsError::AgentNotLoaded.into()),
         }
     }
 

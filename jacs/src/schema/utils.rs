@@ -104,13 +104,12 @@ fn get_extra_allowed_domains() -> &'static Vec<String> {
 
 fn is_schema_url_allowed(url: &str) -> Result<(), JacsError> {
     // Parse the URL to extract the host
-    let parsed = url::Url::parse(url).map_err(|e| {
-        JacsError::SchemaError(format!("Invalid URL '{}': {}", url, e))
-    })?;
+    let parsed = url::Url::parse(url)
+        .map_err(|e| JacsError::SchemaError(format!("Invalid URL '{}': {}", url, e)))?;
 
-    let host = parsed.host_str().ok_or_else(|| {
-        JacsError::SchemaError(format!("URL '{}' has no host", url))
-    })?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| JacsError::SchemaError(format!("URL '{}' has no host", url)))?;
 
     // Build the list of allowed domains from defaults + cached env var
     let extra = get_extra_allowed_domains();
@@ -154,7 +153,9 @@ fn should_accept_invalid_certs() -> bool {
     if let Ok(val) = std::env::var("JACS_ACCEPT_INVALID_CERTS") {
         let accept = val.eq_ignore_ascii_case("true") || val == "1";
         if accept {
-            warn!("SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true");
+            warn!(
+                "SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true"
+            );
         }
         return accept;
     }
@@ -350,9 +351,8 @@ pub trait ValueExt {
 
 impl ValueExt for Value {
     fn as_string(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
-            format!("{{\"error\": \"Failed to serialize JSON: {}\"}}", e)
-        })
+        serde_json::to_string_pretty(self)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize JSON: {}\"}}", e))
     }
 
     fn get_str(&self, field: &str) -> Option<String> {
@@ -367,10 +367,11 @@ impl ValueExt for Value {
     }
 
     fn get_str_required(&self, field: &str) -> Result<String, JacsError> {
-        self.get_str(field).ok_or_else(|| JacsError::DocumentMalformed {
-            field: field.to_string(),
-            reason: format!("Missing or invalid field: {}", field),
-        })
+        self.get_str(field)
+            .ok_or_else(|| JacsError::DocumentMalformed {
+                field: field.to_string(),
+                reason: format!("Missing or invalid field: {}", field),
+            })
     }
 
     fn get_i64(&self, key: &str) -> Option<i64> {
@@ -394,15 +395,17 @@ impl ValueExt for Value {
     }
 
     fn get_path_str_or(&self, path: &[&str], default: &str) -> String {
-        self.get_path_str(path).unwrap_or_else(|| default.to_string())
+        self.get_path_str(path)
+            .unwrap_or_else(|| default.to_string())
     }
 
     fn get_path_str_required(&self, path: &[&str]) -> Result<String, JacsError> {
         let dotted_path = path.join(".");
-        self.get_path_str(path).ok_or_else(|| JacsError::DocumentMalformed {
-            field: dotted_path.clone(),
-            reason: format!("Missing or invalid field: {}", dotted_path),
-        })
+        self.get_path_str(path)
+            .ok_or_else(|| JacsError::DocumentMalformed {
+                field: dotted_path.clone(),
+                reason: format!("Missing or invalid field: {}", dotted_path),
+            })
     }
 
     fn get_path_array(&self, path: &[&str]) -> Option<&Vec<Value>> {
@@ -411,10 +414,11 @@ impl ValueExt for Value {
 
     fn get_path_array_required(&self, path: &[&str]) -> Result<&Vec<Value>, JacsError> {
         let dotted_path = path.join(".");
-        self.get_path_array(path).ok_or_else(|| JacsError::DocumentMalformed {
-            field: dotted_path.clone(),
-            reason: format!("Missing or invalid array field: {}", dotted_path),
-        })
+        self.get_path_array(path)
+            .ok_or_else(|| JacsError::DocumentMalformed {
+                field: dotted_path.clone(),
+                reason: format!("Missing or invalid array field: {}", dotted_path),
+            })
     }
 }
 
@@ -636,7 +640,10 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
             let schema_value: Value = serde_json::from_str(&schema_json)?;
             Ok(Arc::new(schema_value))
         } else {
-            Err(JacsError::FileNotFound { path: path.to_string() }.into())
+            Err(JacsError::FileNotFound {
+                path: path.to_string(),
+            }
+            .into())
         }
     }
 }

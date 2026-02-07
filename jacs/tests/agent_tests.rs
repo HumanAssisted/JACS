@@ -12,7 +12,8 @@ use utils::{
 // Actual password comes from JACS_PRIVATE_KEY_PASSWORD env var.
 // Uses centralized fixture paths from utils.
 fn get_config_content() -> String {
-    format!(r#"{{
+    format!(
+        r#"{{
     "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
     "jacs_use_filesystem": "true",
     "jacs_use_security": "true",
@@ -27,7 +28,10 @@ fn get_config_content() -> String {
     "jacs_private_key_password": "",
     "jacs_default_storage": "fs",
     "jacs_agent_id_and_version": "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717"
-}}"#, fixtures_dir_string(), fixtures_keys_dir_string())
+}}"#,
+        fixtures_dir_string(),
+        fixtures_keys_dir_string()
+    )
 }
 
 fn setup() {
@@ -72,9 +76,12 @@ fn test_update_agent_and_verify_versions() {
         }
     }
 
-    let modified_agent_string =
-        load_local_document(&raw_fixture("modified-agent-for-updating.json").to_string_lossy().to_string())
-            .unwrap();
+    let modified_agent_string = load_local_document(
+        &raw_fixture("modified-agent-for-updating.json")
+            .to_string_lossy()
+            .to_string(),
+    )
+    .unwrap();
 
     match agent.update_self(&modified_agent_string) {
         Ok(_) => assert!(true),

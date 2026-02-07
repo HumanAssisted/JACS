@@ -175,7 +175,7 @@ func main() {
 	}
 
 	fmt.Printf("Loading JACS configuration from: %s\n", configPath)
-	err := jacs.Load(configPath)
+	err := jacs.Load(&configPath)
 	if err != nil {
 		log.Printf("Warning: Failed to load JACS config: %v", err)
 		log.Printf("Server will run without JACS signing capabilities")

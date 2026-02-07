@@ -53,7 +53,10 @@ pub extern "C" fn jacs_agent_free(handle: *mut JacsAgentHandle) {
 
 /// Load JACS configuration into an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_load(handle: *mut JacsAgentHandle, config_path: *const c_char) -> c_int {
+pub extern "C" fn jacs_agent_load(
+    handle: *mut JacsAgentHandle,
+    config_path: *const c_char,
+) -> c_int {
     if handle.is_null() || config_path.is_null() {
         return -1;
     }
@@ -77,7 +80,10 @@ pub extern "C" fn jacs_agent_load(handle: *mut JacsAgentHandle, config_path: *co
 
 /// Sign a string using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_sign_string(handle: *mut JacsAgentHandle, data: *const c_char) -> *mut c_char {
+pub extern "C" fn jacs_agent_sign_string(
+    handle: *mut JacsAgentHandle,
+    data: *const c_char,
+) -> *mut c_char {
     if handle.is_null() || data.is_null() {
         return ptr::null_mut();
     }
@@ -157,7 +163,10 @@ pub extern "C" fn jacs_agent_verify_string(
 
 /// Sign a request payload using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_sign_request(handle: *mut JacsAgentHandle, payload_json: *const c_char) -> *mut c_char {
+pub extern "C" fn jacs_agent_sign_request(
+    handle: *mut JacsAgentHandle,
+    payload_json: *const c_char,
+) -> *mut c_char {
     if handle.is_null() || payload_json.is_null() {
         return ptr::null_mut();
     }
@@ -189,7 +198,10 @@ pub extern "C" fn jacs_agent_sign_request(handle: *mut JacsAgentHandle, payload_
 
 /// Verify a response payload using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_verify_response(handle: *mut JacsAgentHandle, document_string: *const c_char) -> *mut c_char {
+pub extern "C" fn jacs_agent_verify_response(
+    handle: *mut JacsAgentHandle,
+    document_string: *const c_char,
+) -> *mut c_char {
     if handle.is_null() || document_string.is_null() {
         return ptr::null_mut();
     }
@@ -345,7 +357,10 @@ pub extern "C" fn jacs_agent_check_agreement(
 
 /// Verify an agent using a handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_verify_agent(handle: *mut JacsAgentHandle, agentfile: *const c_char) -> c_int {
+pub extern "C" fn jacs_agent_verify_agent(
+    handle: *mut JacsAgentHandle,
+    agentfile: *const c_char,
+) -> c_int {
     if handle.is_null() {
         return -1;
     }
@@ -434,7 +449,10 @@ pub extern "C" fn jacs_agent_create_document(
 
 /// Verify a document using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_verify_document(handle: *mut JacsAgentHandle, document_string: *const c_char) -> c_int {
+pub extern "C" fn jacs_agent_verify_document(
+    handle: *mut JacsAgentHandle,
+    document_string: *const c_char,
+) -> c_int {
     if handle.is_null() || document_string.is_null() {
         return -1;
     }

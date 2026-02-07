@@ -55,11 +55,11 @@
 //! - **Thread Safety**: Instance-based design avoids global mutable state
 //! - **Signing Gravity**: Documentation emphasizes the sacred nature of signing
 
-use crate::agent::document::DocumentTraits;
 use crate::agent::Agent;
+use crate::agent::document::DocumentTraits;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
-use crate::schema::utils::{check_document_size, ValueExt};
+use crate::schema::utils::{ValueExt, check_document_size};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs;
@@ -301,7 +301,10 @@ impl SimpleAgent {
     ) -> Result<(Self, AgentInfo), JacsError> {
         let algorithm = key_algorithm.unwrap_or("ed25519");
 
-        info!("Creating new agent '{}' with algorithm '{}'", name, algorithm);
+        info!(
+            "Creating new agent '{}' with algorithm '{}'",
+            name, algorithm
+        );
 
         // Create directories if they don't exist
         let keys_dir = Path::new("./jacs_keys");
@@ -337,10 +340,7 @@ impl SimpleAgent {
             })?;
 
         // Extract agent info
-        let agent_id = instance["jacsId"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string();
+        let agent_id = instance["jacsId"].as_str().unwrap_or("unknown").to_string();
         let version = instance["jacsVersion"]
             .as_str()
             .unwrap_or("unknown")
@@ -363,9 +363,10 @@ impl SimpleAgent {
         });
 
         let config_path = "./jacs.config.json";
-        let config_str = serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize config: {}", e),
-        })?;
+        let config_str =
+            serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize config: {}", e),
+            })?;
         fs::write(config_path, config_str).map_err(|e| JacsError::Internal {
             message: format!("Failed to write config: {}", e),
         })?;
@@ -416,12 +417,12 @@ impl SimpleAgent {
         }
 
         let mut agent = crate::get_empty_agent();
-        agent.load_by_config(path.to_string()).map_err(|e| {
-            JacsError::ConfigInvalid {
+        agent
+            .load_by_config(path.to_string())
+            .map_err(|e| JacsError::ConfigInvalid {
                 field: "config".to_string(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         info!("Agent loaded successfully from {}", path);
 
@@ -524,9 +525,11 @@ impl SimpleAgent {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
-        agent.update_self(new_agent_data).map_err(|e| JacsError::Internal {
-            message: format!("Failed to update agent: {}", e),
-        })
+        agent
+            .update_self(new_agent_data)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to update agent: {}", e),
+            })
     }
 
     /// Updates an existing document with new data and re-signs it.
@@ -593,8 +596,12 @@ impl SimpleAgent {
             message: format!("Failed to serialize document: {}", e),
         })?;
 
-        let timestamp = jacs_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+        let agent_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
 
         Ok(SignedDocument {
             raw,
@@ -672,8 +679,12 @@ impl SimpleAgent {
             message: format!("Failed to serialize document: {}", e),
         })?;
 
-        let timestamp = jacs_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+        let agent_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
 
         info!("Message signed: document_id={}", jacs_doc.id);
 
@@ -765,8 +776,12 @@ impl SimpleAgent {
             message: format!("Failed to serialize document: {}", e),
         })?;
 
-        let timestamp = jacs_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+        let agent_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
 
         Ok(SignedDocument {
             raw,
@@ -834,7 +849,10 @@ impl SimpleAgent {
     /// - The agent lock is acquired once for the entire batch
     /// - Key decryption overhead is amortized across all messages
     /// - For very large batches, consider splitting into smaller chunks
-    pub fn sign_messages_batch(&self, messages: &[&Value]) -> Result<Vec<SignedDocument>, JacsError> {
+    pub fn sign_messages_batch(
+        &self,
+        messages: &[&Value],
+    ) -> Result<Vec<SignedDocument>, JacsError> {
         use crate::agent::document::DocumentTraits;
         use tracing::info;
 
@@ -842,10 +860,7 @@ impl SimpleAgent {
             return Ok(Vec::new());
         }
 
-        info!(
-            batch_size = messages.len(),
-            "Signing batch of messages"
-        );
+        info!(batch_size = messages.len(), "Signing batch of messages");
 
         // Prepare all document JSON strings
         let doc_strings: Vec<String> = messages
@@ -889,8 +904,12 @@ impl SimpleAgent {
                 message: format!("Failed to serialize document: {}", e),
             })?;
 
-            let timestamp = jacs_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
-            let agent_id = jacs_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
+            let timestamp = jacs_doc
+                .value
+                .get_path_str_or(&["jacsSignature", "date"], "");
+            let agent_id = jacs_doc
+                .value
+                .get_path_str_or(&["jacsSignature", "agentID"], "");
 
             results.push(SignedDocument {
                 raw,
@@ -941,29 +960,30 @@ impl SimpleAgent {
         check_document_size(signed_document)?;
 
         // Parse the document to validate JSON
-        let _: Value = serde_json::from_str(signed_document).map_err(|e| {
-            JacsError::DocumentMalformed {
+        let _: Value =
+            serde_json::from_str(signed_document).map_err(|e| JacsError::DocumentMalformed {
                 field: "json".to_string(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
         // Load the document
-        let jacs_doc = agent.load_document(signed_document).map_err(|e| {
-            JacsError::DocumentMalformed {
-                field: "document".to_string(),
-                reason: e.to_string(),
-            }
-        })?;
+        let jacs_doc =
+            agent
+                .load_document(signed_document)
+                .map_err(|e| JacsError::DocumentMalformed {
+                    field: "document".to_string(),
+                    reason: e.to_string(),
+                })?;
 
         let document_key = jacs_doc.getkey();
 
         // Verify the signature
-        let verification_result = agent.verify_document_signature(&document_key, None, None, None, None);
+        let verification_result =
+            agent.verify_document_signature(&document_key, None, None, None, None);
 
         let mut errors = Vec::new();
         if let Err(e) = verification_result {
@@ -978,8 +998,12 @@ impl SimpleAgent {
         let valid = errors.is_empty();
 
         // Extract signer info
-        let signer_id = jacs_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
-        let timestamp = jacs_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
+        let signer_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
 
         info!("Document verified: valid={}, signer={}", valid, signer_id);
 
@@ -1011,7 +1035,10 @@ impl SimpleAgent {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
-        let value = agent.get_value().cloned().ok_or(JacsError::AgentNotLoaded)?;
+        let value = agent
+            .get_value()
+            .cloned()
+            .ok_or(JacsError::AgentNotLoaded)?;
         serde_json::to_string_pretty(&value).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize agent: {}", e),
         })
@@ -1096,11 +1123,9 @@ impl SimpleAgent {
     pub fn verify_batch(&self, documents: &[&str]) -> Vec<VerificationResult> {
         documents
             .iter()
-            .map(|doc| {
-                match self.verify(doc) {
-                    Ok(result) => result,
-                    Err(e) => VerificationResult::failure(e.to_string()),
-                }
+            .map(|doc| match self.verify(doc) {
+                Ok(result) => result,
+                Err(e) => VerificationResult::failure(e.to_string()),
             })
             .collect()
     }
@@ -1180,8 +1205,12 @@ impl SimpleAgent {
             message: format!("Failed to serialize agreement: {}", e),
         })?;
 
-        let timestamp = agreement_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = agreement_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = agreement_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+        let agent_id = agreement_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
 
         info!("Agreement created: document_id={}", agreement_doc.id);
 
@@ -1253,12 +1282,12 @@ impl SimpleAgent {
         })?;
 
         // Load the document
-        let jacs_doc = agent.load_document(document).map_err(|e| {
-            JacsError::DocumentMalformed {
+        let jacs_doc = agent
+            .load_document(document)
+            .map_err(|e| JacsError::DocumentMalformed {
                 field: "document".to_string(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         // Sign the agreement
         let signed_doc = agent
@@ -1271,8 +1300,12 @@ impl SimpleAgent {
             message: format!("Failed to serialize signed agreement: {}", e),
         })?;
 
-        let timestamp = signed_doc.value.get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = signed_doc.value.get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = signed_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+        let agent_id = signed_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
 
         Ok(SignedDocument {
             raw,
@@ -1326,26 +1359,28 @@ impl SimpleAgent {
         })?;
 
         // Load the document
-        let jacs_doc = agent.load_document(document).map_err(|e| {
-            JacsError::DocumentMalformed {
+        let jacs_doc = agent
+            .load_document(document)
+            .map_err(|e| JacsError::DocumentMalformed {
                 field: "document".to_string(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         // Get the unsigned agents
-        let unsigned = jacs_doc.agreement_unsigned_agents(None).map_err(|e| {
-            JacsError::Internal {
-                message: format!("Failed to check unsigned agents: {}", e),
-            }
-        })?;
+        let unsigned =
+            jacs_doc
+                .agreement_unsigned_agents(None)
+                .map_err(|e| JacsError::Internal {
+                    message: format!("Failed to check unsigned agents: {}", e),
+                })?;
 
         // Get all requested agents from the agreement
-        let all_agents = jacs_doc.agreement_requested_agents(None).map_err(|e| {
-            JacsError::Internal {
-                message: format!("Failed to get agreement agents: {}", e),
-            }
-        })?;
+        let all_agents =
+            jacs_doc
+                .agreement_requested_agents(None)
+                .map_err(|e| JacsError::Internal {
+                    message: format!("Failed to get agreement agents: {}", e),
+                })?;
 
         // Build signer status list
         let mut signers = Vec::new();
@@ -1359,7 +1394,12 @@ impl SimpleAgent {
                 signed_at: if signed {
                     // Try to get the signature timestamp from the document
                     // For simplicity, we use the document timestamp
-                    Some(jacs_doc.value.get_path_str_or(&["jacsSignature", "date"], "").to_string())
+                    Some(
+                        jacs_doc
+                            .value
+                            .get_path_str_or(&["jacsSignature", "date"], "")
+                            .to_string(),
+                    )
                 } else {
                     None
                 },
@@ -1539,7 +1579,10 @@ pub fn export_agent() -> Result<String, JacsError> {
 /// # Deprecated
 ///
 /// This function uses thread-local global state. Prefer `SimpleAgent::get_public_key_pem()` instead.
-#[deprecated(since = "0.3.0", note = "Use SimpleAgent::get_public_key_pem() instead")]
+#[deprecated(
+    since = "0.3.0",
+    note = "Use SimpleAgent::get_public_key_pem() instead"
+)]
 pub fn get_public_key_pem() -> Result<String, JacsError> {
     with_thread_agent(|agent| agent.get_public_key_pem())
 }
@@ -1589,10 +1632,7 @@ fn extract_attachments(doc: &Value) -> Vec<Attachment> {
 
     if let Some(files) = doc.get("jacsFiles").and_then(|f| f.as_array()) {
         for file in files {
-            let filename = file["path"]
-                .as_str()
-                .unwrap_or("unknown")
-                .to_string();
+            let filename = file["path"].as_str().unwrap_or("unknown").to_string();
             let mime_type = file["mimetype"]
                 .as_str()
                 .unwrap_or("application/octet-stream")
@@ -1754,10 +1794,7 @@ mod tests {
             signer_name: None,
             timestamp: "".to_string(),
             attachments: vec![],
-            errors: vec![
-                "Signature invalid".to_string(),
-                "Hash mismatch".to_string(),
-            ],
+            errors: vec!["Signature invalid".to_string(), "Hash mismatch".to_string()],
         };
 
         assert!(!result.valid);
@@ -1846,7 +1883,8 @@ mod tests {
         let signer_id = "agent-123".to_string();
         let timestamp = "2024-01-15T10:30:00Z".to_string();
 
-        let result = VerificationResult::success(data.clone(), signer_id.clone(), timestamp.clone());
+        let result =
+            VerificationResult::success(data.clone(), signer_id.clone(), timestamp.clone());
 
         assert!(result.valid);
         assert_eq!(result.data, data);

@@ -26,7 +26,8 @@ fn test_validate_agent_creation() {
         &"agent-two.public.pem".to_string(),
         Some("RSA-PSS".to_string()),
     );
-    let json_data = read_raw_fixture("mysecondagent.new.json").expect("Failed to read second agent fixture");
+    let json_data =
+        read_raw_fixture("mysecondagent.new.json").expect("Failed to read second agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
     let _ = match result {

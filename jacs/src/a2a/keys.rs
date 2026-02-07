@@ -57,13 +57,21 @@ pub fn create_jwk_keys(
         "dilithium" | "pq-dilithium" => crate::crypt::pq::generate_keys()?,
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
         "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        _ => return Err(JacsError::CryptoError(format!("Unsupported JACS algorithm: {}", jacs_alg)).into()),
+        _ => {
+            return Err(
+                JacsError::CryptoError(format!("Unsupported JACS algorithm: {}", jacs_alg)).into(),
+            );
+        }
     };
 
     let (a2a_private, a2a_public) = match a2a_alg {
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
         "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        _ => return Err(JacsError::CryptoError(format!("Unsupported A2A algorithm: {}", a2a_alg)).into()),
+        _ => {
+            return Err(
+                JacsError::CryptoError(format!("Unsupported A2A algorithm: {}", a2a_alg)).into(),
+            );
+        }
     };
 
     Ok(DualKeyPair {
@@ -188,7 +196,11 @@ pub fn sign_jws(
                 crate::crypt::ringwrapper::sign_string(private_key.to_vec(), &signing_input)?;
             general_purpose::STANDARD.decode(&sig_b64)?
         }
-        _ => return Err(JacsError::CryptoError(format!("Unsupported algorithm: {}", algorithm)).into()),
+        _ => {
+            return Err(
+                JacsError::CryptoError(format!("Unsupported algorithm: {}", algorithm)).into(),
+            );
+        }
     };
 
     // Base64url encode signature

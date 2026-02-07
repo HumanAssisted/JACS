@@ -108,10 +108,13 @@ impl ObjectStore for WebLocalStorage {
                 )),
             })?;
 
-        let decoded = crate::crypt::base64_decode(&value)
-            .map_err(|e| ObjectStoreError::Generic {
+        let decoded =
+            crate::crypt::base64_decode(&value).map_err(|e| ObjectStoreError::Generic {
                 store: "WebLocalStorage",
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                )),
             })?;
 
         Ok(GetResult::Stream(Box::pin(futures_util::stream::once(
@@ -611,7 +614,11 @@ impl StorageDocumentTraits for MultiStorage {
         let versions = self.get_document_versions(document_id)?;
 
         if versions.is_empty() {
-            return Err(JacsError::DocumentError(format!("No documents found with ID: {}", document_id)).into());
+            return Err(JacsError::DocumentError(format!(
+                "No documents found with ID: {}",
+                document_id
+            ))
+            .into());
         }
 
         // For now, return the last one in the list

@@ -67,7 +67,10 @@ fn test_commitment_with_terms() {
     let doc = create_commitment_with_terms("Deliver Q1 financial report", terms.clone())
         .expect("Should create commitment with terms");
 
-    assert_eq!(doc["jacsCommitmentDescription"], "Deliver Q1 financial report");
+    assert_eq!(
+        doc["jacsCommitmentDescription"],
+        "Deliver Q1 financial report"
+    );
     assert_eq!(doc["jacsCommitmentTerms"], terms);
     assert_eq!(
         doc["jacsCommitmentTerms"]["deliverable"],
@@ -84,8 +87,7 @@ fn test_commitment_with_terms() {
 /// Step 3: Create a commitment with start and end dates in date-time format.
 #[test]
 fn test_commitment_with_dates() {
-    let mut doc =
-        create_minimal_commitment("Time-bounded task").expect("Should create commitment");
+    let mut doc = create_minimal_commitment("Time-bounded task").expect("Should create commitment");
 
     update_commitment_dates(
         &mut doc,
@@ -111,8 +113,7 @@ fn test_commitment_with_dates() {
 /// when the document goes through the full signing pipeline.
 #[test]
 fn test_commitment_invalid_date_format() {
-    let mut doc =
-        create_minimal_commitment("Bad date test").expect("Should create commitment");
+    let mut doc = create_minimal_commitment("Bad date test").expect("Should create commitment");
 
     // The CRUD layer sets the value without validation
     update_commitment_dates(&mut doc, Some("not-a-date"), None)
@@ -280,8 +281,7 @@ fn test_commitment_linked_to_todo_item() {
 /// Step 10: Create a commitment linked to a task via jacsCommitmentTaskId.
 #[test]
 fn test_commitment_linked_to_task() {
-    let mut doc =
-        create_minimal_commitment("Linked to task").expect("Should create commitment");
+    let mut doc = create_minimal_commitment("Linked to task").expect("Should create commitment");
 
     let task_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
     set_task_ref(&mut doc, task_id).expect("Should set task ref");
@@ -337,7 +337,10 @@ fn test_commitment_invalid_status() {
     assert!(result.is_err(), "Invalid status should be rejected");
 
     let result2 = update_commitment_status(&mut doc, "cancelled");
-    assert!(result2.is_err(), "'cancelled' is not a valid commitment status");
+    assert!(
+        result2.is_err(),
+        "'cancelled' is not a valid commitment status"
+    );
 
     let result3 = update_commitment_status(&mut doc, "");
     assert!(result3.is_err(), "Empty string should be rejected");
@@ -373,8 +376,7 @@ fn test_commitment_dispute() {
 /// Step 15: A commitment works with ONLY description and status, no other fields.
 #[test]
 fn test_commitment_standalone_without_refs() {
-    let doc =
-        create_minimal_commitment("Standalone commitment").expect("Should create commitment");
+    let doc = create_minimal_commitment("Standalone commitment").expect("Should create commitment");
 
     // Verify only the essential fields are present
     assert_eq!(doc["jacsCommitmentDescription"], "Standalone commitment");
@@ -416,8 +418,7 @@ fn test_commitment_standalone_without_refs() {
 fn test_commitment_owner_signature() {
     let mut agent = load_test_agent_one();
 
-    let mut doc =
-        create_minimal_commitment("Owned commitment").expect("Should create commitment");
+    let mut doc = create_minimal_commitment("Owned commitment").expect("Should create commitment");
 
     // Set a placeholder owner signature structure
     let agent_id = agent.get_id().expect("Should get agent id");
@@ -450,8 +451,8 @@ fn test_commitment_owner_signature() {
 fn test_commitment_schema_validation() {
     let agent = load_test_agent_one();
 
-    let mut doc = create_minimal_commitment("Schema validation test")
-        .expect("Should create commitment");
+    let mut doc =
+        create_minimal_commitment("Schema validation test").expect("Should create commitment");
 
     // Add header fields that the schema requires (via allOf with header schema)
     doc["jacsId"] = json!("test-commitment-id");
@@ -477,8 +478,7 @@ fn test_commitment_schema_validation() {
 fn test_commitment_signing_workflow() {
     let mut agent = load_test_agent_one();
 
-    let doc = create_minimal_commitment("Signing workflow test")
-        .expect("Should create commitment");
+    let doc = create_minimal_commitment("Signing workflow test").expect("Should create commitment");
 
     // Load and sign through the agent pipeline
     let loaded = agent
@@ -597,8 +597,7 @@ fn test_commitment_version_chain() {
     let mut agent = load_test_agent_one();
 
     // Version 1
-    let doc =
-        create_minimal_commitment("Version chain test").expect("Should create commitment");
+    let doc = create_minimal_commitment("Version chain test").expect("Should create commitment");
 
     let v1 = agent
         .create_document_and_load(&doc.to_string(), None, None)
@@ -614,11 +613,7 @@ fn test_commitment_version_chain() {
     // Version 2
     let mut v2_input = v1_value.clone();
     v2_input["jacsCommitmentDescription"] = json!("Version chain test - updated v2");
-    update_commitment_status(
-        &mut v2_input,
-        "active",
-    )
-    .expect("Should update status");
+    update_commitment_status(&mut v2_input, "active").expect("Should update status");
 
     let v2 = agent
         .update_document(&v1_key, &v2_input.to_string(), None, None)
@@ -641,11 +636,7 @@ fn test_commitment_version_chain() {
     // Version 3
     let mut v3_input = v2_value.clone();
     v3_input["jacsCommitmentDescription"] = json!("Version chain test - completed v3");
-    update_commitment_status(
-        &mut v3_input,
-        "completed",
-    )
-    .expect("Should update status");
+    update_commitment_status(&mut v3_input, "completed").expect("Should update status");
 
     let v3 = agent
         .update_document(&v2_key, &v3_input.to_string(), None, None)
@@ -687,8 +678,7 @@ fn test_commitment_version_chain() {
 fn test_commitment_tamper_detection() {
     let mut agent = load_test_agent_one();
 
-    let doc = create_minimal_commitment("Tamper detection test")
-        .expect("Should create commitment");
+    let doc = create_minimal_commitment("Tamper detection test").expect("Should create commitment");
 
     let loaded = agent
         .create_document_and_load(&doc.to_string(), None, None)
@@ -729,8 +719,7 @@ fn test_commitment_tamper_detection() {
 fn test_commitment_header_fields_present() {
     let mut agent = load_test_agent_one();
 
-    let doc = create_minimal_commitment("Header fields test")
-        .expect("Should create commitment");
+    let doc = create_minimal_commitment("Header fields test").expect("Should create commitment");
 
     let loaded = agent
         .create_document_and_load(&doc.to_string(), None, None)
@@ -764,10 +753,7 @@ fn test_commitment_header_fields_present() {
     );
 
     // jacsLevel should be "config" (set by create_minimal_commitment)
-    assert_eq!(
-        value["jacsLevel"], "config",
-        "jacsLevel must be 'config'"
-    );
+    assert_eq!(value["jacsLevel"], "config", "jacsLevel must be 'config'");
 
     // For a newly created document, jacsOriginalVersion should equal jacsVersion
     assert_eq!(
@@ -783,8 +769,7 @@ fn test_commitment_header_fields_present() {
 
     // $schema must be the commitment schema URL
     assert_eq!(
-        value["$schema"],
-        "https://hai.ai/schemas/commitment/v1/commitment.schema.json",
+        value["$schema"], "https://hai.ai/schemas/commitment/v1/commitment.schema.json",
         "$schema must reference the commitment schema"
     );
 }

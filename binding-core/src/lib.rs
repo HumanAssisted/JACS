@@ -8,10 +8,10 @@
 
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::payloads::PayloadTraits;
-use jacs::agent::{Agent, AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME};
+use jacs::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
 use jacs::config::Config;
-use jacs::crypt::hash::hash_string as jacs_hash_string;
 use jacs::crypt::KeyManager;
+use jacs::crypt::hash::hash_string as jacs_hash_string;
 use serde_json::Value;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -278,13 +278,17 @@ impl AgentWrapper {
         let mut agent = self.lock()?;
 
         if let Some(file) = agentfile {
-            let loaded_agent = jacs::load_agent(Some(file))
-                .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
+            let loaded_agent = jacs::load_agent(Some(file)).map_err(|e| {
+                BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
+            })?;
             *agent = loaded_agent;
         }
 
         agent.verify_self_signature().map_err(|e| {
-            BindingCoreError::verification_failed(format!("Failed to verify agent signature: {}", e))
+            BindingCoreError::verification_failed(format!(
+                "Failed to verify agent signature: {}",
+                e
+            ))
         })?;
 
         agent.verify_self_hash().map_err(|e| {
@@ -426,9 +430,7 @@ impl AgentWrapper {
             false,
             agreement_fieldname,
         )
-        .map_err(|e| {
-            BindingCoreError::agreement_failed(format!("Failed to sign agreement: {}", e))
-        })
+        .map_err(|e| BindingCoreError::agreement_failed(format!("Failed to sign agreement: {}", e)))
     }
 
     /// Create a new JACS document.
@@ -452,9 +454,7 @@ impl AgentWrapper {
             attachments,
             embed,
         )
-        .map_err(|e| {
-            BindingCoreError::document_failed(format!("Failed to create document: {}", e))
-        })
+        .map_err(|e| BindingCoreError::document_failed(format!("Failed to create document: {}", e)))
     }
 
     /// Check an agreement on a document.
@@ -465,10 +465,15 @@ impl AgentWrapper {
     ) -> BindingResult<String> {
         let mut agent = self.lock()?;
 
-        jacs::shared::document_check_agreement(&mut agent, document_string, None, agreement_fieldname)
-            .map_err(|e| {
-                BindingCoreError::agreement_failed(format!("Failed to check agreement: {}", e))
-            })
+        jacs::shared::document_check_agreement(
+            &mut agent,
+            document_string,
+            None,
+            agreement_fieldname,
+        )
+        .map_err(|e| {
+            BindingCoreError::agreement_failed(format!("Failed to check agreement: {}", e))
+        })
     }
 
     /// Sign a request payload (wraps in a JACS document).
@@ -480,7 +485,10 @@ impl AgentWrapper {
         });
 
         let wrapper_string = serde_json::to_string(&wrapper_value).map_err(|e| {
-            BindingCoreError::serialization_failed(format!("Failed to serialize wrapper JSON: {}", e))
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize wrapper JSON: {}",
+                e
+            ))
         })?;
 
         jacs::shared::document_create(
@@ -492,9 +500,7 @@ impl AgentWrapper {
             None,
             Some(false),
         )
-        .map_err(|e| {
-            BindingCoreError::document_failed(format!("Failed to create document: {}", e))
-        })
+        .map_err(|e| BindingCoreError::document_failed(format!("Failed to create document: {}", e)))
     }
 
     /// Verify a response payload and return the payload value.
@@ -583,8 +589,9 @@ pub fn trust_agent(agent_json: &str) -> BindingResult<String> {
 
 /// List all trusted agent IDs.
 pub fn list_trusted_agents() -> BindingResult<Vec<String>> {
-    jacs::trust::list_trusted_agents()
-        .map_err(|e| BindingCoreError::trust_failed(format!("Failed to list trusted agents: {}", e)))
+    jacs::trust::list_trusted_agents().map_err(|e| {
+        BindingCoreError::trust_failed(format!("Failed to list trusted agents: {}", e))
+    })
 }
 
 /// Remove an agent from the trust store.
@@ -702,10 +709,7 @@ pub fn fetch_remote_key(agent_id: &str, version: &str) -> BindingResult<RemotePu
             || error_str.contains("connect")
             || error_str.contains("timeout")
         {
-            BindingCoreError::network_failed(format!(
-                "Failed to fetch public key from HAI: {}",
-                e
-            ))
+            BindingCoreError::network_failed(format!("Failed to fetch public key from HAI: {}", e))
         } else {
             BindingCoreError::generic(format!("Failed to fetch public key: {}", e))
         }

@@ -46,7 +46,6 @@ pub enum JacsError {
     // These are broad categories useful for converting from format!() errors
     // and providing consistent error handling across the crate.
     // ==========================================================================
-
     /// Configuration loading or parsing error.
     ///
     /// Use this for errors related to:
@@ -125,135 +124,80 @@ pub enum JacsError {
 
     // === Configuration Errors ===
     /// Configuration file not found at the specified path.
-    ConfigNotFound {
-        path: String,
-    },
+    ConfigNotFound { path: String },
 
     /// Configuration file exists but contains invalid data.
-    ConfigInvalid {
-        field: String,
-        reason: String,
-    },
+    ConfigInvalid { field: String, reason: String },
 
     // === Key Errors ===
     /// Private or public key file not found.
-    KeyNotFound {
-        path: String,
-    },
+    KeyNotFound { path: String },
 
     /// Failed to decrypt the private key (wrong password or corrupted).
-    KeyDecryptionFailed {
-        reason: String,
-    },
+    KeyDecryptionFailed { reason: String },
 
     /// Failed to generate a new keypair.
-    KeyGenerationFailed {
-        algorithm: String,
-        reason: String,
-    },
+    KeyGenerationFailed { algorithm: String, reason: String },
 
     // === Signing Errors ===
     /// Signing operation failed.
-    SigningFailed {
-        reason: String,
-    },
+    SigningFailed { reason: String },
 
     // === Verification Errors ===
     /// Signature does not match the expected value.
-    SignatureInvalid {
-        expected: String,
-        got: String,
-    },
+    SignatureInvalid { expected: String, got: String },
 
     /// Signature verification failed (cryptographic check failed).
-    SignatureVerificationFailed {
-        reason: String,
-    },
+    SignatureVerificationFailed { reason: String },
 
     /// Document hash does not match the expected value.
-    HashMismatch {
-        expected: String,
-        got: String,
-    },
+    HashMismatch { expected: String, got: String },
 
     /// Document structure is invalid or missing required fields.
-    DocumentMalformed {
-        field: String,
-        reason: String,
-    },
+    DocumentMalformed { field: String, reason: String },
 
     /// The agent that signed the document is not in the trust store.
-    SignerUnknown {
-        agent_id: String,
-    },
+    SignerUnknown { agent_id: String },
 
     // === DNS Errors ===
     /// DNS lookup failed for the specified domain.
-    DnsLookupFailed {
-        domain: String,
-        reason: String,
-    },
+    DnsLookupFailed { domain: String, reason: String },
 
     /// Expected DNS TXT record not found.
-    DnsRecordMissing {
-        domain: String,
-    },
+    DnsRecordMissing { domain: String },
 
     /// DNS TXT record found but contains invalid data.
-    DnsRecordInvalid {
-        domain: String,
-        reason: String,
-    },
+    DnsRecordInvalid { domain: String, reason: String },
 
     // === Size Limit Errors ===
     /// Document exceeds the maximum allowed size.
     ///
     /// The default maximum size is 10MB, configurable via `JACS_MAX_DOCUMENT_SIZE`.
-    DocumentTooLarge {
-        size: usize,
-        max_size: usize,
-    },
+    DocumentTooLarge { size: usize, max_size: usize },
 
     // === File Errors ===
     /// File not found at the specified path.
-    FileNotFound {
-        path: String,
-    },
+    FileNotFound { path: String },
 
     /// Failed to read file contents.
-    FileReadFailed {
-        path: String,
-        reason: String,
-    },
+    FileReadFailed { path: String, reason: String },
 
     /// Failed to write file contents.
-    FileWriteFailed {
-        path: String,
-        reason: String,
-    },
+    FileWriteFailed { path: String, reason: String },
 
     /// Failed to create a directory.
-    DirectoryCreateFailed {
-        path: String,
-        reason: String,
-    },
+    DirectoryCreateFailed { path: String, reason: String },
 
     /// Could not determine MIME type for the file.
-    MimeTypeUnknown {
-        path: String,
-    },
+    MimeTypeUnknown { path: String },
 
     // === Trust Store Errors ===
     /// Agent is not in the local trust store.
-    AgentNotTrusted {
-        agent_id: String,
-    },
+    AgentNotTrusted { agent_id: String },
 
     // === Registration Errors ===
     /// Registration with a registry (e.g., HAI.ai) failed.
-    RegistrationFailed {
-        reason: String,
-    },
+    RegistrationFailed { reason: String },
 
     // === Storage Errors ===
     /// Generic storage backend error.
@@ -261,20 +205,14 @@ pub enum JacsError {
 
     // === Database Errors ===
     /// Database operation failed.
-    DatabaseError {
-        operation: String,
-        reason: String,
-    },
+    DatabaseError { operation: String, reason: String },
 
     // === Verification Claim Errors ===
     /// Agent's verification claim could not be satisfied.
     ///
     /// This occurs when an agent claims a verification level (e.g., "verified" or
     /// "verified-hai.ai") but the required security conditions are not met.
-    VerificationClaimFailed {
-        claim: String,
-        reason: String,
-    },
+    VerificationClaimFailed { claim: String, reason: String },
 
     // === Agent State Errors ===
     /// No agent is currently loaded. Call create() or load() first.
@@ -285,9 +223,7 @@ pub enum JacsError {
     ///
     /// Note: Prefer using specific category errors (ConfigError, CryptoError, etc.)
     /// over Internal when the error category is known.
-    Internal {
-        message: String,
-    },
+    Internal { message: String },
 }
 
 impl fmt::Display for JacsError {
@@ -328,20 +264,12 @@ impl fmt::Display for JacsError {
                 write!(f, "Failed to decrypt private key: {}", reason)
             }
             JacsError::KeyGenerationFailed { algorithm, reason } => {
-                write!(
-                    f,
-                    "Failed to generate {} keypair: {}",
-                    algorithm, reason
-                )
+                write!(f, "Failed to generate {} keypair: {}", algorithm, reason)
             }
 
             // Signing
             JacsError::SigningFailed { reason } => {
-                write!(
-                    f,
-                    "Document signing failed: {}",
-                    reason
-                )
+                write!(f, "Document signing failed: {}", reason)
             }
 
             // Verification
@@ -456,11 +384,7 @@ impl fmt::Display for JacsError {
 
             // Database
             JacsError::DatabaseError { operation, reason } => {
-                write!(
-                    f,
-                    "Database error during '{}': {}",
-                    operation, reason
-                )
+                write!(f, "Database error during '{}': {}", operation, reason)
             }
 
             // Verification Claims
@@ -473,14 +397,18 @@ impl fmt::Display for JacsError {
                 )?;
                 // Provide claim-specific actionable guidance
                 match claim.as_str() {
-                    "verified" | "verified-hai.ai" if reason.contains("jacsAgentDomain") || reason.contains("domain") => {
+                    "verified" | "verified-hai.ai"
+                        if reason.contains("jacsAgentDomain") || reason.contains("domain") =>
+                    {
                         write!(
                             f,
                             "Add \"jacsAgentDomain\": \"your-domain.com\" to your agent,\n     \
                             or use \"jacsVerificationClaim\": \"unverified\" if DNS verification is not needed."
                         )?;
                     }
-                    "verified-hai.ai" if reason.contains("not registered") || reason.contains("HAI.ai") => {
+                    "verified-hai.ai"
+                        if reason.contains("not registered") || reason.contains("HAI.ai") =>
+                    {
                         write!(
                             f,
                             "Register your agent at https://hai.ai before using the 'verified-hai.ai' claim,\n     \
@@ -717,8 +645,14 @@ mod tests {
             path: "/path/to/missing.json".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("/path/to/missing.json"), "Should include the file path");
-        assert!(msg.contains("Ensure") || msg.contains("create"), "Should provide guidance");
+        assert!(
+            msg.contains("/path/to/missing.json"),
+            "Should include the file path"
+        );
+        assert!(
+            msg.contains("Ensure") || msg.contains("create"),
+            "Should provide guidance"
+        );
     }
 
     #[test]
@@ -728,9 +662,18 @@ mod tests {
             reason: "permission denied".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("/path/to/file.json"), "Should include the file path");
-        assert!(msg.contains("permission denied"), "Should include the reason");
-        assert!(msg.contains("permission") || msg.contains("Check"), "Should provide guidance");
+        assert!(
+            msg.contains("/path/to/file.json"),
+            "Should include the file path"
+        );
+        assert!(
+            msg.contains("permission denied"),
+            "Should include the reason"
+        );
+        assert!(
+            msg.contains("permission") || msg.contains("Check"),
+            "Should provide guidance"
+        );
     }
 
     #[test]
@@ -740,9 +683,15 @@ mod tests {
             reason: "disk full".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("/path/to/output.json"), "Should include the file path");
+        assert!(
+            msg.contains("/path/to/output.json"),
+            "Should include the file path"
+        );
         assert!(msg.contains("disk full"), "Should include the reason");
-        assert!(msg.contains("write") || msg.contains("Check"), "Should provide guidance");
+        assert!(
+            msg.contains("write") || msg.contains("Check"),
+            "Should provide guidance"
+        );
     }
 
     #[test]
@@ -752,9 +701,18 @@ mod tests {
             reason: "permission denied".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("/path/to/new_dir"), "Should include the directory path");
-        assert!(msg.contains("permission denied"), "Should include the reason");
-        assert!(msg.contains("parent") || msg.contains("Check"), "Should suggest checking parent directory");
+        assert!(
+            msg.contains("/path/to/new_dir"),
+            "Should include the directory path"
+        );
+        assert!(
+            msg.contains("permission denied"),
+            "Should include the reason"
+        );
+        assert!(
+            msg.contains("parent") || msg.contains("Check"),
+            "Should suggest checking parent directory"
+        );
     }
 
     // ==========================================================================
@@ -769,7 +727,10 @@ mod tests {
         };
         let msg = err.to_string();
         assert!(msg.contains("verified"), "Should state the claim");
-        assert!(msg.contains("jacsAgentDomain"), "Should mention the required field");
+        assert!(
+            msg.contains("jacsAgentDomain"),
+            "Should mention the required field"
+        );
         assert!(msg.contains("Fix:"), "Should provide fix guidance");
         assert!(msg.contains("hai.ai/docs"), "Should include docs link");
     }
@@ -782,9 +743,15 @@ mod tests {
         };
         let msg = err.to_string();
         assert!(msg.contains("verified-hai.ai"), "Should state the claim");
-        assert!(msg.contains("not registered") || msg.contains("HAI.ai"), "Should mention registration");
+        assert!(
+            msg.contains("not registered") || msg.contains("HAI.ai"),
+            "Should mention registration"
+        );
         assert!(msg.contains("Fix:"), "Should provide fix guidance");
-        assert!(msg.contains("https://hai.ai"), "Should include registration link");
+        assert!(
+            msg.contains("https://hai.ai"),
+            "Should include registration link"
+        );
     }
 
     // ==========================================================================
@@ -821,9 +788,7 @@ mod tests {
             operation: "query".to_string(),
             reason: "timeout".to_string(),
         };
-        let handle = std::thread::spawn(move || {
-            err.to_string()
-        });
+        let handle = std::thread::spawn(move || err.to_string());
         let msg = handle.join().unwrap();
         assert!(msg.contains("timeout"));
     }
@@ -832,11 +797,18 @@ mod tests {
     fn test_verification_claim_downgrade_error_is_actionable() {
         let err = JacsError::VerificationClaimFailed {
             claim: "unverified".to_string(),
-            reason: "Cannot downgrade from 'verified' to 'unverified'. Create a new agent instead.".to_string(),
+            reason: "Cannot downgrade from 'verified' to 'unverified'. Create a new agent instead."
+                .to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("downgrade") || msg.contains("Cannot"), "Should explain downgrade block");
+        assert!(
+            msg.contains("downgrade") || msg.contains("Cannot"),
+            "Should explain downgrade block"
+        );
         assert!(msg.contains("Fix:"), "Should provide fix guidance");
-        assert!(msg.contains("new agent"), "Should suggest creating new agent");
+        assert!(
+            msg.contains("new agent"),
+            "Should suggest creating new agent"
+        );
     }
 }
