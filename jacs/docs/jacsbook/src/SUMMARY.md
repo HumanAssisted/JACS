@@ -6,6 +6,7 @@
 - [What is JACS?](getting-started/what-is-jacs.md)
 - [Core Concepts](getting-started/concepts.md)
 - [Quick Start](getting-started/quick-start.md)
+- [Use cases](usecases.md)
 
 ## Rust CLI & Library
 - [Installation](rust/installation.md)
