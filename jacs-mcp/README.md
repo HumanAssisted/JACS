@@ -6,7 +6,7 @@ JACS (JSON Agent Communication Standard) ensures that every file, memory, or con
 
 ## What can it do?
 
-The server exposes **11 tools** in two categories:
+The server exposes **13 tools** in three categories:
 
 ### Agent State (Data Provenance)
 
@@ -15,11 +15,18 @@ Sign, verify, and manage files that represent agent state (memories, skills, pla
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_state` | Sign a file to create a cryptographically signed JACS document |
-| `jacs_verify_state` | Verify file integrity and signature authenticity |
+| `jacs_verify_state` | Verify file integrity and signature authenticity (by file path or JACS document ID) |
 | `jacs_load_state` | Load a signed state document, optionally verifying before returning content |
 | `jacs_update_state` | Update a previously signed file -- re-hashes and re-signs |
 | `jacs_list_state` | List signed agent state documents with optional filtering |
 | `jacs_adopt_state` | Adopt an external file as signed state, recording its origin |
+
+### Agent Management
+
+| Tool | Description |
+|------|-------------|
+| `jacs_create_agent` | Create a new JACS agent with cryptographic keys (requires `JACS_MCP_ALLOW_REGISTRATION=true`) |
+| `jacs_reencrypt_key` | Re-encrypt the agent's private key with a new password |
 
 ### HAI Integration (Optional)
 

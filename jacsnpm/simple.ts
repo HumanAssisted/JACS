@@ -12,6 +12,11 @@
  * - createAgreement(): Create a multi-party agreement
  * - signAgreement(): Sign an existing agreement
  * - checkAgreement(): Check agreement status
+ * - trustAgent(): Add an agent to the local trust store
+ * - listTrustedAgents(): List all trusted agent IDs
+ * - untrustAgent(): Remove an agent from the trust store
+ * - isTrusted(): Check if an agent is trusted
+ * - getTrustedAgent(): Get a trusted agent's JSON
  *
  * Also re-exports for advanced usage:
  * - JacsAgent: Class for direct agent control
@@ -38,7 +43,18 @@
  * ```
  */
 
-import { JacsAgent, hashString, verifyString, createConfig, createAgent as nativeCreateAgent } from './index';
+import {
+  JacsAgent,
+  hashString,
+  verifyString,
+  createConfig,
+  createAgent as nativeCreateAgent,
+  trustAgent as nativeTrustAgent,
+  listTrustedAgents as nativeListTrustedAgents,
+  untrustAgent as nativeUntrustAgent,
+  isTrusted as nativeIsTrusted,
+  getTrustedAgent as nativeGetTrustedAgent,
+} from './index';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -820,4 +836,90 @@ export function checkAgreement(
 
   const result = globalAgent.checkAgreement(docString, fieldName || null);
   return JSON.parse(result);
+}
+
+// =============================================================================
+// Trust Store Functions
+// =============================================================================
+
+/**
+ * Add an agent to the local trust store.
+ *
+ * The trust store is a local list of agents you trust. When verifying
+ * documents from known agents, the trust store provides signer names
+ * and allows quick lookups.
+ *
+ * @param agentJson - The agent's JSON document (from their exportAgent())
+ * @returns The trusted agent's ID
+ *
+ * @example
+ * ```typescript
+ * const trustedId = jacs.trustAgent(partnerAgentJson);
+ * console.log(`Trusted agent: ${trustedId}`);
+ * ```
+ */
+export function trustAgent(agentJson: string): string {
+  return nativeTrustAgent(agentJson);
+}
+
+/**
+ * List all trusted agent IDs in the local trust store.
+ *
+ * @returns Array of trusted agent UUIDs
+ *
+ * @example
+ * ```typescript
+ * const trustedIds = jacs.listTrustedAgents();
+ * console.log(`${trustedIds.length} trusted agents`);
+ * ```
+ */
+export function listTrustedAgents(): string[] {
+  return nativeListTrustedAgents();
+}
+
+/**
+ * Remove an agent from the local trust store.
+ *
+ * @param agentId - The agent UUID to remove
+ *
+ * @example
+ * ```typescript
+ * jacs.untrustAgent('550e8400-e29b-41d4-a716-446655440000');
+ * ```
+ */
+export function untrustAgent(agentId: string): void {
+  nativeUntrustAgent(agentId);
+}
+
+/**
+ * Check if an agent is in the local trust store.
+ *
+ * @param agentId - The agent UUID to check
+ * @returns true if the agent is trusted
+ *
+ * @example
+ * ```typescript
+ * if (jacs.isTrusted(signerId)) {
+ *   console.log('Signer is in our trust store');
+ * }
+ * ```
+ */
+export function isTrusted(agentId: string): boolean {
+  return nativeIsTrusted(agentId);
+}
+
+/**
+ * Get a trusted agent's full JSON document from the trust store.
+ *
+ * @param agentId - The agent UUID to retrieve
+ * @returns The agent's JSON document as a string
+ *
+ * @example
+ * ```typescript
+ * const agentDoc = JSON.parse(jacs.getTrustedAgent(agentId));
+ * console.log(`Agent name: ${agentDoc.jacsAgentName}`);
+ * ```
+ */
+export function getTrustedAgent(agentId: string): string {
+  return nativeGetTrustedAgent(agentId);
 }

@@ -486,6 +486,153 @@ pub extern "C" fn jacs_agent_verify_document(
     }
 }
 
+/// Verify a document by its ID from storage using an agent handle.
+/// The document_id should be in "uuid:version" format.
+/// Returns 0 on success (valid), -1 to -6 for various errors.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_document_by_id(
+    handle: *mut JacsAgentHandle,
+    document_id: *const c_char,
+) -> c_int {
+    if handle.is_null() || document_id.is_null() {
+        return -1;
+    }
+
+    let doc_id_str = match unsafe { CStr::from_ptr(document_id) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+
+    // Validate format
+    if !doc_id_str.contains(':') {
+        return -3;
+    }
+
+    use jacs_core::storage::StorageDocumentTraits;
+
+    let storage = match jacs_core::storage::MultiStorage::default_new() {
+        Ok(s) => s,
+        Err(_) => return -4,
+    };
+
+    let doc = match storage.get_document(doc_id_str) {
+        Ok(d) => d,
+        Err(_) => return -5,
+    };
+
+    let doc_str = match serde_json::to_string(&doc.value) {
+        Ok(s) => s,
+        Err(_) => return -6,
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let mut agent = match handle_ref.agent.lock() {
+        Ok(agent) => agent,
+        Err(_) => return -7,
+    };
+
+    let loaded_doc = match agent.load_document(&doc_str) {
+        Ok(d) => d,
+        Err(_) => return -8,
+    };
+
+    let document_key = loaded_doc.getkey();
+    let value = loaded_doc.getvalue();
+
+    if let Err(_) = agent.verify_hash(value) {
+        return -9;
+    }
+
+    match agent.verify_external_document_signature(&document_key) {
+        Ok(_) => 0,
+        Err(_) => -10,
+    }
+}
+
+/// Re-encrypt the agent's private key with a new password.
+/// Returns 0 on success, negative values on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_reencrypt_key(
+    handle: *mut JacsAgentHandle,
+    old_password: *const c_char,
+    new_password: *const c_char,
+) -> c_int {
+    if handle.is_null() || old_password.is_null() || new_password.is_null() {
+        return -1;
+    }
+
+    let old_pw = match unsafe { CStr::from_ptr(old_password) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+
+    let new_pw = match unsafe { CStr::from_ptr(new_password) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return -3,
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let agent = match handle_ref.agent.lock() {
+        Ok(agent) => agent,
+        Err(_) => return -4,
+    };
+
+    // Get key path from agent config
+    let key_path = if let Some(config) = &agent.config {
+        let key_dir = config
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys");
+        let key_file = config
+            .jacs_agent_private_key_filename()
+            .as_deref()
+            .unwrap_or("jacs.private.pem.enc");
+        format!("{}/{}", key_dir, key_file)
+    } else {
+        "./jacs_keys/jacs.private.pem.enc".to_string()
+    };
+    drop(agent);
+
+    let encrypted_data = match std::fs::read(&key_path) {
+        Ok(d) => d,
+        Err(_) => return -5,
+    };
+
+    use jacs_core::crypt::aes_encrypt::reencrypt_private_key;
+    let re_encrypted = match reencrypt_private_key(&encrypted_data, old_pw, new_pw) {
+        Ok(d) => d,
+        Err(_) => return -6,
+    };
+
+    match std::fs::write(&key_path, &re_encrypted) {
+        Ok(_) => 0,
+        Err(_) => -7,
+    }
+}
+
+/// Get the agent's JSON representation as a string.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_get_json(handle: *mut JacsAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+
+    let handle_ref = unsafe { &*handle };
+    let agent = match handle_ref.agent.lock() {
+        Ok(agent) => agent,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match agent.get_value() {
+        Some(value) => match CString::new(value.to_string()) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        None => ptr::null_mut(),
+    }
+}
+
 // ============================================================================
 // Legacy Global Singleton API - Deprecated, use JacsAgent handle API instead
 // ============================================================================

@@ -13,6 +13,11 @@ A streamlined interface for the most common JACS operations:
 - create_agreement(): Create a multi-party agreement
 - sign_agreement(): Sign an existing agreement
 - check_agreement(): Check agreement status
+- trust_agent(): Add an agent to the local trust store
+- list_trusted_agents(): List all trusted agent IDs
+- untrust_agent(): Remove an agent from the trust store
+- is_trusted(): Check if an agent is trusted
+- get_trusted_agent(): Get a trusted agent's JSON
 - fetch_remote_key(): Fetch a public key from HAI's key service
 
 Environment Variables:
@@ -86,11 +91,21 @@ from .types import (
 try:
     from . import JacsAgent
     from .jacs import fetch_remote_key as _fetch_remote_key
+    from .jacs import trust_agent as _trust_agent
+    from .jacs import list_trusted_agents as _list_trusted_agents
+    from .jacs import untrust_agent as _untrust_agent
+    from .jacs import is_trusted as _is_trusted
+    from .jacs import get_trusted_agent as _get_trusted_agent
 except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
     JacsAgent = _jacs_module.JacsAgent
     _fetch_remote_key = _jacs_module.fetch_remote_key
+    _trust_agent = _jacs_module.trust_agent
+    _list_trusted_agents = _jacs_module.list_trusted_agents
+    _untrust_agent = _jacs_module.untrust_agent
+    _is_trusted = _jacs_module.is_trusted
+    _get_trusted_agent = _jacs_module.get_trusted_agent
 
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
@@ -861,22 +876,13 @@ def verify_by_id(document_id: str) -> VerificationResult:
         )
 
     try:
-        # Use the underlying Rust verify_document_by_id via binding-core
-        # For now, delegate through the storage lookup
-        from . import SimpleAgent as _SimpleAgent
-
-        # Load a SimpleAgent for the verify_by_id call
-        config_path = _agent_info.config_path if _agent_info else "./jacs.config.json"
-        simple_agent = _SimpleAgent.load(config_path)
-        result_dict = simple_agent.verify_by_id(document_id)
+        is_valid = agent.verify_document_by_id(document_id)
 
         return VerificationResult(
-            valid=result_dict.get("valid", False),
-            signer_id=result_dict.get("signer_id", ""),
-            content_hash_valid=True,
-            signature_valid=result_dict.get("valid", False),
-            timestamp=result_dict.get("timestamp", ""),
-            errors=result_dict.get("errors", []),
+            valid=is_valid,
+            signer_id=_agent_info.agent_id if _agent_info else "",
+            content_hash_valid=is_valid,
+            signature_valid=is_valid,
         )
     except Exception as e:
         logger.warning("verify_by_id failed: %s", e)
@@ -905,15 +911,11 @@ def reencrypt_key(old_password: str, new_password: str) -> None:
         jacs.reencrypt_key("OldP@ss123!", "NewStr0ng!Pass#2025")
         print("Key re-encrypted successfully")
     """
-    _get_agent()  # Ensure agent is loaded
     logger.debug("reencrypt_key() called")
 
     try:
-        from . import SimpleAgent as _SimpleAgent
-
-        config_path = _agent_info.config_path if _agent_info else "./jacs.config.json"
-        simple_agent = _SimpleAgent.load(config_path)
-        simple_agent.reencrypt_key(old_password, new_password)
+        agent = _get_agent()
+        agent.reencrypt_key(old_password, new_password)
         logger.info("Private key re-encrypted successfully")
     except Exception as e:
         raise JacsError(f"Failed to re-encrypt key: {e}")
@@ -983,33 +985,10 @@ def export_agent() -> str:
         agent_json = jacs.export_agent()
         # Send to another party for them to call trust_agent()
     """
-    global _agent_info
-
-    if _agent_info is None or _global_agent is None:
-        raise AgentNotLoadedError("No agent loaded")
+    agent = _get_agent()
 
     try:
-        # Read the agent file
-        config_paths = [
-            "./jacs.config.json",
-            os.path.expanduser("~/.jacs/config.json"),
-        ]
-
-        for config_path in config_paths:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-
-                data_dir = config.get("jacs_data_directory", "./jacs_data")
-                agent_id = config.get("jacs_agent_id_and_version", "")
-
-                agent_path = os.path.join(data_dir, "agent", f"{agent_id}.json")
-                if os.path.exists(agent_path):
-                    with open(agent_path, 'r') as f:
-                        return f.read()
-
-        raise JacsError("Could not find agent file")
-
+        return agent.get_agent_json()
     except Exception as e:
         raise JacsError(f"Failed to export agent: {e}")
 
@@ -1030,6 +1009,100 @@ def is_loaded() -> bool:
         True if an agent is loaded, False otherwise
     """
     return _global_agent is not None
+
+
+def trust_agent(agent_json: str) -> str:
+    """Add an agent to the local trust store.
+
+    Args:
+        agent_json: The full agent JSON document string
+
+    Returns:
+        The trusted agent's ID
+
+    Raises:
+        TrustError: If the agent document is invalid
+
+    Example:
+        agent_id = jacs.trust_agent(remote_agent_json)
+        print(f"Trusted: {agent_id}")
+    """
+    try:
+        return _trust_agent(agent_json)
+    except Exception as e:
+        raise TrustError(f"Failed to trust agent: {e}")
+
+
+def list_trusted_agents() -> List[str]:
+    """List all trusted agent IDs in the local trust store.
+
+    Returns:
+        List of agent UUID strings
+
+    Example:
+        for agent_id in jacs.list_trusted_agents():
+            print(agent_id)
+    """
+    try:
+        return _list_trusted_agents()
+    except Exception as e:
+        raise TrustError(f"Failed to list trusted agents: {e}")
+
+
+def untrust_agent(agent_id: str) -> None:
+    """Remove an agent from the local trust store.
+
+    Args:
+        agent_id: The UUID of the agent to remove
+
+    Raises:
+        TrustError: If the agent is not in the trust store
+
+    Example:
+        jacs.untrust_agent("550e8400-e29b-41d4-a716-446655440000")
+    """
+    try:
+        _untrust_agent(agent_id)
+    except Exception as e:
+        raise TrustError(f"Failed to untrust agent: {e}")
+
+
+def is_trusted(agent_id: str) -> bool:
+    """Check if an agent is in the local trust store.
+
+    Args:
+        agent_id: The UUID of the agent to check
+
+    Returns:
+        True if the agent is trusted
+
+    Example:
+        if jacs.is_trusted(sender_id):
+            print("Agent is trusted")
+    """
+    return _is_trusted(agent_id)
+
+
+def get_trusted_agent(agent_id: str) -> str:
+    """Get a trusted agent's full JSON document from the trust store.
+
+    Args:
+        agent_id: The UUID of the agent to retrieve
+
+    Returns:
+        The agent's JSON document as a string
+
+    Raises:
+        TrustError: If the agent is not in the trust store
+
+    Example:
+        agent_json = jacs.get_trusted_agent(agent_id)
+        agent_data = json.loads(agent_json)
+    """
+    try:
+        return _get_trusted_agent(agent_id)
+    except Exception as e:
+        raise TrustError(f"Failed to get trusted agent: {e}")
 
 
 def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
@@ -1140,6 +1213,12 @@ __all__ = [
     "export_agent",
     "get_agent_info",
     "is_loaded",
+    # Trust store
+    "trust_agent",
+    "list_trusted_agents",
+    "untrust_agent",
+    "is_trusted",
+    "get_trusted_agent",
     # Remote key fetch
     "fetch_remote_key",
     # Types (re-exported for convenience)

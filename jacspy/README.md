@@ -72,7 +72,7 @@ import jacs.simple as jacs
 # Create an agent without interactive prompts
 agent = jacs.create(
     name="my-agent",
-    password="Str0ng-P@ssw0rd!",  # or set JACS_AGENT_PRIVATE_KEY_PASSWORD env var
+    password="Str0ng-P@ssw0rd!",  # or set JACS_PRIVATE_KEY_PASSWORD env var
     algorithm="pq2025",            # default; also: "ring-Ed25519", "RSA-PSS"
     data_directory="./jacs_data",
     key_directory="./jacs_keys",

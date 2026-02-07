@@ -390,15 +390,16 @@ func VerifyById(documentId string) (*VerificationResult, error) {
 		}, nil
 	}
 
-	// This delegates to the agent's verify_document_by_id which loads from storage.
-	// For now, use the same pattern as Verify: load the document and verify it.
-	// The Go FFI layer doesn't expose verify_document_by_id directly yet,
-	// so we provide the correct error handling and format validation.
+	err := globalAgent.VerifyDocumentById(documentId)
+	if err != nil {
+		return &VerificationResult{
+			Valid:  false,
+			Errors: []string{err.Error()},
+		}, nil
+	}
+
 	return &VerificationResult{
-		Valid: false,
-		Errors: []string{
-			"VerifyById requires storage backend support. Use Verify() with the full JSON string for now.",
-		},
+		Valid: true,
 	}, nil
 }
 
@@ -447,19 +448,9 @@ func ReencryptKey(oldPassword, newPassword string) error {
 		return NewSimpleErrorWithPath("reencrypt_key", keyPath, err)
 	}
 
-	// Re-encrypt via the Rust FFI would be ideal, but since we don't have
-	// a dedicated FFI function, we use environment variables to signal the
-	// operation. For Go, this is a simplified approach that reads/writes
-	// the encrypted key file directly via the Go crypto layer.
-	// In practice, the Rust core's reencrypt_private_key is called.
 	_ = encryptedData
-	_ = oldPassword
-	_ = newPassword
 
-	return NewSimpleError("reencrypt_key", errors.New(
-		"ReencryptKey requires FFI support for jacs_reencrypt_key. "+
-			"Use the CLI: jacs key reencrypt",
-	))
+	return globalAgent.ReencryptKey(oldPassword, newPassword)
 }
 
 // ExportAgent exports the current agent's identity JSON for P2P exchange.
@@ -471,9 +462,7 @@ func ExportAgent() (string, error) {
 		return "", ErrAgentNotLoaded
 	}
 
-	// Read agent file from config location
-	// This is a simplified implementation
-	return "", NewSimpleError("export_agent", errors.New("not yet implemented"))
+	return globalAgent.GetJSON()
 }
 
 // GetPublicKeyPEM returns the current agent's public key in PEM format.

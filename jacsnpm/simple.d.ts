@@ -12,6 +12,11 @@
  * - createAgreement(): Create a multi-party agreement
  * - signAgreement(): Sign an existing agreement
  * - checkAgreement(): Check agreement status
+ * - trustAgent(): Add an agent to the local trust store
+ * - listTrustedAgents(): List all trusted agent IDs
+ * - untrustAgent(): Remove an agent from the trust store
+ * - isTrusted(): Check if an agent is trusted
+ * - getTrustedAgent(): Get a trusted agent's JSON
  *
  * Also re-exports for advanced usage:
  * - JacsAgent: Class for direct agent control
@@ -104,20 +109,47 @@ export interface Attachment {
     embedded: boolean;
 }
 /**
+ * Options for creating a new JACS agent.
+ */
+export interface CreateAgentOptions {
+    /** Human-readable name for the agent. */
+    name: string;
+    /** Password for encrypting the private key. */
+    password: string;
+    /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". */
+    algorithm?: string;
+    /** Directory for agent data (default: "./jacs_data"). */
+    dataDirectory?: string;
+    /** Directory for cryptographic keys (default: "./jacs_keys"). */
+    keyDirectory?: string;
+    /** Path to write the config file (default: "./jacs.config.json"). */
+    configPath?: string;
+    /** Agent type: "ai" (default), "human", or "hybrid". */
+    agentType?: string;
+    /** Description of the agent's purpose. */
+    description?: string;
+    /** Domain for DNS-based agent discovery. */
+    domain?: string;
+    /** Default storage backend: "fs" (default). */
+    defaultStorage?: string;
+}
+/**
  * Creates a new JACS agent with cryptographic keys.
  *
- * @param name - Human-readable name for the agent
- * @param purpose - Optional description of the agent's purpose
- * @param keyAlgorithm - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+ * @param options - Agent creation options
  * @returns AgentInfo containing the agent ID, name, and file paths
  *
  * @example
  * ```typescript
- * const agent = await jacs.create('my-agent', 'Signing documents');
+ * const agent = jacs.create({
+ *   name: 'my-agent',
+ *   password: process.env.JACS_PASSWORD!,
+ *   algorithm: 'pq2025',
+ * });
  * console.log(`Created: ${agent.agentId}`);
  * ```
  */
-export declare function create(name: string, purpose?: string, keyAlgorithm?: string): AgentInfo;
+export declare function create(options: CreateAgentOptions): AgentInfo;
 /**
  * Loads an existing agent from a configuration file.
  *
@@ -337,3 +369,50 @@ export declare function signAgreement(document: any, fieldName?: string): Signed
  * ```
  */
 export declare function checkAgreement(document: any, fieldName?: string): AgreementStatus;
+/**
+ * Verifies a document by its storage ID.
+ *
+ * @param documentId - The document ID in "uuid:version" format
+ * @returns VerificationResult with the verification status
+ */
+export declare function verifyById(documentId: string): VerificationResult;
+/**
+ * Re-encrypt the agent's private key with a new password.
+ *
+ * @param oldPassword - The current password for the private key
+ * @param newPassword - The new password to encrypt with
+ */
+export declare function reencryptKey(oldPassword: string, newPassword: string): void;
+/**
+ * Add an agent to the local trust store.
+ *
+ * @param agentJson - The agent's JSON document
+ * @returns The trusted agent's ID
+ */
+export declare function trustAgent(agentJson: string): string;
+/**
+ * List all trusted agent IDs in the local trust store.
+ *
+ * @returns Array of trusted agent UUIDs
+ */
+export declare function listTrustedAgents(): string[];
+/**
+ * Remove an agent from the local trust store.
+ *
+ * @param agentId - The agent UUID to remove
+ */
+export declare function untrustAgent(agentId: string): void;
+/**
+ * Check if an agent is in the local trust store.
+ *
+ * @param agentId - The agent UUID to check
+ * @returns true if the agent is trusted
+ */
+export declare function isTrusted(agentId: string): boolean;
+/**
+ * Get a trusted agent's full JSON document from the trust store.
+ *
+ * @param agentId - The agent UUID to retrieve
+ * @returns The agent's JSON document as a string
+ */
+export declare function getTrustedAgent(agentId: string): string;

@@ -46,6 +46,11 @@ console.log(`Signer: ${result.signerId}`);
 | `reencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
 | `getPublicKey()` | Get public key for sharing |
 | `isLoaded()` | Check if agent is loaded |
+| `trustAgent(json)` | Add an agent to the local trust store |
+| `listTrustedAgents()` | List all trusted agent IDs |
+| `untrustAgent(id)` | Remove an agent from the trust store |
+| `isTrusted(id)` | Check if an agent is trusted |
+| `getTrustedAgent(id)` | Get a trusted agent's JSON document |
 
 ## Types
 

@@ -252,6 +252,34 @@ impl JacsAgent {
         Ok(py_object_tuple)
     }
 
+    /// Verify a document by its ID from storage.
+    ///
+    /// Args:
+    ///     document_id: Document ID in "uuid:version" format
+    ///
+    /// Returns:
+    ///     True if the document is valid
+    fn verify_document_by_id(&self, document_id: &str) -> PyResult<bool> {
+        self.inner.verify_document_by_id(document_id).to_py()
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    ///
+    /// Args:
+    ///     old_password: Current password
+    ///     new_password: New password (must meet password requirements)
+    fn reencrypt_key(&self, old_password: &str, new_password: &str) -> PyResult<()> {
+        self.inner.reencrypt_key(old_password, new_password).to_py()
+    }
+
+    /// Get the agent's JSON document.
+    ///
+    /// Returns:
+    ///     The agent JSON document as a string
+    fn get_agent_json(&self) -> PyResult<String> {
+        self.inner.get_agent_json().to_py()
+    }
+
     /// Hash a string using the JACS hash function.
     #[staticmethod]
     fn hash_string(data: &str) -> PyResult<String> {

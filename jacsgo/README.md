@@ -49,8 +49,9 @@ func main() {
 | `SignMessage(data)` | Sign any JSON data |
 | `SignFile(path, embed)` | Sign a file |
 | `Verify(doc)` | Verify signed document (JSON string) |
-| `VerifyById(id)` | Verify a document by storage ID (planned -- use CLI for now) |
-| `ReencryptKey(oldPw, newPw)` | Re-encrypt private key (planned -- use CLI: `jacs key reencrypt`) |
+| `VerifyById(id)` | Verify a document by storage ID (`uuid:version`) |
+| `ReencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
+| `ExportAgent()` | Get agent's JSON for sharing |
 | `GetPublicKeyPEM()` | Get public key for sharing |
 
 ## Types

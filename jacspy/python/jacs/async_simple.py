@@ -81,10 +81,16 @@ from .types import (
 
 
 async def create(
-    name: Optional[str] = None,
-    agent_type: str = "service",
+    name: str = "jacs-agent",
+    password: Optional[str] = None,
     algorithm: str = "pq2025",
-    config_path: Optional[str] = None,
+    data_directory: str = "./jacs_data",
+    key_directory: str = "./jacs_keys",
+    config_path: str = "./jacs.config.json",
+    agent_type: str = "ai",
+    description: str = "",
+    domain: Optional[str] = None,
+    default_storage: str = "fs",
 ) -> AgentInfo:
     """Create a new JACS agent with cryptographic keys.
 
@@ -95,24 +101,41 @@ async def create(
     - A signed agent document
 
     Args:
-        name: Optional human-readable name for the agent
-        agent_type: Type of agent ("service", "user", "system")
-        algorithm: Cryptographic algorithm ("RSA", "ML-DSA", "DILITHIUM")
+        name: Human-readable name for the agent
+        password: Password for encrypting the private key. If not provided,
+            uses JACS_PRIVATE_KEY_PASSWORD env var.
+        algorithm: Cryptographic algorithm: "pq2025" (default, post-quantum),
+            "ring-Ed25519", or "RSA-PSS". "pq-dilithium" is deprecated.
+        data_directory: Directory for agent data (default: "./jacs_data")
+        key_directory: Directory for cryptographic keys (default: "./jacs_keys")
         config_path: Where to save the config (default: ./jacs.config.json)
+        agent_type: Type of agent: "ai" (default), "human", or "hybrid"
+        description: Description of the agent's purpose
+        domain: Domain for DNS-based agent discovery
+        default_storage: Storage backend: "fs" (default)
 
     Returns:
         AgentInfo with the new agent's details
 
     Example:
-        agent = await jacs.create(name="My Agent")
+        agent = await jacs.create(
+            name="My Agent",
+            password="Str0ng-P@ss!",
+        )
         print(f"Created agent: {agent.agent_id}")
     """
     return await asyncio.to_thread(
         simple.create,
         name,
-        agent_type,
+        password,
         algorithm,
+        data_directory,
+        key_directory,
         config_path,
+        agent_type,
+        description,
+        domain,
+        default_storage,
     )
 
 
@@ -307,6 +330,44 @@ async def verify(document: Union[str, dict, SignedDocument]) -> VerificationResu
     return await asyncio.to_thread(simple.verify, document)
 
 
+async def verify_by_id(document_id: str) -> VerificationResult:
+    """Verify a document by its storage ID.
+
+    Use this when you have a document ID (e.g., "uuid:version") rather than
+    the full JSON string.
+
+    Args:
+        document_id: The document ID in "uuid:version" format
+
+    Returns:
+        VerificationResult with verification status
+
+    Example:
+        result = await jacs.verify_by_id("550e8400-e29b-41d4-a716-446655440000:1")
+        if result.valid:
+            print("Document verified")
+    """
+    return await asyncio.to_thread(simple.verify_by_id, document_id)
+
+
+async def reencrypt_key(old_password: str, new_password: str) -> None:
+    """Re-encrypt the agent's private key with a new password.
+
+    Args:
+        old_password: The current password for the private key
+        new_password: The new password (must meet password requirements:
+            8+ chars, mixed case, digit, and special character)
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If re-encryption fails
+
+    Example:
+        await jacs.reencrypt_key("old-password-123!", "new-Str0ng-P@ss!")
+    """
+    return await asyncio.to_thread(simple.reencrypt_key, old_password, new_password)
+
+
 # =============================================================================
 # Agreement Operations
 # =============================================================================
@@ -444,6 +505,75 @@ async def export_agent() -> str:
     return await asyncio.to_thread(simple.export_agent)
 
 
+async def trust_agent(agent_json: str) -> str:
+    """Add an agent to the local trust store.
+
+    Args:
+        agent_json: The full agent JSON document string
+
+    Returns:
+        The trusted agent's ID
+    """
+    return await asyncio.to_thread(simple.trust_agent, agent_json)
+
+
+async def list_trusted_agents() -> List[str]:
+    """List all trusted agent IDs in the local trust store.
+
+    Returns:
+        List of agent UUID strings
+    """
+    return await asyncio.to_thread(simple.list_trusted_agents)
+
+
+async def untrust_agent(agent_id: str) -> None:
+    """Remove an agent from the local trust store.
+
+    Args:
+        agent_id: The UUID of the agent to remove
+    """
+    return await asyncio.to_thread(simple.untrust_agent, agent_id)
+
+
+def is_trusted(agent_id: str) -> bool:
+    """Check if an agent is in the local trust store.
+
+    Note: This is synchronous as it only reads cached state.
+
+    Args:
+        agent_id: The UUID of the agent to check
+
+    Returns:
+        True if the agent is trusted
+    """
+    return simple.is_trusted(agent_id)
+
+
+async def get_trusted_agent(agent_id: str) -> str:
+    """Get a trusted agent's full JSON document from the trust store.
+
+    Args:
+        agent_id: The UUID of the agent to retrieve
+
+    Returns:
+        The agent's JSON document as a string
+    """
+    return await asyncio.to_thread(simple.get_trusted_agent, agent_id)
+
+
+async def fetch_remote_key(agent_id: str, version: str = "latest"):
+    """Fetch a public key from HAI's key distribution service.
+
+    Args:
+        agent_id: The unique identifier of the agent
+        version: The key version ("latest" for most recent)
+
+    Returns:
+        PublicKeyInfo with key details
+    """
+    return await asyncio.to_thread(simple.fetch_remote_key, agent_id, version)
+
+
 def get_agent_info() -> Optional[AgentInfo]:
     """Get information about the currently loaded agent.
 
@@ -478,6 +608,9 @@ __all__ = [
     "sign_file",
     # Verification
     "verify",
+    "verify_by_id",
+    # Key management
+    "reencrypt_key",
     # Agreements
     "create_agreement",
     "sign_agreement",
@@ -487,6 +620,14 @@ __all__ = [
     "export_agent",
     "get_agent_info",
     "is_loaded",
+    # Trust store
+    "trust_agent",
+    "list_trusted_agents",
+    "untrust_agent",
+    "is_trusted",
+    "get_trusted_agent",
+    # Remote key fetch
+    "fetch_remote_key",
     # Types (re-exported for convenience)
     "AgentInfo",
     "SignedDocument",

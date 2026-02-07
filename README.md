@@ -168,6 +168,7 @@ JACS fits into many workflows:
 - **Establish agent-to-agent trust** with agreements and multi-party signatures
 - **Track data provenance** through pipelines where data changes hands
 - **Air-gapped environments**: JACS works fully offline with local key storage
+- **Protect your agent's identity**: Run a public-facing agent with verifiable signatures while keeping the operator's identity off the internet — see [Use cases: Protecting agent identity](USECASES.md#protecting-your-agents-identity-on-the-internet) for a detailed scenario.
 
 ## Repository Structure
 
