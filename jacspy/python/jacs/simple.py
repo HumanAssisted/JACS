@@ -911,10 +911,10 @@ def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
     Environment Variables:
         HAI_KEYS_BASE_URL: Base URL for the key service.
                           Defaults to "https://keys.hai.ai".
-        JACS_KEY_RESOLUTION: Controls key resolution order:
-            - "hai-only": Only use HAI key service (default)
-            - "local-first": Try local trust store, fall back to HAI
-            - "hai-first": Try HAI first, fall back to local trust store
+        JACS_KEY_RESOLUTION: Comma-separated order of key resolution when
+                             verifying signatures (e.g. "local,hai" or "local,dns,hai").
+                             Sources: local (trust store), dns (DNS TXT), hai (HAI key service).
+                             Default is "local,hai".
 
     Example:
         # Fetch the latest key for an agent

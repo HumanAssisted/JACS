@@ -1275,7 +1275,13 @@ pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
 
         let value = get_env_var(var_name, *required)?;
         let status = match value {
-            Some(val) => val,
+            Some(val) => {
+                if *var_name == "JACS_PRIVATE_KEY_PASSWORD" {
+                    "REDACTED".to_string()
+                } else {
+                    val
+                }
+            }
             None => {
                 if *required {
                     missing_vars.push(var_name);

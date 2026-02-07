@@ -5,6 +5,7 @@
 - **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).
 - **Config and keystore logging**: Removed config debug log in loaders; keystore key generation no longer prints to stderr by default (uses `tracing::debug`).
 - **Example config**: `jacs.config.example.json` no longer contains `jacs_private_key_password`; use `JACS_PRIVATE_KEY_PASSWORD` environment variable only.
+- **Password redaction in diagnostics**: `check_env_vars()` now prints `REDACTED` instead of the actual `JACS_PRIVATE_KEY_PASSWORD` value, consistent with `Config::Display`.
 
 ### Documentation
 

@@ -2,6 +2,14 @@
 
 JACS implements a comprehensive security model designed to ensure authenticity, integrity, and non-repudiation for all agent communications and documents.
 
+## Security Model (v0.6.0)
+
+- **Passwords**: The private key password must be set only via the `JACS_PRIVATE_KEY_PASSWORD` environment variable. It is never stored in config files.
+- **Keys**: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.
+- **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store.
+- **No secrets in config**: Config files must not contain passwords or other secrets. The example config (`jacs.config.example.json`) does not include `jacs_private_key_password`.
+- **Dependency auditing**: Run `cargo audit` (Rust), `npm audit` (Node.js), or `pip audit` (Python) to check for known vulnerabilities.
+
 ## Core Security Principles
 
 ### 1. Cryptographic Identity
@@ -110,17 +118,14 @@ jacs_keys/
 
 **Encryption at Rest**:
 
-```json
-{
-  "jacs_private_key_password": "NEVER_STORE_IN_CONFIG"
-}
-```
-
-Use environment variables instead:
+Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-SHA256 (600,000 iterations). Never store the password in config files.
 
 ```bash
-export JACS_AGENT_PRIVATE_KEY_PASSWORD="secure-password"
+# Set via environment variable only
+export JACS_PRIVATE_KEY_PASSWORD="secure-password"
 ```
+
+> **Important**: The CLI can prompt for the password during `jacs init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable.
 
 **Password Entropy Requirements**:
 
@@ -360,9 +365,18 @@ except AgentNotTrusted as e:
 
 | Operation | Validation |
 |-----------|------------|
-| `trust_agent()` | Public key hash verification before adding |
-| `untrust_agent()` | Returns `AgentNotTrusted` error if agent not found |
-| `is_trusted()` | Safe lookup without side effects |
+| `trust_agent()` | UUID format validation, path traversal rejection, public key hash verification, self-signature verification before adding |
+| `untrust_agent()` | UUID format validation, path containment check, returns `AgentNotTrusted` error if agent not found |
+| `get_trusted_agent()` | UUID format validation, path containment check |
+| `is_trusted()` | UUID format validation, safe lookup without side effects |
+| Key cache (`load_public_key_from_cache`) | `require_relative_path_safe()` rejects traversal in `publicKeyHash` |
+| Key cache (`save_public_key_to_cache`) | `require_relative_path_safe()` rejects traversal in `publicKeyHash` |
+
+**Path Traversal Protection (v0.6.0)**: All trust store operations that construct file paths from agent IDs or key hashes use defense-in-depth:
+1. **UUID format validation**: Agent IDs must match `UUID:UUID` format (rejects special characters)
+2. **Path character rejection**: Explicit rejection of `..`, `/`, `\`, and null bytes
+3. **Path containment check**: For existing files, canonicalized paths are verified to stay within the trust store directory
+4. **`require_relative_path_safe()`**: Key hashes are validated to prevent traversal before constructing cache file paths
 
 ### Best Practices
 
@@ -513,17 +527,18 @@ Enable observability for security auditing:
 ### Production
 
 - [ ] Encrypt private keys at rest
-- [ ] Use environment variables for secrets
+- [ ] Use environment variables for secrets (never store `jacs_private_key_password` in config)
 - [ ] Enable DNS verification
 - [ ] Configure strict security mode
 - [ ] Enable audit logging
 - [ ] Use TLS for all network transport
-- [ ] Restrict key file permissions
+- [ ] Restrict key file permissions (0600 for keys, 0700 for key directory)
 - [ ] Implement key rotation policy
 - [ ] Set `JACS_STRICT_TLS=true` for certificate validation
 - [ ] Use strong passwords (28+ bit entropy, 35+ for single character class)
 - [ ] Enable signature timestamp validation
 - [ ] Verify public key hashes before trusting agents
+- [ ] Run `cargo audit` / `npm audit` / `pip audit` regularly for dependency vulnerabilities
 
 ### Verification
 
