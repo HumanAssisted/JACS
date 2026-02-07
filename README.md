@@ -106,6 +106,27 @@ jacs document create -f mydata.json
 | `verify_self()` | Verify agent integrity |
 | `get_public_key()` | Get public key for sharing |
 
+## Use Cases
+
+These scenarios show how teams use JACS today. Each links to a [detailed walkthrough](USECASES.md).
+
+**Prove that pipeline outputs are authentic.** A build service signs every JSON artifact it emits -- deployment configs, test reports, compliance summaries. Downstream teams and auditors verify with a single call; tampering or forgery is caught immediately. [Full scenario](USECASES.md#1-verifying-that-json-files-came-from-a-specific-program)
+
+**Run a public agent without exposing the operator.** An AI agent signs every message it sends but only publishes the public key (via DNS or HAI). Recipients verify origin and integrity cryptographically; the operator's identity never touches the internet. [Full scenario](USECASES.md#2-protecting-your-agents-identity-on-the-internet)
+
+**Add cryptographic provenance in any language.** Finance, healthcare, or any regulated environment: sign every output with `sign_message()`, verify with `verify()`. The same three-line pattern works identically in Python, Node.js, and Go. Auditors get cryptographic proof instead of trust-only logs. [Full scenario](USECASES.md#4-a-go-node-or-python-agent-with-strong-data-provenance)
+
+### Other use cases
+
+- **Sign AI outputs** -- Wrap any model response or generated artifact with a signature before it leaves your service. Downstream consumers call `verify()` to confirm which agent produced it and that nothing was altered in transit.
+- **Sign files and documents** -- Contracts, reports, configs, or any file on disk: `sign_file(path)` attaches a cryptographic signature. Recipients verify the file's integrity and origin without trusting the transport layer.
+- **Build MCP servers with signed tool calls** -- Every tool invocation through your MCP server can carry the agent's signature automatically, giving clients proof of which agent executed the call and what it returned.
+- **Establish agent-to-agent trust** -- Two or more agents can sign agreements and verify each other's identities using the trust store. Multi-party signatures let you build workflows where each step is attributable.
+- **Track data provenance through pipelines** -- As data moves between services, each stage signs its output. The final consumer can walk the signature chain to verify every transformation back to the original source.
+- **Verify without loading an agent** -- Use `verify_standalone()` when you just need to check a signature in a lightweight service or script. No config file, no trust store, no agent setup required.
+- **Register with HAI.ai for key discovery** -- Publish your agent's public key to [HAI.ai](https://hai.ai) with `register_with_hai()` so other organizations can discover and verify your agent without exchanging keys out-of-band.
+- **Air-gapped and offline environments** -- Set `JACS_KEY_RESOLUTION=local` and distribute public keys manually. JACS works fully offline with no network calls once keys are in the local trust store.
+
 ## MCP Integration
 
 JACS integrates with Model Context Protocol for authenticated tool calls:
@@ -161,20 +182,6 @@ JACS supports NIST-standardized post-quantum algorithms:
   "jacs_agent_key_algorithm": "pq2025"
 }
 ```
-
-## How to use JACS
-
-JACS fits into many workflows:
-
-- **Sign AI outputs** so downstream consumers can verify who generated them
-- **Sign files and documents** to prove integrity (contracts, reports, configs)
-- **Build MCP servers** where every tool call is signed with agent identity
-- **Establish agent-to-agent trust** with agreements and multi-party signatures
-- **Track data provenance** through pipelines where data changes hands
-- **Verify without loading an agent**: Use `verify_standalone()` for one-off verification in lightweight services (no config or trust store required)
-- **Register with HAI.ai**: Use `registerWithHai()` (Node), `RegisterWithHai()` (Go), or `register_with_hai` (Python) to publish your agent for key discovery
-- **Air-gapped environments**: JACS works fully offline with local key storage
-- **Protect your agent's identity**: Run a public-facing agent with verifiable signatures while keeping the operator's identity off the internet — see [Use cases: Protecting agent identity](USECASES.md#protecting-your-agents-identity-on-the-internet) for a detailed scenario.
 
 ## Repository Structure
 
