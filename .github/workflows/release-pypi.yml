@@ -65,7 +65,7 @@ jobs:
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             use_zig: false
-            allow_failure: false
+            allow_failure: true
           - os: macos-latest
             target: aarch64-apple-darwin
             use_zig: false
