@@ -149,8 +149,15 @@ pub fn trust_agent_with_key(
             reason: e.to_string(),
         })?;
 
-    // Extract required fields
-    let agent_id = agent_value.get_str_required("jacsId")?;
+    // Extract required fields. Canonical agent documents store jacsId and jacsVersion
+    // separately; trust store filenames use UUID:VERSION_UUID.
+    let raw_agent_id = agent_value.get_str_required("jacsId")?;
+    let agent_id = if raw_agent_id.contains(':') {
+        raw_agent_id
+    } else {
+        let version = agent_value.get_str_required("jacsVersion")?;
+        format!("{}:{}", raw_agent_id, version)
+    };
 
     // Validate agent ID is safe for filesystem paths (prevents path traversal)
     validate_agent_id_for_path(&agent_id)?;
@@ -900,6 +907,39 @@ mod tests {
         // This should fail because no public key exists for "wrong-hash"
         let result = trust_agent(agent_json);
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn test_trust_agent_accepts_split_jacs_id_and_version() {
+        let _temp = setup_test_trust_dir();
+
+        // Canonical agent docs use separate jacsId + jacsVersion fields.
+        // This should pass ID parsing and fail later on missing key material.
+        let agent_json = r#"{
+            "jacsId": "550e8400-e29b-41d4-a716-446655440000",
+            "jacsVersion": "550e8400-e29b-41d4-a716-446655440001",
+            "name": "Split ID Agent",
+            "jacsSignature": {
+                "agentID": "test-agent-id",
+                "agentVersion": "v1",
+                "date": "2024-01-01T00:00:00Z",
+                "signature": "dGVzdHNpZw==",
+                "publicKeyHash": "missing-hash",
+                "signingAlgorithm": "ring-Ed25519",
+                "fields": ["name"]
+            }
+        }"#;
+
+        let result = trust_agent(agent_json);
+        assert!(result.is_err());
+        if let Err(JacsError::ValidationError(msg)) = &result {
+            assert!(
+                !msg.contains("UUID:VERSION_UUID"),
+                "split jacsId+jacsVersion should not fail ID format validation: {}",
+                msg
+            );
+        }
     }
 
     #[test]

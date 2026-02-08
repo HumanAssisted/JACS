@@ -41,21 +41,71 @@ jobs:
 
   build:
     needs: verify-version
+    continue-on-error: ${{ matrix.allow_failure }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
+            use_zig: false
+            allow_failure: false
           - os: macos-13
             target: x86_64-apple-darwin
+            use_zig: false
+            allow_failure: false
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            use_zig: false
+            allow_failure: false
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+            use_zig: true
+            allow_failure: false
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
+            use_zig: true
+            allow_failure: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use_zig: true
+            allow_failure: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            use_zig: false
+            allow_failure: false
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            use_zig: false
+            allow_failure: false
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            use_zig: false
+            allow_failure: false
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            use_zig: true
+            allow_failure: true
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            use_zig: true
+            allow_failure: true
+          - os: ubuntu-latest
+            target: riscv64gc-unknown-linux-gnu
+            use_zig: true
+            allow_failure: true
+          - os: ubuntu-latest
+            target: riscv64gc-unknown-linux-musl
+            use_zig: true
+            allow_failure: true
+          - os: ubuntu-latest
+            target: s390x-unknown-linux-gnu
+            use_zig: true
+            allow_failure: true
+          - os: ubuntu-latest
+            target: x86_64-unknown-freebsd
+            use_zig: true
+            allow_failure: true
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -70,13 +120,25 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install Zig
+        if: ${{ matrix.use_zig }}
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
+
       - name: Install dependencies
         run: npm install
         working-directory: jacsnpm
 
       - name: Build native module
-        run: npx napi build --platform --release --target ${{ matrix.target }}
         working-directory: jacsnpm
+        shell: bash
+        run: |
+          if [ "${{ matrix.use_zig }}" = "true" ]; then
+            npx napi build --platform --release --target ${{ matrix.target }} --zig
+          else
+            npx napi build --platform --release --target ${{ matrix.target }}
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -121,7 +183,19 @@ jobs:
             "jacs.linux-x64-gnu.node"
             "jacs.linux-x64-musl.node"
             "jacs.linux-arm64-gnu.node"
+            "jacs.linux-arm64-musl.node"
             "jacs.win32-x64-msvc.node"
+            "jacs.win32-ia32-msvc.node"
+            "jacs.win32-arm64-msvc.node"
+          )
+
+          OPTIONAL_BINARIES=(
+            "jacs.linux-arm-gnueabihf.node"
+            "jacs.linux-arm-musleabihf.node"
+            "jacs.linux-riscv64-gnu.node"
+            "jacs.linux-riscv64-musl.node"
+            "jacs.linux-s390x-gnu.node"
+            "jacs.freebsd-x64.node"
           )
 
           for file in "${REQUIRED_FILES[@]}"; do
@@ -130,6 +204,12 @@ jobs:
 
           for file in "${REQUIRED_BINARIES[@]}"; do
             test -f "$file" || { echo "::error::Missing required native binary: $file"; exit 1; }
+          done
+
+          for file in "${OPTIONAL_BINARIES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "::warning::Optional native binary not present: $file"
+            fi
           done
         working-directory: jacsnpm
 

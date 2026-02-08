@@ -292,9 +292,17 @@ def create(
             default_storage=default_storage,
         )
 
-        # Now load using the global agent path
-        _global_agent = JacsAgent()
-        _global_agent.load(config_path)
+        # Load using the caller-provided password even when env var is unset.
+        previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
+        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = resolved_password
+        try:
+            _global_agent = JacsAgent()
+            _global_agent.load(config_path)
+        finally:
+            if previous_password is None:
+                os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
+            else:
+                os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password
 
         _agent_info = AgentInfo(
             agent_id=info_dict.get("agent_id", ""),

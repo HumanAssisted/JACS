@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node-version: ['20']
 
     steps:
@@ -42,7 +42,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: jacsnpm
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Run npm audit
         working-directory: jacsnpm
@@ -57,6 +57,7 @@ jobs:
         run: npm test
 
       - name: Smoke test packed npm install
+        if: runner.os != 'Windows'
         working-directory: jacsnpm
         run: |
           set -euo pipefail
@@ -65,4 +66,18 @@ jobs:
           cd /tmp/jacs-npm-smoke
           npm init -y >/dev/null
           npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
+          node -e "require('@hai-ai/jacs'); require('@hai-ai/jacs/simple'); require('@hai-ai/jacs/mcp'); require('@hai-ai/jacs/a2a'); console.log('smoke imports ok')"
+
+      - name: Smoke test packed npm install (Windows)
+        if: runner.os == 'Windows'
+        working-directory: jacsnpm
+        shell: pwsh
+        run: |
+          $PackageTgz = (npm pack | Select-Object -Last 1).Trim()
+          $SmokeDir = Join-Path $env:TEMP "jacs-npm-smoke"
+          if (Test-Path $SmokeDir) { Remove-Item -Recurse -Force $SmokeDir }
+          New-Item -ItemType Directory -Path $SmokeDir | Out-Null
+          Set-Location $SmokeDir
+          npm init -y | Out-Null
+          npm install "$env:GITHUB_WORKSPACE\\jacsnpm\\$PackageTgz" --ignore-scripts
           node -e "require('@hai-ai/jacs'); require('@hai-ai/jacs/simple'); require('@hai-ai/jacs/mcp'); require('@hai-ai/jacs/a2a'); console.log('smoke imports ok')"

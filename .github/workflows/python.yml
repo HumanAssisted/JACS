@@ -111,7 +111,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, macos-latest] 
+        os: [ubuntu-latest, macos-14, macos-latest, windows-latest] 
 
     steps:
       - name: Checkout code
@@ -142,6 +142,7 @@ jobs:
           # Build architectures
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           CIBW_ARCHS_MACOS: "x86_64 aarch64" # Build both Intel and ARM on macOS runners
+          CIBW_ARCHS_WINDOWS: "AMD64 ARM64"
           # Skip PyPy builds
           CIBW_SKIP: "pp*" 
           # Python versions to build for (align with pyproject.toml requires-python)

@@ -17,6 +17,7 @@
 const { expect } = require('chai');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 // Import the compiled simple module
 // Note: This requires the TypeScript to be compiled first
@@ -227,9 +228,14 @@ describe('JACS Simple API', function() {
       expect(agreement).to.have.property('raw');
       expect(agreement.documentId).to.be.a('string').and.not.empty;
 
-      const pending = freshSimple.checkAgreement(agreement);
-      expect(pending.complete).to.equal(false);
-      expect(pending.pending).to.include(agentId);
+      let pendingError = null;
+      try {
+        freshSimple.checkAgreement(agreement);
+      } catch (e) {
+        pendingError = e;
+      }
+      expect(pendingError).to.not.equal(null);
+      expect(String(pendingError)).to.match(/not all agents have signed/i);
 
       const signed = freshSimple.signAgreement(agreement);
       expect(signed.documentId).to.be.a('string').and.not.empty;
@@ -248,6 +254,74 @@ describe('JACS Simple API', function() {
       const payload = JSON.stringify({ proposal: 'String payload agreement' });
       const agreement = freshSimple.createAgreement(payload, [info.agentId]);
       expect(agreement.documentId).to.be.a('string').and.not.empty;
+    });
+
+    (simpleExists ? it : it.skip)('should require both agents for two-party agreement completion', () => {
+      const modulePath = require.resolve('../simple.js');
+      const password = 'TestP@ss123!#';
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));
+      const originalCwd = process.cwd();
+
+      function freshSimpleModule() {
+        delete require.cache[modulePath];
+        return require('../simple.js');
+      }
+
+      try {
+        // Use relative paths from an isolated working directory to match storage path handling.
+        process.chdir(root);
+        fs.mkdirSync('agent1', { recursive: true });
+        fs.mkdirSync('agent2', { recursive: true });
+
+        const simpleA = freshSimpleModule();
+        const simpleB = freshSimpleModule();
+
+        simpleA.create({
+          name: 'mocha-agent-a',
+          password,
+          algorithm: 'ring-Ed25519',
+          dataDirectory: 'shared-data',
+          keyDirectory: 'agent1/keys',
+          configPath: 'agent1/jacs.config.json',
+        });
+        simpleB.create({
+          name: 'mocha-agent-b',
+          password,
+          algorithm: 'ring-Ed25519',
+          dataDirectory: 'shared-data',
+          keyDirectory: 'agent2/keys',
+          configPath: 'agent2/jacs.config.json',
+        });
+
+        simpleA.load('agent1/jacs.config.json');
+        simpleB.load('agent2/jacs.config.json');
+
+        const infoA = simpleA.getAgentInfo();
+        const infoB = simpleB.getAgentInfo();
+        expect(infoA).to.be.an('object');
+        expect(infoB).to.be.an('object');
+
+        const agreement = simpleA.createAgreement(
+          { proposal: 'two-party-approval', scope: 'integration-test' },
+          [infoA.agentId, infoB.agentId],
+          'Do both parties approve?',
+          'Two-agent simple API test'
+        );
+        expect(agreement.documentId).to.be.a('string').and.not.empty;
+
+        expect(() => simpleA.checkAgreement(agreement)).to.throw(/not all agents have signed/i);
+
+        const signedByA = simpleA.signAgreement(agreement);
+        expect(() => simpleA.checkAgreement(signedByA)).to.throw(/not all agents have signed/i);
+
+        const signedByBoth = simpleB.signAgreement(signedByA);
+        const status = simpleB.checkAgreement(signedByBoth);
+        expect(status.complete).to.equal(true);
+        expect(status.pending).to.be.an('array').that.is.empty;
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(root, { recursive: true, force: true });
+      }
     });
   });
 

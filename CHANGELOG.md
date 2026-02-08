@@ -7,6 +7,8 @@
 ### DX Improvements
 
 - **Programmatic `create()` API**: New `CreateAgentParams` struct and `create_with_params()` method for non-interactive agent creation across all bindings (Rust, Python, Node.js, Go)
+- **Programmatic create hardening**: `create_with_params()` now generates schema-valid agent payloads (including required service metadata), writes complete config key filename fields, and restores caller environment overrides after creation instead of mutating process env state.
+- **Python create() password UX**: `jacspy.simple.create()` now guarantees immediate post-create load using the provided password even when `JACS_PRIVATE_KEY_PASSWORD` was initially unset.
 - **`verify_by_id()` method**: Load and verify documents by ID from storage, with helpful error when `verify()` is called with non-JSON input
 - **Key re-encryption**: New `reencrypt_key(old_password, new_password)` API and `jacs key reencrypt` CLI command
 - **Password requirements documentation**: `password_requirements()` function, requirements shown before password prompts, clearer error messages
@@ -20,9 +22,11 @@
 - **jacsnpm install behavior**: Removed install-time native build (`npm install` no longer runs `napi build`), so consumers do not need a Rust toolchain at install time.
 - **jacsnpm publish contents**: Added `mcp.d.ts` to published package files so `@hai-ai/jacs/mcp` TypeScript types resolve correctly from npm tarballs.
 - **npm release checks**: Added release-time validation that required `.node` binaries exist and `npm pack --dry-run` contains all exported API files before `npm publish`.
+- **Expanded npm binary coverage**: npm release workflow now builds and validates additional hosted-platform targets (including Windows `x64/ia32/arm64` and Linux `arm64` musl) with best-effort builds for additional Linux/FreeBSD architectures.
 - **jacspy sdist portability**: Excluded `jacspy/examples/**` from crate packaging so `maturin sdist` no longer fails on colon-containing fixture filenames.
 - **jacspy packaging source of truth**: Removed stale `jacspy/setup.py`; `pyproject.toml` + `maturin` now define Python package metadata and build behavior.
 - **CI early failure checks**: Added PR/push-time sdist build verification in Python CI, plus a uv-based wheel smoke test and npm tarball smoke install/import test.
+- **Expanded wheel coverage**: PyPI release and CI wheel workflows now cover additional hosted targets (Linux musl variants and Windows ARM64 best-effort) with platform-specific build paths.
 - **Python test correctness**: Updated unreachable-key-service test to use a valid UUID so it exercises the intended network error path.
 
 ### A2A Interoperability Hardening
@@ -39,6 +43,7 @@
 - **Schema directory boundary hardening**: Filesystem schema loading now validates normalized/canonical path containment instead of string-prefix checks, preventing directory-prefix overlap bypasses (e.g. `allowed_evil` no longer matches `allowed`).
 - **Cross-platform path hardening**: `require_relative_path_safe()` now also rejects Windows drive-prefixed paths (e.g. `C:\...`, `D:/...`, `E:`) while still allowing UUID:UUID filenames used by JACS.
 - **HAI verification transport hardening**: `verify_hai_registration_sync()` now enforces HTTPS for `HAI_API_URL` (with `http://localhost` and `http://127.0.0.1` allowed for local testing), preventing insecure remote transport configuration.
+- **Trust-store canonical ID handling**: `trust_agent()` now accepts canonical agent documents that provide `jacsId` and `jacsVersion` as separate fields, canonicalizes to `UUID:VERSION_UUID`, and keeps strict path-safe validation.
 - **Config and keystore logging**: Removed config debug log in loaders; keystore key generation no longer prints to stderr by default (uses `tracing::debug`).
 - **Example config**: `jacs.config.example.json` no longer contains `jacs_private_key_password`; use `JACS_PRIVATE_KEY_PASSWORD` environment variable only.
 - **Password redaction in diagnostics**: `check_env_vars()` now prints `REDACTED` instead of the actual `JACS_PRIVATE_KEY_PASSWORD` value, consistent with `Config::Display`.
@@ -50,6 +55,8 @@
 - **jacsnpm**: Documented that `overrides` for `body-parser` and `qs` are for security (CVE-2024-45590). Added `npm audit` step in CI.
 - **jacspy**: Aligned key resolution docstring with Rust (comma-separated `local,dns,hai`); added note to run `pip audit` when using optional deps.
 - **A2A documentation refresh**: Added detailed jacsbook guide at `integrations/a2a.md`, corrected stale A2A quickstart endpoints/imports (`agent-card.json`, `jwks.json`, `@hai-ai/jacs/a2a`), and aligned Node.js package references to `@hai-ai/jacs` across docs.
+- **Agreement testing guidance**: Expanded jacsbook advanced testing docs with strict agreement-completion semantics and two-agent harness patterns for Python and Node.js.
+- **README clarity**: Added explicit note that `check_agreement` is strict and fails until all required signers have signed.
 
 
 ## 0.5.2

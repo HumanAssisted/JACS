@@ -619,10 +619,9 @@ class TestAgreementWorkflow:
         )
         assert agreement.document_id
 
-        # Step 2: Check status (should be pending)
-        status = simple.check_agreement(agreement)
-        assert status.complete is False
-        assert loaded_agent.agent_id in status.pending
+        # Step 2: Check status before signing should fail (strict agreement verification)
+        with pytest.raises(JacsError):
+            simple.check_agreement(agreement)
 
         # Step 3: Sign agreement
         signed = simple.sign_agreement(agreement)
@@ -636,6 +635,66 @@ class TestAgreementWorkflow:
         # Step 5: Verify the signed document is valid
         result = simple.verify(signed.raw_json)
         assert result.valid is True
+
+    def test_two_party_agreement_requires_both_signatures(self, tmp_path):
+        """Two distinct agents should both sign before agreement check succeeds."""
+        password = "TestP@ss123!#"
+
+        shared_data = tmp_path / "shared-data"
+        a1_root = tmp_path / "agent1"
+        a2_root = tmp_path / "agent2"
+        shared_data.mkdir()
+        a1_root.mkdir()
+        a2_root.mkdir()
+
+        original_cwd = os.getcwd()
+        try:
+            # Use relative paths so storage and config resolution match across backends.
+            os.chdir(tmp_path)
+
+            # Create two independent agents with separate keys and shared public key cache.
+            a1 = simple.create(
+                name="pytest-agent-1",
+                password=password,
+                algorithm="ring-Ed25519",
+                data_directory="shared-data",
+                key_directory="agent1/keys",
+                config_path="agent1/jacs.config.json",
+            )
+            a2 = simple.create(
+                name="pytest-agent-2",
+                password=password,
+                algorithm="ring-Ed25519",
+                data_directory="shared-data",
+                key_directory="agent2/keys",
+                config_path="agent2/jacs.config.json",
+            )
+
+            # Agent 1 creates agreement requiring signatures from both agents.
+            simple.load("agent1/jacs.config.json")
+            agreement = simple.create_agreement(
+                document={"proposal": "two-party-approval", "amount": 25000},
+                agent_ids=[a1.agent_id, a2.agent_id],
+                question="Do both parties approve?",
+                context="Two-agent integration agreement test",
+            )
+
+            # Incomplete agreement must fail strict check before both signatures exist.
+            with pytest.raises(JacsError):
+                simple.check_agreement(agreement)
+
+            signed_by_a1 = simple.sign_agreement(agreement)
+            with pytest.raises(JacsError):
+                simple.check_agreement(signed_by_a1)
+
+            # Agent 2 signs and completion succeeds.
+            simple.load("agent2/jacs.config.json")
+            signed_by_both = simple.sign_agreement(signed_by_a1)
+            status = simple.check_agreement(signed_by_both)
+            assert status.complete is True
+            assert len(status.pending) == 0
+        finally:
+            os.chdir(original_cwd)
 
 
 class TestAudit:

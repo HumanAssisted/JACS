@@ -124,6 +124,7 @@ These scenarios show how teams use JACS today. Each links to a [detailed walkthr
 - **Sign files and documents** -- Contracts, reports, configs, or any file on disk: `sign_file(path)` attaches a cryptographic signature. Recipients verify the file's integrity and origin without trusting the transport layer.
 - **Build MCP servers with signed tool calls** -- Every tool invocation through your MCP server can carry the agent's signature automatically, giving clients proof of which agent executed the call and what it returned.
 - **Establish agent-to-agent trust** -- Two or more agents can sign agreements and verify each other's identities using the trust store. Multi-party signatures let you build workflows where each step is attributable.
+- **Agreement verification is strict** -- `check_agreement` fails until all required signers have signed, so partial approvals cannot be mistaken for completion.
 - **Track data provenance through pipelines** -- As data moves between services, each stage signs its output. The final consumer can walk the signature chain to verify every transformation back to the original source.
 - **Verify without loading an agent** -- Use `verify_standalone()` when you just need to check a signature in a lightweight service or script. No config file, no trust store, no agent setup required.
 - **Register with HAI.ai for key discovery** -- Publish your agent's public key to [HAI.ai](https://hai.ai) with `register_with_hai()` so other organizations can discover and verify your agent without exchanging keys out-of-band.

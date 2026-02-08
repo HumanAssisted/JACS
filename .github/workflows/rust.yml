@@ -18,8 +18,12 @@ env:
 
 jobs:
   test-jacs: # Renamed job for clarity
-    name: Test jacs crate
-    runs-on: ubuntu-latest
+    name: Test jacs crate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
     - name: Checkout code
@@ -31,6 +35,7 @@ jobs:
         toolchain: '1.93'
 
     - name: Install cargo-audit and run audit
+      if: runner.os == 'Linux'
       working-directory: jacs
       run: |
         cargo install cargo-audit

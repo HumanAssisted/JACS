@@ -58,6 +58,7 @@
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::DocumentTraits;
+use crate::create_minimal_blank_agent;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
 use crate::schema::utils::{ValueExt, check_document_size};
@@ -81,6 +82,33 @@ pub const MAX_VERIFY_URL_LEN: usize = 2048;
 /// while staying under MAX_VERIFY_URL_LEN (base64 expands by ~4/3; with typical base URL
 /// the `s` parameter is limited to 2020 chars).
 pub const MAX_VERIFY_DOCUMENT_BYTES: usize = 1515;
+
+const DEFAULT_PRIVATE_KEY_FILENAME: &str = "jacs.private.pem.enc";
+const DEFAULT_PUBLIC_KEY_FILENAME: &str = "jacs.public.pem";
+
+fn build_agent_document(
+    agent_type: &str,
+    name: &str,
+    description: &str,
+) -> Result<Value, JacsError> {
+    let template = create_minimal_blank_agent(agent_type.to_string(), None, None, None).map_err(
+        |e| JacsError::Internal {
+            message: format!("Failed to create minimal agent template: {}", e),
+        },
+    )?;
+
+    let mut agent_json: Value = serde_json::from_str(&template).map_err(|e| JacsError::Internal {
+        message: format!("Failed to parse minimal agent template JSON: {}", e),
+    })?;
+
+    let obj = agent_json.as_object_mut().ok_or_else(|| JacsError::Internal {
+        message: "Generated minimal agent template is not a JSON object".to_string(),
+    })?;
+
+    obj.insert("name".to_string(), json!(name));
+    obj.insert("description".to_string(), json!(description));
+    Ok(agent_json)
+}
 
 /// Build a verification URL for a signed JACS document (e.g. for hai.ai or custom verifier).
 ///
@@ -575,11 +603,7 @@ impl SimpleAgent {
         let agent_type = "ai";
         let description = purpose.unwrap_or("JACS agent");
 
-        let agent_json = json!({
-            "jacsAgentType": agent_type,
-            "name": name,
-            "description": description,
-        });
+        let agent_json = build_agent_document(agent_type, name, description)?;
 
         // Create the agent
         let mut agent = crate::get_empty_agent();
@@ -610,6 +634,8 @@ impl SimpleAgent {
             "jacs_agent_id_and_version": lookup_id,
             "jacs_data_directory": "./jacs_data",
             "jacs_key_directory": "./jacs_keys",
+            "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
+            "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
             "jacs_agent_key_algorithm": algorithm,
             "jacs_default_storage": "fs"
         });
@@ -628,11 +654,11 @@ impl SimpleAgent {
         let info = AgentInfo {
             agent_id,
             name: name.to_string(),
-            public_key_path: "./jacs_keys/jacs.public.pem".to_string(),
+            public_key_path: format!("./jacs_keys/{}", DEFAULT_PUBLIC_KEY_FILENAME),
             config_path: config_path.to_string(),
             version,
             algorithm: algorithm.to_string(),
-            private_key_path: "./jacs_keys/jacs.private.pem.enc".to_string(),
+            private_key_path: format!("./jacs_keys/{}", DEFAULT_PRIVATE_KEY_FILENAME),
             data_directory: "./jacs_data".to_string(),
             key_directory: "./jacs_keys".to_string(),
             domain: String::new(),
@@ -680,6 +706,24 @@ impl SimpleAgent {
     /// ```
     #[must_use = "agent creation result must be checked for errors"]
     pub fn create_with_params(params: CreateAgentParams) -> Result<(Self, AgentInfo), JacsError> {
+        struct EnvRestoreGuard {
+            previous: Vec<(String, Option<String>)>,
+        }
+
+        impl Drop for EnvRestoreGuard {
+            fn drop(&mut self) {
+                for (key, value) in &self.previous {
+                    unsafe {
+                        if let Some(v) = value {
+                            std::env::set_var(key, v);
+                        } else {
+                            std::env::remove_var(key);
+                        }
+                    }
+                }
+            }
+        }
+
         // Acquire creation mutex to prevent concurrent env var stomping
         let _lock = CREATE_MUTEX.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire creation lock: {}", e),
@@ -724,6 +768,23 @@ impl SimpleAgent {
             reason: e.to_string(),
         })?;
 
+        let env_keys = [
+            "JACS_PRIVATE_KEY_PASSWORD",
+            "JACS_DATA_DIRECTORY",
+            "JACS_KEY_DIRECTORY",
+            "JACS_AGENT_KEY_ALGORITHM",
+            "JACS_DEFAULT_STORAGE",
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        ];
+        let previous_env = env_keys
+            .iter()
+            .map(|k| ((*k).to_string(), std::env::var(k).ok()))
+            .collect();
+        let _env_restore_guard = EnvRestoreGuard {
+            previous: previous_env,
+        };
+
         // Set env vars for the keystore layer (within the mutex lock)
         // SAFETY: We hold CREATE_MUTEX, ensuring no concurrent env var access
         unsafe {
@@ -732,8 +793,8 @@ impl SimpleAgent {
             std::env::set_var("JACS_KEY_DIRECTORY", &params.key_directory);
             std::env::set_var("JACS_AGENT_KEY_ALGORITHM", &algorithm);
             std::env::set_var("JACS_DEFAULT_STORAGE", &params.default_storage);
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", DEFAULT_PRIVATE_KEY_FILENAME);
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", DEFAULT_PUBLIC_KEY_FILENAME);
         }
 
         // Create a minimal agent JSON
@@ -743,11 +804,7 @@ impl SimpleAgent {
             params.description.clone()
         };
 
-        let agent_json = json!({
-            "jacsAgentType": params.agent_type,
-            "name": params.name,
-            "description": description,
-        });
+        let agent_json = build_agent_document(&params.agent_type, &params.name, &description)?;
 
         // Create the agent
         let mut agent = crate::get_empty_agent();
@@ -778,6 +835,8 @@ impl SimpleAgent {
             "jacs_agent_id_and_version": lookup_id,
             "jacs_data_directory": params.data_directory,
             "jacs_key_directory": params.key_directory,
+            "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
+            "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
             "jacs_agent_key_algorithm": algorithm,
             "jacs_default_storage": params.default_storage,
         });
@@ -806,13 +865,9 @@ impl SimpleAgent {
             }
         }
 
-        // Clean up password from env after use
-        unsafe {
-            std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
-        }
-
-        let private_key_path = format!("{}/jacs.private.pem.enc", params.key_directory);
-        let public_key_path = format!("{}/jacs.public.pem", params.key_directory);
+        let private_key_path =
+            format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);
+        let public_key_path = format!("{}/{}", params.key_directory, DEFAULT_PUBLIC_KEY_FILENAME);
 
         info!(
             "Agent '{}' created successfully with ID {} (programmatic)",
