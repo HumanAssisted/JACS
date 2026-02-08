@@ -138,7 +138,9 @@ jobs:
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_BUILD: "cp311-* cp312-* cp313-*"
-          # Install Rust toolchain and OpenSSL inside manylinux containers (needed for PyO3/maturin)
+          # macOS: set minimum deployment target so delocate doesn't reject the wheel
+          CIBW_ENVIRONMENT_MACOS: 'MACOSX_DEPLOYMENT_TARGET=10.13'
+          # Linux: install Rust toolchain and OpenSSL inside manylinux containers
           CIBW_BEFORE_ALL_LINUX: "yum install -y openssl-devel perl-IPC-Cmd && curl https://sh.rustup.rs -sSf | sh -s -- -y"
           CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
 
