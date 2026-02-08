@@ -1,17 +1,17 @@
-name: Python (jacspy crate)
+name: Python (jacs)
 
 on:
   push:
     branches: [ "main" ]
-    paths: # Optional: Trigger only on changes within jacspy/ or relevant files
+    paths: # Trigger on jacspy/ (Python bindings dir) or jacs/ (core lib)
       - 'jacspy/**'
-      - 'jacs/**' # jacspy depends on jacs
+      - 'jacs/**'
       - '.github/workflows/python.yml'
   pull_request:
     branches: [ "main" ]
-    paths: # Optional: Trigger only on changes within jacspy/ or relevant files
+    paths:
       - 'jacspy/**'
-      - 'jacs/**' # jacspy depends on jacs
+      - 'jacs/**'
       - '.github/workflows/python.yml'
   workflow_dispatch: # Allows manual triggering
 
@@ -19,9 +19,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Job to run tests on every push/PR
-  test-jacspy:
-    name: Test jacspy crate (x86_64)
+  # Job to run tests on every push/PR (jacspy = local dir name; package on PyPI is jacs)
+  test-jacs:
+    name: Test jacs (x86_64)
     runs-on: ubuntu-latest # Docker is available on ubuntu-latest runners (x86_64)
 
     steps:
@@ -35,7 +35,7 @@ jobs:
         working-directory: jacspy # Directory containing DockerfileBuilder
         run: docker buildx build --tag "jacs-build-x86_64" -f DockerfileBuilder . --load # --load makes image available
 
-      - name: Run jacspy tests in Docker (x86_64)
+      - name: Run jacs tests in Docker (x86_64)
         working-directory: jacspy # To match PWD context if needed by scripts
         env:
           RUST_BACKTRACE: "1"
@@ -66,7 +66,7 @@ jobs:
 
   wheel-smoke-uv:
     name: Wheel smoke install (uv)
-    needs: test-jacspy
+    needs: test-jacs
     runs-on: ubuntu-latest
 
     steps:
@@ -101,12 +101,11 @@ jobs:
           print("wheel smoke imports ok")
           PY
 
-  # Job to build wheels, runs ONLY on push to main
-  build-jacspy-wheels:
-    name: Build jacspy wheels on ${{ matrix.os }}
-    # Condition: Only run on push events to the main branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' 
-    needs: [test-jacspy, wheel-smoke-uv] # Optional: Ensure tests pass before building wheels
+  # Job to build wheels, runs ONLY on push to main (PyPI package name is jacs)
+  build-jacs-wheels:
+    name: Build jacs wheels on ${{ matrix.os }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test-jacs, wheel-smoke-uv]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -115,9 +114,23 @@ jobs:
 
     steps:
       - name: Checkout code
+        if: runner.os != 'Windows'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Needed for cibuildwheel versioning
+
+      - name: Checkout code (Windows sparse)
+        if: runner.os == 'Windows'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/jacs/tests/**
+            !/jacs/docs/presentation/**
+            !/jacspy/examples/**
+            !/jacsnpm/examples/**
+          sparse-checkout-cone-mode: false
 
       - name: Set up QEMU (Linux only)
         if: runner.os == 'Linux'
@@ -153,6 +166,6 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-jacspy-${{ matrix.os }}
+          name: wheels-jacs-${{ matrix.os }}
           # Path is relative to GITHUB_WORKSPACE (repo root)
           path: ./wheelhouse/*.whl

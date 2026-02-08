@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::Path;
 use uuid::Uuid;
 
 /// Creates a minimal agent state document with required fields.

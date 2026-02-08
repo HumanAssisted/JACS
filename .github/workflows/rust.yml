@@ -27,7 +27,20 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4 # Use v4
+      if: runner.os != 'Windows'
+      uses: actions/checkout@v4
+
+    - name: Checkout code (Windows sparse)
+      if: runner.os == 'Windows'
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: |
+          /*
+          !/jacs/tests/**
+          !/jacs/docs/presentation/**
+          !/jacspy/examples/**
+          !/jacsnpm/examples/**
+        sparse-checkout-cone-mode: false
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -42,6 +55,11 @@ jobs:
         cargo audit || true
 
     - name: Run jacs tests
-      # Specify the working directory for the test command
+      if: runner.os != 'Windows'
       working-directory: jacs
       run: cargo test --verbose --features cli
+
+    - name: Build jacs test targets (Windows)
+      if: runner.os == 'Windows'
+      working-directory: jacs
+      run: cargo test --verbose --features cli --lib --no-run

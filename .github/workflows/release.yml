@@ -109,7 +109,19 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - if: runner.os != 'Windows'
+        uses: actions/checkout@v4
+
+      - if: runner.os == 'Windows'
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/jacs/tests/**
+            !/jacs/docs/presentation/**
+            !/jacspy/examples/**
+            !/jacsnpm/examples/**
+          sparse-checkout-cone-mode: false
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:

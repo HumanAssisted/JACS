@@ -28,6 +28,7 @@
 - **CI early failure checks**: Added PR/push-time sdist build verification in Python CI, plus a uv-based wheel smoke test and npm tarball smoke install/import test.
 - **Expanded wheel coverage**: PyPI release and CI wheel workflows now cover additional hosted targets (Linux musl variants and Windows ARM64 best-effort) with platform-specific build paths.
 - **Python test correctness**: Updated unreachable-key-service test to use a valid UUID so it exercises the intended network error path.
+- **Windows CI checkout compatibility**: Windows matrix jobs now use sparse checkout that excludes colon-named fixture/example paths (`jacs/tests/**`, presentation docs, and wrapper examples), preventing NTFS checkout failures while preserving full Linux/macOS coverage.
 
 ### A2A Interoperability Hardening
 
@@ -57,6 +58,7 @@
 - **A2A documentation refresh**: Added detailed jacsbook guide at `integrations/a2a.md`, corrected stale A2A quickstart endpoints/imports (`agent-card.json`, `jwks.json`, `@hai-ai/jacs/a2a`), and aligned Node.js package references to `@hai-ai/jacs` across docs.
 - **Agreement testing guidance**: Expanded jacsbook advanced testing docs with strict agreement-completion semantics and two-agent harness patterns for Python and Node.js.
 - **README clarity**: Added explicit note that `check_agreement` is strict and fails until all required signers have signed.
+- **Rust agreement test strictness**: Core `agreement_test` now explicitly asserts that `check_agreement` fails after the first signature and only succeeds after both required agents sign.
 
 
 ## 0.5.2
