@@ -241,6 +241,8 @@ help:
 	@echo "  make release-jacsnpm Tag npm/v<version> -> triggers npm release"
 	@echo "  make release-all     Verify versions match, then release all packages"
 	@echo "  make release-delete-tags  Delete release tags (for fixing failed releases)"
+	@echo "  make retry-jacspy    Retry failed PyPI release (delete tags, retag, push)"
+	@echo "  make retry-jacsnpm   Retry failed npm release (delete tags, retag, push)"
 	@echo ""
 	@echo "Required GitHub Secrets:"
 	@echo "  CRATES_IO_TOKEN  - for crate/v* tags"
