@@ -142,7 +142,7 @@ func documentHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, doc)
 }
 
-// hashHandler hashes the provided data
+// hashHandler hashes the provided data. Accepts JSON {"data": "string to hash"} or raw body.
 func hashHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		sendError(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -155,7 +155,17 @@ func hashHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := jacs.HashString(string(body))
+	toHash := string(body)
+	if len(body) > 0 && (body[0] == '{' || body[0] == '[') {
+		var req struct {
+			Data string `json:"data"`
+		}
+		if err := json.Unmarshal(body, &req); err == nil && req.Data != "" {
+			toHash = req.Data
+		}
+	}
+
+	hash, err := jacs.HashString(toHash)
 	if err != nil {
 		sendError(w, fmt.Sprintf("Failed to hash data: %v", err), http.StatusInternalServerError)
 		return

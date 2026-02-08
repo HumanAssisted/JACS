@@ -29,4 +29,6 @@ cd ../.. && make examples
 ./client
 ```
 
+The examples run with or without JACS config; if no config is found, requests are sent unsigned and the server responds without signing. Set `JACS_CONFIG` to a config path and ensure `jacs.server.config.json` / `jacs.client.config.json` exist in the working directory if you want signing.
+
 The examples demonstrate JACS request signing and response verification over HTTP.
