@@ -22,13 +22,17 @@
 - **jacsnpm install behavior**: Removed install-time native build (`npm install` no longer runs `napi build`), so consumers do not need a Rust toolchain at install time.
 - **jacsnpm publish contents**: Added `mcp.d.ts` to published package files so `@hai-ai/jacs/mcp` TypeScript types resolve correctly from npm tarballs.
 - **npm release checks**: Added release-time validation that required `.node` binaries exist and `npm pack --dry-run` contains all exported API files before `npm publish`.
-- **Expanded npm binary coverage**: npm release workflow now builds and validates additional hosted-platform targets (including Windows `x64/ia32/arm64` and Linux `arm64` musl) with best-effort builds for additional Linux/FreeBSD architectures.
+- **Expanded npm binary coverage**: npm release workflow builds and validates hosted Linux/macOS targets (including Linux `arm64` musl) with best-effort builds for additional Linux/FreeBSD architectures; Windows artifacts are currently optional while checkout path compatibility is being remediated.
 - **jacspy sdist portability**: Excluded `jacspy/examples/**` from crate packaging so `maturin sdist` no longer fails on colon-containing fixture filenames.
 - **jacspy packaging source of truth**: Removed stale `jacspy/setup.py`; `pyproject.toml` + `maturin` now define Python package metadata and build behavior.
+- **jacspy PyO3 compatibility fix**: Replaced deprecated PyO3 conversion APIs (`*_bound`, `into_py`) with current APIs in Rust bindings so `uv run maturin build --release` succeeds under strict warning-as-error CI settings.
 - **CI early failure checks**: Added PR/push-time sdist build verification in Python CI, plus a uv-based wheel smoke test and npm tarball smoke install/import test.
-- **Expanded wheel coverage**: PyPI release and CI wheel workflows now cover additional hosted targets (Linux musl variants and Windows ARM64 best-effort) with platform-specific build paths.
+- **Expanded wheel coverage**: PyPI release and CI wheel workflows now cover additional hosted targets (including Linux musl variants) with platform-specific build paths.
 - **Python test correctness**: Updated unreachable-key-service test to use a valid UUID so it exercises the intended network error path.
-- **Windows CI checkout compatibility**: Windows matrix jobs now use sparse checkout that excludes colon-named fixture/example paths (`jacs/tests/**`, presentation docs, and wrapper examples), preventing NTFS checkout failures while preserving full Linux/macOS coverage.
+- **Rust toolchain pinning for Python builds**: Python wheel CI and PyPI wheel release jobs now pin Rust `1.93` (matching workspace `rust-version`) to reduce toolchain drift.
+- **Python CI trigger reliability**: Removed path filters from `Python (jacs)` workflow so Python tests always run on `push`/`pull_request` to `main` and are not silently skipped by unrelated file changes.
+- **Python wheel CI on PRs**: `build-jacs-wheels` now runs for pull requests as well as pushes, so wheel build coverage is no longer shown as a skipped job in PR checks.
+- **Temporary Windows CI bypass**: Windows runner jobs were removed from active CI/release matrices because GitHub Windows checkout cannot handle existing colon-named tracked fixtures. Linux/macOS coverage remains fully enabled to unblock releases; Windows automation will return after fixture/path normalization.
 
 ### A2A Interoperability Hardening
 

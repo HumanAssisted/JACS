@@ -230,6 +230,8 @@ interface RemotePublicKeyInfo {
 
 ## See Also
 
-- [JACS Documentation](https://hai.ai/jacs)
+- [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
+- [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [Source](https://github.com/HumanAssisted/JACS) - GitHub repository
 - [HAI Developer Portal](https://hai.ai/dev)
 - [Examples](./examples/)

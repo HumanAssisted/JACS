@@ -22,18 +22,18 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/crate/v}"
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Check Cargo.toml version matches tag
+      - name: Check Cargo.toml version matches tag (jacs + jacs-mcp)
         run: |
-          CARGO_VERSION=$(grep '^version = ' jacs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           TAG_VERSION="${{ steps.extract.outputs.version }}"
-          echo "Cargo version: $CARGO_VERSION"
-          echo "Tag version: $TAG_VERSION"
-          if [ "$CARGO_VERSION" = "$TAG_VERSION" ]; then
-            echo "Version match confirmed"
-          else
-            echo "::error::Version mismatch! Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
-            exit 1
-          fi
+          for dir in jacs jacs-mcp; do
+            CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+            echo "$dir Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
+            if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+              echo "::error::Version mismatch! $dir/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+              exit 1
+            fi
+          done
+          echo "Version match confirmed for jacs and jacs-mcp"
 
   publish:
     needs: verify-version
@@ -43,6 +43,11 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Publish to crates.io
+      - name: Publish jacs to crates.io
         working-directory: jacs
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Publish jacs-mcp to crates.io
+        working-directory: jacs-mcp
+        continue-on-error: true
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}

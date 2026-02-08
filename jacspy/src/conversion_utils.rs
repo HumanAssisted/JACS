@@ -1,6 +1,7 @@
 use base64::{Engine as _, engine::general_purpose};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyString};
+use pyo3::IntoPyObjectExt;
 use serde_json::{Map as JsonMap, Value};
 
 /// Converts a Bound<'_, PyAny> into a serde_json::Value.
@@ -64,27 +65,28 @@ pub fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
 pub fn value_to_pyobject(py: Python, value: &Value) -> PyResult<PyObject> {
     match value {
         Value::Null => Ok(py.None()),
-        Value::Bool(b) => Ok(b.into_py(py)),
+        Value::Bool(b) => (*b).into_py_any(py),
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                Ok(i.into_py(py))
+                i.into_py_any(py)
             } else if let Some(u) = n.as_u64() {
-                Ok(u.into_py(py))
+                u.into_py_any(py)
             } else if let Some(f) = n.as_f64() {
-                Ok(f.into_py(py))
+                f.into_py_any(py)
             } else {
                 Err(pyo3::exceptions::PyValueError::new_err(
                     "Invalid JSON number",
                 ))
             }
         }
-        Value::String(s) => Ok(s.into_py(py)),
+        Value::String(s) => s.clone().into_py_any(py),
         Value::Array(a) => {
             let mut py_items = Vec::with_capacity(a.len());
             for item in a {
                 py_items.push(value_to_pyobject(py, item)?);
             }
-            Ok(PyList::new_bound(py, py_items).into_py(py))
+            let list = PyList::new(py, py_items)?;
+            Ok(list.into_any().unbind())
         }
         Value::Object(o) => {
             // Check if this is a specially encoded type
@@ -100,7 +102,7 @@ pub fn value_to_pyobject(py: Python, value: &Value) -> PyResult<PyObject> {
                                 e
                             ))
                         })?;
-                        Ok(PyBytes::new_bound(py, &bytes).into_py(py))
+                        Ok(PyBytes::new(py, &bytes).into_any().unbind())
                     }
                     // "datetime" => {
                     //     // Import datetime module and create a datetime object
@@ -117,20 +119,20 @@ pub fn value_to_pyobject(py: Python, value: &Value) -> PyResult<PyObject> {
                     // },
                     _ => {
                         // If it's not a recognized special type, treat as normal dict
-                        let dict = PyDict::new_bound(py);
+                        let dict = PyDict::new(py);
                         for (key, val) in o {
                             dict.set_item(key, value_to_pyobject(py, val)?)?;
                         }
-                        Ok(dict.into_py(py))
+                        Ok(dict.into_any().unbind())
                     }
                 }
             } else {
                 // Regular dictionary
-                let dict = PyDict::new_bound(py);
+                let dict = PyDict::new(py);
                 for (key, val) in o {
                     dict.set_item(key, value_to_pyobject(py, val)?)?;
                 }
-                Ok(dict.into_py(py))
+                Ok(dict.into_any().unbind())
             }
         }
     }

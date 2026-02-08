@@ -274,6 +274,12 @@ export RUST_LOG=debug
 cargo run
 ```
 
+## Documentation
+
+- [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
+- [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [Source](https://github.com/HumanAssisted/JACS) - GitHub repository
+
 ## License
 
 See the LICENSE file in the parent directory.

@@ -2,6 +2,8 @@
 
 Cryptographic signing and verification for AI agents.
 
+**[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://humanassisted.github.io/JACS/nodejs/api.html)**
+
 ```bash
 cargo install jacs
 ```
@@ -88,4 +90,4 @@ jacs verify doc.json     # Verify a document
 - [Python](https://pypi.org/project/jacs/)
 - [Crates.io](https://crates.io/crates/jacs)
 
-**Version**: 0.5.1 | [HAI.AI](https://hai.ai)
+**Version**: 0.6.0 | [HAI.AI](https://hai.ai)

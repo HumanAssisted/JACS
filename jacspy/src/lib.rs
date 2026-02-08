@@ -10,6 +10,7 @@ use jacs_binding_core::hai::{
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use pyo3::IntoPyObjectExt;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
@@ -242,14 +243,9 @@ impl JacsAgent {
             .to_py()?;
 
         let py_payload = conversion_utils::value_to_pyobject(py, &payload)?;
-        let py_agent_id: Py<pyo3::types::PyString> =
-            pyo3::types::PyString::new(py, &agent_id).into();
-
-        let tuple_bound_ref =
-            pyo3::types::PyTuple::new(py, &[py_agent_id.into_py(py), py_payload])?;
-        let py_object_tuple = tuple_bound_ref.into_py(py);
-
-        Ok(py_object_tuple)
+        let items = vec![agent_id.into_py_any(py)?, py_payload];
+        let tuple = pyo3::types::PyTuple::new(py, items)?;
+        Ok(tuple.into_any().unbind())
     }
 
     /// Verify a document by its ID from storage.

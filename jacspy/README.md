@@ -290,6 +290,8 @@ uv run python -m pytest tests/ -v
 
 ## Documentation
 
-- [JACS Book](https://humanassisted.github.io/JACS) - Full documentation
+- [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
+- [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 - [API Reference](https://humanassisted.github.io/JACS/api/python) - Python API docs
 - [Migration Guide](https://humanassisted.github.io/JACS/migration) - Upgrading from v0.4.x
+- [Source](https://github.com/HumanAssisted/JACS) - GitHub repository

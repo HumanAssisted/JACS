@@ -70,18 +70,6 @@ jobs:
             target: aarch64-unknown-linux-musl
             use_zig: true
             allow_failure: false
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use_zig: false
-            allow_failure: false
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            use_zig: false
-            allow_failure: false
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            use_zig: false
-            allow_failure: false
           - os: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
             use_zig: true
@@ -109,19 +97,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - if: runner.os != 'Windows'
-        uses: actions/checkout@v4
-
-      - if: runner.os == 'Windows'
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            /*
-            !/jacs/tests/**
-            !/jacs/docs/presentation/**
-            !/jacspy/examples/**
-            !/jacsnpm/examples/**
-          sparse-checkout-cone-mode: false
+      - uses: actions/checkout@v4
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -196,12 +172,12 @@ jobs:
             "jacs.linux-x64-musl.node"
             "jacs.linux-arm64-gnu.node"
             "jacs.linux-arm64-musl.node"
-            "jacs.win32-x64-msvc.node"
-            "jacs.win32-ia32-msvc.node"
-            "jacs.win32-arm64-msvc.node"
           )
 
           OPTIONAL_BINARIES=(
+            "jacs.win32-x64-msvc.node"
+            "jacs.win32-ia32-msvc.node"
+            "jacs.win32-arm64-msvc.node"
             "jacs.linux-arm-gnueabihf.node"
             "jacs.linux-arm-musleabihf.node"
             "jacs.linux-riscv64-gnu.node"

@@ -3,16 +3,8 @@ name: Python (jacs)
 on:
   push:
     branches: [ "main" ]
-    paths: # Trigger on jacspy/ (Python bindings dir) or jacs/ (core lib)
-      - 'jacspy/**'
-      - 'jacs/**'
-      - '.github/workflows/python.yml'
   pull_request:
     branches: [ "main" ]
-    paths:
-      - 'jacspy/**'
-      - 'jacs/**'
-      - '.github/workflows/python.yml'
   workflow_dispatch: # Allows manual triggering
 
 env:
@@ -80,6 +72,8 @@ jobs:
 
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.93'
 
       - name: Install uv and maturin
         run: python -m pip install uv maturin
@@ -101,36 +95,21 @@ jobs:
           print("wheel smoke imports ok")
           PY
 
-  # Job to build wheels, runs ONLY on push to main (PyPI package name is jacs)
+  # Job to build wheels for CI coverage (PyPI package name is jacs)
   build-jacs-wheels:
     name: Build jacs wheels on ${{ matrix.os }}
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test-jacs, wheel-smoke-uv]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, macos-latest, windows-latest] 
+        os: [ubuntu-latest, macos-14, macos-latest] 
 
     steps:
       - name: Checkout code
-        if: runner.os != 'Windows'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Needed for cibuildwheel versioning
-
-      - name: Checkout code (Windows sparse)
-        if: runner.os == 'Windows'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          sparse-checkout: |
-            /*
-            !/jacs/tests/**
-            !/jacs/docs/presentation/**
-            !/jacspy/examples/**
-            !/jacsnpm/examples/**
-          sparse-checkout-cone-mode: false
 
       - name: Set up QEMU (Linux only)
         if: runner.os == 'Linux'
@@ -154,14 +133,12 @@ jobs:
           # === cibuildwheel configuration ===
           # Build architectures
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
-          CIBW_ARCHS_MACOS: "x86_64 aarch64" # Build both Intel and ARM on macOS runners
-          CIBW_ARCHS_WINDOWS: "AMD64 ARM64"
-          # Skip PyPy builds
-          CIBW_SKIP: "pp*" 
+          CIBW_ARCHS_MACOS: "x86_64 arm64" # Build both Intel and ARM on macOS runners
           # Python versions to build for (align with pyproject.toml requires-python)
-          CIBW_BUILD: "cp311-* cp312-* cp313-*" # Example: Build for 3.11, 3.12, 3.13
-          # Linux specific dependencies (if needed inside manylinux container)
-          # CIBW_BUILD_DEPENDS_LINUX: "openssl-devel" 
+          CIBW_BUILD: "cp311-* cp312-* cp313-*"
+          # Install Rust toolchain inside manylinux containers (needed for PyO3/maturin)
+          CIBW_BEFORE_ALL_LINUX: "curl https://sh.rustup.rs -sSf | sh -s -- -y && export PATH=$HOME/.cargo/bin:$PATH"
+          CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

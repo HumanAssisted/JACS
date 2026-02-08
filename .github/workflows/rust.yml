@@ -23,24 +23,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
     - name: Checkout code
-      if: runner.os != 'Windows'
       uses: actions/checkout@v4
-
-    - name: Checkout code (Windows sparse)
-      if: runner.os == 'Windows'
-      uses: actions/checkout@v4
-      with:
-        sparse-checkout: |
-          /*
-          !/jacs/tests/**
-          !/jacs/docs/presentation/**
-          !/jacspy/examples/**
-          !/jacsnpm/examples/**
-        sparse-checkout-cone-mode: false
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -55,11 +42,5 @@ jobs:
         cargo audit || true
 
     - name: Run jacs tests
-      if: runner.os != 'Windows'
       working-directory: jacs
       run: cargo test --verbose --features cli
-
-    - name: Build jacs test targets (Windows)
-      if: runner.os == 'Windows'
-      working-directory: jacs
-      run: cargo test --verbose --features cli --lib --no-run
