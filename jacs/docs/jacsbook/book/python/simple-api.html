@@ -297,6 +297,13 @@ else:
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
 <hr />
+<h3 id="auditconfig_pathnone-recent_nnone"><a class="header" href="#auditconfig_pathnone-recent_nnone">audit(config_path=None, recent_n=None)</a></h3>
+<p>Run a read-only security audit and health checks. Returns a dict with <code>risks</code>, <code>health_checks</code>, <code>summary</code>, and <code>overall_status</code>. Does not require a loaded agent; does not modify state.</p>
+<p>See <a href="../advanced/security.html#security-audit-audit">Security Model — Security Audit</a> for full details and options.</p>
+<pre><code class="language-python">result = jacs.audit()
+print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+</code></pre>
+<hr />
 <h3 id="update_agentnew_agent_data"><a class="header" href="#update_agentnew_agent_data">update_agent(new_agent_data)</a></h3>
 <p>Update the agent document with new data and re-sign it.</p>
 <p>This function expects a <strong>complete agent document</strong> (not partial updates). Use <code>export_agent()</code> to get the current document, modify it, then pass it here.</p>

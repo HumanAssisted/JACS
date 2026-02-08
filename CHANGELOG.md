@@ -1,5 +1,9 @@
 ## 0.6.0
 
+### Security audit (MVP)
+
+- **`audit()`**: New read-only security audit and health checks. Returns structured report (risks, health_checks, summary); checks config/directories, secrets/keys, trust store, storage paths, quarantine/failed files, and optionally re-verifies N recent documents. Exposed in Rust (`jacs::audit`), binding-core, jacspy (`jacs.audit()`), jacsnpm (`jacs.audit(options?)`), and MCP tool `jacs_audit`. Documented in jacsbook (Security Model) and READMEs.
+
 ### DX Improvements
 
 - **Programmatic `create()` API**: New `CreateAgentParams` struct and `create_with_params()` method for non-interactive agent creation across all bindings (Rust, Python, Node.js, Go)

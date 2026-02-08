@@ -61,12 +61,50 @@ use crate::agent::document::DocumentTraits;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
 use crate::schema::utils::{ValueExt, check_document_size};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 use tracing::{debug, info};
+
+// =============================================================================
+// Verify link constants (HAI / public verification URLs)
+// =============================================================================
+
+/// Maximum length for a full verify URL (scheme + host + path + ?s=...) to stay within
+/// typical HTTP GET URL limits (e.g. 2048 chars in many clients/servers).
+pub const MAX_VERIFY_URL_LEN: usize = 2048;
+
+/// Maximum UTF-8 byte length of a JACS document that can be encoded into a verify link
+/// while staying under MAX_VERIFY_URL_LEN (base64 expands by ~4/3; with typical base URL
+/// the `s` parameter is limited to 2020 chars).
+pub const MAX_VERIFY_DOCUMENT_BYTES: usize = 1515;
+
+/// Build a verification URL for a signed JACS document (e.g. for hai.ai or custom verifier).
+///
+/// Encodes `document` as URL-safe base64 and appends it as the `s` query parameter.
+/// Returns an error if the resulting URL would exceed [`MAX_VERIFY_URL_LEN`].
+///
+/// # Example
+/// ```ignore
+/// let url = jacs::simple::generate_verify_link(r#"{"signed":...}"#, "https://hai.ai")?;
+/// // => "https://hai.ai/jacs/verify?s=eyJzaWduZWQi..."
+/// ```
+pub fn generate_verify_link(document: &str, base_url: &str) -> Result<String, JacsError> {
+    let base = base_url.trim_end_matches('/');
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(document.as_bytes());
+    let path_and_query = format!("/jacs/verify?s={}", encoded);
+    let full_url = format!("{}{}", base, path_and_query);
+    if full_url.len() > MAX_VERIFY_URL_LEN {
+        return Err(JacsError::ValidationError(format!(
+            "Verify URL would exceed max length ({}). Document size must be at most {} UTF-8 bytes.",
+            MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES
+        )));
+    }
+    Ok(full_url)
+}
 
 // =============================================================================
 // Types
@@ -291,12 +329,24 @@ pub struct CreateAgentParams {
     pub hai_endpoint: String,
 }
 
-fn default_algorithm() -> String { "pq2025".to_string() }
-fn default_data_directory() -> String { "./jacs_data".to_string() }
-fn default_key_directory() -> String { "./jacs_keys".to_string() }
-fn default_config_path() -> String { "./jacs.config.json".to_string() }
-fn default_agent_type() -> String { "ai".to_string() }
-fn default_storage() -> String { "fs".to_string() }
+fn default_algorithm() -> String {
+    "pq2025".to_string()
+}
+fn default_data_directory() -> String {
+    "./jacs_data".to_string()
+}
+fn default_key_directory() -> String {
+    "./jacs_keys".to_string()
+}
+fn default_config_path() -> String {
+    "./jacs.config.json".to_string()
+}
+fn default_agent_type() -> String {
+    "ai".to_string()
+}
+fn default_storage() -> String {
+    "fs".to_string()
+}
 
 impl Default for CreateAgentParams {
     fn default() -> Self {
@@ -331,18 +381,54 @@ pub struct CreateAgentParamsBuilder {
 }
 
 impl CreateAgentParamsBuilder {
-    pub fn name(mut self, name: &str) -> Self { self.params.name = name.to_string(); self }
-    pub fn password(mut self, password: &str) -> Self { self.params.password = password.to_string(); self }
-    pub fn algorithm(mut self, algorithm: &str) -> Self { self.params.algorithm = algorithm.to_string(); self }
-    pub fn data_directory(mut self, dir: &str) -> Self { self.params.data_directory = dir.to_string(); self }
-    pub fn key_directory(mut self, dir: &str) -> Self { self.params.key_directory = dir.to_string(); self }
-    pub fn config_path(mut self, path: &str) -> Self { self.params.config_path = path.to_string(); self }
-    pub fn agent_type(mut self, agent_type: &str) -> Self { self.params.agent_type = agent_type.to_string(); self }
-    pub fn description(mut self, desc: &str) -> Self { self.params.description = desc.to_string(); self }
-    pub fn domain(mut self, domain: &str) -> Self { self.params.domain = domain.to_string(); self }
-    pub fn default_storage(mut self, storage: &str) -> Self { self.params.default_storage = storage.to_string(); self }
-    pub fn hai_api_key(mut self, key: &str) -> Self { self.params.hai_api_key = key.to_string(); self }
-    pub fn hai_endpoint(mut self, endpoint: &str) -> Self { self.params.hai_endpoint = endpoint.to_string(); self }
+    pub fn name(mut self, name: &str) -> Self {
+        self.params.name = name.to_string();
+        self
+    }
+    pub fn password(mut self, password: &str) -> Self {
+        self.params.password = password.to_string();
+        self
+    }
+    pub fn algorithm(mut self, algorithm: &str) -> Self {
+        self.params.algorithm = algorithm.to_string();
+        self
+    }
+    pub fn data_directory(mut self, dir: &str) -> Self {
+        self.params.data_directory = dir.to_string();
+        self
+    }
+    pub fn key_directory(mut self, dir: &str) -> Self {
+        self.params.key_directory = dir.to_string();
+        self
+    }
+    pub fn config_path(mut self, path: &str) -> Self {
+        self.params.config_path = path.to_string();
+        self
+    }
+    pub fn agent_type(mut self, agent_type: &str) -> Self {
+        self.params.agent_type = agent_type.to_string();
+        self
+    }
+    pub fn description(mut self, desc: &str) -> Self {
+        self.params.description = desc.to_string();
+        self
+    }
+    pub fn domain(mut self, domain: &str) -> Self {
+        self.params.domain = domain.to_string();
+        self
+    }
+    pub fn default_storage(mut self, storage: &str) -> Self {
+        self.params.default_storage = storage.to_string();
+        self
+    }
+    pub fn hai_api_key(mut self, key: &str) -> Self {
+        self.params.hai_api_key = key.to_string();
+        self
+    }
+    pub fn hai_endpoint(mut self, endpoint: &str) -> Self {
+        self.params.hai_endpoint = endpoint.to_string();
+        self
+    }
 
     /// Build the `CreateAgentParams`. Name is required.
     pub fn build(self) -> CreateAgentParams {
@@ -593,9 +679,7 @@ impl SimpleAgent {
     /// let (agent, info) = SimpleAgent::create_with_params(params)?;
     /// ```
     #[must_use = "agent creation result must be checked for errors"]
-    pub fn create_with_params(
-        params: CreateAgentParams,
-    ) -> Result<(Self, AgentInfo), JacsError> {
+    pub fn create_with_params(params: CreateAgentParams) -> Result<(Self, AgentInfo), JacsError> {
         // Acquire creation mutex to prevent concurrent env var stomping
         let _lock = CREATE_MUTEX.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire creation lock: {}", e),
@@ -648,10 +732,7 @@ impl SimpleAgent {
             std::env::set_var("JACS_KEY_DIRECTORY", &params.key_directory);
             std::env::set_var("JACS_AGENT_KEY_ALGORITHM", &algorithm);
             std::env::set_var("JACS_DEFAULT_STORAGE", &params.default_storage);
-            std::env::set_var(
-                "JACS_AGENT_PRIVATE_KEY_FILENAME",
-                "jacs.private.pem.enc",
-            );
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
             std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
         }
 
@@ -1338,7 +1419,11 @@ impl SimpleAgent {
                     "Input does not appear to be a JSON document. \
                     If you have a document ID (e.g., 'uuid:version'), use verify_by_id() instead. \
                     Received: '{}'",
-                    if trimmed.len() > 60 { &trimmed[..60] } else { trimmed }
+                    if trimmed.len() > 60 {
+                        &trimmed[..60]
+                    } else {
+                        trimmed
+                    }
                 ),
             });
         }
@@ -1440,14 +1525,16 @@ impl SimpleAgent {
         // Find the private key file
         let key_path = if let Some(ref config_path) = self.config_path {
             // Try to read config to find key directory
-            let config_str = fs::read_to_string(config_path).map_err(|e| JacsError::FileReadFailed {
-                path: config_path.clone(),
-                reason: e.to_string(),
-            })?;
-            let config: Value = serde_json::from_str(&config_str).map_err(|e| JacsError::ConfigInvalid {
-                field: "json".to_string(),
-                reason: e.to_string(),
-            })?;
+            let config_str =
+                fs::read_to_string(config_path).map_err(|e| JacsError::FileReadFailed {
+                    path: config_path.clone(),
+                    reason: e.to_string(),
+                })?;
+            let config: Value =
+                serde_json::from_str(&config_str).map_err(|e| JacsError::ConfigInvalid {
+                    field: "json".to_string(),
+                    reason: e.to_string(),
+                })?;
             let key_dir = config["jacs_key_directory"]
                 .as_str()
                 .unwrap_or("./jacs_keys");
@@ -1518,13 +1605,19 @@ impl SimpleAgent {
         }
 
         // Load the document from storage
-        let storage = crate::storage::MultiStorage::default_new().map_err(|e| JacsError::Internal {
-            message: format!("Failed to initialize storage: {}", e),
-        })?;
+        let storage =
+            crate::storage::MultiStorage::default_new().map_err(|e| JacsError::Internal {
+                message: format!("Failed to initialize storage: {}", e),
+            })?;
 
-        let jacs_doc = storage.get_document(document_id).map_err(|e| JacsError::Internal {
-            message: format!("Failed to load document '{}' from storage: {}", document_id, e),
-        })?;
+        let jacs_doc = storage
+            .get_document(document_id)
+            .map_err(|e| JacsError::Internal {
+                message: format!(
+                    "Failed to load document '{}' from storage: {}",
+                    document_id, e
+                ),
+            })?;
 
         // Serialize the document value back to a JSON string for verify()
         let doc_str = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
@@ -1972,7 +2065,10 @@ pub fn create(
 /// # Deprecated
 ///
 /// This function uses thread-local global state. Prefer `SimpleAgent::create_with_params()` instead.
-#[deprecated(since = "0.6.0", note = "Use SimpleAgent::create_with_params() instead")]
+#[deprecated(
+    since = "0.6.0",
+    note = "Use SimpleAgent::create_with_params() instead"
+)]
 pub fn create_with_params(params: CreateAgentParams) -> Result<AgentInfo, JacsError> {
     let (agent, info) = SimpleAgent::create_with_params(params)?;
     THREAD_AGENT.with(|cell| {

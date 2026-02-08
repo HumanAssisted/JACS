@@ -280,6 +280,20 @@ pub fn format_agent_id(id: &str, version: &str) -> String {
 /// assert!(require_relative_path_safe("a/../b").is_err());
 /// ```
 pub fn require_relative_path_safe(path: &str) -> Result<(), JacsError> {
+    // Reject Windows drive-prefixed paths (e.g., "C:\foo", "D:/bar", or "C:")
+    // because they are not relative and may bypass directory confinement on Windows.
+    let bytes = path.as_bytes();
+    if bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes.len() == 2 || bytes[2] == b'/' || bytes[2] == b'\\')
+    {
+        return Err(JacsError::ValidationError(format!(
+            "Path '{}' contains a Windows drive prefix and is not a safe relative path",
+            path
+        )));
+    }
+
     for segment in path.split(['/', '\\']) {
         if segment.is_empty() {
             return Err(JacsError::ValidationError(format!(

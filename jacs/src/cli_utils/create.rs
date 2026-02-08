@@ -25,9 +25,11 @@ use crate::simple::{AgentInfo, CreateAgentParams, SimpleAgent};
 ///
 /// Accepts pre-built `CreateAgentParams` and delegates to `SimpleAgent::create_with_params()`.
 /// Use this when integrating CLI commands with the programmatic API.
-pub fn handle_agent_create_programmatic(params: CreateAgentParams) -> Result<AgentInfo, Box<dyn Error>> {
-    let (_agent, info) = SimpleAgent::create_with_params(params)
-        .map_err(|e| -> Box<dyn Error> { Box::new(e) })?;
+pub fn handle_agent_create_programmatic(
+    params: CreateAgentParams,
+) -> Result<AgentInfo, Box<dyn Error>> {
+    let (_agent, info) =
+        SimpleAgent::create_with_params(params).map_err(|e| -> Box<dyn Error> { Box::new(e) })?;
     Ok(info)
 }
 

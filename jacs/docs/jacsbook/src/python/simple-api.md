@@ -178,6 +178,19 @@ Verify a signed document **without** loading an agent. Use when you only need to
 
 ---
 
+### audit(config_path=None, recent_n=None)
+
+Run a read-only security audit and health checks. Returns a dict with `risks`, `health_checks`, `summary`, and `overall_status`. Does not require a loaded agent; does not modify state.
+
+See [Security Model — Security Audit](../advanced/security.md#security-audit-audit) for full details and options.
+
+```python
+result = jacs.audit()
+print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+```
+
+---
+
 ### update_agent(new_agent_data)
 
 Update the agent document with new data and re-sign it.

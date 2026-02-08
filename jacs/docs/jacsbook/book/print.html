@@ -3953,6 +3953,15 @@ if (result.valid) {
 console.log(result.valid, result.signerId);
 </code></pre>
 <hr />
+<h3 id="auditoptions"><a class="header" href="#auditoptions">audit(options?)</a></h3>
+<p>Run a read-only security audit and health checks. Returns an object with <code>risks</code>, <code>health_checks</code>, <code>summary</code>, and <code>overall_status</code>. Does not require a loaded agent; does not modify state.</p>
+<p><strong>Parameters:</strong> <code>options</code> (object, optional): <code>{ configPath?, recentN? }</code></p>
+<p><strong>Returns:</strong> Object with <code>risks</code>, <code>health_checks</code>, <code>summary</code>, <code>overall_status</code>, etc.</p>
+<p>See <a href="nodejs/../advanced/security.html#security-audit-audit">Security Model — Security Audit</a> for full details and options.</p>
+<pre><code class="language-javascript">const result = jacs.audit();
+console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+</code></pre>
+<hr />
 <h3 id="updateagentnewagentdata"><a class="header" href="#updateagentnewagentdata">updateAgent(newAgentData)</a></h3>
 <p>Update the agent document with new data and re-sign it.</p>
 <p>This function expects a <strong>complete agent document</strong> (not partial updates). Use <code>exportAgent()</code> to get the current document, modify it, then pass it here.</p>
@@ -6804,6 +6813,13 @@ else:
 <p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API).</p>
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
+<h3 id="auditconfig_pathnone-recent_nnone"><a class="header" href="#auditconfig_pathnone-recent_nnone">audit(config_path=None, recent_n=None)</a></h3>
+<p>Run a read-only security audit and health checks. Returns a dict with <code>risks</code>, <code>health_checks</code>, <code>summary</code>, and <code>overall_status</code>. Does not require a loaded agent; does not modify state.</p>
+<p>See <a href="python/../advanced/security.html#security-audit-audit">Security Model — Security Audit</a> for full details and options.</p>
+<pre><code class="language-python">result = jacs.audit()
+print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+</code></pre>
 <hr />
 <h3 id="update_agentnew_agent_data"><a class="header" href="#update_agentnew_agent_data">update_agent(new_agent_data)</a></h3>
 <p>Update the agent document with new data and re-sign it.</p>
@@ -10331,6 +10347,37 @@ chmod 600 ./jacs_keys/private.pem
 <li>Timestamps record when signatures were made</li>
 <li>Public keys enable independent verification</li>
 </ul>
+<h2 id="security-audit-audit"><a class="header" href="#security-audit-audit">Security Audit (<code>audit()</code>)</a></h2>
+<p>JACS provides a read-only <strong>security audit</strong> that checks configuration, directories, secrets, trust store, storage, quarantine/failed files, and optionally re-verifies recent documents. It does not modify state.</p>
+<p><strong>Purpose</strong>: Surface misconfiguration, missing keys, unexpected paths, and verification failures in one report.</p>
+<p><strong>Options</strong> (all optional):</p>
+<ul>
+<li><code>config_path</code>: Path to <code>jacs.config.json</code> (default: 12-factor load)</li>
+<li><code>data_directory</code> / <code>key_directory</code>: Override paths</li>
+<li><code>recent_verify_count</code>: Number of recent documents to re-verify (default 10, max 100)</li>
+</ul>
+<p><strong>Return structure</strong>: <code>AuditResult</code> with <code>overall_status</code>, <code>risks</code> (list of <code>AuditRisk</code>), <code>health_checks</code> (list of <code>ComponentHealth</code>), <code>summary</code>, <code>checked_at</code>, and optional <code>quarantine_entries</code> / <code>failed_entries</code>.</p>
+<p><strong>Rust</strong>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::audit::{audit, AuditOptions};
+
+let result = audit(AuditOptions::default())?;
+println!("{}", jacs::format_audit_report(&amp;result));
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Python</strong>:</p>
+<pre><code class="language-python">import jacs.simple as jacs
+
+result = jacs.audit()  # dict with risks, health_checks, summary, overall_status
+print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+</code></pre>
+<p><strong>Node.js</strong>:</p>
+<pre><code class="language-typescript">import * as jacs from '@hai-ai/jacs/simple';
+
+const result = jacs.audit({ recentN: 5 });
+console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+</code></pre>
+<p>Available in all bindings and as an MCP tool (<code>jacs_audit</code>) for automation.</p>
 <h2 id="threat-model"><a class="header" href="#threat-model">Threat Model</a></h2>
 <h3 id="protected-against"><a class="header" href="#protected-against">Protected Against</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Threat</th><th>Protection</th></tr></thead><tbody>

@@ -1021,12 +1021,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     process::exit(1);
                 }
 
-                agent.reencrypt_key(&old_password, &new_password).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Re-encryption failed: {}", e),
-                    ))
-                })?;
+                agent.reencrypt_key(&old_password, &new_password).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Re-encryption failed: {}", e),
+                        ))
+                    },
+                )?;
 
                 println!("Private key re-encrypted successfully.");
             }

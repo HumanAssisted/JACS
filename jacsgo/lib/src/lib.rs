@@ -988,9 +988,21 @@ pub extern "C" fn jacs_verify_document_standalone(
         Ok(s) => s,
         Err(_) => return ptr::null_mut(),
     };
-    let kr = if key_resolution.is_null() { None } else { unsafe { CStr::from_ptr(key_resolution) }.to_str().ok() };
-    let dd = if data_directory.is_null() { None } else { unsafe { CStr::from_ptr(data_directory) }.to_str().ok() };
-    let kd = if key_directory.is_null() { None } else { unsafe { CStr::from_ptr(key_directory) }.to_str().ok() };
+    let kr = if key_resolution.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(key_resolution) }.to_str().ok()
+    };
+    let dd = if data_directory.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(data_directory) }.to_str().ok()
+    };
+    let kd = if key_directory.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(key_directory) }.to_str().ok()
+    };
     match jacs_binding_core::verify_document_standalone(doc_str, kr, dd, kd) {
         Ok(r) => {
             let json = serde_json::json!({ "valid": r.valid, "signer_id": r.signer_id });

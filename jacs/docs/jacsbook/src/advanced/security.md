@@ -46,6 +46,49 @@ Signatures provide proof of origin:
 - Timestamps record when signatures were made
 - Public keys enable independent verification
 
+## Security Audit (`audit()`)
+
+JACS provides a read-only **security audit** that checks configuration, directories, secrets, trust store, storage, quarantine/failed files, and optionally re-verifies recent documents. It does not modify state.
+
+**Purpose**: Surface misconfiguration, missing keys, unexpected paths, and verification failures in one report.
+
+**Options** (all optional):
+
+- `config_path`: Path to `jacs.config.json` (default: 12-factor load)
+- `data_directory` / `key_directory`: Override paths
+- `recent_verify_count`: Number of recent documents to re-verify (default 10, max 100)
+
+**Return structure**: `AuditResult` with `overall_status`, `risks` (list of `AuditRisk`), `health_checks` (list of `ComponentHealth`), `summary`, `checked_at`, and optional `quarantine_entries` / `failed_entries`.
+
+**Rust**:
+
+```rust
+use jacs::audit::{audit, AuditOptions};
+
+let result = audit(AuditOptions::default())?;
+println!("{}", jacs::format_audit_report(&result));
+```
+
+**Python**:
+
+```python
+import jacs.simple as jacs
+
+result = jacs.audit()  # dict with risks, health_checks, summary, overall_status
+print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+```
+
+**Node.js**:
+
+```typescript
+import * as jacs from '@hai-ai/jacs/simple';
+
+const result = jacs.audit({ recentN: 5 });
+console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+```
+
+Available in all bindings and as an MCP tool (`jacs_audit`) for automation.
+
 ## Threat Model
 
 ### Protected Against

@@ -188,6 +188,23 @@ console.log(result.valid, result.signerId);
 
 ---
 
+### audit(options?)
+
+Run a read-only security audit and health checks. Returns an object with `risks`, `health_checks`, `summary`, and `overall_status`. Does not require a loaded agent; does not modify state.
+
+**Parameters:** `options` (object, optional): `{ configPath?, recentN? }`
+
+**Returns:** Object with `risks`, `health_checks`, `summary`, `overall_status`, etc.
+
+See [Security Model — Security Audit](../advanced/security.md#security-audit-audit) for full details and options.
+
+```javascript
+const result = jacs.audit();
+console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+```
+
+---
+
 ### updateAgent(newAgentData)
 
 Update the agent document with new data and re-sign it.

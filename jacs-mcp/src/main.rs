@@ -170,21 +170,9 @@ fn load_agent_from_config() -> anyhow::Result<AgentWrapper> {
     let _ = jacs::config::set_env_vars(true, Some(&cfg_str), false)
         .map_err(|e| anyhow::anyhow!("Invalid config file '{}': {}", cfg_path, e))?;
 
-    // Get the config directory for relative path resolution
-    let cfg_dir = std::path::Path::new(&cfg_path)
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or(".")
-        .to_string();
-    let cfg_dir = if cfg_dir.ends_with('/') {
-        cfg_dir
-    } else {
-        format!("{}/", cfg_dir)
-    };
-
-    // Load the agent
+    // Load the agent using the full config file path
     agent_wrapper
-        .load(cfg_dir)
+        .load(cfg_path.clone())
         .map_err(|e| anyhow::anyhow!("Failed to load agent: {}", e))?;
 
     tracing::info!("Agent loaded successfully from config");

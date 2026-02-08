@@ -82,6 +82,8 @@ pub enum HaiError {
     AlreadyConnected,
     /// Not connected to SSE stream.
     NotConnected,
+    /// Validation error (e.g. verify link would exceed max URL length).
+    ValidationError(String),
 }
 
 impl fmt::Display for HaiError {
@@ -94,8 +96,27 @@ impl fmt::Display for HaiError {
             HaiError::StreamDisconnected(msg) => write!(f, "SSE stream disconnected: {}", msg),
             HaiError::AlreadyConnected => write!(f, "Already connected to SSE stream"),
             HaiError::NotConnected => write!(f, "Not connected to SSE stream"),
+            HaiError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
         }
     }
+}
+
+// =============================================================================
+// Verify link (HAI / public verification URLs)
+// =============================================================================
+
+/// Maximum length for a full verify URL. Re-exported from jacs::simple for bindings.
+pub const MAX_VERIFY_URL_LEN: usize = jacs::simple::MAX_VERIFY_URL_LEN;
+
+/// Maximum document size (UTF-8 bytes) for a verify link. Re-exported from jacs::simple.
+pub const MAX_VERIFY_DOCUMENT_BYTES: usize = jacs::simple::MAX_VERIFY_DOCUMENT_BYTES;
+
+/// Build a verification URL for a signed JACS document (e.g. https://hai.ai/jacs/verify?s=...).
+///
+/// Encodes `document` as URL-safe base64. Returns an error if the URL would exceed [`MAX_VERIFY_URL_LEN`].
+pub fn generate_verify_link(document: &str, base_url: &str) -> Result<String, HaiError> {
+    jacs::simple::generate_verify_link(document, base_url)
+        .map_err(|e| HaiError::ValidationError(e.to_string()))
 }
 
 impl std::error::Error for HaiError {}

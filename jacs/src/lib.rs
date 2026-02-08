@@ -15,6 +15,7 @@ use tracing::debug;
 
 pub mod a2a;
 pub mod agent;
+pub mod audit;
 pub mod config;
 pub mod crypt;
 pub mod dns;
@@ -42,6 +43,12 @@ pub use error::JacsError;
 // Re-export health check types for convenience
 pub use health::{
     ComponentHealth, HealthCheckResult, HealthStatus, health_check, network_health_check,
+};
+
+// Re-export audit types for convenience
+pub use audit::{
+    AuditOptions, AuditResult, AuditRisk, RiskCategory, RiskSeverity, audit, format_audit_report,
+    print_audit_report,
 };
 
 // Re-export shutdown types for convenience

@@ -89,3 +89,21 @@ fn require_relative_path_safe_trailing_slash_rejects_empty_segment() {
     // "a/b/" gives ["a", "b", ""] -> empty segment rejected
     assert!(require_relative_path_safe("a/b/").is_err());
 }
+
+#[test]
+fn require_relative_path_safe_rejects_windows_drive_prefixed_paths() {
+    assert!(require_relative_path_safe("C:\\Windows\\System32\\drivers\\etc\\hosts").is_err());
+    assert!(require_relative_path_safe("D:/tmp/file.json").is_err());
+    assert!(require_relative_path_safe("E:").is_err());
+}
+
+#[test]
+fn require_relative_path_safe_allows_uuid_colon_filename() {
+    // JACS commonly uses UUID:UUID filenames for agent/document identifiers.
+    assert!(
+        require_relative_path_safe(
+            "550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001"
+        )
+        .is_ok()
+    );
+}

@@ -18,6 +18,7 @@ A streamlined interface for the most common JACS operations:
 - untrust_agent(): Remove an agent from the trust store
 - is_trusted(): Check if an agent is trusted
 - get_trusted_agent(): Get a trusted agent's JSON
+- audit(): Run a read-only security audit and health checks
 - fetch_remote_key(): Fetch a public key from HAI's key service
 
 Environment Variables:
@@ -97,6 +98,7 @@ try:
     from .jacs import is_trusted as _is_trusted
     from .jacs import get_trusted_agent as _get_trusted_agent
     from .jacs import verify_document_standalone as _verify_document_standalone
+    from .jacs import audit as _audit
 except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
@@ -108,10 +110,45 @@ except ImportError:
     _untrust_agent = _jacs_module.untrust_agent
     _is_trusted = _jacs_module.is_trusted
     _get_trusted_agent = _jacs_module.get_trusted_agent
+    _audit = _jacs_module.audit
 
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
+
+# Verify link constants (HAI / public verification URLs)
+MAX_VERIFY_URL_LEN = 2048
+MAX_VERIFY_DOCUMENT_BYTES = 1515
+
+
+def generate_verify_link(
+    document: str,
+    base_url: str = "https://hai.ai",
+) -> str:
+    """Build a verification URL for a signed JACS document (e.g. hai.ai/jacs/verify?s=...).
+
+    Encodes `document` as URL-safe base64. Raises ValueError if the resulting URL
+    would exceed MAX_VERIFY_URL_LEN (document must be at most MAX_VERIFY_DOCUMENT_BYTES UTF-8 bytes).
+
+    Args:
+        document: The full signed JACS document string (JSON).
+        base_url: Base URL of the verifier (no trailing slash). Default "https://hai.ai".
+
+    Returns:
+        Full URL: {base_url}/jacs/verify?s={base64url(document)}
+    """
+    import base64
+
+    base = base_url.rstrip("/")
+    encoded = base64.urlsafe_b64encode(document.encode("utf-8")).rstrip(b"=").decode("ascii")
+    path_and_query = f"/jacs/verify?s={encoded}"
+    full_url = f"{base}{path_and_query}"
+    if len(full_url) > MAX_VERIFY_URL_LEN:
+        raise ValueError(
+            f"Verify URL would exceed max length ({MAX_VERIFY_URL_LEN}). "
+            f"Document must be at most {MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes."
+        )
+    return full_url
 
 
 def _get_agent() -> JacsAgent:
@@ -1195,6 +1232,34 @@ def get_trusted_agent(agent_id: str) -> str:
         raise TrustError(f"Failed to get trusted agent: {e}")
 
 
+def audit(
+    config_path: Optional[str] = None,
+    recent_n: Optional[int] = None,
+) -> dict:
+    """Run a read-only security audit and health checks.
+
+    Returns a dict with risks, health_checks, summary, and related fields.
+    Does not modify state. When invoked from CLI, a human-readable report
+    can be printed; use this function to get the structured result.
+
+    Args:
+        config_path: Optional path to jacs config file.
+        recent_n: Optional number of recent documents to re-verify.
+
+    Returns:
+        Dict with keys including "risks", "health_checks", "summary", "overall_status".
+
+    Example:
+        result = jacs.audit()
+        print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+    """
+    try:
+        json_str = _audit(config_path=config_path, recent_n=recent_n)
+        return json.loads(json_str)
+    except Exception as e:
+        raise JacsError(f"Audit failed: {e}") from e
+
+
 def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
     """Fetch a public key from HAI's key distribution service.
 
@@ -1299,6 +1364,9 @@ __all__ = [
     "sign_agreement",
     "check_agreement",
     # Utility functions
+    "generate_verify_link",
+    "MAX_VERIFY_URL_LEN",
+    "MAX_VERIFY_DOCUMENT_BYTES",
     "get_public_key",
     "export_agent",
     "get_dns_record",

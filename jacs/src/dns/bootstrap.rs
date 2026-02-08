@@ -393,7 +393,18 @@ pub fn verify_hai_registration_sync(
 
     // HAI.ai API endpoint for agent verification
     let api_url = std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
-    let url = format!("{}/v1/agents/{}", api_url, agent_id);
+    let parsed = url::Url::parse(&api_url)
+        .map_err(|e| format!("Invalid HAI_API_URL '{}': {}", api_url, e))?;
+    let host = parsed.host_str().unwrap_or_default();
+    let http_localhost = parsed.scheme() == "http"
+        && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1");
+    if parsed.scheme() != "https" && !http_localhost {
+        return Err(format!(
+            "HAI_API_URL must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
+            api_url
+        ));
+    }
+    let url = format!("{}/v1/agents/{}", api_url.trim_end_matches('/'), agent_id);
 
     // Build blocking HTTP client with TLS
     let client = reqwest::blocking::Client::builder()

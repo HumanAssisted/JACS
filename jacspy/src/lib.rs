@@ -549,8 +549,8 @@ impl SimpleAgent {
             hai_endpoint: String::new(),
         };
 
-        let (agent, info) = jacs_core::simple::SimpleAgent::create_with_params(params)
-            .map_err(|e| {
+        let (agent, info) =
+            jacs_core::simple::SimpleAgent::create_with_params(params).map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Failed to create agent: {}",
                     e
@@ -1001,6 +1001,27 @@ fn get_trusted_agent(agent_id: &str) -> PyResult<String> {
 }
 
 // =============================================================================
+// Audit (security audit and health checks)
+// =============================================================================
+
+/// Run a read-only security audit and health checks.
+///
+/// Returns the audit result as a JSON string (risks, health_checks, summary).
+/// Does not modify state.
+///
+/// Args:
+///     config_path: Optional path to jacs config file.
+///     recent_n: Optional number of recent documents to re-verify (default from config).
+///
+/// Returns:
+///     JSON string of the audit result (parse with json.loads() for a dict).
+#[pyfunction]
+#[pyo3(signature = (config_path=None, recent_n=None))]
+fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<String> {
+    jacs_binding_core::audit(config_path, recent_n).to_py()
+}
+
+// =============================================================================
 // Remote Key Fetch Functions
 // =============================================================================
 
@@ -1415,6 +1436,12 @@ fn get_trusted_agent_simple(agent_id: &str) -> PyResult<String> {
     get_trusted_agent(agent_id)
 }
 
+#[pyfunction]
+#[pyo3(signature = (config_path=None, recent_n=None))]
+fn audit_simple(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<String> {
+    audit(config_path, recent_n)
+}
+
 #[pymodule]
 fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
@@ -1443,6 +1470,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(untrust_agent, m)?)?;
     m.add_function(wrap_pyfunction!(is_trusted, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(audit, m)?)?;
 
     // =============================================================================
     // Remote Key Fetch Functions
@@ -1493,6 +1521,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(untrust_agent_simple, m)?)?;
     m.add_function(wrap_pyfunction!(is_trusted_simple, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_simple, m)?)?;
 
     Ok(())
 }

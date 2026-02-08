@@ -565,17 +565,16 @@ impl AgentWrapper {
     ///
     /// Reads the encrypted private key file, decrypts with old_password,
     /// validates new_password, re-encrypts, and writes the updated file.
-    pub fn reencrypt_key(
-        &self,
-        old_password: &str,
-        new_password: &str,
-    ) -> BindingResult<()> {
+    pub fn reencrypt_key(&self, old_password: &str, new_password: &str) -> BindingResult<()> {
         use jacs::crypt::aes_encrypt::reencrypt_private_key;
 
         // Find key path from config
         let agent = self.lock()?;
         let key_path = if let Some(config) = &agent.config {
-            let key_dir = config.jacs_key_directory().as_deref().unwrap_or("./jacs_keys");
+            let key_dir = config
+                .jacs_key_directory()
+                .as_deref()
+                .unwrap_or("./jacs_keys");
             let key_file = config
                 .jacs_agent_private_key_filename()
                 .as_deref()
@@ -594,9 +593,7 @@ impl AgentWrapper {
         })?;
 
         let re_encrypted = reencrypt_private_key(&encrypted_data, old_password, new_password)
-            .map_err(|e| {
-                BindingCoreError::generic(format!("Re-encryption failed: {}", e))
-            })?;
+            .map_err(|e| BindingCoreError::generic(format!("Re-encryption failed: {}", e)))?;
 
         std::fs::write(&key_path, &re_encrypted).map_err(|e| {
             BindingCoreError::generic(format!(
@@ -697,9 +694,8 @@ pub fn verify_document_standalone(
     })?;
 
     let config_path = std::env::temp_dir().join("jacs_standalone_verify_config.json");
-    std::fs::write(&config_path, &config_json).map_err(|e| {
-        BindingCoreError::generic(format!("Failed to write temp config: {}", e))
-    })?;
+    std::fs::write(&config_path, &config_json)
+        .map_err(|e| BindingCoreError::generic(format!("Failed to write temp config: {}", e)))?;
 
     struct EnvGuard(std::option::Option<std::ffi::OsString>);
     impl Drop for EnvGuard {
@@ -821,6 +817,29 @@ pub fn get_trusted_agent(agent_id: &str) -> BindingResult<String> {
 }
 
 // =============================================================================
+// Audit (security audit and health checks)
+// =============================================================================
+
+/// Run a read-only security audit and health checks.
+///
+/// Returns the audit result as a JSON string (risks, health_checks, summary).
+/// Does not modify state. Optional config path and recent document re-verification count.
+pub fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> BindingResult<String> {
+    use jacs::audit::{AuditOptions, audit as jacs_audit};
+
+    let mut opts = AuditOptions::default();
+    opts.config_path = config_path.map(String::from);
+    if let Some(n) = recent_n {
+        opts.recent_verify_count = Some(n);
+    }
+    let result =
+        jacs_audit(opts).map_err(|e| BindingCoreError::generic(format!("Audit failed: {}", e)))?;
+    serde_json::to_string_pretty(&result).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize audit result: {}", e))
+    })
+}
+
+// =============================================================================
 // CLI Utility Functions
 // =============================================================================
 
@@ -856,9 +875,8 @@ pub fn create_agent_programmatic(
         hai_endpoint: String::new(),
     };
 
-    let (_agent, info) = SimpleAgent::create_with_params(params).map_err(|e| {
-        BindingCoreError::agent_load(format!("Failed to create agent: {}", e))
-    })?;
+    let (_agent, info) = SimpleAgent::create_with_params(params)
+        .map_err(|e| BindingCoreError::agent_load(format!("Failed to create agent: {}", e)))?;
 
     serde_json::to_string_pretty(&info).map_err(|e| {
         BindingCoreError::serialization_failed(format!("Failed to serialize agent info: {}", e))
@@ -1005,8 +1023,12 @@ mod tests {
 
     #[test]
     fn verify_standalone_golden_invalid_signature_returns_valid_false() {
-        let invalid_sig = std::fs::read_to_string("../jacs/tests/fixtures/golden/invalid_signature.json")
-            .unwrap_or_else(|_| r#"{"jacsSignature":{"agentID":"golden-test-agent"},"jacsSha256":"x"}"#.to_string());
+        let invalid_sig =
+            std::fs::read_to_string("../jacs/tests/fixtures/golden/invalid_signature.json")
+                .unwrap_or_else(|_| {
+                    r#"{"jacsSignature":{"agentID":"golden-test-agent"},"jacsSha256":"x"}"#
+                        .to_string()
+                });
         let result = verify_document_standalone(
             &invalid_sig,
             Some("local"),
@@ -1030,5 +1052,16 @@ mod tests {
         .unwrap();
         assert!(!result.valid);
         assert_eq!(result.signer_id, "some-agent");
+    }
+
+    #[test]
+    fn audit_default_returns_ok_json_has_risks_and_health_checks() {
+        let json = audit(None, None).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v.get("risks").is_some(), "audit JSON should have risks");
+        assert!(
+            v.get("health_checks").is_some(),
+            "audit JSON should have health_checks"
+        );
     }
 }

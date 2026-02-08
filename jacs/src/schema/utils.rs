@@ -490,6 +490,39 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
     Err(JacsError::SchemaError(format!("Remote URL schemas disabled in WASM: {}", url)).into())
 }
 
+/// Build a normalized absolute path for access checks.
+///
+/// Uses canonicalization when possible (resolves symlinks), then falls back to
+/// lexical normalization anchored at current working directory.
+fn normalize_access_path(path: &str) -> Result<std::path::PathBuf, JacsError> {
+    let path_obj = std::path::Path::new(path);
+
+    if let Ok(canonical) = path_obj.canonicalize() {
+        return Ok(canonical);
+    }
+
+    let absolute = if path_obj.is_absolute() {
+        path_obj.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| JacsError::SchemaError(format!("Failed to read current dir: {}", e)))?
+            .join(path_obj)
+    };
+
+    let mut normalized = std::path::PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+
+    Ok(normalized)
+}
+
 /// Check if filesystem schema access is allowed and the path is safe.
 ///
 /// Filesystem schema access is disabled by default. To enable it, set:
@@ -535,37 +568,19 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
 
     // If specific directories are configured, check that the path is within them
     if data_dir.is_some() || schema_dir.is_some() {
-        let path_canonical = std::path::Path::new(path);
-
-        // Try to canonicalize the path for comparison (handles symlinks)
-        // If canonicalization fails (file doesn't exist yet), fall back to the original path
-        let path_str = if let Ok(canonical) = path_canonical.canonicalize() {
-            canonical.to_string_lossy().to_string()
-        } else {
-            path.to_string()
-        };
-
+        let candidate = normalize_access_path(path)?;
         let mut allowed = false;
 
         if let Some(ref data) = data_dir {
-            let data_path = std::path::Path::new(data);
-            if let Ok(data_canonical) = data_path.canonicalize() {
-                if path_str.starts_with(&data_canonical.to_string_lossy().to_string()) {
-                    allowed = true;
-                }
-            } else if path_str.starts_with(data) {
-                // Fall back to string prefix check if canonicalization fails
+            let allowed_root = normalize_access_path(data)?;
+            if candidate.starts_with(&allowed_root) {
                 allowed = true;
             }
         }
 
         if let Some(ref schema) = schema_dir {
-            let schema_path = std::path::Path::new(schema);
-            if let Ok(schema_canonical) = schema_path.canonicalize() {
-                if path_str.starts_with(&schema_canonical.to_string_lossy().to_string()) {
-                    allowed = true;
-                }
-            } else if path_str.starts_with(schema) {
+            let allowed_root = normalize_access_path(schema)?;
+            if candidate.starts_with(&allowed_root) {
                 allowed = true;
             }
         }

@@ -327,6 +327,18 @@ pub struct ReencryptKeyParams {
     pub new_password: String,
 }
 
+/// Parameters for the JACS security audit tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct JacsAuditParams {
+    /// Optional path to jacs config file.
+    #[schemars(description = "Optional path to jacs.config.json")]
+    pub config_path: Option<String>,
+
+    /// Optional number of recent documents to re-verify.
+    #[schemars(description = "Number of recent documents to re-verify (default from config)")]
+    pub recent_n: Option<u32>,
+}
+
 /// Result of re-encrypting the private key.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ReencryptKeyResult {
@@ -771,6 +783,13 @@ impl HaiMcpServer {
                  the password protecting the private key without changing the key itself.",
                 Self::jacs_reencrypt_key_schema(),
             ),
+            Tool::new(
+                "jacs_audit",
+                "Run a read-only JACS security audit and health checks. Returns a JSON report \
+                 with risks, health_checks, summary, and overall_status. Does not modify state. \
+                 Optional: config_path, recent_n (number of recent documents to re-verify).",
+                Self::jacs_audit_schema(),
+            ),
         ]
     }
 
@@ -872,6 +891,14 @@ impl HaiMcpServer {
 
     fn jacs_reencrypt_key_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(ReencryptKeyParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_audit_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(JacsAuditParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -1442,10 +1469,7 @@ impl HaiMcpServer {
                         hash_match: false,
                         signature_valid: false,
                         signing_info: None,
-                        message: format!(
-                            "Failed to verify document '{}': {}",
-                            jacs_id, e
-                        ),
+                        message: format!("Failed to verify document '{}': {}", jacs_id, e),
                         error: Some(e.to_string()),
                     };
                     return serde_json::to_string_pretty(&result)
@@ -2114,6 +2138,22 @@ impl HaiMcpServer {
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
+
+    /// Run a read-only JACS security audit. Returns JSON with risks, health_checks, summary.
+    #[tool(
+        name = "jacs_audit",
+        description = "Run a read-only JACS security audit and health checks."
+    )]
+    pub async fn jacs_audit(&self, Parameters(params): Parameters<JacsAuditParams>) -> String {
+        match jacs_binding_core::audit(params.config_path.as_deref(), params.recent_n) {
+            Ok(json) => json,
+            Err(e) => serde_json::json!({
+                "error": true,
+                "message": e.to_string()
+            })
+            .to_string(),
+        }
+    }
 }
 
 // Implement the tool handler for the server
@@ -2147,6 +2187,8 @@ impl ServerHandler for HaiMcpServer {
                  \
                  Agent management: jacs_create_agent (create new agent with keys), \
                  jacs_reencrypt_key (rotate private key password). \
+                 \
+                 Security: jacs_audit (read-only security audit and health checks). \
                  \
                  HAI tools: fetch_agent_key (get public keys), register_agent (register \
                  with HAI), verify_agent (check attestation 0-3), check_agent_status \
@@ -2245,7 +2287,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = HaiMcpServer::tools();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 14);
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"fetch_agent_key"));
@@ -2261,6 +2303,21 @@ mod tests {
         assert!(names.contains(&"jacs_adopt_state"));
         assert!(names.contains(&"jacs_create_agent"));
         assert!(names.contains(&"jacs_reencrypt_key"));
+        assert!(names.contains(&"jacs_audit"));
+    }
+
+    #[test]
+    fn test_jacs_audit_returns_risks_and_health_checks() {
+        let json = jacs_binding_core::audit(None, None).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(
+            v.get("risks").is_some(),
+            "jacs_audit response should have risks"
+        );
+        assert!(
+            v.get("health_checks").is_some(),
+            "jacs_audit response should have health_checks"
+        );
     }
 
     #[test]

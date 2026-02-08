@@ -484,18 +484,23 @@ impl From<Box<dyn Error>> for JacsError {
         let lower = msg.to_lowercase();
 
         // Categorize known error patterns into specific variants
-        if lower.contains("password") || lower.contains("encrypt") || lower.contains("decrypt")
-            || lower.contains("pbkdf2") || lower.contains("aes")
+        if lower.contains("password")
+            || lower.contains("encrypt")
+            || lower.contains("decrypt")
+            || lower.contains("pbkdf2")
+            || lower.contains("aes")
         {
             return JacsError::CryptoError(msg);
         }
-        if lower.contains("config") || lower.contains("environment variable")
-            || lower.contains("jacs_") || lower.contains("not found at")
+        if lower.contains("config")
+            || lower.contains("environment variable")
+            || lower.contains("jacs_")
+            || lower.contains("not found at")
         {
             return JacsError::ConfigError(msg);
         }
-        if lower.contains("key") && (lower.contains("generate") || lower.contains("load")
-            || lower.contains("not found"))
+        if lower.contains("key")
+            && (lower.contains("generate") || lower.contains("load") || lower.contains("not found"))
         {
             return JacsError::CryptoError(msg);
         }

@@ -554,4 +554,21 @@ describe('JACS Simple API', function() {
       }
     });
   });
+
+  describe('audit', () => {
+    (simpleExists ? it : it.skip)('should return object with risks and health_checks', () => {
+      const result = simple.audit();
+      expect(result).to.have.property('risks');
+      expect(result).to.have.property('health_checks');
+      expect(result.risks).to.be.an('array');
+      expect(result.health_checks).to.be.an('array');
+    });
+
+    (simpleExists ? it : it.skip)('should return summary and overall_status', () => {
+      const result = simple.audit();
+      expect(result).to.have.property('summary');
+      expect(result).to.have.property('overall_status');
+      expect(result.summary).to.be.a('string');
+    });
+  });
 });

@@ -636,3 +636,22 @@ class TestAgreementWorkflow:
         # Step 5: Verify the signed document is valid
         result = simple.verify(signed.raw_json)
         assert result.valid is True
+
+
+class TestAudit:
+    """Tests for audit() security audit and health checks."""
+
+    def test_audit_returns_dict_with_risks_and_health_checks(self):
+        """audit() returns a dict with 'risks' and 'health_checks'."""
+        result = simple.audit()
+        assert "risks" in result
+        assert "health_checks" in result
+        assert isinstance(result["risks"], list)
+        assert isinstance(result["health_checks"], list)
+
+    def test_audit_returns_summary_and_overall_status(self):
+        """audit() includes summary and overall_status."""
+        result = simple.audit()
+        assert "summary" in result
+        assert "overall_status" in result
+        assert result["summary"]

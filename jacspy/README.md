@@ -71,6 +71,7 @@ The simplified API provides these core operations:
 | `untrust_agent()` | Remove an agent from the trust store |
 | `is_trusted()` | Check if an agent is trusted |
 | `get_trusted_agent()` | Get a trusted agent's JSON document |
+| `audit()` | Run a read-only security audit (returns risks, health_checks, summary) |
 
 ### Programmatic Agent Creation
 

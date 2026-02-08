@@ -17,6 +17,7 @@
  * - untrustAgent(): Remove an agent from the trust store
  * - isTrusted(): Check if an agent is trusted
  * - getTrustedAgent(): Get a trusted agent's JSON
+ * - audit(): Run a read-only security audit and health checks
  *
  * Also re-exports for advanced usage:
  * - JacsAgent: Class for direct agent control
@@ -55,6 +56,7 @@ import {
   isTrusted as nativeIsTrusted,
   getTrustedAgent as nativeGetTrustedAgent,
   verifyDocumentStandalone as nativeVerifyDocumentStandalone,
+  audit as nativeAudit,
 } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1090,4 +1092,66 @@ export function isTrusted(agentId: string): boolean {
  */
 export function getTrustedAgent(agentId: string): string {
   return nativeGetTrustedAgent(agentId);
+}
+
+/**
+ * Options for the security audit.
+ */
+export interface AuditOptions {
+  /** Optional path to jacs config file. */
+  configPath?: string;
+  /** Optional number of recent documents to re-verify. */
+  recentN?: number;
+}
+
+/**
+ * Run a read-only security audit and health checks.
+ * Returns an object with risks, health_checks, summary, and related fields.
+ *
+ * @param options - Optional config path and recent document count
+ * @returns Audit result object (risks, health_checks, summary, overall_status)
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.audit();
+ * console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+ * ```
+ */
+export function audit(options?: AuditOptions): Record<string, unknown> {
+  const json = nativeAudit(options?.configPath ?? undefined, options?.recentN ?? undefined);
+  return JSON.parse(json) as Record<string, unknown>;
+}
+
+// =============================================================================
+// Verify link (HAI / public verification URLs)
+// =============================================================================
+
+/** Max length for a full verify URL (scheme + host + path + ?s=...). */
+export const MAX_VERIFY_URL_LEN = 2048;
+
+/** Max UTF-8 byte length of a document that fits in a verify link. */
+export const MAX_VERIFY_DOCUMENT_BYTES = 1515;
+
+/**
+ * Build a verification URL for a signed JACS document (e.g. https://hai.ai/jacs/verify?s=...).
+ * Uses URL-safe base64. Throws if the URL would exceed MAX_VERIFY_URL_LEN.
+ *
+ * @param document - Full signed JACS document string (JSON)
+ * @param baseUrl - Base URL of the verifier (no trailing slash). Default "https://hai.ai"
+ * @returns Full URL: {baseUrl}/jacs/verify?s={base64url(document)}
+ */
+export function generateVerifyLink(
+  document: string,
+  baseUrl: string = 'https://hai.ai',
+): string {
+  const base = baseUrl.replace(/\/+$/, '');
+  const encoded = Buffer.from(document, 'utf8').toString('base64url');
+  const pathAndQuery = `/jacs/verify?s=${encoded}`;
+  const fullUrl = `${base}${pathAndQuery}`;
+  if (fullUrl.length > MAX_VERIFY_URL_LEN) {
+    throw new Error(
+      `Verify URL would exceed max length (${MAX_VERIFY_URL_LEN}). Document must be at most ${MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes.`,
+    );
+  }
+  return fullUrl;
 }

@@ -377,6 +377,17 @@ pub fn get_trusted_agent(agent_id: String) -> Result<String> {
 }
 
 // ============================================================================
+// Audit (security audit and health checks)
+// ============================================================================
+
+/// Run a read-only security audit and health checks.
+/// Returns the audit result as a JSON string (risks, health_checks, summary).
+#[napi]
+pub fn audit(config_path: Option<String>, recent_n: Option<u32>) -> Result<String> {
+    jacs_binding_core::audit(config_path.as_deref(), recent_n).to_napi()
+}
+
+// ============================================================================
 // Legacy API (deprecated - use JacsAgent class instead)
 // These functions use a global singleton for backwards compatibility.
 // They will be removed in a future version.

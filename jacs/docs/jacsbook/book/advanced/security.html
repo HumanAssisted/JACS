@@ -213,6 +213,37 @@
 <li>Timestamps record when signatures were made</li>
 <li>Public keys enable independent verification</li>
 </ul>
+<h2 id="security-audit-audit"><a class="header" href="#security-audit-audit">Security Audit (<code>audit()</code>)</a></h2>
+<p>JACS provides a read-only <strong>security audit</strong> that checks configuration, directories, secrets, trust store, storage, quarantine/failed files, and optionally re-verifies recent documents. It does not modify state.</p>
+<p><strong>Purpose</strong>: Surface misconfiguration, missing keys, unexpected paths, and verification failures in one report.</p>
+<p><strong>Options</strong> (all optional):</p>
+<ul>
+<li><code>config_path</code>: Path to <code>jacs.config.json</code> (default: 12-factor load)</li>
+<li><code>data_directory</code> / <code>key_directory</code>: Override paths</li>
+<li><code>recent_verify_count</code>: Number of recent documents to re-verify (default 10, max 100)</li>
+</ul>
+<p><strong>Return structure</strong>: <code>AuditResult</code> with <code>overall_status</code>, <code>risks</code> (list of <code>AuditRisk</code>), <code>health_checks</code> (list of <code>ComponentHealth</code>), <code>summary</code>, <code>checked_at</code>, and optional <code>quarantine_entries</code> / <code>failed_entries</code>.</p>
+<p><strong>Rust</strong>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::audit::{audit, AuditOptions};
+
+let result = audit(AuditOptions::default())?;
+println!("{}", jacs::format_audit_report(&amp;result));
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Python</strong>:</p>
+<pre><code class="language-python">import jacs.simple as jacs
+
+result = jacs.audit()  # dict with risks, health_checks, summary, overall_status
+print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+</code></pre>
+<p><strong>Node.js</strong>:</p>
+<pre><code class="language-typescript">import * as jacs from '@hai-ai/jacs/simple';
+
+const result = jacs.audit({ recentN: 5 });
+console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+</code></pre>
+<p>Available in all bindings and as an MCP tool (<code>jacs_audit</code>) for automation.</p>
 <h2 id="threat-model"><a class="header" href="#threat-model">Threat Model</a></h2>
 <h3 id="protected-against"><a class="header" href="#protected-against">Protected Against</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Threat</th><th>Protection</th></tr></thead><tbody>

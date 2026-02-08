@@ -55,6 +55,7 @@ console.log(`Signer: ${result.signerId}`);
 | `untrustAgent(id)` | Remove an agent from the trust store |
 | `isTrusted(id)` | Check if an agent is trusted |
 | `getTrustedAgent(id)` | Get a trusted agent's JSON document |
+| `audit(options?)` | Run a read-only security audit; optional `configPath`, `recentN` |
 
 ## Types
 

@@ -204,7 +204,8 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!(
             "Password cannot be empty or whitespace-only.\n\n{}",
             password_requirements()
-        ).into());
+        )
+        .into());
     }
 
     if trimmed.len() < MIN_PASSWORD_LENGTH {
@@ -463,7 +464,8 @@ pub fn decrypt_with_password(
             "Encrypted data too short: expected at least {} bytes, got {} bytes.",
             MIN_ENCRYPTED_HEADER_SIZE,
             encrypted_data.len()
-        )).into());
+        ))
+        .into());
     }
 
     let (salt, rest) = encrypted_data.split_at(PBKDF2_SALT_SIZE);
@@ -486,11 +488,11 @@ pub fn decrypt_with_password(
     let legacy_cipher = Aes256Gcm::new(legacy_cipher_key);
     legacy_key.zeroize();
 
-    legacy_cipher
-        .decrypt(nonce_slice, ciphertext)
-        .map_err(|_| {
-            "Decryption failed: incorrect password or corrupted data.".to_string().into()
-        })
+    legacy_cipher.decrypt(nonce_slice, ciphertext).map_err(|_| {
+        "Decryption failed: incorrect password or corrupted data."
+            .to_string()
+            .into()
+    })
 }
 
 /// Encrypt data with an explicit password (no env var dependency).
@@ -1211,11 +1213,7 @@ mod tests {
             "Should mention env var: {}",
             reqs
         );
-        assert!(
-            reqs.contains("entropy"),
-            "Should mention entropy: {}",
-            reqs
-        );
+        assert!(reqs.contains("entropy"), "Should mention entropy: {}", reqs);
     }
 
     #[test]
@@ -1264,8 +1262,8 @@ mod tests {
 
         // Encrypt with old password
         let original_data = b"this is a secret private key for testing re-encryption";
-        let encrypted = encrypt_with_password(original_data, old_password)
-            .expect("encryption should succeed");
+        let encrypted =
+            encrypt_with_password(original_data, old_password).expect("encryption should succeed");
 
         // Re-encrypt from old to new
         let re_encrypted = reencrypt_private_key(&encrypted, old_password, new_password)
@@ -1279,7 +1277,10 @@ mod tests {
 
         // Old password should NOT work anymore
         let old_result = decrypt_with_password(&re_encrypted, old_password);
-        assert!(old_result.is_err(), "Old password should not decrypt re-encrypted data");
+        assert!(
+            old_result.is_err(),
+            "Old password should not decrypt re-encrypted data"
+        );
     }
 
     #[test]
@@ -1293,7 +1294,10 @@ mod tests {
             .expect("encryption should succeed");
 
         let result = reencrypt_private_key(&encrypted, wrong_password, new_password);
-        assert!(result.is_err(), "Re-encryption with wrong old password should fail");
+        assert!(
+            result.is_err(),
+            "Re-encryption with wrong old password should fail"
+        );
     }
 
     #[test]
@@ -1302,11 +1306,14 @@ mod tests {
         let weak_new_password = "password"; // common weak password
 
         let original_data = b"secret key data";
-        let encrypted = encrypt_with_password(original_data, old_password)
-            .expect("encryption should succeed");
+        let encrypted =
+            encrypt_with_password(original_data, old_password).expect("encryption should succeed");
 
         let result = reencrypt_private_key(&encrypted, old_password, weak_new_password);
-        assert!(result.is_err(), "Re-encryption with weak new password should fail");
+        assert!(
+            result.is_err(),
+            "Re-encryption with weak new password should fail"
+        );
     }
 
     #[test]
@@ -1314,11 +1321,10 @@ mod tests {
         let password = "TestP@ssw0rd!2024";
         let data = b"test data for explicit password functions";
 
-        let encrypted = encrypt_with_password(data, password)
-            .expect("encryption should succeed");
+        let encrypted = encrypt_with_password(data, password).expect("encryption should succeed");
 
-        let decrypted = decrypt_with_password(&encrypted, password)
-            .expect("decryption should succeed");
+        let decrypted =
+            decrypt_with_password(&encrypted, password).expect("decryption should succeed");
 
         assert_eq!(data.as_slice(), decrypted.as_slice());
     }

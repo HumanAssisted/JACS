@@ -58,9 +58,11 @@ pub fn create_jwk_keys(
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
         "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
         _ => {
-            return Err(
-                JacsError::CryptoError(format!("Unsupported JACS algorithm: {}", jacs_alg)).into(),
-            );
+            return Err(JacsError::CryptoError(format!(
+                "Unsupported JACS algorithm: {}",
+                jacs_alg
+            ))
+            .into());
         }
     };
 
