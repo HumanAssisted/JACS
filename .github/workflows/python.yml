@@ -51,12 +51,62 @@ jobs:
               pip install fastmcp mcp starlette && \
               make test-python"
 
+      - name: Verify sdist build on PR/push
+        working-directory: jacspy
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          docker run --rm \
+            -v "$(pwd)/..:/workspace" \
+            jacs-build-x86_64 \
+            bash -c "\
+              cd /workspace/jacspy && \
+              /opt/python/cp311-cp311/bin/python3.11 -m pip install maturin && \
+              /opt/python/cp311-cp311/bin/python3.11 -m maturin sdist --out dist-sdist-check"
+
+  wheel-smoke-uv:
+    name: Wheel smoke install (uv)
+    needs: test-jacspy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install uv and maturin
+        run: python -m pip install uv maturin
+
+      - name: Build wheel
+        working-directory: jacspy
+        run: UV_NO_SYNC=1 uv run maturin build --release --out dist
+
+      - name: Smoke test wheel import in clean venv
+        working-directory: jacspy
+        run: |
+          set -euo pipefail
+          uv venv /tmp/jacs-wheel-smoke
+          uv pip install --python /tmp/jacs-wheel-smoke/bin/python dist/jacs-*.whl
+          uv run --python /tmp/jacs-wheel-smoke/bin/python python - <<'PY'
+          import jacs
+          import jacs.simple
+          import jacs.hai
+          print("wheel smoke imports ok")
+          PY
+
   # Job to build wheels, runs ONLY on push to main
   build-jacspy-wheels:
     name: Build jacspy wheels on ${{ matrix.os }}
     # Condition: Only run on push events to the main branch
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' 
-    needs: test-jacspy # Optional: Ensure tests pass before building wheels
+    needs: [test-jacspy, wheel-smoke-uv] # Optional: Ensure tests pass before building wheels
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -104,4 +154,4 @@ jobs:
         with:
           name: wheels-jacspy-${{ matrix.os }}
           # Path is relative to GITHUB_WORKSPACE (repo root)
-          path: ./wheelhouse/*.whl 
+          path: ./wheelhouse/*.whl

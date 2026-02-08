@@ -94,7 +94,65 @@ jobs:
           path: jacsnpm/artifacts
 
       - name: Copy binaries
-        run: cp artifacts/**/*.node .
+        run: |
+          find artifacts -name "*.node" -type f -print -exec cp {} . \;
+          ls -1 *.node
+        working-directory: jacsnpm
+
+      - name: Verify required package files exist
+        run: |
+          set -euo pipefail
+          REQUIRED_FILES=(
+            "index.js"
+            "index.d.ts"
+            "simple.js"
+            "simple.d.ts"
+            "mcp.js"
+            "mcp.d.ts"
+            "http.js"
+            "http.d.ts"
+            "src/a2a.js"
+            "package.json"
+          )
+          REQUIRED_BINARIES=(
+            "jacs.darwin-arm64.node"
+            "jacs.darwin-x64.node"
+            "jacs.linux-x64-gnu.node"
+            "jacs.linux-x64-musl.node"
+            "jacs.linux-arm64-gnu.node"
+            "jacs.win32-x64-msvc.node"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            test -f "$file" || { echo "::error::Missing required file: $file"; exit 1; }
+          done
+
+          for file in "${REQUIRED_BINARIES[@]}"; do
+            test -f "$file" || { echo "::error::Missing required native binary: $file"; exit 1; }
+          done
+        working-directory: jacsnpm
+
+      - name: Validate npm pack output
+        run: |
+          set -euo pipefail
+          npm pack --dry-run | tee pack-dry-run.txt
+          REQUIRED_PACKED_FILES=(
+            "index.js"
+            "index.d.ts"
+            "simple.js"
+            "simple.d.ts"
+            "mcp.js"
+            "mcp.d.ts"
+            "http.js"
+            "http.d.ts"
+            "src/a2a.js"
+          )
+          for file in "${REQUIRED_PACKED_FILES[@]}"; do
+            grep -F " ${file}" pack-dry-run.txt >/dev/null || {
+              echo "::error::npm pack output missing expected file: $file"
+              exit 1
+            }
+          done
         working-directory: jacsnpm
 
       - uses: actions/setup-node@v4

@@ -38,7 +38,6 @@
     "build": "napi build --platform --release && npm run build:ts",
     "build:debug": "napi build --platform && npm run build:ts",
     "build:ts": "tsc",
-    "install": "npm run build",
     "test": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/**/*.test.js'",
     "test:utils": "mocha --timeout 15000 'test/utils.test.js'",
     "test:agent": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/agent.test.js'",
@@ -57,14 +56,6 @@
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",
     "typescript": "^5.7.0"
-  },
-  "optionalDependencies": {
-    "@jacs/darwin-arm64": "0.1.0",
-    "@jacs/darwin-x64": "0.1.0",
-    "@jacs/linux-x64-gnu": "0.1.0",
-    "@jacs/linux-x64-musl": "0.1.0",
-    "@jacs/linux-arm64-gnu": "0.1.0",
-    "@jacs/win32-x64-msvc": "0.1.0"
   },
   "napi": {
     "name": "jacs",
@@ -90,11 +81,12 @@
     "simple.d.ts",
     "src/a2a.js",
     "mcp.ts",
+    "mcp.d.ts",
     "mcp.js",
     "mcp.js.map",
     "http.js",
     "http.d.ts",
-    "*.node"
+    "jacs.*.node"
   ],
   "keywords": [
     "jacs",

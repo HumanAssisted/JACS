@@ -10,6 +10,8 @@ Node.js bindings for JACS (JSON Agent Communication Standard) -- an open data pr
 npm install @hai-ai/jacs
 ```
 
+The npm package ships prebuilt native bindings for supported targets and does not compile Rust during `npm install`.
+
 ## Quick Start
 
 ```javascript

@@ -55,3 +55,14 @@ jobs:
       - name: Run tests
         working-directory: jacsnpm
         run: npm test
+
+      - name: Smoke test packed npm install
+        working-directory: jacsnpm
+        run: |
+          set -euo pipefail
+          PACKAGE_TGZ=$(npm pack | tail -n 1)
+          mkdir -p /tmp/jacs-npm-smoke
+          cd /tmp/jacs-npm-smoke
+          npm init -y >/dev/null
+          npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
+          node -e "require('@hai-ai/jacs'); require('@hai-ai/jacs/simple'); require('@hai-ai/jacs/mcp'); console.log('smoke imports ok')"

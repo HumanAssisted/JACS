@@ -1352,6 +1352,16 @@ def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
             ) from e
         else:
             raise JacsError(f"Failed to fetch remote key: {error_str}") from e
+    except BaseException as e:
+        # PyO3 panic exceptions are not RuntimeError subclasses. Treat fetch panics
+        # as network failures for callers to preserve a consistent SDK contract.
+        if e.__class__.__name__ == "PanicException":
+            error_str = str(e)
+            logger.error("Panic while fetching remote key: %s", error_str)
+            raise NetworkError(
+                f"Network error fetching key for agent '{agent_id}': {error_str}"
+            ) from e
+        raise
 
 
 __all__ = [

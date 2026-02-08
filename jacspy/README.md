@@ -13,6 +13,8 @@ pip install jacs
 uv pip install jacs[hai]
 ```
 
+Packaging/build metadata is defined in `pyproject.toml` (maturin). `setup.py` is intentionally not used.
+
 To check dependencies for known vulnerabilities when using optional extras, run `pip audit` (or `safety check`).
 
 ## Quick Start (Simplified API)

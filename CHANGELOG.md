@@ -15,6 +15,16 @@
 - **Improved error messages**: `user_message()` method on errors, categorized `From<Box<dyn Error>>` conversion
 - **Version alignment**: All packages (jacs-mcp, binding-core, jacspy, jacsnpm) aligned to 0.6.0
 
+### Packaging and Release Hardening
+
+- **jacsnpm install behavior**: Removed install-time native build (`npm install` no longer runs `napi build`), so consumers do not need a Rust toolchain at install time.
+- **jacsnpm publish contents**: Added `mcp.d.ts` to published package files so `@hai-ai/jacs/mcp` TypeScript types resolve correctly from npm tarballs.
+- **npm release checks**: Added release-time validation that required `.node` binaries exist and `npm pack --dry-run` contains all exported API files before `npm publish`.
+- **jacspy sdist portability**: Excluded `jacspy/examples/**` from crate packaging so `maturin sdist` no longer fails on colon-containing fixture filenames.
+- **jacspy packaging source of truth**: Removed stale `jacspy/setup.py`; `pyproject.toml` + `maturin` now define Python package metadata and build behavior.
+- **CI early failure checks**: Added PR/push-time sdist build verification in Python CI, plus a uv-based wheel smoke test and npm tarball smoke install/import test.
+- **Python test correctness**: Updated unreachable-key-service test to use a valid UUID so it exercises the intended network error path.
+
 ### Security
 
 - **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).
