@@ -11,7 +11,11 @@ By default a directory is used that is configured.  JACS should not touch any fi
 
 ### path validation (v0.6.0)
 
-All paths built from untrusted input (e.g. `publicKeyHash` from documents, filenames) are validated by `require_relative_path_safe()` in `validation.rs`. This rejects path segments that are empty, `.`, `..`, or contain null bytes. The function is used in `make_data_directory_path`, `make_key_directory_path`, and trust store key cache operations, providing a single validation surface for path traversal prevention.
+All paths built from untrusted input (e.g. `publicKeyHash` from documents, filenames) are validated by `require_relative_path_safe()` in `validation.rs`. This rejects path segments that are empty, `.`, `..`, contain null bytes, or use Windows drive-prefixed absolute paths (`C:\...`, `D:/...`).
+
+The function is used in `make_data_directory_path`, `make_key_directory_path`, and trust store key cache operations, providing a single validation surface for path traversal prevention.
+
+Filesystem schema loading is opt-in (`JACS_ALLOW_FILESYSTEM_SCHEMAS=true`) and restricted to configured schema/data roots using normalized/canonical path containment checks.
 
 ### private keys
 
@@ -54,3 +58,5 @@ NOTE: Doesn’t *require* central key authority yet, but this does mean that any
 Until then, use for self signing only, or exchange public keys only with trusted services.
 
 JACS should not need to make network calls for JSON schema as they are loaded into the lib.
+
+When HAI registration verification is used, `HAI_API_URL` must use HTTPS (localhost HTTP is allowed only for testing).

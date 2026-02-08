@@ -6,7 +6,9 @@ JACS implements a comprehensive security model designed to ensure authenticity, 
 
 - **Passwords**: The private key password must be set only via the `JACS_PRIVATE_KEY_PASSWORD` environment variable. It is never stored in config files.
 - **Keys**: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.
-- **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store.
+- **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, `.`, `..`, null bytes, and Windows drive-prefixed paths.
+- **Filesystem schema policy**: Local schema loading is disabled by default and requires `JACS_ALLOW_FILESYSTEM_SCHEMAS=true`. When enabled, schema paths must remain within configured roots (`JACS_DATA_DIRECTORY` and/or `JACS_SCHEMA_DIRECTORY`) after normalized/canonical path checks.
+- **Network endpoint policy**: HAI registration verification requires HTTPS for `HAI_API_URL` (localhost HTTP is allowed for local testing only).
 - **No secrets in config**: Config files must not contain passwords or other secrets. The example config (`jacs.config.example.json`) does not include `jacs_private_key_password`.
 - **Dependency auditing**: Run `cargo audit` (Rust), `npm audit` (Node.js), or `pip audit` (Python) to check for known vulnerabilities.
 
@@ -234,6 +236,8 @@ When enabled, JACS will:
 |------|----------|----------|
 | Default (dev) | Warn on invalid certs, allow connection | Local development, testing |
 | Strict (`JACS_STRICT_TLS=true`) | Reject invalid certs | Production, staging |
+
+For HAI registration verification endpoints, `HAI_API_URL` must use HTTPS. HTTP is only allowed for localhost test endpoints.
 
 ## Signature Timestamp Validation
 

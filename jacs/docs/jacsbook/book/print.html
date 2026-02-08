@@ -10313,7 +10313,9 @@ chmod 600 ./jacs_keys/private.pem
 <ul>
 <li><strong>Passwords</strong>: The private key password must be set only via the <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. It is never stored in config files.</li>
 <li><strong>Keys</strong>: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.</li>
-<li><strong>Path validation</strong>: All paths built from untrusted input (e.g. <code>publicKeyHash</code>, filenames) are validated via <code>require_relative_path_safe()</code> to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store.</li>
+<li><strong>Path validation</strong>: All paths built from untrusted input (e.g. <code>publicKeyHash</code>, filenames) are validated via <code>require_relative_path_safe()</code> to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, <code>.</code>, <code>..</code>, null bytes, and Windows drive-prefixed paths.</li>
+<li><strong>Filesystem schema policy</strong>: Local schema loading is disabled by default and requires <code>JACS_ALLOW_FILESYSTEM_SCHEMAS=true</code>. When enabled, schema paths must remain within configured roots (<code>JACS_DATA_DIRECTORY</code> and/or <code>JACS_SCHEMA_DIRECTORY</code>) after normalized/canonical path checks.</li>
+<li><strong>Network endpoint policy</strong>: HAI registration verification requires HTTPS for <code>HAI_API_URL</code> (localhost HTTP is allowed for local testing only).</li>
 <li><strong>No secrets in config</strong>: Config files must not contain passwords or other secrets. The example config (<code>jacs.config.example.json</code>) does not include <code>jacs_private_key_password</code>.</li>
 <li><strong>Dependency auditing</strong>: Run <code>cargo audit</code> (Rust), <code>npm audit</code> (Node.js), or <code>pip audit</code> (Python) to check for known vulnerabilities.</li>
 </ul>
@@ -10493,6 +10495,7 @@ chmod 600 ./jacs_keys/private.pem
 <tr><td>Strict (<code>JACS_STRICT_TLS=true</code>)</td><td>Reject invalid certs</td><td>Production, staging</td></tr>
 </tbody></table>
 </div>
+<p>For HAI registration verification endpoints, <code>HAI_API_URL</code> must use HTTPS. HTTP is only allowed for localhost test endpoints.</p>
 <h2 id="signature-timestamp-validation"><a class="header" href="#signature-timestamp-validation">Signature Timestamp Validation</a></h2>
 <p>JACS signatures include timestamps to prevent replay attacks and ensure temporal integrity.</p>
 <h3 id="how-it-works-1"><a class="header" href="#how-it-works-1">How It Works</a></h3>
