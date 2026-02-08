@@ -7,7 +7,7 @@ resolver = "3"
 exclude = ["examples/**"]
 
 [lib]
-name = "jacs"
+name = "jacspy"
 crate-type = ["cdylib"]
 
 [dependencies]
