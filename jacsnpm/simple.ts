@@ -57,7 +57,6 @@ import {
   getTrustedAgent as nativeGetTrustedAgent,
   verifyDocumentStandalone as nativeVerifyDocumentStandalone,
   audit as nativeAudit,
-  generateVerifyLink as nativeGenerateVerifyLink,
 } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -169,6 +168,28 @@ export interface HaiRegistrationResult {
 let globalAgent: JacsAgent | null = null;
 let agentInfo: AgentInfo | null = null;
 
+function resolveConfigRelativePath(configPath: string, candidate: string): string {
+  if (path.isAbsolute(candidate)) {
+    return candidate;
+  }
+  return path.resolve(path.dirname(configPath), candidate);
+}
+
+function normalizeDocumentInput(document: any): string {
+  if (typeof document === 'string') {
+    return document;
+  }
+  if (document && typeof document === 'object') {
+    if (typeof document.raw === 'string') {
+      return document.raw;
+    }
+    if (typeof document.raw_json === 'string') {
+      return document.raw_json;
+    }
+  }
+  return JSON.stringify(document);
+}
+
 // =============================================================================
 // Core Operations
 // =============================================================================
@@ -179,8 +200,8 @@ let agentInfo: AgentInfo | null = null;
 export interface CreateAgentOptions {
   /** Human-readable name for the agent. */
   name: string;
-  /** Password for encrypting the private key. Can also be set via JACS_AGENT_PRIVATE_KEY_PASSWORD env var. */
-  password: string;
+  /** Password for encrypting the private key. Falls back to JACS_PRIVATE_KEY_PASSWORD if omitted. */
+  password?: string;
   /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". "pq-dilithium" is deprecated. */
   algorithm?: string;
   /** Directory for agent data (default: "./jacs_data"). */
@@ -203,7 +224,7 @@ export interface CreateAgentOptions {
  * Creates a new JACS agent with cryptographic keys.
  *
  * This is a fully programmatic API that does not require interactive input.
- * The password must be provided directly or via the JACS_AGENT_PRIVATE_KEY_PASSWORD
+ * The password must be provided directly or via the JACS_PRIVATE_KEY_PASSWORD
  * environment variable.
  *
  * @param options - Agent creation options
@@ -213,16 +234,23 @@ export interface CreateAgentOptions {
  * ```typescript
  * const agent = jacs.create({
  *   name: 'my-agent',
- *   password: process.env.JACS_PASSWORD!,
+ *   password: process.env.JACS_PRIVATE_KEY_PASSWORD,
  *   algorithm: 'pq2025',
  * });
  * console.log(`Created: ${agent.agentId}`);
  * ```
  */
 export function create(options: CreateAgentOptions): AgentInfo {
+  const resolvedPassword = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
+  if (!resolvedPassword) {
+    throw new Error(
+      'Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.',
+    );
+  }
+
   const resultJson = nativeCreateAgent(
     options.name,
-    options.password,
+    resolvedPassword,
     options.algorithm ?? null,
     options.dataDirectory ?? null,
     options.keyDirectory ?? null,
@@ -256,28 +284,33 @@ export function create(options: CreateAgentOptions): AgentInfo {
  * ```
  */
 export function load(configPath?: string): AgentInfo {
-  const path = configPath || './jacs.config.json';
+  const requestedPath = configPath || './jacs.config.json';
+  const resolvedConfigPath = path.resolve(requestedPath);
 
-  if (!fs.existsSync(path)) {
+  if (!fs.existsSync(resolvedConfigPath)) {
     throw new Error(
-      `Config file not found: ${path}\nRun 'jacs create' to create a new agent.`
+      `Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`
     );
   }
 
   // Create new agent instance
   globalAgent = new JacsAgent();
-  globalAgent.load(path);
+  globalAgent.load(resolvedConfigPath);
 
   // Read config to get agent info
-  const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+  const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
   const agentIdVersion = config.jacs_agent_id_and_version || '';
   const [agentId, version] = agentIdVersion.split(':');
+  const keyDir = resolveConfigRelativePath(
+    resolvedConfigPath,
+    config.jacs_key_directory || './jacs_keys',
+  );
 
   agentInfo = {
     agentId: agentId || '',
     name: config.name || '',
-    publicKeyPath: `${config.jacs_key_directory || './jacs_keys'}/jacs.public.pem`,
-    configPath: path,
+    publicKeyPath: path.join(keyDir, 'jacs.public.pem'),
+    configPath: resolvedConfigPath,
   };
 
   return agentInfo;
@@ -725,8 +758,12 @@ export function exportAgent(): string {
   }
 
   // Read agent file
-  const config = JSON.parse(fs.readFileSync(agentInfo.configPath, 'utf8'));
-  const dataDir = config.jacs_data_directory || './jacs_data';
+  const configPath = path.resolve(agentInfo.configPath);
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const dataDir = resolveConfigRelativePath(
+    configPath,
+    config.jacs_data_directory || './jacs_data',
+  );
   const agentIdVersion = config.jacs_agent_id_and_version || '';
   const agentPath = path.join(dataDir, 'agent', `${agentIdVersion}.json`);
 
@@ -917,9 +954,7 @@ export function createAgreement(
     throw new Error('No agent loaded. Call load() first.');
   }
 
-  const docString = typeof document === 'string'
-    ? document
-    : JSON.stringify(document);
+  const docString = normalizeDocumentInput(document);
 
   const result = globalAgent.createAgreement(
     docString,
@@ -961,9 +996,7 @@ export function signAgreement(
     throw new Error('No agent loaded. Call load() first.');
   }
 
-  const docString = typeof document === 'string'
-    ? document
-    : JSON.stringify(document);
+  const docString = normalizeDocumentInput(document);
 
   const result = globalAgent.signAgreement(docString, fieldName || null);
   const doc = JSON.parse(result);
@@ -1001,9 +1034,7 @@ export function checkAgreement(
     throw new Error('No agent loaded. Call load() first.');
   }
 
-  const docString = typeof document === 'string'
-    ? document
-    : JSON.stringify(document);
+  const docString = normalizeDocumentInput(document);
 
   const result = globalAgent.checkAgreement(docString, fieldName || null);
   return JSON.parse(result);
@@ -1145,5 +1176,17 @@ export function generateVerifyLink(
   document: string,
   baseUrl: string = 'https://hai.ai',
 ): string {
-  return nativeGenerateVerifyLink(document, baseUrl);
+  const base = baseUrl.replace(/\/+$/, '');
+  const encoded = Buffer.from(document, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+  const fullUrl = `${base}/jacs/verify?s=${encoded}`;
+  if (fullUrl.length > MAX_VERIFY_URL_LEN) {
+    throw new Error(
+      `Verify URL would exceed max length (${MAX_VERIFY_URL_LEN}). Document size must be at most ${MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes.`,
+    );
+  }
+  return fullUrl;
 }

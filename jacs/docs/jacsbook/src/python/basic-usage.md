@@ -458,5 +458,5 @@ agent.load('./jacs.config.json')
 ## Next Steps
 
 - [MCP Integration](mcp.md) - Model Context Protocol support
-- [FastMCP Integration](fastmcp.md) - Build advanced MCP servers
+- [FastMCP Integration](mcp.md) - Build advanced MCP servers
 - [API Reference](api.md) - Complete API documentation

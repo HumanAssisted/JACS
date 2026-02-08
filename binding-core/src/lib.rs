@@ -6,13 +6,18 @@
 //! by any language binding. Each binding implements the `BindingError` trait
 //! to convert errors to their native format.
 
-use jacs::agent::document::DocumentTraits;
+use jacs::agent::agreement::Agreement;
+use jacs::agent::document::{DocumentTraits, JACSDocument};
 use jacs::agent::payloads::PayloadTraits;
-use jacs::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
+use jacs::agent::{
+    AGENT_AGREEMENT_FIELDNAME, AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME,
+    Agent,
+};
 use jacs::config::Config;
 use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
-use serde_json::Value;
+use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
@@ -138,6 +143,81 @@ impl<T> From<PoisonError<T>> for BindingCoreError {
 
 /// Result type for binding core operations.
 pub type BindingResult<T> = Result<T, BindingCoreError>;
+
+fn is_editable_level(level: &str) -> bool {
+    matches!(level, "artifact" | "config")
+}
+
+fn normalize_agent_id_for_compare(agent_id: &str) -> &str {
+    agent_id.split(':').next().unwrap_or(agent_id)
+}
+
+fn extract_agreement_payload(value: &Value) -> Value {
+    if let Some(payload) = value.get("jacsDocument") {
+        return payload.clone();
+    }
+    if let Some(payload) = value.get("content") {
+        return payload.clone();
+    }
+    if let Some(obj) = value.as_object() {
+        let mut filtered = serde_json::Map::new();
+        for (k, v) in obj {
+            if !k.starts_with("jacs") && k != "$schema" {
+                filtered.insert(k.clone(), v.clone());
+            }
+        }
+        if !filtered.is_empty() {
+            return Value::Object(filtered);
+        }
+    }
+    Value::Null
+}
+
+fn create_editable_agreement_document(agent: &mut Agent, payload: Value) -> BindingResult<JACSDocument> {
+    let wrapped = json!({
+        "jacsType": "artifact",
+        "jacsLevel": "artifact",
+        "content": payload
+    });
+    agent
+        .create_document_and_load(&wrapped.to_string(), None, None)
+        .map_err(|e| {
+            BindingCoreError::document_failed(format!(
+                "Failed to create editable agreement document: {}",
+                e
+            ))
+        })
+}
+
+fn ensure_editable_agreement_document(
+    agent: &mut Agent,
+    document_string: &str,
+) -> BindingResult<JACSDocument> {
+    match agent.load_document(document_string) {
+        Ok(doc) => {
+            let level = doc.value.get("jacsLevel").and_then(|v| v.as_str()).unwrap_or("");
+            if is_editable_level(level) {
+                Ok(doc)
+            } else {
+                let payload = extract_agreement_payload(doc.getvalue());
+                create_editable_agreement_document(agent, payload)
+            }
+        }
+        Err(load_err) => {
+            if let Ok(parsed) = serde_json::from_str::<Value>(document_string)
+                && (parsed.get("jacsId").is_some() || parsed.get("jacsVersion").is_some())
+            {
+                return Err(BindingCoreError::document_failed(format!(
+                    "Failed to load document: {}",
+                    load_err
+                )));
+            }
+            let payload = serde_json::from_str::<Value>(document_string)
+                .unwrap_or_else(|_| Value::String(document_string.to_string()));
+            create_editable_agreement_document(agent, payload)
+        }
+    }
+}
 
 // =============================================================================
 // Wrapper Type for Agent with Arc<Mutex<Agent>>
@@ -393,23 +473,21 @@ impl AgentWrapper {
         agreement_fieldname: Option<String>,
     ) -> BindingResult<String> {
         let mut agent = self.lock()?;
+        let base_doc = ensure_editable_agreement_document(&mut agent, document_string)?;
+        let document_key = base_doc.getkey();
+        let agreement_doc = agent
+            .create_agreement(
+                &document_key,
+                agentids.as_slice(),
+                question.as_deref(),
+                context.as_deref(),
+                agreement_fieldname,
+            )
+            .map_err(|e| {
+                BindingCoreError::agreement_failed(format!("Failed to create agreement: {}", e))
+            })?;
 
-        jacs::shared::document_add_agreement(
-            &mut agent,
-            document_string,
-            agentids,
-            None,
-            None,
-            question,
-            context,
-            None,
-            None,
-            false,
-            agreement_fieldname,
-        )
-        .map_err(|e| {
-            BindingCoreError::agreement_failed(format!("Failed to create agreement: {}", e))
-        })
+        Ok(agreement_doc.value.to_string())
     }
 
     /// Sign an agreement on a document.
@@ -419,18 +497,17 @@ impl AgentWrapper {
         agreement_fieldname: Option<String>,
     ) -> BindingResult<String> {
         let mut agent = self.lock()?;
+        let doc = agent.load_document(document_string).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to load document: {}", e))
+        })?;
+        let document_key = doc.getkey();
+        let signed_doc = agent
+            .sign_agreement(&document_key, agreement_fieldname)
+            .map_err(|e| {
+                BindingCoreError::agreement_failed(format!("Failed to sign agreement: {}", e))
+            })?;
 
-        jacs::shared::document_sign_agreement(
-            &mut agent,
-            document_string,
-            None,
-            None,
-            None,
-            None,
-            false,
-            agreement_fieldname,
-        )
-        .map_err(|e| BindingCoreError::agreement_failed(format!("Failed to sign agreement: {}", e)))
+        Ok(signed_doc.value.to_string())
     }
 
     /// Create a new JACS document.
@@ -464,16 +541,88 @@ impl AgentWrapper {
         agreement_fieldname: Option<String>,
     ) -> BindingResult<String> {
         let mut agent = self.lock()?;
+        let doc = agent.load_document(document_string).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to load document: {}", e))
+        })?;
+        let document_key = doc.getkey();
+        let agreement_fieldname_key = agreement_fieldname
+            .clone()
+            .unwrap_or_else(|| AGENT_AGREEMENT_FIELDNAME.to_string());
 
-        jacs::shared::document_check_agreement(
-            &mut agent,
-            document_string,
-            None,
-            agreement_fieldname,
-        )
-        .map_err(|e| {
-            BindingCoreError::agreement_failed(format!("Failed to check agreement: {}", e))
-        })
+        agent
+            .check_agreement(&document_key, Some(agreement_fieldname_key.clone()))
+            .map_err(|e| {
+                BindingCoreError::agreement_failed(format!("Failed to check agreement: {}", e))
+            })?;
+
+        let requested = doc
+            .agreement_requested_agents(Some(agreement_fieldname_key.clone()))
+            .map_err(|e| {
+                BindingCoreError::agreement_failed(format!(
+                    "Failed to read requested signers: {}",
+                    e
+                ))
+            })?;
+
+        let pending = doc
+            .agreement_unsigned_agents(Some(agreement_fieldname_key.clone()))
+            .map_err(|e| {
+                BindingCoreError::agreement_failed(format!(
+                    "Failed to read pending signers: {}",
+                    e
+                ))
+            })?;
+
+        let signatures = doc
+            .value
+            .get(&agreement_fieldname_key)
+            .and_then(|agreement| agreement.get("signatures"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut signed_at_by_agent: HashMap<String, String> = HashMap::new();
+        for signature in signatures {
+            if let Some(agent_id) = signature.get("agentID").and_then(|v| v.as_str()) {
+                let normalized = normalize_agent_id_for_compare(agent_id).to_string();
+                let signed_at = signature
+                    .get("date")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                signed_at_by_agent.insert(normalized, signed_at);
+            }
+        }
+
+        let signers = requested
+            .iter()
+            .map(|agent_id| {
+                let normalized = normalize_agent_id_for_compare(agent_id).to_string();
+                let signed_at = signed_at_by_agent
+                    .get(&normalized)
+                    .filter(|ts| !ts.is_empty())
+                    .cloned();
+                let signed = signed_at.is_some();
+                let mut signer = json!({
+                    "agentId": agent_id,
+                    "agent_id": agent_id,
+                    "signed": signed
+                });
+                if let Some(ts) = signed_at {
+                    signer["signedAt"] = json!(ts.clone());
+                    signer["signed_at"] = json!(ts);
+                }
+                signer
+            })
+            .collect::<Vec<Value>>();
+
+        let result = json!({
+            "complete": pending.is_empty(),
+            "signers": signers,
+            "pending": pending
+        });
+
+        Ok(result.to_string())
     }
 
     /// Sign a request payload (wraps in a JACS document).

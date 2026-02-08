@@ -18,7 +18,7 @@
 - [Rust Library API](rust/library.md)
 - [Observability](rust/observability.md)
 
-## Node.js (jacsnpm)
+## Node.js (@hai-ai/jacs)
 - [Installation](nodejs/installation.md)
 - [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)
@@ -27,7 +27,7 @@
 - [Express Middleware](nodejs/express.md)
 - [API Reference](nodejs/api.md)
 
-## Python (jacspy)
+## Python (jacs)
 - [Installation](python/installation.md)
 - [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
@@ -56,6 +56,7 @@
 
 ## Integrations
 - [Model Context Protocol (MCP)](integrations/mcp.md)
+- [A2A Interoperability](integrations/a2a.md)
 - [OpenClaw](integrations/openclaw.md)
 - [Web Servers](integrations/web-servers.md)
 - [Databases](integrations/databases.md)

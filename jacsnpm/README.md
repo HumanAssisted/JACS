@@ -87,7 +87,7 @@ const jacs = require('@hai-ai/jacs/simple');
 
 const agent = jacs.create({
   name: 'my-agent',
-  password: process.env.JACS_PASSWORD,  // required
+  password: process.env.JACS_PRIVATE_KEY_PASSWORD,  // required
   algorithm: 'pq2025',                  // default; also: "ring-Ed25519", "RSA-PSS"
   dataDirectory: './jacs_data',
   keyDirectory: './jacs_keys',

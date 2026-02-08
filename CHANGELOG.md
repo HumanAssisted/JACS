@@ -25,6 +25,14 @@
 - **CI early failure checks**: Added PR/push-time sdist build verification in Python CI, plus a uv-based wheel smoke test and npm tarball smoke install/import test.
 - **Python test correctness**: Updated unreachable-key-service test to use a valid UUID so it exercises the intended network error path.
 
+### A2A Interoperability Hardening
+
+- **Foreign A2A signature verification (Rust core)**: `verify_wrapped_artifact()` now resolves signer keys using configured key resolution order (`local`, `dns`, `hai`) and performs cryptographic verification when key material is available. Unresolvable keys now return explicit `Unverified` status instead of optimistic success.
+- **Parent signature verification depth (Node.js/Python)**: A2A wrappers now recursively verify `jacsParentSignatures` and report `parent_signatures_valid` based on actual verification outcomes.
+- **Well-known document parity**: Node.js and Python A2A helpers now include `/.well-known/jwks.json` in generated well-known document sets, matching Rust integration expectations.
+- **JWKS correctness improvements**: Removed placeholder EC JWK data in core A2A key helpers and added explicit Ed25519 JWK/JWS support (`EdDSA`) for truthful key metadata.
+- **Node.js create() 12-factor UX**: `@hai-ai/jacs/simple.create()` now accepts password from `JACS_PRIVATE_KEY_PASSWORD` when `options.password` is omitted, with explicit error if neither is provided.
+
 ### Security
 
 - **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).
@@ -41,6 +49,7 @@
 - **README**: First-run minimal setup, verification and key resolution (`JACS_KEY_RESOLUTION`), supported algorithms, troubleshooting, dependency audit instructions, runtime password note.
 - **jacsnpm**: Documented that `overrides` for `body-parser` and `qs` are for security (CVE-2024-45590). Added `npm audit` step in CI.
 - **jacspy**: Aligned key resolution docstring with Rust (comma-separated `local,dns,hai`); added note to run `pip audit` when using optional deps.
+- **A2A documentation refresh**: Added detailed jacsbook guide at `integrations/a2a.md`, corrected stale A2A quickstart endpoints/imports (`agent-card.json`, `jwks.json`, `@hai-ai/jacs/a2a`), and aligned Node.js package references to `@hai-ai/jacs` across docs.
 
 
 ## 0.5.2

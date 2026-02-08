@@ -1,6 +1,6 @@
 # Node.js Installation
 
-The JACS Node.js package (`jacsnpm`) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.
+The JACS Node.js package (`@hai-ai/jacs`) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.
 
 ## Requirements
 
@@ -12,17 +12,17 @@ The JACS Node.js package (`jacsnpm`) provides JavaScript/TypeScript bindings to 
 
 ### Using npm
 ```bash
-npm install jacsnpm
+npm install @hai-ai/jacs
 ```
 
 ### Using yarn
 ```bash
-yarn add jacsnpm
+yarn add @hai-ai/jacs
 ```
 
 ### Using pnpm
 ```bash
-pnpm add jacsnpm
+pnpm add @hai-ai/jacs
 ```
 
 ## Verify Installation
@@ -31,7 +31,7 @@ Create a simple test to verify everything is working:
 
 ```javascript
 // test.js
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
 
@@ -52,32 +52,32 @@ node test.js
 
 ## Package Structure
 
-The `jacsnpm` package includes several modules:
+The `@hai-ai/jacs` package includes several modules:
 
-### Core Module (`jacsnpm`)
+### Core Module (`@hai-ai/jacs`)
 ```javascript
 import { 
   JacsAgent,
   JacsConfig,
   JacsDocument,
   JacsError
-} from 'jacsnpm';
+} from '@hai-ai/jacs';
 ```
 
-### MCP Integration (`jacsnpm/mcp`)
+### MCP Integration (`@hai-ai/jacs/mcp`)
 ```javascript
 import { 
   JacsMcpServer,
   createJacsMiddleware 
-} from 'jacsnpm/mcp';
+} from '@hai-ai/jacs/mcp';
 ```
 
-### HTTP Server (`jacsnpm/http`)
+### HTTP Server (`@hai-ai/jacs/http`)
 ```javascript
 import { 
   JacsHttpServer,
   createJacsRouter 
-} from 'jacsnpm/http';
+} from '@hai-ai/jacs/http';
 ```
 
 ## TypeScript Support
@@ -85,7 +85,7 @@ import {
 The package includes full TypeScript definitions:
 
 ```typescript
-import { JacsAgent, createConfig, hashString } from 'jacsnpm';
+import { JacsAgent, createConfig, hashString } from '@hai-ai/jacs';
 
 // Create an agent instance
 const agent: JacsAgent = new JacsAgent();
@@ -144,7 +144,7 @@ Create a `jacs.config.json` file:
 
 Load the configuration:
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -259,7 +259,7 @@ my-jacs-project/
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "jacsnpm": "^0.1.0",
+    "@hai-ai/jacs": "^0.6.0",
     "express": "^4.18.0"
   },
   "scripts": {
@@ -273,7 +273,7 @@ my-jacs-project/
 ### Basic Application
 ```javascript
 // src/app.js
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 // Create and load agent
 const agent = new JacsAgent();
@@ -329,8 +329,8 @@ If you get binary compatibility errors:
 npm rebuild
 
 # Or reinstall
-npm uninstall jacsnpm
-npm install jacsnpm
+npm uninstall @hai-ai/jacs
+npm install @hai-ai/jacs
 ```
 
 ### TypeScript Issues

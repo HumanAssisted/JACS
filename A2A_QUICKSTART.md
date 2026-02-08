@@ -19,7 +19,7 @@ cargo add jacs
 pip install jacs
 
 # Node.js
-npm install jacsnpm
+npm install @hai-ai/jacs
 ```
 
 ## Basic Usage
@@ -49,7 +49,7 @@ agent_card = a2a.export_agent_card({
 ### 2. Wrap A2A Artifacts with Provenance
 
 ```javascript
-const { JACSA2AIntegration } = require('jacsnpm');
+const { JACSA2AIntegration } = require('@hai-ai/jacs/a2a');
 const a2a = new JACSA2AIntegration();
 
 // Wrap any A2A artifact
@@ -86,7 +86,8 @@ chain = a2a.create_chain_of_custody([step1, step2, step3])
 
 Serve these endpoints for A2A discovery:
 
-- `/.well-known/agent.json` - A2A Agent Card (JWS signed)
+- `/.well-known/agent-card.json` - A2A Agent Card (JWS signed)
+- `/.well-known/jwks.json` - JWK set for verifying Agent Card signatures
 - `/.well-known/jacs-agent.json` - JACS agent descriptor
 - `/.well-known/jacs-pubkey.json` - JACS public key
 
@@ -98,10 +99,7 @@ Serve these endpoints for A2A discovery:
     "extensions": [{
       "uri": "urn:hai.ai:jacs-provenance-v1",
       "description": "JACS cryptographic document signing",
-      "params": {
-        "supportedAlgorithms": ["dilithium", "rsa", "ecdsa"],
-        "verificationEndpoint": "/jacs/verify"
-      }
+      "required": false
     }]
   }
 }

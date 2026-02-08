@@ -112,6 +112,7 @@ jobs:
             "http.js"
             "http.d.ts"
             "src/a2a.js"
+            "src/a2a.d.ts"
             "package.json"
           )
           REQUIRED_BINARIES=(
@@ -146,6 +147,7 @@ jobs:
             "http.js"
             "http.d.ts"
             "src/a2a.js"
+            "src/a2a.d.ts"
           )
           for file in "${REQUIRED_PACKED_FILES[@]}"; do
             grep -F " ${file}" pack-dry-run.txt >/dev/null || {

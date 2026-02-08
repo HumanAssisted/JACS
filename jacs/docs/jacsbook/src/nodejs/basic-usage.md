@@ -7,7 +7,7 @@ This chapter covers fundamental JACS operations in Node.js, including agent init
 ### Create and Load Agent
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 // Create a new agent instance
 const agent = new JacsAgent();
@@ -36,7 +36,7 @@ Create `jacs.config.json`:
 ### Basic Document Creation
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -279,7 +279,7 @@ console.log('Signer ID:', resultWithId);
 ### Hash String
 
 ```javascript
-import { hashString } from 'jacsnpm';
+import { hashString } from '@hai-ai/jacs';
 
 // SHA-256 hash of a string
 const hash = hashString('data to hash');
@@ -289,7 +289,7 @@ console.log('Hash:', hash);
 ### Create Configuration
 
 ```javascript
-import { createConfig } from 'jacsnpm';
+import { createConfig } from '@hai-ai/jacs';
 
 // Programmatically create a config JSON string
 const configJson = createConfig(
@@ -310,7 +310,7 @@ console.log('Config:', configJson);
 ## Error Handling
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const agent = new JacsAgent();
 
@@ -337,7 +337,7 @@ try {
 ## Complete Example
 
 ```javascript
-import { JacsAgent, hashString } from 'jacsnpm';
+import { JacsAgent, hashString } from '@hai-ai/jacs';
 
 async function main() {
   // Initialize agent

@@ -8,6 +8,7 @@
 - **Schema filesystem access**: Filesystem schema loading is opt-in (`JACS_ALLOW_FILESYSTEM_SCHEMAS=true`) and restricted to configured allowed roots using normalized/canonical path containment checks.
 - **Network transport policy**: HAI registration verification enforces HTTPS for `HAI_API_URL` (localhost HTTP allowed for local testing only).
 - **No secrets in config**: Config files and env overrides must not contain passwords or other secrets.
+- **A2A foreign verification**: Foreign wrapped-artifact signatures are only marked verified when signer keys are resolved and verified cryptographically; unresolved foreign keys return explicit `Unverified` status.
 
 ## Reporting vulnerabilities
 

@@ -73,7 +73,7 @@ CREATE INDEX idx_jacs_document ON jacs_documents USING GIN (document);
 
 ```javascript
 import { Pool } from 'pg';
-import jacs from 'jacsnpm';
+import jacs from '@hai-ai/jacs';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
@@ -292,7 +292,7 @@ jacsDocumentSchema.index({ jacsId: 1, jacsVersion: 1 }, { unique: true });
 
 ```javascript
 import mongoose from 'mongoose';
-import jacs from 'jacsnpm';
+import jacs from '@hai-ai/jacs';
 
 const JacsDocument = mongoose.model('JacsDocument', jacsDocumentSchema);
 
@@ -364,7 +364,7 @@ For embedded or local applications:
 
 ```javascript
 import Database from 'better-sqlite3';
-import jacs from 'jacsnpm';
+import jacs from '@hai-ai/jacs';
 
 class SqliteJacsStore {
   constructor(dbPath) {
@@ -457,7 +457,7 @@ Use Redis for high-speed document access:
 
 ```javascript
 import Redis from 'ioredis';
-import jacs from 'jacsnpm';
+import jacs from '@hai-ai/jacs';
 
 class JacsRedisCache {
   constructor(redisUrl) {

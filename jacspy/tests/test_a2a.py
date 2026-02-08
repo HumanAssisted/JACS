@@ -398,6 +398,7 @@ class TestJACSA2AIntegration:
 
         # Verify v0.4.0 well-known path (agent-card.json, not agent.json)
         assert "/.well-known/agent-card.json" in documents
+        assert "/.well-known/jwks.json" in documents
         assert "/.well-known/jacs-agent.json" in documents
         assert "/.well-known/jacs-pubkey.json" in documents
         assert "/.well-known/jacs-extension.json" in documents
@@ -417,6 +418,11 @@ class TestJACSA2AIntegration:
         pubkey_doc = documents["/.well-known/jacs-pubkey.json"]
         assert pubkey_doc["publicKey"] == "mock-public-key-b64"
         assert pubkey_doc["algorithm"] == "RSA-PSS"
+
+        # Verify JWKS is present for A2A verifiers
+        jwks_doc = documents["/.well-known/jwks.json"]
+        assert "keys" in jwks_doc
+        assert isinstance(jwks_doc["keys"], list)
 
 
 class TestA2ADataClasses:

@@ -159,6 +159,8 @@ agent_card = a2a.export_agent_card(agent_data)
 wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
 ```
 
+JACS A2A interoperability now includes foreign-agent signature verification using configured key resolution (`local`, `dns`, `hai`) and publishes `/.well-known/agent-card.json` plus `/.well-known/jwks.json` for verifier compatibility. See the [A2A interoperability guide](./jacs/docs/jacsbook/src/integrations/a2a.md) for deployment details.
+
 ## Verification and key resolution
 
 When verifying signatures, JACS looks up signers' public keys in an order controlled by `JACS_KEY_RESOLUTION` (comma-separated: `local`, `dns`, `hai`). Default is `local,hai` (local trust store first, then HAI key service). For air-gapped use, set `JACS_KEY_RESOLUTION=local`.

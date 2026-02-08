@@ -525,7 +525,7 @@ chmod 600 ./jacs_keys/private.pem
 
 ```bash
 # Use environment variables
-export JACS_AGENT_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
+export JACS_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
 ```
 
 ### 3. Transport Security

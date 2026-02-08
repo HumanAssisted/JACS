@@ -67,12 +67,12 @@ jacs task create \
 
 ### Install Node.js Package
 ```bash
-npm install jacsnpm
+npm install @hai-ai/jacs
 ```
 
 ### Basic Setup
 ```javascript
-import { JacsAgent, createConfig } from 'jacsnpm';
+import { JacsAgent, createConfig } from '@hai-ai/jacs';
 import fs from 'fs';
 
 // Create configuration
@@ -256,7 +256,7 @@ import jacs.simple as jacs
 
 agent = jacs.create(
     name="my-agent",
-    password="Str0ng-P@ssw0rd!",  # or set JACS_AGENT_PRIVATE_KEY_PASSWORD
+    password="Str0ng-P@ssw0rd!",  # or set JACS_PRIVATE_KEY_PASSWORD
     algorithm="pq2025",
 )
 print(f"Agent: {agent.agent_id}")
@@ -275,7 +275,7 @@ const jacs = require('@hai-ai/jacs/simple');
 
 const agent = jacs.create({
   name: 'my-agent',
-  password: process.env.JACS_PASSWORD,
+  password: process.env.JACS_PRIVATE_KEY_PASSWORD,
   algorithm: 'pq2025',
 });
 console.log(`Agent: ${agent.agentId}`);
@@ -291,7 +291,7 @@ console.log(`Agent: ${agent.agentId}`);
 
 ```go
 info, err := jacs.Create("my-agent", &jacs.CreateAgentOptions{
-    Password:  os.Getenv("JACS_PASSWORD"),
+    Password:  os.Getenv("JACS_PRIVATE_KEY_PASSWORD"),
     Algorithm: "pq2025",
 })
 ```
@@ -309,7 +309,7 @@ use jacs::simple::{CreateAgentParams, SimpleAgent};
 
 let params = CreateAgentParams {
     name: "my-agent".into(),
-    password: std::env::var("JACS_PASSWORD").unwrap(),
+    password: std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap(),
     algorithm: "pq2025".into(),
     ..Default::default()
 };
@@ -570,8 +570,8 @@ Now that you have the basics working:
 
 1. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
 2. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
-3. **[Python FastMCP](../python/fastmcp.md)** - Build MCP servers
-4. **[Production Setup](../advanced/observability.md)** - Add monitoring and logging
+3. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
+4. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
 5. **[Real Examples](../examples/integrations.md)** - See production patterns
 
 ## Troubleshooting

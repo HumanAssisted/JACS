@@ -64,7 +64,7 @@ JACS uses a **transport proxy pattern** that wraps any MCP transport with crypto
 ```javascript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 import { z } from 'zod';
 
 // Create transport with JACS encryption
@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
 JACS provides native MCP integration for both major platforms:
 
-### Node.js (jacsnpm)
+### Node.js (@hai-ai/jacs)
 
 The Node.js integration uses a transport proxy pattern that works with any MCP transport:
 

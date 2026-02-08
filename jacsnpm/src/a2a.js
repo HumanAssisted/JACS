@@ -8,6 +8,7 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
+const { createPublicKey } = require('crypto');
 const jacs = require('../index');
 
 /**
@@ -340,24 +341,7 @@ class JACSA2AIntegration {
    * @returns {Object} Verification result
    */
   verifyWrappedArtifact(wrappedArtifact) {
-    const isValid = jacs.verifyResponse(wrappedArtifact);
-    const signatureInfo = wrappedArtifact.jacsSignature || {};
-
-    const result = {
-      valid: isValid,
-      signerId: signatureInfo.agentID || 'unknown',
-      signerVersion: signatureInfo.agentVersion || 'unknown',
-      artifactType: wrappedArtifact.jacsType || 'unknown',
-      timestamp: wrappedArtifact.jacsVersionDate || '',
-      originalArtifact: wrappedArtifact.a2aArtifact || {}
-    };
-
-    if (wrappedArtifact.jacsParentSignatures) {
-      result.parentSignaturesCount = wrappedArtifact.jacsParentSignatures.length;
-      result.parentSignaturesValid = true;
-    }
-
-    return result;
+    return this._verifyWrappedArtifactInternal(wrappedArtifact, new Set());
   }
 
   /**
@@ -399,24 +383,29 @@ class JACSA2AIntegration {
    */
   generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData) {
     const documents = {};
+    const keyAlgorithm = agentData.keyAlgorithm || 'RSA-PSS';
+    const postQuantum = /(pq|dilithium|falcon|sphincs|ml-dsa|pq2025)/i.test(keyAlgorithm);
 
     // 1. Agent Card with embedded signature (v0.4.0)
     const cardObj = JSON.parse(JSON.stringify(agentCard));
     cardObj.signatures = [{ jws: jwsSignature }];
     documents['/.well-known/agent-card.json'] = cardObj;
 
-    // 2. JACS Agent Descriptor
+    // 2. JWK Set for A2A verifiers
+    documents['/.well-known/jwks.json'] = this._buildJwks(publicKeyB64, agentData);
+
+    // 3. JACS Agent Descriptor
     documents['/.well-known/jacs-agent.json'] = {
       jacsVersion: '1.0',
       agentId: agentData.jacsId,
       agentVersion: agentData.jacsVersion,
       agentType: agentData.jacsAgentType,
       publicKeyHash: jacs.hashString(publicKeyB64),
-      keyAlgorithm: agentData.keyAlgorithm || 'RSA-PSS',
+      keyAlgorithm,
       capabilities: {
         signing: true,
         verification: true,
-        postQuantum: false
+        postQuantum
       },
       schemas: {
         agent: 'https://hai.ai/schemas/agent/v1/agent.schema.json',
@@ -430,20 +419,161 @@ class JACSA2AIntegration {
       }
     };
 
-    // 3. JACS Public Key
+    // 4. JACS Public Key
     documents['/.well-known/jacs-pubkey.json'] = {
       publicKey: publicKeyB64,
       publicKeyHash: jacs.hashString(publicKeyB64),
-      algorithm: agentData.keyAlgorithm || 'RSA-PSS',
+      algorithm: keyAlgorithm,
       agentId: agentData.jacsId,
       agentVersion: agentData.jacsVersion,
       timestamp: new Date().toISOString()
     };
 
-    // 4. Extension descriptor
+    // 5. Extension descriptor
     documents['/.well-known/jacs-extension.json'] = this.createExtensionDescriptor();
 
     return documents;
+  }
+
+  /**
+   * Internal recursive verifier with cycle protection for parent signature chains.
+   * @private
+   */
+  _verifyWrappedArtifactInternal(wrappedArtifact, visited) {
+    const artifactId = wrappedArtifact && wrappedArtifact.jacsId;
+    if (artifactId && visited.has(artifactId)) {
+      throw new Error(`Cycle detected in parent signature chain at artifact ${artifactId}`);
+    }
+    if (artifactId) {
+      visited.add(artifactId);
+    }
+
+    try {
+      const isValid = jacs.verifyResponse(wrappedArtifact);
+      const signatureInfo = wrappedArtifact.jacsSignature || {};
+
+      const result = {
+        valid: isValid,
+        signerId: signatureInfo.agentID || 'unknown',
+        signerVersion: signatureInfo.agentVersion || 'unknown',
+        artifactType: wrappedArtifact.jacsType || 'unknown',
+        timestamp: wrappedArtifact.jacsVersionDate || '',
+        originalArtifact: wrappedArtifact.a2aArtifact || {}
+      };
+
+      const parents = wrappedArtifact.jacsParentSignatures;
+      if (Array.isArray(parents) && parents.length > 0) {
+        const parentResults = parents.map((parent, index) => {
+          try {
+            const parentResult = this._verifyWrappedArtifactInternal(parent, visited);
+            return {
+              index,
+              artifactId: parent.jacsId || 'unknown',
+              valid: !!parentResult.valid,
+              parentSignaturesValid: parentResult.parentSignaturesValid !== false
+            };
+          } catch (error) {
+            return {
+              index,
+              artifactId: parent && parent.jacsId ? parent.jacsId : 'unknown',
+              valid: false,
+              parentSignaturesValid: false,
+              error: error instanceof Error ? error.message : String(error)
+            };
+          }
+        });
+
+        result.parentSignaturesCount = parentResults.length;
+        result.parentVerificationResults = parentResults;
+        result.parentSignaturesValid = parentResults.every(
+          (entry) => entry.valid && entry.parentSignaturesValid
+        );
+      }
+
+      return result;
+    } finally {
+      if (artifactId) {
+        visited.delete(artifactId);
+      }
+    }
+  }
+
+  /**
+   * Build a JWKS document from a base64-encoded public key.
+   * @private
+   */
+  _buildJwks(publicKeyB64, agentData = {}) {
+    if (agentData.jwks && Array.isArray(agentData.jwks.keys)) {
+      return agentData.jwks;
+    }
+    if (agentData.jwk && typeof agentData.jwk === 'object') {
+      return { keys: [agentData.jwk] };
+    }
+
+    const keyAlgorithm = String(agentData.keyAlgorithm || '').toLowerCase();
+    const kid = String(agentData.jacsId || 'jacs-agent');
+
+    try {
+      const keyBytes = Buffer.from(publicKeyB64, 'base64');
+      if (keyBytes.length === 32) {
+        return {
+          keys: [{
+            kty: 'OKP',
+            crv: 'Ed25519',
+            x: keyBytes.toString('base64url'),
+            kid,
+            use: 'sig',
+            alg: 'EdDSA'
+          }]
+        };
+      }
+
+      let keyObject;
+      try {
+        keyObject = createPublicKey({ key: keyBytes, format: 'der', type: 'spki' });
+      } catch {
+        keyObject = createPublicKey(keyBytes.toString('utf8'));
+      }
+
+      const jwk = keyObject.export({ format: 'jwk' });
+      const alg = this._inferJwsAlg(keyAlgorithm, jwk);
+      return {
+        keys: [{
+          ...jwk,
+          kid,
+          use: 'sig',
+          ...(alg ? { alg } : {})
+        }]
+      };
+    } catch {
+      return { keys: [] };
+    }
+  }
+
+  /**
+   * Infer a JWS `alg` for a generated JWK.
+   * @private
+   */
+  _inferJwsAlg(keyAlgorithm, jwk) {
+    if (keyAlgorithm.includes('ring-ed25519') || keyAlgorithm.includes('ed25519')) {
+      return 'EdDSA';
+    }
+    if (keyAlgorithm.includes('rsa')) {
+      return 'RS256';
+    }
+    if (keyAlgorithm.includes('ecdsa') || keyAlgorithm.includes('es256')) {
+      return 'ES256';
+    }
+    if (jwk && jwk.kty === 'RSA') {
+      return 'RS256';
+    }
+    if (jwk && jwk.kty === 'OKP' && jwk.crv === 'Ed25519') {
+      return 'EdDSA';
+    }
+    if (jwk && jwk.kty === 'EC' && jwk.crv === 'P-256') {
+      return 'ES256';
+    }
+    return undefined;
   }
 
   /**

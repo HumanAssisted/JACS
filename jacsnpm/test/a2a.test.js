@@ -352,6 +352,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       // Verify v0.4.0 well-known path (agent-card.json, not agent.json)
       expect(documents).to.have.all.keys(
         '/.well-known/agent-card.json',
+        '/.well-known/jwks.json',
         '/.well-known/jacs-agent.json',
         '/.well-known/jacs-pubkey.json',
         '/.well-known/jacs-extension.json'
@@ -372,6 +373,11 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       const pubkeyDoc = documents['/.well-known/jacs-pubkey.json'];
       expect(pubkeyDoc.publicKey).to.equal('mock-public-key-b64');
       expect(pubkeyDoc.algorithm).to.equal('RSA-PSS');
+
+      // Verify JWKS is present for A2A verifiers
+      const jwksDoc = documents['/.well-known/jwks.json'];
+      expect(jwksDoc).to.have.property('keys');
+      expect(jwksDoc.keys).to.be.an('array');
     });
   });
 });

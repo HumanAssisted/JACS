@@ -211,6 +211,46 @@ describe('JACS Simple API', function() {
     });
   });
 
+  describe('agreements', () => {
+    (simpleExists && fixturesExist ? it : it.skip)('should create, sign, and verify an agreement workflow', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const info = freshSimple.getAgentInfo();
+      expect(info).to.be.an('object');
+      const agentId = info.agentId;
+
+      const agreement = freshSimple.createAgreement(
+        { proposal: 'Approve Q4 budget', amount: 10000 },
+        [agentId],
+        'Do you approve this budget?',
+        'Node simple API agreement smoke test'
+      );
+      expect(agreement).to.have.property('raw');
+      expect(agreement.documentId).to.be.a('string').and.not.empty;
+
+      const pending = freshSimple.checkAgreement(agreement);
+      expect(pending.complete).to.equal(false);
+      expect(pending.pending).to.include(agentId);
+
+      const signed = freshSimple.signAgreement(agreement);
+      expect(signed.documentId).to.be.a('string').and.not.empty;
+
+      const complete = freshSimple.checkAgreement(signed);
+      expect(complete.complete).to.equal(true);
+      expect(complete.pending).to.be.an('array').that.is.empty;
+
+      const verified = freshSimple.verify(signed.raw);
+      expect(verified.valid).to.equal(true);
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should create agreement from JSON string payload', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const info = freshSimple.getAgentInfo();
+      const payload = JSON.stringify({ proposal: 'String payload agreement' });
+      const agreement = freshSimple.createAgreement(payload, [info.agentId]);
+      expect(agreement.documentId).to.be.a('string').and.not.empty;
+    });
+  });
+
   describe('updateAgent', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
@@ -440,9 +480,15 @@ describe('JACS Simple API', function() {
       delete process.env.HAI_API_KEY;
       try {
         if (fixturesExist) {
-          loadSimpleInFixtures();
-          await expect(freshSimple.registerWithHai({ haiUrl: 'https://hai.ai' }))
-            .to.be.rejectedWith(/api key|HAI_API_KEY|required/i);
+          const loadedSimple = loadSimpleInFixtures();
+          let caught = null;
+          try {
+            await loadedSimple.registerWithHai({ haiUrl: 'https://hai.ai' });
+          } catch (e) {
+            caught = e;
+          }
+          expect(caught).to.not.equal(null);
+          expect(String(caught)).to.match(/api key|HAI_API_KEY|required/i);
         }
       } finally {
         if (orig !== undefined) process.env.HAI_API_KEY = orig;

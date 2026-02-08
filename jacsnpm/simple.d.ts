@@ -135,8 +135,8 @@ export interface HaiRegistrationResult {
 export interface CreateAgentOptions {
     /** Human-readable name for the agent. */
     name: string;
-    /** Password for encrypting the private key. Can also be set via JACS_AGENT_PRIVATE_KEY_PASSWORD env var. */
-    password: string;
+    /** Password for encrypting the private key. Falls back to JACS_PRIVATE_KEY_PASSWORD if omitted. */
+    password?: string;
     /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". "pq-dilithium" is deprecated. */
     algorithm?: string;
     /** Directory for agent data (default: "./jacs_data"). */
@@ -158,7 +158,7 @@ export interface CreateAgentOptions {
  * Creates a new JACS agent with cryptographic keys.
  *
  * This is a fully programmatic API that does not require interactive input.
- * The password must be provided directly or via the JACS_AGENT_PRIVATE_KEY_PASSWORD
+ * The password must be provided directly or via the JACS_PRIVATE_KEY_PASSWORD
  * environment variable.
  *
  * @param options - Agent creation options
@@ -168,7 +168,7 @@ export interface CreateAgentOptions {
  * ```typescript
  * const agent = jacs.create({
  *   name: 'my-agent',
- *   password: process.env.JACS_PASSWORD!,
+ *   password: process.env.JACS_PRIVATE_KEY_PASSWORD,
  *   algorithm: 'pq2025',
  * });
  * console.log(`Created: ${agent.agentId}`);
