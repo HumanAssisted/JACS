@@ -20,7 +20,9 @@ Example (Server):
 
 import contextlib
 import json
+import logging
 
+import jacs
 from jacs import JacsAgent
 
 from fastmcp import Client
@@ -28,6 +30,8 @@ from fastmcp.client.transports import SSETransport
 from mcp.client.sse import sse_client
 from mcp import ClientSession
 from starlette.responses import Response
+
+LOGGER = logging.getLogger("jacs.mcp")
 
 
 def JACSMCPClient(url, config_path="./jacs.config.json", **kwargs):
@@ -39,7 +43,16 @@ def JACSMCPClient(url, config_path="./jacs.config.json", **kwargs):
         **kwargs: Additional arguments passed to FastMCP Client
     """
     agent = JacsAgent()
-    agent.load(config_path)
+    agent_ready = True
+    try:
+        agent.load(config_path)
+    except Exception as e:
+        LOGGER.warning(
+            "Failed to load JACS config '%s' for MCP client; transport will run unsigned: %s",
+            config_path,
+            e,
+        )
+        agent_ready = False
 
     transport = SSETransport(url)
 
@@ -50,7 +63,7 @@ def JACSMCPClient(url, config_path="./jacs.config.json", **kwargs):
 
             original_send = original_write_stream.send
             async def intercepted_send(message, **send_kwargs):
-                if isinstance(message.root, dict):
+                if agent_ready and isinstance(message.root, dict):
                     signed_json = agent.sign_request(message.root)
                     message.root = json.loads(signed_json)
                 return await original_send(message, **send_kwargs)
@@ -60,7 +73,7 @@ def JACSMCPClient(url, config_path="./jacs.config.json", **kwargs):
             original_receive = original_read_stream.receive
             async def intercepted_receive(**receive_kwargs):
                 message = await original_receive(**receive_kwargs)
-                if isinstance(message.root, dict):
+                if agent_ready and isinstance(message.root, dict):
                     payload = agent.verify_response(json.dumps(message.root))
                     message.root = payload
                 return message
@@ -84,8 +97,20 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json"):
         mcp_server: A FastMCP server instance
         config_path: Path to jacs.config.json
     """
+    if not hasattr(mcp_server, "sse_app"):
+        raise AttributeError("mcp_server is missing required attribute 'sse_app'")
+
     agent = JacsAgent()
-    agent.load(config_path)
+    agent_ready = True
+    try:
+        agent.load(config_path)
+    except Exception as e:
+        LOGGER.warning(
+            "Failed to load JACS config '%s' for MCP server; middleware will pass through unsigned: %s",
+            config_path,
+            e,
+        )
+        agent_ready = False
 
     original_sse_app = mcp_server.sse_app
 
@@ -96,16 +121,13 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json"):
         async def jacs_authentication_middleware(request, call_next):
             if request.url.path.endswith("/messages/"):
                 body = await request.body()
-                if body:
+                if agent_ready and body:
                     try:
                         data = json.loads(body)
                         payload = agent.verify_response(json.dumps(data))
                         request._body = json.dumps(payload).encode()
                     except Exception as e:
-                        import logging
-                        logging.getLogger("jacs.mcp").warning(
-                            "JACS verification failed: %s", e
-                        )
+                        LOGGER.warning("JACS verification failed: %s", e)
 
             response = await call_next(request)
 
@@ -114,20 +136,18 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json"):
                 async for chunk in response.body_iterator:
                     body += chunk
 
-                try:
-                    data = json.loads(body.decode())
-                    signed_json = agent.sign_request(data)
-                    return Response(
-                        content=signed_json.encode(),
-                        status_code=response.status_code,
-                        headers=dict(response.headers),
-                        media_type=response.media_type,
-                    )
-                except Exception as e:
-                    import logging
-                    logging.getLogger("jacs.mcp").warning(
-                        "JACS signing failed: %s", e
-                    )
+                if agent_ready:
+                    try:
+                        data = json.loads(body.decode())
+                        signed_json = agent.sign_request(data)
+                        return Response(
+                            content=signed_json.encode(),
+                            status_code=response.status_code,
+                            headers=dict(response.headers),
+                            media_type=response.media_type,
+                        )
+                    except Exception as e:
+                        LOGGER.warning("JACS signing failed: %s", e)
 
             return response
 
