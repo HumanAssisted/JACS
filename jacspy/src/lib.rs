@@ -1022,6 +1022,31 @@ fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<String> {
 }
 
 // =============================================================================
+// Verify Link Generation
+// =============================================================================
+
+/// Build a verification URL for a signed JACS document.
+///
+/// Encodes `document` as URL-safe base64 (no padding) and returns a full URL
+/// like `https://hai.ai/jacs/verify?s=...`.
+///
+/// Args:
+///     document: The signed JACS document JSON string.
+///     base_url: Base URL for the verifier (default "https://hai.ai").
+///
+/// Returns:
+///     The full verification URL string.
+///
+/// Raises:
+///     ValueError: If the resulting URL would exceed 2048 characters.
+#[pyfunction]
+#[pyo3(signature = (document, base_url="https://hai.ai"))]
+fn generate_verify_link(document: &str, base_url: &str) -> PyResult<String> {
+    jacs_binding_core::hai::generate_verify_link(document, base_url)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+}
+
+// =============================================================================
 // Remote Key Fetch Functions
 // =============================================================================
 
@@ -1471,6 +1496,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_trusted, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
     m.add_function(wrap_pyfunction!(audit, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_verify_link, m)?)?;
 
     // =============================================================================
     // Remote Key Fetch Functions

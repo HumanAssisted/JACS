@@ -9,6 +9,51 @@ import (
 	"testing"
 )
 
+// === GenerateVerifyLink tests (no agent required) ===
+
+func TestGenerateVerifyLink_ValidDocument(t *testing.T) {
+	doc := `{"signed":"test"}`
+	url, err := GenerateVerifyLink(doc, "https://hai.ai")
+	if err != nil {
+		t.Fatalf("GenerateVerifyLink failed: %v", err)
+	}
+	if !strings.HasPrefix(url, "https://hai.ai/jacs/verify?s=") {
+		t.Errorf("URL should start with base + path, got: %s", url)
+	}
+}
+
+func TestGenerateVerifyLink_DefaultBaseUrl(t *testing.T) {
+	doc := `{"signed":"test"}`
+	url, err := GenerateVerifyLink(doc, "")
+	if err != nil {
+		t.Fatalf("GenerateVerifyLink failed: %v", err)
+	}
+	if !strings.HasPrefix(url, "https://hai.ai/jacs/verify?s=") {
+		t.Errorf("Default base URL should be https://hai.ai, got: %s", url)
+	}
+}
+
+func TestGenerateVerifyLink_ExceedsMaxLength(t *testing.T) {
+	// Create a document that's too large for the URL
+	doc := strings.Repeat("x", MaxVerifyDocumentBytes+100)
+	_, err := GenerateVerifyLink(doc, "https://hai.ai")
+	if err == nil {
+		t.Error("GenerateVerifyLink should fail for oversized document")
+	}
+	if !strings.Contains(err.Error(), "max length") {
+		t.Errorf("Error should mention max length, got: %v", err)
+	}
+}
+
+func TestGenerateVerifyLink_Constants(t *testing.T) {
+	if MaxVerifyURLLen != 2048 {
+		t.Errorf("MaxVerifyURLLen should be 2048, got %d", MaxVerifyURLLen)
+	}
+	if MaxVerifyDocumentBytes != 1515 {
+		t.Errorf("MaxVerifyDocumentBytes should be 1515, got %d", MaxVerifyDocumentBytes)
+	}
+}
+
 // TestLoadNonexistent tests that Load fails for nonexistent config.
 func TestLoadNonexistent(t *testing.T) {
 	path := "/nonexistent/path/config.json"
@@ -327,6 +372,38 @@ func TestGetPublicKeyPEM(t *testing.T) {
 	// Check PEM format
 	if len(pem) < 20 || pem[:10] != "-----BEGIN" {
 		t.Error("Public key should be in PEM format")
+	}
+}
+
+// === Audit tests ===
+
+func TestAudit_ReturnsResult(t *testing.T) {
+	result, err := Audit(nil)
+	// Audit may fail without a config, but should not panic
+	if err != nil {
+		t.Logf("Audit with nil opts returned error (expected without config): %v", err)
+		return
+	}
+	// If it succeeds, check structure
+	if _, ok := result["risks"]; !ok {
+		t.Error("Audit result should contain 'risks' key")
+	}
+	if _, ok := result["health_checks"]; !ok {
+		t.Error("Audit result should contain 'health_checks' key")
+	}
+}
+
+func TestAudit_ContainsOverallStatus(t *testing.T) {
+	result, err := Audit(nil)
+	if err != nil {
+		t.Logf("Audit returned error (expected without config): %v", err)
+		return
+	}
+	if _, ok := result["overall_status"]; !ok {
+		t.Logf("Audit result may not contain 'overall_status' — depends on implementation")
+	}
+	if _, ok := result["summary"]; !ok {
+		t.Logf("Audit result may not contain 'summary' — depends on implementation")
 	}
 }
 

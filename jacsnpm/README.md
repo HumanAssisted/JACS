@@ -56,6 +56,7 @@ console.log(`Signer: ${result.signerId}`);
 | `isTrusted(id)` | Check if an agent is trusted |
 | `getTrustedAgent(id)` | Get a trusted agent's JSON document |
 | `audit(options?)` | Run a read-only security audit; optional `configPath`, `recentN` |
+| `generateVerifyLink(doc, baseUrl?)` | Generate a shareable hai.ai verification URL for a signed document |
 
 ## Types
 

@@ -72,6 +72,7 @@ The simplified API provides these core operations:
 | `is_trusted()` | Check if an agent is trusted |
 | `get_trusted_agent()` | Get a trusted agent's JSON document |
 | `audit()` | Run a read-only security audit (returns risks, health_checks, summary) |
+| `generate_verify_link()` | Generate a shareable hai.ai verification URL for a signed document |
 
 ### Programmatic Agent Creation
 

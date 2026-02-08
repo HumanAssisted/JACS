@@ -1372,6 +1372,68 @@ pub extern "C" fn jacs_verify_signature(
     }
 }
 
+/// Run a read-only security audit and health checks.
+/// config_path and recent_n may be null for defaults.
+/// Returns a JSON string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_audit(
+    config_path: *const c_char,
+    recent_n: c_int,
+) -> *mut c_char {
+    let config = if config_path.is_null() {
+        None
+    } else {
+        match unsafe { CStr::from_ptr(config_path) }.to_str() {
+            Ok(s) => Some(s),
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+
+    let recent = if recent_n > 0 {
+        Some(recent_n as u32)
+    } else {
+        None
+    };
+
+    match jacs_binding_core::audit(config, recent) {
+        Ok(json_string) => match CString::new(json_string) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Generate a verification URL for a signed JACS document.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_generate_verify_link(
+    document: *const c_char,
+    base_url: *const c_char,
+) -> *mut c_char {
+    if document.is_null() || base_url.is_null() {
+        return ptr::null_mut();
+    }
+
+    let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let base_url_str = match unsafe { CStr::from_ptr(base_url) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match jacs_binding_core::hai::generate_verify_link(doc_str, base_url_str) {
+        Ok(url) => match CString::new(url) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
 // Helper function to convert C string pointer to Option<String>
 fn c_string_to_option(c_str: *const c_char) -> Option<String> {
     if c_str.is_null() {

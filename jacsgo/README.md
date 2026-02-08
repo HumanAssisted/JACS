@@ -57,6 +57,8 @@ func main() {
 | `ReencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
 | `ExportAgent()` | Get agent's JSON for sharing |
 | `GetPublicKeyPEM()` | Get public key for sharing |
+| `Audit(opts?)` | Run a read-only security audit (risks, health checks, summary) |
+| `GenerateVerifyLink(doc, baseUrl)` | Generate a shareable hai.ai verification URL |
 
 ## Types
 

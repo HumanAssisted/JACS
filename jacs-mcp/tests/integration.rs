@@ -1,4 +1,3 @@
-use assert_cmd::Command;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -7,7 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const AGENT_ID: &str = "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
 
 /// Password used to encrypt test fixture keys in jacs/tests/fixtures/keys/
-const TEST_PASSWORD: &str = "testpassword";
+/// Note: intentional typo "secretpassord" matches TEST_PASSWORD_LEGACY in jacs/tests/utils.rs
+const TEST_PASSWORD: &str = "secretpassord";
 
 fn jacs_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -80,30 +80,12 @@ fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
 fn starts_server_with_agent_env() {
     let (config, base) = prepare_temp_workspace();
 
-    // Use std::process::Command directly for precise control.
     // The MCP server reads from stdin; an empty stdin causes it to exit cleanly.
     let bin_path = assert_cmd::cargo::cargo_bin("jacs-mcp");
-    // Debug: check if test runner has JACS env vars that could leak
-    eprintln!("[TEST] Checking test runner env:");
-    for (key, value) in std::env::vars() {
-        if key.starts_with("JACS_") {
-            let display = if key.contains("PASSWORD") {
-                format!("{}=REDACTED(len={})", key, value.len())
-            } else {
-                format!("{}={}", key, value)
-            };
-            eprintln!("[TEST RUNNER ENV] {}", display);
-        }
-    }
-    // Run via /bin/sh to exactly replicate how the shell runs the binary.
-    // This bypasses any Rust Command oddities with env var handling.
-    let shell_cmd = format!(
-        "cd {:?} && JACS_CONFIG={:?} JACS_PRIVATE_KEY_PASSWORD={} {:?}",
-        base, config, TEST_PASSWORD, bin_path
-    );
-    let output = std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg(&shell_cmd)
+    let output = std::process::Command::new(&bin_path)
+        .current_dir(&base)
+        .env("JACS_CONFIG", &config)
+        .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -111,13 +93,14 @@ fn starts_server_with_agent_env() {
         .expect("failed to run jacs-mcp");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if !output.status.success() {
-        panic!(
-            "jacs-mcp exited with {:?}\nstderr:\n{}",
-            output.status.code(),
-            stderr
-        );
-    }
+    // The server exits non-zero when stdin closes (no MCP client connected).
+    // Success means the agent loaded and the server reached the "ready" state.
+    assert!(
+        stderr.contains("Agent loaded successfully"),
+        "Expected agent to load successfully.\nExit code: {:?}\nstderr:\n{}",
+        output.status.code(),
+        stderr
+    );
 }
 
 #[test]

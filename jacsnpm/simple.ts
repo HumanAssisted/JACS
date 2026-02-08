@@ -57,6 +57,7 @@ import {
   getTrustedAgent as nativeGetTrustedAgent,
   verifyDocumentStandalone as nativeVerifyDocumentStandalone,
   audit as nativeAudit,
+  generateVerifyLink as nativeGenerateVerifyLink,
 } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1144,14 +1145,5 @@ export function generateVerifyLink(
   document: string,
   baseUrl: string = 'https://hai.ai',
 ): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  const encoded = Buffer.from(document, 'utf8').toString('base64url');
-  const pathAndQuery = `/jacs/verify?s=${encoded}`;
-  const fullUrl = `${base}${pathAndQuery}`;
-  if (fullUrl.length > MAX_VERIFY_URL_LEN) {
-    throw new Error(
-      `Verify URL would exceed max length (${MAX_VERIFY_URL_LEN}). Document must be at most ${MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes.`,
-    );
-  }
-  return fullUrl;
+  return nativeGenerateVerifyLink(document, baseUrl);
 }

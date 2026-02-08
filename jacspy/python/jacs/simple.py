@@ -137,6 +137,13 @@ def generate_verify_link(
     Returns:
         Full URL: {base_url}/jacs/verify?s={base64url(document)}
     """
+    try:
+        from jacs._jacs import generate_verify_link as _native_generate_verify_link
+        return _native_generate_verify_link(document, base_url)
+    except ImportError:
+        pass
+
+    # Fallback: pure-Python implementation
     import base64
 
     base = base_url.rstrip("/")

@@ -776,3 +776,13 @@ pub fn fetch_remote_key(agent_id: String, version: Option<String>) -> Result<Rem
         version: key_info.version,
     })
 }
+
+/// Build a verification URL for a signed JACS document.
+///
+/// Encodes `document` as URL-safe base64 (no padding) and returns a full URL
+/// like `https://hai.ai/jacs/verify?s=...`. Throws if the URL would exceed 2048 chars.
+#[napi]
+pub fn generate_verify_link(document: String, base_url: String) -> Result<String> {
+    jacs_binding_core::hai::generate_verify_link(&document, &base_url)
+        .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
+}

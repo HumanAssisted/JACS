@@ -105,6 +105,8 @@ jacs document create -f mydata.json
 | `reencrypt_key(old, new)` | Re-encrypt the private key with a new password |
 | `verify_self()` | Verify agent integrity |
 | `get_public_key()` | Get public key for sharing |
+| `audit(options)` | Run a read-only security audit (risks, health checks, summary) |
+| `generate_verify_link(document, base_url)` | Generate a shareable hai.ai verification URL for a signed document |
 
 ## Use Cases
 
@@ -125,6 +127,8 @@ These scenarios show how teams use JACS today. Each links to a [detailed walkthr
 - **Track data provenance through pipelines** -- As data moves between services, each stage signs its output. The final consumer can walk the signature chain to verify every transformation back to the original source.
 - **Verify without loading an agent** -- Use `verify_standalone()` when you just need to check a signature in a lightweight service or script. No config file, no trust store, no agent setup required.
 - **Register with HAI.ai for key discovery** -- Publish your agent's public key to [HAI.ai](https://hai.ai) with `register_with_hai()` so other organizations can discover and verify your agent without exchanging keys out-of-band.
+- **Audit your JACS setup** -- Call `audit()` to check config, keys, trust store health, and re-verify recent documents. Returns structured risks and health checks so you can catch misconfigurations before they matter.
+- **Share verification links** -- Generate a `https://hai.ai/jacs/verify?s=...` URL with `generate_verify_link()` and embed it in emails, Slack messages, or web pages. Recipients click to verify the document without installing anything.
 - **Air-gapped and offline environments** -- Set `JACS_KEY_RESOLUTION=local` and distribute public keys manually. JACS works fully offline with no network calls once keys are in the local trust store.
 
 ## MCP Integration

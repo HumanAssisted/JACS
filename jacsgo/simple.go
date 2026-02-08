@@ -1,12 +1,19 @@
 package jacs
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
+)
+
+// Constants for verify link generation (must match jacs::simple values).
+const (
+	MaxVerifyURLLen        = 2048
+	MaxVerifyDocumentBytes = 1515
 )
 
 // Global agent instance for simplified API
@@ -666,6 +673,63 @@ func getStringField(m map[string]interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+// AuditOptions configures a security audit.
+type AuditOptions struct {
+	// ConfigPath is an optional path to the jacs config file.
+	ConfigPath string
+	// RecentN is the number of recent documents to re-verify (0 for default).
+	RecentN int
+}
+
+// Audit runs a read-only security audit and returns the result.
+//
+// The result is a map with keys like "risks", "health_checks", "summary", and "overall_status".
+// Does not require a loaded agent — it reads config and storage directly.
+//
+// Parameters:
+//   - opts: Optional audit options (nil for defaults)
+func Audit(opts *AuditOptions) (map[string]interface{}, error) {
+	configPath := ""
+	recentN := 0
+	if opts != nil {
+		configPath = opts.ConfigPath
+		recentN = opts.RecentN
+	}
+	resultStr, err := RunAudit(configPath, recentN)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
+		return nil, fmt.Errorf("parse audit result: %w", err)
+	}
+	return out, nil
+}
+
+// GenerateVerifyLink builds a verification URL for a signed JACS document.
+//
+// The document is encoded as URL-safe base64 (no padding) and appended as
+// the `s` query parameter. Returns an error if the URL exceeds MaxVerifyURLLen.
+//
+// Parameters:
+//   - document: The signed JACS document JSON string
+//   - baseUrl: Base URL for the verification endpoint (e.g. "https://hai.ai"). Empty defaults to "https://hai.ai".
+func GenerateVerifyLink(document string, baseUrl string) (string, error) {
+	if baseUrl == "" {
+		baseUrl = "https://hai.ai"
+	}
+	base := strings.TrimRight(baseUrl, "/")
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(document))
+	fullUrl := base + "/jacs/verify?s=" + encoded
+	if len(fullUrl) > MaxVerifyURLLen {
+		return "", fmt.Errorf(
+			"verify URL would exceed max length (%d). Document must be at most %d UTF-8 bytes",
+			MaxVerifyURLLen, MaxVerifyDocumentBytes,
+		)
+	}
+	return fullUrl, nil
 }
 
 func getNestedStringField(m map[string]interface{}, keys ...string) string {
