@@ -1,6 +1,7 @@
 .PHONY: build-jacs build-jacsbook test test-jacs test-jacs-cli test-jacs-observability test-jacspy \
         publish-jacs publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-all \
+        retry-jacspy retry-jacsnpm \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm \
         help
 
@@ -183,6 +184,24 @@ release-delete-tags:
 	-git tag -d crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION)
 	-git push origin --delete crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION)
 	@echo "Deleted release tags"
+
+# Retry a failed PyPI release: delete old tags (local+remote), retag, push
+retry-jacspy:
+	@echo "Retrying PyPI release for v$(JACSPY_VERSION)..."
+	-git tag -d pypi/v$(JACSPY_VERSION)
+	-git push origin --delete pypi/v$(JACSPY_VERSION)
+	git tag pypi/v$(JACSPY_VERSION)
+	git push origin pypi/v$(JACSPY_VERSION)
+	@echo "✓ Re-tagged pypi/v$(JACSPY_VERSION) - GitHub CI will retry PyPI publish"
+
+# Retry a failed npm release: delete old tags (local+remote), retag, push
+retry-jacsnpm:
+	@echo "Retrying npm release for v$(JACSNPM_VERSION)..."
+	-git tag -d npm/v$(JACSNPM_VERSION)
+	-git push origin --delete npm/v$(JACSNPM_VERSION)
+	git tag npm/v$(JACSNPM_VERSION)
+	git push origin npm/v$(JACSNPM_VERSION)
+	@echo "✓ Re-tagged npm/v$(JACSNPM_VERSION) - GitHub CI will retry npm publish"
 
 # ============================================================================
 # HELP

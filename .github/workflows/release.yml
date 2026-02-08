@@ -64,13 +64,13 @@ jobs:
             target: x86_64-unknown-linux-musl
             use_zig: true
             allow_failure: false
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            use_zig: true
+            use_zig: false
             allow_failure: false
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
-            use_zig: true
+            use_zig: false
             allow_failure: false
           - os: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
@@ -111,6 +111,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'musl') && !matrix.use_zig
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Install Zig
         if: ${{ matrix.use_zig }}

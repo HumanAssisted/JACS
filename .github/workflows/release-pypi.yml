@@ -58,13 +58,13 @@ jobs:
             target: x86_64-unknown-linux-musl
             use_zig: true
             allow_failure: false
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            use_zig: true
+            use_zig: false
             allow_failure: false
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
-            use_zig: true
+            use_zig: false
             allow_failure: false
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -89,6 +89,10 @@ jobs:
         with:
           toolchain: '1.93'
           target: ${{ matrix.target }}
+
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'musl') && !matrix.use_zig
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Install maturin
         if: ${{ !matrix.use_zig }}
