@@ -16,6 +16,8 @@ jobs:
       version: ${{ steps.extract.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Extract version from tag
         id: extract
@@ -68,7 +70,7 @@ jobs:
             target: aarch64-apple-darwin
             use_zig: false
             allow_failure: false
-          - os: macos-13
+          - os: macos-14
             target: x86_64-apple-darwin
             use_zig: false
             allow_failure: false
@@ -76,6 +78,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -114,6 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
