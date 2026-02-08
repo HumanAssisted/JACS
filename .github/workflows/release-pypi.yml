@@ -94,6 +94,13 @@ jobs:
         if: contains(matrix.target, 'musl') && !matrix.use_zig
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
+      - name: Set musl CC for native ARM builds
+        if: contains(matrix.target, 'aarch64') && contains(matrix.target, 'musl') && !matrix.use_zig
+        run: |
+          echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
+          echo "AR_aarch64_unknown_linux_musl=ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
+
       - name: Install maturin
         if: ${{ !matrix.use_zig }}
         run: pip install maturin

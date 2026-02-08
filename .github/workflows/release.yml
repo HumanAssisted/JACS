@@ -126,6 +126,13 @@ jobs:
         run: npm install
         working-directory: jacsnpm
 
+      - name: Set musl CC for native ARM builds
+        if: contains(matrix.target, 'aarch64') && contains(matrix.target, 'musl') && !matrix.use_zig
+        run: |
+          echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
+          echo "AR_aarch64_unknown_linux_musl=ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
+
       - name: Build native module
         working-directory: jacsnpm
         shell: bash
