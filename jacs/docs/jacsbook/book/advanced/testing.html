@@ -372,6 +372,118 @@ def test_agreement_signing(test_agent):
 
     assert status['complete'] is True
 </code></pre>
+<h3 id="agreement-completion-semantics-strict"><a class="header" href="#agreement-completion-semantics-strict">Agreement Completion Semantics (Strict)</a></h3>
+<p><code>check_agreement()</code> is intentionally strict: it should fail until <strong>all</strong> required signers have signed. Add explicit tests for each state:</p>
+<ol>
+<li>Unsigned agreement: must fail.</li>
+<li>Partially signed agreement: must still fail.</li>
+<li>Fully signed agreement: must pass with <code>complete == true</code>.</li>
+</ol>
+<p>This prevents accidental "partial approval" workflows in production.</p>
+<h3 id="two-agent-agreement-harness-separate-agents"><a class="header" href="#two-agent-agreement-harness-separate-agents">Two-Agent Agreement Harness (Separate Agents)</a></h3>
+<p>For realistic interoperability tests, use <strong>two separate agents</strong> with:</p>
+<ul>
+<li>Separate key directories (<code>agent1/keys</code>, <code>agent2/keys</code>)</li>
+<li>Shared data directory (<code>shared-data</code>) so both public keys are locally resolvable</li>
+<li>Relative paths from a temporary test working directory</li>
+</ul>
+<p><strong>Python (pytest)</strong>:</p>
+<pre><code class="language-python">def test_two_party_agreement_requires_both_signatures(tmp_path):
+    import os
+    import pytest
+    import jacs.simple as simple
+
+    (tmp_path / "shared-data").mkdir()
+    (tmp_path / "agent1").mkdir()
+    (tmp_path / "agent2").mkdir()
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        a1 = simple.create(
+            name="agent-1",
+            password="TestP@ss123!#",
+            algorithm="ring-Ed25519",
+            data_directory="shared-data",
+            key_directory="agent1/keys",
+            config_path="agent1/jacs.config.json",
+        )
+        a2 = simple.create(
+            name="agent-2",
+            password="TestP@ss123!#",
+            algorithm="ring-Ed25519",
+            data_directory="shared-data",
+            key_directory="agent2/keys",
+            config_path="agent2/jacs.config.json",
+        )
+
+        simple.load("agent1/jacs.config.json")
+        agreement = simple.create_agreement(
+            {"proposal": "two-party-approval"},
+            [a1.agent_id, a2.agent_id],
+            question="Approve?",
+        )
+
+        with pytest.raises(Exception):
+            simple.check_agreement(agreement)
+        signed_by_a1 = simple.sign_agreement(agreement)
+        with pytest.raises(Exception):
+            simple.check_agreement(signed_by_a1)
+
+        simple.load("agent2/jacs.config.json")
+        signed_by_both = simple.sign_agreement(signed_by_a1)
+        status = simple.check_agreement(signed_by_both)
+        assert status.complete is True
+    finally:
+        os.chdir(original_cwd)
+</code></pre>
+<p><strong>Node.js (Mocha/Jest style)</strong>:</p>
+<pre><code class="language-javascript">const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));
+const originalCwd = process.cwd();
+try {
+  process.chdir(root);
+  fs.mkdirSync('agent1', { recursive: true });
+  fs.mkdirSync('agent2', { recursive: true });
+
+  simpleA.create({
+    name: 'agent-a',
+    password: 'TestP@ss123!#',
+    algorithm: 'ring-Ed25519',
+    dataDirectory: 'shared-data',
+    keyDirectory: 'agent1/keys',
+    configPath: 'agent1/jacs.config.json'
+  });
+  simpleB.create({
+    name: 'agent-b',
+    password: 'TestP@ss123!#',
+    algorithm: 'ring-Ed25519',
+    dataDirectory: 'shared-data',
+    keyDirectory: 'agent2/keys',
+    configPath: 'agent2/jacs.config.json'
+  });
+
+  simpleA.load('agent1/jacs.config.json');
+  simpleB.load('agent2/jacs.config.json');
+  const infoA = simpleA.getAgentInfo();
+  const infoB = simpleB.getAgentInfo();
+
+  const agreement = simpleA.createAgreement(
+    { proposal: 'two-party-approval' },
+    [infoA.agentId, infoB.agentId]
+  );
+
+  expect(() =&gt; simpleA.checkAgreement(agreement)).to.throw();
+  const signedByA = simpleA.signAgreement(agreement);
+  expect(() =&gt; simpleA.checkAgreement(signedByA)).to.throw();
+
+  const signedByBoth = simpleB.signAgreement(signedByA);
+  const status = simpleB.checkAgreement(signedByBoth);
+  expect(status.complete).to.equal(true);
+} finally {
+  process.chdir(originalCwd);
+  fs.rmSync(root, { recursive: true, force: true });
+}
+</code></pre>
 <h3 id="testing-requestresponse-signing"><a class="header" href="#testing-requestresponse-signing">Testing Request/Response Signing</a></h3>
 <pre><code class="language-python">def test_request_signing(test_agent):
     """Test signing a request payload."""
