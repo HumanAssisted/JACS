@@ -1,6 +1,6 @@
 # JACS Python Library
 
-Python bindings for JACS (JSON AI Communication Standard) - cryptographic signing and verification for AI agents.
+Python bindings for JACS (JSON Agent Communication Standard) -- an open data provenance toolkit for signing and verifying AI agent communications. JACS works standalone with no server required; optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
 
 ```bash
 # Using uv (recommended)
@@ -12,6 +12,10 @@ pip install jacs
 # With HAI.ai integration
 uv pip install jacs[hai]
 ```
+
+Packaging/build metadata is defined in `pyproject.toml` (maturin). `setup.py` is intentionally not used.
+
+To check dependencies for known vulnerabilities when using optional extras, run `pip audit` (or `safety check`).
 
 ## Quick Start (Simplified API)
 
@@ -47,18 +51,68 @@ updated_doc = jacs.update_document(signed.document_id, doc)
 
 ## Core Operations
 
-The simplified API provides 8 core operations:
+The simplified API provides these core operations:
 
 | Operation | Description |
 |-----------|-------------|
-| `create()` | Create a new agent with cryptographic keys |
+| `create()` | Create a new agent programmatically (non-interactive) |
 | `load()` | Load an existing agent from config |
 | `verify_self()` | Verify the loaded agent's integrity |
 | `update_agent()` | Update the agent document with new data |
 | `update_document()` | Update an existing document with new data |
 | `sign_message()` | Sign a text message or JSON data |
 | `sign_file()` | Sign a file with optional embedding |
-| `verify()` | Verify any signed document |
+| `verify()` | Verify any signed document (JSON string) |
+| `verify_standalone()` | Verify without loading an agent (one-off) |
+| `verify_by_id()` | Verify a document by its storage ID (`uuid:version`) |
+| `get_dns_record()` | Get DNS TXT record line for the agent |
+| `get_well_known_json()` | Get well-known JSON for `/.well-known/jacs-pubkey.json` |
+| `reencrypt_key()` | Re-encrypt the private key with a new password |
+| `trust_agent()` | Add an agent to the local trust store |
+| `list_trusted_agents()` | List all trusted agent IDs |
+| `untrust_agent()` | Remove an agent from the trust store |
+| `is_trusted()` | Check if an agent is trusted |
+| `get_trusted_agent()` | Get a trusted agent's JSON document |
+| `audit()` | Run a read-only security audit (returns risks, health_checks, summary) |
+| `generate_verify_link()` | Generate a shareable hai.ai verification URL for a signed document |
+
+### Programmatic Agent Creation
+
+```python
+import jacs.simple as jacs
+
+# Create an agent without interactive prompts
+agent = jacs.create(
+    name="my-agent",
+    password="Str0ng-P@ssw0rd!",  # or set JACS_PRIVATE_KEY_PASSWORD env var
+    algorithm="pq2025",            # default; also: "ring-Ed25519", "RSA-PSS"
+    data_directory="./jacs_data",
+    key_directory="./jacs_keys",
+)
+print(f"Created agent: {agent.agent_id}")
+```
+
+### Verify by Document ID
+
+```python
+# If you have a document ID instead of the full JSON
+result = jacs.verify_by_id("550e8400-e29b-41d4-a716-446655440000:1")
+print(f"Valid: {result.valid}")
+```
+
+### Re-encrypt Private Key
+
+```python
+jacs.reencrypt_key("old-password-123!", "new-Str0ng-P@ss!")
+```
+
+### Password Requirements
+
+Passwords must be at least 8 characters and include uppercase, lowercase, a digit, and a special character.
+
+### Algorithm Deprecation Notice
+
+The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings.
 
 ## Type Definitions
 
@@ -236,6 +290,8 @@ uv run python -m pytest tests/ -v
 
 ## Documentation
 
-- [JACS Book](https://humanassisted.github.io/JACS) - Full documentation
+- [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
+- [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 - [API Reference](https://humanassisted.github.io/JACS/api/python) - Python API docs
 - [Migration Guide](https://humanassisted.github.io/JACS/migration) - Upgrading from v0.4.x
+- [Source](https://github.com/HumanAssisted/JACS) - GitHub repository

@@ -175,10 +175,28 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
         )
         .expect("signed_document ");
     let signed_document_key = signed_document.getkey();
+    let pending_for_agent_one = agent.check_agreement(
+        &signed_document_key,
+        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    );
+    assert!(
+        pending_for_agent_one.is_err(),
+        "agreement should be incomplete until all requested agents sign"
+    );
+
     let signed_document_string =
         serde_json::to_string_pretty(&signed_document.value).expect("pretty print");
 
     let _ = agent_two.load_document(&signed_document_string).unwrap();
+    let pending_for_agent_two = agent_two.check_agreement(
+        &signed_document_key,
+        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    );
+    assert!(
+        pending_for_agent_two.is_err(),
+        "agreement should remain incomplete for other agents before they sign"
+    );
+
     let both_signed_document = agent_two
         .sign_agreement(
             &signed_document_key,

@@ -37,7 +37,10 @@ pub fn try_decode_bytes_object(obj: &serde_json::Map<String, Value>) -> Option<V
 pub fn encode_bytes_as_json(bytes: &[u8], type_marker: &str) -> Value {
     let base64_str = general_purpose::STANDARD.encode(bytes);
     let mut map = JsonMap::new();
-    map.insert(TYPE_MARKER_KEY.to_string(), Value::String(type_marker.to_string()));
+    map.insert(
+        TYPE_MARKER_KEY.to_string(),
+        Value::String(type_marker.to_string()),
+    );
     map.insert(DATA_KEY.to_string(), Value::String(base64_str));
     Value::Object(map)
 }

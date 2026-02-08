@@ -1,27 +1,19 @@
-name: Python (jacspy crate)
+name: Python (jacs)
 
 on:
   push:
     branches: [ "main" ]
-    paths: # Optional: Trigger only on changes within jacspy/ or relevant files
-      - 'jacspy/**'
-      - 'jacs/**' # jacspy depends on jacs
-      - '.github/workflows/python.yml'
   pull_request:
     branches: [ "main" ]
-    paths: # Optional: Trigger only on changes within jacspy/ or relevant files
-      - 'jacspy/**'
-      - 'jacs/**' # jacspy depends on jacs
-      - '.github/workflows/python.yml'
   workflow_dispatch: # Allows manual triggering
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Job to run tests on every push/PR
-  test-jacspy:
-    name: Test jacspy crate (x86_64)
+  # Job to run tests on every push/PR (jacspy = local dir name; package on PyPI is jacs)
+  test-jacs:
+    name: Test jacs (x86_64)
     runs-on: ubuntu-latest # Docker is available on ubuntu-latest runners (x86_64)
 
     steps:
@@ -35,7 +27,7 @@ jobs:
         working-directory: jacspy # Directory containing DockerfileBuilder
         run: docker buildx build --tag "jacs-build-x86_64" -f DockerfileBuilder . --load # --load makes image available
 
-      - name: Run jacspy tests in Docker (x86_64)
+      - name: Run jacs tests in Docker (x86_64)
         working-directory: jacspy # To match PWD context if needed by scripts
         env:
           RUST_BACKTRACE: "1"
@@ -51,12 +43,62 @@ jobs:
               pip install fastmcp mcp starlette && \
               make test-python"
 
-  # Job to build wheels, runs ONLY on push to main
-  build-jacspy-wheels:
-    name: Build jacspy wheels on ${{ matrix.os }}
-    # Condition: Only run on push events to the main branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' 
-    needs: test-jacspy # Optional: Ensure tests pass before building wheels
+      - name: Verify sdist build on PR/push
+        working-directory: jacspy
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          docker run --rm \
+            -v "$(pwd)/..:/workspace" \
+            jacs-build-x86_64 \
+            bash -c "\
+              cd /workspace/jacspy && \
+              /opt/python/cp311-cp311/bin/python3.11 -m pip install maturin && \
+              /opt/python/cp311-cp311/bin/python3.11 -m maturin sdist --out dist-sdist-check"
+
+  wheel-smoke-uv:
+    name: Wheel smoke install (uv)
+    needs: test-jacs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.93'
+
+      - name: Install uv and maturin
+        run: python -m pip install uv maturin
+
+      - name: Build wheel
+        working-directory: jacspy
+        run: UV_NO_SYNC=1 uv run maturin build --release --out dist
+
+      - name: Smoke test wheel import in clean venv
+        working-directory: jacspy
+        run: |
+          set -euo pipefail
+          uv venv /tmp/jacs-wheel-smoke
+          uv pip install --python /tmp/jacs-wheel-smoke/bin/python dist/jacs-*.whl
+          uv run --python /tmp/jacs-wheel-smoke/bin/python python - <<'PY'
+          import jacs
+          import jacs.simple
+          import jacs.hai
+          print("wheel smoke imports ok")
+          PY
+
+  # Job to build wheels for CI coverage (PyPI package name is jacs)
+  build-jacs-wheels:
+    name: Build jacs wheels on ${{ matrix.os }}
+    needs: [test-jacs, wheel-smoke-uv]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -80,28 +122,31 @@ jobs:
         with:
           python-version: '3.11' 
 
+      - name: Set up Rust (macOS)
+        if: runner.os == 'macOS'
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.93'
+          target: x86_64-apple-darwin,aarch64-apple-darwin
+
       - name: Install cibuildwheel
         run: python -m pip install cibuildwheel
 
       - name: Build wheels
-        # Run cibuildwheel from the root, but it should detect ./JACS/jacspy/pyproject.toml
-        # Or use working-directory: JACS/jacspy
         run: cibuildwheel --output-dir wheelhouse jacspy
         env:
-          # === cibuildwheel configuration ===
-          # Build architectures
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
-          CIBW_ARCHS_MACOS: "x86_64 aarch64" # Build both Intel and ARM on macOS runners
-          # Skip PyPy builds
-          CIBW_SKIP: "pp*" 
-          # Python versions to build for (align with pyproject.toml requires-python)
-          CIBW_BUILD: "cp311-* cp312-* cp313-*" # Example: Build for 3.11, 3.12, 3.13
-          # Linux specific dependencies (if needed inside manylinux container)
-          # CIBW_BUILD_DEPENDS_LINUX: "openssl-devel" 
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_BUILD: "cp311-* cp312-* cp313-*"
+          # macOS: set minimum deployment target so delocate doesn't reject the wheel
+          CIBW_ENVIRONMENT_MACOS: 'MACOSX_DEPLOYMENT_TARGET=10.13'
+          # Linux: install Rust toolchain and OpenSSL inside manylinux containers
+          CIBW_BEFORE_ALL_LINUX: "yum install -y openssl-devel perl-IPC-Cmd && curl https://sh.rustup.rs -sSf | sh -s -- -y"
+          CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-jacspy-${{ matrix.os }}
+          name: wheels-jacs-${{ matrix.os }}
           # Path is relative to GITHUB_WORKSPACE (repo root)
-          path: ./wheelhouse/*.whl 
+          path: ./wheelhouse/*.whl

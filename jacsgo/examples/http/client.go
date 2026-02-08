@@ -122,9 +122,9 @@ func (c *Client) CreateDocument(data interface{}) error {
 	return nil
 }
 
-// Hash sends data to be hashed
+// Hash sends data to be hashed (request body: JSON {"data": "string to hash"})
 func (c *Client) Hash(data string) error {
-	resp, err := c.doRequest("POST", "/hash", data)
+	resp, err := c.doRequest("POST", "/hash", map[string]string{"data": data})
 	if err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func main() {
 	}
 
 	fmt.Printf("Loading JACS configuration from: %s\n", configPath)
-	err := jacs.Load(configPath)
+	err := jacs.Load(&configPath)
 	if err != nil {
 		log.Printf("Warning: Failed to load JACS config: %v", err)
 		log.Printf("Client will run without JACS signing capabilities")

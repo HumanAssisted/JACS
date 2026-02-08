@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/commitment/v1/commitment.schema.json",
+  "title": "Commitment",
+  "description": "A shared, signed agreement between agents. Commitments work standalone without requiring goals, tasks, or threads. Uses jacsAgreement from header for multi-agent signing.",
+  "allOf": [
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "jacsCommitmentDescription": {
+          "type": "string",
+          "description": "Human-readable description of what is being committed to.",
+          "hai": "agent"
+        },
+        "jacsCommitmentTerms": {
+          "type": "object",
+          "description": "Structured terms of the commitment (deliverable, deadline, compensation, etc.). Free-form object.",
+          "hai": "agent"
+        },
+        "jacsCommitmentStatus": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "active",
+            "completed",
+            "failed",
+            "renegotiated",
+            "disputed",
+            "revoked"
+          ],
+          "description": "Lifecycle status of the commitment.",
+          "hai": "meta"
+        },
+        "jacsCommitmentDisputeReason": {
+          "type": "string",
+          "description": "Reason for dispute when status is 'disputed'.",
+          "hai": "agent"
+        },
+        "jacsCommitmentTaskId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Optional reference to a task this commitment serves.",
+          "hai": "meta"
+        },
+        "jacsCommitmentConversationRef": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Optional reference to the conversation thread that produced this commitment.",
+          "hai": "meta"
+        },
+        "jacsCommitmentTodoRef": {
+          "type": "string",
+          "description": "Optional reference to a todo item in format 'list-uuid:item-uuid'.",
+          "hai": "meta"
+        },
+        "jacsCommitmentQuestion": {
+          "type": "string",
+          "description": "Structured question prompt for the commitment.",
+          "hai": "agent"
+        },
+        "jacsCommitmentAnswer": {
+          "type": "string",
+          "description": "Answer to the commitment question.",
+          "hai": "agent"
+        },
+        "jacsCommitmentCompletionQuestion": {
+          "type": "string",
+          "description": "Question to verify commitment completion.",
+          "hai": "agent"
+        },
+        "jacsCommitmentCompletionAnswer": {
+          "type": "string",
+          "description": "Answer verifying commitment completion.",
+          "hai": "agent"
+        },
+        "jacsCommitmentStartDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the commitment period begins.",
+          "hai": "meta"
+        },
+        "jacsCommitmentEndDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the commitment period ends (deadline).",
+          "hai": "meta"
+        },
+        "jacsCommitmentRecurrence": {
+          "type": "object",
+          "description": "Recurrence pattern for recurring commitments.",
+          "properties": {
+            "frequency": {
+              "type": "string",
+              "enum": ["daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"],
+              "description": "How often the commitment recurs."
+            },
+            "interval": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of frequency units between occurrences."
+            }
+          },
+          "required": ["frequency", "interval"],
+          "hai": "agent"
+        },
+        "jacsCommitmentOwner": {
+          "description": "Single-agent commitment owner signature.",
+          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+        }
+      }
+    }
+  ],
+  "required": [
+    "jacsCommitmentDescription",
+    "jacsCommitmentStatus"
+  ]
+}

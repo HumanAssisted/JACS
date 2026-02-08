@@ -36,6 +36,25 @@ def shared_config_path(shared_fixtures_path):
     return str(config)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def ensure_private_key_password():
+    """Ensure a default private key password is available for shared scratch fixtures.
+
+    If JACS_PRIVATE_KEY_PASSWORD is already set, keep it unchanged.
+    Otherwise set the password used by the CLI scratch fixture flow.
+    """
+    password_env = "JACS_PRIVATE_KEY_PASSWORD"
+    if os.environ.get(password_env):
+        yield
+        return
+
+    os.environ[password_env] = "TestP@ss123!#"
+    try:
+        yield
+    finally:
+        os.environ.pop(password_env, None)
+
+
 @pytest.fixture
 def in_fixtures_dir(shared_fixtures_path):
     """Context manager fixture that changes to fixtures directory and restores CWD on cleanup.

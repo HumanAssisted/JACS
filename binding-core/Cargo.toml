@@ -1,8 +1,8 @@
 [package]
 name = "jacs-binding-core"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.93"
 resolver = "3"
 description = "Shared core logic for JACS language bindings (Python, Node.js, etc.)"
 readme = "../README.md"

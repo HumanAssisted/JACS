@@ -21,9 +21,9 @@ use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
 
-use crate::dns::bootstrap::{verify_pubkey_via_dns_or_embedded, pubkey_digest_hex};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dns::bootstrap::verify_hai_registration_sync;
+use crate::dns::bootstrap::{pubkey_digest_hex, verify_pubkey_via_dns_or_embedded};
 #[cfg(feature = "observability-convenience")]
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
@@ -188,7 +188,8 @@ impl Agent {
             format!(
                 "load_by_id failed for agent '{}': Agent validation or key loading failed: {}",
                 lookup_id, e
-            ).into()
+            )
+            .into()
         });
 
         let _duration_ms = start_time.elapsed().as_millis() as u64;
@@ -343,7 +344,8 @@ impl Agent {
                     "Agent load failed at schema validation step: {}. \
                     Ensure the agent JSON conforms to the JACS agent schema.",
                     e
-                )).into());
+                ))
+                .into());
             }
         }
 
@@ -580,21 +582,23 @@ impl Agent {
         // This MUST succeed for agents claiming verified-hai.ai status
         #[cfg(not(target_arch = "wasm32"))]
         if verification_claim.as_deref() == Some("verified-hai.ai") {
-            let agent_id_for_hai = maybe_agent_id.clone().unwrap_or_else(|| {
-                self.id.clone().unwrap_or_default()
-            });
+            let agent_id_for_hai = maybe_agent_id
+                .clone()
+                .unwrap_or_else(|| self.id.clone().unwrap_or_default());
             let pk_hash = pubkey_digest_hex(&public_key);
 
             match verify_hai_registration_sync(&agent_id_for_hai, &pk_hash) {
                 Ok(registration) => {
                     info!(
                         "HAI.ai verification successful for agent '{}': verified at {:?}",
-                        agent_id_for_hai,
-                        registration.verified_at
+                        agent_id_for_hai, registration.verified_at
                     );
                 }
                 Err(e) => {
-                    error!("HAI.ai verification failed for agent '{}': {}", agent_id_for_hai, e);
+                    error!(
+                        "HAI.ai verification failed for agent '{}': {}",
+                        agent_id_for_hai, e
+                    );
                     return Err(JacsError::VerificationClaimFailed {
                         claim: "verified-hai.ai".to_string(),
                         reason: e,
@@ -804,8 +808,10 @@ impl Agent {
         if original_hash_string != new_hash_string {
             let error_message = format!(
                 "Hashes don't match for doc {:?} {:?}! {:?} != {:?}",
-                doc.get_str("jacsId").unwrap_or_else(|| "unknown".to_string()),
-                doc.get_str("jacsVersion").unwrap_or_else(|| "unknown".to_string()),
+                doc.get_str("jacsId")
+                    .unwrap_or_else(|| "unknown".to_string()),
+                doc.get_str("jacsVersion")
+                    .unwrap_or_else(|| "unknown".to_string()),
                 original_hash_string,
                 new_hash_string
             );
@@ -991,9 +997,7 @@ impl Agent {
         }
 
         // Instead of using ID:version as the filename, we should use the public key hash
-        if let (Some(public_key), Some(key_algorithm)) =
-            (&self.public_key, &self.key_algorithm)
-        {
+        if let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm) {
             // Calculate hash of public key to use as filename
             let public_key_hash = hash_public_key(public_key.clone());
 
@@ -1299,9 +1303,8 @@ impl AgentBuilder {
         };
 
         // Initialize storage
-        let storage = MultiStorage::default_new().map_err(|e| {
-            JacsError::ConfigError(format!("Failed to initialize storage: {}", e))
-        })?;
+        let storage = MultiStorage::default_new()
+            .map_err(|e| JacsError::ConfigError(format!("Failed to initialize storage: {}", e)))?;
 
         let document_schemas = Arc::new(Mutex::new(HashMap::new()));
 
@@ -1366,7 +1369,9 @@ mod builder_tests {
     #[test]
     fn test_agent_builder_default_values() {
         // Build an agent with all defaults
-        let agent = Agent::builder().build().expect("Should build with defaults");
+        let agent = Agent::builder()
+            .build()
+            .expect("Should build with defaults");
 
         // Verify the agent was created (not loaded, so no value)
         assert!(agent.get_value().is_none());
@@ -1490,7 +1495,9 @@ mod builder_tests {
     #[test]
     fn test_verify_batch_empty_input() {
         // Test that verify_batch handles empty input gracefully
-        let agent = Agent::builder().build().expect("Should build with defaults");
+        let agent = Agent::builder()
+            .build()
+            .expect("Should build with defaults");
         let items: Vec<(String, String, Vec<u8>, Option<String>)> = vec![];
         let results = agent.verify_batch(&items);
         assert!(results.is_empty());
@@ -1499,13 +1506,30 @@ mod builder_tests {
     #[test]
     fn test_verify_batch_returns_correct_count() {
         // Test that verify_batch returns one result per input item
-        let agent = Agent::builder().build().expect("Should build with defaults");
+        let agent = Agent::builder()
+            .build()
+            .expect("Should build with defaults");
 
         // Create invalid items (they will fail verification, but we are testing the count)
         let items: Vec<(String, String, Vec<u8>, Option<String>)> = vec![
-            ("data1".to_string(), "invalid_sig".to_string(), vec![1, 2, 3], None),
-            ("data2".to_string(), "invalid_sig".to_string(), vec![4, 5, 6], None),
-            ("data3".to_string(), "invalid_sig".to_string(), vec![7, 8, 9], None),
+            (
+                "data1".to_string(),
+                "invalid_sig".to_string(),
+                vec![1, 2, 3],
+                None,
+            ),
+            (
+                "data2".to_string(),
+                "invalid_sig".to_string(),
+                vec![4, 5, 6],
+                None,
+            ),
+            (
+                "data3".to_string(),
+                "invalid_sig".to_string(),
+                vec![7, 8, 9],
+                None,
+            ),
         ];
 
         let results = agent.verify_batch(&items);

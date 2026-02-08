@@ -1,7 +1,7 @@
 {
   "name": "@hai-ai/jacs",
-  "version": "0.5.0",
-  "description": "JACS - Sign and verify AI agent communications with cryptographic signatures",
+  "version": "0.6.0",
+  "description": "JACS (JSON Agent Communication Standard) - Data provenance and cryptographic signing for AI agents",
   "main": "index.js",
   "types": "index.d.ts",
   "overrides": {
@@ -21,13 +21,17 @@
     },
     "./a2a": {
       "import": "./src/a2a.js",
-      "require": "./src/a2a.js"
+      "require": "./src/a2a.js",
+      "types": "./src/a2a.d.ts"
     },
     "./mcp": {
-      "import": "./mcp.ts"
+      "import": "./mcp.js",
+      "require": "./mcp.js",
+      "types": "./mcp.d.ts"
     },
     "./http": {
       "import": "./http.js",
+      "require": "./http.js",
       "types": "./http.d.ts"
     }
   },
@@ -35,13 +39,12 @@
     "build": "napi build --platform --release && npm run build:ts",
     "build:debug": "napi build --platform && npm run build:ts",
     "build:ts": "tsc",
-    "install": "npm run build",
-    "test": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/**/*.test.js'",
+    "test": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/**/*.test.js'",
     "test:utils": "mocha --timeout 15000 'test/utils.test.js'",
-    "test:agent": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/agent.test.js'",
-    "test:simple": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/simple.test.js'",
+    "test:agent": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/agent.test.js'",
+    "test:simple": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/simple.test.js'",
     "test:a2a": "mocha --timeout 15000 'test/a2a.test.js'",
-    "test:integration": "JACS_PRIVATE_KEY_PASSWORD=testpassword mocha --timeout 15000 'test/integration.test.js'"
+    "test:integration": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/integration.test.js'"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
@@ -54,14 +57,6 @@
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",
     "typescript": "^5.7.0"
-  },
-  "optionalDependencies": {
-    "@jacs/darwin-arm64": "0.1.0",
-    "@jacs/darwin-x64": "0.1.0",
-    "@jacs/linux-x64-gnu": "0.1.0",
-    "@jacs/linux-x64-musl": "0.1.0",
-    "@jacs/linux-arm64-gnu": "0.1.0",
-    "@jacs/win32-x64-msvc": "0.1.0"
   },
   "napi": {
     "name": "jacs",
@@ -86,12 +81,14 @@
     "simple.js",
     "simple.d.ts",
     "src/a2a.js",
+    "src/a2a.d.ts",
     "mcp.ts",
+    "mcp.d.ts",
     "mcp.js",
     "mcp.js.map",
     "http.js",
     "http.d.ts",
-    "*.node"
+    "jacs.*.node"
   ],
   "keywords": [
     "jacs",

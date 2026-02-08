@@ -1,12 +1,16 @@
 # JACS for Node.js
 
-Sign and verify AI agent communications with cryptographic signatures.
+Node.js bindings for JACS (JSON Agent Communication Standard) -- an open data provenance toolkit for signing and verifying AI agent communications. JACS works standalone with no server required; optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
+
+**Dependencies**: The `overrides` in `package.json` for `body-parser` and `qs` are for security (CVE-2024-45590). Do not remove them without re-auditing.
 
 ## Installation
 
 ```bash
 npm install @hai-ai/jacs
 ```
+
+The npm package ships prebuilt native bindings for supported targets and does not compile Rust during `npm install`.
 
 ## Quick Start
 
@@ -32,15 +36,29 @@ console.log(`Signer: ${result.signerId}`);
 
 | Function | Description |
 |----------|-------------|
+| `create(options)` | Create a new agent programmatically (non-interactive) |
 | `load(configPath)` | Load agent from config file |
 | `verifySelf()` | Verify agent's own integrity |
 | `updateAgent(data)` | Update agent document with new data |
 | `updateDocument(id, data)` | Update existing document with new data |
 | `signMessage(data)` | Sign any JSON data |
 | `signFile(path, embed)` | Sign a file |
-| `verify(doc)` | Verify signed document |
+| `verify(doc)` | Verify signed document (JSON string) |
+| `verifyStandalone(doc, opts?)` | Verify without loading an agent (one-off) |
+| `verifyById(id)` | Verify a document by storage ID (`uuid:version`) |
+| `registerWithHai(opts?)` | Register the loaded agent with HAI.ai |
+| `getDnsRecord(domain, ttl?)` | Get DNS TXT record line for the agent |
+| `getWellKnownJson()` | Get well-known JSON for `/.well-known/jacs-pubkey.json` |
+| `reencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
 | `getPublicKey()` | Get public key for sharing |
 | `isLoaded()` | Check if agent is loaded |
+| `trustAgent(json)` | Add an agent to the local trust store |
+| `listTrustedAgents()` | List all trusted agent IDs |
+| `untrustAgent(id)` | Remove an agent from the trust store |
+| `isTrusted(id)` | Check if an agent is trusted |
+| `getTrustedAgent(id)` | Get a trusted agent's JSON document |
+| `audit(options?)` | Run a read-only security audit; optional `configPath`, `recentN` |
+| `generateVerifyLink(doc, baseUrl?)` | Generate a shareable hai.ai verification URL for a signed document |
 
 ## Types
 
@@ -61,6 +79,42 @@ interface VerificationResult {
   errors: string[];
 }
 ```
+
+## Programmatic Agent Creation
+
+```typescript
+const jacs = require('@hai-ai/jacs/simple');
+
+const agent = jacs.create({
+  name: 'my-agent',
+  password: process.env.JACS_PRIVATE_KEY_PASSWORD,  // required
+  algorithm: 'pq2025',                  // default; also: "ring-Ed25519", "RSA-PSS"
+  dataDirectory: './jacs_data',
+  keyDirectory: './jacs_keys',
+});
+console.log(`Created: ${agent.agentId}`);
+```
+
+### Verify by Document ID
+
+```javascript
+const result = jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
+console.log(`Valid: ${result.valid}`);
+```
+
+### Re-encrypt Private Key
+
+```javascript
+jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
+```
+
+### Password Requirements
+
+Passwords must be at least 8 characters and include uppercase, lowercase, a digit, and a special character.
+
+### Algorithm Deprecation Notice
+
+The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings.
 
 ## Examples
 
@@ -121,15 +175,20 @@ const embedded = jacs.signFile('contract.pdf', true);
 
 ### MCP Integration
 
-```javascript
-import { JacsMcpServer } from '@hai-ai/jacs/mcp';
+JACS provides a transport proxy that wraps any MCP transport with automatic signing and verification at the network boundary:
 
-const server = new JacsMcpServer({
-  name: 'MyServer',
-  version: '1.0.0',
-  configPath: './jacs.config.json'
-});
+```javascript
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+// Wrap any MCP transport with JACS signing
+const baseTransport = new StdioServerTransport();
+const jacsTransport = createJACSTransportProxy(
+  baseTransport, './jacs.config.json', 'server'
+);
 ```
+
+See `examples/mcp.simple.server.js` for a complete MCP server example with JACS-signed tools.
 
 ## HAI Integration
 
@@ -171,6 +230,8 @@ interface RemotePublicKeyInfo {
 
 ## See Also
 
-- [JACS Documentation](https://hai.ai/jacs)
+- [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
+- [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [Source](https://github.com/HumanAssisted/JACS) - GitHub repository
 - [HAI Developer Portal](https://hai.ai/dev)
 - [Examples](./examples/)

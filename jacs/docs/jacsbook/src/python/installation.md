@@ -468,7 +468,7 @@ Now that you have JACS installed:
 
 1. **[Basic Usage](basic-usage.md)** - Learn core JACS operations
 2. **[MCP Integration](mcp.md)** - Add Model Context Protocol support
-3. **[FastMCP Integration](fastmcp.md)** - Build advanced MCP servers
+3. **[FastMCP Integration](mcp.md)** - Build advanced MCP servers
 4. **[API Reference](api.md)** - Complete API documentation
 
 ## Examples

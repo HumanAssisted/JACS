@@ -1,14 +1,14 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use secrecy::ExposeSecret;
+pub mod aes_encrypt;
 pub mod constants;
 pub mod hash;
+pub mod kem;
 pub mod pq;
+pub mod pq2025;
 pub mod private_key;
 pub mod ringwrapper;
-pub mod rsawrapper;
-pub mod aes_encrypt;
-pub mod kem;
-pub mod pq2025; // ML-DSA signatures // ML-KEM encryption
+pub mod rsawrapper; // ML-DSA signatures // ML-KEM encryption
 
 use constants::{
     DILITHIUM_ALT_SIG_SIZE_MAX, DILITHIUM_ALT_SIG_SIZE_MIN, DILITHIUM_MIN_KEY_LENGTH,
@@ -88,7 +88,10 @@ pub fn detect_algorithm_from_public_key(
 
     // Ed25519 public keys are exactly 32 bytes and typically contain non-ASCII characters
     if public_key.len() == ED25519_PUBLIC_KEY_SIZE && non_ascii_ratio > ED25519_NON_ASCII_RATIO {
-        debug!(algorithm = "RingEd25519", "Detected Ed25519 from public key format");
+        debug!(
+            algorithm = "RingEd25519",
+            "Detected Ed25519 from public key format"
+        );
         return Ok(CryptoSigningAlgorithm::RingEd25519);
     }
 
@@ -97,19 +100,32 @@ pub fn detect_algorithm_from_public_key(
         && public_key.starts_with(&[0x30])
         && non_ascii_ratio < RSA_NON_ASCII_RATIO
     {
-        debug!(algorithm = "RSA-PSS", "Detected RSA-PSS from public key format");
+        debug!(
+            algorithm = "RSA-PSS",
+            "Detected RSA-PSS from public key format"
+        );
         return Ok(CryptoSigningAlgorithm::RsaPss);
     }
 
     // ML-DSA-87 (Pq2025) has exactly 2592 byte public keys
     if public_key.len() == ML_DSA_87_PUBLIC_KEY_SIZE {
-        debug!(algorithm = "pq2025", "Detected ML-DSA-87 from public key format");
+        debug!(
+            algorithm = "pq2025",
+            "Detected ML-DSA-87 from public key format"
+        );
         return Ok(CryptoSigningAlgorithm::Pq2025);
     }
 
     // PQ Dilithium keys have specific formats with many non-ASCII characters and larger sizes
     if public_key.len() > DILITHIUM_MIN_KEY_LENGTH && non_ascii_ratio > DILITHIUM_NON_ASCII_RATIO {
-        debug!(algorithm = "pq-dilithium", "Detected PQ-Dilithium from public key format");
+        debug!(
+            algorithm = "pq-dilithium",
+            "Detected PQ-Dilithium from public key format"
+        );
+        warn!(
+            "DEPRECATED: Detected 'pq-dilithium' algorithm from public key. \
+            'pq-dilithium' is deprecated; use 'pq2025' (ML-DSA-87, FIPS-204) for new agents."
+        );
         return Ok(CryptoSigningAlgorithm::PqDilithium);
     }
 
@@ -117,10 +133,16 @@ pub fn detect_algorithm_from_public_key(
     // it's more likely to be Ed25519 or PQ Dilithium than RSA
     if non_ascii_ratio > ED25519_NON_ASCII_RATIO {
         if public_key.len() > PQ_SMALL_KEY_THRESHOLD {
-            debug!(algorithm = "pq-dilithium", "Detected PQ-Dilithium from public key format (fallback)");
+            debug!(
+                algorithm = "pq-dilithium",
+                "Detected PQ-Dilithium from public key format (fallback)"
+            );
             return Ok(CryptoSigningAlgorithm::PqDilithium);
         } else {
-            debug!(algorithm = "RingEd25519", "Detected Ed25519 from public key format (fallback)");
+            debug!(
+                algorithm = "RingEd25519",
+                "Detected Ed25519 from public key format (fallback)"
+            );
             return Ok(CryptoSigningAlgorithm::RingEd25519);
         }
     }
@@ -130,7 +152,10 @@ pub fn detect_algorithm_from_public_key(
         non_ascii_ratio = non_ascii_ratio,
         "Could not determine algorithm from public key format"
     );
-    Err(JacsError::CryptoError("Could not determine the algorithm from the public key format".to_string()).into())
+    Err(JacsError::CryptoError(
+        "Could not determine the algorithm from the public key format".to_string(),
+    )
+    .into())
 }
 
 /// Detects which algorithm to use based on signature length and other characteristics
@@ -210,7 +235,7 @@ impl KeyManager for Agent {
     fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
         let config = self.config.as_ref().ok_or(
             "Document signing failed: agent configuration not initialized. \
-            Call load() with a valid config file or create() to initialize the agent first."
+            Call load() with a valid config file or create() to initialize the agent first.",
         )?;
         let key_algorithm = config.get_key_algorithm().map_err(|e| {
             format!(
@@ -225,12 +250,13 @@ impl KeyManager for Agent {
             "Signing data"
         );
         // Validate algorithm is known (result unused but validates early)
-        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm)
-            .map_err(|_| format!(
+        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
+            format!(
                 "Document signing failed: unknown signing algorithm '{}'. \
                 Supported algorithms: ring-Ed25519, RSA-PSS, pq-dilithium, pq2025.",
                 key_algorithm
-            ))?;
+            )
+        })?;
         {
             // Delegate to keystore; we expect detached signature bytes, return base64
             let ks = FsEncryptedStore;
@@ -251,7 +277,8 @@ impl KeyManager for Agent {
                             e
                         )
                     })?;
-            let sig_bytes = ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)
+            let sig_bytes = ks
+                .sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)
                 .map_err(|e| {
                     format!(
                         "Document signing failed: cryptographic signing operation failed. \
@@ -275,7 +302,7 @@ impl KeyManager for Agent {
 
         let config = self.config.as_ref().ok_or(
             "Batch signing failed: agent configuration not initialized. \
-            Call load() with a valid config file or create() to initialize the agent first."
+            Call load() with a valid config file or create() to initialize the agent first.",
         )?;
         let key_algorithm = config.get_key_algorithm().map_err(|e| {
             format!(
@@ -292,12 +319,13 @@ impl KeyManager for Agent {
         );
 
         // Validate algorithm is known
-        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm)
-            .map_err(|_| format!(
+        let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
+            format!(
                 "Batch signing failed: unknown signing algorithm '{}'. \
                 Supported algorithms: ring-Ed25519, RSA-PSS, pq-dilithium, pq2025.",
                 key_algorithm
-            ))?;
+            )
+        })?;
 
         // Decrypt the private key once for all signatures
         let ks = FsEncryptedStore;
@@ -327,7 +355,8 @@ impl KeyManager for Agent {
                 data_len = data.len(),
                 "Signing batch item"
             );
-            let sig_bytes = ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
+            let sig_bytes =
+                ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
             signatures.push(STANDARD.encode(sig_bytes));
         }
 
@@ -375,21 +404,27 @@ impl KeyManager for Agent {
                     .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
                     .unwrap_or(false);
                 if strict {
-                    return Err("Signature verification requires explicit signingAlgorithm field. \
-                        Re-sign the document to include the signingAlgorithm field.".into());
+                    return Err(
+                        "Signature verification requires explicit signingAlgorithm field. \
+                        Re-sign the document to include the signingAlgorithm field."
+                            .into(),
+                    );
                 }
 
                 // Try to auto-detect the algorithm type from the public key
                 match detect_algorithm_from_public_key(&public_key) {
                     Ok(detected_algo) => {
                         // Further refine detection based on signature
-                        let refined = detect_algorithm_from_signature(&signature_bytes, &detected_algo);
+                        let refined =
+                            detect_algorithm_from_signature(&signature_bytes, &detected_algo);
                         debug!(detected = %refined, "Auto-detected algorithm from public key");
                         refined
                     }
                     Err(_) => {
                         // Fall back to the agent's configured algorithm if auto-detection fails
-                        let config = self.config.as_ref()
+                        let config = self
+                            .config
+                            .as_ref()
                             .ok_or("Agent config not initialized for algorithm fallback")?;
                         let key_algorithm = config.get_key_algorithm()?;
                         debug!(fallback = %key_algorithm, "Using config fallback for algorithm detection");

@@ -10,6 +10,7 @@ use jacs_binding_core::hai::{
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use pyo3::IntoPyObjectExt;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
@@ -83,7 +84,11 @@ impl JacsAgent {
         public_key_enc_type: &str,
     ) -> PyResult<String> {
         self.inner
-            .sign_agent(agent_string, public_key.to_vec(), public_key_enc_type.to_string())
+            .sign_agent(
+                agent_string,
+                public_key.to_vec(),
+                public_key_enc_type.to_string(),
+            )
             .to_py()
     }
 
@@ -159,7 +164,13 @@ impl JacsAgent {
         agreement_fieldname: Option<String>,
     ) -> PyResult<String> {
         self.inner
-            .create_agreement(&document_string, agentids, question, context, agreement_fieldname)
+            .create_agreement(
+                &document_string,
+                agentids,
+                question,
+                context,
+                agreement_fieldname,
+            )
             .to_py()
     }
 
@@ -232,14 +243,37 @@ impl JacsAgent {
             .to_py()?;
 
         let py_payload = conversion_utils::value_to_pyobject(py, &payload)?;
-        let py_agent_id: Py<pyo3::types::PyString> =
-            pyo3::types::PyString::new(py, &agent_id).into();
+        let items = vec![agent_id.into_py_any(py)?, py_payload];
+        let tuple = pyo3::types::PyTuple::new(py, items)?;
+        Ok(tuple.into_any().unbind())
+    }
 
-        let tuple_bound_ref =
-            pyo3::types::PyTuple::new(py, &[py_agent_id.into_py(py), py_payload])?;
-        let py_object_tuple = tuple_bound_ref.into_py(py);
+    /// Verify a document by its ID from storage.
+    ///
+    /// Args:
+    ///     document_id: Document ID in "uuid:version" format
+    ///
+    /// Returns:
+    ///     True if the document is valid
+    fn verify_document_by_id(&self, document_id: &str) -> PyResult<bool> {
+        self.inner.verify_document_by_id(document_id).to_py()
+    }
 
-        Ok(py_object_tuple)
+    /// Re-encrypt the agent's private key with a new password.
+    ///
+    /// Args:
+    ///     old_password: Current password
+    ///     new_password: New password (must meet password requirements)
+    fn reencrypt_key(&self, old_password: &str, new_password: &str) -> PyResult<()> {
+        self.inner.reencrypt_key(old_password, new_password).to_py()
+    }
+
+    /// Get the agent's JSON document.
+    ///
+    /// Returns:
+    ///     The agent JSON document as a string
+    fn get_agent_json(&self) -> PyResult<String> {
+        self.inner.get_agent_json().to_py()
     }
 
     /// Hash a string using the JACS hash function.
@@ -298,8 +332,8 @@ impl SimpleAgent {
         purpose: Option<&str>,
         key_algorithm: Option<&str>,
     ) -> PyResult<(Self, PyObject)> {
-        let (agent, info) =
-            jacs_core::simple::SimpleAgent::create(name, purpose, key_algorithm).map_err(|e| {
+        let (agent, info) = jacs_core::simple::SimpleAgent::create(name, purpose, key_algorithm)
+            .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Failed to create agent: {}",
                     e
@@ -390,10 +424,7 @@ impl SimpleAgent {
     ///     dict with raw, document_id, agent_id, timestamp
     fn sign_file(&self, py: Python, file_path: &str, embed: bool) -> PyResult<PyObject> {
         let signed = self.inner.sign_file(file_path, embed).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to sign file: {}",
-                e
-            ))
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign file: {}", e))
         })?;
 
         let dict = pyo3::types::PyDict::new(py);
@@ -466,6 +497,119 @@ impl SimpleAgent {
                 e
             ))
         })
+    }
+
+    /// Create a new JACS agent with full programmatic control.
+    ///
+    /// Args:
+    ///     name: Human-readable name for the agent
+    ///     password: Password for encrypting the private key
+    ///     algorithm: Signing algorithm (default: "pq2025")
+    ///     data_directory: Directory for data storage (default: "./jacs_data")
+    ///     key_directory: Directory for keys (default: "./jacs_keys")
+    ///     config_path: Config file path (default: "./jacs.config.json")
+    ///     agent_type: Agent type (default: "ai")
+    ///     description: Agent description (default: "")
+    ///     domain: Agent domain for DNSSEC (optional)
+    ///     default_storage: Storage backend (default: "fs")
+    ///
+    /// Returns:
+    ///     Tuple of (SimpleAgent, dict with agent info)
+    #[staticmethod]
+    #[pyo3(signature = (name, password, algorithm=None, data_directory=None, key_directory=None, config_path=None, agent_type=None, description=None, domain=None, default_storage=None))]
+    fn create_agent(
+        py: Python,
+        name: &str,
+        password: &str,
+        algorithm: Option<&str>,
+        data_directory: Option<&str>,
+        key_directory: Option<&str>,
+        config_path: Option<&str>,
+        agent_type: Option<&str>,
+        description: Option<&str>,
+        domain: Option<&str>,
+        default_storage: Option<&str>,
+    ) -> PyResult<(Self, PyObject)> {
+        let params = jacs_core::simple::CreateAgentParams {
+            name: name.to_string(),
+            password: password.to_string(),
+            algorithm: algorithm.unwrap_or("pq2025").to_string(),
+            data_directory: data_directory.unwrap_or("./jacs_data").to_string(),
+            key_directory: key_directory.unwrap_or("./jacs_keys").to_string(),
+            config_path: config_path.unwrap_or("./jacs.config.json").to_string(),
+            agent_type: agent_type.unwrap_or("ai").to_string(),
+            description: description.unwrap_or("").to_string(),
+            domain: domain.unwrap_or("").to_string(),
+            default_storage: default_storage.unwrap_or("fs").to_string(),
+            hai_api_key: String::new(),
+            hai_endpoint: String::new(),
+        };
+
+        let (agent, info) =
+            jacs_core::simple::SimpleAgent::create_with_params(params).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create agent: {}",
+                    e
+                ))
+            })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("agent_id", &info.agent_id)?;
+        dict.set_item("name", &info.name)?;
+        dict.set_item("public_key_path", &info.public_key_path)?;
+        dict.set_item("config_path", &info.config_path)?;
+        dict.set_item("version", &info.version)?;
+        dict.set_item("algorithm", &info.algorithm)?;
+        dict.set_item("private_key_path", &info.private_key_path)?;
+        dict.set_item("data_directory", &info.data_directory)?;
+        dict.set_item("key_directory", &info.key_directory)?;
+        dict.set_item("domain", &info.domain)?;
+        dict.set_item("dns_record", &info.dns_record)?;
+        dict.set_item("hai_registered", info.hai_registered)?;
+
+        Ok((SimpleAgent { inner: agent }, dict.into()))
+    }
+
+    /// Verify a document by its ID from storage.
+    ///
+    /// Args:
+    ///     document_id: Document ID in "uuid:version" format
+    ///
+    /// Returns:
+    ///     dict with valid, data, signer_id, timestamp, attachments, errors
+    fn verify_by_id(&self, py: Python, document_id: &str) -> PyResult<PyObject> {
+        let result = self.inner.verify_by_id(document_id).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify by ID: {}",
+                e
+            ))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("valid", result.valid)?;
+        dict.set_item("signer_id", &result.signer_id)?;
+        dict.set_item("timestamp", &result.timestamp)?;
+        let errors: Vec<String> = result.errors;
+        dict.set_item("errors", errors)?;
+        let py_data = conversion_utils::value_to_pyobject(py, &result.data)?;
+        dict.set_item("data", py_data)?;
+        Ok(dict.into())
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    ///
+    /// Args:
+    ///     old_password: Current password
+    ///     new_password: New password (must meet password requirements)
+    fn reencrypt_key(&self, old_password: &str, new_password: &str) -> PyResult<()> {
+        self.inner
+            .reencrypt_key(old_password, new_password)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to re-encrypt key: {}",
+                    e
+                ))
+            })
     }
 }
 
@@ -728,6 +872,29 @@ fn hash_string(data: &str) -> PyResult<String> {
     Ok(jacs_binding_core::hash_string(data))
 }
 
+/// Verify a signed JACS document without loading an agent.
+#[pyfunction]
+#[pyo3(signature = (signed_document, key_resolution=None, data_directory=None, key_directory=None))]
+fn verify_document_standalone(
+    py: Python,
+    signed_document: &str,
+    key_resolution: Option<&str>,
+    data_directory: Option<&str>,
+    key_directory: Option<&str>,
+) -> PyResult<PyObject> {
+    let r = jacs_binding_core::verify_document_standalone(
+        signed_document,
+        key_resolution,
+        data_directory,
+        key_directory,
+    )
+    .to_py()?;
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("valid", r.valid)?;
+    dict.set_item("signer_id", r.signer_id)?;
+    Ok(dict.into())
+}
+
 /// Create a JACS configuration JSON string.
 #[pyfunction]
 fn create_config(
@@ -830,6 +997,52 @@ fn get_trusted_agent(agent_id: &str) -> PyResult<String> {
 }
 
 // =============================================================================
+// Audit (security audit and health checks)
+// =============================================================================
+
+/// Run a read-only security audit and health checks.
+///
+/// Returns the audit result as a JSON string (risks, health_checks, summary).
+/// Does not modify state.
+///
+/// Args:
+///     config_path: Optional path to jacs config file.
+///     recent_n: Optional number of recent documents to re-verify (default from config).
+///
+/// Returns:
+///     JSON string of the audit result (parse with json.loads() for a dict).
+#[pyfunction]
+#[pyo3(signature = (config_path=None, recent_n=None))]
+fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<String> {
+    jacs_binding_core::audit(config_path, recent_n).to_py()
+}
+
+// =============================================================================
+// Verify Link Generation
+// =============================================================================
+
+/// Build a verification URL for a signed JACS document.
+///
+/// Encodes `document` as URL-safe base64 (no padding) and returns a full URL
+/// like `https://hai.ai/jacs/verify?s=...`.
+///
+/// Args:
+///     document: The signed JACS document JSON string.
+///     base_url: Base URL for the verifier (default "https://hai.ai").
+///
+/// Returns:
+///     The full verification URL string.
+///
+/// Raises:
+///     ValueError: If the resulting URL would exceed 2048 characters.
+#[pyfunction]
+#[pyo3(signature = (document, base_url="https://hai.ai"))]
+fn generate_verify_link(document: &str, base_url: &str) -> PyResult<String> {
+    jacs_binding_core::hai::generate_verify_link(document, base_url)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+}
+
+// =============================================================================
 // Remote Key Fetch Functions
 // =============================================================================
 
@@ -924,7 +1137,7 @@ fn sign_agent(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_agent() is deprecated. Use JacsAgent().sign_agent() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -957,7 +1170,7 @@ fn verify_string(
 fn sign_string(_py: Python, _data: &str) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_string() is deprecated. Use JacsAgent().sign_string() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -968,7 +1181,7 @@ fn sign_string(_py: Python, _data: &str) -> PyResult<String> {
 fn verify_agent(_py: Python, _agentfile: Option<String>) -> PyResult<bool> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_agent() is deprecated. Use JacsAgent().verify_agent() or \
-         SimpleAgent.load().verify_self() instead."
+         SimpleAgent.load().verify_self() instead.",
     ))
 }
 
@@ -979,7 +1192,7 @@ fn verify_agent(_py: Python, _agentfile: Option<String>) -> PyResult<bool> {
 fn update_agent(_py: Python, _new_agent_string: String) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "update_agent() is deprecated. Use JacsAgent().update_agent() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -990,7 +1203,7 @@ fn update_agent(_py: Python, _new_agent_string: String) -> PyResult<String> {
 fn verify_document(_py: Python, _document_string: String) -> PyResult<bool> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_document() is deprecated. Use JacsAgent().verify_document() or \
-         SimpleAgent.load().verify() instead."
+         SimpleAgent.load().verify() instead.",
     ))
 }
 
@@ -1007,7 +1220,7 @@ fn update_document(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "update_document() is deprecated. Use JacsAgent().update_document() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1022,7 +1235,7 @@ fn verify_signature(
 ) -> PyResult<bool> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_signature() is deprecated. Use JacsAgent().verify_signature() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1040,7 +1253,7 @@ fn create_agreement(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "create_agreement() is deprecated. Use JacsAgent().create_agreement() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1055,7 +1268,7 @@ fn sign_agreement(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_agreement() is deprecated. Use JacsAgent().sign_agreement() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1074,7 +1287,7 @@ fn create_document(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "create_document() is deprecated. Use JacsAgent().create_document() or \
-         SimpleAgent.load().sign_message() instead."
+         SimpleAgent.load().sign_message() instead.",
     ))
 }
 
@@ -1089,7 +1302,7 @@ fn check_agreement(
 ) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "check_agreement() is deprecated. Use JacsAgent().check_agreement() instead. \
-         You must create a JacsAgent instance and load it first."
+         You must create a JacsAgent instance and load it first.",
     ))
 }
 
@@ -1100,7 +1313,7 @@ fn check_agreement(
 fn sign_request(_py: Python, _params_obj: PyObject) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_request() is deprecated. Use JacsAgent().sign_request() or \
-         SimpleAgent.load().sign_message() instead."
+         SimpleAgent.load().sign_message() instead.",
     ))
 }
 
@@ -1111,7 +1324,7 @@ fn sign_request(_py: Python, _params_obj: PyObject) -> PyResult<String> {
 fn verify_response(_py: Python, _document_string: String) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_response() is deprecated. Use JacsAgent().verify_response() or \
-         SimpleAgent.load().verify() instead."
+         SimpleAgent.load().verify() instead.",
     ))
 }
 
@@ -1122,7 +1335,7 @@ fn verify_response(_py: Python, _document_string: String) -> PyResult<PyObject> 
 fn verify_response_with_agent_id(_py: Python, _document_string: String) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_response_with_agent_id() is deprecated. \
-         Use JacsAgent().verify_response_with_agent_id() instead."
+         Use JacsAgent().verify_response_with_agent_id() instead.",
     ))
 }
 
@@ -1143,7 +1356,7 @@ fn create_simple(
 ) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "create_simple() is deprecated. Use SimpleAgent.create() instead, which returns \
-         both the agent instance and info dict."
+         both the agent instance and info dict.",
     ))
 }
 
@@ -1153,7 +1366,7 @@ fn create_simple(
 #[pyfunction]
 fn load_simple(_config_path: Option<&str>) -> PyResult<()> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "load_simple() is deprecated. Use SimpleAgent.load() instead."
+        "load_simple() is deprecated. Use SimpleAgent.load() instead.",
     ))
 }
 
@@ -1163,7 +1376,7 @@ fn load_simple(_config_path: Option<&str>) -> PyResult<()> {
 #[pyfunction]
 fn verify_self_simple() -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "verify_self_simple() is deprecated. Use SimpleAgent.load().verify_self() instead."
+        "verify_self_simple() is deprecated. Use SimpleAgent.load().verify_self() instead.",
     ))
 }
 
@@ -1173,7 +1386,7 @@ fn verify_self_simple() -> PyResult<PyObject> {
 #[pyfunction]
 fn sign_message_simple(_py: Python, _data: PyObject) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "sign_message_simple() is deprecated. Use SimpleAgent.load().sign_message() instead."
+        "sign_message_simple() is deprecated. Use SimpleAgent.load().sign_message() instead.",
     ))
 }
 
@@ -1183,7 +1396,7 @@ fn sign_message_simple(_py: Python, _data: PyObject) -> PyResult<PyObject> {
 #[pyfunction]
 fn sign_file_simple(_file_path: &str, _embed: bool) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "sign_file_simple() is deprecated. Use SimpleAgent.load().sign_file() instead."
+        "sign_file_simple() is deprecated. Use SimpleAgent.load().sign_file() instead.",
     ))
 }
 
@@ -1193,7 +1406,7 @@ fn sign_file_simple(_file_path: &str, _embed: bool) -> PyResult<PyObject> {
 #[pyfunction]
 fn verify_simple(_py: Python, _signed_document: &str) -> PyResult<PyObject> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "verify_simple() is deprecated. Use SimpleAgent.load().verify() instead."
+        "verify_simple() is deprecated. Use SimpleAgent.load().verify() instead.",
     ))
 }
 
@@ -1203,7 +1416,7 @@ fn verify_simple(_py: Python, _signed_document: &str) -> PyResult<PyObject> {
 #[pyfunction]
 fn export_agent_simple() -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-        "export_agent_simple() is deprecated. Use SimpleAgent.load().export_agent() instead."
+        "export_agent_simple() is deprecated. Use SimpleAgent.load().export_agent() instead.",
     ))
 }
 
@@ -1214,7 +1427,7 @@ fn export_agent_simple() -> PyResult<String> {
 fn get_public_key_pem_simple() -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "get_public_key_pem_simple() is deprecated. \
-         Use SimpleAgent.load().get_public_key_pem() instead."
+         Use SimpleAgent.load().get_public_key_pem() instead.",
     ))
 }
 
@@ -1244,6 +1457,12 @@ fn get_trusted_agent_simple(agent_id: &str) -> PyResult<String> {
     get_trusted_agent(agent_id)
 }
 
+#[pyfunction]
+#[pyo3(signature = (config_path=None, recent_n=None))]
+fn audit_simple(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<String> {
+    audit(config_path, recent_n)
+}
+
 #[pymodule]
 fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
@@ -1259,6 +1478,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Stateless Utility Functions
     // =============================================================================
     m.add_function(wrap_pyfunction!(hash_string, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_document_standalone, m)?)?;
     m.add_function(wrap_pyfunction!(create_config, m)?)?;
     m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
     m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
@@ -1271,6 +1491,8 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(untrust_agent, m)?)?;
     m.add_function(wrap_pyfunction!(is_trusted, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(audit, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_verify_link, m)?)?;
 
     // =============================================================================
     // Remote Key Fetch Functions
@@ -1321,6 +1543,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(untrust_agent_simple, m)?)?;
     m.add_function(wrap_pyfunction!(is_trusted_simple, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_simple, m)?)?;
 
     Ok(())
 }

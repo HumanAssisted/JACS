@@ -1,17 +1,17 @@
 # API Reference
 
-Complete API documentation for the `jacsnpm` Node.js package.
+Complete API documentation for the `@hai-ai/jacs` Node.js package.
 
 ## Installation
 
 ```bash
-npm install jacsnpm
+npm install @hai-ai/jacs
 ```
 
 ## Core Module
 
 ```javascript
-import { JacsAgent, hashString, createConfig } from 'jacsnpm';
+import { JacsAgent, hashString, createConfig } from '@hai-ai/jacs';
 ```
 
 ---
@@ -417,7 +417,7 @@ Hash a string using SHA-256.
 
 **Example:**
 ```javascript
-import { hashString } from 'jacsnpm';
+import { hashString } from '@hai-ai/jacs';
 
 const hash = hashString('data to hash');
 console.log('SHA-256:', hash);
@@ -444,7 +444,7 @@ Create a JACS configuration JSON string programmatically.
 
 **Example:**
 ```javascript
-import { createConfig } from 'jacsnpm';
+import { createConfig } from '@hai-ai/jacs';
 
 const configJson = createConfig(
   undefined,           // jacsUseSecurity
@@ -467,7 +467,7 @@ fs.writeFileSync('jacs.config.json', configJson);
 ## HTTP Module
 
 ```javascript
-import { JACSExpressMiddleware, JACSKoaMiddleware } from 'jacsnpm/http';
+import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai-ai/jacs/http';
 ```
 
 ### JACSExpressMiddleware(options)
@@ -481,7 +481,7 @@ Express middleware for JACS request/response handling.
 
 **Example:**
 ```javascript
-import { JACSExpressMiddleware } from 'jacsnpm/http';
+import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
 
 app.use('/api', express.text({ type: '*/*' }));
 app.use('/api', JACSExpressMiddleware({
@@ -507,7 +507,7 @@ Koa middleware for JACS request/response handling.
 
 **Example:**
 ```javascript
-import { JACSKoaMiddleware } from 'jacsnpm/http';
+import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
 
 app.use(JACSKoaMiddleware({
   configPath: './jacs.config.json'
@@ -528,7 +528,7 @@ import {
   JACSTransportProxy,
   createJACSTransportProxy,
   createJACSTransportProxyAsync
-} from 'jacsnpm/mcp';
+} from '@hai-ai/jacs/mcp';
 ```
 
 ### JACSTransportProxy
@@ -560,7 +560,7 @@ Factory function for creating a transport proxy.
 
 **Example:**
 ```javascript
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 const baseTransport = new StdioServerTransport();
@@ -597,7 +597,7 @@ const secureTransport = await createJACSTransportProxyAsync(
 The package includes full TypeScript definitions. Import types as needed:
 
 ```typescript
-import { JacsAgent, hashString, createConfig } from 'jacsnpm';
+import { JacsAgent, hashString, createConfig } from '@hai-ai/jacs';
 
 const agent: JacsAgent = new JacsAgent();
 const hash: string = hashString('data');
@@ -634,12 +634,12 @@ The following module-level functions are deprecated. Use `new JacsAgent()` and i
 **Migration Example:**
 ```javascript
 // Old (deprecated)
-import jacs from 'jacsnpm';
+import jacs from '@hai-ai/jacs';
 await jacs.load('./jacs.config.json');
 const doc = jacs.createDocument(JSON.stringify({ data: 'test' }));
 
 // New (recommended)
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
 const doc = agent.createDocument(JSON.stringify({ data: 'test' }));

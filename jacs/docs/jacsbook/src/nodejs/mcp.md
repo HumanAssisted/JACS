@@ -26,7 +26,7 @@ JACS provides a **transport proxy** that sits between your MCP server/client and
 ```javascript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 import { z } from 'zod';
 
 const JACS_CONFIG_PATH = "./jacs.config.json";
@@ -69,7 +69,7 @@ main();
 ```javascript
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 
 const JACS_CONFIG_PATH = "./jacs.config.json";
 
@@ -123,7 +123,7 @@ main();
 The main class that wraps MCP transports with JACS encryption.
 
 ```javascript
-import { JACSTransportProxy } from 'jacsnpm/mcp';
+import { JACSTransportProxy } from '@hai-ai/jacs/mcp';
 
 const proxy = new JACSTransportProxy(
   transport,      // Any MCP transport (Stdio, SSE, WebSocket)
@@ -137,7 +137,7 @@ const proxy = new JACSTransportProxy(
 Factory function for creating a transport proxy.
 
 ```javascript
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 
 const secureTransport = createJACSTransportProxy(
   baseTransport,    // The underlying MCP transport
@@ -151,7 +151,7 @@ const secureTransport = createJACSTransportProxy(
 Async factory that waits for JACS to be fully loaded before returning.
 
 ```javascript
-import { createJACSTransportProxyAsync } from 'jacsnpm/mcp';
+import { createJACSTransportProxyAsync } from '@hai-ai/jacs/mcp';
 
 const secureTransport = await createJACSTransportProxyAsync(
   baseTransport,
@@ -168,7 +168,7 @@ Best for CLI tools and subprocess communication:
 
 ```javascript
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 
 const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(
@@ -186,7 +186,7 @@ For web-based MCP servers:
 
 ```javascript
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 import express from 'express';
 
 const app = express();
@@ -275,7 +275,7 @@ When the transport receives a message, the proxy:
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 import { z } from 'zod';
 
 async function main() {
@@ -341,7 +341,7 @@ main().catch(err => {
 #!/usr/bin/env node
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 
 async function main() {
   console.log("JACS MCP Client starting...");

@@ -6,6 +6,7 @@
 - [What is JACS?](getting-started/what-is-jacs.md)
 - [Core Concepts](getting-started/concepts.md)
 - [Quick Start](getting-started/quick-start.md)
+- [Use cases](usecases.md)
 
 ## Rust CLI & Library
 - [Installation](rust/installation.md)
@@ -17,7 +18,7 @@
 - [Rust Library API](rust/library.md)
 - [Observability](rust/observability.md)
 
-## Node.js (jacsnpm)
+## Node.js (@hai-ai/jacs)
 - [Installation](nodejs/installation.md)
 - [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)
@@ -26,7 +27,7 @@
 - [Express Middleware](nodejs/express.md)
 - [API Reference](nodejs/api.md)
 
-## Python (jacspy)
+## Python (jacs)
 - [Installation](python/installation.md)
 - [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
@@ -39,6 +40,10 @@
 - [Agent Schema](schemas/agent.md)
 - [Document Schema](schemas/document.md)
 - [Task Schema](schemas/task.md)
+- [Agent State Schema](schemas/agentstate.md)
+- [Commitment Schema](schemas/commitment.md)
+- [Todo List Schema](schemas/todo.md)
+- [Conversation Schema](schemas/conversation.md)
 - [Configuration](schemas/configuration.md)
 
 ## Advanced Topics
@@ -51,6 +56,7 @@
 
 ## Integrations
 - [Model Context Protocol (MCP)](integrations/mcp.md)
+- [A2A Interoperability](integrations/a2a.md)
 - [OpenClaw](integrations/openclaw.md)
 - [Web Servers](integrations/web-servers.md)
 - [Databases](integrations/databases.md)

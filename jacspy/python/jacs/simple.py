@@ -13,17 +13,22 @@ A streamlined interface for the most common JACS operations:
 - create_agreement(): Create a multi-party agreement
 - sign_agreement(): Sign an existing agreement
 - check_agreement(): Check agreement status
+- trust_agent(): Add an agent to the local trust store
+- list_trusted_agents(): List all trusted agent IDs
+- untrust_agent(): Remove an agent from the trust store
+- is_trusted(): Check if an agent is trusted
+- get_trusted_agent(): Get a trusted agent's JSON
+- audit(): Run a read-only security audit and health checks
 - fetch_remote_key(): Fetch a public key from HAI's key service
 
 Environment Variables:
     HAI_KEYS_BASE_URL: Base URL for HAI's key distribution service.
                        Defaults to "https://keys.hai.ai".
 
-    JACS_KEY_RESOLUTION: Controls the order of key resolution when
-                         verifying signatures. Options:
-                         - "hai-only": Only use HAI key service (default)
-                         - "local-first": Try local trust store first, fall back to HAI
-                         - "hai-first": Try HAI first, fall back to local trust store
+    JACS_KEY_RESOLUTION: Comma-separated order of key resolution when
+                         verifying signatures (e.g. "local,hai" or "local,dns,hai").
+                         Sources: local (trust store), dns (DNS TXT), hai (HAI key service).
+                         Default is "local,hai".
 
 Example:
     import jacs.simple as jacs
@@ -87,15 +92,70 @@ from .types import (
 try:
     from . import JacsAgent
     from .jacs import fetch_remote_key as _fetch_remote_key
+    from .jacs import trust_agent as _trust_agent
+    from .jacs import list_trusted_agents as _list_trusted_agents
+    from .jacs import untrust_agent as _untrust_agent
+    from .jacs import is_trusted as _is_trusted
+    from .jacs import get_trusted_agent as _get_trusted_agent
+    from .jacs import verify_document_standalone as _verify_document_standalone
+    from .jacs import audit as _audit
 except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
     JacsAgent = _jacs_module.JacsAgent
     _fetch_remote_key = _jacs_module.fetch_remote_key
+    _verify_document_standalone = _jacs_module.verify_document_standalone
+    _trust_agent = _jacs_module.trust_agent
+    _list_trusted_agents = _jacs_module.list_trusted_agents
+    _untrust_agent = _jacs_module.untrust_agent
+    _is_trusted = _jacs_module.is_trusted
+    _get_trusted_agent = _jacs_module.get_trusted_agent
+    _audit = _jacs_module.audit
 
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
+
+# Verify link constants (HAI / public verification URLs)
+MAX_VERIFY_URL_LEN = 2048
+MAX_VERIFY_DOCUMENT_BYTES = 1515
+
+
+def generate_verify_link(
+    document: str,
+    base_url: str = "https://hai.ai",
+) -> str:
+    """Build a verification URL for a signed JACS document (e.g. hai.ai/jacs/verify?s=...).
+
+    Encodes `document` as URL-safe base64. Raises ValueError if the resulting URL
+    would exceed MAX_VERIFY_URL_LEN (document must be at most MAX_VERIFY_DOCUMENT_BYTES UTF-8 bytes).
+
+    Args:
+        document: The full signed JACS document string (JSON).
+        base_url: Base URL of the verifier (no trailing slash). Default "https://hai.ai".
+
+    Returns:
+        Full URL: {base_url}/jacs/verify?s={base64url(document)}
+    """
+    try:
+        from jacs._jacs import generate_verify_link as _native_generate_verify_link
+        return _native_generate_verify_link(document, base_url)
+    except ImportError:
+        pass
+
+    # Fallback: pure-Python implementation
+    import base64
+
+    base = base_url.rstrip("/")
+    encoded = base64.urlsafe_b64encode(document.encode("utf-8")).rstrip(b"=").decode("ascii")
+    path_and_query = f"/jacs/verify?s={encoded}"
+    full_url = f"{base}{path_and_query}"
+    if len(full_url) > MAX_VERIFY_URL_LEN:
+        raise ValueError(
+            f"Verify URL would exceed max length ({MAX_VERIFY_URL_LEN}). "
+            f"Document must be at most {MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes."
+        )
+    return full_url
 
 
 def _get_agent() -> JacsAgent:
@@ -157,12 +217,18 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
 
 
 def create(
-    name: Optional[str] = None,
-    agent_type: str = "service",
+    name: str = "jacs-agent",
+    password: Optional[str] = None,
     algorithm: str = "pq2025",
-    config_path: Optional[str] = None,
+    data_directory: str = "./jacs_data",
+    key_directory: str = "./jacs_keys",
+    config_path: str = "./jacs.config.json",
+    agent_type: str = "ai",
+    description: str = "",
+    domain: Optional[str] = None,
+    default_storage: str = "fs",
 ) -> AgentInfo:
-    """Create a new JACS agent with cryptographic keys.
+    """Create a new JACS agent with cryptographic keys (programmatic).
 
     This is the simplest way to get started with JACS. It creates:
     - A new agent identity (UUID)
@@ -171,43 +237,94 @@ def create(
     - A signed agent document
 
     Args:
-        name: Optional human-readable name for the agent
-        agent_type: Type of agent ("service", "user", "system")
-        algorithm: Cryptographic algorithm ("RSA", "ML-DSA", "DILITHIUM")
-        config_path: Where to save the config (default: ./jacs.config.json)
+        name: Human-readable name for the agent
+        password: Password for encrypting the private key.
+                  If not provided, falls back to JACS_PRIVATE_KEY_PASSWORD env var.
+        algorithm: Signing algorithm ("pq2025", "ring-Ed25519", "RSA-PSS").
+                   Note: "pq-dilithium" is deprecated, use "pq2025" instead.
+        data_directory: Directory for data storage (default: "./jacs_data")
+        key_directory: Directory for keys (default: "./jacs_keys")
+        config_path: Where to save the config (default: "./jacs.config.json")
+        agent_type: Type of agent ("ai", "human", "hybrid")
+        description: Optional description of the agent's purpose
+        domain: Optional domain for DNSSEC fingerprint
+        default_storage: Storage backend ("fs", "aws", "hai")
 
     Returns:
         AgentInfo with the new agent's details
 
+    Raises:
+        JacsError: If password is missing or agent creation fails
+
     Example:
-        agent = jacs.create(name="My Agent")
+        agent = jacs.create(
+            name="My Agent",
+            password="MyStr0ng!Pass#2024",
+            algorithm="pq2025",
+        )
         print(f"Created agent: {agent.agent_id}")
     """
     global _global_agent, _agent_info
 
-    # Use default config path if not provided
-    if config_path is None:
-        config_path = "./jacs.config.json"
+    # Resolve password
+    resolved_password = password or os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
+    if not resolved_password:
+        raise ConfigError(
+            "Password is required for agent creation. "
+            "Either pass it as the 'password' argument or set the "
+            "JACS_PRIVATE_KEY_PASSWORD environment variable."
+        )
 
     try:
-        # Import the CLI utilities for agent creation
-        from . import handle_agent_create_py, handle_config_create_py
+        # Try using SimpleAgent.create_agent (programmatic, non-interactive)
+        from . import SimpleAgent as _SimpleAgent
 
-        # Create config file first
-        handle_config_create_py()
+        agent_instance, info_dict = _SimpleAgent.create_agent(
+            name=name,
+            password=resolved_password,
+            algorithm=algorithm,
+            data_directory=data_directory,
+            key_directory=key_directory,
+            config_path=config_path,
+            agent_type=agent_type,
+            description=description,
+            domain=domain or "",
+            default_storage=default_storage,
+        )
 
-        # Create the agent with keys
-        handle_agent_create_py(None, True)
+        # Load using the caller-provided password even when env var is unset.
+        previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
+        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = resolved_password
+        try:
+            _global_agent = JacsAgent()
+            _global_agent.load(config_path)
+        finally:
+            if previous_password is None:
+                os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
+            else:
+                os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password
 
-        # Now load the created agent
-        return load(config_path)
+        _agent_info = AgentInfo(
+            agent_id=info_dict.get("agent_id", ""),
+            version=info_dict.get("version", ""),
+            name=info_dict.get("name", name),
+            public_key_hash="",
+            created_at="",
+            algorithm=info_dict.get("algorithm", algorithm),
+            config_path=config_path,
+            public_key_path=info_dict.get("public_key_path", ""),
+        )
+
+        logger.info("Agent created: id=%s, name=%s", _agent_info.agent_id, name)
+        return _agent_info
 
     except ImportError:
-        # If the CLI utilities aren't available, create manually
         raise JacsError(
             "Agent creation requires the full JACS package. "
-            "Please use the CLI: jacs create"
+            "Please use the CLI: jacs init"
         )
+    except Exception as e:
+        raise JacsError(f"Failed to create agent: {e}")
 
 
 def load(config_path: Optional[str] = None) -> AgentInfo:
@@ -709,6 +826,49 @@ def sign_file(
         raise SigningError(f"Failed to sign file: {e}")
 
 
+def verify_standalone(
+    document: Union[str, dict],
+    key_resolution: str = "local",
+    data_directory: Optional[str] = None,
+    key_directory: Optional[str] = None,
+) -> VerificationResult:
+    """Verify a signed JACS document without loading an agent.
+
+    Does not use the global agent; uses caller-supplied key resolution
+    and directories. Use this for one-off verification when you have
+    a signed document string and key directories.
+
+    Args:
+        document: Signed JACS document (JSON string or dict)
+        key_resolution: Key resolution order (default "local")
+        data_directory: Optional path for data/trust store
+        key_directory: Optional path for public keys
+
+    Returns:
+        VerificationResult with valid and signer_id
+
+    Example:
+        result = jacs.verify_standalone(signed_json, key_resolution="local", key_directory="./keys")
+        if result.valid:
+            print(f"Signed by: {result.signer_id}")
+    """
+    doc_str = json.dumps(document) if isinstance(document, dict) else document
+    try:
+        d = _verify_document_standalone(
+            doc_str,
+            key_resolution=key_resolution,
+            data_directory=data_directory,
+            key_directory=key_directory,
+        )
+        # Native returns dict with valid, signer_id
+        return VerificationResult(
+            valid=bool(d.get("valid", False)),
+            signer_id=str(d.get("signer_id", "")),
+        )
+    except Exception as e:
+        return VerificationResult(valid=False, errors=[str(e)])
+
+
 def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
     """Verify any signed JACS document.
 
@@ -741,6 +901,18 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
     else:
         doc_str = document
 
+    # Pre-check: if input doesn't look like JSON, give helpful error
+    trimmed = doc_str.strip() if isinstance(doc_str, str) else ""
+    if trimmed and not trimmed.startswith("{") and not trimmed.startswith("["):
+        return VerificationResult(
+            valid=False,
+            errors=[
+                f"Input does not appear to be a JSON document. "
+                f"If you have a document ID (e.g., 'uuid:version'), "
+                f"use verify_by_id() instead. Received: '{trimmed[:60]}'"
+            ],
+        )
+
     try:
         # Verify the document
         is_valid = agent.verify_document(doc_str)
@@ -767,6 +939,83 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
             valid=False,
             errors=[str(e)],
         )
+
+
+def verify_by_id(document_id: str) -> VerificationResult:
+    """Verify a signed document by its storage ID.
+
+    This is a convenience function when you have a document ID (e.g., "uuid:version")
+    rather than the full JSON document string.
+
+    Args:
+        document_id: Document ID in "uuid:version" format
+
+    Returns:
+        VerificationResult with verification status
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If the document is not found or verification fails
+
+    Example:
+        result = jacs.verify_by_id("550e8400-e29b-41d4:1")
+        if result.valid:
+            print(f"Document verified, signed by: {result.signer_id}")
+    """
+    agent = _get_agent()
+    logger.debug("verify_by_id() called with document_id=%s", document_id)
+
+    # Pre-check format
+    if ":" not in document_id:
+        raise JacsError(
+            f"Document ID must be in 'uuid:version' format, got '{document_id}'. "
+            "Use verify() with the full JSON document string instead."
+        )
+
+    try:
+        is_valid = agent.verify_document_by_id(document_id)
+
+        return VerificationResult(
+            valid=is_valid,
+            signer_id=_agent_info.agent_id if _agent_info else "",
+            content_hash_valid=is_valid,
+            signature_valid=is_valid,
+        )
+    except Exception as e:
+        logger.warning("verify_by_id failed: %s", e)
+        return VerificationResult(
+            valid=False,
+            errors=[str(e)],
+        )
+
+
+def reencrypt_key(old_password: str, new_password: str) -> None:
+    """Re-encrypt the agent's private key with a new password.
+
+    This decrypts the private key with the old password, validates the new
+    password meets requirements, and re-encrypts with the new password.
+
+    Args:
+        old_password: The current password protecting the private key
+        new_password: The new password (must meet password requirements)
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded
+        JacsError: If re-encryption fails (wrong old password, weak new password, etc.)
+
+    Example:
+        jacs.load("./jacs.config.json")
+        jacs.reencrypt_key("OldP@ss123!", "NewStr0ng!Pass#2025")
+        print("Key re-encrypted successfully")
+    """
+    logger.debug("reencrypt_key() called")
+
+    try:
+        agent = _get_agent()
+        agent.reencrypt_key(old_password, new_password)
+        logger.info("Private key re-encrypted successfully")
+    except Exception as e:
+        raise JacsError(f"Failed to re-encrypt key: {e}")
 
 
 def get_public_key() -> str:
@@ -833,35 +1082,57 @@ def export_agent() -> str:
         agent_json = jacs.export_agent()
         # Send to another party for them to call trust_agent()
     """
-    global _agent_info
-
-    if _agent_info is None or _global_agent is None:
-        raise AgentNotLoadedError("No agent loaded")
+    agent = _get_agent()
 
     try:
-        # Read the agent file
-        config_paths = [
-            "./jacs.config.json",
-            os.path.expanduser("~/.jacs/config.json"),
-        ]
-
-        for config_path in config_paths:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-
-                data_dir = config.get("jacs_data_directory", "./jacs_data")
-                agent_id = config.get("jacs_agent_id_and_version", "")
-
-                agent_path = os.path.join(data_dir, "agent", f"{agent_id}.json")
-                if os.path.exists(agent_path):
-                    with open(agent_path, 'r') as f:
-                        return f.read()
-
-        raise JacsError("Could not find agent file")
-
+        return agent.get_agent_json()
     except Exception as e:
         raise JacsError(f"Failed to export agent: {e}")
+
+
+def get_dns_record(domain: str, ttl: int = 3600) -> str:
+    """Return the DNS TXT record line for the loaded agent (for DNS-based discovery).
+
+    Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; ..."
+
+    Args:
+        domain: The domain (e.g. "example.com")
+        ttl: TTL in seconds (default 3600)
+
+    Returns:
+        The full DNS record line
+    """
+    agent = _get_agent()
+    agent_doc = json.loads(agent.get_agent_json())
+    jacs_id = agent_doc.get("jacsId") or agent_doc.get("agentId") or ""
+    sig = agent_doc.get("jacsSignature") or {}
+    public_key_hash = sig.get("publicKeyHash") or ""
+    d = domain.rstrip(".")
+    owner = f"_v1.agent.jacs.{d}."
+    txt = f"v=hai.ai; jacs_agent_id={jacs_id}; alg=SHA-256; enc=base64; jac_public_key_hash={public_key_hash}"
+    return f'{owner} {ttl} IN TXT "{txt}"'
+
+
+def get_well_known_json() -> dict:
+    """Return the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+
+    Keys: publicKey, publicKeyHash, algorithm, agentId.
+    """
+    agent = _get_agent()
+    agent_doc = json.loads(agent.get_agent_json())
+    jacs_id = agent_doc.get("jacsId") or agent_doc.get("agentId") or ""
+    sig = agent_doc.get("jacsSignature") or {}
+    public_key_hash = sig.get("publicKeyHash") or ""
+    try:
+        public_key = get_public_key()
+    except Exception:
+        public_key = ""
+    return {
+        "publicKey": public_key,
+        "publicKeyHash": public_key_hash,
+        "algorithm": "SHA-256",
+        "agentId": jacs_id,
+    }
 
 
 def get_agent_info() -> Optional[AgentInfo]:
@@ -880,6 +1151,128 @@ def is_loaded() -> bool:
         True if an agent is loaded, False otherwise
     """
     return _global_agent is not None
+
+
+def trust_agent(agent_json: str) -> str:
+    """Add an agent to the local trust store.
+
+    Args:
+        agent_json: The full agent JSON document string
+
+    Returns:
+        The trusted agent's ID
+
+    Raises:
+        TrustError: If the agent document is invalid
+
+    Example:
+        agent_id = jacs.trust_agent(remote_agent_json)
+        print(f"Trusted: {agent_id}")
+    """
+    try:
+        return _trust_agent(agent_json)
+    except Exception as e:
+        raise TrustError(f"Failed to trust agent: {e}")
+
+
+def list_trusted_agents() -> List[str]:
+    """List all trusted agent IDs in the local trust store.
+
+    Returns:
+        List of agent UUID strings
+
+    Example:
+        for agent_id in jacs.list_trusted_agents():
+            print(agent_id)
+    """
+    try:
+        return _list_trusted_agents()
+    except Exception as e:
+        raise TrustError(f"Failed to list trusted agents: {e}")
+
+
+def untrust_agent(agent_id: str) -> None:
+    """Remove an agent from the local trust store.
+
+    Args:
+        agent_id: The UUID of the agent to remove
+
+    Raises:
+        TrustError: If the agent is not in the trust store
+
+    Example:
+        jacs.untrust_agent("550e8400-e29b-41d4-a716-446655440000")
+    """
+    try:
+        _untrust_agent(agent_id)
+    except Exception as e:
+        raise TrustError(f"Failed to untrust agent: {e}")
+
+
+def is_trusted(agent_id: str) -> bool:
+    """Check if an agent is in the local trust store.
+
+    Args:
+        agent_id: The UUID of the agent to check
+
+    Returns:
+        True if the agent is trusted
+
+    Example:
+        if jacs.is_trusted(sender_id):
+            print("Agent is trusted")
+    """
+    return _is_trusted(agent_id)
+
+
+def get_trusted_agent(agent_id: str) -> str:
+    """Get a trusted agent's full JSON document from the trust store.
+
+    Args:
+        agent_id: The UUID of the agent to retrieve
+
+    Returns:
+        The agent's JSON document as a string
+
+    Raises:
+        TrustError: If the agent is not in the trust store
+
+    Example:
+        agent_json = jacs.get_trusted_agent(agent_id)
+        agent_data = json.loads(agent_json)
+    """
+    try:
+        return _get_trusted_agent(agent_id)
+    except Exception as e:
+        raise TrustError(f"Failed to get trusted agent: {e}")
+
+
+def audit(
+    config_path: Optional[str] = None,
+    recent_n: Optional[int] = None,
+) -> dict:
+    """Run a read-only security audit and health checks.
+
+    Returns a dict with risks, health_checks, summary, and related fields.
+    Does not modify state. When invoked from CLI, a human-readable report
+    can be printed; use this function to get the structured result.
+
+    Args:
+        config_path: Optional path to jacs config file.
+        recent_n: Optional number of recent documents to re-verify.
+
+    Returns:
+        Dict with keys including "risks", "health_checks", "summary", "overall_status".
+
+    Example:
+        result = jacs.audit()
+        print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+    """
+    try:
+        json_str = _audit(config_path=config_path, recent_n=recent_n)
+        return json.loads(json_str)
+    except Exception as e:
+        raise JacsError(f"Audit failed: {e}") from e
 
 
 def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
@@ -912,10 +1305,10 @@ def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
     Environment Variables:
         HAI_KEYS_BASE_URL: Base URL for the key service.
                           Defaults to "https://keys.hai.ai".
-        JACS_KEY_RESOLUTION: Controls key resolution order:
-            - "hai-only": Only use HAI key service (default)
-            - "local-first": Try local trust store, fall back to HAI
-            - "hai-first": Try HAI first, fall back to local trust store
+        JACS_KEY_RESOLUTION: Comma-separated order of key resolution when
+                             verifying signatures (e.g. "local,hai" or "local,dns,hai").
+                             Sources: local (trust store), dns (DNS TXT), hai (HAI key service).
+                             Default is "local,hai".
 
     Example:
         # Fetch the latest key for an agent
@@ -967,6 +1360,16 @@ def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
             ) from e
         else:
             raise JacsError(f"Failed to fetch remote key: {error_str}") from e
+    except BaseException as e:
+        # PyO3 panic exceptions are not RuntimeError subclasses. Treat fetch panics
+        # as network failures for callers to preserve a consistent SDK contract.
+        if e.__class__.__name__ == "PanicException":
+            error_str = str(e)
+            logger.error("Panic while fetching remote key: %s", error_str)
+            raise NetworkError(
+                f"Network error fetching key for agent '{agent_id}': {error_str}"
+            ) from e
+        raise
 
 
 __all__ = [
@@ -979,15 +1382,28 @@ __all__ = [
     "sign_message",
     "sign_file",
     "verify",
+    "verify_by_id",
+    "reencrypt_key",
     # Agreement functions
     "create_agreement",
     "sign_agreement",
     "check_agreement",
     # Utility functions
+    "generate_verify_link",
+    "MAX_VERIFY_URL_LEN",
+    "MAX_VERIFY_DOCUMENT_BYTES",
     "get_public_key",
     "export_agent",
+    "get_dns_record",
+    "get_well_known_json",
     "get_agent_info",
     "is_loaded",
+    # Trust store
+    "trust_agent",
+    "list_trusted_agents",
+    "untrust_agent",
+    "is_trusted",
+    "get_trusted_agent",
     # Remote key fetch
     "fetch_remote_key",
     # Types (re-exported for convenience)

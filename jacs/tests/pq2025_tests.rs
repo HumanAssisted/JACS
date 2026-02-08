@@ -3,7 +3,7 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use std::env;
 mod utils;
-use utils::{create_agent_v1, create_pq2025_test_agent, PASSWORD_ENV_VAR, TEST_PASSWORD_ALT};
+use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD_ALT, create_agent_v1, create_pq2025_test_agent};
 
 #[test]
 fn test_pq2025_keygen() {

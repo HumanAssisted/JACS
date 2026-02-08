@@ -1,3 +1,70 @@
+## 0.6.0
+
+### Security audit (MVP)
+
+- **`audit()`**: New read-only security audit and health checks. Returns structured report (risks, health_checks, summary); checks config/directories, secrets/keys, trust store, storage paths, quarantine/failed files, and optionally re-verifies N recent documents. Exposed in Rust (`jacs::audit`), binding-core, jacspy (`jacs.audit()`), jacsnpm (`jacs.audit(options?)`), and MCP tool `jacs_audit`. Documented in jacsbook (Security Model) and READMEs.
+
+### DX Improvements
+
+- **Programmatic `create()` API**: New `CreateAgentParams` struct and `create_with_params()` method for non-interactive agent creation across all bindings (Rust, Python, Node.js, Go)
+- **Programmatic create hardening**: `create_with_params()` now generates schema-valid agent payloads (including required service metadata), writes complete config key filename fields, and restores caller environment overrides after creation instead of mutating process env state.
+- **Python create() password UX**: `jacspy.simple.create()` now guarantees immediate post-create load using the provided password even when `JACS_PRIVATE_KEY_PASSWORD` was initially unset.
+- **`verify_by_id()` method**: Load and verify documents by ID from storage, with helpful error when `verify()` is called with non-JSON input
+- **Key re-encryption**: New `reencrypt_key(old_password, new_password)` API and `jacs key reencrypt` CLI command
+- **Password requirements documentation**: `password_requirements()` function, requirements shown before password prompts, clearer error messages
+- **`pq-dilithium` deprecated**: Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings
+- **Go default algorithm fix**: Changed default from `ed25519` to `pq2025`
+- **Improved error messages**: `user_message()` method on errors, categorized `From<Box<dyn Error>>` conversion
+- **Version alignment**: All packages (jacs-mcp, binding-core, jacspy, jacsnpm) aligned to 0.6.0
+
+### Packaging and Release Hardening
+
+- **jacsnpm install behavior**: Removed install-time native build (`npm install` no longer runs `napi build`), so consumers do not need a Rust toolchain at install time.
+- **jacsnpm publish contents**: Added `mcp.d.ts` to published package files so `@hai-ai/jacs/mcp` TypeScript types resolve correctly from npm tarballs.
+- **npm release checks**: Added release-time validation that required `.node` binaries exist and `npm pack --dry-run` contains all exported API files before `npm publish`.
+- **Expanded npm binary coverage**: npm release workflow builds and validates hosted Linux/macOS targets (including Linux `arm64` musl) with best-effort builds for additional Linux/FreeBSD architectures; Windows artifacts are currently optional while checkout path compatibility is being remediated.
+- **jacspy sdist portability**: Excluded `jacspy/examples/**` from crate packaging so `maturin sdist` no longer fails on colon-containing fixture filenames.
+- **jacspy packaging source of truth**: Removed stale `jacspy/setup.py`; `pyproject.toml` + `maturin` now define Python package metadata and build behavior.
+- **jacspy PyO3 compatibility fix**: Replaced deprecated PyO3 conversion APIs (`*_bound`, `into_py`) with current APIs in Rust bindings so `uv run maturin build --release` succeeds under strict warning-as-error CI settings.
+- **CI early failure checks**: Added PR/push-time sdist build verification in Python CI, plus a uv-based wheel smoke test and npm tarball smoke install/import test.
+- **Expanded wheel coverage**: PyPI release and CI wheel workflows now cover additional hosted targets (including Linux musl variants) with platform-specific build paths.
+- **Python test correctness**: Updated unreachable-key-service test to use a valid UUID so it exercises the intended network error path.
+- **Rust toolchain pinning for Python builds**: Python wheel CI and PyPI wheel release jobs now pin Rust `1.93` (matching workspace `rust-version`) to reduce toolchain drift.
+- **Python CI trigger reliability**: Removed path filters from `Python (jacs)` workflow so Python tests always run on `push`/`pull_request` to `main` and are not silently skipped by unrelated file changes.
+- **Python wheel CI on PRs**: `build-jacs-wheels` now runs for pull requests as well as pushes, so wheel build coverage is no longer shown as a skipped job in PR checks.
+- **Temporary Windows CI bypass**: Windows runner jobs were removed from active CI/release matrices because GitHub Windows checkout cannot handle existing colon-named tracked fixtures. Linux/macOS coverage remains fully enabled to unblock releases; Windows automation will return after fixture/path normalization.
+
+### A2A Interoperability Hardening
+
+- **Foreign A2A signature verification (Rust core)**: `verify_wrapped_artifact()` now resolves signer keys using configured key resolution order (`local`, `dns`, `hai`) and performs cryptographic verification when key material is available. Unresolvable keys now return explicit `Unverified` status instead of optimistic success.
+- **Parent signature verification depth (Node.js/Python)**: A2A wrappers now recursively verify `jacsParentSignatures` and report `parent_signatures_valid` based on actual verification outcomes.
+- **Well-known document parity**: Node.js and Python A2A helpers now include `/.well-known/jwks.json` in generated well-known document sets, matching Rust integration expectations.
+- **JWKS correctness improvements**: Removed placeholder EC JWK data in core A2A key helpers and added explicit Ed25519 JWK/JWS support (`EdDSA`) for truthful key metadata.
+- **Node.js create() 12-factor UX**: `@hai-ai/jacs/simple.create()` now accepts password from `JACS_PRIVATE_KEY_PASSWORD` when `options.password` is omitted, with explicit error if neither is provided.
+
+### Security
+
+- **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).
+- **Schema directory boundary hardening**: Filesystem schema loading now validates normalized/canonical path containment instead of string-prefix checks, preventing directory-prefix overlap bypasses (e.g. `allowed_evil` no longer matches `allowed`).
+- **Cross-platform path hardening**: `require_relative_path_safe()` now also rejects Windows drive-prefixed paths (e.g. `C:\...`, `D:/...`, `E:`) while still allowing UUID:UUID filenames used by JACS.
+- **HAI verification transport hardening**: `verify_hai_registration_sync()` now enforces HTTPS for `HAI_API_URL` (with `http://localhost` and `http://127.0.0.1` allowed for local testing), preventing insecure remote transport configuration.
+- **Trust-store canonical ID handling**: `trust_agent()` now accepts canonical agent documents that provide `jacsId` and `jacsVersion` as separate fields, canonicalizes to `UUID:VERSION_UUID`, and keeps strict path-safe validation.
+- **Config and keystore logging**: Removed config debug log in loaders; keystore key generation no longer prints to stderr by default (uses `tracing::debug`).
+- **Example config**: `jacs.config.example.json` no longer contains `jacs_private_key_password`; use `JACS_PRIVATE_KEY_PASSWORD` environment variable only.
+- **Password redaction in diagnostics**: `check_env_vars()` now prints `REDACTED` instead of the actual `JACS_PRIVATE_KEY_PASSWORD` value, consistent with `Config::Display`.
+
+### Documentation
+
+- **SECURITY.md**: Added short "Security model" subsection (password via env only, keys encrypted at rest, path validation, no secrets in config).
+- **README**: First-run minimal setup, verification and key resolution (`JACS_KEY_RESOLUTION`), supported algorithms, troubleshooting, dependency audit instructions, runtime password note.
+- **jacsnpm**: Documented that `overrides` for `body-parser` and `qs` are for security (CVE-2024-45590). Added `npm audit` step in CI.
+- **jacspy**: Aligned key resolution docstring with Rust (comma-separated `local,dns,hai`); added note to run `pip audit` when using optional deps.
+- **A2A documentation refresh**: Added detailed jacsbook guide at `integrations/a2a.md`, corrected stale A2A quickstart endpoints/imports (`agent-card.json`, `jwks.json`, `@hai-ai/jacs/a2a`), and aligned Node.js package references to `@hai-ai/jacs` across docs.
+- **Agreement testing guidance**: Expanded jacsbook advanced testing docs with strict agreement-completion semantics and two-agent harness patterns for Python and Node.js.
+- **README clarity**: Added explicit note that `check_agreement` is strict and fails until all required signers have signed.
+- **Rust agreement test strictness**: Core `agreement_test` now explicitly asserts that `check_agreement` fails after the first signature and only succeeds after both required agents sign.
+
+
 ## 0.5.2
 
 ### Security

@@ -4,7 +4,7 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::loaders::{fetch_public_key_from_hai, FileLoader};
+use crate::agent::loaders::{FileLoader, fetch_public_key_from_hai};
 use crate::agent::security::SecurityTraits;
 use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::error::JacsError;
@@ -303,11 +303,16 @@ impl DocumentTraits for Agent {
         schema_path: &str,
         json: &Value,
     ) -> Result<(), String> {
-        let schemas = self.document_schemas.lock()
+        let schemas = self
+            .document_schemas
+            .lock()
             .map_err(|e| format!("Failed to acquire schema lock: {}", e))?;
-        let validator = schemas
-            .get(schema_path)
-            .ok_or_else(|| format!("Validator not found for schema path: '{}'. Ensure the schema is registered.", schema_path))?;
+        let validator = schemas.get(schema_path).ok_or_else(|| {
+            format!(
+                "Validator not found for schema path: '{}'. Ensure the schema is registered.",
+                schema_path
+            )
+        })?;
 
         let validation_result = validator.validate(json);
         validation_result.map_err(|error| {
@@ -389,7 +394,8 @@ impl DocumentTraits for Agent {
                     return Err(JacsError::HashMismatch {
                         expected: expected_hash.to_string(),
                         got: actual_hash,
-                    }.into());
+                    }
+                    .into());
                 }
             }
         }
@@ -606,7 +612,11 @@ impl DocumentTraits for Agent {
             .get_str("jacsLevel")
             .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());
         if !EDITABLE_JACS_DOCS.contains(&jacs_level.as_str()) {
-            return Err(JacsError::DocumentError(format!("JACS docs of type {} are not editable", jacs_level)).into());
+            return Err(JacsError::DocumentError(format!(
+                "JACS docs of type {} are not editable",
+                jacs_level
+            ))
+            .into());
         };
 
         let mut files_array: Vec<Value> = new_document
@@ -617,8 +627,7 @@ impl DocumentTraits for Agent {
 
         // now re-verify these files
 
-        self.verify_document_files(&new_document)
-            ?;
+        self.verify_document_files(&new_document)?;
         if let Some(attachment_list) = attachments {
             // Iterate over each attachment
             for attachment_path in attachment_list {
@@ -810,31 +819,27 @@ impl DocumentTraits for Agent {
             debug!("Trying key resolution source: {:?}", source);
 
             match source {
-                KeyResolutionSource::Local => {
-                    match self.fs_load_public_key(&public_key_hash) {
-                        Ok(key) => {
-                            match self.fs_load_public_key_type(&public_key_hash) {
-                                Ok(enc_type) => {
-                                    info!(
-                                        "Found public key locally for hash: {}...",
-                                        &public_key_hash[..public_key_hash.len().min(16)]
-                                    );
-                                    public_key = Some(key);
-                                    public_key_enc_type = Some(enc_type);
-                                    break;
-                                }
-                                Err(e) => {
-                                    debug!("Local key found but enc_type missing: {}", e);
-                                    last_error = Some(e);
-                                }
-                            }
+                KeyResolutionSource::Local => match self.fs_load_public_key(&public_key_hash) {
+                    Ok(key) => match self.fs_load_public_key_type(&public_key_hash) {
+                        Ok(enc_type) => {
+                            info!(
+                                "Found public key locally for hash: {}...",
+                                &public_key_hash[..public_key_hash.len().min(16)]
+                            );
+                            public_key = Some(key);
+                            public_key_enc_type = Some(enc_type);
+                            break;
                         }
                         Err(e) => {
-                            debug!("Local key not found: {}", e);
+                            debug!("Local key found but enc_type missing: {}", e);
                             last_error = Some(e);
                         }
+                    },
+                    Err(e) => {
+                        debug!("Local key not found: {}", e);
+                        last_error = Some(e);
                     }
-                }
+                },
 
                 KeyResolutionSource::Dns => {
                     // DNS verification requires the agent domain from config
@@ -914,7 +919,9 @@ impl DocumentTraits for Agent {
                     "Could not resolve public key for hash '{}...' from any configured source ({:?}). Last error: {}",
                     &public_key_hash[..public_key_hash.len().min(16)],
                     resolution_order,
-                    last_error.map(|e| e.to_string()).unwrap_or_else(|| "unknown".to_string())
+                    last_error
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
                 );
                 error!("{}", err_msg);
                 return Err(err_msg.into());
@@ -979,8 +986,7 @@ impl DocumentTraits for Agent {
         // check that public key exists
         let document = self.get_document(document_key)?;
         let document_value = document.getvalue();
-        self.verify_document_files(document_value)
-            ?;
+        self.verify_document_files(document_value)?;
         // this is innefficient since I generate a whole document
         let used_public_key = match public_key {
             Some(public_key) => public_key,
@@ -1097,10 +1103,7 @@ impl DocumentTraits for Agent {
             return Ok(Vec::new());
         }
 
-        info!(
-            batch_size = documents.len(),
-            "Creating batch of documents"
-        );
+        info!(batch_size = documents.len(), "Creating batch of documents");
 
         let mut results = Vec::with_capacity(documents.len());
 
@@ -1120,10 +1123,7 @@ impl DocumentTraits for Agent {
             let doc = self.store_jacs_document(&instance)?;
             results.push(doc);
 
-            tracing::trace!(
-                batch_index = index,
-                "Batch document created"
-            );
+            tracing::trace!(batch_index = index, "Batch document created");
         }
 
         info!(

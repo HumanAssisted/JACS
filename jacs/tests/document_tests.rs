@@ -209,7 +209,9 @@ fn test_load_custom_schema_and_new_custom_document() {
     };
 
     let document_string = match load_local_document(
-        &raw_fixture("favorite-fruit.json").to_string_lossy().to_string(),
+        &raw_fixture("favorite-fruit.json")
+            .to_string_lossy()
+            .to_string(),
     ) {
         Ok(content) => content,
         Err(e) => panic!(
@@ -276,7 +278,9 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
         "test_load_custom_schema_and_new_custom_document_agent_two: Attempting to load local document"
     );
     let document_string = match load_local_document(
-        &raw_fixture("favorite-fruit.json").to_string_lossy().to_string(),
+        &raw_fixture("favorite-fruit.json")
+            .to_string_lossy()
+            .to_string(),
     ) {
         Ok(content) => {
             info!(

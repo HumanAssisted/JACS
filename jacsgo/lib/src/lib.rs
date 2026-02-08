@@ -53,7 +53,10 @@ pub extern "C" fn jacs_agent_free(handle: *mut JacsAgentHandle) {
 
 /// Load JACS configuration into an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_load(handle: *mut JacsAgentHandle, config_path: *const c_char) -> c_int {
+pub extern "C" fn jacs_agent_load(
+    handle: *mut JacsAgentHandle,
+    config_path: *const c_char,
+) -> c_int {
     if handle.is_null() || config_path.is_null() {
         return -1;
     }
@@ -77,7 +80,10 @@ pub extern "C" fn jacs_agent_load(handle: *mut JacsAgentHandle, config_path: *co
 
 /// Sign a string using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_sign_string(handle: *mut JacsAgentHandle, data: *const c_char) -> *mut c_char {
+pub extern "C" fn jacs_agent_sign_string(
+    handle: *mut JacsAgentHandle,
+    data: *const c_char,
+) -> *mut c_char {
     if handle.is_null() || data.is_null() {
         return ptr::null_mut();
     }
@@ -157,7 +163,10 @@ pub extern "C" fn jacs_agent_verify_string(
 
 /// Sign a request payload using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_sign_request(handle: *mut JacsAgentHandle, payload_json: *const c_char) -> *mut c_char {
+pub extern "C" fn jacs_agent_sign_request(
+    handle: *mut JacsAgentHandle,
+    payload_json: *const c_char,
+) -> *mut c_char {
     if handle.is_null() || payload_json.is_null() {
         return ptr::null_mut();
     }
@@ -189,7 +198,10 @@ pub extern "C" fn jacs_agent_sign_request(handle: *mut JacsAgentHandle, payload_
 
 /// Verify a response payload using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_verify_response(handle: *mut JacsAgentHandle, document_string: *const c_char) -> *mut c_char {
+pub extern "C" fn jacs_agent_verify_response(
+    handle: *mut JacsAgentHandle,
+    document_string: *const c_char,
+) -> *mut c_char {
     if handle.is_null() || document_string.is_null() {
         return ptr::null_mut();
     }
@@ -345,7 +357,10 @@ pub extern "C" fn jacs_agent_check_agreement(
 
 /// Verify an agent using a handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_verify_agent(handle: *mut JacsAgentHandle, agentfile: *const c_char) -> c_int {
+pub extern "C" fn jacs_agent_verify_agent(
+    handle: *mut JacsAgentHandle,
+    agentfile: *const c_char,
+) -> c_int {
     if handle.is_null() {
         return -1;
     }
@@ -434,7 +449,10 @@ pub extern "C" fn jacs_agent_create_document(
 
 /// Verify a document using an agent handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_verify_document(handle: *mut JacsAgentHandle, document_string: *const c_char) -> c_int {
+pub extern "C" fn jacs_agent_verify_document(
+    handle: *mut JacsAgentHandle,
+    document_string: *const c_char,
+) -> c_int {
     if handle.is_null() || document_string.is_null() {
         return -1;
     }
@@ -465,6 +483,153 @@ pub extern "C" fn jacs_agent_verify_document(handle: *mut JacsAgentHandle, docum
     match agent.verify_external_document_signature(&document_key) {
         Ok(_) => 0,
         Err(_) => -6,
+    }
+}
+
+/// Verify a document by its ID from storage using an agent handle.
+/// The document_id should be in "uuid:version" format.
+/// Returns 0 on success (valid), -1 to -6 for various errors.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_document_by_id(
+    handle: *mut JacsAgentHandle,
+    document_id: *const c_char,
+) -> c_int {
+    if handle.is_null() || document_id.is_null() {
+        return -1;
+    }
+
+    let doc_id_str = match unsafe { CStr::from_ptr(document_id) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+
+    // Validate format
+    if !doc_id_str.contains(':') {
+        return -3;
+    }
+
+    use jacs_core::storage::StorageDocumentTraits;
+
+    let storage = match jacs_core::storage::MultiStorage::default_new() {
+        Ok(s) => s,
+        Err(_) => return -4,
+    };
+
+    let doc = match storage.get_document(doc_id_str) {
+        Ok(d) => d,
+        Err(_) => return -5,
+    };
+
+    let doc_str = match serde_json::to_string(&doc.value) {
+        Ok(s) => s,
+        Err(_) => return -6,
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let mut agent = match handle_ref.agent.lock() {
+        Ok(agent) => agent,
+        Err(_) => return -7,
+    };
+
+    let loaded_doc = match agent.load_document(&doc_str) {
+        Ok(d) => d,
+        Err(_) => return -8,
+    };
+
+    let document_key = loaded_doc.getkey();
+    let value = loaded_doc.getvalue();
+
+    if let Err(_) = agent.verify_hash(value) {
+        return -9;
+    }
+
+    match agent.verify_external_document_signature(&document_key) {
+        Ok(_) => 0,
+        Err(_) => -10,
+    }
+}
+
+/// Re-encrypt the agent's private key with a new password.
+/// Returns 0 on success, negative values on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_reencrypt_key(
+    handle: *mut JacsAgentHandle,
+    old_password: *const c_char,
+    new_password: *const c_char,
+) -> c_int {
+    if handle.is_null() || old_password.is_null() || new_password.is_null() {
+        return -1;
+    }
+
+    let old_pw = match unsafe { CStr::from_ptr(old_password) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+
+    let new_pw = match unsafe { CStr::from_ptr(new_password) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return -3,
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let agent = match handle_ref.agent.lock() {
+        Ok(agent) => agent,
+        Err(_) => return -4,
+    };
+
+    // Get key path from agent config
+    let key_path = if let Some(config) = &agent.config {
+        let key_dir = config
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys");
+        let key_file = config
+            .jacs_agent_private_key_filename()
+            .as_deref()
+            .unwrap_or("jacs.private.pem.enc");
+        format!("{}/{}", key_dir, key_file)
+    } else {
+        "./jacs_keys/jacs.private.pem.enc".to_string()
+    };
+    drop(agent);
+
+    let encrypted_data = match std::fs::read(&key_path) {
+        Ok(d) => d,
+        Err(_) => return -5,
+    };
+
+    use jacs_core::crypt::aes_encrypt::reencrypt_private_key;
+    let re_encrypted = match reencrypt_private_key(&encrypted_data, old_pw, new_pw) {
+        Ok(d) => d,
+        Err(_) => return -6,
+    };
+
+    match std::fs::write(&key_path, &re_encrypted) {
+        Ok(_) => 0,
+        Err(_) => -7,
+    }
+}
+
+/// Get the agent's JSON representation as a string.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_get_json(handle: *mut JacsAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+
+    let handle_ref = unsafe { &*handle };
+    let agent = match handle_ref.agent.lock() {
+        Ok(agent) => agent,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match agent.get_value() {
+        Some(value) => match CString::new(value.to_string()) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        None => ptr::null_mut(),
     }
 }
 
@@ -804,6 +969,49 @@ pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int 
     match agent.verify_external_document_signature(&document_key) {
         Ok(_) => 0,
         Err(_) => -6,
+    }
+}
+
+/// Verify a signed document without loading an agent (standalone).
+/// Returns a JSON string `{"valid":bool,"signer_id":"..."}` that must be freed with jacs_free_string, or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_verify_document_standalone(
+    signed_document: *const c_char,
+    key_resolution: *const c_char,
+    data_directory: *const c_char,
+    key_directory: *const c_char,
+) -> *mut c_char {
+    if signed_document.is_null() {
+        return ptr::null_mut();
+    }
+    let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let kr = if key_resolution.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(key_resolution) }.to_str().ok()
+    };
+    let dd = if data_directory.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(data_directory) }.to_str().ok()
+    };
+    let kd = if key_directory.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(key_directory) }.to_str().ok()
+    };
+    match jacs_binding_core::verify_document_standalone(doc_str, kr, dd, kd) {
+        Ok(r) => {
+            let json = serde_json::json!({ "valid": r.valid, "signer_id": r.signer_id });
+            match CString::new(json.to_string()) {
+                Ok(cs) => cs.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        Err(_) => ptr::null_mut(),
     }
 }
 
@@ -1161,6 +1369,68 @@ pub extern "C" fn jacs_verify_signature(
     {
         Ok(_) => 0,
         Err(_) => -5,
+    }
+}
+
+/// Run a read-only security audit and health checks.
+/// config_path and recent_n may be null for defaults.
+/// Returns a JSON string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_audit(
+    config_path: *const c_char,
+    recent_n: c_int,
+) -> *mut c_char {
+    let config = if config_path.is_null() {
+        None
+    } else {
+        match unsafe { CStr::from_ptr(config_path) }.to_str() {
+            Ok(s) => Some(s),
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+
+    let recent = if recent_n > 0 {
+        Some(recent_n as u32)
+    } else {
+        None
+    };
+
+    match jacs_binding_core::audit(config, recent) {
+        Ok(json_string) => match CString::new(json_string) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Generate a verification URL for a signed JACS document.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_generate_verify_link(
+    document: *const c_char,
+    base_url: *const c_char,
+) -> *mut c_char {
+    if document.is_null() || base_url.is_null() {
+        return ptr::null_mut();
+    }
+
+    let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let base_url_str = match unsafe { CStr::from_ptr(base_url) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match jacs_binding_core::hai::generate_verify_link(doc_str, base_url_str) {
+        Ok(url) => match CString::new(url) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
     }
 }
 

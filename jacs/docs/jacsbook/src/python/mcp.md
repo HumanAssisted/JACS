@@ -392,6 +392,6 @@ These functions are used internally by the MCP integration:
 
 ## Next Steps
 
-- **[FastMCP Integration](fastmcp.md)** - Advanced FastMCP patterns
+- **[FastMCP Integration](mcp.md)** - Advanced FastMCP patterns
 - **[API Reference](api.md)** - Complete API documentation
 - **[Examples](../examples/python.md)** - More complex examples

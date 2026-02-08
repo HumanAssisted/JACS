@@ -2,9 +2,14 @@
 
 use crate::a2a::A2AArtifact;
 // HYGIENE-006: A2AMessage import removed - only used by commented-out wrap_a2a_message_with_provenance
+#[cfg(not(target_arch = "wasm32"))]
+use crate::agent::loaders::fetch_public_key_from_hai;
 use crate::agent::{
-    AGENT_SIGNATURE_FIELDNAME, Agent, boilerplate::BoilerPlate, document::DocumentTraits,
+    AGENT_SIGNATURE_FIELDNAME, Agent, JACS_IGNORE_FIELDS, boilerplate::BoilerPlate,
+    document::DocumentTraits, loaders::FileLoader,
 };
+use crate::config::{KeyResolutionSource, get_key_resolution_order};
+use crate::crypt::{KeyManager, hash::hash_public_key};
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
 use serde::{Deserialize, Serialize};
@@ -45,6 +50,169 @@ impl VerificationStatus {
     pub fn is_invalid(&self) -> bool {
         matches!(self, VerificationStatus::Invalid { .. })
     }
+}
+
+fn signature_fields(wrapped_artifact: &Value, signature_info: &Value) -> Vec<String> {
+    if let Some(fields) = signature_info.get("fields").and_then(|v| v.as_array()) {
+        return fields
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+    }
+
+    wrapped_artifact
+        .as_object()
+        .map(|obj| {
+            obj.keys()
+                .filter(|key| {
+                    *key != AGENT_SIGNATURE_FIELDNAME && !JACS_IGNORE_FIELDS.contains(&key.as_str())
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn build_signable_string(
+    wrapped_artifact: &Value,
+    fields: &[String],
+    signature_key_from: &str,
+) -> Result<String, String> {
+    let mut result = String::new();
+
+    for key in fields {
+        if let Some(value) = wrapped_artifact.get(key)
+            && let Some(str_value) = value.as_str()
+        {
+            if str_value == signature_key_from || JACS_IGNORE_FIELDS.contains(&str_value) {
+                return Err(format!(
+                    "Invalid signature field value '{}': reserved by JACS",
+                    str_value
+                ));
+            }
+            result.push_str(str_value);
+            result.push(' ');
+        }
+    }
+
+    Ok(result.trim().to_string())
+}
+
+fn resolve_foreign_public_key(
+    agent: &Agent,
+    signer_id: &str,
+    signer_version: &str,
+    public_key_hash: &str,
+) -> Result<(Vec<u8>, String), String> {
+    if public_key_hash.is_empty() {
+        return Err("Missing publicKeyHash in signature".to_string());
+    }
+
+    let resolution_order = get_key_resolution_order();
+    let mut last_error = "No key source attempted".to_string();
+
+    for source in &resolution_order {
+        match source {
+            KeyResolutionSource::Local => match agent.fs_load_public_key(public_key_hash) {
+                Ok(public_key) => match agent.fs_load_public_key_type(public_key_hash) {
+                    Ok(enc_type) => {
+                        return Ok((public_key, enc_type.trim().to_string()));
+                    }
+                    Err(e) => {
+                        last_error = format!("Local key type lookup failed: {}", e);
+                    }
+                },
+                Err(e) => {
+                    last_error = format!("Local key lookup failed: {}", e);
+                }
+            },
+            KeyResolutionSource::Dns => {
+                // DNS can validate identity but does not return key material.
+                last_error = "DNS source does not provide public key bytes".to_string();
+            }
+            KeyResolutionSource::Hai => {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if signer_id.is_empty() || signer_version.is_empty() {
+                        last_error =
+                            "HAI lookup requires signer agent ID and version UUID".to_string();
+                        continue;
+                    }
+
+                    match fetch_public_key_from_hai(signer_id, signer_version) {
+                        Ok(key_info) => {
+                            if !key_info.hash.is_empty() && key_info.hash != public_key_hash {
+                                last_error = format!(
+                                    "HAI key hash mismatch: expected {}..., got {}...",
+                                    &public_key_hash[..public_key_hash.len().min(16)],
+                                    &key_info.hash[..key_info.hash.len().min(16)]
+                                );
+                                continue;
+                            }
+                            return Ok((key_info.public_key, key_info.algorithm));
+                        }
+                        Err(e) => {
+                            last_error = format!("HAI key lookup failed: {}", e);
+                        }
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let _ = signer_id;
+                    let _ = signer_version;
+                    last_error =
+                        "HAI lookup is not available on wasm32 targets in this build".to_string();
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "Could not resolve signer key {}... using sources {:?}. Last error: {}",
+        &public_key_hash[..public_key_hash.len().min(16)],
+        resolution_order,
+        last_error
+    ))
+}
+
+fn verify_with_resolved_key(
+    agent: &Agent,
+    wrapped_artifact: &Value,
+    signature_info: &Value,
+    public_key: Vec<u8>,
+    public_key_enc_type: String,
+) -> Result<(), String> {
+    let signature = signature_info
+        .get_str("signature")
+        .ok_or_else(|| "No signature found in jacsSignature".to_string())?;
+    let signature_hash = signature_info
+        .get_str("publicKeyHash")
+        .ok_or_else(|| "No publicKeyHash found in jacsSignature".to_string())?;
+
+    let computed_hash = hash_public_key(public_key.clone());
+    if computed_hash != signature_hash {
+        return Err(format!(
+            "Resolved public key hash mismatch: expected {}..., got {}...",
+            &signature_hash[..signature_hash.len().min(16)],
+            &computed_hash[..computed_hash.len().min(16)]
+        ));
+    }
+
+    let fields = signature_fields(wrapped_artifact, signature_info);
+    let signable_data = build_signable_string(wrapped_artifact, &fields, AGENT_SIGNATURE_FIELDNAME)
+        .map_err(|e| format!("Could not build signable payload: {}", e))?;
+
+    let explicit_alg = if public_key_enc_type.is_empty() {
+        signature_info
+            .get_str("signingAlgorithm")
+            .map(|s| s.to_string())
+    } else {
+        Some(public_key_enc_type)
+    };
+
+    agent
+        .verify_string(&signable_data, &signature, public_key, explicit_alg)
+        .map_err(|e| format!("Signature verification failed: {}", e))
 }
 
 /// Wrap an A2A artifact with JACS provenance signature
@@ -123,9 +291,9 @@ pub fn wrap_a2a_message_with_provenance(
 /// - `Invalid`: The signature was checked and found to be invalid
 ///
 /// For foreign agents (agents other than the current agent), the public key
-/// must be fetched from an agent registry or provided through another mechanism.
-/// Currently, only self-signed verification is supported. Foreign signatures
-/// will return `Unverified` status.
+/// is resolved via configured key resolution order (`local`, `dns`, `hai`).
+/// DNS can validate identity but does not provide key bytes; practical signature
+/// verification requires local key material or HAI key retrieval.
 pub fn verify_wrapped_artifact(
     agent: &Agent,
     wrapped_artifact: &Value,
@@ -155,8 +323,13 @@ pub fn verify_wrapped_artifact(
         .get(AGENT_SIGNATURE_FIELDNAME)
         .ok_or("No JACS signature found")?;
 
-    let agent_id = signature_info.get_str("agentID").ok_or("No agent ID in signature")?;
-    let agent_version = signature_info.get_str("agentVersion").ok_or("No agent version in signature")?;
+    let agent_id = signature_info
+        .get_str("agentID")
+        .ok_or("No agent ID in signature")?;
+    let agent_version = signature_info
+        .get_str("agentVersion")
+        .ok_or("No agent version in signature")?;
+    let public_key_hash = signature_info.get_str_or("publicKeyHash", "");
 
     // Check if this is a self-signed document
     let current_agent_id = agent.get_id().ok();
@@ -187,25 +360,30 @@ pub fn verify_wrapped_artifact(
             ),
         }
     } else {
-        // Foreign signature: we cannot verify without the signer's public key
-        // In a production system, this would look up the public key from:
-        // 1. A local cache of known agent public keys
-        // 2. The hai.ai agent registry
-        // 3. DNS-based discovery (/.well-known/jacs-pubkey.json)
-        warn!(
-            "Cannot verify foreign signature from agent {}: public key not available. \
-             Implement registry lookup or DNS discovery to verify foreign signatures.",
-            agent_id
-        );
-        (
-            VerificationStatus::Unverified {
-                reason: format!(
-                    "Public key for agent {} not available. Cannot verify foreign signature.",
-                    agent_id
+        match resolve_foreign_public_key(agent, &agent_id, &agent_version, &public_key_hash) {
+            Ok((public_key, public_key_enc_type)) => match verify_with_resolved_key(
+                agent,
+                wrapped_artifact,
+                signature_info,
+                public_key,
+                public_key_enc_type,
+            ) {
+                Ok(_) => (VerificationStatus::Verified, true),
+                Err(e) => (
+                    VerificationStatus::Invalid {
+                        reason: format!("Foreign signature verification failed: {}", e),
+                    },
+                    false,
                 ),
             },
-            false, // valid=false because we couldn't actually verify
-        )
+            Err(reason) => {
+                warn!(
+                    "Could not resolve foreign signature key for agent {}: {}",
+                    agent_id, reason
+                );
+                (VerificationStatus::Unverified { reason }, false)
+            }
+        }
     };
 
     // Extract the original A2A artifact
@@ -253,7 +431,8 @@ fn verify_parent_signatures(
 
     for (index, parent) in parents.iter().enumerate() {
         let parent_id = parent.get_str_or("jacsId", "unknown");
-        let parent_signer = parent.get_path_str_or(&[AGENT_SIGNATURE_FIELDNAME, "agentID"], "unknown");
+        let parent_signer =
+            parent.get_path_str_or(&[AGENT_SIGNATURE_FIELDNAME, "agentID"], "unknown");
 
         // Try to verify each parent signature
         // Note: This recursively calls verify_wrapped_artifact

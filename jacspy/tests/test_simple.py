@@ -97,6 +97,68 @@ class TestVerifySelf:
             simple.verify_self()
 
 
+# Test verify_standalone()
+
+
+class TestVerifyStandalone:
+    """verify_standalone() does not require load()."""
+
+    def test_verify_standalone_invalid_json_returns_valid_false(self):
+        """verify_standalone() with invalid JSON should return valid=False."""
+        import importlib
+        importlib.reload(simple)
+        result = simple.verify_standalone("not json", key_resolution="local")
+        assert isinstance(result, VerificationResult)
+        assert result.valid is False
+        assert result.signer_id == ""
+
+    def test_verify_standalone_tampered_returns_valid_false_with_signer_id(self):
+        """verify_standalone() with tampered doc should return valid=False and signer_id from doc."""
+        import importlib
+        importlib.reload(simple)
+        tampered = '{"jacsSignature":{"agentID":"test-agent"},"jacsSha256":"x"}'
+        result = simple.verify_standalone(tampered, key_resolution="local")
+        assert result.valid is False
+        assert result.signer_id == "test-agent"
+
+
+# Test DNS helpers
+
+
+class TestDnsHelpers:
+    def test_get_dns_record_without_load_raises(self):
+        import importlib
+        importlib.reload(simple)
+        with pytest.raises((AgentNotLoadedError, JacsError)):
+            simple.get_dns_record("example.com", 3600)
+
+    def test_get_dns_record_returns_expected_format(self, loaded_agent):
+        record = simple.get_dns_record("example.com", 3600)
+        assert isinstance(record, str)
+        assert "_v1.agent.jacs.example.com." in record
+        assert "3600" in record
+        assert "IN TXT" in record
+        assert "v=hai.ai" in record
+        assert "jacs_agent_id=" in record
+        assert "alg=SHA-256" in record
+        assert "enc=base64" in record
+        assert "jac_public_key_hash=" in record
+
+    def test_get_well_known_json_without_load_raises(self):
+        import importlib
+        importlib.reload(simple)
+        with pytest.raises((AgentNotLoadedError, JacsError)):
+            simple.get_well_known_json()
+
+    def test_get_well_known_json_has_keys(self, loaded_agent):
+        obj = simple.get_well_known_json()
+        assert isinstance(obj, dict)
+        assert "publicKey" in obj
+        assert "publicKeyHash" in obj
+        assert "algorithm" in obj
+        assert "agentId" in obj
+
+
 # Test update_agent()
 
 
@@ -557,10 +619,9 @@ class TestAgreementWorkflow:
         )
         assert agreement.document_id
 
-        # Step 2: Check status (should be pending)
-        status = simple.check_agreement(agreement)
-        assert status.complete is False
-        assert loaded_agent.agent_id in status.pending
+        # Step 2: Check status before signing should fail (strict agreement verification)
+        with pytest.raises(JacsError):
+            simple.check_agreement(agreement)
 
         # Step 3: Sign agreement
         signed = simple.sign_agreement(agreement)
@@ -574,3 +635,82 @@ class TestAgreementWorkflow:
         # Step 5: Verify the signed document is valid
         result = simple.verify(signed.raw_json)
         assert result.valid is True
+
+    def test_two_party_agreement_requires_both_signatures(self, tmp_path):
+        """Two distinct agents should both sign before agreement check succeeds."""
+        password = "TestP@ss123!#"
+
+        shared_data = tmp_path / "shared-data"
+        a1_root = tmp_path / "agent1"
+        a2_root = tmp_path / "agent2"
+        shared_data.mkdir()
+        a1_root.mkdir()
+        a2_root.mkdir()
+
+        original_cwd = os.getcwd()
+        try:
+            # Use relative paths so storage and config resolution match across backends.
+            os.chdir(tmp_path)
+
+            # Create two independent agents with separate keys and shared public key cache.
+            a1 = simple.create(
+                name="pytest-agent-1",
+                password=password,
+                algorithm="ring-Ed25519",
+                data_directory="shared-data",
+                key_directory="agent1/keys",
+                config_path="agent1/jacs.config.json",
+            )
+            a2 = simple.create(
+                name="pytest-agent-2",
+                password=password,
+                algorithm="ring-Ed25519",
+                data_directory="shared-data",
+                key_directory="agent2/keys",
+                config_path="agent2/jacs.config.json",
+            )
+
+            # Agent 1 creates agreement requiring signatures from both agents.
+            simple.load("agent1/jacs.config.json")
+            agreement = simple.create_agreement(
+                document={"proposal": "two-party-approval", "amount": 25000},
+                agent_ids=[a1.agent_id, a2.agent_id],
+                question="Do both parties approve?",
+                context="Two-agent integration agreement test",
+            )
+
+            # Incomplete agreement must fail strict check before both signatures exist.
+            with pytest.raises(JacsError):
+                simple.check_agreement(agreement)
+
+            signed_by_a1 = simple.sign_agreement(agreement)
+            with pytest.raises(JacsError):
+                simple.check_agreement(signed_by_a1)
+
+            # Agent 2 signs and completion succeeds.
+            simple.load("agent2/jacs.config.json")
+            signed_by_both = simple.sign_agreement(signed_by_a1)
+            status = simple.check_agreement(signed_by_both)
+            assert status.complete is True
+            assert len(status.pending) == 0
+        finally:
+            os.chdir(original_cwd)
+
+
+class TestAudit:
+    """Tests for audit() security audit and health checks."""
+
+    def test_audit_returns_dict_with_risks_and_health_checks(self):
+        """audit() returns a dict with 'risks' and 'health_checks'."""
+        result = simple.audit()
+        assert "risks" in result
+        assert "health_checks" in result
+        assert isinstance(result["risks"], list)
+        assert isinstance(result["health_checks"], list)
+
+    def test_audit_returns_summary_and_overall_status(self):
+        """audit() includes summary and overall_status."""
+        result = simple.audit()
+        assert "summary" in result
+        assert "overall_status" in result
+        assert result["summary"]

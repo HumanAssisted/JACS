@@ -82,7 +82,7 @@ def test_create_document(test_agent):
 **Node.js (Jest)**:
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -219,6 +219,127 @@ def test_agreement_signing(test_agent):
     assert status['complete'] is True
 ```
 
+### Agreement Completion Semantics (Strict)
+
+`check_agreement()` is intentionally strict: it should fail until **all** required signers have signed. Add explicit tests for each state:
+
+1. Unsigned agreement: must fail.
+2. Partially signed agreement: must still fail.
+3. Fully signed agreement: must pass with `complete == true`.
+
+This prevents accidental "partial approval" workflows in production.
+
+### Two-Agent Agreement Harness (Separate Agents)
+
+For realistic interoperability tests, use **two separate agents** with:
+
+- Separate key directories (`agent1/keys`, `agent2/keys`)
+- Shared data directory (`shared-data`) so both public keys are locally resolvable
+- Relative paths from a temporary test working directory
+
+**Python (pytest)**:
+
+```python
+def test_two_party_agreement_requires_both_signatures(tmp_path):
+    import os
+    import pytest
+    import jacs.simple as simple
+
+    (tmp_path / "shared-data").mkdir()
+    (tmp_path / "agent1").mkdir()
+    (tmp_path / "agent2").mkdir()
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        a1 = simple.create(
+            name="agent-1",
+            password="TestP@ss123!#",
+            algorithm="ring-Ed25519",
+            data_directory="shared-data",
+            key_directory="agent1/keys",
+            config_path="agent1/jacs.config.json",
+        )
+        a2 = simple.create(
+            name="agent-2",
+            password="TestP@ss123!#",
+            algorithm="ring-Ed25519",
+            data_directory="shared-data",
+            key_directory="agent2/keys",
+            config_path="agent2/jacs.config.json",
+        )
+
+        simple.load("agent1/jacs.config.json")
+        agreement = simple.create_agreement(
+            {"proposal": "two-party-approval"},
+            [a1.agent_id, a2.agent_id],
+            question="Approve?",
+        )
+
+        with pytest.raises(Exception):
+            simple.check_agreement(agreement)
+        signed_by_a1 = simple.sign_agreement(agreement)
+        with pytest.raises(Exception):
+            simple.check_agreement(signed_by_a1)
+
+        simple.load("agent2/jacs.config.json")
+        signed_by_both = simple.sign_agreement(signed_by_a1)
+        status = simple.check_agreement(signed_by_both)
+        assert status.complete is True
+    finally:
+        os.chdir(original_cwd)
+```
+
+**Node.js (Mocha/Jest style)**:
+
+```javascript
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));
+const originalCwd = process.cwd();
+try {
+  process.chdir(root);
+  fs.mkdirSync('agent1', { recursive: true });
+  fs.mkdirSync('agent2', { recursive: true });
+
+  simpleA.create({
+    name: 'agent-a',
+    password: 'TestP@ss123!#',
+    algorithm: 'ring-Ed25519',
+    dataDirectory: 'shared-data',
+    keyDirectory: 'agent1/keys',
+    configPath: 'agent1/jacs.config.json'
+  });
+  simpleB.create({
+    name: 'agent-b',
+    password: 'TestP@ss123!#',
+    algorithm: 'ring-Ed25519',
+    dataDirectory: 'shared-data',
+    keyDirectory: 'agent2/keys',
+    configPath: 'agent2/jacs.config.json'
+  });
+
+  simpleA.load('agent1/jacs.config.json');
+  simpleB.load('agent2/jacs.config.json');
+  const infoA = simpleA.getAgentInfo();
+  const infoB = simpleB.getAgentInfo();
+
+  const agreement = simpleA.createAgreement(
+    { proposal: 'two-party-approval' },
+    [infoA.agentId, infoB.agentId]
+  );
+
+  expect(() => simpleA.checkAgreement(agreement)).to.throw();
+  const signedByA = simpleA.signAgreement(agreement);
+  expect(() => simpleA.checkAgreement(signedByA)).to.throw();
+
+  const signedByBoth = simpleB.signAgreement(signedByA);
+  const status = simpleB.checkAgreement(signedByBoth);
+  expect(status.complete).to.equal(true);
+} finally {
+  process.chdir(originalCwd);
+  fs.rmSync(root, { recursive: true, force: true });
+}
+```
+
 ### Testing Request/Response Signing
 
 ```python
@@ -272,7 +393,7 @@ async def test_mcp_tool_call(mcp_server, test_agent):
 **Node.js**:
 
 ```javascript
-import { JACSExpressMiddleware } from 'jacsnpm/http';
+import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
 import express from 'express';
 import request from 'supertest';
 

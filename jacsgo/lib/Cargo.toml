@@ -1,8 +1,8 @@
 [package]
 name = "jacsgo"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.93"
 resolver = "3"
 
 [lib]
@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 lazy_static = "1.5.0"
 jacs = { path = "../../jacs" }
+jacs-binding-core = { path = "../../binding-core" }
 serde_json = "1.0.140"
 log = "0.4.27"
 serde = { version = "1.0", features = ["derive"] }

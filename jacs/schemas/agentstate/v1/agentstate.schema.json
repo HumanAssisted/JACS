@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "title": "Agent State Document",
+  "description": "A signed wrapper for agent state files (memory, skills, plans, configs, hooks). References the original file by path and hash, optionally embedding content.",
+  "allOf": [
+    { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" }
+  ],
+  "properties": {
+    "jacsAgentStateType": {
+      "type": "string",
+      "enum": ["memory", "skill", "plan", "config", "hook", "other"],
+      "description": "The type of agent state this document wraps. Use 'other' for general-purpose signed documents."
+    },
+    "jacsAgentStateName": {
+      "type": "string",
+      "description": "Human-readable name for this state document (e.g., 'JACS Project Memory', 'jacs-signing skill')."
+    },
+    "jacsAgentStateDescription": {
+      "type": "string",
+      "description": "Description of what this state document contains or does."
+    },
+    "jacsAgentStateFramework": {
+      "type": "string",
+      "description": "Which agent framework this state file is for (e.g., 'claude-code', 'openclaw', 'langchain', 'generic')."
+    },
+    "jacsAgentStateVersion": {
+      "type": "string",
+      "description": "Version of the agent state content (distinct from jacsVersion which tracks JACS document versions)."
+    },
+    "jacsAgentStateContentType": {
+      "type": "string",
+      "description": "MIME type of the original content (text/markdown, application/yaml, application/json, text/x-shellscript, etc.)."
+    },
+    "jacsAgentStateContent": {
+      "type": "string",
+      "description": "The full content of the agent state file, inline. Used when embed=true or when the content should be directly in the JACS document (hooks, small configs). For larger files, use jacsFiles reference instead."
+    },
+    "jacsAgentStateTags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tags for categorization and search."
+    },
+    "jacsAgentStateOrigin": {
+      "type": "string",
+      "enum": ["authored", "adopted", "generated", "imported"],
+      "description": "How this state document was created. 'authored' = created by the signing agent. 'adopted' = unsigned file found and signed by adopting agent. 'generated' = produced by an AI/automation. 'imported' = brought in from another JACS installation."
+    },
+    "jacsAgentStateSourceUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where the original content was obtained from, if applicable (e.g., AgentSkills.io URL, ClawHub URL, git repo)."
+    }
+  },
+  "required": [
+    "jacsAgentStateType",
+    "jacsAgentStateName"
+  ]
+}

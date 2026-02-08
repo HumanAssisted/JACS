@@ -1,0 +1,15 @@
+{
+  "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "jacsAgentStateType": "memory",
+  "jacsAgentStateName": "JACS Project Memory",
+  "jacsAgentStateDescription": "Agent memory for the JACS project workspace",
+  "jacsAgentStateFramework": "claude-code",
+  "jacsAgentStateOrigin": "authored",
+  "jacsAgentStateContentType": "text/markdown",
+  "jacsAgentStateContent": "# MEMORY.md\n\n## JACS Project\n- Location: /home/agent/jacs\n- Rust library for cryptographic agent identity\n- Key pattern: schemas in jacs/schemas/, embedded via include_str!()\n",
+  "jacsAgentStateTags": ["jacs", "rust", "project-memory"],
+  "jacsAgentStateVersion": "1.0.0",
+  "id": "placeholder-uuid",
+  "jacsType": "agentstate",
+  "jacsLevel": "config"
+}

@@ -298,7 +298,7 @@ doc = agent.create_document(json.dumps({
 ```
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');

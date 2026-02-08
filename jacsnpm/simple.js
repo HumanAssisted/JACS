@@ -13,6 +13,12 @@
  * - createAgreement(): Create a multi-party agreement
  * - signAgreement(): Sign an existing agreement
  * - checkAgreement(): Check agreement status
+ * - trustAgent(): Add an agent to the local trust store
+ * - listTrustedAgents(): List all trusted agent IDs
+ * - untrustAgent(): Remove an agent from the trust store
+ * - isTrusted(): Check if an agent is trusted
+ * - getTrustedAgent(): Get a trusted agent's JSON
+ * - audit(): Run a read-only security audit and health checks
  *
  * Also re-exports for advanced usage:
  * - JacsAgent: Class for direct agent control
@@ -72,7 +78,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createConfig = exports.verifyString = exports.hashString = exports.JacsAgent = void 0;
+exports.MAX_VERIFY_DOCUMENT_BYTES = exports.MAX_VERIFY_URL_LEN = exports.createConfig = exports.verifyString = exports.hashString = exports.JacsAgent = void 0;
 exports.create = create;
 exports.load = load;
 exports.verifySelf = verifySelf;
@@ -81,13 +87,26 @@ exports.updateAgent = updateAgent;
 exports.updateDocument = updateDocument;
 exports.signFile = signFile;
 exports.verify = verify;
+exports.verifyStandalone = verifyStandalone;
+exports.verifyById = verifyById;
+exports.reencryptKey = reencryptKey;
 exports.getPublicKey = getPublicKey;
 exports.exportAgent = exportAgent;
 exports.getAgentInfo = getAgentInfo;
 exports.isLoaded = isLoaded;
+exports.getDnsRecord = getDnsRecord;
+exports.getWellKnownJson = getWellKnownJson;
+exports.registerWithHai = registerWithHai;
 exports.createAgreement = createAgreement;
 exports.signAgreement = signAgreement;
 exports.checkAgreement = checkAgreement;
+exports.trustAgent = trustAgent;
+exports.listTrustedAgents = listTrustedAgents;
+exports.untrustAgent = untrustAgent;
+exports.isTrusted = isTrusted;
+exports.getTrustedAgent = getTrustedAgent;
+exports.audit = audit;
+exports.generateVerifyLink = generateVerifyLink;
 const index_1 = require("./index");
 Object.defineProperty(exports, "JacsAgent", { enumerable: true, get: function () { return index_1.JacsAgent; } });
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
@@ -100,27 +119,59 @@ const path = __importStar(require("path"));
 // =============================================================================
 let globalAgent = null;
 let agentInfo = null;
-// =============================================================================
-// Core Operations
-// =============================================================================
+function resolveConfigRelativePath(configPath, candidate) {
+    if (path.isAbsolute(candidate)) {
+        return candidate;
+    }
+    return path.resolve(path.dirname(configPath), candidate);
+}
+function normalizeDocumentInput(document) {
+    if (typeof document === 'string') {
+        return document;
+    }
+    if (document && typeof document === 'object') {
+        if (typeof document.raw === 'string') {
+            return document.raw;
+        }
+        if (typeof document.raw_json === 'string') {
+            return document.raw_json;
+        }
+    }
+    return JSON.stringify(document);
+}
 /**
  * Creates a new JACS agent with cryptographic keys.
  *
- * @param name - Human-readable name for the agent
- * @param purpose - Optional description of the agent's purpose
- * @param keyAlgorithm - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+ * This is a fully programmatic API that does not require interactive input.
+ * The password must be provided directly or via the JACS_PRIVATE_KEY_PASSWORD
+ * environment variable.
+ *
+ * @param options - Agent creation options
  * @returns AgentInfo containing the agent ID, name, and file paths
  *
  * @example
  * ```typescript
- * const agent = await jacs.create('my-agent', 'Signing documents');
+ * const agent = jacs.create({
+ *   name: 'my-agent',
+ *   password: process.env.JACS_PRIVATE_KEY_PASSWORD,
+ *   algorithm: 'pq2025',
+ * });
  * console.log(`Created: ${agent.agentId}`);
  * ```
  */
-function create(name, purpose, keyAlgorithm) {
-    // This would call the Rust create function when available
-    // For now, throw an error directing to CLI
-    throw new Error('Agent creation from JS not yet supported. Use CLI: jacs create');
+function create(options) {
+    const resolvedPassword = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
+    if (!resolvedPassword) {
+        throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
+    }
+    const resultJson = (0, index_1.createAgent)(options.name, resolvedPassword, options.algorithm ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null, options.configPath ?? null, options.agentType ?? null, options.description ?? null, options.domain ?? null, options.defaultStorage ?? null);
+    const info = JSON.parse(resultJson);
+    return {
+        agentId: info.agent_id || '',
+        name: info.name || options.name,
+        publicKeyPath: info.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+        configPath: info.config_path || options.configPath || './jacs.config.json',
+    };
 }
 /**
  * Loads an existing agent from a configuration file.
@@ -135,22 +186,24 @@ function create(name, purpose, keyAlgorithm) {
  * ```
  */
 function load(configPath) {
-    const path = configPath || './jacs.config.json';
-    if (!fs.existsSync(path)) {
-        throw new Error(`Config file not found: ${path}\nRun 'jacs create' to create a new agent.`);
+    const requestedPath = configPath || './jacs.config.json';
+    const resolvedConfigPath = path.resolve(requestedPath);
+    if (!fs.existsSync(resolvedConfigPath)) {
+        throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
     }
     // Create new agent instance
     globalAgent = new index_1.JacsAgent();
-    globalAgent.load(path);
+    globalAgent.load(resolvedConfigPath);
     // Read config to get agent info
-    const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+    const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
     const agentIdVersion = config.jacs_agent_id_and_version || '';
     const [agentId, version] = agentIdVersion.split(':');
+    const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
     agentInfo = {
         agentId: agentId || '',
         name: config.name || '',
-        publicKeyPath: `${config.jacs_key_directory || './jacs_keys'}/jacs.public.pem`,
-        configPath: path,
+        publicKeyPath: path.join(keyDir, 'jacs.public.pem'),
+        configPath: resolvedConfigPath,
     };
     return agentInfo;
 }
@@ -347,6 +400,19 @@ function verify(signedDocument) {
     if (!globalAgent) {
         throw new Error('No agent loaded. Call load() first.');
     }
+    // Detect non-JSON input and provide helpful error
+    const trimmed = signedDocument.trim();
+    if (trimmed.length > 0 && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        return {
+            valid: false,
+            signerId: '',
+            timestamp: '',
+            attachments: [],
+            errors: [
+                `Input does not appear to be a JSON document. If you have a document ID (e.g., 'uuid:version'), use verifyById() instead. Received: '${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}'`
+            ],
+        };
+    }
     let doc;
     try {
         doc = JSON.parse(signedDocument);
@@ -390,6 +456,101 @@ function verify(signedDocument) {
     }
 }
 /**
+ * Verify a signed JACS document without loading an agent.
+ * Uses caller-supplied key resolution and directories; does not use global agent state.
+ *
+ * @param signedDocument - Full signed JACS document JSON string
+ * @param options - Optional keyResolution, dataDirectory, keyDirectory
+ * @returns VerificationResult with valid and signerId
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
+ * if (result.valid) console.log(`Signed by: ${result.signerId}`);
+ * ```
+ */
+function verifyStandalone(signedDocument, options) {
+    const doc = typeof signedDocument === 'string' ? signedDocument : JSON.stringify(signedDocument);
+    const r = (0, index_1.verifyDocumentStandalone)(doc, options?.keyResolution ?? undefined, options?.dataDirectory ?? undefined, options?.keyDirectory ?? undefined);
+    return {
+        valid: r.valid,
+        signerId: r.signerId,
+        timestamp: '',
+        attachments: [],
+        errors: [],
+    };
+}
+/**
+ * Verifies a document by its storage ID.
+ *
+ * Use this when you have a document ID (e.g., "uuid:version") rather than
+ * the full JSON string. The document will be loaded from storage and verified.
+ *
+ * @param documentId - The document ID in "uuid:version" format
+ * @returns VerificationResult with the verification status
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
+ * if (result.valid) {
+ *   console.log('Document verified');
+ * }
+ * ```
+ */
+function verifyById(documentId) {
+    if (!globalAgent) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    if (!documentId.includes(':')) {
+        return {
+            valid: false,
+            signerId: '',
+            timestamp: '',
+            attachments: [],
+            errors: [
+                `Document ID must be in 'uuid:version' format, got '${documentId}'. Use verify() with the full JSON string instead.`
+            ],
+        };
+    }
+    try {
+        globalAgent.verifyDocumentById(documentId);
+        return {
+            valid: true,
+            signerId: '',
+            timestamp: '',
+            attachments: [],
+            errors: [],
+        };
+    }
+    catch (e) {
+        return {
+            valid: false,
+            signerId: '',
+            timestamp: '',
+            attachments: [],
+            errors: [String(e)],
+        };
+    }
+}
+/**
+ * Re-encrypt the agent's private key with a new password.
+ *
+ * @param oldPassword - The current password for the private key
+ * @param newPassword - The new password to encrypt with (must meet password requirements)
+ *
+ * @example
+ * ```typescript
+ * jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
+ * console.log('Key re-encrypted successfully');
+ * ```
+ */
+function reencryptKey(oldPassword, newPassword) {
+    if (!globalAgent) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    globalAgent.reencryptKey(oldPassword, newPassword);
+}
+/**
  * Get the loaded agent's public key in PEM format.
  *
  * @returns The public key as a PEM-encoded string
@@ -425,8 +586,9 @@ function exportAgent() {
         throw new Error('No agent loaded. Call load() first.');
     }
     // Read agent file
-    const config = JSON.parse(fs.readFileSync(agentInfo.configPath, 'utf8'));
-    const dataDir = config.jacs_data_directory || './jacs_data';
+    const configPath = path.resolve(agentInfo.configPath);
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory || './jacs_data');
     const agentIdVersion = config.jacs_agent_id_and_version || '';
     const agentPath = path.join(dataDir, 'agent', `${agentIdVersion}.json`);
     if (!fs.existsSync(agentPath)) {
@@ -449,6 +611,99 @@ function getAgentInfo() {
  */
 function isLoaded() {
     return globalAgent !== null;
+}
+/**
+ * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
+ * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
+ */
+function getDnsRecord(domain, ttl = 3600) {
+    if (!agentInfo) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    const agentDoc = JSON.parse(exportAgent());
+    const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
+    const publicKeyHash = agentDoc.jacsSignature?.publicKeyHash ||
+        agentDoc.jacsSignature?.['publicKeyHash'] ||
+        '';
+    const d = domain.replace(/\.$/, '');
+    const owner = `_v1.agent.jacs.${d}.`;
+    const txt = `v=hai.ai; jacs_agent_id=${jacsId}; alg=SHA-256; enc=base64; jac_public_key_hash=${publicKeyHash}`;
+    return `${owner} ${ttl} IN TXT "${txt}"`;
+}
+/**
+ * Returns the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+ * Keys: publicKey, publicKeyHash, algorithm, agentId.
+ */
+function getWellKnownJson() {
+    if (!agentInfo) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    const agentDoc = JSON.parse(exportAgent());
+    const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
+    const publicKeyHash = agentDoc.jacsSignature?.publicKeyHash ||
+        agentDoc.jacsSignature?.['publicKeyHash'] ||
+        '';
+    let publicKey = '';
+    try {
+        publicKey = getPublicKey();
+    }
+    catch {
+        // optional if key file missing
+    }
+    return {
+        publicKey,
+        publicKeyHash,
+        algorithm: 'SHA-256',
+        agentId: jacsId,
+    };
+}
+/**
+ * Register the loaded agent with HAI.ai.
+ * Requires a loaded agent (uses exportAgent() for the payload).
+ * Calls POST {haiUrl}/api/v1/agents/register with Bearer token and agent JSON.
+ *
+ * @param options - apiKey (or HAI_API_KEY env), haiUrl (default "https://hai.ai"), preview
+ * @returns HaiRegistrationResult with agentId, jacsId, dnsVerified, signatures
+ */
+async function registerWithHai(options) {
+    if (!agentInfo) {
+        throw new Error('No agent loaded. Call load() first.');
+    }
+    const apiKey = options?.apiKey ?? process.env.HAI_API_KEY;
+    if (!apiKey) {
+        throw new Error('HAI registration requires an API key. Set apiKey in options or HAI_API_KEY env.');
+    }
+    if (options?.preview) {
+        return {
+            agentId: agentInfo.agentId,
+            jacsId: '',
+            dnsVerified: false,
+            signatures: [],
+        };
+    }
+    const baseUrl = (options?.haiUrl ?? 'https://hai.ai').replace(/\/$/, '');
+    const agentJson = exportAgent();
+    const url = `${baseUrl}/api/v1/agents/register`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agent_json: agentJson }),
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HAI registration failed: ${res.status} ${text}`);
+    }
+    const data = (await res.json());
+    const signatures = (data.signatures ?? []).map((s) => (typeof s === 'string' ? s : s.signature ?? s.key_id ?? ''));
+    return {
+        agentId: data.agent_id ?? '',
+        jacsId: data.jacs_id ?? '',
+        dnsVerified: data.dns_verified ?? false,
+        signatures,
+    };
 }
 /**
  * Creates a multi-party agreement that requires signatures from multiple agents.
@@ -474,9 +729,7 @@ function createAgreement(document, agentIds, question, context, fieldName) {
     if (!globalAgent) {
         throw new Error('No agent loaded. Call load() first.');
     }
-    const docString = typeof document === 'string'
-        ? document
-        : JSON.stringify(document);
+    const docString = normalizeDocumentInput(document);
     const result = globalAgent.createAgreement(docString, agentIds, question || null, context || null, fieldName || null);
     const doc = JSON.parse(result);
     return {
@@ -504,9 +757,7 @@ function signAgreement(document, fieldName) {
     if (!globalAgent) {
         throw new Error('No agent loaded. Call load() first.');
     }
-    const docString = typeof document === 'string'
-        ? document
-        : JSON.stringify(document);
+    const docString = normalizeDocumentInput(document);
     const result = globalAgent.signAgreement(docString, fieldName || null);
     const doc = JSON.parse(result);
     return {
@@ -537,10 +788,133 @@ function checkAgreement(document, fieldName) {
     if (!globalAgent) {
         throw new Error('No agent loaded. Call load() first.');
     }
-    const docString = typeof document === 'string'
-        ? document
-        : JSON.stringify(document);
+    const docString = normalizeDocumentInput(document);
     const result = globalAgent.checkAgreement(docString, fieldName || null);
     return JSON.parse(result);
+}
+// =============================================================================
+// Trust Store Functions
+// =============================================================================
+/**
+ * Add an agent to the local trust store.
+ *
+ * The trust store is a local list of agents you trust. When verifying
+ * documents from known agents, the trust store provides signer names
+ * and allows quick lookups.
+ *
+ * @param agentJson - The agent's JSON document (from their exportAgent())
+ * @returns The trusted agent's ID
+ *
+ * @example
+ * ```typescript
+ * const trustedId = jacs.trustAgent(partnerAgentJson);
+ * console.log(`Trusted agent: ${trustedId}`);
+ * ```
+ */
+function trustAgent(agentJson) {
+    return (0, index_1.trustAgent)(agentJson);
+}
+/**
+ * List all trusted agent IDs in the local trust store.
+ *
+ * @returns Array of trusted agent UUIDs
+ *
+ * @example
+ * ```typescript
+ * const trustedIds = jacs.listTrustedAgents();
+ * console.log(`${trustedIds.length} trusted agents`);
+ * ```
+ */
+function listTrustedAgents() {
+    return (0, index_1.listTrustedAgents)();
+}
+/**
+ * Remove an agent from the local trust store.
+ *
+ * @param agentId - The agent UUID to remove
+ *
+ * @example
+ * ```typescript
+ * jacs.untrustAgent('550e8400-e29b-41d4-a716-446655440000');
+ * ```
+ */
+function untrustAgent(agentId) {
+    (0, index_1.untrustAgent)(agentId);
+}
+/**
+ * Check if an agent is in the local trust store.
+ *
+ * @param agentId - The agent UUID to check
+ * @returns true if the agent is trusted
+ *
+ * @example
+ * ```typescript
+ * if (jacs.isTrusted(signerId)) {
+ *   console.log('Signer is in our trust store');
+ * }
+ * ```
+ */
+function isTrusted(agentId) {
+    return (0, index_1.isTrusted)(agentId);
+}
+/**
+ * Get a trusted agent's full JSON document from the trust store.
+ *
+ * @param agentId - The agent UUID to retrieve
+ * @returns The agent's JSON document as a string
+ *
+ * @example
+ * ```typescript
+ * const agentDoc = JSON.parse(jacs.getTrustedAgent(agentId));
+ * console.log(`Agent name: ${agentDoc.jacsAgentName}`);
+ * ```
+ */
+function getTrustedAgent(agentId) {
+    return (0, index_1.getTrustedAgent)(agentId);
+}
+/**
+ * Run a read-only security audit and health checks.
+ * Returns an object with risks, health_checks, summary, and related fields.
+ *
+ * @param options - Optional config path and recent document count
+ * @returns Audit result object (risks, health_checks, summary, overall_status)
+ *
+ * @example
+ * ```typescript
+ * const result = jacs.audit();
+ * console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+ * ```
+ */
+function audit(options) {
+    const json = (0, index_1.audit)(options?.configPath ?? undefined, options?.recentN ?? undefined);
+    return JSON.parse(json);
+}
+// =============================================================================
+// Verify link (HAI / public verification URLs)
+// =============================================================================
+/** Max length for a full verify URL (scheme + host + path + ?s=...). */
+exports.MAX_VERIFY_URL_LEN = 2048;
+/** Max UTF-8 byte length of a document that fits in a verify link. */
+exports.MAX_VERIFY_DOCUMENT_BYTES = 1515;
+/**
+ * Build a verification URL for a signed JACS document (e.g. https://hai.ai/jacs/verify?s=...).
+ * Uses URL-safe base64. Throws if the URL would exceed MAX_VERIFY_URL_LEN.
+ *
+ * @param document - Full signed JACS document string (JSON)
+ * @param baseUrl - Base URL of the verifier (no trailing slash). Default "https://hai.ai"
+ * @returns Full URL: {baseUrl}/jacs/verify?s={base64url(document)}
+ */
+function generateVerifyLink(document, baseUrl = 'https://hai.ai') {
+    const base = baseUrl.replace(/\/+$/, '');
+    const encoded = Buffer.from(document, 'utf8')
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+    const fullUrl = `${base}/jacs/verify?s=${encoded}`;
+    if (fullUrl.length > exports.MAX_VERIFY_URL_LEN) {
+        throw new Error(`Verify URL would exceed max length (${exports.MAX_VERIFY_URL_LEN}). Document size must be at most ${exports.MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes.`);
+    }
+    return fullUrl;
 }
 //# sourceMappingURL=simple.js.map

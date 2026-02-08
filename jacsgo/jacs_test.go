@@ -258,7 +258,7 @@ func TestConfigCreation(t *testing.T) {
 		t.Fatalf("Invalid JSON from CreateConfig: %v", err)
 	}
 
-	// Check some fields
+	// Check some fields (jacs_private_key_password intentionally not in config; use env only)
 	expectedFields := []string{
 		"jacs_use_security",
 		"jacs_data_directory",
@@ -266,7 +266,6 @@ func TestConfigCreation(t *testing.T) {
 		"jacs_agent_private_key_filename",
 		"jacs_agent_public_key_filename",
 		"jacs_agent_key_algorithm",
-		"jacs_private_key_password",
 		"jacs_agent_id_and_version",
 		"jacs_default_storage",
 	}
@@ -291,7 +290,7 @@ func TestConfigCreation(t *testing.T) {
 func TestErrorHandling(t *testing.T) {
 	// Test loading non-existent config
 	t.Run("load non-existent config", func(t *testing.T) {
-		err := Load("/non/existent/path/config.json")
+		err := LegacyLoad("/non/existent/path/config.json")
 		if err == nil {
 			t.Error("Expected error loading non-existent config")
 		}

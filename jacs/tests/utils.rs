@@ -193,8 +193,12 @@ pub fn generate_new_docs_with_attachments(save: bool) {
     // document_ref = agent.get_document(&document_key).unwrap();
     _ = agent.save_document(&document_key, None, None, None);
 
-    document_string =
-        load_local_document(&raw_fixture("image-embed.json").to_string_lossy().to_string()).unwrap();
+    document_string = load_local_document(
+        &raw_fixture("image-embed.json")
+            .to_string_lossy()
+            .to_string(),
+    )
+    .unwrap();
     document = agent
         .create_document_and_load(
             &document_string,
@@ -215,7 +219,9 @@ pub fn generate_new_docs_with_attachments(save: bool) {
 pub fn generate_new_docs() {
     let mut agent = load_test_agent_one();
     let mut document_string = load_local_document(
-        &raw_fixture("favorite-fruit.json").to_string_lossy().to_string()
+        &raw_fixture("favorite-fruit.json")
+            .to_string_lossy()
+            .to_string(),
     )
     .unwrap();
     let mut document = agent

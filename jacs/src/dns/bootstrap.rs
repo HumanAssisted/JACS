@@ -187,7 +187,10 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, String> {
     let mut s = String::new();
     for rr in resp.iter() {
         for part in rr.txt_data() {
-            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| format!("UTF-8 decode failed: {e}"))?);
+            s.push_str(
+                &String::from_utf8(part.to_vec())
+                    .map_err(|e| format!("UTF-8 decode failed: {e}"))?,
+            );
         }
     }
     Ok(s)
@@ -207,7 +210,10 @@ pub fn resolve_txt_insecure(owner: &str) -> Result<String, String> {
     let mut s = String::new();
     for rr in resp.iter() {
         for part in rr.txt_data() {
-            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| format!("UTF-8 decode failed: {e}"))?);
+            s.push_str(
+                &String::from_utf8(part.to_vec())
+                    .map_err(|e| format!("UTF-8 decode failed: {e}"))?,
+            );
         }
     }
     Ok(s)
@@ -246,7 +252,10 @@ pub fn verify_pubkey_via_dns_or_embedded(
                 if ok {
                     return Ok(());
                 } else {
-                    return Err("DNS fingerprint mismatch: digest does not match local public key".to_string());
+                    return Err(
+                        "DNS fingerprint mismatch: digest does not match local public key"
+                            .to_string(),
+                    );
                 }
             }
             Err(_e) => {
@@ -260,7 +269,10 @@ pub fn verify_pubkey_via_dns_or_embedded(
                     {
                         return Ok(());
                     }
-                    return Err("Embedded fingerprint mismatch: does not match local public key".to_string());
+                    return Err(
+                        "Embedded fingerprint mismatch: does not match local public key"
+                            .to_string(),
+                    );
                 }
                 // Neither DNS nor embedded available
                 if strict_dns {
@@ -380,9 +392,19 @@ pub fn verify_hai_registration_sync(
     })?;
 
     // HAI.ai API endpoint for agent verification
-    let api_url = std::env::var("HAI_API_URL")
-        .unwrap_or_else(|_| "https://api.hai.ai".to_string());
-    let url = format!("{}/v1/agents/{}", api_url, agent_id);
+    let api_url = std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
+    let parsed = url::Url::parse(&api_url)
+        .map_err(|e| format!("Invalid HAI_API_URL '{}': {}", api_url, e))?;
+    let host = parsed.host_str().unwrap_or_default();
+    let http_localhost = parsed.scheme() == "http"
+        && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1");
+    if parsed.scheme() != "https" && !http_localhost {
+        return Err(format!(
+            "HAI_API_URL must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
+            api_url
+        ));
+    }
+    let url = format!("{}/v1/agents/{}", api_url.trim_end_matches('/'), agent_id);
 
     // Build blocking HTTP client with TLS
     let client = reqwest::blocking::Client::builder()
@@ -447,8 +469,12 @@ pub fn verify_hai_registration_sync(
     Ok(HaiRegistration {
         verified: true,
         verified_at: api_response.verified_at,
-        registration_type: api_response.registration_type.unwrap_or_else(|| "agent".to_string()),
-        agent_id: api_response.agent_id.unwrap_or_else(|| agent_id.to_string()),
+        registration_type: api_response
+            .registration_type
+            .unwrap_or_else(|| "agent".to_string()),
+        agent_id: api_response
+            .agent_id
+            .unwrap_or_else(|| agent_id.to_string()),
         public_key_hash: registered_hash.to_string(),
     })
 }

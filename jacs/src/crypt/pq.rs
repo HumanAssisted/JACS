@@ -88,7 +88,7 @@ mod tests {
         let invalid_signatures = [
             "!!!not-valid-base64!!!",
             "abc@#$%",
-            "====",             // Only padding
+            "====", // Only padding
         ];
 
         for invalid_sig in invalid_signatures {
@@ -120,7 +120,8 @@ mod tests {
 
     #[test]
     fn test_verify_signature_from_different_key_rejected() {
-        let (private_key_1, _public_key_1) = generate_keys().expect("key generation should succeed");
+        let (private_key_1, _public_key_1) =
+            generate_keys().expect("key generation should succeed");
         let (_, public_key_2) = generate_keys().expect("key generation should succeed");
         let data = "test data".to_string();
 
@@ -180,10 +181,10 @@ mod tests {
 
         // Use invalid public keys
         let invalid_public_keys: Vec<Vec<u8>> = vec![
-            vec![],                      // Empty
-            vec![0u8; 16],               // Too short
-            vec![0u8; 100],              // Wrong length
-            vec![0xFF; 1000],            // Random garbage
+            vec![],           // Empty
+            vec![0u8; 16],    // Too short
+            vec![0u8; 100],   // Wrong length
+            vec![0xFF; 1000], // Random garbage
         ];
 
         for invalid_key in invalid_public_keys {
@@ -202,9 +203,9 @@ mod tests {
 
         // Invalid private keys
         let invalid_private_keys: Vec<Vec<u8>> = vec![
-            vec![],                      // Empty
-            vec![0u8; 32],               // Too short
-            vec![0xFF; 100],             // Random garbage
+            vec![],          // Empty
+            vec![0u8; 32],   // Too short
+            vec![0xFF; 100], // Random garbage
         ];
 
         for invalid_key in invalid_private_keys {
@@ -226,7 +227,11 @@ mod tests {
 
         let signature = sign_string(private_key, &data).expect("signing should succeed");
         let result = verify_string(public_key, &data, &signature);
-        assert!(result.is_ok(), "Valid signature should verify: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Valid signature should verify: {:?}",
+            result
+        );
     }
 
     #[test]

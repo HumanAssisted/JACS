@@ -2,6 +2,8 @@
 
 Cryptographic signing and verification for AI agents.
 
+**[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://humanassisted.github.io/JACS/nodejs/api.html)**
+
 ```bash
 cargo install jacs
 ```
@@ -38,6 +40,11 @@ assert!(result.valid);
 - RSA, Ed25519, and post-quantum (ML-DSA) cryptography
 - JSON Schema validation
 - Multi-agent agreements
+- Signed agent state (memory, skills, plans, configs, hooks, or any document)
+- Commitments (shared signed agreements between agents)
+- Todo lists (private signed task tracking with cross-references)
+- Conversation threading (ordered, signed message chains)
+- PostgreSQL database storage (optional, `database` feature flag)
 - MCP and A2A protocol support
 - Python, Go, and NPM bindings
 
@@ -68,7 +75,10 @@ jacs verify doc.json     # Verify a document
 - Do **not** open public issues for security vulnerabilities
 - We aim to respond within 48 hours
 
+**Dependency audit**: To check Rust dependencies for known vulnerabilities, run: `cargo install cargo-audit && cargo audit`.
+
 **Best Practices**:
+- Do not put the private key password in config; set `JACS_PRIVATE_KEY_PASSWORD` only.
 - Use strong passwords (12+ characters with mixed case, numbers, symbols)
 - Store private keys securely with appropriate file permissions
 - Keep JACS and its dependencies updated
@@ -80,4 +90,4 @@ jacs verify doc.json     # Verify a document
 - [Python](https://pypi.org/project/jacs/)
 - [Crates.io](https://crates.io/crates/jacs)
 
-**Version**: 0.5.1 | [HAI.AI](https://hai.ai)
+**Version**: 0.6.0 | [HAI.AI](https://hai.ai)

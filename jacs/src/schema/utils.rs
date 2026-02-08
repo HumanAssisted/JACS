@@ -104,13 +104,12 @@ fn get_extra_allowed_domains() -> &'static Vec<String> {
 
 fn is_schema_url_allowed(url: &str) -> Result<(), JacsError> {
     // Parse the URL to extract the host
-    let parsed = url::Url::parse(url).map_err(|e| {
-        JacsError::SchemaError(format!("Invalid URL '{}': {}", url, e))
-    })?;
+    let parsed = url::Url::parse(url)
+        .map_err(|e| JacsError::SchemaError(format!("Invalid URL '{}': {}", url, e)))?;
 
-    let host = parsed.host_str().ok_or_else(|| {
-        JacsError::SchemaError(format!("URL '{}' has no host", url))
-    })?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| JacsError::SchemaError(format!("URL '{}' has no host", url)))?;
 
     // Build the list of allowed domains from defaults + cached env var
     let extra = get_extra_allowed_domains();
@@ -154,7 +153,9 @@ fn should_accept_invalid_certs() -> bool {
     if let Ok(val) = std::env::var("JACS_ACCEPT_INVALID_CERTS") {
         let accept = val.eq_ignore_ascii_case("true") || val == "1";
         if accept {
-            warn!("SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true");
+            warn!(
+                "SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true"
+            );
         }
         return accept;
     }
@@ -229,7 +230,11 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
      "schemas/eval/v1/eval.schema.json" => include_str!("../../schemas/eval/v1/eval.schema.json"),
      "schemas/program/v1/program.schema.json" => include_str!("../../schemas/program/v1/program.schema.json"),
      "schemas/node/v1/node.schema.json" => include_str!("../../schemas/node/v1/node.schema.json"),
-     "schemas/components/embedding/v1/embedding.schema.json" => include_str!("../../schemas/components/embedding/v1/embedding.schema.json")     // todo get all files in a schemas directory, dynamically
+     "schemas/components/embedding/v1/embedding.schema.json" => include_str!("../../schemas/components/embedding/v1/embedding.schema.json"),
+     "schemas/agentstate/v1/agentstate.schema.json" => include_str!("../../schemas/agentstate/v1/agentstate.schema.json"),
+     "schemas/commitment/v1/commitment.schema.json" => include_str!("../../schemas/commitment/v1/commitment.schema.json"),
+     "schemas/todo/v1/todo.schema.json" => include_str!("../../schemas/todo/v1/todo.schema.json"),
+     "schemas/components/todoitem/v1/todoitem.schema.json" => include_str!("../../schemas/components/todoitem/v1/todoitem.schema.json")
 };
 
 pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
@@ -249,6 +254,9 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "https://hai.ai/schemas/node/v1/node.schema.json" => "node" ,
     "https://hai.ai/schemas/task/v1/task-schema.json" => "task" ,
     "document" => "document" ,
+    "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json" => "agentstate" ,
+    "https://hai.ai/schemas/commitment/v1/commitment.schema.json" => "commitment" ,
+    "https://hai.ai/schemas/todo/v1/todo.schema.json" => "todo" ,
 };
 
 pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {
@@ -343,9 +351,8 @@ pub trait ValueExt {
 
 impl ValueExt for Value {
     fn as_string(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
-            format!("{{\"error\": \"Failed to serialize JSON: {}\"}}", e)
-        })
+        serde_json::to_string_pretty(self)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize JSON: {}\"}}", e))
     }
 
     fn get_str(&self, field: &str) -> Option<String> {
@@ -360,10 +367,11 @@ impl ValueExt for Value {
     }
 
     fn get_str_required(&self, field: &str) -> Result<String, JacsError> {
-        self.get_str(field).ok_or_else(|| JacsError::DocumentMalformed {
-            field: field.to_string(),
-            reason: format!("Missing or invalid field: {}", field),
-        })
+        self.get_str(field)
+            .ok_or_else(|| JacsError::DocumentMalformed {
+                field: field.to_string(),
+                reason: format!("Missing or invalid field: {}", field),
+            })
     }
 
     fn get_i64(&self, key: &str) -> Option<i64> {
@@ -387,15 +395,17 @@ impl ValueExt for Value {
     }
 
     fn get_path_str_or(&self, path: &[&str], default: &str) -> String {
-        self.get_path_str(path).unwrap_or_else(|| default.to_string())
+        self.get_path_str(path)
+            .unwrap_or_else(|| default.to_string())
     }
 
     fn get_path_str_required(&self, path: &[&str]) -> Result<String, JacsError> {
         let dotted_path = path.join(".");
-        self.get_path_str(path).ok_or_else(|| JacsError::DocumentMalformed {
-            field: dotted_path.clone(),
-            reason: format!("Missing or invalid field: {}", dotted_path),
-        })
+        self.get_path_str(path)
+            .ok_or_else(|| JacsError::DocumentMalformed {
+                field: dotted_path.clone(),
+                reason: format!("Missing or invalid field: {}", dotted_path),
+            })
     }
 
     fn get_path_array(&self, path: &[&str]) -> Option<&Vec<Value>> {
@@ -404,10 +414,11 @@ impl ValueExt for Value {
 
     fn get_path_array_required(&self, path: &[&str]) -> Result<&Vec<Value>, JacsError> {
         let dotted_path = path.join(".");
-        self.get_path_array(path).ok_or_else(|| JacsError::DocumentMalformed {
-            field: dotted_path.clone(),
-            reason: format!("Missing or invalid array field: {}", dotted_path),
-        })
+        self.get_path_array(path)
+            .ok_or_else(|| JacsError::DocumentMalformed {
+                field: dotted_path.clone(),
+                reason: format!("Missing or invalid array field: {}", dotted_path),
+            })
     }
 }
 
@@ -479,6 +490,39 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
     Err(JacsError::SchemaError(format!("Remote URL schemas disabled in WASM: {}", url)).into())
 }
 
+/// Build a normalized absolute path for access checks.
+///
+/// Uses canonicalization when possible (resolves symlinks), then falls back to
+/// lexical normalization anchored at current working directory.
+fn normalize_access_path(path: &str) -> Result<std::path::PathBuf, JacsError> {
+    let path_obj = std::path::Path::new(path);
+
+    if let Ok(canonical) = path_obj.canonicalize() {
+        return Ok(canonical);
+    }
+
+    let absolute = if path_obj.is_absolute() {
+        path_obj.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| JacsError::SchemaError(format!("Failed to read current dir: {}", e)))?
+            .join(path_obj)
+    };
+
+    let mut normalized = std::path::PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+
+    Ok(normalized)
+}
+
 /// Check if filesystem schema access is allowed and the path is safe.
 ///
 /// Filesystem schema access is disabled by default. To enable it, set:
@@ -524,37 +568,19 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
 
     // If specific directories are configured, check that the path is within them
     if data_dir.is_some() || schema_dir.is_some() {
-        let path_canonical = std::path::Path::new(path);
-
-        // Try to canonicalize the path for comparison (handles symlinks)
-        // If canonicalization fails (file doesn't exist yet), fall back to the original path
-        let path_str = if let Ok(canonical) = path_canonical.canonicalize() {
-            canonical.to_string_lossy().to_string()
-        } else {
-            path.to_string()
-        };
-
+        let candidate = normalize_access_path(path)?;
         let mut allowed = false;
 
         if let Some(ref data) = data_dir {
-            let data_path = std::path::Path::new(data);
-            if let Ok(data_canonical) = data_path.canonicalize() {
-                if path_str.starts_with(&data_canonical.to_string_lossy().to_string()) {
-                    allowed = true;
-                }
-            } else if path_str.starts_with(data) {
-                // Fall back to string prefix check if canonicalization fails
+            let allowed_root = normalize_access_path(data)?;
+            if candidate.starts_with(&allowed_root) {
                 allowed = true;
             }
         }
 
         if let Some(ref schema) = schema_dir {
-            let schema_path = std::path::Path::new(schema);
-            if let Ok(schema_canonical) = schema_path.canonicalize() {
-                if path_str.starts_with(&schema_canonical.to_string_lossy().to_string()) {
-                    allowed = true;
-                }
-            } else if path_str.starts_with(schema) {
+            let allowed_root = normalize_access_path(schema)?;
+            if candidate.starts_with(&allowed_root) {
                 allowed = true;
             }
         }
@@ -629,7 +655,10 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
             let schema_value: Value = serde_json::from_str(&schema_json)?;
             Ok(Arc::new(schema_value))
         } else {
-            Err(JacsError::FileNotFound { path: path.to_string() }.into())
+            Err(JacsError::FileNotFound {
+                path: path.to_string(),
+            }
+            .into())
         }
     }
 }

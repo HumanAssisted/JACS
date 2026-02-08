@@ -225,6 +225,19 @@ pub struct Config {
     jacs_dns_required: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
+    // Database storage configuration
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_url: Option<String>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_max_connections: Option<u32>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_min_connections: Option<u32>,
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_database_connect_timeout_secs: Option<u64>,
 }
 
 fn default_schema() -> String {
@@ -315,6 +328,10 @@ impl Default for Config {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 }
@@ -459,19 +476,20 @@ impl ConfigBuilder {
             jacs_agent_private_key_filename: self.private_key_filename,
             jacs_agent_public_key_filename: self.public_key_filename,
             jacs_agent_key_algorithm: Some(
-                self.key_algorithm
-                    .unwrap_or_else(|| "RSA-PSS".to_string()),
+                self.key_algorithm.unwrap_or_else(|| "RSA-PSS".to_string()),
             ),
             jacs_private_key_password: None, // Never store password in config
             jacs_agent_id_and_version: self.agent_id_and_version,
-            jacs_default_storage: Some(
-                self.default_storage.unwrap_or_else(|| "fs".to_string()),
-            ),
+            jacs_default_storage: Some(self.default_storage.unwrap_or_else(|| "fs".to_string())),
             jacs_agent_domain: self.agent_domain,
             jacs_dns_validate: self.dns_validate,
             jacs_dns_strict: self.dns_strict,
             jacs_dns_required: self.dns_required,
             observability: self.observability,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 }
@@ -531,6 +549,10 @@ impl Config {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 
@@ -585,6 +607,18 @@ impl Config {
         }
         if other.observability.is_some() {
             self.observability = other.observability;
+        }
+        if other.jacs_database_url.is_some() {
+            self.jacs_database_url = other.jacs_database_url;
+        }
+        if other.jacs_database_max_connections.is_some() {
+            self.jacs_database_max_connections = other.jacs_database_max_connections;
+        }
+        if other.jacs_database_min_connections.is_some() {
+            self.jacs_database_min_connections = other.jacs_database_min_connections;
+        }
+        if other.jacs_database_connect_timeout_secs.is_some() {
+            self.jacs_database_connect_timeout_secs = other.jacs_database_connect_timeout_secs;
         }
     }
 
@@ -666,6 +700,26 @@ impl Config {
             self.jacs_dns_required = Some(val);
         }
 
+        // Database configuration
+        if let Some(val) = env_opt("JACS_DATABASE_URL") {
+            self.jacs_database_url = Some(val);
+        }
+        if let Some(val) = env_opt("JACS_DATABASE_MAX_CONNECTIONS") {
+            if let Ok(n) = val.parse::<u32>() {
+                self.jacs_database_max_connections = Some(n);
+            }
+        }
+        if let Some(val) = env_opt("JACS_DATABASE_MIN_CONNECTIONS") {
+            if let Ok(n) = val.parse::<u32>() {
+                self.jacs_database_min_connections = Some(n);
+            }
+        }
+        if let Some(val) = env_opt("JACS_DATABASE_CONNECT_TIMEOUT_SECS") {
+            if let Ok(n) = val.parse::<u64>() {
+                self.jacs_database_connect_timeout_secs = Some(n);
+            }
+        }
+
         // Note: Password is intentionally NOT loaded from env into config
         // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
     }
@@ -689,38 +743,40 @@ impl Config {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         }
     }
 
     /// Load config from a JSON file without applying environment overrides.
     /// Use `load_config_12factor` for the recommended 12-Factor compliant loading.
     pub fn from_file(path: &str) -> Result<Config, Box<dyn Error>> {
-        let json_str = fs::read_to_string(path)
-            .map_err(|e| {
-                let help = match e.kind() {
-                    std::io::ErrorKind::NotFound => {
-                        format!(
-                            "Config file not found at '{}'. Create a jacs.config.json file or use \
+        let json_str = fs::read_to_string(path).map_err(|e| {
+            let help = match e.kind() {
+                std::io::ErrorKind::NotFound => {
+                    format!(
+                        "Config file not found at '{}'. Create a jacs.config.json file or use \
                             environment variables (JACS_DATA_DIRECTORY, JACS_KEY_DIRECTORY, etc.) \
                             to configure JACS without a file.",
-                            path
-                        )
-                    }
-                    std::io::ErrorKind::PermissionDenied => {
-                        format!(
-                            "Permission denied reading config file '{}'. Check file permissions.",
-                            path
-                        )
-                    }
-                    _ => {
-                        format!("Failed to read config file '{}': {}", path, e)
-                    }
-                };
-                JacsError::ConfigError(help)
-            })?;
-        let validated_value: Value = validate_config(&json_str).map_err(|e| {
-            JacsError::ConfigError(format!("Invalid config at '{}': {}", path, e))
+                        path
+                    )
+                }
+                std::io::ErrorKind::PermissionDenied => {
+                    format!(
+                        "Permission denied reading config file '{}'. Check file permissions.",
+                        path
+                    )
+                }
+                _ => {
+                    format!("Failed to read config file '{}': {}", path, e)
+                }
+            };
+            JacsError::ConfigError(help)
         })?;
+        let validated_value: Value = validate_config(&json_str)
+            .map_err(|e| JacsError::ConfigError(format!("Invalid config at '{}': {}", path, e)))?;
         let config: Config = serde_json::from_value(validated_value.clone()).map_err(|e| {
             // This can happen if the JSON structure doesn't match our Config struct
             JacsError::ConfigError(format!(
@@ -758,6 +814,7 @@ impl fmt::Display for Config {
             JACS_PRIVATE_KEY_PASSWORD:       REDACTED,
             JACS_AGENT_ID_AND_VERSION:       {},
             JACS_DEFAULT_STORAGE:            {},
+            JACS_DATABASE_URL:               {},
         "#,
             self.jacs_use_security.as_deref().unwrap_or(""),
             self.jacs_data_directory.as_deref().unwrap_or(""),
@@ -768,7 +825,12 @@ impl fmt::Display for Config {
             self.jacs_agent_public_key_filename.as_deref().unwrap_or(""),
             self.jacs_agent_key_algorithm.as_deref().unwrap_or(""),
             self.jacs_agent_id_and_version.as_deref().unwrap_or(""),
-            self.jacs_default_storage.as_deref().unwrap_or("")
+            self.jacs_default_storage.as_deref().unwrap_or(""),
+            if self.jacs_database_url.is_some() {
+                "REDACTED"
+            } else {
+                ""
+            }
         )
     }
 }
@@ -836,11 +898,17 @@ pub fn load_config_12factor_optional(config_path: Option<&str>) -> Result<Config
                     config.merge(file_config);
                 }
                 Err(e) => {
-                    warn!("Failed to parse config file '{}': {}. Using defaults.", path, e);
+                    warn!(
+                        "Failed to parse config file '{}': {}. Using defaults.",
+                        path, e
+                    );
                 }
             }
         } else {
-            info!("Config file '{}' not found. Using defaults and environment variables.", path);
+            info!(
+                "Config file '{}' not found. Using defaults and environment variables.",
+                path
+            );
         }
     }
 
@@ -855,7 +923,10 @@ pub fn load_config_12factor_optional(config_path: Option<&str>) -> Result<Config
 ///
 /// This function loads config from file only, without applying environment overrides.
 /// It exists for backwards compatibility but does not follow 12-Factor principles.
-#[deprecated(since = "0.2.0", note = "Use load_config_12factor() for 12-Factor compliant config loading")]
+#[deprecated(
+    since = "0.2.0",
+    note = "Use load_config_12factor() for 12-Factor compliant config loading"
+)]
 pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
     Config::from_file(config_path)
 }
@@ -865,22 +936,43 @@ pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
 /// # Deprecated
 ///
 /// Use [`crate::validation::split_agent_id`] instead for new code.
-#[deprecated(since = "0.3.0", note = "Use crate::validation::split_agent_id instead")]
+#[deprecated(
+    since = "0.3.0",
+    note = "Use crate::validation::split_agent_id instead"
+)]
 pub fn split_id(input: &str) -> Option<(&str, &str)> {
     split_agent_id(input)
 }
 
 /// Known config fields with their expected formats for helpful error messages
 const CONFIG_FIELD_HELP: &[(&str, &str)] = &[
-    ("jacs_agent_key_algorithm", "Expected one of: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025"),
+    (
+        "jacs_agent_key_algorithm",
+        "Expected one of: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025",
+    ),
     ("jacs_default_storage", "Expected one of: fs, aws, hai"),
-    ("jacs_use_security", "Expected 'true' or 'false' as a string"),
+    (
+        "jacs_use_security",
+        "Expected 'true' or 'false' as a string",
+    ),
     ("jacs_data_directory", "Expected a valid directory path"),
     ("jacs_key_directory", "Expected a valid directory path"),
-    ("jacs_agent_private_key_filename", "Expected a filename (e.g., 'rsa_pss_private.pem')"),
-    ("jacs_agent_public_key_filename", "Expected a filename (e.g., 'rsa_pss_public.pem')"),
-    ("jacs_agent_id_and_version", "Expected format: UUID:UUID (e.g., '550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001')"),
-    ("jacs_agent_domain", "Expected a domain name (e.g., 'example.com')"),
+    (
+        "jacs_agent_private_key_filename",
+        "Expected a filename (e.g., 'rsa_pss_private.pem')",
+    ),
+    (
+        "jacs_agent_public_key_filename",
+        "Expected a filename (e.g., 'rsa_pss_public.pem')",
+    ),
+    (
+        "jacs_agent_id_and_version",
+        "Expected format: UUID:UUID (e.g., '550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001')",
+    ),
+    (
+        "jacs_agent_domain",
+        "Expected a domain name (e.g., 'example.com')",
+    ),
     ("jacs_dns_validate", "Expected a boolean (true/false)"),
     ("jacs_dns_strict", "Expected a boolean (true/false)"),
     ("jacs_dns_required", "Expected a boolean (true/false)"),
@@ -1007,7 +1099,10 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
 ///
 /// Attempts to find and load a config file from the given path.
 /// Falls back to Config::default() if file not found.
-#[deprecated(since = "0.2.0", note = "Use load_config_12factor_optional() for 12-Factor compliant config loading")]
+#[deprecated(
+    since = "0.2.0",
+    note = "Use load_config_12factor_optional() for 12-Factor compliant config loading"
+)]
 pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
     let config: Config = match fs::read_to_string(format!("{}jacs.config.json", path)) {
         Ok(content) => {
@@ -1027,7 +1122,10 @@ pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
 ///
 /// This function is kept for backwards compatibility only. New code should use
 /// `load_config_12factor()` which reads env vars INTO config (correct direction).
-#[deprecated(since = "0.2.0", note = "Use load_config_12factor() - env vars should override config, not vice versa")]
+#[deprecated(
+    since = "0.2.0",
+    note = "Use load_config_12factor() - env vars should override config, not vice versa"
+)]
 pub fn set_env_vars(
     do_override: bool,
     config_json: Option<&str>,
@@ -1064,9 +1162,11 @@ pub fn set_env_vars(
     let jacs_data_directory = config
         .jacs_data_directory
         .as_ref()
-        .unwrap_or(&std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "./jacs_data".to_string()))
+        .unwrap_or(
+            &std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "./jacs_data".to_string()),
+        )
         .clone();
     set_env_var_override("JACS_DATA_DIRECTORY", &jacs_data_directory, do_override)?;
 
@@ -1175,7 +1275,13 @@ pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
 
         let value = get_env_var(var_name, *required)?;
         let status = match value {
-            Some(val) => val,
+            Some(val) => {
+                if *var_name == "JACS_PRIVATE_KEY_PASSWORD" {
+                    "REDACTED".to_string()
+                } else {
+                    val
+                }
+            }
             None => {
                 if *required {
                     missing_vars.push(var_name);
@@ -1435,6 +1541,10 @@ mod tests {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         };
 
         base.merge(override_config);
@@ -1442,7 +1552,10 @@ mod tests {
         // Values that were Some should be overridden
         assert_eq!(base.jacs_use_security, Some("true".to_string()));
         assert_eq!(base.jacs_data_directory, Some("/custom/data".to_string()));
-        assert_eq!(base.jacs_agent_private_key_filename, Some("custom.pem".to_string()));
+        assert_eq!(
+            base.jacs_agent_private_key_filename,
+            Some("custom.pem".to_string())
+        );
         assert_eq!(base.jacs_agent_key_algorithm, Some("pq2025".to_string()));
         assert_eq!(base.jacs_agent_domain, Some("example.com".to_string()));
         assert_eq!(base.jacs_dns_validate, Some(true));
@@ -1507,6 +1620,10 @@ mod tests {
             jacs_dns_strict: None,
             jacs_dns_required: None,
             observability: None,
+            jacs_database_url: None,
+            jacs_database_max_connections: None,
+            jacs_database_min_connections: None,
+            jacs_database_connect_timeout_secs: None,
         };
         config.merge(file_config);
 
@@ -1521,8 +1638,14 @@ mod tests {
         config.apply_env_overrides();
 
         // Env vars should win (12-Factor compliance)
-        assert_eq!(config.jacs_agent_key_algorithm, Some("ring-Ed25519".to_string()));
-        assert_eq!(config.jacs_data_directory, Some("/env/override/data".to_string()));
+        assert_eq!(
+            config.jacs_agent_key_algorithm,
+            Some("ring-Ed25519".to_string())
+        );
+        assert_eq!(
+            config.jacs_data_directory,
+            Some("/env/override/data".to_string())
+        );
 
         // Config file value not overridden by env should remain
         assert_eq!(config.jacs_key_directory, Some("/config/keys".to_string()));
@@ -1544,7 +1667,10 @@ mod tests {
 
         // Should have defaults overridden by env vars
         assert_eq!(config.jacs_use_security, Some("true".to_string()));
-        assert_eq!(config.jacs_data_directory, Some("/production/data".to_string()));
+        assert_eq!(
+            config.jacs_data_directory,
+            Some("/production/data".to_string())
+        );
         // Non-overridden defaults
         assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
 
@@ -1630,7 +1756,9 @@ mod tests {
             .use_security(true)
             .private_key_filename("my_private.pem")
             .public_key_filename("my_public.pem")
-            .agent_id_and_version("550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001")
+            .agent_id_and_version(
+                "550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001",
+            )
             .agent_domain("example.com")
             .dns_validate(true)
             .dns_strict(false)
@@ -1642,11 +1770,20 @@ mod tests {
         assert_eq!(config.jacs_data_directory, Some("/custom/data".to_string()));
         assert_eq!(config.jacs_default_storage, Some("memory".to_string()));
         assert_eq!(config.jacs_use_security, Some("true".to_string()));
-        assert_eq!(config.jacs_agent_private_key_filename, Some("my_private.pem".to_string()));
-        assert_eq!(config.jacs_agent_public_key_filename, Some("my_public.pem".to_string()));
+        assert_eq!(
+            config.jacs_agent_private_key_filename,
+            Some("my_private.pem".to_string())
+        );
+        assert_eq!(
+            config.jacs_agent_public_key_filename,
+            Some("my_public.pem".to_string())
+        );
         assert_eq!(
             config.jacs_agent_id_and_version,
-            Some("550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001".to_string())
+            Some(
+                "550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001"
+                    .to_string()
+            )
         );
         assert_eq!(config.jacs_agent_domain, Some("example.com".to_string()));
         assert_eq!(config.jacs_dns_validate, Some(true));
@@ -1722,9 +1859,21 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         // Should include line number, column, and helpful message
-        assert!(err.contains("line"), "Error should include line number: {}", err);
-        assert!(err.contains("column"), "Error should include column: {}", err);
-        assert!(err.contains("syntax"), "Error should mention syntax issue: {}", err);
+        assert!(
+            err.contains("line"),
+            "Error should include line number: {}",
+            err
+        );
+        assert!(
+            err.contains("column"),
+            "Error should include column: {}",
+            err
+        );
+        assert!(
+            err.contains("syntax"),
+            "Error should mention syntax issue: {}",
+            err
+        );
         assert!(err.contains("JSON"), "Error should mention JSON: {}", err);
     }
 
@@ -1743,10 +1892,15 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         // Should mention the field name and valid options
-        assert!(err.contains("jacs_agent_key_algorithm"), "Error should mention field name: {}", err);
+        assert!(
+            err.contains("jacs_agent_key_algorithm"),
+            "Error should mention field name: {}",
+            err
+        );
         assert!(
             err.contains("RSA-PSS") || err.contains("Valid algorithms"),
-            "Error should mention valid algorithms: {}", err
+            "Error should mention valid algorithms: {}",
+            err
         );
     }
 
@@ -1762,7 +1916,8 @@ mod tests {
         // Should mention required fields
         assert!(
             err.contains("required") || err.contains("Required"),
-            "Error should mention required fields: {}", err
+            "Error should mention required fields: {}",
+            err
         );
     }
 
@@ -1781,10 +1936,15 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         // Should mention the field name
-        assert!(err.contains("jacs_default_storage"), "Error should mention field name: {}", err);
+        assert!(
+            err.contains("jacs_default_storage"),
+            "Error should mention field name: {}",
+            err
+        );
         assert!(
             err.contains("fs") || err.contains("Valid storage"),
-            "Error should mention valid storage options: {}", err
+            "Error should mention valid storage options: {}",
+            err
         );
     }
 
@@ -1795,20 +1955,41 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         // Should include path and guidance
-        assert!(err.contains("nonexistent"), "Error should include path: {}", err);
+        assert!(
+            err.contains("nonexistent"),
+            "Error should include path: {}",
+            err
+        );
         assert!(
             err.contains("environment") || err.contains("not found"),
-            "Error should provide guidance: {}", err
+            "Error should provide guidance: {}",
+            err
         );
     }
 
     #[test]
     fn test_get_field_help() {
         // Test the field help function returns appropriate guidance
-        assert!(get_field_help("jacs_agent_key_algorithm").unwrap().contains("RSA-PSS"));
-        assert!(get_field_help("jacs_default_storage").unwrap().contains("fs"));
-        assert!(get_field_help("jacs_data_directory").unwrap().contains("path"));
-        assert!(get_field_help("jacs_agent_id_and_version").unwrap().contains("UUID"));
+        assert!(
+            get_field_help("jacs_agent_key_algorithm")
+                .unwrap()
+                .contains("RSA-PSS")
+        );
+        assert!(
+            get_field_help("jacs_default_storage")
+                .unwrap()
+                .contains("fs")
+        );
+        assert!(
+            get_field_help("jacs_data_directory")
+                .unwrap()
+                .contains("path")
+        );
+        assert!(
+            get_field_help("jacs_agent_id_and_version")
+                .unwrap()
+                .contains("UUID")
+        );
         assert!(get_field_help("unknown_field").is_none());
     }
 
@@ -1818,14 +1999,38 @@ mod tests {
 
     #[test]
     fn test_key_resolution_source_from_str() {
-        assert_eq!(KeyResolutionSource::from_str("local").unwrap(), KeyResolutionSource::Local);
-        assert_eq!(KeyResolutionSource::from_str("LOCAL").unwrap(), KeyResolutionSource::Local);
-        assert_eq!(KeyResolutionSource::from_str("Local").unwrap(), KeyResolutionSource::Local);
-        assert_eq!(KeyResolutionSource::from_str("dns").unwrap(), KeyResolutionSource::Dns);
-        assert_eq!(KeyResolutionSource::from_str("DNS").unwrap(), KeyResolutionSource::Dns);
-        assert_eq!(KeyResolutionSource::from_str("hai").unwrap(), KeyResolutionSource::Hai);
-        assert_eq!(KeyResolutionSource::from_str("HAI").unwrap(), KeyResolutionSource::Hai);
-        assert_eq!(KeyResolutionSource::from_str(" hai ").unwrap(), KeyResolutionSource::Hai);
+        assert_eq!(
+            KeyResolutionSource::from_str("local").unwrap(),
+            KeyResolutionSource::Local
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("LOCAL").unwrap(),
+            KeyResolutionSource::Local
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("Local").unwrap(),
+            KeyResolutionSource::Local
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("dns").unwrap(),
+            KeyResolutionSource::Dns
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("DNS").unwrap(),
+            KeyResolutionSource::Dns
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("hai").unwrap(),
+            KeyResolutionSource::Hai
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("HAI").unwrap(),
+            KeyResolutionSource::Hai
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str(" hai ").unwrap(),
+            KeyResolutionSource::Hai
+        );
 
         // Invalid sources
         assert!(KeyResolutionSource::from_str("invalid").is_err());
@@ -1846,7 +2051,10 @@ mod tests {
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
 
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]);
+        assert_eq!(
+            order,
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+        );
     }
 
     #[test]
@@ -1880,11 +2088,14 @@ mod tests {
         set_env_var("JACS_KEY_RESOLUTION", "local,dns,hai").unwrap();
 
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![
-            KeyResolutionSource::Local,
-            KeyResolutionSource::Dns,
-            KeyResolutionSource::Hai,
-        ]);
+        assert_eq!(
+            order,
+            vec![
+                KeyResolutionSource::Local,
+                KeyResolutionSource::Dns,
+                KeyResolutionSource::Hai,
+            ]
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }
@@ -1896,11 +2107,14 @@ mod tests {
         set_env_var("JACS_KEY_RESOLUTION", "LOCAL,DNS,HAI").unwrap();
 
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![
-            KeyResolutionSource::Local,
-            KeyResolutionSource::Dns,
-            KeyResolutionSource::Hai,
-        ]);
+        assert_eq!(
+            order,
+            vec![
+                KeyResolutionSource::Local,
+                KeyResolutionSource::Dns,
+                KeyResolutionSource::Hai,
+            ]
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }
@@ -1913,7 +2127,10 @@ mod tests {
 
         let order = get_key_resolution_order();
         // Should skip "invalid" but include valid sources
-        assert_eq!(order, vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]);
+        assert_eq!(
+            order,
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }
@@ -1926,7 +2143,10 @@ mod tests {
 
         let order = get_key_resolution_order();
         // Should fall back to default when all sources are invalid
-        assert_eq!(order, vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]);
+        assert_eq!(
+            order,
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }
@@ -1939,7 +2159,10 @@ mod tests {
 
         let order = get_key_resolution_order();
         // Should fall back to default for empty string
-        assert_eq!(order, vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]);
+        assert_eq!(
+            order,
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }
@@ -1951,7 +2174,10 @@ mod tests {
         set_env_var("JACS_KEY_RESOLUTION", " local , hai ").unwrap();
 
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]);
+        assert_eq!(
+            order,
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }

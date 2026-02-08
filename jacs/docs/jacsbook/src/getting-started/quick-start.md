@@ -67,12 +67,12 @@ jacs task create \
 
 ### Install Node.js Package
 ```bash
-npm install jacsnpm
+npm install @hai-ai/jacs
 ```
 
 ### Basic Setup
 ```javascript
-import { JacsAgent, createConfig } from 'jacsnpm';
+import { JacsAgent, createConfig } from '@hai-ai/jacs';
 import fs from 'fs';
 
 // Create configuration
@@ -240,6 +240,89 @@ print(f'Task created: {signed_task["jacsId"]}')
 </div>
 </div>
 </div>
+
+## Non-Interactive Agent Creation (v0.6.0+)
+
+For scripts, CI/CD, and server environments, all bindings support fully programmatic agent creation without interactive prompts:
+
+<div class="tabs">
+<div class="tab">
+<input type="radio" id="prog-python" name="prog-group" checked>
+<label for="prog-python">Python</label>
+<div class="content">
+
+```python
+import jacs.simple as jacs
+
+agent = jacs.create(
+    name="my-agent",
+    password="Str0ng-P@ssw0rd!",  # or set JACS_PRIVATE_KEY_PASSWORD
+    algorithm="pq2025",
+)
+print(f"Agent: {agent.agent_id}")
+```
+
+</div>
+</div>
+
+<div class="tab">
+<input type="radio" id="prog-nodejs" name="prog-group">
+<label for="prog-nodejs">Node.js</label>
+<div class="content">
+
+```javascript
+const jacs = require('@hai-ai/jacs/simple');
+
+const agent = jacs.create({
+  name: 'my-agent',
+  password: process.env.JACS_PRIVATE_KEY_PASSWORD,
+  algorithm: 'pq2025',
+});
+console.log(`Agent: ${agent.agentId}`);
+```
+
+</div>
+</div>
+
+<div class="tab">
+<input type="radio" id="prog-go" name="prog-group">
+<label for="prog-go">Go</label>
+<div class="content">
+
+```go
+info, err := jacs.Create("my-agent", &jacs.CreateAgentOptions{
+    Password:  os.Getenv("JACS_PRIVATE_KEY_PASSWORD"),
+    Algorithm: "pq2025",
+})
+```
+
+</div>
+</div>
+
+<div class="tab">
+<input type="radio" id="prog-rust" name="prog-group">
+<label for="prog-rust">Rust</label>
+<div class="content">
+
+```rust
+use jacs::simple::{CreateAgentParams, SimpleAgent};
+
+let params = CreateAgentParams {
+    name: "my-agent".into(),
+    password: std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap(),
+    algorithm: "pq2025".into(),
+    ..Default::default()
+};
+let (agent, info) = SimpleAgent::create_with_params(params)?;
+```
+
+</div>
+</div>
+</div>
+
+**Password requirements**: At least 8 characters, with uppercase, lowercase, a digit, and a special character.
+
+**Algorithm note**: `pq-dilithium` is deprecated in v0.6.0. Use `pq2025` (ML-DSA-87, FIPS-204) instead.
 
 ## Understanding What Happened
 
@@ -487,8 +570,8 @@ Now that you have the basics working:
 
 1. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
 2. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
-3. **[Python FastMCP](../python/fastmcp.md)** - Build MCP servers
-4. **[Production Setup](../advanced/observability.md)** - Add monitoring and logging
+3. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
+4. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
 5. **[Real Examples](../examples/integrations.md)** - See production patterns
 
 ## Troubleshooting

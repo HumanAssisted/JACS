@@ -17,6 +17,7 @@ use jacs::shutdown::{ShutdownGuard, install_signal_handler};
 use jacs::{load_agent, load_agent_with_dns_strict};
 
 use reqwest;
+use rpassword::read_password;
 use std::env;
 use std::error::Error;
 // use std::os::unix::fs::DirBuilderExt; // unused
@@ -537,6 +538,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 )
         )
         .subcommand(
+            Command::new("key")
+                .about("Work with JACS cryptographic keys")
+                .subcommand(
+                    Command::new("reencrypt")
+                        .about("Re-encrypt the private key with a new password")
+                )
+        )
+        .subcommand(
             Command::new("init")
                 .about("Initialize JACS by creating both config and agent (with keys)")
         )
@@ -759,7 +768,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("Not specified")
                                     );
-                                    if let Some(pk) = json.get("publicKey").and_then(|v| v.as_str()) {
+                                    if let Some(pk) = json.get("publicKey").and_then(|v| v.as_str())
+                                    {
                                         let preview = if pk.len() > 60 {
                                             format!("{}...", &pk[..60])
                                         } else {
@@ -958,6 +968,71 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             }
 
             _ => println!("please enter subcommand see jacs document --help"),
+        },
+        Some(("key", key_matches)) => match key_matches.subcommand() {
+            Some(("reencrypt", _reencrypt_matches)) => {
+                use jacs::crypt::aes_encrypt::password_requirements;
+                use jacs::simple::SimpleAgent;
+
+                // Load the agent first to find the key file
+                let agent = SimpleAgent::load(None).map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to load agent: {}", e),
+                    ))
+                })?;
+
+                println!("Re-encrypting private key.\n");
+
+                // Get old password
+                println!("Enter current password:");
+                let old_password = read_password().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Error reading password: {}", e),
+                    ))
+                })?;
+
+                if old_password.is_empty() {
+                    eprintln!("Error: current password cannot be empty.");
+                    process::exit(1);
+                }
+
+                // Get new password
+                println!("\n{}", password_requirements());
+                println!("\nEnter new password:");
+                let new_password = read_password().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Error reading password: {}", e),
+                    ))
+                })?;
+
+                println!("Confirm new password:");
+                let new_password_confirm = read_password().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Error reading password: {}", e),
+                    ))
+                })?;
+
+                if new_password != new_password_confirm {
+                    eprintln!("Error: new passwords do not match.");
+                    process::exit(1);
+                }
+
+                agent.reencrypt_key(&old_password, &new_password).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Re-encryption failed: {}", e),
+                        ))
+                    },
+                )?;
+
+                println!("Private key re-encrypted successfully.");
+            }
+            _ => println!("please enter subcommand see jacs key --help"),
         },
         Some(("init", _init_matches)) => {
             println!("--- Running Config Creation ---");

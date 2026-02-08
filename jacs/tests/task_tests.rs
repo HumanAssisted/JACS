@@ -20,7 +20,9 @@ use chrono::{Duration, Utc};
 fn test_hai_fields_custom_schema_and_custom_document() {
     // cargo test   --test task_tests test_hai_fields_custom_schema_and_custom_document -- --nocapture
     let mut agent = load_test_agent_one();
-    let schema_path = raw_fixture("custom.schema.json").to_string_lossy().to_string();
+    let schema_path = raw_fixture("custom.schema.json")
+        .to_string_lossy()
+        .to_string();
     let schemas = [schema_path.clone()];
     agent
         .load_custom_schemas(&schemas)
@@ -31,10 +33,7 @@ fn test_hai_fields_custom_schema_and_custom_document() {
     println!("loaded valid {}", document_key);
     let document_copy = agent.get_document(&document_key).unwrap();
     agent
-        .validate_document_with_custom_schema(
-            &schema_path,
-            document_copy.getvalue(),
-        )
+        .validate_document_with_custom_schema(&schema_path, document_copy.getvalue())
         .unwrap();
 
     let value = document_copy.getvalue();

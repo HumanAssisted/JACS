@@ -100,17 +100,11 @@ pub fn validate_agent_id(id: &str) -> Result<AgentId, JacsError> {
     })?;
 
     let agent_uuid = Uuid::parse_str(id_str).map_err(|e| {
-        JacsError::ValidationError(format!(
-            "Invalid agent UUID '{}': {}",
-            id_str, e
-        ))
+        JacsError::ValidationError(format!("Invalid agent UUID '{}': {}", id_str, e))
     })?;
 
     let version_uuid = Uuid::parse_str(version_str).map_err(|e| {
-        JacsError::ValidationError(format!(
-            "Invalid version UUID '{}': {}",
-            version_str, e
-        ))
+        JacsError::ValidationError(format!("Invalid version UUID '{}': {}", version_str, e))
     })?;
 
     Ok(AgentId::new(agent_uuid, version_uuid))
@@ -259,6 +253,74 @@ pub fn are_valid_uuid_parts(id: &str, version: &str) -> bool {
 #[must_use]
 pub fn format_agent_id(id: &str, version: &str) -> String {
     format!("{}:{}", id, version)
+}
+
+/// Validates that a relative path is safe for use in filesystem operations.
+///
+/// Use when building paths from untrusted input (e.g. `publicKeyHash`, filename).
+/// Rejects paths where any segment is empty, `"."`, `".."`, or contains null.
+/// Splits on both `/` and `\` so Windows-style paths are validated.
+///
+/// # Arguments
+///
+/// * `path` - The relative path string to validate (e.g. `public_keys/abc123.pem` or a hash)
+///
+/// # Returns
+///
+/// * `Ok(())` - Path is safe
+/// * `Err(JacsError::ValidationError)` - Path contains unsafe segments
+///
+/// # Examples
+///
+/// ```rust
+/// use jacs::validation::require_relative_path_safe;
+///
+/// assert!(require_relative_path_safe("public_keys/abc.pem").is_ok());
+/// assert!(require_relative_path_safe("..").is_err());
+/// assert!(require_relative_path_safe("a/../b").is_err());
+/// ```
+pub fn require_relative_path_safe(path: &str) -> Result<(), JacsError> {
+    // Reject Windows drive-prefixed paths (e.g., "C:\foo", "D:/bar", or "C:")
+    // because they are not relative and may bypass directory confinement on Windows.
+    let bytes = path.as_bytes();
+    if bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes.len() == 2 || bytes[2] == b'/' || bytes[2] == b'\\')
+    {
+        return Err(JacsError::ValidationError(format!(
+            "Path '{}' contains a Windows drive prefix and is not a safe relative path",
+            path
+        )));
+    }
+
+    for segment in path.split(['/', '\\']) {
+        if segment.is_empty() {
+            return Err(JacsError::ValidationError(format!(
+                "Path '{}' contains empty segment",
+                path
+            )));
+        }
+        if segment == "." {
+            return Err(JacsError::ValidationError(format!(
+                "Path '{}' contains current-directory segment",
+                path
+            )));
+        }
+        if segment == ".." {
+            return Err(JacsError::ValidationError(format!(
+                "Path '{}' contains parent-directory segment (path traversal)",
+                path
+            )));
+        }
+        if segment.contains('\0') {
+            return Err(JacsError::ValidationError(format!(
+                "Path '{}' contains null byte",
+                path
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

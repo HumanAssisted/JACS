@@ -7,6 +7,7 @@ package jacs
 
 #include <stdlib.h>
 #include <stdint.h>
+#include "jacs_cgo.h"
 
 // JacsAgent handle API - Recommended for concurrent usage
 typedef void* JacsAgentHandle;
@@ -23,6 +24,9 @@ char* jacs_agent_check_agreement(JacsAgentHandle handle, const char* document_st
 int jacs_agent_verify_agent(JacsAgentHandle handle, const char* agentfile);
 char* jacs_agent_create_document(JacsAgentHandle handle, const char* document_string, const char* custom_schema, const char* outputfilename, int no_save, const char* attachments, int embed);
 int jacs_agent_verify_document(JacsAgentHandle handle, const char* document_string);
+int jacs_agent_verify_document_by_id(JacsAgentHandle handle, const char* document_id);
+int jacs_agent_reencrypt_key(JacsAgentHandle handle, const char* old_password, const char* new_password);
+char* jacs_agent_get_json(JacsAgentHandle handle);
 
 // Legacy global singleton API - Deprecated, use JacsAgent instead
 int jacs_load(const char* config_path);
@@ -44,6 +48,8 @@ char* jacs_sign_request(const char* payload_json);
 char* jacs_verify_response(const char* document_string);
 char* jacs_verify_response_with_agent_id(const char* document_string, char** agent_id_out);
 int jacs_verify_signature(const char* document_string, const char* signature_field);
+char* jacs_verify_document_standalone(const char* signed_document, const char* key_resolution, const char* data_directory, const char* key_directory);
+char* jacs_generate_verify_link(const char* document, const char* base_url);
 */
 import "C"
 import (
@@ -65,15 +71,15 @@ func (e JACSError) Error() string {
 
 // Config represents JACS configuration options
 type Config struct {
-	UseSecurity            *string `json:"jacs_use_security,omitempty"`
-	DataDirectory          *string `json:"jacs_data_directory,omitempty"`
-	KeyDirectory           *string `json:"jacs_key_directory,omitempty"`
-	AgentPrivateKeyFile    *string `json:"jacs_agent_private_key_filename,omitempty"`
-	AgentPublicKeyFile     *string `json:"jacs_agent_public_key_filename,omitempty"`
-	AgentKeyAlgorithm      *string `json:"jacs_agent_key_algorithm,omitempty"`
-	PrivateKeyPassword     *string `json:"jacs_private_key_password,omitempty"`
-	AgentIDAndVersion      *string `json:"jacs_agent_id_and_version,omitempty"`
-	DefaultStorage         *string `json:"jacs_default_storage,omitempty"`
+	UseSecurity         *string `json:"jacs_use_security,omitempty"`
+	DataDirectory       *string `json:"jacs_data_directory,omitempty"`
+	KeyDirectory        *string `json:"jacs_key_directory,omitempty"`
+	AgentPrivateKeyFile *string `json:"jacs_agent_private_key_filename,omitempty"`
+	AgentPublicKeyFile  *string `json:"jacs_agent_public_key_filename,omitempty"`
+	AgentKeyAlgorithm   *string `json:"jacs_agent_key_algorithm,omitempty"`
+	PrivateKeyPassword  *string `json:"jacs_private_key_password,omitempty"`
+	AgentIDAndVersion   *string `json:"jacs_agent_id_and_version,omitempty"`
+	DefaultStorage      *string `json:"jacs_default_storage,omitempty"`
 }
 
 // ============================================================================
@@ -384,6 +390,56 @@ func (a *JacsAgent) VerifyDocument(documentString string) error {
 	return nil
 }
 
+// VerifyDocumentById verifies a document by its storage ID ("uuid:version" format).
+func (a *JacsAgent) VerifyDocumentById(documentID string) error {
+	if a.handle == nil {
+		return errors.New("JacsAgent is closed")
+	}
+
+	cDocID := C.CString(documentID)
+	defer C.free(unsafe.Pointer(cDocID))
+
+	result := C.jacs_agent_verify_document_by_id(a.handle, cDocID)
+	if result != 0 {
+		return JACSError{Code: int(result), Message: getAgentErrorMessage(int(result), "verify_document_by_id")}
+	}
+	return nil
+}
+
+// ReencryptKey re-encrypts the agent's private key with a new password.
+func (a *JacsAgent) ReencryptKey(oldPassword, newPassword string) error {
+	if a.handle == nil {
+		return errors.New("JacsAgent is closed")
+	}
+
+	cOldPw := C.CString(oldPassword)
+	defer C.free(unsafe.Pointer(cOldPw))
+
+	cNewPw := C.CString(newPassword)
+	defer C.free(unsafe.Pointer(cNewPw))
+
+	result := C.jacs_agent_reencrypt_key(a.handle, cOldPw, cNewPw)
+	if result != 0 {
+		return JACSError{Code: int(result), Message: getAgentErrorMessage(int(result), "reencrypt_key")}
+	}
+	return nil
+}
+
+// GetJSON returns the agent's JSON representation.
+func (a *JacsAgent) GetJSON() (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	result := C.jacs_agent_get_json(a.handle)
+	if result == nil {
+		return "", errors.New("failed to get agent JSON (agent may not be loaded)")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
 // Helper function to get error messages for JacsAgent methods
 func getAgentErrorMessage(code int, operation string) string {
 	switch operation {
@@ -451,6 +507,50 @@ func getAgentErrorMessage(code int, operation string) string {
 		default:
 			return "unknown error"
 		}
+	case "verify_document_by_id":
+		switch code {
+		case -1:
+			return "null handle or document ID"
+		case -2:
+			return "invalid UTF-8 in document ID"
+		case -3:
+			return "invalid document ID format (expected 'uuid:version')"
+		case -4:
+			return "failed to initialize storage"
+		case -5:
+			return "document not found in storage"
+		case -6:
+			return "failed to serialize document"
+		case -7:
+			return "failed to acquire agent lock"
+		case -8:
+			return "failed to load document"
+		case -9:
+			return "hash verification failed"
+		case -10:
+			return "signature verification failed"
+		default:
+			return "unknown error"
+		}
+	case "reencrypt_key":
+		switch code {
+		case -1:
+			return "null handle or password"
+		case -2:
+			return "invalid UTF-8 in old password"
+		case -3:
+			return "invalid UTF-8 in new password"
+		case -4:
+			return "failed to acquire agent lock"
+		case -5:
+			return "failed to read private key file"
+		case -6:
+			return "re-encryption failed (wrong old password or weak new password)"
+		case -7:
+			return "failed to write re-encrypted key"
+		default:
+			return "unknown error"
+		}
 	default:
 		return fmt.Sprintf("operation failed with code %d", code)
 	}
@@ -462,9 +562,9 @@ func getAgentErrorMessage(code int, operation string) string {
 // The following functions use a global singleton for backwards compatibility.
 // New code should use the JacsAgent type above.
 
-// Load initializes JACS with the given configuration file
-// Deprecated: Use NewJacsAgent() and agent.Load() instead.
-func Load(configPath string) error {
+// LegacyLoad initializes JACS with the given configuration file (legacy C API).
+// Deprecated: Use NewJacsAgent() and agent.Load() instead, or the simple API Load(configPath *string).
+func LegacyLoad(configPath string) error {
 	cPath := C.CString(configPath)
 	defer C.free(unsafe.Pointer(cPath))
 
@@ -960,4 +1060,55 @@ func getErrorMessage(code int, operation string) string {
 	default:
 		return fmt.Sprintf("operation failed with code %d", code)
 	}
+}
+
+// VerifyDocumentStandalone verifies a signed document without loading an agent.
+// Optional keyResolution, dataDirectory, keyDirectory may be empty to use defaults.
+// Returns a VerificationResult; does not require Load() to have been called.
+func VerifyDocumentStandalone(signedDocument, keyResolution, dataDirectory, keyDirectory string) (*VerificationResult, error) {
+	cDoc := C.CString(signedDocument)
+	defer C.free(unsafe.Pointer(cDoc))
+	var cKR, cDD, cKD *C.char
+	if keyResolution != "" {
+		cKR = C.CString(keyResolution)
+		defer C.free(unsafe.Pointer(cKR))
+	}
+	if dataDirectory != "" {
+		cDD = C.CString(dataDirectory)
+		defer C.free(unsafe.Pointer(cDD))
+	}
+	if keyDirectory != "" {
+		cKD = C.CString(keyDirectory)
+		defer C.free(unsafe.Pointer(cKD))
+	}
+	result := C.jacs_verify_document_standalone(cDoc, cKR, cDD, cKD)
+	if result == nil {
+		return nil, errors.New("verify_document_standalone failed")
+	}
+	defer C.jacs_free_string(result)
+	resultStr := C.GoString(result)
+	var out struct {
+		Valid    bool   `json:"valid"`
+		SignerID string `json:"signer_id"`
+	}
+	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
+		return nil, fmt.Errorf("parse standalone result: %w", err)
+	}
+	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID}, nil
+}
+
+// RunAudit calls the jacs_audit FFI function and returns the JSON result string.
+// configPath and recentN can be empty/zero for defaults.
+func RunAudit(configPath string, recentN int) (string, error) {
+	var cConfigPath *C.char
+	if configPath != "" {
+		cConfigPath = C.CString(configPath)
+		defer C.free(unsafe.Pointer(cConfigPath))
+	}
+	result := C.jacs_audit(cConfigPath, C.int(recentN))
+	if result == nil {
+		return "", errors.New("audit failed")
+	}
+	defer C.jacs_free_string(result)
+	return C.GoString(result), nil
 }

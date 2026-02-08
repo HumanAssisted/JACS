@@ -3,7 +3,7 @@ mod utils;
 use jacs::config::{check_env_vars, load_config_12factor, load_config_12factor_optional};
 use jacs::storage::jenv::set_env_var;
 use serial_test::serial;
-use utils::{clear_test_env_vars, set_test_env_vars, PASSWORD_ENV_VAR};
+use utils::{PASSWORD_ENV_VAR, clear_test_env_vars, set_test_env_vars};
 
 //RUST_BACKTRACE=1 cargo test   --test config_tests -- --nocapture
 

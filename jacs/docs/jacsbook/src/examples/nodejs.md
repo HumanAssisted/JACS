@@ -1,17 +1,17 @@
 # Node.js Examples
 
-This chapter provides practical Node.js examples using the `jacsnpm` package.
+This chapter provides practical Node.js examples using the `@hai-ai/jacs` package.
 
 ## Setup
 
 ```bash
 # Install dependencies
-npm install jacsnpm express @modelcontextprotocol/sdk zod
+npm install @hai-ai/jacs express @modelcontextprotocol/sdk zod
 ```
 
 ```javascript
 // Initialize JACS (ES Modules)
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const agent = new JacsAgent();
 await agent.load('./jacs.config.json');
@@ -22,7 +22,7 @@ await agent.load('./jacs.config.json');
 ### Creating and Signing Documents
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 async function createSignedDocument() {
   const agent = new JacsAgent();
@@ -57,7 +57,7 @@ createSignedDocument();
 ### Verifying Documents
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 
 async function verifyDocument(filePath) {
@@ -88,7 +88,7 @@ verifyDocument('./invoice.json');
 ### Updating Documents
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 
 async function updateDocument(originalPath, newContent) {
@@ -127,8 +127,8 @@ const updated = await updateDocument('./invoice-v1.json', {
 
 ```javascript
 import express from 'express';
-import { JACSExpressMiddleware } from 'jacsnpm/http';
-import { JacsAgent } from 'jacsnpm';
+import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const app = express();
 const PORT = 3000;
@@ -216,7 +216,7 @@ app.listen(PORT, () => {
 ### HTTP Client
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 async function callJacsApi(url, payload) {
   const agent = new JacsAgent();
@@ -270,7 +270,7 @@ main().catch(console.error);
 ```javascript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 import { z } from 'zod';
 
 const JACS_CONFIG = "./jacs.server.config.json";
@@ -348,7 +348,7 @@ main().catch(err => {
 ```javascript
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 
 const JACS_CONFIG = "./jacs.client.config.json";
 
@@ -407,7 +407,7 @@ main().catch(console.error);
 ### Creating Multi-Party Agreements
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 
 async function createAgreement() {
@@ -457,7 +457,7 @@ createAgreement();
 ### Signing Agreements
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 
 async function signAgreement(agreementPath, outputPath) {
@@ -490,7 +490,7 @@ signAgreement('./agreement-pending.json', './agreement-signed.json');
 ### Checking Agreement Status
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 
 async function checkAgreementStatus(agreementPath) {
@@ -518,7 +518,7 @@ checkAgreementStatus('./agreement.json');
 ### Simple File-Based Store
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 import path from 'path';
 
@@ -612,7 +612,7 @@ main();
 ### Robust Error Handling Pattern
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 class JacsError extends Error {
   constructor(message, code, details = {}) {
@@ -701,7 +701,7 @@ main();
 
 ```javascript
 // tests/jacs.test.js
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';

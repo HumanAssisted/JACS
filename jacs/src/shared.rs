@@ -233,7 +233,9 @@ pub fn document_check_agreement(
     let document_key = docresult.getkey();
     let result = agent.check_agreement(&document_key, Some(agreement_fieldname_key));
     match result {
-        Err(err) => Err(JacsError::DocumentError(format!("Agreement check failed: {}", err)).into()),
+        Err(err) => {
+            Err(JacsError::DocumentError(format!("Agreement check failed: {}", err)).into())
+        }
         Ok(_) => Ok(format!(
             "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
             docresult
@@ -373,6 +375,8 @@ pub fn save_document(
             agent.save_document(&document_key, save_filename, export_embedded, extract_only)?;
             Ok(format!("saved  {}", document_key))
         }
-        Err(ref e) => Err(JacsError::ValidationError(format!("Document validation failed: {}", e)).into()),
+        Err(ref e) => {
+            Err(JacsError::ValidationError(format!("Document validation failed: {}", e)).into())
+        }
     }
 }

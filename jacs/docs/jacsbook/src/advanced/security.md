@@ -2,6 +2,17 @@
 
 JACS implements a comprehensive security model designed to ensure authenticity, integrity, and non-repudiation for all agent communications and documents.
 
+## Security Model (v0.6.0)
+
+- **Passwords**: The private key password must be set only via the `JACS_PRIVATE_KEY_PASSWORD` environment variable. It is never stored in config files.
+- **Keys**: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.
+- **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, `.`, `..`, null bytes, and Windows drive-prefixed paths.
+- **Trust ID canonicalization**: Trust-store operations normalize canonical agent docs (`jacsId` + `jacsVersion`) into a safe `UUID:VERSION_UUID` identifier before filesystem use, preserving path-safety checks while supporting standard agent document layout.
+- **Filesystem schema policy**: Local schema loading is disabled by default and requires `JACS_ALLOW_FILESYSTEM_SCHEMAS=true`. When enabled, schema paths must remain within configured roots (`JACS_DATA_DIRECTORY` and/or `JACS_SCHEMA_DIRECTORY`) after normalized/canonical path checks.
+- **Network endpoint policy**: HAI registration verification requires HTTPS for `HAI_API_URL` (localhost HTTP is allowed for local testing only).
+- **No secrets in config**: Config files must not contain passwords or other secrets. The example config (`jacs.config.example.json`) does not include `jacs_private_key_password`.
+- **Dependency auditing**: Run `cargo audit` (Rust), `npm audit` (Node.js), or `pip audit` (Python) to check for known vulnerabilities.
+
 ## Core Security Principles
 
 ### 1. Cryptographic Identity
@@ -37,6 +48,49 @@ Signatures provide proof of origin:
 - Agents cannot deny signing a document
 - Timestamps record when signatures were made
 - Public keys enable independent verification
+
+## Security Audit (`audit()`)
+
+JACS provides a read-only **security audit** that checks configuration, directories, secrets, trust store, storage, quarantine/failed files, and optionally re-verifies recent documents. It does not modify state.
+
+**Purpose**: Surface misconfiguration, missing keys, unexpected paths, and verification failures in one report.
+
+**Options** (all optional):
+
+- `config_path`: Path to `jacs.config.json` (default: 12-factor load)
+- `data_directory` / `key_directory`: Override paths
+- `recent_verify_count`: Number of recent documents to re-verify (default 10, max 100)
+
+**Return structure**: `AuditResult` with `overall_status`, `risks` (list of `AuditRisk`), `health_checks` (list of `ComponentHealth`), `summary`, `checked_at`, and optional `quarantine_entries` / `failed_entries`.
+
+**Rust**:
+
+```rust
+use jacs::audit::{audit, AuditOptions};
+
+let result = audit(AuditOptions::default())?;
+println!("{}", jacs::format_audit_report(&result));
+```
+
+**Python**:
+
+```python
+import jacs.simple as jacs
+
+result = jacs.audit()  # dict with risks, health_checks, summary, overall_status
+print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
+```
+
+**Node.js**:
+
+```typescript
+import * as jacs from '@hai-ai/jacs/simple';
+
+const result = jacs.audit({ recentN: 5 });
+console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+```
+
+Available in all bindings and as an MCP tool (`jacs_audit`) for automation.
 
 ## Threat Model
 
@@ -110,17 +164,14 @@ jacs_keys/
 
 **Encryption at Rest**:
 
-```json
-{
-  "jacs_private_key_password": "NEVER_STORE_IN_CONFIG"
-}
-```
-
-Use environment variables instead:
+Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-SHA256 (600,000 iterations). Never store the password in config files.
 
 ```bash
-export JACS_AGENT_PRIVATE_KEY_PASSWORD="secure-password"
+# Set via environment variable only
+export JACS_PRIVATE_KEY_PASSWORD="secure-password"
 ```
+
+> **Important**: The CLI can prompt for the password during `jacs init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable.
 
 **Password Entropy Requirements**:
 
@@ -186,6 +237,8 @@ When enabled, JACS will:
 |------|----------|----------|
 | Default (dev) | Warn on invalid certs, allow connection | Local development, testing |
 | Strict (`JACS_STRICT_TLS=true`) | Reject invalid certs | Production, staging |
+
+For HAI registration verification endpoints, `HAI_API_URL` must use HTTPS. HTTP is only allowed for localhost test endpoints.
 
 ## Signature Timestamp Validation
 
@@ -360,9 +413,18 @@ except AgentNotTrusted as e:
 
 | Operation | Validation |
 |-----------|------------|
-| `trust_agent()` | Public key hash verification before adding |
-| `untrust_agent()` | Returns `AgentNotTrusted` error if agent not found |
-| `is_trusted()` | Safe lookup without side effects |
+| `trust_agent()` | UUID format validation, path traversal rejection, public key hash verification, self-signature verification before adding |
+| `untrust_agent()` | UUID format validation, path containment check, returns `AgentNotTrusted` error if agent not found |
+| `get_trusted_agent()` | UUID format validation, path containment check |
+| `is_trusted()` | UUID format validation, safe lookup without side effects |
+| Key cache (`load_public_key_from_cache`) | `require_relative_path_safe()` rejects traversal in `publicKeyHash` |
+| Key cache (`save_public_key_to_cache`) | `require_relative_path_safe()` rejects traversal in `publicKeyHash` |
+
+**Path Traversal Protection (v0.6.0)**: All trust store operations that construct file paths from agent IDs or key hashes use defense-in-depth:
+1. **UUID format validation**: Agent IDs must match `UUID:UUID` format (rejects special characters)
+2. **Path character rejection**: Explicit rejection of `..`, `/`, `\`, and null bytes
+3. **Path containment check**: For existing files, canonicalized paths are verified to stay within the trust store directory
+4. **`require_relative_path_safe()`**: Key hashes are validated to prevent traversal before constructing cache file paths
 
 ### Best Practices
 
@@ -464,7 +526,7 @@ chmod 600 ./jacs_keys/private.pem
 
 ```bash
 # Use environment variables
-export JACS_AGENT_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
+export JACS_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
 ```
 
 ### 3. Transport Security
@@ -513,17 +575,18 @@ Enable observability for security auditing:
 ### Production
 
 - [ ] Encrypt private keys at rest
-- [ ] Use environment variables for secrets
+- [ ] Use environment variables for secrets (never store `jacs_private_key_password` in config)
 - [ ] Enable DNS verification
 - [ ] Configure strict security mode
 - [ ] Enable audit logging
 - [ ] Use TLS for all network transport
-- [ ] Restrict key file permissions
+- [ ] Restrict key file permissions (0600 for keys, 0700 for key directory)
 - [ ] Implement key rotation policy
 - [ ] Set `JACS_STRICT_TLS=true` for certificate validation
 - [ ] Use strong passwords (28+ bit entropy, 35+ for single character class)
 - [ ] Enable signature timestamp validation
 - [ ] Verify public key hashes before trusting agents
+- [ ] Run `cargo audit` / `npm audit` / `pip audit` regularly for dependency vulnerabilities
 
 ### Verification
 

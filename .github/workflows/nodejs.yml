@@ -42,7 +42,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: jacsnpm
-        run: npm ci || npm install
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: jacsnpm
+        run: npm audit --audit-level=high || true
 
       - name: Build native module
         working-directory: jacsnpm
@@ -51,3 +55,14 @@ jobs:
       - name: Run tests
         working-directory: jacsnpm
         run: npm test
+
+      - name: Smoke test packed npm install
+        working-directory: jacsnpm
+        run: |
+          set -euo pipefail
+          PACKAGE_TGZ=$(npm pack | tail -n 1)
+          mkdir -p /tmp/jacs-npm-smoke
+          cd /tmp/jacs-npm-smoke
+          npm init -y >/dev/null
+          npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
+          node -e "require('@hai-ai/jacs'); require('@hai-ai/jacs/simple'); require('@hai-ai/jacs/mcp'); require('@hai-ai/jacs/a2a'); console.log('smoke imports ok')"

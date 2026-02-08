@@ -1,7 +1,16 @@
 [package]
 name = "jacs-mcp"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
+rust-version = "1.93"
+description = "MCP server for JACS: data provenance and cryptographic signing of agent state, with optional HAI.ai integration"
+readme = "README.md"
+license-file = "../LICENSE"
+homepage = "https://humanassisted.github.io/JACS"
+repository = "https://github.com/HumanAssisted/JACS"
+authors = ["HAI.AI <engineering@hai.io>"]
+keywords = ["mcp", "jacs", "ai", "agents", "signing", "provenance"]
+categories = ["cryptography", "development-tools"]
 
 [features]
 default = ["mcp"]
@@ -21,6 +30,7 @@ serde_json = "1"
 schemars = "1.0"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
+sha2 = "0.10.8"
 
 [dev-dependencies]
 assert_cmd = "2"

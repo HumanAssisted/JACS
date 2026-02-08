@@ -56,14 +56,36 @@ pub fn create_jwk_keys(
     let (jacs_private, jacs_public) = match jacs_alg {
         "dilithium" | "pq-dilithium" => crate::crypt::pq::generate_keys()?,
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
-        "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        _ => return Err(JacsError::CryptoError(format!("Unsupported JACS algorithm: {}", jacs_alg)).into()),
+        "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
+        "ecdsa" | "es256" => {
+            return Err(JacsError::CryptoError(
+                "ECDSA key generation for A2A is not yet implemented in this build".to_string(),
+            )
+            .into());
+        }
+        _ => {
+            return Err(JacsError::CryptoError(format!(
+                "Unsupported JACS algorithm: {}",
+                jacs_alg
+            ))
+            .into());
+        }
     };
 
     let (a2a_private, a2a_public) = match a2a_alg {
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
-        "ecdsa" | "es256" | "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        _ => return Err(JacsError::CryptoError(format!("Unsupported A2A algorithm: {}", a2a_alg)).into()),
+        "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
+        "ecdsa" | "es256" => {
+            return Err(JacsError::CryptoError(
+                "ECDSA key generation for A2A is not yet implemented in this build".to_string(),
+            )
+            .into());
+        }
+        _ => {
+            return Err(
+                JacsError::CryptoError(format!("Unsupported A2A algorithm: {}", a2a_alg)).into(),
+            );
+        }
     };
 
     Ok(DualKeyPair {
@@ -115,19 +137,28 @@ pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn
 }
 
 /// Export ECDSA public key as JWK
-pub fn export_ecdsa_as_jwk(_public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn Error>> {
-    // For now, return a placeholder - full ECDSA support would require
-    // parsing the key and extracting x,y coordinates
+pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn Error>> {
+    let key_bytes = match public_key.len() {
+        32 => public_key.to_vec(),
+        _ => {
+            return Err(JacsError::CryptoError(format!(
+                "Ed25519 public key must be 32 bytes, got {} bytes",
+                public_key.len()
+            ))
+            .into());
+        }
+    };
+
     Ok(Jwk {
-        kty: "EC".to_string(),
+        kty: "OKP".to_string(),
         kid: key_id.to_string(),
-        alg: "ES256".to_string(),
+        alg: "EdDSA".to_string(),
         use_: "sig".to_string(),
         n: None,
         e: None,
-        x: Some(general_purpose::URL_SAFE_NO_PAD.encode(b"placeholder_x")),
-        y: Some(general_purpose::URL_SAFE_NO_PAD.encode(b"placeholder_y")),
-        crv: Some("P-256".to_string()),
+        x: Some(general_purpose::URL_SAFE_NO_PAD.encode(key_bytes)),
+        y: None,
+        crv: Some("Ed25519".to_string()),
     })
 }
 
@@ -139,7 +170,11 @@ pub fn export_as_jwk(
 ) -> Result<Jwk, Box<dyn Error>> {
     match algorithm {
         "rsa" => export_rsa_as_jwk(public_key, key_id),
-        "ecdsa" | "es256" => export_ecdsa_as_jwk(public_key, key_id),
+        "ring-Ed25519" => export_ed25519_as_jwk(public_key, key_id),
+        "ecdsa" | "es256" => Err(JacsError::CryptoError(
+            "ECDSA JWK export is not yet implemented in this build".to_string(),
+        )
+        .into()),
         _ => Err(JacsError::CryptoError(format!("Cannot export {} key as JWK", algorithm)).into()),
     }
 }
@@ -162,7 +197,8 @@ pub fn sign_jws(
     let header = json!({
         "alg": match algorithm {
             "rsa" => "RS256",
-            "ecdsa" | "es256" => "ES256",
+            "ring-Ed25519" => "EdDSA",
+            "ecdsa" | "es256" => return Err(JacsError::CryptoError("ECDSA JWS signing is not yet implemented in this build".to_string()).into()),
             _ => return Err(JacsError::CryptoError(format!("Unsupported JWS algorithm: {}", algorithm)).into()),
         },
         "typ": "JWT",
@@ -183,12 +219,22 @@ pub fn sign_jws(
                 crate::crypt::rsawrapper::sign_string(private_key.to_vec(), &signing_input)?;
             general_purpose::STANDARD.decode(&sig_b64)?
         }
-        "ecdsa" | "es256" => {
+        "ring-Ed25519" => {
             let sig_b64 =
                 crate::crypt::ringwrapper::sign_string(private_key.to_vec(), &signing_input)?;
             general_purpose::STANDARD.decode(&sig_b64)?
         }
-        _ => return Err(JacsError::CryptoError(format!("Unsupported algorithm: {}", algorithm)).into()),
+        "ecdsa" | "es256" => {
+            return Err(JacsError::CryptoError(
+                "ECDSA JWS signing is not yet implemented in this build".to_string(),
+            )
+            .into());
+        }
+        _ => {
+            return Err(
+                JacsError::CryptoError(format!("Unsupported algorithm: {}", algorithm)).into(),
+            );
+        }
     };
 
     // Base64url encode signature

@@ -61,10 +61,13 @@ class TestFetchRemoteKey(unittest.TestCase):
     def test_network_error_on_unreachable_server(self):
         """Test that NetworkError is raised when server is unreachable."""
         # Use a localhost URL that's not running
-        os.environ["HAI_KEYS_BASE_URL"] = "http://localhost:19999"
+        os.environ["HAI_KEYS_BASE_URL"] = "http://127.0.0.1:19999"
         try:
             with self.assertRaises(NetworkError):
-                jacs.fetch_remote_key("test-agent", "latest")
+                jacs.fetch_remote_key(
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    "550e8400-e29b-41d4-a716-446655440001",
+                )
         finally:
             # Clean up environment
             if "HAI_KEYS_BASE_URL" in os.environ:

@@ -21,6 +21,16 @@ use url::Url;
 
 pub mod jenv;
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+pub mod database;
+#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+pub mod database_traits;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+pub use database::DatabaseStorage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+pub use database_traits::DatabaseDocumentTraits;
+
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
 
@@ -98,10 +108,13 @@ impl ObjectStore for WebLocalStorage {
                 )),
             })?;
 
-        let decoded = crate::crypt::base64_decode(&value)
-            .map_err(|e| ObjectStoreError::Generic {
+        let decoded =
+            crate::crypt::base64_decode(&value).map_err(|e| ObjectStoreError::Generic {
                 store: "WebLocalStorage",
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                source: Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                )),
             })?;
 
         Ok(GetResult::Stream(Box::pin(futures_util::stream::once(
@@ -159,6 +172,9 @@ pub enum StorageType {
     #[cfg(target_arch = "wasm32")]
     #[strum(serialize = "local")]
     WebLocal,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+    #[strum(serialize = "database")]
+    Database,
 }
 
 impl MultiStorage {
@@ -407,6 +423,10 @@ impl MultiStorage {
                 .web_local
                 .clone()
                 .expect("web local storage not loaded"),
+            #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+            StorageType::Database => {
+                panic!("Database storage does not use ObjectStore. Use DatabaseStorage directly.")
+            }
         }
     }
 }
@@ -594,7 +614,11 @@ impl StorageDocumentTraits for MultiStorage {
         let versions = self.get_document_versions(document_id)?;
 
         if versions.is_empty() {
-            return Err(JacsError::DocumentError(format!("No documents found with ID: {}", document_id)).into());
+            return Err(JacsError::DocumentError(format!(
+                "No documents found with ID: {}",
+                document_id
+            ))
+            .into());
         }
 
         // For now, return the last one in the list

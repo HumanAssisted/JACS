@@ -171,6 +171,40 @@ if (result.valid) {
 
 ---
 
+### verifyStandalone(signedDocument, options?)
+
+Verify a signed document **without** loading an agent. Use when you only need to verify (e.g. a lightweight API). Does not use the global agent.
+
+**Parameters:**
+- `signedDocument` (string): The signed JACS document JSON
+- `options` (object, optional): `{ keyResolution?, dataDirectory?, keyDirectory? }`
+
+**Returns:** `VerificationResult` (same shape as `verify()`)
+
+```javascript
+const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
+console.log(result.valid, result.signerId);
+```
+
+---
+
+### audit(options?)
+
+Run a read-only security audit and health checks. Returns an object with `risks`, `health_checks`, `summary`, and `overall_status`. Does not require a loaded agent; does not modify state.
+
+**Parameters:** `options` (object, optional): `{ configPath?, recentN? }`
+
+**Returns:** Object with `risks`, `health_checks`, `summary`, `overall_status`, etc.
+
+See [Security Model — Security Audit](../advanced/security.md#security-audit-audit) for full details and options.
+
+```javascript
+const result = jacs.audit();
+console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
+```
+
+---
+
 ### updateAgent(newAgentData)
 
 Update the agent document with new data and re-sign it.
@@ -253,6 +287,34 @@ console.log(agentDoc);
 const agent = JSON.parse(agentDoc);
 console.log(`Agent type: ${agent.jacsAgentType}`);
 ```
+
+---
+
+### registerWithHai(options?)
+
+Register the loaded agent with HAI.ai. Requires a loaded agent and an API key (`options.apiKey` or `HAI_API_KEY`).
+
+**Parameters:** `options` (object, optional): `{ apiKey?, haiUrl?, preview? }`
+
+**Returns:** `Promise<HaiRegistrationResult>` with `agentId`, `jacsId`, `dnsVerified`, `signatures`
+
+---
+
+### getDnsRecord(domain, ttl?)
+
+Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: `_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."`.
+
+**Parameters:** `domain` (string), `ttl` (number, optional, default 3600)
+
+**Returns:** string
+
+---
+
+### getWellKnownJson()
+
+Return the well-known JSON object for the loaded agent (e.g. for `/.well-known/jacs-pubkey.json`). Keys: `publicKey`, `publicKeyHash`, `algorithm`, `agentId`.
+
+**Returns:** object
 
 ---
 

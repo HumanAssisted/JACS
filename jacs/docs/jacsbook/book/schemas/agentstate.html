@@ -1,0 +1,459 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Agent State Schema - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../usecases.html"><strong aria-hidden="true">4.</strong> Use cases</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">5.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">6.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">7.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">8.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">9.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">10.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">11.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">12.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">13.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/simple-api.html"><strong aria-hidden="true">14.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">15.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">16.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">17.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">18.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">19.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">20.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/simple-api.html"><strong aria-hidden="true">21.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">22.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">23.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">24.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">25.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">26.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">27.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">28.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/agentstate.html" class="active"><strong aria-hidden="true">29.</strong> Agent State Schema</a></li><li class="chapter-item expanded "><a href="../schemas/commitment.html"><strong aria-hidden="true">30.</strong> Commitment Schema</a></li><li class="chapter-item expanded "><a href="../schemas/todo.html"><strong aria-hidden="true">31.</strong> Todo List Schema</a></li><li class="chapter-item expanded "><a href="../schemas/conversation.html"><strong aria-hidden="true">32.</strong> Conversation Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">33.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">34.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/key-rotation.html"><strong aria-hidden="true">35.</strong> Key Rotation</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">36.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">37.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">38.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">39.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">40.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/a2a.html"><strong aria-hidden="true">41.</strong> A2A Interoperability</a></li><li class="chapter-item expanded "><a href="../integrations/openclaw.html"><strong aria-hidden="true">42.</strong> OpenClaw</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">43.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">44.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">45.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">46.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">47.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">48.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">49.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">50.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">51.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">52.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="agent-state-schema"><a class="header" href="#agent-state-schema">Agent State Schema</a></h1>
+<p>The Agent State Schema defines the structure for signed agent state documents in JACS. Agent state documents wrap and cryptographically sign any agent configuration file -- memory files, skills, plans, configs, hooks, or any other document an agent wants to verify.</p>
+<h2 id="schema-location"><a class="header" href="#schema-location">Schema Location</a></h2>
+<pre><code>https://hai.ai/schemas/agentstate/v1/agentstate.schema.json
+</code></pre>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>Agent state documents provide:</p>
+<ul>
+<li><strong>Signed state files</strong>: Cryptographically sign MEMORY.md, skill files, plans, configs, hooks, or any file</li>
+<li><strong>File integrity</strong>: SHA-256 hashes verify file contents haven't been tampered with</li>
+<li><strong>Origin tracking</strong>: Record whether state was authored, adopted, generated, or imported</li>
+<li><strong>Framework tagging</strong>: Identify which agent framework (claude-code, langchain, etc.) the state belongs to</li>
+<li><strong>General-purpose signing</strong>: Use type <code>other</code> to sign any document an agent wants to verify</li>
+</ul>
+<p>All documents are stored within the JACS data directory for security.</p>
+<h2 id="schema-structure"><a class="header" href="#schema-structure">Schema Structure</a></h2>
+<p>The agent state schema extends the <a href="document.html">Header Schema</a>:</p>
+<pre><code class="language-json">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "title": "Agent State Document",
+  "allOf": [
+    { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" }
+  ],
+  "properties": {
+    "jacsAgentStateType": {
+      "type": "string",
+      "enum": ["memory", "skill", "plan", "config", "hook", "other"]
+    },
+    "jacsAgentStateName": { "type": "string" }
+  },
+  "required": ["jacsAgentStateType", "jacsAgentStateName"]
+}
+</code></pre>
+<h2 id="state-types"><a class="header" href="#state-types">State Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th><th>Example</th></tr></thead><tbody>
+<tr><td><code>memory</code></td><td>Agent memory/knowledge files</td><td>MEMORY.md, context files</td></tr>
+<tr><td><code>skill</code></td><td>Agent skill definitions</td><td>Coding patterns, domain knowledge</td></tr>
+<tr><td><code>plan</code></td><td>Agent plans and strategies</td><td>Implementation plans, workflows</td></tr>
+<tr><td><code>config</code></td><td>Agent configuration files</td><td>Settings, preferences</td></tr>
+<tr><td><code>hook</code></td><td>Agent hooks and triggers (always embedded)</td><td>Pre-commit hooks, event handlers</td></tr>
+<tr><td><code>other</code></td><td>Any document the agent wants to sign and verify</td><td>Reports, artifacts, custom files</td></tr>
+</tbody></table>
+</div>
+<h2 id="properties"><a class="header" href="#properties">Properties</a></h2>
+<h3 id="required-fields"><a class="header" href="#required-fields">Required Fields</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>jacsAgentStateType</code></td><td>string (enum)</td><td>Type of agent state: memory, skill, plan, config, hook, other</td></tr>
+<tr><td><code>jacsAgentStateName</code></td><td>string</td><td>Human-readable name for this state document</td></tr>
+</tbody></table>
+</div>
+<h3 id="optional-fields"><a class="header" href="#optional-fields">Optional Fields</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>jacsAgentStateDescription</code></td><td>string</td><td>Description of what this state contains</td></tr>
+<tr><td><code>jacsAgentStateFramework</code></td><td>string</td><td>Agent framework (e.g., "claude-code", "langchain")</td></tr>
+<tr><td><code>jacsAgentStateVersion</code></td><td>string</td><td>Content version (distinct from <code>jacsVersion</code>)</td></tr>
+<tr><td><code>jacsAgentStateContentType</code></td><td>string</td><td>MIME type (text/markdown, application/json, etc.)</td></tr>
+<tr><td><code>jacsAgentStateContent</code></td><td>string</td><td>Inline content (used when embedding)</td></tr>
+<tr><td><code>jacsAgentStateTags</code></td><td>string[]</td><td>Tags for categorization and search</td></tr>
+<tr><td><code>jacsAgentStateOrigin</code></td><td>string (enum)</td><td>How created: authored, adopted, generated, imported</td></tr>
+<tr><td><code>jacsAgentStateSourceUrl</code></td><td>string (uri)</td><td>Where content was obtained from</td></tr>
+</tbody></table>
+</div>
+<h2 id="origin-tracking"><a class="header" href="#origin-tracking">Origin Tracking</a></h2>
+<p>Every agent state document can track its provenance:</p>
+<div class="table-wrapper"><table><thead><tr><th>Origin</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>authored</code></td><td>Created by the signing agent</td></tr>
+<tr><td><code>adopted</code></td><td>Found unsigned, signed by adopting agent</td></tr>
+<tr><td><code>generated</code></td><td>Produced by AI/automation</td></tr>
+<tr><td><code>imported</code></td><td>Brought from another JACS installation</td></tr>
+</tbody></table>
+</div>
+<h2 id="file-references"><a class="header" href="#file-references">File References</a></h2>
+<p>Agent state documents can reference external files using <code>jacsFiles</code>:</p>
+<pre><code class="language-json">{
+  "jacsFiles": [
+    {
+      "mimetype": "text/markdown",
+      "path": "MEMORY.md",
+      "embed": true,
+      "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      "contents": "base64-encoded-gzipped-content"
+    }
+  ]
+}
+</code></pre>
+<p>When <code>embed</code> is <code>true</code>, the file content is stored inline in the document. <strong>Hook-type documents always embed content</strong> for security (prevents time-of-check/time-of-use attacks).</p>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<h3 id="minimal-agent-state"><a class="header" href="#minimal-agent-state">Minimal Agent State</a></h3>
+<pre><code class="language-json">{
+  "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "jacsAgentStateType": "memory",
+  "jacsAgentStateName": "Project Memory",
+  "jacsType": "agentstate",
+  "jacsLevel": "config"
+}
+</code></pre>
+<h3 id="memory-file-with-embedding"><a class="header" href="#memory-file-with-embedding">Memory File with Embedding</a></h3>
+<pre><code class="language-json">{
+  "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "jacsAgentStateType": "memory",
+  "jacsAgentStateName": "JACS Project Memory",
+  "jacsAgentStateDescription": "Agent memory for the JACS project workspace",
+  "jacsAgentStateFramework": "claude-code",
+  "jacsAgentStateOrigin": "authored",
+  "jacsAgentStateContentType": "text/markdown",
+  "jacsAgentStateContent": "# MEMORY.md\n\n## Project: JACS\n- Location: /home/agent/jacs\n- Rust library for cryptographic signing\n",
+  "jacsAgentStateTags": ["jacs", "rust", "crypto"],
+  "jacsType": "agentstate",
+  "jacsLevel": "config"
+}
+</code></pre>
+<h3 id="adopted-skill"><a class="header" href="#adopted-skill">Adopted Skill</a></h3>
+<pre><code class="language-json">{
+  "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "jacsAgentStateType": "skill",
+  "jacsAgentStateName": "JSON Schema Validation",
+  "jacsAgentStateOrigin": "adopted",
+  "jacsAgentStateSourceUrl": "https://agentskills.io/skills/json-schema",
+  "jacsAgentStateVersion": "2.1.0",
+  "jacsType": "agentstate",
+  "jacsLevel": "config"
+}
+</code></pre>
+<h3 id="general-purpose-signed-document"><a class="header" href="#general-purpose-signed-document">General-Purpose Signed Document</a></h3>
+<p>Use type <code>other</code> to sign any document:</p>
+<pre><code class="language-json">{
+  "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "jacsAgentStateType": "other",
+  "jacsAgentStateName": "Q1 Financial Report",
+  "jacsAgentStateDescription": "Quarterly financial summary for verification",
+  "jacsAgentStateContentType": "application/json",
+  "jacsAgentStateContent": "{\"revenue\": 150000, \"expenses\": 120000}",
+  "jacsType": "agentstate",
+  "jacsLevel": "config"
+}
+</code></pre>
+<h2 id="rust-api"><a class="header" href="#rust-api">Rust API</a></h2>
+<h3 id="creating-agent-state-documents"><a class="header" href="#creating-agent-state-documents">Creating Agent State Documents</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::schema::agentstate_crud::*;
+
+// Minimal state
+let doc = create_minimal_agentstate("memory", "Project Memory", Some("Agent memory file"))?;
+
+// With file reference
+let doc = create_agentstate_with_file("skill", "Rust Patterns", "./skills/rust.md", true)?;
+
+// With inline content
+let doc = create_agentstate_with_content(
+    "config",
+    "Agent Settings",
+    "{\"theme\": \"dark\"}",
+    "application/json"
+)?;
+
+// General-purpose signing
+let doc = create_agentstate_with_content(
+    "other",
+    "Audit Report",
+    "Report contents here...",
+    "text/plain"
+)?;
+
+// Set metadata
+let mut doc = create_minimal_agentstate("memory", "My Memory", None)?;
+set_agentstate_framework(&amp;mut doc, "claude-code")?;
+set_agentstate_origin(&amp;mut doc, "authored", None)?;
+set_agentstate_tags(&amp;mut doc, vec!["project", "notes"])?;
+set_agentstate_version(&amp;mut doc, "1.0.0")?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="signing-and-verification"><a class="header" href="#signing-and-verification">Signing and Verification</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Create, sign, and store
+let doc_string = serde_json::to_string(&amp;doc)?;
+let signed_doc = agent.create_document_and_load(&amp;doc_string, None, None)?;
+
+// Verify file integrity
+let hash_valid = verify_agentstate_file_hash(&amp;doc)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="mcp-tools"><a class="header" href="#mcp-tools">MCP Tools</a></h2>
+<p>Six MCP tools are available for agent state operations:</p>
+<div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>jacs_sign_state</code></td><td>Create and sign a new agent state document</td></tr>
+<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document's signature</td></tr>
+<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by key</td></tr>
+<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document</td></tr>
+<tr><td><code>jacs_list_state</code></td><td>List all agent state documents</td></tr>
+<tr><td><code>jacs_adopt_state</code></td><td>Adopt an external file as a signed agent state</td></tr>
+</tbody></table>
+</div>
+<h3 id="mcp-example-sign-a-memory-file"><a class="header" href="#mcp-example-sign-a-memory-file">MCP Example: Sign a Memory File</a></h3>
+<pre><code class="language-json">{
+  "tool": "jacs_sign_state",
+  "arguments": {
+    "state_type": "memory",
+    "name": "Project Memory",
+    "content": "# My Agent Memory\n\nKey facts about the project...",
+    "content_type": "text/markdown",
+    "framework": "claude-code",
+    "tags": ["project", "memory"]
+  }
+}
+</code></pre>
+<h3 id="mcp-example-sign-any-document"><a class="header" href="#mcp-example-sign-any-document">MCP Example: Sign Any Document</a></h3>
+<pre><code class="language-json">{
+  "tool": "jacs_sign_state",
+  "arguments": {
+    "state_type": "other",
+    "name": "Verification Report",
+    "content": "{\"status\": \"passed\", \"checks\": 42}",
+    "content_type": "application/json"
+  }
+}
+</code></pre>
+<h2 id="security-notes"><a class="header" href="#security-notes">Security Notes</a></h2>
+<ul>
+<li>All agent state documents are stored within the JACS data directory for security</li>
+<li>Hook-type documents always embed content to prevent TOCTOU attacks</li>
+<li>File hashes (SHA-256) are verified on load to detect tampering</li>
+<li>Origin tracking provides provenance auditing</li>
+<li>Documents are signed with the agent's private key, providing non-repudiation</li>
+</ul>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="overview.html">JSON Schemas</a> - Schema architecture overview</li>
+<li><a href="../rust/documents.html">Working with Documents</a> - General document operations</li>
+<li><a href="../integrations/mcp.html">MCP Integration</a> - MCP server setup</li>
+<li><a href="../advanced/security.html">Security Model</a> - Cryptographic details</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../schemas/task.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../schemas/commitment.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../schemas/task.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../schemas/commitment.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

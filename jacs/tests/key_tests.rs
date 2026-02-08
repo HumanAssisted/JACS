@@ -37,8 +37,12 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
     let _exepected_hash = "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6";
     let _new_expected_hash = "ce3d294bafee5c388be88f74ad8d8e0054e390964caacc2955c42179638d6df8";
 
-    let _exepected_hash_from_file =
-        load_local_document(&fixture_path("public_key_expected_hash.txt").to_string_lossy().to_string()).unwrap();
+    let _exepected_hash_from_file = load_local_document(
+        &fixture_path("public_key_expected_hash.txt")
+            .to_string_lossy()
+            .to_string(),
+    )
+    .unwrap();
 
     // hash
     let public_key_with_newline_hash =

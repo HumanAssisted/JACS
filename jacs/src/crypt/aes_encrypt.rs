@@ -48,6 +48,26 @@ const WEAK_PASSWORDS: &[&str] = &[
     "zxcvbnm123",
 ];
 
+/// Returns a human-readable description of JACS password requirements.
+///
+/// This can be displayed to users before password prompts or included in error messages
+/// to help them choose a valid password.
+pub fn password_requirements() -> String {
+    format!(
+        "Password Requirements:\n\
+         - At least {} characters long\n\
+         - Not empty or whitespace-only\n\
+         - Not a common/easily-guessed password\n\
+         - No 4+ identical characters in a row (e.g., 'aaaa')\n\
+         - No 5+ sequential characters (e.g., '12345', 'abcde')\n\
+         - Minimum {:.0} bits of entropy\n\
+         - Recommended: use at least 2 character types (uppercase, lowercase, digits, symbols)\n\
+         \n\
+         Tip: Set the password via the JACS_PRIVATE_KEY_PASSWORD environment variable.",
+        MIN_PASSWORD_LENGTH, MIN_ENTROPY_BITS
+    )
+}
+
 /// Calculate effective entropy of a password in bits.
 ///
 /// This estimates the keyspace based on character pool size and password length,
@@ -181,26 +201,37 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     let trimmed = password.trim();
 
     if trimmed.is_empty() {
-        return Err("Password cannot be empty or whitespace-only. Set JACS_PRIVATE_KEY_PASSWORD to a secure password.".into());
+        return Err(format!(
+            "Password cannot be empty or whitespace-only.\n\n{}",
+            password_requirements()
+        )
+        .into());
     }
 
     if trimmed.len() < MIN_PASSWORD_LENGTH {
         return Err(JacsError::CryptoError(format!(
-            "Password must be at least {} characters long (got {} characters). Use a stronger password for JACS_PRIVATE_KEY_PASSWORD.",
+            "Password must be at least {} characters long (got {} characters).\n\nRequirements: use at least {} characters with mixed character types. \
+            Set JACS_PRIVATE_KEY_PASSWORD to a secure password.",
             MIN_PASSWORD_LENGTH,
-            trimmed.len()
+            trimmed.len(),
+            MIN_PASSWORD_LENGTH
         )).into());
     }
 
     // Check against common weak passwords (case-insensitive)
     let lower = trimmed.to_lowercase();
     if WEAK_PASSWORDS.contains(&lower.as_str()) {
-        return Err("Password is too common and easily guessable. Please use a unique password.".into());
+        return Err(
+            "Password is too common and easily guessable. Please use a unique password.".into(),
+        );
     }
 
     // Check for excessive repetition
     if has_excessive_repetition(trimmed) {
-        return Err("Password contains too many repeated characters (4+ in a row). Use more variety.".into());
+        return Err(
+            "Password contains too many repeated characters (4+ in a row). Use more variety."
+                .into(),
+        );
     }
 
     // Check for sequential patterns
@@ -218,9 +249,11 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
             "Try using a longer password with more varied characters."
         };
         return Err(JacsError::CryptoError(format!(
-            "Password entropy too low ({:.1} bits, minimum is {:.0} bits). {}",
-            entropy, MIN_ENTROPY_BITS, suggestion
-        )).into());
+            "Password entropy too low ({:.1} bits, minimum is {:.0} bits). {}\n\nRequirements: {}",
+            entropy, MIN_ENTROPY_BITS, suggestion,
+            "use at least 8 characters with mixed character types (uppercase, lowercase, digits, symbols)."
+        ))
+        .into());
     }
 
     // Single character class passwords are allowed if they have sufficient entropy
@@ -318,7 +351,10 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
 /// This function returns a regular `Vec<u8>` for backwards compatibility.
 /// For new code, prefer `decrypt_private_key_secure` which returns a
 /// `ZeroizingVec` that automatically zeroizes memory on drop.
-#[deprecated(since = "0.6.0", note = "Use decrypt_private_key_secure() which returns ZeroizingVec for automatic memory zeroization")]
+#[deprecated(
+    since = "0.6.0",
+    note = "Use decrypt_private_key_secure() which returns ZeroizingVec for automatic memory zeroization"
+)]
 pub fn decrypt_private_key(
     encrypted_key_with_salt_and_nonce: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -413,6 +449,102 @@ pub fn decrypt_private_key_secure(
     );
 
     Ok(ZeroizingVec::new(decrypted_data))
+}
+
+/// Decrypt data with an explicit password (no env var dependency).
+///
+/// This is useful for re-encryption workflows where both old and new passwords
+/// are provided as parameters.
+pub fn decrypt_with_password(
+    encrypted_data: &[u8],
+    password: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    if encrypted_data.len() < MIN_ENCRYPTED_HEADER_SIZE {
+        return Err(JacsError::CryptoError(format!(
+            "Encrypted data too short: expected at least {} bytes, got {} bytes.",
+            MIN_ENCRYPTED_HEADER_SIZE,
+            encrypted_data.len()
+        ))
+        .into());
+    }
+
+    let (salt, rest) = encrypted_data.split_at(PBKDF2_SALT_SIZE);
+    let (nonce, ciphertext) = rest.split_at(AES_GCM_NONCE_SIZE);
+    let nonce_slice = Nonce::from_slice(nonce);
+
+    // Try current iterations first
+    let mut key = derive_key_from_password(password, salt);
+    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
+    let cipher = Aes256Gcm::new(cipher_key);
+    key.zeroize();
+
+    if let Ok(decrypted) = cipher.decrypt(nonce_slice, ciphertext) {
+        return Ok(decrypted);
+    }
+
+    // Fall back to legacy iterations
+    let mut legacy_key = derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS_LEGACY);
+    let legacy_cipher_key = Key::<Aes256Gcm>::from_slice(&legacy_key);
+    let legacy_cipher = Aes256Gcm::new(legacy_cipher_key);
+    legacy_key.zeroize();
+
+    legacy_cipher.decrypt(nonce_slice, ciphertext).map_err(|_| {
+        "Decryption failed: incorrect password or corrupted data."
+            .to_string()
+            .into()
+    })
+}
+
+/// Encrypt data with an explicit password (no env var dependency).
+pub fn encrypt_with_password(
+    data: &[u8],
+    password: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    validate_password(password)?;
+
+    let mut salt = [0u8; PBKDF2_SALT_SIZE];
+    rand::rng().fill(&mut salt[..]);
+
+    let key = derive_key_from_password(password, &salt);
+    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
+    let cipher = Aes256Gcm::new(cipher_key);
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+    let encrypted = cipher
+        .encrypt(&nonce, data)
+        .map_err(|e| format!("AES-GCM encryption failed: {}", e))?;
+
+    let mut result = salt.to_vec();
+    result.extend_from_slice(nonce.as_slice());
+    result.extend_from_slice(&encrypted);
+    Ok(result)
+}
+
+/// Re-encrypt a private key from one password to another.
+///
+/// Decrypts with `old_password`, validates `new_password`, then re-encrypts.
+///
+/// # Arguments
+///
+/// * `encrypted_data` - The currently encrypted private key data
+/// * `old_password` - The current password
+/// * `new_password` - The new password (must meet password requirements)
+///
+/// # Returns
+///
+/// The re-encrypted private key data.
+pub fn reencrypt_private_key(
+    encrypted_data: &[u8],
+    old_password: &str,
+    new_password: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // Decrypt with old password
+    let plaintext = decrypt_with_password(encrypted_data, old_password)?;
+
+    // Encrypt with new password (validates new_password internally)
+    let re_encrypted = encrypt_with_password(&plaintext, new_password)?;
+
+    Ok(re_encrypted)
 }
 
 #[cfg(test)]
@@ -581,7 +713,11 @@ mod tests {
 
         let original_key = b"secret data";
         let result = encrypt_private_key(original_key);
-        assert!(result.is_ok(), "8-character varied password should be accepted: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "8-character varied password should be accepted: {:?}",
+            result.err()
+        );
 
         remove_test_password();
     }
@@ -976,10 +1112,9 @@ mod tests {
         // This tests the password validation with various unicode strings
         let unicode_passwords = [
             // High entropy unicode (should pass)
-            ("P@ssw0rd\u{1F600}", true),  // With emoji
-            ("密码Tr0ng!Pass", true),      // Chinese characters
+            ("P@ssw0rd\u{1F600}", true),           // With emoji
+            ("密码Tr0ng!Pass", true),              // Chinese characters
             ("\u{0391}\u{0392}Str0ng!P@ss", true), // Greek letters
-
             // Low entropy unicode (should fail)
             ("\u{1F600}\u{1F600}\u{1F600}\u{1F600}", false), // Just 4 emojis
         ];
@@ -1007,11 +1142,7 @@ mod tests {
     fn test_password_with_null_bytes_handled() {
         // Passwords with null bytes could cause issues in C-string contexts
         // These should either be accepted (if they meet entropy) or rejected gracefully
-        let passwords_with_nulls = [
-            "pass\0word12!@AB",
-            "\0passwordAB12!@",
-            "passwordAB12!@\0",
-        ];
+        let passwords_with_nulls = ["pass\0word12!@AB", "\0passwordAB12!@", "passwordAB12!@\0"];
 
         for password in passwords_with_nulls {
             let result = validate_password(password);
@@ -1043,9 +1174,9 @@ mod tests {
     fn test_keyboard_pattern_passwords() {
         // Common keyboard patterns should be rejected
         let keyboard_patterns = [
-            "qwertyuiop",    // Top row
-            "asdfghjkl",     // Middle row
-            "zxcvbnm123",    // Bottom row + numbers
+            "qwertyuiop", // Top row
+            "asdfghjkl",  // Middle row
+            "zxcvbnm123", // Bottom row + numbers
         ];
 
         for pattern in keyboard_patterns {
@@ -1070,6 +1201,34 @@ mod tests {
     }
 
     #[test]
+    fn test_password_requirements_returns_string() {
+        let reqs = password_requirements();
+        assert!(
+            reqs.contains("8 characters"),
+            "Should mention minimum character count: {}",
+            reqs
+        );
+        assert!(
+            reqs.contains("JACS_PRIVATE_KEY_PASSWORD"),
+            "Should mention env var: {}",
+            reqs
+        );
+        assert!(reqs.contains("entropy"), "Should mention entropy: {}", reqs);
+    }
+
+    #[test]
+    fn test_empty_password_error_contains_requirements() {
+        let result = validate_password("");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Requirements") || err_msg.contains("Password Requirements"),
+            "Empty password error should include requirements text: {}",
+            err_msg
+        );
+    }
+
+    #[test]
     #[serial]
     fn test_decrypt_with_missing_password_env_var() {
         // Remove the password environment variable
@@ -1086,9 +1245,87 @@ mod tests {
         );
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("JACS_PRIVATE_KEY_PASSWORD") || err_msg.contains("password") || err_msg.contains("environment"),
+            err_msg.contains("JACS_PRIVATE_KEY_PASSWORD")
+                || err_msg.contains("password")
+                || err_msg.contains("environment"),
             "Error should mention missing password: {}",
             err_msg
         );
+    }
+
+    // ==================== Re-encryption Tests ====================
+
+    #[test]
+    fn test_reencrypt_roundtrip() {
+        let old_password = "OldP@ssw0rd!2024";
+        let new_password = "NewStr0ng!Pass#2025";
+
+        // Encrypt with old password
+        let original_data = b"this is a secret private key for testing re-encryption";
+        let encrypted =
+            encrypt_with_password(original_data, old_password).expect("encryption should succeed");
+
+        // Re-encrypt from old to new
+        let re_encrypted = reencrypt_private_key(&encrypted, old_password, new_password)
+            .expect("re-encryption should succeed");
+
+        // Decrypt with new password
+        let decrypted = decrypt_with_password(&re_encrypted, new_password)
+            .expect("decryption with new password should succeed");
+
+        assert_eq!(original_data.as_slice(), decrypted.as_slice());
+
+        // Old password should NOT work anymore
+        let old_result = decrypt_with_password(&re_encrypted, old_password);
+        assert!(
+            old_result.is_err(),
+            "Old password should not decrypt re-encrypted data"
+        );
+    }
+
+    #[test]
+    fn test_reencrypt_wrong_old_password_fails() {
+        let correct_password = "CorrectP@ss!2024";
+        let wrong_password = "WrongP@ssw0rd!99";
+        let new_password = "NewStr0ng!Pass#2025";
+
+        let original_data = b"secret key data";
+        let encrypted = encrypt_with_password(original_data, correct_password)
+            .expect("encryption should succeed");
+
+        let result = reencrypt_private_key(&encrypted, wrong_password, new_password);
+        assert!(
+            result.is_err(),
+            "Re-encryption with wrong old password should fail"
+        );
+    }
+
+    #[test]
+    fn test_reencrypt_weak_new_password_fails() {
+        let old_password = "OldP@ssw0rd!2024";
+        let weak_new_password = "password"; // common weak password
+
+        let original_data = b"secret key data";
+        let encrypted =
+            encrypt_with_password(original_data, old_password).expect("encryption should succeed");
+
+        let result = reencrypt_private_key(&encrypted, old_password, weak_new_password);
+        assert!(
+            result.is_err(),
+            "Re-encryption with weak new password should fail"
+        );
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_with_password_roundtrip() {
+        let password = "TestP@ssw0rd!2024";
+        let data = b"test data for explicit password functions";
+
+        let encrypted = encrypt_with_password(data, password).expect("encryption should succeed");
+
+        let decrypted =
+            decrypt_with_password(&encrypted, password).expect("decryption should succeed");
+
+        assert_eq!(data.as_slice(), decrypted.as_slice());
     }
 }

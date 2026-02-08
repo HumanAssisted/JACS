@@ -57,7 +57,7 @@ Converts JACS agents to A2A Agent Card format:
 ### 3. Dual Key Management (`keys.rs`)
 Generates and manages two key pairs:
 - **JACS Key**: Post-quantum (Dilithium/Falcon/SPHINCS+) for documents
-- **A2A Key**: RSA/ECDSA for JWS Agent Card signing
+- **A2A Key**: RSA (and Ed25519 via `ring-Ed25519`) for JWS Agent Card signing
 
 ### 4. Extension Management (`extension.rs`)
 - Signs Agent Cards with JWS
@@ -67,7 +67,7 @@ Generates and manages two key pairs:
 
 ### 5. Provenance Wrapping (`provenance.rs`)
 - Wraps A2A artifacts with JACS signatures (generic `Value` or typed `A2AArtifact`/`A2AMessage`)
-- Verifies wrapped artifacts
+- Verifies wrapped artifacts, including foreign agents when keys are resolvable via configured key sources
 - Creates chain of custody documents
 
 ## Usage

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
+  "jacsAgentStateType": "other",
+  "jacsAgentStateName": "Q1 Audit Report",
+  "jacsAgentStateDescription": "General-purpose signed document for verification",
+  "jacsAgentStateContentType": "application/json",
+  "jacsAgentStateContent": "{\"status\": \"passed\", \"checks\": 42, \"timestamp\": \"2026-02-05T10:00:00Z\"}",
+  "jacsAgentStateTags": ["audit", "report"],
+  "id": "placeholder-uuid",
+  "jacsType": "agentstate",
+  "jacsLevel": "config"
+}

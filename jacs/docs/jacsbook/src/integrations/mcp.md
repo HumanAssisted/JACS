@@ -64,7 +64,7 @@ JACS uses a **transport proxy pattern** that wraps any MCP transport with crypto
 ```javascript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from 'jacsnpm/mcp';
+import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
 import { z } from 'zod';
 
 // Create transport with JACS encryption
@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
 JACS provides native MCP integration for both major platforms:
 
-### Node.js (jacsnpm)
+### Node.js (@hai-ai/jacs)
 
 The Node.js integration uses a transport proxy pattern that works with any MCP transport:
 
@@ -417,6 +417,37 @@ Each agent has its own:
 - Configuration file
 
 The MCP server verifies requests from both agents and signs all responses.
+
+## HAI MCP Server Tools
+
+The `jacs-mcp` server provides built-in tools for agent operations:
+
+### Identity & Registration Tools
+
+| Tool | Description |
+|------|-------------|
+| `fetch_agent_key` | Fetch a public key from HAI's key distribution service |
+| `register_agent` | Register the local agent with HAI (requires `JACS_MCP_ALLOW_REGISTRATION=true`) |
+| `verify_agent` | Verify another agent's attestation level |
+| `check_agent_status` | Check registration status with HAI |
+| `unregister_agent` | Unregister an agent from HAI |
+
+### Agent State Tools
+
+These tools allow agents to sign, verify, and manage state documents (memory files, skills, plans, configs, hooks, or any document):
+
+| Tool | Description |
+|------|-------------|
+| `jacs_sign_state` | Create and sign a new agent state document |
+| `jacs_verify_state` | Verify an existing agent state document's signature |
+| `jacs_load_state` | Load an agent state document by key |
+| `jacs_update_state` | Update and re-sign an agent state document |
+| `jacs_list_state` | List all agent state documents |
+| `jacs_adopt_state` | Adopt an external file as a signed agent state |
+
+All documents are stored within the JACS data directory for security. Use `state_type: "other"` for general-purpose signing of any document.
+
+See [Agent State Schema](../schemas/agentstate.md) for full documentation.
 
 ## See Also
 

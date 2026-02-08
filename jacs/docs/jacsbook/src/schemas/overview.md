@@ -46,6 +46,9 @@ JACS schemas follow a hierarchical composition pattern:
 | `node/v1/node.schema.json` | Graph node representation |
 | `program/v1/program.schema.json` | Executable program definitions |
 | `eval/v1/eval.schema.json` | Evaluation and assessment records |
+| `agentstate/v1/agentstate.schema.json` | Signed agent state files (memory, skills, plans, configs, hooks, other) |
+| `commitment/v1/commitment.schema.json` | Shared, signed agreements between agents |
+| `todo/v1/todo.schema.json` | Private, signed todo lists with inline items |
 
 ### Component Schemas
 
@@ -60,6 +63,7 @@ JACS schemas follow a hierarchical composition pattern:
 | `tool/v1/tool.schema.json` | Tool capabilities |
 | `action/v1/action.schema.json` | Action definitions |
 | `unit/v1/unit.schema.json` | Unit of measurement |
+| `todoitem/v1/todoitem.schema.json` | Inline todo item (goal or task) |
 
 ## Schema Locations
 
@@ -124,7 +128,7 @@ doc = agent.create_document(
 ```
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -292,6 +296,10 @@ For detailed documentation on specific schemas:
 - [Agent Schema](agent.md) - Agent identity and capabilities
 - [Document Schema](document.md) - Document header and structure
 - [Task Schema](task.md) - Task workflow management
+- [Agent State Schema](agentstate.md) - Signed agent state documents
+- [Commitment Schema](commitment.md) - Shared agreements between agents
+- [Todo List Schema](todo.md) - Private task tracking with inline items
+- [Conversation Schema](conversation.md) - Message threading and ordering
 - [Configuration](configuration.md) - Configuration file format
 
 ## See Also

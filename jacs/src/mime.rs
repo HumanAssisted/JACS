@@ -17,12 +17,7 @@
 /// assert_eq!(mime_from_extension("unknown.xyz"), "application/octet-stream");
 /// ```
 pub fn mime_from_extension(path: &str) -> &'static str {
-    match path
-        .rsplit('.')
-        .next()
-        .map(|s| s.to_lowercase())
-        .as_deref()
-    {
+    match path.rsplit('.').next().map(|s| s.to_lowercase()).as_deref() {
         // Documents
         Some("pdf") => "application/pdf",
         Some("json") => "application/json",
@@ -192,7 +187,10 @@ mod tests {
     #[test]
     fn test_unknown_extension() {
         assert_eq!(mime_from_extension("file.xyz"), "application/octet-stream");
-        assert_eq!(mime_from_extension("noextension"), "application/octet-stream");
+        assert_eq!(
+            mime_from_extension("noextension"),
+            "application/octet-stream"
+        );
     }
 
     #[test]

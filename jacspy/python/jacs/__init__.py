@@ -94,19 +94,19 @@ except ImportError:
     hai = None  # httpx not installed
 
 __all__ = [
-    # Rust bindings (JacsAgent class and legacy functions)
+    # Primary API Classes
     "JacsAgent",
-    "load",
-    "sign_string",
-    "verify_string",
+    "SimpleAgent",
+    # Stateless utilities
     "hash_string",
-    "sign_agent",
-    "verify_agent",
-    "create_document",
-    "verify_document",
-    "sign_request",
-    "verify_response",
+    "verify_string",
     "fetch_remote_key",
+    # Trust store
+    "trust_agent",
+    "list_trusted_agents",
+    "untrust_agent",
+    "is_trusted",
+    "get_trusted_agent",
     # Type definitions
     "AgentInfo",
     "Attachment",

@@ -59,7 +59,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 // =============================================================================
 // Error Types
@@ -82,6 +82,8 @@ pub enum HaiError {
     AlreadyConnected,
     /// Not connected to SSE stream.
     NotConnected,
+    /// Validation error (e.g. verify link would exceed max URL length).
+    ValidationError(String),
 }
 
 impl fmt::Display for HaiError {
@@ -94,8 +96,27 @@ impl fmt::Display for HaiError {
             HaiError::StreamDisconnected(msg) => write!(f, "SSE stream disconnected: {}", msg),
             HaiError::AlreadyConnected => write!(f, "Already connected to SSE stream"),
             HaiError::NotConnected => write!(f, "Not connected to SSE stream"),
+            HaiError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
         }
     }
+}
+
+// =============================================================================
+// Verify link (HAI / public verification URLs)
+// =============================================================================
+
+/// Maximum length for a full verify URL. Re-exported from jacs::simple for bindings.
+pub const MAX_VERIFY_URL_LEN: usize = jacs::simple::MAX_VERIFY_URL_LEN;
+
+/// Maximum document size (UTF-8 bytes) for a verify link. Re-exported from jacs::simple.
+pub const MAX_VERIFY_DOCUMENT_BYTES: usize = jacs::simple::MAX_VERIFY_DOCUMENT_BYTES;
+
+/// Build a verification URL for a signed JACS document (e.g. https://hai.ai/jacs/verify?s=...).
+///
+/// Encodes `document` as URL-safe base64. Returns an error if the URL would exceed [`MAX_VERIFY_URL_LEN`].
+pub fn generate_verify_link(document: &str, base_url: &str) -> Result<String, HaiError> {
+    jacs::simple::generate_verify_link(document, base_url)
+        .map_err(|e| HaiError::ValidationError(e.to_string()))
 }
 
 impl std::error::Error for HaiError {}
@@ -389,10 +410,7 @@ impl HaiClient {
     /// - `HaiError::RegistrationFailed` - The agent could not be registered
     /// - `HaiError::InvalidResponse` - The server returned an unexpected response
     pub async fn register(&self, agent: &AgentWrapper) -> Result<RegistrationResult, HaiError> {
-        let api_key = self
-            .api_key
-            .as_ref()
-            .ok_or(HaiError::AuthRequired)?;
+        let api_key = self.api_key.as_ref().ok_or(HaiError::AuthRequired)?;
 
         // Get the agent JSON from the wrapper
         let agent_json = agent
@@ -451,10 +469,7 @@ impl HaiClient {
     /// - `HaiError::ConnectionFailed` - Could not connect to HAI server
     /// - `HaiError::InvalidResponse` - The server returned an unexpected response
     pub async fn status(&self, agent: &AgentWrapper) -> Result<StatusResult, HaiError> {
-        let api_key = self
-            .api_key
-            .as_ref()
-            .ok_or(HaiError::AuthRequired)?;
+        let api_key = self.api_key.as_ref().ok_or(HaiError::AuthRequired)?;
 
         // Get the agent JSON and extract the ID
         let agent_json = agent
@@ -467,7 +482,9 @@ impl HaiClient {
         let agent_id = agent_value
             .get("jacsId")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HaiError::InvalidResponse("Agent JSON missing jacsId field".to_string()))?
+            .ok_or_else(|| {
+                HaiError::InvalidResponse("Agent JSON missing jacsId field".to_string())
+            })?
             .to_string();
 
         let url = format!("{}/api/v1/agents/{}/status", self.endpoint, agent_id);
@@ -553,7 +570,9 @@ impl HaiClient {
         let agent_id = agent_value
             .get("jacsId")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HaiError::InvalidResponse("Agent JSON missing jacsId field".to_string()))?
+            .ok_or_else(|| {
+                HaiError::InvalidResponse("Agent JSON missing jacsId field".to_string())
+            })?
             .to_string();
 
         let url = format!("{}/api/v1/benchmarks/run", self.endpoint);
@@ -835,7 +854,10 @@ impl HaiClient {
     /// Check if currently connected to the SSE stream.
     pub async fn is_connected(&self) -> bool {
         let state = *self.connection_state.read().await;
-        matches!(state, ConnectionState::Connected | ConnectionState::Reconnecting)
+        matches!(
+            state,
+            ConnectionState::Connected | ConnectionState::Reconnecting
+        )
     }
 }
 
@@ -846,26 +868,26 @@ impl HaiClient {
 /// Parse an SSE event into a `HaiEvent`.
 fn parse_sse_event(event_type: &str, data: &str) -> HaiEvent {
     match event_type {
-        "benchmark_job" => {
-            match serde_json::from_str::<BenchmarkJob>(data) {
-                Ok(job) => HaiEvent::BenchmarkJob(job),
-                Err(_) => HaiEvent::Unknown {
-                    event: event_type.to_string(),
-                    data: data.to_string(),
-                },
-            }
-        }
-        "heartbeat" => {
-            match serde_json::from_str::<Heartbeat>(data) {
-                Ok(hb) => HaiEvent::Heartbeat(hb),
-                Err(_) => HaiEvent::Unknown {
-                    event: event_type.to_string(),
-                    data: data.to_string(),
-                },
-            }
-        }
+        "benchmark_job" => match serde_json::from_str::<BenchmarkJob>(data) {
+            Ok(job) => HaiEvent::BenchmarkJob(job),
+            Err(_) => HaiEvent::Unknown {
+                event: event_type.to_string(),
+                data: data.to_string(),
+            },
+        },
+        "heartbeat" => match serde_json::from_str::<Heartbeat>(data) {
+            Ok(hb) => HaiEvent::Heartbeat(hb),
+            Err(_) => HaiEvent::Unknown {
+                event: event_type.to_string(),
+                data: data.to_string(),
+            },
+        },
         _ => HaiEvent::Unknown {
-            event: if event_type.is_empty() { "message".to_string() } else { event_type.to_string() },
+            event: if event_type.is_empty() {
+                "message".to_string()
+            } else {
+                event_type.to_string()
+            },
             data: data.to_string(),
         },
     }
@@ -893,8 +915,7 @@ mod tests {
 
     #[test]
     fn test_client_builder() {
-        let client = HaiClient::new("https://api.hai.ai")
-            .with_api_key("test-key");
+        let client = HaiClient::new("https://api.hai.ai").with_api_key("test-key");
 
         assert_eq!(client.endpoint, "https://api.hai.ai");
         assert_eq!(client.api_key, Some("test-key".to_string()));
@@ -1191,8 +1212,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_state_starts_disconnected() {
-        let client = HaiClient::new("https://api.hai.ai")
-            .with_api_key("test-key");
+        let client = HaiClient::new("https://api.hai.ai").with_api_key("test-key");
 
         let state = client.connection_state().await;
         assert_eq!(state, ConnectionState::Disconnected);
@@ -1200,19 +1220,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_is_connected_when_disconnected() {
-        let client = HaiClient::new("https://api.hai.ai")
-            .with_api_key("test-key");
+        let client = HaiClient::new("https://api.hai.ai").with_api_key("test-key");
 
         assert!(!client.is_connected().await);
     }
 
     #[tokio::test]
     async fn test_disconnect_when_not_connected() {
-        let client = HaiClient::new("https://api.hai.ai")
-            .with_api_key("test-key");
+        let client = HaiClient::new("https://api.hai.ai").with_api_key("test-key");
 
         // Should be a no-op, not panic
         client.disconnect().await;
-        assert_eq!(client.connection_state().await, ConnectionState::Disconnected);
+        assert_eq!(
+            client.connection_state().await,
+            ConnectionState::Disconnected
+        );
     }
 }

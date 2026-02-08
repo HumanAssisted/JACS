@@ -8,7 +8,7 @@ Implements A2A protocol v0.4.0 (September 2025).
 """
 
 import json
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Set
 from dataclasses import dataclass, field, asdict
 import base64
 import uuid
@@ -326,23 +326,7 @@ class JACSA2AIntegration:
         Returns:
             Verification result dictionary
         """
-        is_valid = jacs.verify_response(wrapped_artifact)
-        signature_info = wrapped_artifact.get("jacsSignature", {})
-
-        result = {
-            "valid": is_valid,
-            "signer_id": signature_info.get("agentID", "unknown"),
-            "signer_version": signature_info.get("agentVersion", "unknown"),
-            "artifact_type": wrapped_artifact.get("jacsType", "unknown"),
-            "timestamp": wrapped_artifact.get("jacsVersionDate", ""),
-            "original_artifact": wrapped_artifact.get("a2aArtifact", {})
-        }
-
-        if parent_sigs := wrapped_artifact.get("jacsParentSignatures"):
-            result["parent_signatures_count"] = len(parent_sigs)
-            result["parent_signatures_valid"] = True
-
-        return result
+        return self._verify_wrapped_artifact_internal(wrapped_artifact, set())
 
     def create_chain_of_custody(self, artifacts: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Create a chain of custody document for multi-agent workflows
@@ -416,24 +400,32 @@ class JACSA2AIntegration:
             Dictionary mapping paths to document contents
         """
         documents = {}
+        key_algorithm = agent_data.get("keyAlgorithm", "RSA-PSS")
+        post_quantum = any(
+            marker in str(key_algorithm).lower()
+            for marker in ["pq", "dilithium", "falcon", "sphincs", "ml-dsa", "pq2025"]
+        )
 
         # 1. Agent Card with embedded signature (v0.4.0)
         card_dict = self.agent_card_to_dict(agent_card)
         card_dict["signatures"] = [{"jws": jws_signature}]
         documents["/.well-known/agent-card.json"] = card_dict
 
-        # 2. JACS Agent Descriptor
+        # 2. JWK Set for A2A verifiers
+        documents["/.well-known/jwks.json"] = self._build_jwks(public_key_b64, agent_data)
+
+        # 3. JACS Agent Descriptor
         documents["/.well-known/jacs-agent.json"] = {
             "jacsVersion": "1.0",
             "agentId": agent_data.get("jacsId"),
             "agentVersion": agent_data.get("jacsVersion"),
             "agentType": agent_data.get("jacsAgentType"),
             "publicKeyHash": jacs.hash_string(public_key_b64),
-            "keyAlgorithm": agent_data.get("keyAlgorithm", "RSA-PSS"),
+            "keyAlgorithm": key_algorithm,
             "capabilities": {
                 "signing": True,
                 "verification": True,
-                "postQuantum": False
+                "postQuantum": post_quantum
             },
             "schemas": {
                 "agent": "https://hai.ai/schemas/agent/v1/agent.schema.json",
@@ -447,20 +439,137 @@ class JACSA2AIntegration:
             }
         }
 
-        # 3. JACS Public Key
+        # 4. JACS Public Key
         documents["/.well-known/jacs-pubkey.json"] = {
             "publicKey": public_key_b64,
             "publicKeyHash": jacs.hash_string(public_key_b64),
-            "algorithm": agent_data.get("keyAlgorithm", "RSA-PSS"),
+            "algorithm": key_algorithm,
             "agentId": agent_data.get("jacsId"),
             "agentVersion": agent_data.get("jacsVersion"),
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
 
-        # 4. Extension descriptor
+        # 5. Extension descriptor
         documents["/.well-known/jacs-extension.json"] = self.create_extension_descriptor()
 
         return documents
+
+    def _verify_wrapped_artifact_internal(
+        self,
+        wrapped_artifact: Dict[str, Any],
+        visited: Set[str],
+    ) -> Dict[str, Any]:
+        artifact_id = wrapped_artifact.get("jacsId")
+        if artifact_id and artifact_id in visited:
+            raise ValueError(f"Cycle detected in parent signature chain at artifact {artifact_id}")
+        if artifact_id:
+            visited.add(artifact_id)
+
+        try:
+            is_valid = jacs.verify_response(wrapped_artifact)
+            signature_info = wrapped_artifact.get("jacsSignature", {})
+
+            result = {
+                "valid": is_valid,
+                "signer_id": signature_info.get("agentID", "unknown"),
+                "signer_version": signature_info.get("agentVersion", "unknown"),
+                "artifact_type": wrapped_artifact.get("jacsType", "unknown"),
+                "timestamp": wrapped_artifact.get("jacsVersionDate", ""),
+                "original_artifact": wrapped_artifact.get("a2aArtifact", {}),
+            }
+
+            parent_sigs = wrapped_artifact.get("jacsParentSignatures")
+            if isinstance(parent_sigs, list) and parent_sigs:
+                parent_results = []
+                all_valid = True
+                for index, parent in enumerate(parent_sigs):
+                    try:
+                        parent_result = self._verify_wrapped_artifact_internal(parent, visited)
+                        parent_valid = bool(parent_result.get("valid"))
+                        parent_chain_valid = bool(
+                            parent_result.get("parent_signatures_valid", True)
+                        )
+                        parent_results.append(
+                            {
+                                "index": index,
+                                "artifact_id": parent.get("jacsId", "unknown"),
+                                "valid": parent_valid,
+                                "parent_signatures_valid": parent_chain_valid,
+                            }
+                        )
+                        all_valid = all_valid and parent_valid and parent_chain_valid
+                    except Exception as error:
+                        parent_results.append(
+                            {
+                                "index": index,
+                                "artifact_id": parent.get("jacsId", "unknown")
+                                if isinstance(parent, dict)
+                                else "unknown",
+                                "valid": False,
+                                "parent_signatures_valid": False,
+                                "error": str(error),
+                            }
+                        )
+                        all_valid = False
+
+                result["parent_signatures_count"] = len(parent_results)
+                result["parent_verification_results"] = parent_results
+                result["parent_signatures_valid"] = all_valid
+
+            return result
+        finally:
+            if artifact_id:
+                visited.discard(artifact_id)
+
+    def _build_jwks(
+        self, public_key_b64: str, agent_data: Dict[str, Any]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        jwks = agent_data.get("jwks")
+        if isinstance(jwks, dict) and isinstance(jwks.get("keys"), list):
+            return jwks
+
+        jwk = agent_data.get("jwk")
+        if isinstance(jwk, dict):
+            return {"keys": [jwk]}
+
+        try:
+            key_bytes = base64.b64decode(public_key_b64, validate=False)
+        except Exception:
+            return {"keys": []}
+
+        key_algorithm = str(agent_data.get("keyAlgorithm", "")).lower()
+        kid = str(agent_data.get("jacsId", "jacs-agent"))
+
+        if len(key_bytes) == 32:
+            return {
+                "keys": [
+                    {
+                        "kty": "OKP",
+                        "crv": "Ed25519",
+                        "x": base64.urlsafe_b64encode(key_bytes).decode("utf-8").rstrip("="),
+                        "kid": kid,
+                        "use": "sig",
+                        "alg": "EdDSA",
+                    }
+                ]
+            }
+
+        # For non-Ed25519 keys, callers can pass jwk/jwks in agent_data.
+        alg = self._infer_jws_alg(key_algorithm)
+        if alg:
+            return {"keys": [{"kid": kid, "use": "sig", "alg": alg}]}
+
+        return {"keys": []}
+
+    @staticmethod
+    def _infer_jws_alg(key_algorithm: str) -> Optional[str]:
+        if "ring-ed25519" in key_algorithm or "ed25519" in key_algorithm:
+            return "EdDSA"
+        if "rsa" in key_algorithm:
+            return "RS256"
+        if "ecdsa" in key_algorithm or "es256" in key_algorithm:
+            return "ES256"
+        return None
 
     @staticmethod
     def _slugify(name: str) -> str:

@@ -1,10 +1,14 @@
 //! Integration tests for A2A protocol support in JACS (v0.4.0)
 
 use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*, *};
+use jacs::agent::boilerplate::BoilerPlate;
+use jacs::agent::document::DocumentTraits;
+use jacs::agent::loaders::FileLoader;
+use jacs::crypt::hash::hash_public_key;
 use serde_json::json;
 
 mod utils;
-use utils::load_test_agent_one;
+use utils::{load_test_agent_one, load_test_agent_two};
 
 #[test]
 fn test_export_agent_to_a2a_agent_card() {
@@ -165,8 +169,75 @@ fn test_verify_wrapped_artifact() {
         verify_wrapped_artifact(&agent, &wrapped).expect("Failed to verify artifact");
 
     assert!(verification.valid);
+    assert!(matches!(
+        verification.status,
+        VerificationStatus::SelfSigned
+    ));
     assert_eq!(verification.artifact_type, "a2a-message");
     assert_eq!(verification.original_artifact, a2a_artifact);
+}
+
+#[test]
+fn test_verify_foreign_wrapped_artifact_with_local_key_resolution() {
+    let mut signer = load_test_agent_one();
+    let verifier = load_test_agent_two();
+
+    let a2a_artifact = json!({
+        "messageId": "msg-foreign-001",
+        "content": "Hello from foreign agent",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+
+    let wrapped = wrap_artifact_with_provenance(&mut signer, a2a_artifact.clone(), "message", None)
+        .expect("Failed to wrap artifact");
+
+    // Ensure verifier has signer key material available in local trust store.
+    let signer_public_key = signer.get_public_key().expect("signer public key");
+    let signer_public_key_hash = hash_public_key(signer_public_key.clone());
+    verifier
+        .fs_save_remote_public_key(&signer_public_key_hash, &signer_public_key, b"RSA-PSS")
+        .expect("cache signer key in verifier trust store");
+
+    let verification =
+        verify_wrapped_artifact(&verifier, &wrapped).expect("Failed to verify foreign artifact");
+
+    assert!(verification.valid);
+    assert!(matches!(verification.status, VerificationStatus::Verified));
+    assert_eq!(verification.original_artifact, a2a_artifact);
+}
+
+#[test]
+fn test_verify_foreign_wrapped_artifact_without_key_is_unverified() {
+    let mut signer = load_test_agent_one();
+    let verifier = load_test_agent_two();
+
+    let wrapped = wrap_artifact_with_provenance(
+        &mut signer,
+        json!({
+            "messageId": "msg-foreign-002",
+            "content": "Unresolvable key test",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        }),
+        "message",
+        None,
+    )
+    .expect("Failed to wrap artifact");
+
+    let mut foreign_unresolvable = wrapped.clone();
+    foreign_unresolvable["jacsSignature"]["publicKeyHash"] = json!("not-a-real-public-key-hash");
+    let updated_hash = verifier
+        .hash_doc(&foreign_unresolvable)
+        .expect("updated hash after signature metadata mutation");
+    foreign_unresolvable["jacsSha256"] = json!(updated_hash);
+
+    let verification = verify_wrapped_artifact(&verifier, &foreign_unresolvable)
+        .expect("Verification should return status, not error");
+
+    assert!(!verification.valid);
+    assert!(matches!(
+        verification.status,
+        VerificationStatus::Unverified { .. }
+    ));
 }
 
 #[test]

@@ -126,17 +126,17 @@ impl SecurityTraits for Agent {
         use std::io::Read;
 
         if !self.use_fs_security() {
-            info!(
-                "is_executable check on Windows: {}",
-                path.to_string_lossy()
-            );
+            info!("is_executable check on Windows: {}", path.to_string_lossy());
             return false;
         }
 
         // On Windows, check file extension for known executable types
         if let Some(ext) = path.extension() {
             let ext_lower = ext.to_str().unwrap_or("").to_lowercase();
-            if matches!(ext_lower.as_str(), "exe" | "bat" | "cmd" | "ps1" | "com" | "scr") {
+            if matches!(
+                ext_lower.as_str(),
+                "exe" | "bat" | "cmd" | "ps1" | "com" | "scr"
+            ) {
                 return true;
             }
         }

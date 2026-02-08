@@ -88,7 +88,7 @@ Password for encrypted private keys:
 }
 ```
 
-**Warning**: Do not store passwords in config files for production. Use the `JACS_AGENT_PRIVATE_KEY_PASSWORD` environment variable instead.
+**Warning**: Do not store passwords in config files for production. Use the `JACS_PRIVATE_KEY_PASSWORD` environment variable instead.
 
 ### Storage Configuration
 
@@ -418,12 +418,12 @@ Configuration can be overridden with environment variables:
 
 | Variable | Config Field |
 |----------|--------------|
-| `JACS_AGENT_PRIVATE_KEY_PASSWORD` | `jacs_private_key_password` |
+| `JACS_PRIVATE_KEY_PASSWORD` | `jacs_private_key_password` |
 | `JACS_DATA_DIRECTORY` | `jacs_data_directory` |
 | `JACS_KEY_DIRECTORY` | `jacs_key_directory` |
 
 ```bash
-export JACS_AGENT_PRIVATE_KEY_PASSWORD="secure-password"
+export JACS_PRIVATE_KEY_PASSWORD="secure-password"
 ```
 
 ## Loading Configuration
@@ -440,7 +440,7 @@ agent.load('./jacs.config.json')
 ### Node.js
 
 ```javascript
-import { JacsAgent } from 'jacsnpm';
+import { JacsAgent } from '@hai-ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');

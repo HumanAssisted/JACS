@@ -74,10 +74,7 @@ pub fn parse_rfc3339(s: &str) -> Result<DateTime<Utc>, JacsError> {
     DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&Utc))
         .map_err(|e| {
-            JacsError::ValidationError(format!(
-                "Invalid RFC 3339 timestamp '{}': {}",
-                s, e
-            ))
+            JacsError::ValidationError(format!("Invalid RFC 3339 timestamp '{}': {}", s, e))
         })
 }
 
@@ -207,11 +204,10 @@ pub fn max_signature_age() -> i64 {
 ///    Set `JACS_MAX_SIGNATURE_AGE_SECONDS` to a positive value to enable (e.g., 7776000 for 90 days).
 pub fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError> {
     // Parse the timestamp (validates format)
-    let signature_time = parse_rfc3339(timestamp_str).map_err(|_| {
-        JacsError::SignatureVerificationFailed {
+    let signature_time =
+        parse_rfc3339(timestamp_str).map_err(|_| JacsError::SignatureVerificationFailed {
             reason: format!("Invalid signature timestamp format '{}'", timestamp_str),
-        }
-    })?;
+        })?;
 
     let now = Utc::now();
 
@@ -237,7 +233,9 @@ pub fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError
                     "Signature timestamp {} is too old (max age {} seconds / {} days). \
                     The agent document may need to be re-signed. \
                     Set JACS_MAX_SIGNATURE_AGE_SECONDS=0 to disable expiration.",
-                    timestamp_str, age_limit, age_limit / 86400
+                    timestamp_str,
+                    age_limit,
+                    age_limit / 86400
                 ),
             });
         }

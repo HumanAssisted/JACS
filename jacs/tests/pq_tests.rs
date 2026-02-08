@@ -5,7 +5,7 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
-use utils::{create_pq_test_agent, get_pq_config, create_agent_v1, read_new_agent_fixture};
+use utils::{create_agent_v1, create_pq_test_agent, get_pq_config, read_new_agent_fixture};
 
 // Helper function to convert bytes to hex string for display
 fn bytes_to_hex(bytes: &[u8]) -> String {
@@ -122,7 +122,9 @@ fn test_pq_create_and_verify_signature() {
     // Accept any PQ algorithm variant - detection may return pq-dilithium, pq-dilithium-alt, or pq2025
     // depending on key size and signature characteristics
     assert!(
-        detected_algo == "pq-dilithium" || detected_algo == "pq-dilithium-alt" || detected_algo == "pq2025",
+        detected_algo == "pq-dilithium"
+            || detected_algo == "pq-dilithium-alt"
+            || detected_algo == "pq2025",
         "Algorithm detection should identify this as a PQ key, got: {}",
         detected_algo
     );

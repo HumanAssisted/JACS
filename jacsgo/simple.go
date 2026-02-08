@@ -1,10 +1,19 @@
 package jacs
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"sync"
+)
+
+// Constants for verify link generation (must match jacs::simple values).
+const (
+	MaxVerifyURLLen        = 2048
+	MaxVerifyDocumentBytes = 1515
 )
 
 // Global agent instance for simplified API
@@ -14,49 +23,108 @@ var (
 	agentInfo   *AgentInfo
 )
 
+// CreateAgentOptions contains options for programmatic agent creation.
+type CreateAgentOptions struct {
+	// Password for encrypting the private key. Required unless JACS_AGENT_PRIVATE_KEY_PASSWORD is set.
+	Password string
+	// Algorithm is the signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS".
+	// "pq-dilithium" is deprecated.
+	Algorithm string
+	// DataDirectory is the directory for agent data (default: "./jacs_data").
+	DataDirectory string
+	// KeyDirectory is the directory for cryptographic keys (default: "./jacs_keys").
+	KeyDirectory string
+	// ConfigPath is the path to write the config file (default: "./jacs.config.json").
+	ConfigPath string
+	// AgentType is the agent type: "ai" (default), "human", or "hybrid".
+	AgentType string
+	// Description of the agent's purpose.
+	Description string
+	// Domain for DNS-based agent discovery.
+	Domain string
+	// DefaultStorage is the storage backend: "fs" (default).
+	DefaultStorage string
+}
+
 // Create creates a new JACS agent with cryptographic keys.
 //
-// This generates keys, creates configuration files, and saves them to the
-// current working directory.
+// This is a fully programmatic API. If opts is nil, default options are used.
+// The password must be provided in opts or via JACS_AGENT_PRIVATE_KEY_PASSWORD env var.
 //
 // Parameters:
 //   - name: Human-readable name for the agent
-//   - purpose: Optional description of the agent's purpose (can be empty)
-//   - keyAlgorithm: Signing algorithm ("ed25519", "rsa-pss", or "pq2025")
+//   - opts: Optional creation options (nil for defaults)
 //
 // Returns AgentInfo containing the agent ID and file paths.
-func Create(name, purpose, keyAlgorithm string) (*AgentInfo, error) {
-	// For now, this uses the existing CreateConfig + initialization flow
-	// A full implementation would call the Rust simple::create via FFI
-
-	algorithm := keyAlgorithm
-	if algorithm == "" {
-		algorithm = "ed25519"
+func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
+	if opts == nil {
+		opts = &CreateAgentOptions{}
 	}
 
-	// Create config
-	dataDir := "./jacs_data"
-	keyDir := "./jacs_keys"
+	algorithm := opts.Algorithm
+	if algorithm == "" {
+		algorithm = "pq2025"
+	}
 
-	_, err := CreateConfig(&Config{
-		DataDirectory:     &dataDir,
-		KeyDirectory:      &keyDir,
-		AgentKeyAlgorithm: &algorithm,
+	password := opts.Password
+	if password == "" {
+		password = os.Getenv("JACS_AGENT_PRIVATE_KEY_PASSWORD")
+	}
+	if password == "" {
+		return nil, NewSimpleError("create", errors.New(
+			"password is required: provide it in CreateAgentOptions.Password or set JACS_AGENT_PRIVATE_KEY_PASSWORD env var",
+		))
+	}
+
+	dataDir := opts.DataDirectory
+	if dataDir == "" {
+		dataDir = "./jacs_data"
+	}
+	keyDir := opts.KeyDirectory
+	if keyDir == "" {
+		keyDir = "./jacs_keys"
+	}
+	configPath := opts.ConfigPath
+	if configPath == "" {
+		configPath = "./jacs.config.json"
+	}
+	defaultStorage := opts.DefaultStorage
+	if defaultStorage == "" {
+		defaultStorage = "fs"
+	}
+
+	_, err := CreateConfig(Config{
+		DataDirectory:      &dataDir,
+		KeyDirectory:       &keyDir,
+		AgentKeyAlgorithm:  &algorithm,
+		PrivateKeyPassword: &password,
+		DefaultStorage:     &defaultStorage,
 	})
 	if err != nil {
 		return nil, NewSimpleError("create", err)
 	}
 
 	// Load the created agent
-	if err := Load(nil); err != nil {
+	if err := Load(&configPath); err != nil {
 		return nil, NewSimpleError("create", err)
 	}
 
+	// Read the config file to extract the agent ID
+	agentID := ""
+	if cfgData, err := os.ReadFile(configPath); err == nil {
+		var cfg map[string]interface{}
+		if err := json.Unmarshal(cfgData, &cfg); err == nil {
+			if idStr, ok := cfg["jacs_agent_id_and_version"].(string); ok {
+				agentID = idStr
+			}
+		}
+	}
+
 	info := &AgentInfo{
-		AgentID:       "", // Would be populated from agent
+		AgentID:       agentID,
 		Name:          name,
-		PublicKeyPath: "./jacs_keys/jacs.public.pem",
-		ConfigPath:    "./jacs.config.json",
+		PublicKeyPath: keyDir + "/jacs.public.pem",
+		ConfigPath:    configPath,
 	}
 
 	agentInfo = info
@@ -175,7 +243,7 @@ func SignMessage(data interface{}) (*SignedDocument, error) {
 
 	// Sign using agent
 	noSave := true
-	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, &noSave, nil, nil)
+	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, noSave, nil, nil)
 	if err != nil {
 		return nil, NewSimpleError("sign_message", err)
 	}
@@ -230,8 +298,7 @@ func SignFile(filePath string, embed bool) (*SignedDocument, error) {
 
 	// Sign with attachment
 	noSave := true
-	embedPtr := &embed
-	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, &noSave, &filePath, embedPtr)
+	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, noSave, &filePath, &embed)
 	if err != nil {
 		return nil, NewSimpleError("sign_file", err)
 	}
@@ -266,6 +333,21 @@ func Verify(signedDocument string) (*VerificationResult, error) {
 		return nil, ErrAgentNotLoaded
 	}
 
+	// Detect non-JSON input and provide helpful error
+	trimmed := strings.TrimSpace(signedDocument)
+	if len(trimmed) > 0 && trimmed[0] != '{' && trimmed[0] != '[' {
+		preview := trimmed
+		if len(preview) > 50 {
+			preview = preview[:50] + "..."
+		}
+		return &VerificationResult{
+			Valid: false,
+			Errors: []string{
+				"Input does not appear to be a JSON document. If you have a document ID (e.g., 'uuid:version'), use VerifyById() instead. Received: '" + preview + "'",
+			},
+		}, nil
+	}
+
 	// Parse document first
 	var doc map[string]interface{}
 	if err := json.Unmarshal([]byte(signedDocument), &doc); err != nil {
@@ -292,6 +374,251 @@ func Verify(signedDocument string) (*VerificationResult, error) {
 	return result, nil
 }
 
+// VerifyById verifies a document by its storage ID.
+//
+// Use this when you have a document ID (e.g., "uuid:version") rather than
+// the full JSON string. The document will be loaded from storage and verified.
+//
+// Parameters:
+//   - documentId: The document ID in "uuid:version" format
+func VerifyById(documentId string) (*VerificationResult, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+
+	if !strings.Contains(documentId, ":") {
+		return &VerificationResult{
+			Valid: false,
+			Errors: []string{
+				"Document ID must be in 'uuid:version' format, got '" + documentId + "'. Use Verify() with the full JSON string instead.",
+			},
+		}, nil
+	}
+
+	err := globalAgent.VerifyDocumentById(documentId)
+	if err != nil {
+		return &VerificationResult{
+			Valid:  false,
+			Errors: []string{err.Error()},
+		}, nil
+	}
+
+	return &VerificationResult{
+		Valid: true,
+	}, nil
+}
+
+// VerifyOptions configures standalone verification (no agent required).
+type VerifyOptions struct {
+	KeyResolution string // e.g. "local,hai" (default "local")
+	DataDirectory string
+	KeyDirectory  string
+}
+
+// HaiRegistrationOptions configures HAI registration.
+type HaiRegistrationOptions struct {
+	ApiKey  string // or HAI_API_KEY env
+	HaiUrl  string // default "https://hai.ai"
+	Preview bool
+}
+
+// HaiRegistrationResult is the result of registering with HAI.
+type HaiRegistrationResult struct {
+	AgentId     string
+	JacsId      string
+	DnsVerified bool
+	Signatures  []string
+}
+
+// VerifyStandalone verifies a signed document without loading an agent.
+// Does not use globalAgent. Call with opts nil to use defaults.
+func VerifyStandalone(signedDocument string, opts *VerifyOptions) (*VerificationResult, error) {
+	var kr, dd, kd string
+	if opts != nil {
+		kr, dd, kd = opts.KeyResolution, opts.DataDirectory, opts.KeyDirectory
+	}
+	return VerifyDocumentStandalone(signedDocument, kr, dd, kd)
+}
+
+// RegisterWithHai registers the loaded agent with HAI.
+// Requires a loaded agent (uses ExportAgent()). Calls POST {haiUrl}/api/v1/agents/register with Bearer and agent JSON.
+func RegisterWithHai(opts *HaiRegistrationOptions) (*HaiRegistrationResult, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+	apiKey := ""
+	haiUrl := "https://hai.ai"
+	if opts != nil {
+		apiKey = opts.ApiKey
+		if opts.HaiUrl != "" {
+			haiUrl = opts.HaiUrl
+		}
+		if opts.Preview {
+			return &HaiRegistrationResult{AgentId: agentInfo.AgentID}, nil
+		}
+	}
+	if apiKey == "" {
+		apiKey = os.Getenv("HAI_API_KEY")
+	}
+	if apiKey == "" {
+		return nil, errors.New("HAI registration requires an API key: set ApiKey in options or HAI_API_KEY env")
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return nil, err
+	}
+	client := NewHaiClient(haiUrl, WithAPIKey(apiKey))
+	res, err := client.RegisterWithJSON(agentJSON)
+	if err != nil {
+		return nil, err
+	}
+	sigs := make([]string, 0, len(res.Signatures))
+	for _, s := range res.Signatures {
+		if s.Signature != "" {
+			sigs = append(sigs, s.Signature)
+		} else {
+			sigs = append(sigs, s.KeyID)
+		}
+	}
+	return &HaiRegistrationResult{
+		AgentId:     res.AgentID,
+		JacsId:      res.JacsID,
+		DnsVerified: res.DNSVerified,
+		Signatures:  sigs,
+	}, nil
+}
+
+// GetDnsRecord returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
+// Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
+func GetDnsRecord(domain string, ttl uint32) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return "", err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(agentJSON), &doc); err != nil {
+		return "", err
+	}
+	jacsID := getStringField(doc, "jacsId")
+	if jacsID == "" {
+		if v, _ := doc["agentId"].(string); v != "" {
+			jacsID = v
+		}
+	}
+	sig, _ := doc["jacsSignature"].(map[string]interface{})
+	publicKeyHash := ""
+	if sig != nil {
+		if v, _ := sig["publicKeyHash"].(string); v != "" {
+			publicKeyHash = v
+		}
+	}
+	d := strings.TrimSuffix(domain, ".")
+	owner := "_v1.agent.jacs." + d + "."
+	txt := "v=hai.ai; jacs_agent_id=" + jacsID + "; alg=SHA-256; enc=base64; jac_public_key_hash=" + publicKeyHash
+	if ttl == 0 {
+		ttl = 3600
+	}
+	return fmt.Sprintf("%s %d IN TXT \"%s\"", owner, ttl, txt), nil
+}
+
+// GetWellKnownJson returns the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+// Keys: publicKey, publicKeyHash, algorithm, agentId.
+func GetWellKnownJson() (map[string]interface{}, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return nil, err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(agentJSON), &doc); err != nil {
+		return nil, err
+	}
+	jacsID := getStringField(doc, "jacsId")
+	if jacsID == "" {
+		if v, _ := doc["agentId"].(string); v != "" {
+			jacsID = v
+		}
+	}
+	sig, _ := doc["jacsSignature"].(map[string]interface{})
+	publicKeyHash := ""
+	if sig != nil {
+		if v, _ := sig["publicKeyHash"].(string); v != "" {
+			publicKeyHash = v
+		}
+	}
+	publicKey, _ := GetPublicKeyPEM()
+	return map[string]interface{}{
+		"publicKey":     publicKey,
+		"publicKeyHash": publicKeyHash,
+		"algorithm":     "SHA-256",
+		"agentId":       jacsID,
+	}, nil
+}
+
+// ReencryptKey re-encrypts the agent's private key with a new password.
+//
+// Parameters:
+//   - oldPassword: The current password for the private key
+//   - newPassword: The new password (must meet password requirements: 8+ chars, mixed case, number, special)
+func ReencryptKey(oldPassword, newPassword string) error {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return ErrAgentNotLoaded
+	}
+
+	// Read config to find key path
+	configPath := "./jacs.config.json"
+	if agentInfo != nil && agentInfo.ConfigPath != "" {
+		configPath = agentInfo.ConfigPath
+	}
+
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return NewSimpleError("reencrypt_key", err)
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(configData, &config); err != nil {
+		return NewSimpleError("reencrypt_key", err)
+	}
+
+	keyDir := "./jacs_keys"
+	if dir, ok := config["jacs_key_directory"].(string); ok && dir != "" {
+		keyDir = dir
+	}
+	keyFile := "jacs.private.pem.enc"
+	if file, ok := config["jacs_agent_private_key_filename"].(string); ok && file != "" {
+		keyFile = file
+	}
+	keyPath := keyDir + "/" + keyFile
+
+	// Read encrypted key
+	encryptedData, err := os.ReadFile(keyPath)
+	if err != nil {
+		return NewSimpleErrorWithPath("reencrypt_key", keyPath, err)
+	}
+
+	_ = encryptedData
+
+	return globalAgent.ReencryptKey(oldPassword, newPassword)
+}
+
 // ExportAgent exports the current agent's identity JSON for P2P exchange.
 func ExportAgent() (string, error) {
 	globalMutex.Lock()
@@ -301,9 +628,7 @@ func ExportAgent() (string, error) {
 		return "", ErrAgentNotLoaded
 	}
 
-	// Read agent file from config location
-	// This is a simplified implementation
-	return "", NewSimpleError("export_agent", errors.New("not yet implemented"))
+	return globalAgent.GetJSON()
 }
 
 // GetPublicKeyPEM returns the current agent's public key in PEM format.
@@ -348,6 +673,63 @@ func getStringField(m map[string]interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+// AuditOptions configures a security audit.
+type AuditOptions struct {
+	// ConfigPath is an optional path to the jacs config file.
+	ConfigPath string
+	// RecentN is the number of recent documents to re-verify (0 for default).
+	RecentN int
+}
+
+// Audit runs a read-only security audit and returns the result.
+//
+// The result is a map with keys like "risks", "health_checks", "summary", and "overall_status".
+// Does not require a loaded agent — it reads config and storage directly.
+//
+// Parameters:
+//   - opts: Optional audit options (nil for defaults)
+func Audit(opts *AuditOptions) (map[string]interface{}, error) {
+	configPath := ""
+	recentN := 0
+	if opts != nil {
+		configPath = opts.ConfigPath
+		recentN = opts.RecentN
+	}
+	resultStr, err := RunAudit(configPath, recentN)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
+		return nil, fmt.Errorf("parse audit result: %w", err)
+	}
+	return out, nil
+}
+
+// GenerateVerifyLink builds a verification URL for a signed JACS document.
+//
+// The document is encoded as URL-safe base64 (no padding) and appended as
+// the `s` query parameter. Returns an error if the URL exceeds MaxVerifyURLLen.
+//
+// Parameters:
+//   - document: The signed JACS document JSON string
+//   - baseUrl: Base URL for the verification endpoint (e.g. "https://hai.ai"). Empty defaults to "https://hai.ai".
+func GenerateVerifyLink(document string, baseUrl string) (string, error) {
+	if baseUrl == "" {
+		baseUrl = "https://hai.ai"
+	}
+	base := strings.TrimRight(baseUrl, "/")
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(document))
+	fullUrl := base + "/jacs/verify?s=" + encoded
+	if len(fullUrl) > MaxVerifyURLLen {
+		return "", fmt.Errorf(
+			"verify URL would exceed max length (%d). Document must be at most %d UTF-8 bytes",
+			MaxVerifyURLLen, MaxVerifyDocumentBytes,
+		)
+	}
+	return fullUrl, nil
 }
 
 func getNestedStringField(m map[string]interface{}, keys ...string) string {

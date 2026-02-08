@@ -17,14 +17,16 @@
 //! - **Preview Mode by Default**: Even when enabled, registration defaults to preview mode
 //!   unless `preview=false` is explicitly set.
 
+use jacs::schema::agentstate_crud;
 use jacs_binding_core::hai::HaiClient;
-use jacs_binding_core::{fetch_remote_key, AgentWrapper};
+use jacs_binding_core::{AgentWrapper, fetch_remote_key};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability};
-use rmcp::{tool, tool_handler, tool_router, ServerHandler};
+use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -251,6 +253,392 @@ pub struct UnregisterAgentResult {
 }
 
 // =============================================================================
+// Agent Management Request/Response Types
+// =============================================================================
+
+/// Parameters for creating a new JACS agent programmatically.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateAgentProgrammaticParams {
+    /// Name for the new agent.
+    #[schemars(description = "Name for the new agent")]
+    pub name: String,
+
+    /// Password for encrypting the private key.
+    #[schemars(
+        description = "Password for encrypting the private key. Must be at least 8 characters with uppercase, lowercase, digit, and special character."
+    )]
+    pub password: String,
+
+    /// Cryptographic algorithm. Default: "pq2025" (ML-DSA-87, FIPS-204).
+    #[schemars(
+        description = "Cryptographic algorithm: 'pq2025' (default, post-quantum), 'ring-Ed25519', or 'RSA-PSS'"
+    )]
+    pub algorithm: Option<String>,
+
+    /// Directory for data files. Default: "./jacs_data".
+    #[schemars(description = "Directory for data files (default: ./jacs_data)")]
+    pub data_directory: Option<String>,
+
+    /// Directory for key files. Default: "./jacs_keys".
+    #[schemars(description = "Directory for key files (default: ./jacs_keys)")]
+    pub key_directory: Option<String>,
+
+    /// Optional agent type (e.g., "ai", "human").
+    #[schemars(description = "Agent type (default: 'ai')")]
+    pub agent_type: Option<String>,
+
+    /// Optional description of the agent.
+    #[schemars(description = "Description of the agent")]
+    pub description: Option<String>,
+}
+
+/// Result of creating an agent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateAgentProgrammaticResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The new agent's ID (UUID).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+
+    /// The agent name.
+    pub name: String,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for re-encrypting the agent's private key.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReencryptKeyParams {
+    /// Current password for the private key.
+    #[schemars(description = "Current password for the private key")]
+    pub old_password: String,
+
+    /// New password to encrypt the private key with.
+    #[schemars(
+        description = "New password. Must be at least 8 characters with uppercase, lowercase, digit, and special character."
+    )]
+    pub new_password: String,
+}
+
+/// Parameters for the JACS security audit tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct JacsAuditParams {
+    /// Optional path to jacs config file.
+    #[schemars(description = "Optional path to jacs.config.json")]
+    pub config_path: Option<String>,
+
+    /// Optional number of recent documents to re-verify.
+    #[schemars(description = "Number of recent documents to re-verify (default from config)")]
+    pub recent_n: Option<u32>,
+}
+
+/// Result of re-encrypting the private key.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReencryptKeyResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
+// Agent State Request/Response Types
+// =============================================================================
+
+/// Parameters for signing an agent state file.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignStateParams {
+    /// Path to the file to sign.
+    #[schemars(description = "Path to the file to sign as agent state")]
+    pub file_path: String,
+
+    /// The type of agent state.
+    #[schemars(description = "Type of agent state: memory, skill, plan, config, or hook")]
+    pub state_type: String,
+
+    /// Human-readable name for this state document.
+    #[schemars(description = "Human-readable name for this state document")]
+    pub name: String,
+
+    /// Optional description of the state document.
+    #[schemars(description = "Optional description of what this state document contains")]
+    pub description: Option<String>,
+
+    /// Optional framework identifier (e.g., "claude-code", "openclaw").
+    #[schemars(description = "Optional framework identifier (e.g., 'claude-code', 'openclaw')")]
+    pub framework: Option<String>,
+
+    /// Optional tags for categorization.
+    #[schemars(description = "Optional tags for categorization")]
+    pub tags: Option<Vec<String>>,
+
+    /// Whether to embed file content inline. Always true for hooks.
+    #[schemars(
+        description = "Whether to embed file content inline (default false, always true for hooks)"
+    )]
+    pub embed: Option<bool>,
+}
+
+/// Result of signing an agent state file.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignStateResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The JACS document ID of the signed state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_document_id: Option<String>,
+
+    /// The state type that was signed.
+    pub state_type: String,
+
+    /// The name of the state document.
+    pub name: String,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for verifying an agent state file or document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyStateParams {
+    /// Path to the original file to verify against.
+    #[schemars(
+        description = "Path to the file to verify (at least one of file_path or jacs_id required)"
+    )]
+    pub file_path: Option<String>,
+
+    /// JACS document ID to verify.
+    #[schemars(
+        description = "JACS document ID to verify (at least one of file_path or jacs_id required)"
+    )]
+    pub jacs_id: Option<String>,
+}
+
+/// Result of verifying an agent state file.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyStateResult {
+    /// Whether the verification succeeded overall.
+    pub success: bool,
+
+    /// Whether the file hash matches the signed hash.
+    pub hash_match: bool,
+
+    /// Whether the document signature is valid.
+    pub signature_valid: bool,
+
+    /// Information about the signing agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signing_info: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if verification failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for loading a signed agent state.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LoadStateParams {
+    /// Path to the file to load.
+    #[schemars(
+        description = "Path to the file to load (at least one of file_path or jacs_id required)"
+    )]
+    pub file_path: Option<String>,
+
+    /// JACS document ID to load.
+    #[schemars(
+        description = "JACS document ID to load (at least one of file_path or jacs_id required)"
+    )]
+    pub jacs_id: Option<String>,
+
+    /// Whether to require verification before loading (default true).
+    #[schemars(description = "Whether to require verification before loading (default true)")]
+    pub require_verified: Option<bool>,
+}
+
+/// Result of loading a signed agent state.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LoadStateResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The loaded content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+
+    /// Whether the document was verified.
+    pub verified: bool,
+
+    /// Any warnings about the loaded state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<String>>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for updating a signed agent state.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateStateParams {
+    /// Path to the file to update.
+    #[schemars(description = "Path to the file to update (must have been previously signed)")]
+    pub file_path: String,
+
+    /// New content to write to the file. If omitted, re-signs current content.
+    #[schemars(
+        description = "New content to write to the file. If omitted, re-signs current file content."
+    )]
+    pub new_content: Option<String>,
+}
+
+/// Result of updating a signed agent state.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateStateResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The new JACS document version ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_document_version_id: Option<String>,
+
+    /// The new SHA-256 hash of the content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_hash: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for listing signed agent state documents.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListStateParams {
+    /// Filter by state type.
+    #[schemars(description = "Filter by state type: memory, skill, plan, config, or hook")]
+    pub state_type: Option<String>,
+
+    /// Filter by framework.
+    #[schemars(description = "Filter by framework identifier")]
+    pub framework: Option<String>,
+
+    /// Filter by tags (documents must have all specified tags).
+    #[schemars(description = "Filter by tags (documents must have all specified tags)")]
+    pub tags: Option<Vec<String>>,
+}
+
+/// A summary entry for a signed agent state document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StateListEntry {
+    /// The JACS document ID.
+    pub jacs_document_id: String,
+
+    /// The state type.
+    pub state_type: String,
+
+    /// The document name.
+    pub name: String,
+
+    /// The framework, if set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub framework: Option<String>,
+
+    /// Tags on the document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+}
+
+/// Result of listing signed agent state documents.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListStateResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The list of state documents.
+    pub documents: Vec<StateListEntry>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for adopting an external agent state file.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AdoptStateParams {
+    /// Path to the file to adopt and sign.
+    #[schemars(description = "Path to the file to adopt and sign as agent state")]
+    pub file_path: String,
+
+    /// The type of agent state.
+    #[schemars(description = "Type of agent state: memory, skill, plan, config, or hook")]
+    pub state_type: String,
+
+    /// Human-readable name for this state document.
+    #[schemars(description = "Human-readable name for this adopted state document")]
+    pub name: String,
+
+    /// Optional URL where the content was obtained from.
+    #[schemars(description = "Optional URL where the content was originally obtained")]
+    pub source_url: Option<String>,
+
+    /// Optional description of the state document.
+    #[schemars(description = "Optional description of what this adopted state document contains")]
+    pub description: Option<String>,
+}
+
+/// Result of adopting an external agent state file.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AdoptStateResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The JACS document ID of the adopted state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_document_id: Option<String>,
+
+    /// The state type that was adopted.
+    pub state_type: String,
+
+    /// The name of the adopted state document.
+    pub name: String,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
 // MCP Server
 // =============================================================================
 
@@ -296,7 +684,9 @@ impl HaiMcpServer {
         if registration_allowed {
             tracing::info!("Agent registration is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
         } else {
-            tracing::info!("Agent registration is DISABLED. Set JACS_MCP_ALLOW_REGISTRATION=true to enable.");
+            tracing::info!(
+                "Agent registration is DISABLED. Set JACS_MCP_ALLOW_REGISTRATION=true to enable."
+            );
         }
 
         Self {
@@ -343,6 +733,63 @@ impl HaiMcpServer {
                  and associated attestations. SECURITY: Requires JACS_MCP_ALLOW_UNREGISTRATION=true.",
                 Self::unregister_agent_schema(),
             ),
+            Tool::new(
+                "jacs_sign_state",
+                "Sign an agent state file (memory, skill, plan, config, or hook) to create \
+                 a cryptographically signed JACS document. This establishes provenance and \
+                 integrity for the file's contents.",
+                Self::jacs_sign_state_schema(),
+            ),
+            Tool::new(
+                "jacs_verify_state",
+                "Verify the integrity and authenticity of a signed agent state. Checks both \
+                 the file hash and the cryptographic signature.",
+                Self::jacs_verify_state_schema(),
+            ),
+            Tool::new(
+                "jacs_load_state",
+                "Load a signed agent state document and optionally verify it before returning \
+                 the content.",
+                Self::jacs_load_state_schema(),
+            ),
+            Tool::new(
+                "jacs_update_state",
+                "Update a previously signed agent state file. Writes new content (if provided), \
+                 recomputes the SHA-256 hash, and creates a new signed version.",
+                Self::jacs_update_state_schema(),
+            ),
+            Tool::new(
+                "jacs_list_state",
+                "List signed agent state documents, with optional filtering by type, framework, \
+                 or tags.",
+                Self::jacs_list_state_schema(),
+            ),
+            Tool::new(
+                "jacs_adopt_state",
+                "Adopt an external file as signed agent state. Like sign_state but marks the \
+                 origin as 'adopted' and optionally records the source URL.",
+                Self::jacs_adopt_state_schema(),
+            ),
+            Tool::new(
+                "jacs_create_agent",
+                "Create a new JACS agent with cryptographic keys. This is the programmatic \
+                 equivalent of 'jacs create'. Returns agent ID and key paths. \
+                 SECURITY: Requires JACS_MCP_ALLOW_REGISTRATION=true environment variable.",
+                Self::jacs_create_agent_schema(),
+            ),
+            Tool::new(
+                "jacs_reencrypt_key",
+                "Re-encrypt the agent's private key with a new password. Use this to rotate \
+                 the password protecting the private key without changing the key itself.",
+                Self::jacs_reencrypt_key_schema(),
+            ),
+            Tool::new(
+                "jacs_audit",
+                "Run a read-only JACS security audit and health checks. Returns a JSON report \
+                 with risks, health_checks, summary, and overall_status. Does not modify state. \
+                 Optional: config_path, recent_n (number of recent documents to re-verify).",
+                Self::jacs_audit_schema(),
+            ),
         ]
     }
 
@@ -385,6 +832,78 @@ impl HaiMcpServer {
             _ => serde_json::Map::new(),
         }
     }
+
+    fn jacs_sign_state_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(SignStateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_verify_state_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(VerifyStateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_load_state_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(LoadStateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_update_state_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(UpdateStateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_list_state_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(ListStateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_adopt_state_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(AdoptStateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_create_agent_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(CreateAgentProgrammaticParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_reencrypt_key_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(ReencryptKeyParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_audit_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(JacsAuditParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
 }
 
 // Implement the tool router for the server
@@ -407,13 +926,17 @@ impl HaiMcpServer {
             let result = FetchAgentKeyResult {
                 success: false,
                 agent_id: params.agent_id.clone(),
-                version: params.version.clone().unwrap_or_else(|| "latest".to_string()),
+                version: params
+                    .version
+                    .clone()
+                    .unwrap_or_else(|| "latest".to_string()),
                 algorithm: String::new(),
                 public_key_hash: String::new(),
                 public_key_base64: String::new(),
                 error: Some(e),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         let version = params.version.as_deref().unwrap_or("latest");
@@ -474,7 +997,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: Some("REGISTRATION_DISABLED".to_string()),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         // Default to preview mode for additional safety
@@ -494,7 +1018,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: None,
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         let result = match self.hai_client.register(&self.agent).await {
@@ -547,7 +1072,8 @@ impl HaiMcpServer {
                 key_found: false,
                 error: Some(e),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         let version = params.version.as_deref().unwrap_or("latest");
@@ -563,16 +1089,14 @@ impl HaiMcpServer {
                 // Check for Level 3: HAI signature attestation
                 // Query the status endpoint to see if HAI has signed the registration
                 match self.hai_client.status(&self.agent).await {
-                    Ok(status) if !status.hai_signatures.is_empty() => {
-                        (
-                            3u8,
-                            format!(
-                                "Level 3: Full HAI attestation ({} signature(s))",
-                                status.hai_signatures.len()
-                            ),
-                            true,
-                        )
-                    }
+                    Ok(status) if !status.hai_signatures.is_empty() => (
+                        3u8,
+                        format!(
+                            "Level 3: Full HAI attestation ({} signature(s))",
+                            status.hai_signatures.len()
+                        ),
+                        true,
+                    ),
                     Ok(status) if status.registered => {
                         // Registered but no HAI signatures yet
                         // Check for Level 2: DNS verification
@@ -707,11 +1231,7 @@ impl HaiMcpServer {
                         registration_id: None,
                         registered_at: None,
                         signature_count: 0,
-                        error: if registered {
-                            Some(error_str)
-                        } else {
-                            None
-                        },
+                        error: if registered { Some(error_str) } else { None },
                     }
                 }
             }
@@ -747,7 +1267,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: Some("UNREGISTRATION_DISABLED".to_string()),
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         // Default to preview mode for safety
@@ -764,7 +1285,8 @@ impl HaiMcpServer {
                     .to_string(),
                 error: None,
             };
-            return serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         // Note: HaiClient doesn't currently have an unregister method
@@ -780,6 +1302,857 @@ impl HaiMcpServer {
         };
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Sign an agent state file to create a cryptographically signed JACS document.
+    ///
+    /// Reads the file, creates an agent state document with metadata, and signs it
+    /// using the local agent's keys. For hooks, content is always embedded.
+    #[tool(
+        name = "jacs_sign_state",
+        description = "Sign an agent state file (memory/skill/plan/config/hook) to create a signed JACS document."
+    )]
+    pub async fn jacs_sign_state(&self, Parameters(params): Parameters<SignStateParams>) -> String {
+        let embed = params.embed.unwrap_or(false);
+
+        // Create the agent state document with file reference
+        let mut doc = match agentstate_crud::create_agentstate_with_file(
+            &params.state_type,
+            &params.name,
+            &params.file_path,
+            embed,
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = SignStateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    state_type: params.state_type,
+                    name: params.name,
+                    message: "Failed to create agent state document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Set optional fields
+        if let Some(desc) = &params.description {
+            doc["jacsAgentStateDescription"] = serde_json::json!(desc);
+        }
+
+        if let Some(framework) = &params.framework {
+            if let Err(e) = agentstate_crud::set_agentstate_framework(&mut doc, framework) {
+                let result = SignStateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    state_type: params.state_type,
+                    name: params.name,
+                    message: "Failed to set framework".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        if let Some(tags) = &params.tags {
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            if let Err(e) = agentstate_crud::set_agentstate_tags(&mut doc, tag_refs) {
+                let result = SignStateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    state_type: params.state_type,
+                    name: params.name,
+                    message: "Failed to set tags".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        // Set origin as "authored" for directly signed state
+        let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
+
+        // Sign the document via create_document (no_save=true to avoid filesystem writes)
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            Some(embed || params.state_type == "hook"),
+        ) {
+            Ok(signed_doc_string) => {
+                // Extract the JACS document ID from the signed document
+                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                SignStateResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    state_type: params.state_type,
+                    name: params.name,
+                    message: format!(
+                        "Successfully signed agent state file '{}'",
+                        params.file_path
+                    ),
+                    error: None,
+                }
+            }
+            Err(e) => SignStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "Failed to sign document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Verify the integrity and authenticity of a signed agent state.
+    ///
+    /// Checks both the file content hash against the signed hash and verifies
+    /// the cryptographic signature on the document.
+    #[tool(
+        name = "jacs_verify_state",
+        description = "Verify a signed agent state's file hash and cryptographic signature."
+    )]
+    pub async fn jacs_verify_state(
+        &self,
+        Parameters(params): Parameters<VerifyStateParams>,
+    ) -> String {
+        // At least one of file_path or jacs_id must be provided
+        if params.file_path.is_none() && params.jacs_id.is_none() {
+            let result = VerifyStateResult {
+                success: false,
+                hash_match: false,
+                signature_valid: false,
+                signing_info: None,
+                message: "At least one of file_path or jacs_id must be provided".to_string(),
+                error: Some("MISSING_PARAMETER".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // If jacs_id is provided, verify the document by ID from storage
+        if let Some(jacs_id) = &params.jacs_id {
+            match self.agent.verify_document_by_id(jacs_id) {
+                Ok(valid) => {
+                    let result = VerifyStateResult {
+                        success: true,
+                        hash_match: valid,
+                        signature_valid: valid,
+                        signing_info: None,
+                        message: if valid {
+                            format!("Document '{}' verified successfully", jacs_id)
+                        } else {
+                            format!("Document '{}' signature verification failed", jacs_id)
+                        },
+                        error: None,
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+                Err(e) => {
+                    let result = VerifyStateResult {
+                        success: false,
+                        hash_match: false,
+                        signature_valid: false,
+                        signing_info: None,
+                        message: format!("Failed to verify document '{}': {}", jacs_id, e),
+                        error: Some(e.to_string()),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            }
+        }
+
+        // file_path-based verification: read the file and check if a signed
+        // document exists for it by looking at the stored state documents.
+        // Since document index is not yet available, we create a minimal
+        // verification based on file hash.
+        let file_path = params.file_path.as_deref().unwrap();
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                let result = VerifyStateResult {
+                    success: false,
+                    hash_match: false,
+                    signature_valid: false,
+                    signing_info: None,
+                    message: format!("Failed to read file '{}'", file_path),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Compute current file hash
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        let current_hash = format!("{:x}", hasher.finalize());
+
+        // Check for a .jacs.json sidecar file that might hold the signed document
+        let sidecar_path = format!("{}.jacs.json", file_path);
+        if let Ok(sidecar_content) = std::fs::read_to_string(&sidecar_path) {
+            // Parse the sidecar document
+            if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&sidecar_content) {
+                // Verify file hash using agentstate_crud
+                let hash_match = match agentstate_crud::verify_agentstate_file_hash(&doc) {
+                    Ok(matches) => matches,
+                    Err(_) => false,
+                };
+
+                // Verify document signature
+                let signature_valid = match self.agent.verify_document(&sidecar_content) {
+                    Ok(valid) => valid,
+                    Err(_) => false,
+                };
+
+                let signing_info = doc.get("jacsSignature").map(|s| s.to_string());
+
+                let result = VerifyStateResult {
+                    success: true,
+                    hash_match,
+                    signature_valid,
+                    signing_info,
+                    message: format!(
+                        "Verification complete: hash_match={}, signature_valid={}",
+                        hash_match, signature_valid
+                    ),
+                    error: None,
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        // No sidecar found - report what we can
+        let result = VerifyStateResult {
+            success: true,
+            hash_match: false,
+            signature_valid: false,
+            signing_info: None,
+            message: format!(
+                "No signed document found for '{}'. Current file SHA-256: {}. \
+                 Use jacs_sign_state to create a signed document first.",
+                file_path, current_hash
+            ),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Load a signed agent state document and optionally verify it.
+    ///
+    /// Returns the content of the state along with verification status.
+    #[tool(
+        name = "jacs_load_state",
+        description = "Load a signed agent state document, optionally verifying before returning content."
+    )]
+    pub async fn jacs_load_state(&self, Parameters(params): Parameters<LoadStateParams>) -> String {
+        // At least one of file_path or jacs_id must be provided
+        if params.file_path.is_none() && params.jacs_id.is_none() {
+            let result = LoadStateResult {
+                success: false,
+                content: None,
+                verified: false,
+                warnings: None,
+                message: "At least one of file_path or jacs_id must be provided".to_string(),
+                error: Some("MISSING_PARAMETER".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        let require_verified = params.require_verified.unwrap_or(true);
+
+        // Loading by jacs_id is not yet implemented (requires document index)
+        if params.file_path.is_none() {
+            let result = LoadStateResult {
+                success: false,
+                content: None,
+                verified: false,
+                warnings: None,
+                message: "Loading by JACS ID alone is not yet implemented. \
+                         Please provide a file_path."
+                    .to_string(),
+                error: Some("NOT_YET_IMPLEMENTED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        let file_path = params.file_path.as_deref().unwrap();
+
+        // Read the file content
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                let result = LoadStateResult {
+                    success: false,
+                    content: None,
+                    verified: false,
+                    warnings: None,
+                    message: format!("Failed to read file '{}'", file_path),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut warnings = Vec::new();
+        let mut verified = false;
+
+        // Check for sidecar signed document
+        let sidecar_path = format!("{}.jacs.json", file_path);
+        if let Ok(sidecar_content) = std::fs::read_to_string(&sidecar_path) {
+            if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&sidecar_content) {
+                // Verify hash
+                match agentstate_crud::verify_agentstate_file_hash(&doc) {
+                    Ok(true) => {
+                        verified = true;
+                    }
+                    Ok(false) => {
+                        warnings.push(
+                            "File content hash does not match signed hash. \
+                             File may have been modified since signing."
+                                .to_string(),
+                        );
+                    }
+                    Err(e) => {
+                        warnings.push(format!("Could not verify file hash: {}", e));
+                    }
+                }
+
+                // Verify signature
+                match self.agent.verify_document(&sidecar_content) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        verified = false;
+                        warnings.push("Document signature verification failed.".to_string());
+                    }
+                    Err(e) => {
+                        verified = false;
+                        warnings.push(format!("Could not verify document signature: {}", e));
+                    }
+                }
+            }
+        } else {
+            warnings.push(format!(
+                "No signed document found at '{}'. Content is unverified.",
+                sidecar_path
+            ));
+        }
+
+        if require_verified && !verified {
+            let result = LoadStateResult {
+                success: false,
+                content: None,
+                verified: false,
+                warnings: if warnings.is_empty() {
+                    None
+                } else {
+                    Some(warnings)
+                },
+                message: "Verification required but content could not be verified.".to_string(),
+                error: Some("VERIFICATION_FAILED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        let result = LoadStateResult {
+            success: true,
+            content: Some(content),
+            verified,
+            warnings: if warnings.is_empty() {
+                None
+            } else {
+                Some(warnings)
+            },
+            message: if verified {
+                format!("Successfully loaded and verified '{}'", file_path)
+            } else {
+                format!("Loaded '{}' without full verification", file_path)
+            },
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Update a previously signed agent state file.
+    ///
+    /// If new_content is provided, writes it to the file first. Then recomputes
+    /// the SHA-256 hash and creates a new signed version of the document.
+    #[tool(
+        name = "jacs_update_state",
+        description = "Update a previously signed agent state file with new content and re-sign."
+    )]
+    pub async fn jacs_update_state(
+        &self,
+        Parameters(params): Parameters<UpdateStateParams>,
+    ) -> String {
+        // If new content is provided, write it to the file
+        if let Some(new_content) = &params.new_content {
+            if let Err(e) = std::fs::write(&params.file_path, new_content) {
+                let result = UpdateStateResult {
+                    success: false,
+                    jacs_document_version_id: None,
+                    new_hash: None,
+                    message: format!("Failed to write new content to '{}'", params.file_path),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        // Read the (possibly updated) file content
+        let content = match std::fs::read_to_string(&params.file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                let result = UpdateStateResult {
+                    success: false,
+                    jacs_document_version_id: None,
+                    new_hash: None,
+                    message: format!("Failed to read file '{}'", params.file_path),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Compute new SHA-256 hash
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        let new_hash = format!("{:x}", hasher.finalize());
+
+        // Check for existing sidecar document to get metadata for the update
+        let sidecar_path = format!("{}.jacs.json", params.file_path);
+        let existing_doc = std::fs::read_to_string(&sidecar_path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+
+        // Extract metadata before potentially consuming the document
+        let state_type = existing_doc
+            .as_ref()
+            .and_then(|d| {
+                d.get("jacsAgentStateType")
+                    .and_then(|t| t.as_str())
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| "config".to_string());
+
+        let state_name = existing_doc
+            .as_ref()
+            .and_then(|d| {
+                d.get("jacsAgentStateName")
+                    .and_then(|n| n.as_str())
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| {
+                std::path::Path::new(&params.file_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unnamed")
+                    .to_string()
+            });
+
+        if let Some(mut doc) = existing_doc {
+            // Update the file hash in the document
+            if let Some(files) = doc.get_mut("jacsFiles").and_then(|f| f.as_array_mut()) {
+                for file_entry in files.iter_mut() {
+                    if let Some(obj) = file_entry.as_object_mut() {
+                        obj.insert(
+                            "sha256".to_string(),
+                            serde_json::Value::String(new_hash.clone()),
+                        );
+                        // Update embedded content if it was embedded
+                        if obj.get("embed").and_then(|e| e.as_bool()).unwrap_or(false) {
+                            obj.insert(
+                                "contents".to_string(),
+                                serde_json::Value::String(content.clone()),
+                            );
+                        }
+                    }
+                }
+            }
+
+            // If content was embedded at the document level, update it
+            if doc.get("jacsAgentStateContent").is_some() {
+                doc["jacsAgentStateContent"] = serde_json::json!(content);
+            }
+
+            // Extract the document key for update
+            let doc_key = doc
+                .get("id")
+                .and_then(|id| id.as_str())
+                .map(String::from)
+                .unwrap_or_default();
+
+            // Try to update the existing document
+            let doc_string = doc.to_string();
+            match self
+                .agent
+                .update_document(&doc_key, &doc_string, None, None)
+            {
+                Ok(updated_doc_string) => {
+                    let version_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
+                        .ok()
+                        .and_then(|v| {
+                            v.get("jacsVersion")
+                                .and_then(|ver| ver.as_str())
+                                .map(String::from)
+                                .or_else(|| {
+                                    v.get("id").and_then(|id| id.as_str()).map(String::from)
+                                })
+                        })
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    let result = UpdateStateResult {
+                        success: true,
+                        jacs_document_version_id: Some(version_id),
+                        new_hash: Some(new_hash),
+                        message: format!(
+                            "Successfully updated and re-signed '{}'",
+                            params.file_path
+                        ),
+                        error: None,
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+                Err(e) => {
+                    // Fall through to create a new document if update fails
+                    tracing::warn!(
+                        "Failed to update existing document ({}), creating new signed version",
+                        e
+                    );
+                }
+            }
+        }
+
+        // No existing sidecar or update failed - create a fresh signed document
+
+        // Create fresh document
+        match agentstate_crud::create_agentstate_with_file(
+            &state_type,
+            &state_name,
+            &params.file_path,
+            false,
+        ) {
+            Ok(doc) => {
+                let doc_string = doc.to_string();
+                match self
+                    .agent
+                    .create_document(&doc_string, None, None, true, None, Some(false))
+                {
+                    Ok(signed_doc_string) => {
+                        let version_id =
+                            serde_json::from_str::<serde_json::Value>(&signed_doc_string)
+                                .ok()
+                                .and_then(|v| {
+                                    v.get("id").and_then(|id| id.as_str()).map(String::from)
+                                })
+                                .unwrap_or_else(|| "unknown".to_string());
+
+                        let result = UpdateStateResult {
+                            success: true,
+                            jacs_document_version_id: Some(version_id),
+                            new_hash: Some(new_hash),
+                            message: format!(
+                                "Created new signed version for '{}'",
+                                params.file_path
+                            ),
+                            error: None,
+                        };
+                        serde_json::to_string_pretty(&result)
+                            .unwrap_or_else(|e| format!("Error: {}", e))
+                    }
+                    Err(e) => {
+                        let result = UpdateStateResult {
+                            success: false,
+                            jacs_document_version_id: None,
+                            new_hash: Some(new_hash),
+                            message: "Failed to create new signed document".to_string(),
+                            error: Some(e.to_string()),
+                        };
+                        serde_json::to_string_pretty(&result)
+                            .unwrap_or_else(|e| format!("Error: {}", e))
+                    }
+                }
+            }
+            Err(e) => {
+                let result = UpdateStateResult {
+                    success: false,
+                    jacs_document_version_id: None,
+                    new_hash: Some(new_hash),
+                    message: "Failed to create agent state document for re-signing".to_string(),
+                    error: Some(e),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// List signed agent state documents.
+    ///
+    /// Currently returns a placeholder since document indexing is not yet
+    /// implemented. Will be fully functional once document storage lookup is added.
+    #[tool(
+        name = "jacs_list_state",
+        description = "List signed agent state documents, with optional filtering."
+    )]
+    pub async fn jacs_list_state(
+        &self,
+        Parameters(_params): Parameters<ListStateParams>,
+    ) -> String {
+        // Document indexing/listing is not yet implemented.
+        // This will be connected to the document storage layer when available.
+        let result = ListStateResult {
+            success: true,
+            documents: Vec::new(),
+            message: "Agent state document listing is not yet fully implemented. \
+                     Documents are signed and stored but a centralized index is pending. \
+                     Use jacs_verify_state with a file_path to check individual files."
+                .to_string(),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Adopt an external file as signed agent state.
+    ///
+    /// Like sign_state but sets the origin to "adopted" and optionally records
+    /// the source URL where the content was obtained.
+    #[tool(
+        name = "jacs_adopt_state",
+        description = "Adopt an external file as signed agent state, marking it with 'adopted' origin."
+    )]
+    pub async fn jacs_adopt_state(
+        &self,
+        Parameters(params): Parameters<AdoptStateParams>,
+    ) -> String {
+        // Create the agent state document with file reference
+        let mut doc = match agentstate_crud::create_agentstate_with_file(
+            &params.state_type,
+            &params.name,
+            &params.file_path,
+            false, // don't embed by default for adopted state
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = AdoptStateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    state_type: params.state_type,
+                    name: params.name,
+                    message: "Failed to create agent state document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Set description if provided
+        if let Some(desc) = &params.description {
+            doc["jacsAgentStateDescription"] = serde_json::json!(desc);
+        }
+
+        // Set origin as "adopted" with optional source URL
+        if let Err(e) = agentstate_crud::set_agentstate_origin(
+            &mut doc,
+            "adopted",
+            params.source_url.as_deref(),
+        ) {
+            let result = AdoptStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "Failed to set adopted origin".to_string(),
+                error: Some(e),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Sign the document
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            Some(false),
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                AdoptStateResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    state_type: params.state_type,
+                    name: params.name,
+                    message: format!(
+                        "Successfully adopted and signed state file '{}' (origin: adopted{})",
+                        params.file_path,
+                        params
+                            .source_url
+                            .as_ref()
+                            .map(|u| format!(", source: {}", u))
+                            .unwrap_or_default()
+                    ),
+                    error: None,
+                }
+            }
+            Err(e) => AdoptStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "Failed to sign adopted document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Create a new JACS agent programmatically.
+    ///
+    /// This is the programmatic equivalent of `jacs create`. It generates
+    /// a new agent with cryptographic keys and returns the agent info.
+    /// Requires JACS_MCP_ALLOW_REGISTRATION=true for security.
+    #[tool(
+        name = "jacs_create_agent",
+        description = "Create a new JACS agent with cryptographic keys (programmatic)."
+    )]
+    pub async fn jacs_create_agent(
+        &self,
+        Parameters(params): Parameters<CreateAgentProgrammaticParams>,
+    ) -> String {
+        // Require explicit opt-in for agent creation (same gate as registration)
+        if !self.registration_allowed {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Agent creation is disabled. Set JACS_MCP_ALLOW_REGISTRATION=true \
+                          environment variable to enable."
+                    .to_string(),
+                error: Some("REGISTRATION_NOT_ALLOWED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        let result = match jacs_binding_core::create_agent_programmatic(
+            &params.name,
+            &params.password,
+            params.algorithm.as_deref(),
+            params.data_directory.as_deref(),
+            params.key_directory.as_deref(),
+            None, // config_path
+            params.agent_type.as_deref(),
+            params.description.as_deref(),
+            None, // domain
+            None, // default_storage
+        ) {
+            Ok(info_json) => {
+                // Parse the info JSON to extract agent_id
+                let agent_id = serde_json::from_str::<serde_json::Value>(&info_json)
+                    .ok()
+                    .and_then(|v| v.get("agent_id").and_then(|a| a.as_str()).map(String::from));
+
+                CreateAgentProgrammaticResult {
+                    success: true,
+                    agent_id,
+                    name: params.name,
+                    message: "Agent created successfully".to_string(),
+                    error: None,
+                }
+            }
+            Err(e) => CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Failed to create agent".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    ///
+    /// Decrypts the private key with the old password and re-encrypts it
+    /// with the new password. The key itself does not change.
+    #[tool(
+        name = "jacs_reencrypt_key",
+        description = "Re-encrypt the agent's private key with a new password."
+    )]
+    pub async fn jacs_reencrypt_key(
+        &self,
+        Parameters(params): Parameters<ReencryptKeyParams>,
+    ) -> String {
+        let result = match self
+            .agent
+            .reencrypt_key(&params.old_password, &params.new_password)
+        {
+            Ok(()) => ReencryptKeyResult {
+                success: true,
+                message: "Private key re-encrypted successfully with new password".to_string(),
+                error: None,
+            },
+            Err(e) => ReencryptKeyResult {
+                success: false,
+                message: "Failed to re-encrypt private key".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Run a read-only JACS security audit. Returns JSON with risks, health_checks, summary.
+    #[tool(
+        name = "jacs_audit",
+        description = "Run a read-only JACS security audit and health checks."
+    )]
+    pub async fn jacs_audit(&self, Parameters(params): Parameters<JacsAuditParams>) -> String {
+        match jacs_binding_core::audit(params.config_path.as_deref(), params.recent_n) {
+            Ok(json) => json,
+            Err(e) => serde_json::json!({
+                "error": true,
+                "message": e.to_string()
+            })
+            .to_string(),
+        }
     }
 }
 
@@ -803,10 +2176,23 @@ impl ServerHandler for HaiMcpServer {
                 website_url: Some("https://hai.ai".to_string()),
             },
             instructions: Some(
-                "This MCP server provides HAI (Human AI Interface) tools for agent \
-                 registration, verification, and key management. Use fetch_agent_key \
-                 to get public keys, register_agent to register with HAI, verify_agent \
-                 to check attestation levels, and check_agent_status for registration info."
+                "This MCP server provides data provenance and cryptographic signing for \
+                 agent state files, plus optional HAI.ai integration for key distribution \
+                 and attestation. \
+                 \
+                 Agent state tools: jacs_sign_state (sign files), jacs_verify_state \
+                 (verify integrity), jacs_load_state (load with verification), \
+                 jacs_update_state (update and re-sign), jacs_list_state (list signed docs), \
+                 jacs_adopt_state (adopt external files). \
+                 \
+                 Agent management: jacs_create_agent (create new agent with keys), \
+                 jacs_reencrypt_key (rotate private key password). \
+                 \
+                 Security: jacs_audit (read-only security audit and health checks). \
+                 \
+                 HAI tools: fetch_agent_key (get public keys), register_agent (register \
+                 with HAI), verify_agent (check attestation 0-3), check_agent_status \
+                 (registration info), unregister_agent (remove registration)."
                     .to_string(),
             ),
         }
@@ -901,7 +2287,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = HaiMcpServer::tools();
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 14);
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"fetch_agent_key"));
@@ -909,6 +2295,101 @@ mod tests {
         assert!(names.contains(&"verify_agent"));
         assert!(names.contains(&"check_agent_status"));
         assert!(names.contains(&"unregister_agent"));
+        assert!(names.contains(&"jacs_sign_state"));
+        assert!(names.contains(&"jacs_verify_state"));
+        assert!(names.contains(&"jacs_load_state"));
+        assert!(names.contains(&"jacs_update_state"));
+        assert!(names.contains(&"jacs_list_state"));
+        assert!(names.contains(&"jacs_adopt_state"));
+        assert!(names.contains(&"jacs_create_agent"));
+        assert!(names.contains(&"jacs_reencrypt_key"));
+        assert!(names.contains(&"jacs_audit"));
+    }
+
+    #[test]
+    fn test_jacs_audit_returns_risks_and_health_checks() {
+        let json = jacs_binding_core::audit(None, None).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(
+            v.get("risks").is_some(),
+            "jacs_audit response should have risks"
+        );
+        assert!(
+            v.get("health_checks").is_some(),
+            "jacs_audit response should have health_checks"
+        );
+    }
+
+    #[test]
+    fn test_sign_state_params_schema() {
+        let schema = schemars::schema_for!(SignStateParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("file_path"));
+        assert!(json.contains("state_type"));
+        assert!(json.contains("name"));
+        assert!(json.contains("embed"));
+    }
+
+    #[test]
+    fn test_verify_state_params_schema() {
+        let schema = schemars::schema_for!(VerifyStateParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("file_path"));
+        assert!(json.contains("jacs_id"));
+    }
+
+    #[test]
+    fn test_load_state_params_schema() {
+        let schema = schemars::schema_for!(LoadStateParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("file_path"));
+        assert!(json.contains("require_verified"));
+    }
+
+    #[test]
+    fn test_update_state_params_schema() {
+        let schema = schemars::schema_for!(UpdateStateParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("file_path"));
+        assert!(json.contains("new_content"));
+    }
+
+    #[test]
+    fn test_list_state_params_schema() {
+        let schema = schemars::schema_for!(ListStateParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("state_type"));
+        assert!(json.contains("framework"));
+        assert!(json.contains("tags"));
+    }
+
+    #[test]
+    fn test_adopt_state_params_schema() {
+        let schema = schemars::schema_for!(AdoptStateParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("file_path"));
+        assert!(json.contains("state_type"));
+        assert!(json.contains("name"));
+        assert!(json.contains("source_url"));
+    }
+
+    #[test]
+    fn test_create_agent_params_schema() {
+        let schema = schemars::schema_for!(CreateAgentProgrammaticParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("name"));
+        assert!(json.contains("password"));
+        assert!(json.contains("algorithm"));
+        assert!(json.contains("data_directory"));
+        assert!(json.contains("key_directory"));
+    }
+
+    #[test]
+    fn test_reencrypt_key_params_schema() {
+        let schema = schemars::schema_for!(ReencryptKeyParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("old_password"));
+        assert!(json.contains("new_password"));
     }
 
     #[test]

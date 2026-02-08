@@ -4,8 +4,8 @@
 //! shared `jacs-binding-core` crate for common functionality.
 
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
-use napi::bindgen_prelude::*;
 use napi::JsObject;
+use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value;
 
@@ -89,7 +89,12 @@ impl JacsAgent {
         public_key_enc_type: String,
     ) -> Result<bool> {
         self.inner
-            .verify_string(&data, &signature_base64, public_key.to_vec(), public_key_enc_type)
+            .verify_string(
+                &data,
+                &signature_base64,
+                public_key.to_vec(),
+                public_key_enc_type,
+            )
             .to_napi()
     }
 
@@ -154,7 +159,13 @@ impl JacsAgent {
         agreement_fieldname: Option<String>,
     ) -> Result<String> {
         self.inner
-            .create_agreement(&document_string, agentids, question, context, agreement_fieldname)
+            .create_agreement(
+                &document_string,
+                agentids,
+                question,
+                context,
+                agreement_fieldname,
+            )
             .to_napi()
     }
 
@@ -202,6 +213,22 @@ impl JacsAgent {
     ) -> Result<String> {
         self.inner
             .check_agreement(&document_string, agreement_fieldname)
+            .to_napi()
+    }
+
+    /// Verify a document looked up by ID from storage.
+    ///
+    /// The document_id should be in "uuid:version" format.
+    #[napi]
+    pub fn verify_document_by_id(&self, document_id: String) -> Result<bool> {
+        self.inner.verify_document_by_id(&document_id).to_napi()
+    }
+
+    /// Re-encrypt the agent's private key with a new password.
+    #[napi]
+    pub fn reencrypt_key(&self, old_password: String, new_password: String) -> Result<()> {
+        self.inner
+            .reencrypt_key(&old_password, &new_password)
             .to_napi()
     }
 
@@ -286,6 +313,35 @@ pub fn create_config(
     .to_napi()
 }
 
+/// Create a JACS agent programmatically (non-interactive).
+#[napi]
+pub fn create_agent(
+    name: String,
+    password: String,
+    algorithm: Option<String>,
+    data_directory: Option<String>,
+    key_directory: Option<String>,
+    config_path: Option<String>,
+    agent_type: Option<String>,
+    description: Option<String>,
+    domain: Option<String>,
+    default_storage: Option<String>,
+) -> Result<String> {
+    jacs_binding_core::create_agent_programmatic(
+        &name,
+        &password,
+        algorithm.as_deref(),
+        data_directory.as_deref(),
+        key_directory.as_deref(),
+        config_path.as_deref(),
+        agent_type.as_deref(),
+        description.as_deref(),
+        domain.as_deref(),
+        default_storage.as_deref(),
+    )
+    .to_napi()
+}
+
 // ============================================================================
 // Trust Store Functions (using binding-core)
 // ============================================================================
@@ -318,6 +374,17 @@ pub fn is_trusted(agent_id: String) -> bool {
 #[napi]
 pub fn get_trusted_agent(agent_id: String) -> Result<String> {
     jacs_binding_core::get_trusted_agent(&agent_id).to_napi()
+}
+
+// ============================================================================
+// Audit (security audit and health checks)
+// ============================================================================
+
+/// Run a read-only security audit and health checks.
+/// Returns the audit result as a JSON string (risks, health_checks, summary).
+#[napi]
+pub fn audit(config_path: Option<String>, recent_n: Option<u32>) -> Result<String> {
+    jacs_binding_core::audit(config_path.as_deref(), recent_n).to_napi()
 }
 
 // ============================================================================
@@ -378,7 +445,12 @@ pub fn verify_string(
         )
     })?;
     agent
-        .verify_string(&data, &signature_base64, public_key.to_vec(), public_key_enc_type)
+        .verify_string(
+            &data,
+            &signature_base64,
+            public_key.to_vec(),
+            public_key_enc_type,
+        )
         .to_napi()
 }
 
@@ -416,6 +488,36 @@ pub fn update_agent(new_agent_string: String) -> Result<String> {
         )
     })?;
     agent.update_agent(&new_agent_string).to_napi()
+}
+
+/// Result of verify_document_standalone. Exposed to JS as { valid, signerId }.
+#[napi(object)]
+pub struct VerifyStandaloneResult {
+    pub valid: bool,
+    /// Signer agent ID; exposed to JS as signerId (camelCase).
+    pub signer_id: String,
+}
+
+/// Verify a signed JACS document without loading an agent.
+/// Returns { valid, signerId }. Does not use global agent state.
+#[napi]
+pub fn verify_document_standalone(
+    signed_document: String,
+    key_resolution: Option<String>,
+    data_directory: Option<String>,
+    key_directory: Option<String>,
+) -> Result<VerifyStandaloneResult> {
+    let r = jacs_binding_core::verify_document_standalone(
+        &signed_document,
+        key_resolution.as_deref(),
+        data_directory.as_deref(),
+        key_directory.as_deref(),
+    )
+    .to_napi()?;
+    Ok(VerifyStandaloneResult {
+        valid: r.valid,
+        signer_id: r.signer_id,
+    })
 }
 
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
@@ -479,7 +581,13 @@ pub fn create_agreement(
         )
     })?;
     agent
-        .create_agreement(&document_string, agentids, question, context, agreement_fieldname)
+        .create_agreement(
+            &document_string,
+            agentids,
+            question,
+            context,
+            agreement_fieldname,
+        )
         .to_napi()
 }
 
@@ -667,4 +775,14 @@ pub fn fetch_remote_key(agent_id: String, version: Option<String>) -> Result<Rem
         agent_id: key_info.agent_id,
         version: key_info.version,
     })
+}
+
+/// Build a verification URL for a signed JACS document.
+///
+/// Encodes `document` as URL-safe base64 (no padding) and returns a full URL
+/// like `https://hai.ai/jacs/verify?s=...`. Throws if the URL would exceed 2048 chars.
+#[napi]
+pub fn generate_verify_link(document: String, base_url: String) -> Result<String> {
+    jacs_binding_core::hai::generate_verify_link(&document, &base_url)
+        .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
 }
