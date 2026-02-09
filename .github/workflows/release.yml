@@ -238,7 +238,7 @@ jobs:
       - name: Validate npm pack output
         run: |
           set -euo pipefail
-          npm pack --dry-run | tee pack-dry-run.txt
+          npm pack --dry-run 2>&1 | tee pack-dry-run.txt
           REQUIRED_PACKED_FILES=(
             "index.js"
             "index.d.ts"
