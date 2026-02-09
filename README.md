@@ -79,7 +79,10 @@ fmt.Printf("Valid: %t, Signer: %s\n", result.Valid, result.SignerID)
 ### Rust / CLI
 
 ```bash
-cargo install jacs
+cargo install jacs --features cli
+
+# Upgrade to latest (overwrite existing install)
+cargo install jacs --features cli --force
 
 # Create an agent
 jacs init

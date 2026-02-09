@@ -14,13 +14,14 @@ Select the implementation that best fits your needs:
 
 ### Install Rust CLI
 ```bash
-# Install from crates.io
-cargo install jacs
+# Install from crates.io (--features cli is required for the binary)
+cargo install jacs --features cli
+# Upgrade to latest: cargo install jacs --features cli --force
 
 # Or build from source
 git clone https://github.com/HumanAssisted/JACS
 cd JACS/jacs
-cargo install --path . --features="cli"
+cargo install --path . --features cli
 ```
 
 ### Initialize JACS
