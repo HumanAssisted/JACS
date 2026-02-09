@@ -7,7 +7,7 @@
  *   node sign-file.js <file-path> [--embed]
  */
 
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 const fs = require('fs');
 
 async function main() {

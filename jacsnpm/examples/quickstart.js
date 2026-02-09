@@ -7,7 +7,7 @@
  *   node quickstart.js
  */
 
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 async function main() {
   // Load existing agent (requires jacs.config.json)

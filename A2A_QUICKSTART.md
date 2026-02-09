@@ -19,7 +19,7 @@ cargo add jacs
 pip install jacs
 
 # Node.js
-npm install @hai-ai/jacs
+npm install @hai.ai/jacs
 ```
 
 ## Basic Usage
@@ -49,7 +49,7 @@ agent_card = a2a.export_agent_card({
 ### 2. Wrap A2A Artifacts with Provenance
 
 ```javascript
-const { JACSA2AIntegration } = require('@hai-ai/jacs/a2a');
+const { JACSA2AIntegration } = require('@hai.ai/jacs/a2a');
 const a2a = new JACSA2AIntegration();
 
 // Wrap any A2A artifact

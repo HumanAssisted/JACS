@@ -51,11 +51,11 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ### Node.js
 
 ```bash
-npm install @hai-ai/jacs
+npm install @hai.ai/jacs
 ```
 
 ```javascript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 jacs.load('./jacs.config.json');
 

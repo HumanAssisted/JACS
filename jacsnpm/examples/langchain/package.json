@@ -13,7 +13,7 @@
     "@langchain/langgraph": "^0.2.0",
     "@langchain/openai": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@hai-ai/jacs": "file:../..",
+    "@hai.ai/jacs": "file:../..",
     "zod": "^3.22.0"
   },
   "devDependencies": {

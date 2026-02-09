@@ -20,7 +20,7 @@
 ### Packaging and Release Hardening
 
 - **jacsnpm install behavior**: Removed install-time native build (`npm install` no longer runs `napi build`), so consumers do not need a Rust toolchain at install time.
-- **jacsnpm publish contents**: Added `mcp.d.ts` to published package files so `@hai-ai/jacs/mcp` TypeScript types resolve correctly from npm tarballs.
+- **jacsnpm publish contents**: Added `mcp.d.ts` to published package files so `@hai.ai/jacs/mcp` TypeScript types resolve correctly from npm tarballs.
 - **npm release checks**: Added release-time validation that required `.node` binaries exist and `npm pack --dry-run` contains all exported API files before `npm publish`.
 - **Expanded npm binary coverage**: npm release workflow builds and validates hosted Linux/macOS targets (including Linux `arm64` musl) with best-effort builds for additional Linux/FreeBSD architectures; Windows artifacts are currently optional while checkout path compatibility is being remediated.
 - **jacspy sdist portability**: Excluded `jacspy/examples/**` from crate packaging so `maturin sdist` no longer fails on colon-containing fixture filenames.
@@ -40,7 +40,7 @@
 - **Parent signature verification depth (Node.js/Python)**: A2A wrappers now recursively verify `jacsParentSignatures` and report `parent_signatures_valid` based on actual verification outcomes.
 - **Well-known document parity**: Node.js and Python A2A helpers now include `/.well-known/jwks.json` in generated well-known document sets, matching Rust integration expectations.
 - **JWKS correctness improvements**: Removed placeholder EC JWK data in core A2A key helpers and added explicit Ed25519 JWK/JWS support (`EdDSA`) for truthful key metadata.
-- **Node.js create() 12-factor UX**: `@hai-ai/jacs/simple.create()` now accepts password from `JACS_PRIVATE_KEY_PASSWORD` when `options.password` is omitted, with explicit error if neither is provided.
+- **Node.js create() 12-factor UX**: `@hai.ai/jacs/simple.create()` now accepts password from `JACS_PRIVATE_KEY_PASSWORD` when `options.password` is omitted, with explicit error if neither is provided.
 
 ### Security
 
@@ -59,7 +59,7 @@
 - **README**: First-run minimal setup, verification and key resolution (`JACS_KEY_RESOLUTION`), supported algorithms, troubleshooting, dependency audit instructions, runtime password note.
 - **jacsnpm**: Documented that `overrides` for `body-parser` and `qs` are for security (CVE-2024-45590). Added `npm audit` step in CI.
 - **jacspy**: Aligned key resolution docstring with Rust (comma-separated `local,dns,hai`); added note to run `pip audit` when using optional deps.
-- **A2A documentation refresh**: Added detailed jacsbook guide at `integrations/a2a.md`, corrected stale A2A quickstart endpoints/imports (`agent-card.json`, `jwks.json`, `@hai-ai/jacs/a2a`), and aligned Node.js package references to `@hai-ai/jacs` across docs.
+- **A2A documentation refresh**: Added detailed jacsbook guide at `integrations/a2a.md`, corrected stale A2A quickstart endpoints/imports (`agent-card.json`, `jwks.json`, `@hai.ai/jacs/a2a`), and aligned Node.js package references to `@hai.ai/jacs` across docs.
 - **Agreement testing guidance**: Expanded jacsbook advanced testing docs with strict agreement-completion semantics and two-agent harness patterns for Python and Node.js.
 - **README clarity**: Added explicit note that `check_agreement` is strict and fails until all required signers have signed.
 - **Rust agreement test strictness**: Core `agreement_test` now explicitly asserts that `check_agreement` fails after the first signature and only succeeds after both required agents sign.
