@@ -222,7 +222,8 @@
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <p>Choose your implementation and get started in minutes:</p>
 <h3 id="rust-cli"><a class="header" href="#rust-cli">Rust CLI</a></h3>
-<pre><code class="language-bash">cargo install jacs
+<pre><code class="language-bash">cargo install jacs --features cli
+# Upgrade to latest: cargo install jacs --features cli --force
 jacs init  # Create config, keys, and agent
 </code></pre>
 <p>Or step by step:</p>
@@ -718,13 +719,14 @@ agent.load("./config.json")
 <label for="tab-rust">🦀 Rust CLI</label>
 <div class="content">
 <h3 id="install-rust-cli"><a class="header" href="#install-rust-cli">Install Rust CLI</a></h3>
-<pre><code class="language-bash"># Install from crates.io
-cargo install jacs
+<pre><code class="language-bash"># Install from crates.io (--features cli is required for the binary)
+cargo install jacs --features cli
+# Upgrade to latest: cargo install jacs --features cli --force
 
 # Or build from source
 git clone https://github.com/HumanAssisted/JACS
 cd JACS/jacs
-cargo install --path . --features="cli"
+cargo install --path . --features cli
 </code></pre>
 <h3 id="initialize-jacs"><a class="header" href="#initialize-jacs">Initialize JACS</a></h3>
 <pre><code class="language-bash"># Create configuration and agent in one step
