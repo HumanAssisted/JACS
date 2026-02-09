@@ -265,7 +265,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Publish to npm
-        run: npm publish --provenance
+        run: npm publish --access public --provenance
         working-directory: jacsnpm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
