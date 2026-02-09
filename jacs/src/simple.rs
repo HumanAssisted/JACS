@@ -755,7 +755,7 @@ impl SimpleAgent {
             params.name, algorithm
         );
 
-        // Create directories
+        // Create directories (including agent/ and public_keys/ subdirs that save() expects)
         let keys_dir = Path::new(&params.key_directory);
         let data_dir = Path::new(&params.data_directory);
 
@@ -763,9 +763,15 @@ impl SimpleAgent {
             path: keys_dir.to_string_lossy().to_string(),
             reason: e.to_string(),
         })?;
-        fs::create_dir_all(data_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-            path: data_dir.to_string_lossy().to_string(),
+        fs::create_dir_all(data_dir.join("agent")).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: data_dir.join("agent").to_string_lossy().to_string(),
             reason: e.to_string(),
+        })?;
+        fs::create_dir_all(data_dir.join("public_keys")).map_err(|e| {
+            JacsError::DirectoryCreateFailed {
+                path: data_dir.join("public_keys").to_string_lossy().to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
         let env_keys = [
@@ -824,29 +830,122 @@ impl SimpleAgent {
 
         let lookup_id = format!("{}:{}", agent_id, version);
 
-        // Save the agent
+        // Resolve the config: if one already exists at config_path, read it
+        // and only update the agent ID. Log differences between existing values
+        // and params so the caller knows. If no config exists, create one fresh.
+        let config_path = Path::new(&params.config_path);
+        let config_str = if config_path.exists() {
+            let existing_str = fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
+                message: format!("Failed to read existing config '{}': {}", params.config_path, e),
+            })?;
+            let mut existing: serde_json::Value =
+                serde_json::from_str(&existing_str).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to parse existing config: {}", e),
+                })?;
+
+            // Log differences between existing config and params
+            let check = |field: &str, existing_val: Option<&str>, param_val: &str| {
+                if let Some(ev) = existing_val {
+                    if ev != param_val {
+                        warn!(
+                            "Config '{}' differs: existing='{}', param='{}'. Keeping existing value.",
+                            field, ev, param_val
+                        );
+                    }
+                }
+            };
+            check(
+                "jacs_data_directory",
+                existing.get("jacs_data_directory").and_then(|v| v.as_str()),
+                &params.data_directory,
+            );
+            check(
+                "jacs_key_directory",
+                existing.get("jacs_key_directory").and_then(|v| v.as_str()),
+                &params.key_directory,
+            );
+            check(
+                "jacs_agent_key_algorithm",
+                existing.get("jacs_agent_key_algorithm").and_then(|v| v.as_str()),
+                &algorithm,
+            );
+            check(
+                "jacs_default_storage",
+                existing.get("jacs_default_storage").and_then(|v| v.as_str()),
+                &params.default_storage,
+            );
+
+            // Only update the agent ID (the new agent we just created)
+            if let Some(obj) = existing.as_object_mut() {
+                obj.insert(
+                    "jacs_agent_id_and_version".to_string(),
+                    json!(lookup_id),
+                );
+            }
+
+            let updated_str =
+                serde_json::to_string_pretty(&existing).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to serialize updated config: {}", e),
+                })?;
+            fs::write(config_path, &updated_str).map_err(|e| JacsError::Internal {
+                message: format!("Failed to write config to '{}': {}", params.config_path, e),
+            })?;
+            info!(
+                "Updated existing config '{}' with new agent ID {}",
+                params.config_path, lookup_id
+            );
+            updated_str
+        } else {
+            // No config exists -- create one from params
+            let config_json = json!({
+                "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+                "jacs_agent_id_and_version": lookup_id,
+                "jacs_data_directory": params.data_directory,
+                "jacs_key_directory": params.key_directory,
+                "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
+                "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
+                "jacs_agent_key_algorithm": algorithm,
+                "jacs_default_storage": params.default_storage,
+            });
+
+            let new_str =
+                serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to serialize config: {}", e),
+                })?;
+            // Create parent directories if needed
+            if let Some(parent) = config_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent).map_err(|e| JacsError::DirectoryCreateFailed {
+                        path: parent.to_string_lossy().to_string(),
+                        reason: e.to_string(),
+                    })?;
+                }
+            }
+            fs::write(config_path, &new_str).map_err(|e| JacsError::Internal {
+                message: format!("Failed to write config to '{}': {}", params.config_path, e),
+            })?;
+            info!(
+                "Created new config '{}' for agent {}",
+                params.config_path, lookup_id
+            );
+            new_str
+        };
+
+        // Set the agent's in-memory config from the resolved config so save()
+        // uses the correct data_directory and key_directory.
+        let validated_config_value =
+            crate::config::validate_config(&config_str).map_err(|e| JacsError::Internal {
+                message: format!("Failed to validate config: {}", e),
+            })?;
+        agent.config = Some(
+            serde_json::from_value(validated_config_value).map_err(|e| JacsError::Internal {
+                message: format!("Failed to parse config: {}", e),
+            })?,
+        );
+
+        // Save the agent (uses directories from the resolved config)
         agent.save().map_err(|e| JacsError::Internal {
             message: format!("Failed to save agent: {}", e),
-        })?;
-
-        // Create config file using Config::builder
-        let config_json = json!({
-            "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-            "jacs_agent_id_and_version": lookup_id,
-            "jacs_data_directory": params.data_directory,
-            "jacs_key_directory": params.key_directory,
-            "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
-            "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
-            "jacs_agent_key_algorithm": algorithm,
-            "jacs_default_storage": params.default_storage,
-        });
-
-        let config_str =
-            serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
-                message: format!("Failed to serialize config: {}", e),
-            })?;
-        fs::write(&params.config_path, &config_str).map_err(|e| JacsError::Internal {
-            message: format!("Failed to write config to '{}': {}", params.config_path, e),
         })?;
 
         // Handle DNS record generation if domain is set
