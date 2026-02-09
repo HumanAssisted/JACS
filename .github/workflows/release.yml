@@ -156,6 +156,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+
+      - name: Install dependencies and build JS files
+        working-directory: jacsnpm
+        run: |
+          npm install
+          npm run build
+
       - uses: actions/download-artifact@v4
         with:
           path: jacsnpm/artifacts
