@@ -261,12 +261,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
-      # Uses npm Trusted Publishing (OIDC). No NPM_TOKEN needed.
-      # Configure once at npmjs.com → package @hai.ai/jacs → Trusted Publisher:
-      #   Organization/user, Repository, Workflow filename: release.yml
+      # NPM_TOKEN must be a granular access token with "Packages: Read and write"
+      # and "Bypass 2FA for automation" enabled (npm → Access Tokens → Generate New Token).
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         working-directory: jacsnpm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
