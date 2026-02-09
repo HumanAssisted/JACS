@@ -67,12 +67,12 @@ jacs task create \
 
 ### Install Node.js Package
 ```bash
-npm install @hai-ai/jacs
+npm install @hai.ai/jacs
 ```
 
 ### Basic Setup
 ```javascript
-import { JacsAgent, createConfig } from '@hai-ai/jacs';
+import { JacsAgent, createConfig } from '@hai.ai/jacs';
 import fs from 'fs';
 
 // Create configuration
@@ -271,7 +271,7 @@ print(f"Agent: {agent.agent_id}")
 <div class="content">
 
 ```javascript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 const agent = jacs.create({
   name: 'my-agent',

@@ -26,7 +26,7 @@ A complete example of a contract signing workflow with multiple agents.
 
 ```javascript
 // contract-system.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 class ContractSigningSystem {
@@ -173,9 +173,9 @@ A complete API gateway that authenticates requests and provides MCP tools.
 import express from 'express';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
-import { JacsAgent } from '@hai-ai/jacs';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
+import { JacsAgent } from '@hai.ai/jacs';
 import { z } from 'zod';
 
 // Initialize Express
@@ -433,7 +433,7 @@ Track and verify document history with cryptographic proofs.
 
 ```javascript
 // audit-trail.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 
@@ -807,9 +807,9 @@ Notify external systems when documents are signed.
 
 ```javascript
 // webhook-notifier.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 const PORT = 3000;

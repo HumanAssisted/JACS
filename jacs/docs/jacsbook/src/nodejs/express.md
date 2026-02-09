@@ -15,7 +15,7 @@ JACS provides `JACSExpressMiddleware` for seamless integration with Express.js a
 
 ```javascript
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -196,7 +196,7 @@ app.post('/api/custom', (req, res) => {
 
 ```javascript
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -271,7 +271,7 @@ app.use((error, req, res, next) => {
 
 ```javascript
 import { Router } from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 // Create a JACS-enabled router
 function createJacsRouter(configPath) {
@@ -303,7 +303,7 @@ Combine JACS with other middleware:
 
 ```javascript
 import rateLimit from 'express-rate-limit';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -377,7 +377,7 @@ app.post('/api/protected', requireAuth, (req, res) => {
 
 ```javascript
 import request from 'supertest';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 describe('JACS API', () => {
   beforeAll(async () => {
@@ -457,7 +457,7 @@ describe('API without real JACS', () => {
 
 ```javascript
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 

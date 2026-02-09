@@ -84,7 +84,7 @@ print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
 **Node.js**:
 
 ```typescript
-import * as jacs from '@hai-ai/jacs/simple';
+import * as jacs from '@hai.ai/jacs/simple';
 
 const result = jacs.audit({ recentN: 5 });
 console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);

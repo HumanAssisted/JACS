@@ -203,7 +203,7 @@
 </ul>
 <h2 id="http-client"><a class="header" href="#http-client">HTTP Client</a></h2>
 <h3 id="basic-client-usage"><a class="header" href="#basic-client-usage">Basic Client Usage</a></h3>
-<pre><code class="language-javascript">import jacs from '@hai-ai/jacs';
+<pre><code class="language-javascript">import jacs from '@hai.ai/jacs';
 import http from 'http';
 
 async function main() {
@@ -262,7 +262,7 @@ function sendRequest(body, host, port, path) {
 main();
 </code></pre>
 <h3 id="using-fetch"><a class="header" href="#using-fetch">Using Fetch</a></h3>
-<pre><code class="language-javascript">import jacs from '@hai-ai/jacs';
+<pre><code class="language-javascript">import jacs from '@hai.ai/jacs';
 
 async function sendJacsRequest(url, payload) {
   await jacs.load('./jacs.config.json');
@@ -303,7 +303,7 @@ const result = await sendJacsRequest('http://localhost:3000/api/data', {
 <li>Signs outgoing responses when you call <code>res.send()</code> with an object</li>
 </ul>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 const PORT = 3000;
@@ -348,7 +348,7 @@ app.listen(PORT, () =&gt; {
 <h3 id="manual-requestresponse-handling"><a class="header" href="#manual-requestresponse-handling">Manual Request/Response Handling</a></h3>
 <p>For more control, you can handle signing manually:</p>
 <pre><code class="language-javascript">import express from 'express';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 const app = express();
 
@@ -383,7 +383,7 @@ app.post('/api/process', async (req, res) =&gt; {
 <h2 id="koa-server"><a class="header" href="#koa-server">Koa Server</a></h2>
 <h3 id="using-koa-middleware"><a class="header" href="#using-koa-middleware">Using Koa Middleware</a></h3>
 <pre><code class="language-javascript">import Koa from 'koa';
-import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 const app = new Koa();
 const PORT = 3000;
@@ -450,7 +450,7 @@ const payload = result.payload;
 </code></pre>
 <h3 id="jacsexpressmiddlewareoptions"><a class="header" href="#jacsexpressmiddlewareoptions">JACSExpressMiddleware(options)</a></h3>
 <p>Express middleware for JACS request/response handling.</p>
-<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 app.use(JACSExpressMiddleware({
   configPath: './jacs.config.json'  // Required
@@ -471,7 +471,7 @@ app.use(JACSExpressMiddleware({
 </ul>
 <h3 id="jacskoamiddlewareoptions"><a class="header" href="#jacskoamiddlewareoptions">JACSKoaMiddleware(options)</a></h3>
 <p>Koa middleware for JACS request/response handling.</p>
-<pre><code class="language-javascript">import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 app.use(JACSKoaMiddleware({
   configPath: './jacs.config.json'  // Required
@@ -491,7 +491,7 @@ app.use(JACSKoaMiddleware({
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
 <h3 id="server-serverjs"><a class="header" href="#server-serverjs">Server (server.js)</a></h3>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -529,7 +529,7 @@ app.post('/api/calculate', (req, res) =&gt; {
 app.listen(3000, () =&gt; console.log('Server running on port 3000'));
 </code></pre>
 <h3 id="client-clientjs"><a class="header" href="#client-clientjs">Client (client.js)</a></h3>
-<pre><code class="language-javascript">import jacs from '@hai-ai/jacs';
+<pre><code class="language-javascript">import jacs from '@hai.ai/jacs';
 
 async function main() {
   await jacs.load('./jacs.client.config.json');

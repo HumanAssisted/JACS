@@ -33,7 +33,7 @@ JACS is available in three languages, each with its own strengths:
 - **Library**: Full-featured Rust library for embedded applications
 - **Observability**: Advanced logging and metrics with OpenTelemetry support
 
-### 🟢 Node.js (@hai-ai/jacs)
+### 🟢 Node.js (@hai.ai/jacs)
 - **Web Integration**: Perfect for web servers and Express.js applications
 - **MCP Support**: Native Model Context Protocol integration
 - **HTTP Server**: Built-in HTTP server capabilities
@@ -63,10 +63,10 @@ jacs agent create --create-keys true
 
 ### Node.js
 ```bash
-npm install @hai-ai/jacs
+npm install @hai.ai/jacs
 ```
 ```javascript
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./config.json');

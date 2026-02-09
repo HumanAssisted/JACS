@@ -205,7 +205,7 @@
 <li><strong>Library</strong>: Full-featured Rust library for embedded applications</li>
 <li><strong>Observability</strong>: Advanced logging and metrics with OpenTelemetry support</li>
 </ul>
-<h3 id="-nodejs-hai-aijacs"><a class="header" href="#-nodejs-hai-aijacs">🟢 Node.js (@hai-ai/jacs)</a></h3>
+<h3 id="-nodejs-haiaijacs"><a class="header" href="#-nodejs-haiaijacs">🟢 Node.js (@hai.ai/jacs)</a></h3>
 <ul>
 <li><strong>Web Integration</strong>: Perfect for web servers and Express.js applications</li>
 <li><strong>MCP Support</strong>: Native Model Context Protocol integration</li>
@@ -230,9 +230,9 @@ jacs init  # Create config, keys, and agent
 jacs agent create --create-keys true
 </code></pre>
 <h3 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h3>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./config.json');
@@ -761,10 +761,10 @@ jacs task create \
 <label for="tab-nodejs">🟢 Node.js</label>
 <div class="content">
 <h3 id="install-nodejs-package"><a class="header" href="#install-nodejs-package">Install Node.js Package</a></h3>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 <h3 id="basic-setup"><a class="header" href="#basic-setup">Basic Setup</a></h3>
-<pre><code class="language-javascript">import { JacsAgent, createConfig } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent, createConfig } from '@hai.ai/jacs';
 import fs from 'fs';
 
 // Create configuration
@@ -939,7 +939,7 @@ print(f"Agent: {agent.agent_id}")
 <input type="radio" id="prog-nodejs" name="prog-group">
 <label for="prog-nodejs">Node.js</label>
 <div class="content">
-<pre><code class="language-javascript">const jacs = require('@hai-ai/jacs/simple');
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
 const agent = jacs.create({
   name: 'my-agent',
@@ -1271,7 +1271,7 @@ print(f'Agreement complete: {agreement_valid}')
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#2-protecting-your-agents-identity-on-the-internet">USECASES.md § 2</a> for the full scenario.</p>
 <hr />
 <h2 id="3-registering-and-testing-your-agent-on-haiai"><a class="header" href="#3-registering-and-testing-your-agent-on-haiai">3. Registering and testing your agent on HAI.ai</a></h2>
-<p><strong>Summary.</strong> You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the HAI registration flow: from Node <code>registerWithHai()</code> (@hai-ai/jacs), from Go <code>RegisterWithHai()</code> (jacsgo), from Python <code>register_with_hai</code> / <code>register_new_agent()</code> (jacspy), or <code>openclaw jacs register</code> (moltyjacs). Set <code>HAI_API_KEY</code>, then check attestation and run verification with <code>JACS_KEY_RESOLUTION=local,hai</code>.</p>
+<p><strong>Summary.</strong> You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the HAI registration flow: from Node <code>registerWithHai()</code> (@hai.ai/jacs), from Go <code>RegisterWithHai()</code> (jacsgo), from Python <code>register_with_hai</code> / <code>register_new_agent()</code> (jacspy), or <code>openclaw jacs register</code> (moltyjacs). Set <code>HAI_API_KEY</code>, then check attestation and run verification with <code>JACS_KEY_RESOLUTION=local,hai</code>.</p>
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#3-registering-and-testing-your-agent-on-haiai">USECASES.md § 3</a> for the full scenario.</p>
 <hr />
 <h2 id="4-a-go-node-or-python-agent-with-strong-data-provenance"><a class="header" href="#4-a-go-node-or-python-agent-with-strong-data-provenance">4. A Go, Node, or Python agent with strong data provenance</a></h2>
@@ -3537,7 +3537,7 @@ force_reset_for_tests();
 <li><a href="rust/../advanced/security.html">Advanced Topics</a> - Security considerations</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="nodejs-installation"><a class="header" href="#nodejs-installation">Node.js Installation</a></h1>
-<p>The JACS Node.js package (<code>@hai-ai/jacs</code>) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.</p>
+<p>The JACS Node.js package (<code>@hai.ai/jacs</code>) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.</p>
 <h2 id="requirements-1"><a class="header" href="#requirements-1">Requirements</a></h2>
 <ul>
 <li><strong>Node.js</strong>: Version 16.0 or higher</li>
@@ -3546,18 +3546,18 @@ force_reset_for_tests();
 </ul>
 <h2 id="installation-1"><a class="header" href="#installation-1">Installation</a></h2>
 <h3 id="using-npm"><a class="header" href="#using-npm">Using npm</a></h3>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 <h3 id="using-yarn"><a class="header" href="#using-yarn">Using yarn</a></h3>
-<pre><code class="language-bash">yarn add @hai-ai/jacs
+<pre><code class="language-bash">yarn add @hai.ai/jacs
 </code></pre>
 <h3 id="using-pnpm"><a class="header" href="#using-pnpm">Using pnpm</a></h3>
-<pre><code class="language-bash">pnpm add @hai-ai/jacs
+<pre><code class="language-bash">pnpm add @hai.ai/jacs
 </code></pre>
 <h2 id="verify-installation-1"><a class="header" href="#verify-installation-1">Verify Installation</a></h2>
 <p>Create a simple test to verify everything is working:</p>
 <pre><code class="language-javascript">// test.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
 
@@ -3574,30 +3574,30 @@ try {
 <pre><code class="language-bash">node test.js
 </code></pre>
 <h2 id="package-structure"><a class="header" href="#package-structure">Package Structure</a></h2>
-<p>The <code>@hai-ai/jacs</code> package includes several modules:</p>
-<h3 id="core-module-hai-aijacs"><a class="header" href="#core-module-hai-aijacs">Core Module (<code>@hai-ai/jacs</code>)</a></h3>
+<p>The <code>@hai.ai/jacs</code> package includes several modules:</p>
+<h3 id="core-module-haiaijacs"><a class="header" href="#core-module-haiaijacs">Core Module (<code>@hai.ai/jacs</code>)</a></h3>
 <pre><code class="language-javascript">import { 
   JacsAgent,
   JacsConfig,
   JacsDocument,
   JacsError
-} from '@hai-ai/jacs';
+} from '@hai.ai/jacs';
 </code></pre>
-<h3 id="mcp-integration-hai-aijacsmcp"><a class="header" href="#mcp-integration-hai-aijacsmcp">MCP Integration (<code>@hai-ai/jacs/mcp</code>)</a></h3>
+<h3 id="mcp-integration-haiaijacsmcp"><a class="header" href="#mcp-integration-haiaijacsmcp">MCP Integration (<code>@hai.ai/jacs/mcp</code>)</a></h3>
 <pre><code class="language-javascript">import { 
   JacsMcpServer,
   createJacsMiddleware 
-} from '@hai-ai/jacs/mcp';
+} from '@hai.ai/jacs/mcp';
 </code></pre>
-<h3 id="http-server-hai-aijacshttp"><a class="header" href="#http-server-hai-aijacshttp">HTTP Server (<code>@hai-ai/jacs/http</code>)</a></h3>
+<h3 id="http-server-haiaijacshttp"><a class="header" href="#http-server-haiaijacshttp">HTTP Server (<code>@hai.ai/jacs/http</code>)</a></h3>
 <pre><code class="language-javascript">import { 
   JacsHttpServer,
   createJacsRouter 
-} from '@hai-ai/jacs/http';
+} from '@hai.ai/jacs/http';
 </code></pre>
 <h2 id="typescript-support"><a class="header" href="#typescript-support">TypeScript Support</a></h2>
 <p>The package includes full TypeScript definitions:</p>
-<pre><code class="language-typescript">import { JacsAgent, createConfig, hashString } from '@hai-ai/jacs';
+<pre><code class="language-typescript">import { JacsAgent, createConfig, hashString } from '@hai.ai/jacs';
 
 // Create an agent instance
 const agent: JacsAgent = new JacsAgent();
@@ -3647,7 +3647,7 @@ const configJson: string = createConfig(
 }
 </code></pre>
 <p>Load the configuration:</p>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -3731,7 +3731,7 @@ export JACS_DEFAULT_STORAGE="fs"
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@hai-ai/jacs": "^0.6.0",
+    "@hai.ai/jacs": "^0.6.0",
     "express": "^4.18.0"
   },
   "scripts": {
@@ -3743,7 +3743,7 @@ export JACS_DEFAULT_STORAGE="fs"
 </code></pre>
 <h3 id="basic-application"><a class="header" href="#basic-application">Basic Application</a></h3>
 <pre><code class="language-javascript">// src/app.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 // Create and load agent
 const agent = new JacsAgent();
@@ -3789,8 +3789,8 @@ chmod 600 jacs_keys/*.pem
 npm rebuild
 
 # Or reinstall
-npm uninstall @hai-ai/jacs
-npm install @hai-ai/jacs
+npm uninstall @hai.ai/jacs
+npm install @hai.ai/jacs
 </code></pre>
 <h3 id="typescript-issues"><a class="header" href="#typescript-issues">TypeScript Issues</a></h3>
 <p>If TypeScript can't find definitions:</p>
@@ -3820,9 +3820,9 @@ npm install @hai-ai/jacs
 <li>MCP server implementation</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="simplified-api"><a class="header" href="#simplified-api">Simplified API</a></h1>
-<p>The simplified API (<code>@hai-ai/jacs/simple</code>) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.</p>
+<p>The simplified API (<code>@hai.ai/jacs/simple</code>) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.</p>
 <h2 id="quick-start-3"><a class="header" href="#quick-start-3">Quick Start</a></h2>
-<pre><code class="language-javascript">const jacs = require('@hai-ai/jacs/simple');
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
 // Load your agent
 const agent = jacs.load('./jacs.config.json');
@@ -4089,7 +4089,7 @@ console.log(pem);
 </code></pre>
 <hr />
 <h2 id="complete-example-1"><a class="header" href="#complete-example-1">Complete Example</a></h2>
-<pre><code class="language-javascript">const jacs = require('@hai-ai/jacs/simple');
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
 // Load agent
 const agent = jacs.load('./jacs.config.json');
@@ -4146,7 +4146,7 @@ console.log(publicKey);
 <h2 id="mcp-integration"><a class="header" href="#mcp-integration">MCP Integration</a></h2>
 <p>The simplified API works well with MCP tool implementations:</p>
 <pre><code class="language-javascript">const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 // Load agent once at startup
 jacs.load('./jacs.config.json');
@@ -4170,7 +4170,7 @@ server.setRequestHandler('tools/call', async (request) =&gt; {
 </code></pre>
 <hr />
 <h2 id="error-handling-1"><a class="header" href="#error-handling-1">Error Handling</a></h2>
-<pre><code class="language-javascript">const jacs = require('@hai-ai/jacs/simple');
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
 try {
   jacs.load('./missing-config.json');
@@ -4208,7 +4208,7 @@ if (!result.valid) {
 <p>This chapter covers fundamental JACS operations in Node.js, including agent initialization, document creation, signing, and verification.</p>
 <h2 id="initializing-an-agent"><a class="header" href="#initializing-an-agent">Initializing an Agent</a></h2>
 <h3 id="create-and-load-agent"><a class="header" href="#create-and-load-agent">Create and Load Agent</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 // Create a new agent instance
 const agent = new JacsAgent();
@@ -4229,7 +4229,7 @@ agent.load('./jacs.config.json');
 </code></pre>
 <h2 id="creating-documents-2"><a class="header" href="#creating-documents-2">Creating Documents</a></h2>
 <h3 id="basic-document-creation"><a class="header" href="#basic-document-creation">Basic Document Creation</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -4407,14 +4407,14 @@ console.log('Signer ID:', resultWithId);
 </code></pre>
 <h2 id="utility-functions"><a class="header" href="#utility-functions">Utility Functions</a></h2>
 <h3 id="hash-string"><a class="header" href="#hash-string">Hash String</a></h3>
-<pre><code class="language-javascript">import { hashString } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { hashString } from '@hai.ai/jacs';
 
 // SHA-256 hash of a string
 const hash = hashString('data to hash');
 console.log('Hash:', hash);
 </code></pre>
 <h3 id="create-configuration-1"><a class="header" href="#create-configuration-1">Create Configuration</a></h3>
-<pre><code class="language-javascript">import { createConfig } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { createConfig } from '@hai.ai/jacs';
 
 // Programmatically create a config JSON string
 const configJson = createConfig(
@@ -4432,7 +4432,7 @@ const configJson = createConfig(
 console.log('Config:', configJson);
 </code></pre>
 <h2 id="error-handling-2"><a class="header" href="#error-handling-2">Error Handling</a></h2>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 
@@ -4456,7 +4456,7 @@ try {
 }
 </code></pre>
 <h2 id="complete-example-2"><a class="header" href="#complete-example-2">Complete Example</a></h2>
-<pre><code class="language-javascript">import { JacsAgent, hashString } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent, hashString } from '@hai.ai/jacs';
 
 async function main() {
   // Initialize agent
@@ -4529,7 +4529,7 @@ main().catch(console.error);
 <h3 id="basic-mcp-server-with-jacs"><a class="header" href="#basic-mcp-server-with-jacs">Basic MCP Server with JACS</a></h3>
 <pre><code class="language-javascript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
 
 const JACS_CONFIG_PATH = "./jacs.config.json";
@@ -4569,7 +4569,7 @@ main();
 <h3 id="mcp-client-with-jacs"><a class="header" href="#mcp-client-with-jacs">MCP Client with JACS</a></h3>
 <pre><code class="language-javascript">import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 const JACS_CONFIG_PATH = "./jacs.config.json";
 
@@ -4618,7 +4618,7 @@ main();
 <h2 id="api-reference-1"><a class="header" href="#api-reference-1">API Reference</a></h2>
 <h3 id="jacstransportproxy"><a class="header" href="#jacstransportproxy">JACSTransportProxy</a></h3>
 <p>The main class that wraps MCP transports with JACS encryption.</p>
-<pre><code class="language-javascript">import { JACSTransportProxy } from '@hai-ai/jacs/mcp';
+<pre><code class="language-javascript">import { JACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 const proxy = new JACSTransportProxy(
   transport,      // Any MCP transport (Stdio, SSE, WebSocket)
@@ -4628,7 +4628,7 @@ const proxy = new JACSTransportProxy(
 </code></pre>
 <h3 id="createjacstransportproxy"><a class="header" href="#createjacstransportproxy">createJACSTransportProxy</a></h3>
 <p>Factory function for creating a transport proxy.</p>
-<pre><code class="language-javascript">import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+<pre><code class="language-javascript">import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 const secureTransport = createJACSTransportProxy(
   baseTransport,    // The underlying MCP transport
@@ -4638,7 +4638,7 @@ const secureTransport = createJACSTransportProxy(
 </code></pre>
 <h3 id="createjacstransportproxyasync"><a class="header" href="#createjacstransportproxyasync">createJACSTransportProxyAsync</a></h3>
 <p>Async factory that waits for JACS to be fully loaded before returning.</p>
-<pre><code class="language-javascript">import { createJACSTransportProxyAsync } from '@hai-ai/jacs/mcp';
+<pre><code class="language-javascript">import { createJACSTransportProxyAsync } from '@hai.ai/jacs/mcp';
 
 const secureTransport = await createJACSTransportProxyAsync(
   baseTransport,
@@ -4650,7 +4650,7 @@ const secureTransport = await createJACSTransportProxyAsync(
 <h3 id="stdio-transport"><a class="header" href="#stdio-transport">STDIO Transport</a></h3>
 <p>Best for CLI tools and subprocess communication:</p>
 <pre><code class="language-javascript">import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(
@@ -4663,7 +4663,7 @@ const secureTransport = createJACSTransportProxy(
 <h3 id="sse-transport-http"><a class="header" href="#sse-transport-http">SSE Transport (HTTP)</a></h3>
 <p>For web-based MCP servers:</p>
 <pre><code class="language-javascript">import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import express from 'express';
 
 const app = express();
@@ -4734,7 +4734,7 @@ app.listen(3000);
 <pre><code class="language-javascript">#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
 
 async function main() {
@@ -4797,7 +4797,7 @@ main().catch(err =&gt; {
 <pre><code class="language-javascript">#!/usr/bin/env node
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 async function main() {
   console.log("JACS MCP Client starting...");
@@ -4917,7 +4917,7 @@ main().catch(console.error);
 </ul>
 <h2 id="http-client"><a class="header" href="#http-client">HTTP Client</a></h2>
 <h3 id="basic-client-usage"><a class="header" href="#basic-client-usage">Basic Client Usage</a></h3>
-<pre><code class="language-javascript">import jacs from '@hai-ai/jacs';
+<pre><code class="language-javascript">import jacs from '@hai.ai/jacs';
 import http from 'http';
 
 async function main() {
@@ -4976,7 +4976,7 @@ function sendRequest(body, host, port, path) {
 main();
 </code></pre>
 <h3 id="using-fetch"><a class="header" href="#using-fetch">Using Fetch</a></h3>
-<pre><code class="language-javascript">import jacs from '@hai-ai/jacs';
+<pre><code class="language-javascript">import jacs from '@hai.ai/jacs';
 
 async function sendJacsRequest(url, payload) {
   await jacs.load('./jacs.config.json');
@@ -5017,7 +5017,7 @@ const result = await sendJacsRequest('http://localhost:3000/api/data', {
 <li>Signs outgoing responses when you call <code>res.send()</code> with an object</li>
 </ul>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 const PORT = 3000;
@@ -5062,7 +5062,7 @@ app.listen(PORT, () =&gt; {
 <h3 id="manual-requestresponse-handling"><a class="header" href="#manual-requestresponse-handling">Manual Request/Response Handling</a></h3>
 <p>For more control, you can handle signing manually:</p>
 <pre><code class="language-javascript">import express from 'express';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 const app = express();
 
@@ -5097,7 +5097,7 @@ app.post('/api/process', async (req, res) =&gt; {
 <h2 id="koa-server"><a class="header" href="#koa-server">Koa Server</a></h2>
 <h3 id="using-koa-middleware"><a class="header" href="#using-koa-middleware">Using Koa Middleware</a></h3>
 <pre><code class="language-javascript">import Koa from 'koa';
-import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 const app = new Koa();
 const PORT = 3000;
@@ -5164,7 +5164,7 @@ const payload = result.payload;
 </code></pre>
 <h3 id="jacsexpressmiddlewareoptions"><a class="header" href="#jacsexpressmiddlewareoptions">JACSExpressMiddleware(options)</a></h3>
 <p>Express middleware for JACS request/response handling.</p>
-<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 app.use(JACSExpressMiddleware({
   configPath: './jacs.config.json'  // Required
@@ -5185,7 +5185,7 @@ app.use(JACSExpressMiddleware({
 </ul>
 <h3 id="jacskoamiddlewareoptions"><a class="header" href="#jacskoamiddlewareoptions">JACSKoaMiddleware(options)</a></h3>
 <p>Koa middleware for JACS request/response handling.</p>
-<pre><code class="language-javascript">import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 app.use(JACSKoaMiddleware({
   configPath: './jacs.config.json'  // Required
@@ -5205,7 +5205,7 @@ app.use(JACSKoaMiddleware({
 <h2 id="complete-example-4"><a class="header" href="#complete-example-4">Complete Example</a></h2>
 <h3 id="server-serverjs"><a class="header" href="#server-serverjs">Server (server.js)</a></h3>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -5243,7 +5243,7 @@ app.post('/api/calculate', (req, res) =&gt; {
 app.listen(3000, () =&gt; console.log('Server running on port 3000'));
 </code></pre>
 <h3 id="client-clientjs"><a class="header" href="#client-clientjs">Client (client.js)</a></h3>
-<pre><code class="language-javascript">import jacs from '@hai-ai/jacs';
+<pre><code class="language-javascript">import jacs from '@hai.ai/jacs';
 
 async function main() {
   await jacs.load('./jacs.client.config.json');
@@ -5327,7 +5327,7 @@ app.use('/api', express.text({ type: '*/*' }));
 </ul>
 <h2 id="quick-start-5"><a class="header" href="#quick-start-5">Quick Start</a></h2>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -5467,7 +5467,7 @@ app.post('/api/secure', requireJacsPayload, (req, res) =&gt; {
 <h2 id="error-handling-4"><a class="header" href="#error-handling-4">Error Handling</a></h2>
 <h3 id="global-error-handler"><a class="header" href="#global-error-handler">Global Error Handler</a></h3>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -5535,7 +5535,7 @@ app.use((error, req, res, next) =&gt; {
 <h2 id="advanced-patterns"><a class="header" href="#advanced-patterns">Advanced Patterns</a></h2>
 <h3 id="router-level-middleware"><a class="header" href="#router-level-middleware">Router-Level Middleware</a></h3>
 <pre><code class="language-javascript">import { Router } from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 // Create a JACS-enabled router
 function createJacsRouter(configPath) {
@@ -5563,7 +5563,7 @@ app.use('/api', apiRouter);
 <h3 id="middleware-composition"><a class="header" href="#middleware-composition">Middleware Composition</a></h3>
 <p>Combine JACS with other middleware:</p>
 <pre><code class="language-javascript">import rateLimit from 'express-rate-limit';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -5625,7 +5625,7 @@ app.post('/api/protected', requireAuth, (req, res) =&gt; {
 <h2 id="testing"><a class="header" href="#testing">Testing</a></h2>
 <h3 id="unit-testing-routes"><a class="header" href="#unit-testing-routes">Unit Testing Routes</a></h3>
 <pre><code class="language-javascript">import request from 'supertest';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 describe('JACS API', () =&gt; {
   beforeAll(async () =&gt; {
@@ -5699,7 +5699,7 @@ describe('API without real JACS', () =&gt; {
 </code></pre>
 <h2 id="complete-application-example"><a class="header" href="#complete-application-example">Complete Application Example</a></h2>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -5793,12 +5793,12 @@ res.send(JSON.stringify({ data: 'value' }));
 <li><a href="nodejs/api.html">API Reference</a> - Complete API documentation</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="api-reference-3"><a class="header" href="#api-reference-3">API Reference</a></h1>
-<p>Complete API documentation for the <code>@hai-ai/jacs</code> Node.js package.</p>
+<p>Complete API documentation for the <code>@hai.ai/jacs</code> Node.js package.</p>
 <h2 id="installation-2"><a class="header" href="#installation-2">Installation</a></h2>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 <h2 id="core-module"><a class="header" href="#core-module">Core Module</a></h2>
-<pre><code class="language-javascript">import { JacsAgent, hashString, createConfig } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
 </code></pre>
 <hr />
 <h2 id="jacsagent-class"><a class="header" href="#jacsagent-class">JacsAgent Class</a></h2>
@@ -6109,7 +6109,7 @@ const updatedAgent = agent.updateAgent(JSON.stringify({
 </ul>
 <p><strong>Returns:</strong> string - Hexadecimal hash string</p>
 <p><strong>Example:</strong></p>
-<pre><code class="language-javascript">import { hashString } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { hashString } from '@hai.ai/jacs';
 
 const hash = hashString('data to hash');
 console.log('SHA-256:', hash);
@@ -6131,7 +6131,7 @@ console.log('SHA-256:', hash);
 </ul>
 <p><strong>Returns:</strong> string - Configuration as JSON string</p>
 <p><strong>Example:</strong></p>
-<pre><code class="language-javascript">import { createConfig } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { createConfig } from '@hai.ai/jacs';
 
 const configJson = createConfig(
   undefined,           // jacsUseSecurity
@@ -6150,7 +6150,7 @@ fs.writeFileSync('jacs.config.json', configJson);
 </code></pre>
 <hr />
 <h2 id="http-module"><a class="header" href="#http-module">HTTP Module</a></h2>
-<pre><code class="language-javascript">import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai.ai/jacs/http';
 </code></pre>
 <h3 id="jacsexpressmiddlewareoptions-1"><a class="header" href="#jacsexpressmiddlewareoptions-1">JACSExpressMiddleware(options)</a></h3>
 <p>Express middleware for JACS request/response handling.</p>
@@ -6160,7 +6160,7 @@ fs.writeFileSync('jacs.config.json', configJson);
 </ul>
 <p><strong>Returns:</strong> Express middleware function</p>
 <p><strong>Example:</strong></p>
-<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 app.use('/api', express.text({ type: '*/*' }));
 app.use('/api', JACSExpressMiddleware({
@@ -6181,7 +6181,7 @@ app.post('/api/data', (req, res) =&gt; {
 </ul>
 <p><strong>Returns:</strong> Koa middleware function</p>
 <p><strong>Example:</strong></p>
-<pre><code class="language-javascript">import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 app.use(JACSKoaMiddleware({
   configPath: './jacs.config.json'
@@ -6198,7 +6198,7 @@ app.use(async (ctx) =&gt; {
   JACSTransportProxy,
   createJACSTransportProxy,
   createJACSTransportProxyAsync
-} from '@hai-ai/jacs/mcp';
+} from '@hai.ai/jacs/mcp';
 </code></pre>
 <h3 id="jacstransportproxy-1"><a class="header" href="#jacstransportproxy-1">JACSTransportProxy</a></h3>
 <p>Class that wraps MCP transports with JACS encryption.</p>
@@ -6222,7 +6222,7 @@ app.use(async (ctx) =&gt; {
 </ul>
 <p><strong>Returns:</strong> JACSTransportProxy instance</p>
 <p><strong>Example:</strong></p>
-<pre><code class="language-javascript">import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+<pre><code class="language-javascript">import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 const baseTransport = new StdioServerTransport();
@@ -6247,7 +6247,7 @@ const secureTransport = createJACSTransportProxy(
 <hr />
 <h2 id="typescript-support-1"><a class="header" href="#typescript-support-1">TypeScript Support</a></h2>
 <p>The package includes full TypeScript definitions. Import types as needed:</p>
-<pre><code class="language-typescript">import { JacsAgent, hashString, createConfig } from '@hai-ai/jacs';
+<pre><code class="language-typescript">import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
 
 const agent: JacsAgent = new JacsAgent();
 const hash: string = hashString('data');
@@ -6280,12 +6280,12 @@ const config: string = createConfig(
 </ul>
 <p><strong>Migration Example:</strong></p>
 <pre><code class="language-javascript">// Old (deprecated)
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 await jacs.load('./jacs.config.json');
 const doc = jacs.createDocument(JSON.stringify({ data: 'test' }));
 
 // New (recommended)
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
 const doc = agent.createDocument(JSON.stringify({ data: 'test' }));
@@ -8324,7 +8324,7 @@ doc = agent.create_document(
     custom_schema='./schemas/invoice.schema.json'
 )
 </code></pre>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -8762,7 +8762,7 @@ print(f"Agent ID: {agent_doc['jacsId']}")
 print(f"Agent Type: {agent_doc['jacsAgentType']}")
 </code></pre>
 <h3 id="nodejs-1"><a class="header" href="#nodejs-1">Node.js</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 const agentJson = agent.load('./jacs.config.json');
@@ -9042,7 +9042,7 @@ doc = agent.create_document(json.dumps({
     'content': 'Document content here'
 }))
 </code></pre>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -10282,7 +10282,7 @@ agent = jacs.JacsAgent()
 agent.load('./jacs.config.json')
 </code></pre>
 <h3 id="nodejs-2"><a class="header" href="#nodejs-2">Node.js</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -10376,7 +10376,7 @@ result = jacs.audit()  # dict with risks, health_checks, summary, overall_status
 print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
 </code></pre>
 <p><strong>Node.js</strong>:</p>
-<pre><code class="language-typescript">import * as jacs from '@hai-ai/jacs/simple';
+<pre><code class="language-typescript">import * as jacs from '@hai.ai/jacs/simple';
 
 const result = jacs.audit({ recentN: 5 });
 console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
@@ -12019,7 +12019,7 @@ order = agent.create_document(
     custom_schema='./schemas/order.schema.json'
 )
 </code></pre>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -12239,7 +12239,7 @@ except Exception as e:
     print(f"Validation failed: {e}")
 </code></pre>
 <h3 id="nodejs-validation"><a class="header" href="#nodejs-validation">Node.js Validation</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -12455,7 +12455,7 @@ def test_create_document(test_agent):
     assert 'jacsSignature' in parsed
 </code></pre>
 <p><strong>Node.js (Jest)</strong>:</p>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -12739,7 +12739,7 @@ async def test_mcp_tool_call(mcp_server, test_agent):
     pass
 </code></pre>
 <p><strong>Node.js</strong>:</p>
-<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 import express from 'express';
 import request from 'supertest';
 
@@ -13190,7 +13190,7 @@ def test_large_document():
 <h3 id="nodejs-3"><a class="header" href="#nodejs-3">Node.js</a></h3>
 <pre><code class="language-javascript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
 
 // Create transport with JACS encryption
@@ -13244,7 +13244,7 @@ if __name__ == "__main__":
 </code></pre>
 <h2 id="language-support"><a class="header" href="#language-support">Language Support</a></h2>
 <p>JACS provides native MCP integration for both major platforms:</p>
-<h3 id="nodejs-hai-aijacs"><a class="header" href="#nodejs-hai-aijacs">Node.js (@hai-ai/jacs)</a></h3>
+<h3 id="nodejs-haiaijacs"><a class="header" href="#nodejs-haiaijacs">Node.js (@hai.ai/jacs)</a></h3>
 <p>The Node.js integration uses a transport proxy pattern that works with any MCP transport:</p>
 <ul>
 <li><strong>STDIO</strong>: For CLI tools and subprocess communication</li>
@@ -13585,7 +13585,7 @@ docs = a2a.generate_well_known_documents(
 assert "/.well-known/jwks.json" in docs
 </code></pre>
 <h2 id="nodejs-example"><a class="header" href="#nodejs-example">Node.js Example</a></h2>
-<pre><code class="language-javascript">const { JACSA2AIntegration } = require('@hai-ai/jacs/a2a');
+<pre><code class="language-javascript">const { JACSA2AIntegration } = require('@hai.ai/jacs/a2a');
 
 const a2a = new JACSA2AIntegration('./jacs.config.json');
 const wrapped = a2a.wrapArtifactWithProvenance(
@@ -13881,8 +13881,8 @@ openclaw jacs init
 </ul>
 <h2 id="supported-frameworks"><a class="header" href="#supported-frameworks">Supported Frameworks</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Framework</th><th>Language</th><th>Module</th></tr></thead><tbody>
-<tr><td>Express.js</td><td>Node.js</td><td><code>@hai-ai/jacs/http</code></td></tr>
-<tr><td>Koa</td><td>Node.js</td><td><code>@hai-ai/jacs/http</code></td></tr>
+<tr><td>Express.js</td><td>Node.js</td><td><code>@hai.ai/jacs/http</code></td></tr>
+<tr><td>Koa</td><td>Node.js</td><td><code>@hai.ai/jacs/http</code></td></tr>
 <tr><td>FastAPI</td><td>Python</td><td><code>jacs.http</code></td></tr>
 <tr><td>Flask</td><td>Python</td><td><code>jacs.http</code></td></tr>
 </tbody></table>
@@ -13901,7 +13901,7 @@ openclaw jacs init
 <h2 id="nodejs-integration"><a class="header" href="#nodejs-integration">Node.js Integration</a></h2>
 <h3 id="expressjs"><a class="header" href="#expressjs">Express.js</a></h3>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -13932,7 +13932,7 @@ app.listen(3000);
 </code></pre>
 <h3 id="koa"><a class="header" href="#koa">Koa</a></h3>
 <pre><code class="language-javascript">import Koa from 'koa';
-import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 const app = new Koa();
 
@@ -14039,7 +14039,7 @@ if __name__ == "__main__":
 </code></pre>
 <h2 id="http-client-1"><a class="header" href="#http-client-1">HTTP Client</a></h2>
 <h3 id="nodejs-client"><a class="header" href="#nodejs-client">Node.js Client</a></h3>
-<pre><code class="language-javascript">import jacs from '@hai-ai/jacs';
+<pre><code class="language-javascript">import jacs from '@hai.ai/jacs';
 
 async function sendJacsRequest(url, payload) {
   // Load JACS agent
@@ -14255,7 +14255,7 @@ app.use('/api', jacsLogger);  // After JACS middleware
 <h2 id="testing-3"><a class="header" href="#testing-3">Testing</a></h2>
 <h3 id="testing-with-supertest"><a class="header" href="#testing-with-supertest">Testing with Supertest</a></h3>
 <pre><code class="language-javascript">import request from 'supertest';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 describe('JACS API', () =&gt; {
   beforeAll(async () =&gt; {
@@ -14370,7 +14370,7 @@ CREATE INDEX idx_jacs_document ON jacs_documents USING GIN (document);
 </code></pre>
 <h3 id="nodejs-example-1"><a class="header" href="#nodejs-example-1">Node.js Example</a></h3>
 <pre><code class="language-javascript">import { Pool } from 'pg';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
@@ -14579,7 +14579,7 @@ jacsDocumentSchema.index({ jacsId: 1, jacsVersion: 1 }, { unique: true });
 </code></pre>
 <h3 id="example-6"><a class="header" href="#example-6">Example</a></h3>
 <pre><code class="language-javascript">import mongoose from 'mongoose';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 const JacsDocument = mongoose.model('JacsDocument', jacsDocumentSchema);
 
@@ -14647,7 +14647,7 @@ const contracts = await store.searchDocuments({ type: 'contract' });
 <h2 id="sqlite-integration"><a class="header" href="#sqlite-integration">SQLite Integration</a></h2>
 <p>For embedded or local applications:</p>
 <pre><code class="language-javascript">import Database from 'better-sqlite3';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 class SqliteJacsStore {
   constructor(dbPath) {
@@ -14736,7 +14736,7 @@ class SqliteJacsStore {
 <h2 id="redis-caching"><a class="header" href="#redis-caching">Redis Caching</a></h2>
 <p>Use Redis for high-speed document access:</p>
 <pre><code class="language-javascript">import Redis from 'ioredis';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 class JacsRedisCache {
   constructor(redisUrl) {
@@ -15400,20 +15400,20 @@ sign_document "invoice.json" "signed-invoice.json" || exit 1
 <li><a href="examples/../rust/cli.html">Rust CLI Usage</a> - Detailed CLI documentation</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="nodejs-examples"><a class="header" href="#nodejs-examples">Node.js Examples</a></h1>
-<p>This chapter provides practical Node.js examples using the <code>@hai-ai/jacs</code> package.</p>
+<p>This chapter provides practical Node.js examples using the <code>@hai.ai/jacs</code> package.</p>
 <h2 id="setup-1"><a class="header" href="#setup-1">Setup</a></h2>
 <pre><code class="language-bash"># Install dependencies
-npm install @hai-ai/jacs express @modelcontextprotocol/sdk zod
+npm install @hai.ai/jacs express @modelcontextprotocol/sdk zod
 </code></pre>
 <pre><code class="language-javascript">// Initialize JACS (ES Modules)
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 await agent.load('./jacs.config.json');
 </code></pre>
 <h2 id="basic-document-operations"><a class="header" href="#basic-document-operations">Basic Document Operations</a></h2>
 <h3 id="creating-and-signing-documents"><a class="header" href="#creating-and-signing-documents">Creating and Signing Documents</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 async function createSignedDocument() {
   const agent = new JacsAgent();
@@ -15445,7 +15445,7 @@ async function createSignedDocument() {
 createSignedDocument();
 </code></pre>
 <h3 id="verifying-documents-6"><a class="header" href="#verifying-documents-6">Verifying Documents</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 async function verifyDocument(filePath) {
@@ -15473,7 +15473,7 @@ async function verifyDocument(filePath) {
 verifyDocument('./invoice.json');
 </code></pre>
 <h3 id="updating-documents-6"><a class="header" href="#updating-documents-6">Updating Documents</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 async function updateDocument(originalPath, newContent) {
@@ -15508,8 +15508,8 @@ const updated = await updateDocument('./invoice-v1.json', {
 <h2 id="http-server-with-express"><a class="header" href="#http-server-with-express">HTTP Server with Express</a></h2>
 <h3 id="complete-express-server"><a class="header" href="#complete-express-server">Complete Express Server</a></h3>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
-import { JacsAgent } from '@hai-ai/jacs';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
+import { JacsAgent } from '@hai.ai/jacs';
 
 const app = express();
 const PORT = 3000;
@@ -15594,7 +15594,7 @@ app.listen(PORT, () =&gt; {
 });
 </code></pre>
 <h3 id="http-client-2"><a class="header" href="#http-client-2">HTTP Client</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 async function callJacsApi(url, payload) {
   const agent = new JacsAgent();
@@ -15644,7 +15644,7 @@ main().catch(console.error);
 <h3 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h3>
 <pre><code class="language-javascript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
 
 const JACS_CONFIG = "./jacs.server.config.json";
@@ -15719,7 +15719,7 @@ main().catch(err =&gt; {
 <h3 id="mcp-client"><a class="header" href="#mcp-client">MCP Client</a></h3>
 <pre><code class="language-javascript">import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 const JACS_CONFIG = "./jacs.client.config.json";
 
@@ -15774,7 +15774,7 @@ main().catch(console.error);
 </code></pre>
 <h2 id="agreements-4"><a class="header" href="#agreements-4">Agreements</a></h2>
 <h3 id="creating-multi-party-agreements"><a class="header" href="#creating-multi-party-agreements">Creating Multi-Party Agreements</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 async function createAgreement() {
@@ -15821,7 +15821,7 @@ async function createAgreement() {
 createAgreement();
 </code></pre>
 <h3 id="signing-agreements-1"><a class="header" href="#signing-agreements-1">Signing Agreements</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 async function signAgreement(agreementPath, outputPath) {
@@ -15851,7 +15851,7 @@ async function signAgreement(agreementPath, outputPath) {
 signAgreement('./agreement-pending.json', './agreement-signed.json');
 </code></pre>
 <h3 id="checking-agreement-status-1"><a class="header" href="#checking-agreement-status-1">Checking Agreement Status</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 async function checkAgreementStatus(agreementPath) {
@@ -15875,7 +15875,7 @@ checkAgreementStatus('./agreement.json');
 </code></pre>
 <h2 id="document-store"><a class="header" href="#document-store">Document Store</a></h2>
 <h3 id="simple-file-based-store"><a class="header" href="#simple-file-based-store">Simple File-Based Store</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 
@@ -15965,7 +15965,7 @@ main();
 </code></pre>
 <h2 id="error-handling-12"><a class="header" href="#error-handling-12">Error Handling</a></h2>
 <h3 id="robust-error-handling-pattern"><a class="header" href="#robust-error-handling-pattern">Robust Error Handling Pattern</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 class JacsError extends Error {
   constructor(message, code, details = {}) {
@@ -16050,7 +16050,7 @@ main();
 <h2 id="testing-4"><a class="header" href="#testing-4">Testing</a></h2>
 <h3 id="jest-test-setup"><a class="header" href="#jest-test-setup">Jest Test Setup</a></h3>
 <pre><code class="language-javascript">// tests/jacs.test.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -16941,7 +16941,7 @@ if __name__ == "__main__":
 </code></pre>
 <h3 id="implementation"><a class="header" href="#implementation">Implementation</a></h3>
 <pre><code class="language-javascript">// contract-system.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 class ContractSigningSystem {
@@ -17083,9 +17083,9 @@ runContractWorkflow().catch(console.error);
 import express from 'express';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
-import { JacsAgent } from '@hai-ai/jacs';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
+import { JacsAgent } from '@hai.ai/jacs';
 import { z } from 'zod';
 
 // Initialize Express
@@ -17336,7 +17336,7 @@ if __name__ == "__main__":
 <h2 id="document-audit-trail-system"><a class="header" href="#document-audit-trail-system">Document Audit Trail System</a></h2>
 <p>Track and verify document history with cryptographic proofs.</p>
 <pre><code class="language-javascript">// audit-trail.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 
@@ -17702,9 +17702,9 @@ if __name__ == "__main__":
 <h2 id="webhook-notification-system"><a class="header" href="#webhook-notification-system">Webhook Notification System</a></h2>
 <p>Notify external systems when documents are signed.</p>
 <pre><code class="language-javascript">// webhook-notifier.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 const PORT = 3000;
@@ -18772,7 +18772,7 @@ cp jacs.config.json jacs.config.json.backup
 <li>
 <p><strong>Update Dependencies:</strong></p>
 <pre><code class="language-bash"># Node.js
-npm install @hai-ai/jacs@latest
+npm install @hai.ai/jacs@latest
 
 # Python
 pip install --upgrade jacs
@@ -18996,7 +18996,7 @@ importDocuments();
 <ol>
 <li>
 <p><strong>Install JACS:</strong></p>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 </li>
 <li>
@@ -19006,7 +19006,7 @@ const transport = new StdioServerTransport();
 await server.connect(transport);
 
 // After
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(
@@ -19035,12 +19035,12 @@ await client.connect(secureTransport);
 <ol>
 <li>
 <p><strong>Install Middleware:</strong></p>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 </li>
 <li>
 <p><strong>Add Middleware to Routes:</strong></p>
-<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 // Before
 app.use('/api', express.json());
@@ -19137,7 +19137,7 @@ jacs document create -f test.json
 <li>
 <p><strong>Restore Dependencies:</strong></p>
 <pre><code class="language-bash"># Node.js
-npm install @hai-ai/jacs@previous-version
+npm install @hai.ai/jacs@previous-version
 
 # Python
 pip install jacs==previous-version

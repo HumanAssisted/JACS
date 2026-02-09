@@ -241,7 +241,7 @@ result = jacs.audit()  # dict with risks, health_checks, summary, overall_status
 print(f"Risks: {len(result['risks'])}, Status: {result['overall_status']}")
 </code></pre>
 <p><strong>Node.js</strong>:</p>
-<pre><code class="language-typescript">import * as jacs from '@hai-ai/jacs/simple';
+<pre><code class="language-typescript">import * as jacs from '@hai.ai/jacs/simple';
 
 const result = jacs.audit({ recentN: 5 });
 console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);

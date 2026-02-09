@@ -174,7 +174,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="nodejs-installation"><a class="header" href="#nodejs-installation">Node.js Installation</a></h1>
-<p>The JACS Node.js package (<code>@hai-ai/jacs</code>) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.</p>
+<p>The JACS Node.js package (<code>@hai.ai/jacs</code>) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
 <ul>
 <li><strong>Node.js</strong>: Version 16.0 or higher</li>
@@ -183,18 +183,18 @@
 </ul>
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
 <h3 id="using-npm"><a class="header" href="#using-npm">Using npm</a></h3>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 <h3 id="using-yarn"><a class="header" href="#using-yarn">Using yarn</a></h3>
-<pre><code class="language-bash">yarn add @hai-ai/jacs
+<pre><code class="language-bash">yarn add @hai.ai/jacs
 </code></pre>
 <h3 id="using-pnpm"><a class="header" href="#using-pnpm">Using pnpm</a></h3>
-<pre><code class="language-bash">pnpm add @hai-ai/jacs
+<pre><code class="language-bash">pnpm add @hai.ai/jacs
 </code></pre>
 <h2 id="verify-installation"><a class="header" href="#verify-installation">Verify Installation</a></h2>
 <p>Create a simple test to verify everything is working:</p>
 <pre><code class="language-javascript">// test.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
 
@@ -211,30 +211,30 @@ try {
 <pre><code class="language-bash">node test.js
 </code></pre>
 <h2 id="package-structure"><a class="header" href="#package-structure">Package Structure</a></h2>
-<p>The <code>@hai-ai/jacs</code> package includes several modules:</p>
-<h3 id="core-module-hai-aijacs"><a class="header" href="#core-module-hai-aijacs">Core Module (<code>@hai-ai/jacs</code>)</a></h3>
+<p>The <code>@hai.ai/jacs</code> package includes several modules:</p>
+<h3 id="core-module-haiaijacs"><a class="header" href="#core-module-haiaijacs">Core Module (<code>@hai.ai/jacs</code>)</a></h3>
 <pre><code class="language-javascript">import { 
   JacsAgent,
   JacsConfig,
   JacsDocument,
   JacsError
-} from '@hai-ai/jacs';
+} from '@hai.ai/jacs';
 </code></pre>
-<h3 id="mcp-integration-hai-aijacsmcp"><a class="header" href="#mcp-integration-hai-aijacsmcp">MCP Integration (<code>@hai-ai/jacs/mcp</code>)</a></h3>
+<h3 id="mcp-integration-haiaijacsmcp"><a class="header" href="#mcp-integration-haiaijacsmcp">MCP Integration (<code>@hai.ai/jacs/mcp</code>)</a></h3>
 <pre><code class="language-javascript">import { 
   JacsMcpServer,
   createJacsMiddleware 
-} from '@hai-ai/jacs/mcp';
+} from '@hai.ai/jacs/mcp';
 </code></pre>
-<h3 id="http-server-hai-aijacshttp"><a class="header" href="#http-server-hai-aijacshttp">HTTP Server (<code>@hai-ai/jacs/http</code>)</a></h3>
+<h3 id="http-server-haiaijacshttp"><a class="header" href="#http-server-haiaijacshttp">HTTP Server (<code>@hai.ai/jacs/http</code>)</a></h3>
 <pre><code class="language-javascript">import { 
   JacsHttpServer,
   createJacsRouter 
-} from '@hai-ai/jacs/http';
+} from '@hai.ai/jacs/http';
 </code></pre>
 <h2 id="typescript-support"><a class="header" href="#typescript-support">TypeScript Support</a></h2>
 <p>The package includes full TypeScript definitions:</p>
-<pre><code class="language-typescript">import { JacsAgent, createConfig, hashString } from '@hai-ai/jacs';
+<pre><code class="language-typescript">import { JacsAgent, createConfig, hashString } from '@hai.ai/jacs';
 
 // Create an agent instance
 const agent: JacsAgent = new JacsAgent();
@@ -284,7 +284,7 @@ const configJson: string = createConfig(
 }
 </code></pre>
 <p>Load the configuration:</p>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -368,7 +368,7 @@ export JACS_DEFAULT_STORAGE="fs"
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@hai-ai/jacs": "^0.6.0",
+    "@hai.ai/jacs": "^0.6.0",
     "express": "^4.18.0"
   },
   "scripts": {
@@ -380,7 +380,7 @@ export JACS_DEFAULT_STORAGE="fs"
 </code></pre>
 <h3 id="basic-application"><a class="header" href="#basic-application">Basic Application</a></h3>
 <pre><code class="language-javascript">// src/app.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 // Create and load agent
 const agent = new JacsAgent();
@@ -426,8 +426,8 @@ chmod 600 jacs_keys/*.pem
 npm rebuild
 
 # Or reinstall
-npm uninstall @hai-ai/jacs
-npm install @hai-ai/jacs
+npm uninstall @hai.ai/jacs
+npm install @hai.ai/jacs
 </code></pre>
 <h3 id="typescript-issues"><a class="header" href="#typescript-issues">TypeScript Issues</a></h3>
 <p>If TypeScript can't find definitions:</p>

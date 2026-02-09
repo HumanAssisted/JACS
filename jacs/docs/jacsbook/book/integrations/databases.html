@@ -231,7 +231,7 @@ CREATE INDEX idx_jacs_document ON jacs_documents USING GIN (document);
 </code></pre>
 <h3 id="nodejs-example"><a class="header" href="#nodejs-example">Node.js Example</a></h3>
 <pre><code class="language-javascript">import { Pool } from 'pg';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
@@ -440,7 +440,7 @@ jacsDocumentSchema.index({ jacsId: 1, jacsVersion: 1 }, { unique: true });
 </code></pre>
 <h3 id="example"><a class="header" href="#example">Example</a></h3>
 <pre><code class="language-javascript">import mongoose from 'mongoose';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 const JacsDocument = mongoose.model('JacsDocument', jacsDocumentSchema);
 
@@ -508,7 +508,7 @@ const contracts = await store.searchDocuments({ type: 'contract' });
 <h2 id="sqlite-integration"><a class="header" href="#sqlite-integration">SQLite Integration</a></h2>
 <p>For embedded or local applications:</p>
 <pre><code class="language-javascript">import Database from 'better-sqlite3';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 class SqliteJacsStore {
   constructor(dbPath) {
@@ -597,7 +597,7 @@ class SqliteJacsStore {
 <h2 id="redis-caching"><a class="header" href="#redis-caching">Redis Caching</a></h2>
 <p>Use Redis for high-speed document access:</p>
 <pre><code class="language-javascript">import Redis from 'ioredis';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 class JacsRedisCache {
   constructor(redisUrl) {

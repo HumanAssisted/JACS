@@ -185,7 +185,7 @@
 </ul>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -325,7 +325,7 @@ app.post('/api/secure', requireJacsPayload, (req, res) =&gt; {
 <h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
 <h3 id="global-error-handler"><a class="header" href="#global-error-handler">Global Error Handler</a></h3>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -393,7 +393,7 @@ app.use((error, req, res, next) =&gt; {
 <h2 id="advanced-patterns"><a class="header" href="#advanced-patterns">Advanced Patterns</a></h2>
 <h3 id="router-level-middleware"><a class="header" href="#router-level-middleware">Router-Level Middleware</a></h3>
 <pre><code class="language-javascript">import { Router } from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 // Create a JACS-enabled router
 function createJacsRouter(configPath) {
@@ -421,7 +421,7 @@ app.use('/api', apiRouter);
 <h3 id="middleware-composition"><a class="header" href="#middleware-composition">Middleware Composition</a></h3>
 <p>Combine JACS with other middleware:</p>
 <pre><code class="language-javascript">import rateLimit from 'express-rate-limit';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -483,7 +483,7 @@ app.post('/api/protected', requireAuth, (req, res) =&gt; {
 <h2 id="testing"><a class="header" href="#testing">Testing</a></h2>
 <h3 id="unit-testing-routes"><a class="header" href="#unit-testing-routes">Unit Testing Routes</a></h3>
 <pre><code class="language-javascript">import request from 'supertest';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 describe('JACS API', () =&gt; {
   beforeAll(async () =&gt; {
@@ -557,7 +557,7 @@ describe('API without real JACS', () =&gt; {
 </code></pre>
 <h2 id="complete-application-example"><a class="header" href="#complete-application-example">Complete Application Example</a></h2>
 <pre><code class="language-javascript">import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 

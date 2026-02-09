@@ -192,7 +192,7 @@
 </code></pre>
 <h3 id="implementation"><a class="header" href="#implementation">Implementation</a></h3>
 <pre><code class="language-javascript">// contract-system.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 
 class ContractSigningSystem {
@@ -334,9 +334,9 @@ runContractWorkflow().catch(console.error);
 import express from 'express';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
-import { JacsAgent } from '@hai-ai/jacs';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
+import { JacsAgent } from '@hai.ai/jacs';
 import { z } from 'zod';
 
 // Initialize Express
@@ -587,7 +587,7 @@ if __name__ == "__main__":
 <h2 id="document-audit-trail-system"><a class="header" href="#document-audit-trail-system">Document Audit Trail System</a></h2>
 <p>Track and verify document history with cryptographic proofs.</p>
 <pre><code class="language-javascript">// audit-trail.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 
@@ -953,9 +953,9 @@ if __name__ == "__main__":
 <h2 id="webhook-notification-system"><a class="header" href="#webhook-notification-system">Webhook Notification System</a></h2>
 <p>Notify external systems when documents are signed.</p>
 <pre><code class="language-javascript">// webhook-notifier.js
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 const PORT = 3000;

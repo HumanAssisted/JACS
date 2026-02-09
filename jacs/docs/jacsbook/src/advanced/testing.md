@@ -82,7 +82,7 @@ def test_create_document(test_agent):
 **Node.js (Jest)**:
 
 ```javascript
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -393,7 +393,7 @@ async def test_mcp_tool_call(mcp_server, test_agent):
 **Node.js**:
 
 ```javascript
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 import express from 'express';
 import request from 'supertest';
 

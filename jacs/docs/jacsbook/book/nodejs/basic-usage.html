@@ -177,7 +177,7 @@
 <p>This chapter covers fundamental JACS operations in Node.js, including agent initialization, document creation, signing, and verification.</p>
 <h2 id="initializing-an-agent"><a class="header" href="#initializing-an-agent">Initializing an Agent</a></h2>
 <h3 id="create-and-load-agent"><a class="header" href="#create-and-load-agent">Create and Load Agent</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 // Create a new agent instance
 const agent = new JacsAgent();
@@ -198,7 +198,7 @@ agent.load('./jacs.config.json');
 </code></pre>
 <h2 id="creating-documents"><a class="header" href="#creating-documents">Creating Documents</a></h2>
 <h3 id="basic-document-creation"><a class="header" href="#basic-document-creation">Basic Document Creation</a></h3>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -376,14 +376,14 @@ console.log('Signer ID:', resultWithId);
 </code></pre>
 <h2 id="utility-functions"><a class="header" href="#utility-functions">Utility Functions</a></h2>
 <h3 id="hash-string"><a class="header" href="#hash-string">Hash String</a></h3>
-<pre><code class="language-javascript">import { hashString } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { hashString } from '@hai.ai/jacs';
 
 // SHA-256 hash of a string
 const hash = hashString('data to hash');
 console.log('Hash:', hash);
 </code></pre>
 <h3 id="create-configuration"><a class="header" href="#create-configuration">Create Configuration</a></h3>
-<pre><code class="language-javascript">import { createConfig } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { createConfig } from '@hai.ai/jacs';
 
 // Programmatically create a config JSON string
 const configJson = createConfig(
@@ -401,7 +401,7 @@ const configJson = createConfig(
 console.log('Config:', configJson);
 </code></pre>
 <h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 
@@ -425,7 +425,7 @@ try {
 }
 </code></pre>
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<pre><code class="language-javascript">import { JacsAgent, hashString } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent, hashString } from '@hai.ai/jacs';
 
 async function main() {
   // Initialize agent

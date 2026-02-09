@@ -243,7 +243,7 @@ def test_create_document(test_agent):
     assert 'jacsSignature' in parsed
 </code></pre>
 <p><strong>Node.js (Jest)</strong>:</p>
-<pre><code class="language-javascript">import { JacsAgent } from '@hai-ai/jacs';
+<pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -527,7 +527,7 @@ async def test_mcp_tool_call(mcp_server, test_agent):
     pass
 </code></pre>
 <p><strong>Node.js</strong>:</p>
-<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 import express from 'express';
 import request from 'supertest';
 

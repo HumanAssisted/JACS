@@ -18,7 +18,7 @@
 - [Rust Library API](rust/library.md)
 - [Observability](rust/observability.md)
 
-## Node.js (@hai-ai/jacs)
+## Node.js (@hai.ai/jacs)
 - [Installation](nodejs/installation.md)
 - [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)

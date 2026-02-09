@@ -15,8 +15,8 @@ Web server integration with JACS enables:
 
 | Framework | Language | Module |
 |-----------|----------|--------|
-| Express.js | Node.js | `@hai-ai/jacs/http` |
-| Koa | Node.js | `@hai-ai/jacs/http` |
+| Express.js | Node.js | `@hai.ai/jacs/http` |
+| Koa | Node.js | `@hai.ai/jacs/http` |
 | FastAPI | Python | `jacs.http` |
 | Flask | Python | `jacs.http` |
 
@@ -41,7 +41,7 @@ Client                          Server
 
 ```javascript
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -75,7 +75,7 @@ app.listen(3000);
 
 ```javascript
 import Koa from 'koa';
-import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 const app = new Koa();
 
@@ -194,7 +194,7 @@ if __name__ == "__main__":
 ### Node.js Client
 
 ```javascript
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 async function sendJacsRequest(url, payload) {
   // Load JACS agent
@@ -464,7 +464,7 @@ app.use('/api', jacsLogger);  // After JACS middleware
 
 ```javascript
 import request from 'supertest';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 describe('JACS API', () => {
   beforeAll(async () => {

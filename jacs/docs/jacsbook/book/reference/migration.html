@@ -228,7 +228,7 @@ cp jacs.config.json jacs.config.json.backup
 <li>
 <p><strong>Update Dependencies:</strong></p>
 <pre><code class="language-bash"># Node.js
-npm install @hai-ai/jacs@latest
+npm install @hai.ai/jacs@latest
 
 # Python
 pip install --upgrade jacs
@@ -452,7 +452,7 @@ importDocuments();
 <ol>
 <li>
 <p><strong>Install JACS:</strong></p>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 </li>
 <li>
@@ -462,7 +462,7 @@ const transport = new StdioServerTransport();
 await server.connect(transport);
 
 // After
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
 const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(
@@ -491,12 +491,12 @@ await client.connect(secureTransport);
 <ol>
 <li>
 <p><strong>Install Middleware:</strong></p>
-<pre><code class="language-bash">npm install @hai-ai/jacs
+<pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 </li>
 <li>
 <p><strong>Add Middleware to Routes:</strong></p>
-<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+<pre><code class="language-javascript">import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 // Before
 app.use('/api', express.json());
@@ -593,7 +593,7 @@ jacs document create -f test.json
 <li>
 <p><strong>Restore Dependencies:</strong></p>
 <pre><code class="language-bash"># Node.js
-npm install @hai-ai/jacs@previous-version
+npm install @hai.ai/jacs@previous-version
 
 # Python
 pip install jacs==previous-version

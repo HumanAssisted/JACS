@@ -129,7 +129,7 @@ order = agent.create_document(
 ```
 
 ```javascript
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');
@@ -392,7 +392,7 @@ except Exception as e:
 ### Node.js Validation
 
 ```javascript
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');

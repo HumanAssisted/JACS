@@ -37,7 +37,7 @@ All messages are cryptographically signed, ensuring:
 ### Basic Client Usage
 
 ```javascript
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 import http from 'http';
 
 async function main() {
@@ -99,7 +99,7 @@ main();
 ### Using Fetch
 
 ```javascript
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 async function sendJacsRequest(url, payload) {
   await jacs.load('./jacs.config.json');
@@ -143,7 +143,7 @@ JACS provides `JACSExpressMiddleware` that automatically:
 
 ```javascript
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 const PORT = 3000;
@@ -195,7 +195,7 @@ For more control, you can handle signing manually:
 
 ```javascript
 import express from 'express';
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 const app = express();
 
@@ -234,7 +234,7 @@ app.post('/api/process', async (req, res) => {
 
 ```javascript
 import Koa from 'koa';
-import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 const app = new Koa();
 const PORT = 3000;
@@ -318,7 +318,7 @@ const signedResponse = await jacs.signResponse({
 Express middleware for JACS request/response handling.
 
 ```javascript
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 app.use(JACSExpressMiddleware({
   configPath: './jacs.config.json'  // Required
@@ -341,7 +341,7 @@ app.use(JACSExpressMiddleware({
 Koa middleware for JACS request/response handling.
 
 ```javascript
-import { JACSKoaMiddleware } from '@hai-ai/jacs/http';
+import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
 
 app.use(JACSKoaMiddleware({
   configPath: './jacs.config.json'  // Required
@@ -363,7 +363,7 @@ app.use(JACSKoaMiddleware({
 
 ```javascript
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
 const app = express();
 
@@ -404,7 +404,7 @@ app.listen(3000, () => console.log('Server running on port 3000'));
 ### Client (client.js)
 
 ```javascript
-import jacs from '@hai-ai/jacs';
+import jacs from '@hai.ai/jacs';
 
 async function main() {
   await jacs.load('./jacs.client.config.json');
