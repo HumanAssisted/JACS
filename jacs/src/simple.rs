@@ -68,7 +68,7 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 // =============================================================================
 // Verify link constants (HAI / public verification URLs)
