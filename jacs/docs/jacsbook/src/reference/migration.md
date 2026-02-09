@@ -65,7 +65,7 @@ jacs keygen
 2. **Update Dependencies:**
    ```bash
    # Node.js
-   npm install @hai-ai/jacs@latest
+   npm install @hai.ai/jacs@latest
 
    # Python
    pip install --upgrade jacs
@@ -302,7 +302,7 @@ If migrating from filesystem to include database storage:
 
 1. **Install JACS:**
    ```bash
-   npm install @hai-ai/jacs
+   npm install @hai.ai/jacs
    ```
 
 2. **Wrap Existing Transport:**
@@ -312,7 +312,7 @@ If migrating from filesystem to include database storage:
    await server.connect(transport);
 
    // After
-   import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+   import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
    const baseTransport = new StdioServerTransport();
    const secureTransport = createJACSTransportProxy(
@@ -341,12 +341,12 @@ If migrating from filesystem to include database storage:
 
 1. **Install Middleware:**
    ```bash
-   npm install @hai-ai/jacs
+   npm install @hai.ai/jacs
    ```
 
 2. **Add Middleware to Routes:**
    ```javascript
-   import { JACSExpressMiddleware } from '@hai-ai/jacs/http';
+   import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
 
    // Before
    app.use('/api', express.json());
@@ -442,7 +442,7 @@ If migration fails:
 3. **Restore Dependencies:**
    ```bash
    # Node.js
-   npm install @hai-ai/jacs@previous-version
+   npm install @hai.ai/jacs@previous-version
 
    # Python
    pip install jacs==previous-version

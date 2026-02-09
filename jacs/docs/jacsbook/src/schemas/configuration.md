@@ -440,7 +440,7 @@ agent.load('./jacs.config.json')
 ### Node.js
 
 ```javascript
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 agent.load('./jacs.config.json');

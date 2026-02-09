@@ -1,11 +1,11 @@
 # Simplified API
 
-The simplified API (`@hai-ai/jacs/simple`) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.
+The simplified API (`@hai.ai/jacs/simple`) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.
 
 ## Quick Start
 
 ```javascript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 // Load your agent
 const agent = jacs.load('./jacs.config.json');
@@ -390,7 +390,7 @@ interface Attachment {
 ## Complete Example
 
 ```javascript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 // Load agent
 const agent = jacs.load('./jacs.config.json');
@@ -452,7 +452,7 @@ The simplified API works well with MCP tool implementations:
 
 ```javascript
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 // Load agent once at startup
 jacs.load('./jacs.config.json');
@@ -480,7 +480,7 @@ server.setRequestHandler('tools/call', async (request) => {
 ## Error Handling
 
 ```javascript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 try {
   jacs.load('./missing-config.json');

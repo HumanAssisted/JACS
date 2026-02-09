@@ -27,7 +27,7 @@
  *
  * @example
  * ```typescript
- * import * as jacs from '@hai-ai/jacs/simple';
+ * import * as jacs from '@hai.ai/jacs/simple';
  *
  * // Load agent
  * const agent = jacs.load('./jacs.config.json');

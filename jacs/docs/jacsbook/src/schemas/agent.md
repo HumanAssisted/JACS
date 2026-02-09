@@ -338,7 +338,7 @@ print(f"Agent Type: {agent_doc['jacsAgentType']}")
 ### Node.js
 
 ```javascript
-import { JacsAgent } from '@hai-ai/jacs';
+import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
 const agentJson = agent.load('./jacs.config.json');

@@ -7,7 +7,7 @@ Node.js bindings for JACS (JSON Agent Communication Standard) -- an open data pr
 ## Installation
 
 ```bash
-npm install @hai-ai/jacs
+npm install @hai.ai/jacs
 ```
 
 The npm package ships prebuilt native bindings for supported targets and does not compile Rust during `npm install`.
@@ -15,7 +15,7 @@ The npm package ships prebuilt native bindings for supported targets and does no
 ## Quick Start
 
 ```javascript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 // Load your agent (run `jacs create` first if needed)
 const agent = jacs.load('./jacs.config.json');
@@ -83,7 +83,7 @@ interface VerificationResult {
 ## Programmatic Agent Creation
 
 ```typescript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 const agent = jacs.create({
   name: 'my-agent',
@@ -121,7 +121,7 @@ The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) i
 ### Sign and Verify
 
 ```javascript
-const jacs = require('@hai-ai/jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 jacs.load('./jacs.config.json');
 
@@ -178,7 +178,7 @@ const embedded = jacs.signFile('contract.pdf', true);
 JACS provides a transport proxy that wraps any MCP transport with automatic signing and verification at the network boundary:
 
 ```javascript
-import { createJACSTransportProxy } from '@hai-ai/jacs/mcp';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 // Wrap any MCP transport with JACS signing
@@ -197,7 +197,7 @@ The JACS package includes integration with HAI's key distribution service for fe
 ### Fetch Remote Keys
 
 ```javascript
-const { fetchRemoteKey } = require('@hai-ai/jacs');
+const { fetchRemoteKey } = require('@hai.ai/jacs');
 
 // Fetch a public key from HAI's key service
 const keyInfo = fetchRemoteKey('550e8400-e29b-41d4-a716-446655440000', 'latest');

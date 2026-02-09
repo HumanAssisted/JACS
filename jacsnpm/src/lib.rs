@@ -755,7 +755,7 @@ pub struct RemotePublicKeyInfo {
 /// # Example
 ///
 /// ```javascript
-/// const { fetchRemoteKey } = require('@hai-ai/jacs');
+/// const { fetchRemoteKey } = require('@hai.ai/jacs');
 ///
 /// const keyInfo = fetchRemoteKey('550e8400-e29b-41d4-a716-446655440000', 'latest');
 /// console.log('Algorithm:', keyInfo.algorithm);
