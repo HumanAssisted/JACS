@@ -639,6 +639,213 @@ pub struct AdoptStateResult {
 }
 
 // =============================================================================
+// Message Request/Response Types
+// =============================================================================
+
+/// Parameters for sending a signed message to another agent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageSendParams {
+    /// The recipient agent's ID (UUID format).
+    #[schemars(description = "The JACS agent ID of the recipient (UUID format)")]
+    pub recipient_agent_id: String,
+
+    /// The message content to send.
+    #[schemars(description = "The message content to send")]
+    pub content: String,
+
+    /// The MIME type of the content (default: "text/plain").
+    #[schemars(description = "MIME type of the content (default: 'text/plain')")]
+    pub content_type: Option<String>,
+}
+
+/// Result of sending a signed message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageSendResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The JACS document ID of the signed message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_document_id: Option<String>,
+
+    /// The full signed message JSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_message: Option<String>,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for updating an existing signed message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageUpdateParams {
+    /// The JACS document ID of the message to update.
+    #[schemars(description = "JACS document ID of the message to update")]
+    pub jacs_id: String,
+
+    /// The new message content.
+    #[schemars(description = "Updated message content")]
+    pub content: String,
+
+    /// The MIME type of the content (default: "text/plain").
+    #[schemars(description = "MIME type of the content (default: 'text/plain')")]
+    pub content_type: Option<String>,
+}
+
+/// Result of updating a signed message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageUpdateResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The JACS document ID of the updated message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_document_id: Option<String>,
+
+    /// The full updated signed message JSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_message: Option<String>,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for agreeing to (co-signing) a received message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageAgreeParams {
+    /// The full signed message JSON document to agree to.
+    #[schemars(description = "The full signed JSON document to agree to")]
+    pub signed_message: String,
+}
+
+/// Result of agreeing to a message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageAgreeResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The document ID of the original message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_document_id: Option<String>,
+
+    /// The document ID of the agreement document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agreement_document_id: Option<String>,
+
+    /// The full signed agreement JSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_agreement: Option<String>,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for receiving and verifying a signed message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageReceiveParams {
+    /// The full signed message JSON document received from another agent.
+    #[schemars(description = "The full signed JSON document received from another agent")]
+    pub signed_message: String,
+}
+
+/// Result of receiving and verifying a signed message.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MessageReceiveResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The sender's agent ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender_agent_id: Option<String>,
+
+    /// The extracted message content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+
+    /// The content MIME type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+
+    /// The message timestamp (ISO 8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+
+    /// Whether the cryptographic signature is valid.
+    pub signature_valid: bool,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Format a SystemTime as an ISO 8601 UTC timestamp string.
+fn format_iso8601(t: std::time::SystemTime) -> String {
+    let d = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = d.as_secs();
+    // Simple conversion: seconds -> year/month/day/hour/min/sec
+    // Using a basic algorithm that handles dates from 1970 onwards
+    let days = secs / 86400;
+    let time_of_day = secs % 86400;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+
+    // Calculate year/month/day from days since epoch
+    let mut y = 1970i64;
+    let mut remaining = days as i64;
+    loop {
+        let days_in_year = if is_leap(y) { 366 } else { 365 };
+        if remaining < days_in_year {
+            break;
+        }
+        remaining -= days_in_year;
+        y += 1;
+    }
+    let leap = is_leap(y);
+    let month_days: [i64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let mut m = 0usize;
+    for (i, &md) in month_days.iter().enumerate() {
+        if remaining < md {
+            m = i;
+            break;
+        }
+        remaining -= md;
+    }
+
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y,
+        m + 1,
+        remaining + 1,
+        hours,
+        minutes,
+        seconds
+    )
+}
+
+fn is_leap(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+// =============================================================================
 // MCP Server
 // =============================================================================
 
@@ -790,6 +997,29 @@ impl HaiMcpServer {
                  Optional: config_path, recent_n (number of recent documents to re-verify).",
                 Self::jacs_audit_schema(),
             ),
+            Tool::new(
+                "jacs_message_send",
+                "Create and cryptographically sign a message for sending to another agent. \
+                 Returns the signed JACS document that can be transmitted to the recipient.",
+                Self::jacs_message_send_schema(),
+            ),
+            Tool::new(
+                "jacs_message_update",
+                "Update and re-sign an existing message document with new content.",
+                Self::jacs_message_update_schema(),
+            ),
+            Tool::new(
+                "jacs_message_agree",
+                "Verify and co-sign (agree to) a received signed message. Creates an agreement \
+                 document that references the original message.",
+                Self::jacs_message_agree_schema(),
+            ),
+            Tool::new(
+                "jacs_message_receive",
+                "Verify a received signed message and extract its content, sender ID, and timestamp. \
+                 Use this to validate authenticity before processing a message from another agent.",
+                Self::jacs_message_receive_schema(),
+            ),
         ]
     }
 
@@ -899,6 +1129,38 @@ impl HaiMcpServer {
 
     fn jacs_audit_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(JacsAuditParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_message_send_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(MessageSendParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_message_update_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(MessageUpdateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_message_agree_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(MessageAgreeParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_message_receive_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(MessageReceiveParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -2154,6 +2416,379 @@ impl HaiMcpServer {
             .to_string(),
         }
     }
+
+    /// Create and sign a message document for sending to another agent.
+    ///
+    /// Builds a JSON message envelope with sender/recipient IDs, content, timestamp,
+    /// and a unique message ID, then signs it using the local agent's keys.
+    #[tool(
+        name = "jacs_message_send",
+        description = "Create and sign a message for sending to another agent."
+    )]
+    pub async fn jacs_message_send(
+        &self,
+        Parameters(params): Parameters<MessageSendParams>,
+    ) -> String {
+        // Validate recipient agent ID
+        if let Err(e) = validate_agent_id(&params.recipient_agent_id) {
+            let result = MessageSendResult {
+                success: false,
+                jacs_document_id: None,
+                signed_message: None,
+                error: Some(e),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Get the sender's agent ID from the loaded agent
+        let sender_id = match self.agent.get_agent_json() {
+            Ok(json_str) => serde_json::from_str::<serde_json::Value>(&json_str)
+                .ok()
+                .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                .unwrap_or_else(|| "unknown".to_string()),
+            Err(_) => "unknown".to_string(),
+        };
+
+        let content_type = params
+            .content_type
+            .unwrap_or_else(|| "text/plain".to_string());
+        let message_id = Uuid::new_v4().to_string();
+        let timestamp = format_iso8601(std::time::SystemTime::now());
+
+        // Build the message document
+        let message_doc = serde_json::json!({
+            "jacsMessageId": message_id,
+            "jacsMessageSenderId": sender_id,
+            "jacsMessageRecipientId": params.recipient_agent_id,
+            "jacsMessageContent": params.content,
+            "jacsMessageContentType": content_type,
+            "jacsMessageTimestamp": timestamp,
+        });
+
+        let doc_string = message_doc.to_string();
+
+        // Sign the document
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,  // custom_schema
+            None,  // outputfilename
+            true,  // no_save
+            None,  // attachments
+            None,  // embed
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                MessageSendResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    signed_message: Some(signed_doc_string),
+                    error: None,
+                }
+            }
+            Err(e) => MessageSendResult {
+                success: false,
+                jacs_document_id: None,
+                signed_message: None,
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Update and re-sign an existing message document with new content.
+    ///
+    /// Loads the message by its JACS document ID, replaces the content fields,
+    /// and creates a new signed version.
+    #[tool(
+        name = "jacs_message_update",
+        description = "Update and re-sign an existing message document with new content."
+    )]
+    pub async fn jacs_message_update(
+        &self,
+        Parameters(params): Parameters<MessageUpdateParams>,
+    ) -> String {
+        // Load the existing document by ID
+        let existing_doc_string: Option<String> = match self.agent.verify_document_by_id(&params.jacs_id) {
+            Ok(true) => {
+                // Document verified, now retrieve it. We need the stored document.
+                // Use get_agent_json to get agent context, then load via ID.
+                // The verify_document_by_id already loaded it; we need to get it from storage.
+                // Fall through to attempt update_document with the new content.
+                None
+            }
+            Ok(false) => {
+                let result = MessageUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    signed_message: None,
+                    error: Some(format!(
+                        "Existing document '{}' failed signature verification",
+                        params.jacs_id
+                    )),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+            Err(e) => {
+                let result = MessageUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    signed_message: None,
+                    error: Some(format!(
+                        "Failed to load document '{}': {}",
+                        params.jacs_id, e
+                    )),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let content_type = params
+            .content_type
+            .unwrap_or_else(|| "text/plain".to_string());
+        let timestamp = format_iso8601(std::time::SystemTime::now());
+
+        // Build the updated message content
+        let updated_doc = serde_json::json!({
+            "jacsMessageContent": params.content,
+            "jacsMessageContentType": content_type,
+            "jacsMessageTimestamp": timestamp,
+        });
+
+        let _ = existing_doc_string; // consumed above
+
+        let doc_string = updated_doc.to_string();
+        let result = match self
+            .agent
+            .update_document(&params.jacs_id, &doc_string, None, None)
+        {
+            Ok(updated_doc_string) => {
+                let doc_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .unwrap_or_else(|| params.jacs_id.clone());
+
+                MessageUpdateResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    signed_message: Some(updated_doc_string),
+                    error: None,
+                }
+            }
+            Err(e) => MessageUpdateResult {
+                success: false,
+                jacs_document_id: None,
+                signed_message: None,
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Co-sign (agree to) a received signed message.
+    ///
+    /// Verifies the original message's signature, then creates an agreement document
+    /// that references the original and is signed by the local agent.
+    #[tool(
+        name = "jacs_message_agree",
+        description = "Verify and co-sign a received message, creating a signed agreement document."
+    )]
+    pub async fn jacs_message_agree(
+        &self,
+        Parameters(params): Parameters<MessageAgreeParams>,
+    ) -> String {
+        // Verify the original document's signature first
+        match self.agent.verify_document(&params.signed_message) {
+            Ok(true) => {} // Signature valid, proceed
+            Ok(false) => {
+                let result = MessageAgreeResult {
+                    success: false,
+                    original_document_id: None,
+                    agreement_document_id: None,
+                    signed_agreement: None,
+                    error: Some(
+                        "Original message signature verification failed".to_string(),
+                    ),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+            Err(e) => {
+                let result = MessageAgreeResult {
+                    success: false,
+                    original_document_id: None,
+                    agreement_document_id: None,
+                    signed_agreement: None,
+                    error: Some(format!("Failed to verify original message: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        // Extract the original document ID
+        let original_doc_id = serde_json::from_str::<serde_json::Value>(&params.signed_message)
+            .ok()
+            .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Get our agent ID
+        let our_agent_id = match self.agent.get_agent_json() {
+            Ok(json_str) => serde_json::from_str::<serde_json::Value>(&json_str)
+                .ok()
+                .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                .unwrap_or_else(|| "unknown".to_string()),
+            Err(_) => "unknown".to_string(),
+        };
+
+        let timestamp = format_iso8601(std::time::SystemTime::now());
+
+        // Create an agreement document that references the original
+        let agreement_doc = serde_json::json!({
+            "jacsAgreementType": "message_acknowledgment",
+            "jacsAgreementOriginalDocumentId": original_doc_id,
+            "jacsAgreementAgentId": our_agent_id,
+            "jacsAgreementTimestamp": timestamp,
+        });
+
+        let doc_string = agreement_doc.to_string();
+
+        // Sign the agreement document
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,  // custom_schema
+            None,  // outputfilename
+            true,  // no_save
+            None,  // attachments
+            None,  // embed
+        ) {
+            Ok(signed_agreement_string) => {
+                let agreement_id =
+                    serde_json::from_str::<serde_json::Value>(&signed_agreement_string)
+                        .ok()
+                        .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                MessageAgreeResult {
+                    success: true,
+                    original_document_id: Some(original_doc_id),
+                    agreement_document_id: Some(agreement_id),
+                    signed_agreement: Some(signed_agreement_string),
+                    error: None,
+                }
+            }
+            Err(e) => MessageAgreeResult {
+                success: false,
+                original_document_id: Some(original_doc_id),
+                agreement_document_id: None,
+                signed_agreement: None,
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Verify and extract content from a received signed message.
+    ///
+    /// Checks the cryptographic signature, then extracts the message content,
+    /// sender ID, content type, and timestamp.
+    #[tool(
+        name = "jacs_message_receive",
+        description = "Verify a received signed message and extract its content and sender information."
+    )]
+    pub async fn jacs_message_receive(
+        &self,
+        Parameters(params): Parameters<MessageReceiveParams>,
+    ) -> String {
+        // Verify the document's signature
+        let signature_valid = match self.agent.verify_document(&params.signed_message) {
+            Ok(valid) => valid,
+            Err(e) => {
+                let result = MessageReceiveResult {
+                    success: false,
+                    sender_agent_id: None,
+                    content: None,
+                    content_type: None,
+                    timestamp: None,
+                    signature_valid: false,
+                    error: Some(format!("Failed to verify message signature: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Parse the document to extract fields
+        let doc: serde_json::Value = match serde_json::from_str(&params.signed_message) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = MessageReceiveResult {
+                    success: false,
+                    sender_agent_id: None,
+                    content: None,
+                    content_type: None,
+                    timestamp: None,
+                    signature_valid,
+                    error: Some(format!("Failed to parse message JSON: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Extract message fields
+        let sender_agent_id = doc
+            .get("jacsMessageSenderId")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or_else(|| {
+                // Fall back to signature's agentID
+                doc.get("jacsSignature")
+                    .and_then(|s| s.get("agentID"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            });
+
+        let content = doc
+            .get("jacsMessageContent")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let content_type = doc
+            .get("jacsMessageContentType")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let timestamp = doc
+            .get("jacsMessageTimestamp")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let result = MessageReceiveResult {
+            success: true,
+            sender_agent_id,
+            content,
+            content_type,
+            timestamp,
+            signature_valid,
+            error: if !signature_valid {
+                Some("Message signature is INVALID — content may have been tampered with".to_string())
+            } else {
+                None
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
 }
 
 // Implement the tool handler for the server
@@ -2177,13 +2812,18 @@ impl ServerHandler for HaiMcpServer {
             },
             instructions: Some(
                 "This MCP server provides data provenance and cryptographic signing for \
-                 agent state files, plus optional HAI.ai integration for key distribution \
-                 and attestation. \
+                 agent state files and agent-to-agent messaging, plus optional HAI.ai \
+                 integration for key distribution and attestation. \
                  \
                  Agent state tools: jacs_sign_state (sign files), jacs_verify_state \
                  (verify integrity), jacs_load_state (load with verification), \
                  jacs_update_state (update and re-sign), jacs_list_state (list signed docs), \
                  jacs_adopt_state (adopt external files). \
+                 \
+                 Messaging tools: jacs_message_send (create and sign a message), \
+                 jacs_message_update (update and re-sign a message), \
+                 jacs_message_agree (co-sign/agree to a message), \
+                 jacs_message_receive (verify and extract a received message). \
                  \
                  Agent management: jacs_create_agent (create new agent with keys), \
                  jacs_reencrypt_key (rotate private key password). \
@@ -2287,7 +2927,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = HaiMcpServer::tools();
-        assert_eq!(tools.len(), 14);
+        assert_eq!(tools.len(), 18);
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"fetch_agent_key"));
@@ -2304,6 +2944,10 @@ mod tests {
         assert!(names.contains(&"jacs_create_agent"));
         assert!(names.contains(&"jacs_reencrypt_key"));
         assert!(names.contains(&"jacs_audit"));
+        assert!(names.contains(&"jacs_message_send"));
+        assert!(names.contains(&"jacs_message_update"));
+        assert!(names.contains(&"jacs_message_agree"));
+        assert!(names.contains(&"jacs_message_receive"));
     }
 
     #[test]
@@ -2424,5 +3068,44 @@ mod tests {
             std::env::remove_var("JACS_MCP_ALLOW_UNREGISTRATION");
         }
         assert!(!is_unregistration_allowed());
+    }
+
+    #[test]
+    fn test_message_send_params_schema() {
+        let schema = schemars::schema_for!(MessageSendParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("recipient_agent_id"));
+        assert!(json.contains("content"));
+        assert!(json.contains("content_type"));
+    }
+
+    #[test]
+    fn test_message_update_params_schema() {
+        let schema = schemars::schema_for!(MessageUpdateParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("jacs_id"));
+        assert!(json.contains("content"));
+        assert!(json.contains("content_type"));
+    }
+
+    #[test]
+    fn test_message_agree_params_schema() {
+        let schema = schemars::schema_for!(MessageAgreeParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("signed_message"));
+    }
+
+    #[test]
+    fn test_message_receive_params_schema() {
+        let schema = schemars::schema_for!(MessageReceiveParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("signed_message"));
+    }
+
+    #[test]
+    fn test_format_iso8601() {
+        // Unix epoch should produce 1970-01-01T00:00:00Z
+        let epoch = std::time::UNIX_EPOCH;
+        assert_eq!(format_iso8601(epoch), "1970-01-01T00:00:00Z");
     }
 }

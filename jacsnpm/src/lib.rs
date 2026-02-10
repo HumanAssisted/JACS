@@ -216,6 +216,39 @@ impl JacsAgent {
             .to_napi()
     }
 
+    /// Get setup instructions for publishing DNS records, DNSSEC, and HAI registration.
+    /// Returns a JSON string with dns_record_bind, provider_commands, dnssec_instructions, etc.
+    #[napi]
+    pub fn get_setup_instructions(&self, domain: String, ttl: Option<u32>) -> Result<String> {
+        self.inner
+            .get_setup_instructions(&domain, ttl.unwrap_or(3600))
+            .to_napi()
+    }
+
+    /// Register this agent with HAI.ai.
+    /// Returns a JSON string with hai_registered, hai_error, dns_record, dns_route53.
+    #[napi]
+    pub fn register_with_hai(
+        &self,
+        api_key: Option<String>,
+        hai_url: Option<String>,
+        preview: Option<bool>,
+    ) -> Result<String> {
+        self.inner
+            .register_with_hai(
+                api_key.as_deref(),
+                hai_url.as_deref().unwrap_or("https://hai.ai"),
+                preview.unwrap_or(false),
+            )
+            .to_napi()
+    }
+
+    /// Returns diagnostic information as a JSON string.
+    #[napi]
+    pub fn diagnostics(&self) -> String {
+        self.inner.diagnostics()
+    }
+
     /// Verify a document looked up by ID from storage.
     ///
     /// The document_id should be in "uuid:version" format.

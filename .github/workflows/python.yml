@@ -141,7 +141,13 @@ jobs:
           # macOS: set minimum deployment target so delocate doesn't reject the wheel
           CIBW_ENVIRONMENT_MACOS: 'MACOSX_DEPLOYMENT_TARGET=10.13'
           # Linux: install Rust toolchain and OpenSSL inside manylinux containers
-          CIBW_BEFORE_ALL_LINUX: "yum install -y openssl-devel perl-IPC-Cmd && curl https://sh.rustup.rs -sSf | sh -s -- -y"
+          CIBW_BEFORE_ALL_LINUX: >-
+            if command -v yum &>/dev/null; then
+              yum install -y openssl-devel perl-IPC-Cmd;
+            elif command -v apk &>/dev/null; then
+              apk add --no-cache openssl-dev perl musl-dev;
+            fi &&
+            curl https://sh.rustup.rs -sSf | sh -s -- -y
           CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
 
       - name: Upload artifacts

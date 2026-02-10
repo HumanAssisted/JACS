@@ -14,7 +14,7 @@ from fastmcp import FastMCP
 # Import simplified JACS API
 import jacs
 from jacs import simple
-from jacs.mcp_simple import sign_mcp_message, verify_mcp_message
+from jacs.mcp import sign_mcp_message, verify_mcp_message
 
 # Configuration
 CONFIG_PATH = os.environ.get("JACS_CONFIG_PATH", "./jacs.config.json")

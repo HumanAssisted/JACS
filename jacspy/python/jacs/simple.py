@@ -116,6 +116,17 @@ except ImportError:
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
 
+def reset():
+    """Clear global agent state. Useful for test isolation.
+
+    After calling reset(), you must call load() or create() again before
+    using any signing or verification functions.
+    """
+    global _global_agent, _agent_info
+    _global_agent = None
+    _agent_info = None
+
+
 # Verify link constants (HAI / public verification URLs)
 MAX_VERIFY_URL_LEN = 2048
 MAX_VERIFY_DOCUMENT_BYTES = 1515
@@ -1153,6 +1164,24 @@ def is_loaded() -> bool:
     return _global_agent is not None
 
 
+def debug_info() -> dict:
+    """Return JACS diagnostic info (version, config, agent status).
+
+    Returns a dict with keys like jacs_version, os, arch, agent_loaded,
+    data_directory, key_directory, etc. If an agent is loaded, includes
+    agent_id and agent_version.
+
+    Returns:
+        dict with diagnostic information
+    """
+    if _global_agent is not None:
+        try:
+            return json.loads(_global_agent.diagnostics())
+        except Exception:
+            pass
+    return {"jacs_version": "unknown", "agent_loaded": False}
+
+
 def trust_agent(agent_json: str) -> str:
     """Add an agent to the local trust store.
 
@@ -1372,6 +1401,64 @@ def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
         raise
 
 
+def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
+    """Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
+
+    Returns structured data with provider-specific commands for AWS Route53,
+    Cloudflare, Azure DNS, Google Cloud DNS, and plain BIND format. Also includes
+    DNSSEC guidance, well-known JSON payload, HAI registration details, and a
+    human-readable summary.
+
+    Args:
+        domain: The domain to publish the DNS TXT record under.
+        ttl: TTL in seconds for the DNS record (default: 3600).
+
+    Returns:
+        Dict with keys: dns_record_bind, dns_record_value, dns_owner,
+        provider_commands, dnssec_instructions, tld_requirement, well_known_json,
+        hai_registration_url, hai_registration_payload,
+        hai_registration_instructions, summary.
+
+    Example:
+        instructions = jacs.get_setup_instructions("example.com")
+        print(instructions["summary"])
+        print(instructions["provider_commands"]["route53"])
+    """
+    agent = _require_agent()
+    try:
+        json_str = agent.get_setup_instructions(domain, ttl)
+        return json.loads(json_str)
+    except Exception as e:
+        raise JacsError(f"Failed to get setup instructions: {e}") from e
+
+
+def register_with_hai(
+    api_key: Optional[str] = None,
+    hai_url: str = "https://hai.ai",
+    preview: bool = False,
+) -> dict:
+    """Register this agent with HAI.ai.
+
+    Args:
+        api_key: HAI API key (reads HAI_API_KEY env var if None).
+        hai_url: Base URL for HAI (default: "https://hai.ai").
+        preview: If True, validate without actually registering.
+
+    Returns:
+        Dict with hai_registered, hai_error, dns_record, dns_route53.
+
+    Example:
+        result = jacs.register_with_hai(preview=True)
+        print(f"Registered: {result['hai_registered']}")
+    """
+    agent = _require_agent()
+    try:
+        json_str = agent.register_with_hai(api_key, hai_url, preview)
+        return json.loads(json_str)
+    except Exception as e:
+        raise JacsError(f"HAI registration failed: {e}") from e
+
+
 __all__ = [
     # Core operations
     "create",
@@ -1404,8 +1491,15 @@ __all__ = [
     "untrust_agent",
     "is_trusted",
     "get_trusted_agent",
+    # Diagnostics
+    "debug_info",
+    # Test utilities
+    "reset",
     # Remote key fetch
     "fetch_remote_key",
+    # Setup and registration
+    "get_setup_instructions",
+    "register_with_hai",
     # Types (re-exported for convenience)
     "AgentInfo",
     "Attachment",

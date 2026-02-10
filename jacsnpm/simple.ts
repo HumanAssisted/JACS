@@ -793,6 +793,43 @@ export function isLoaded(): boolean {
 }
 
 /**
+ * Return JACS diagnostic info (version, config, agent status).
+ *
+ * Returns an object with keys like jacs_version, os, arch, agent_loaded,
+ * data_directory, key_directory, etc. If an agent is loaded, includes
+ * agent_id and agent_version.
+ *
+ * @returns Diagnostic information object
+ *
+ * @example
+ * ```typescript
+ * const info = jacs.debugInfo();
+ * console.log(`Version: ${info.jacs_version}, OS: ${info.os}`);
+ * ```
+ */
+export function debugInfo(): Record<string, unknown> {
+  if (!globalAgent) {
+    return { jacs_version: 'unknown', agent_loaded: false };
+  }
+  try {
+    return JSON.parse(globalAgent.diagnostics());
+  } catch {
+    return { jacs_version: 'unknown', agent_loaded: false };
+  }
+}
+
+/**
+ * Clear global agent state. Useful for test isolation.
+ *
+ * After calling reset(), you must call load() or create() again before
+ * using any signing or verification functions.
+ */
+export function reset(): void {
+  globalAgent = null;
+  agentInfo = null;
+}
+
+/**
  * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
  * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
  */
@@ -843,6 +880,36 @@ export function getWellKnownJson(): {
     algorithm: 'SHA-256',
     agentId: jacsId,
   };
+}
+
+/**
+ * Get comprehensive setup instructions for publishing DNS records, enabling DNSSEC,
+ * and registering with HAI.ai.
+ *
+ * Returns structured data with provider-specific commands for AWS Route53, Cloudflare,
+ * Azure DNS, Google Cloud DNS, and plain BIND format. Also includes DNSSEC guidance,
+ * well-known JSON payload, HAI registration details, and a human-readable summary.
+ *
+ * @param domain - The domain to publish the DNS TXT record under
+ * @param ttl - TTL in seconds for the DNS record (default: 3600)
+ * @returns Structured setup instructions
+ *
+ * @example
+ * ```typescript
+ * const instructions = jacs.getSetupInstructions('example.com');
+ * console.log(instructions.summary);
+ * console.log(instructions.providerCommands.route53);
+ * ```
+ */
+export function getSetupInstructions(
+  domain: string,
+  ttl: number = 3600,
+): Record<string, unknown> {
+  if (!globalAgent) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+  const json = globalAgent.getSetupInstructions(domain, ttl);
+  return JSON.parse(json) as Record<string, unknown>;
 }
 
 /**

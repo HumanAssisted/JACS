@@ -8,6 +8,5 @@
   "jacs_data_directory": "./jacs",
   "jacs_default_storage": "fs",
   "jacs_key_directory": "./jacs_keys",
-  "jacs_private_key_password": "hello",
   "jacs_use_security": "false"
 }

@@ -68,7 +68,30 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+// =============================================================================
+// Diagnostics (standalone, no agent required)
+// =============================================================================
+
+/// Returns diagnostic information about the JACS installation.
+/// Does not require a loaded agent.
+pub fn diagnostics() -> serde_json::Value {
+    serde_json::json!({
+        "jacs_version": env!("CARGO_PKG_VERSION"),
+        "rust_version": option_env!("CARGO_PKG_RUST_VERSION").unwrap_or("unknown"),
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "config_path": std::env::var("JACS_CONFIG").unwrap_or_default(),
+        "data_directory": std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default(),
+        "key_directory": std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default(),
+        "key_algorithm": std::env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_default(),
+        "default_storage": std::env::var("JACS_DEFAULT_STORAGE").unwrap_or_default(),
+        "strict_mode": std::env::var("JACS_STRICT_MODE").unwrap_or_default(),
+        "agent_loaded": false,
+        "agent_id": serde_json::Value::Null,
+    })
+}
 
 // =============================================================================
 // Verify link constants (HAI / public verification URLs)
@@ -293,6 +316,34 @@ mod base64_bytes {
         let s = String::deserialize(deserializer)?;
         STANDARD.decode(&s).map_err(serde::de::Error::custom)
     }
+}
+
+/// Setup instructions for publishing a JACS agent's DNS record, enabling DNSSEC,
+/// and registering with HAI.ai.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupInstructions {
+    /// BIND-format DNS record line (e.g. `_v1.agent.jacs.example.com. 3600 IN TXT "..."`)
+    pub dns_record_bind: String,
+    /// The raw TXT record value (without the owner/TTL/class prefix).
+    pub dns_record_value: String,
+    /// The DNS owner name (e.g. `_v1.agent.jacs.example.com.`)
+    pub dns_owner: String,
+    /// Provider-specific CLI/API commands keyed by provider name.
+    pub provider_commands: std::collections::HashMap<String, String>,
+    /// Provider-specific DNSSEC guidance keyed by provider name.
+    pub dnssec_instructions: std::collections::HashMap<String, String>,
+    /// Guidance about domain ownership requirements.
+    pub tld_requirement: String,
+    /// JSON payload for `/.well-known/jacs-agent.json`.
+    pub well_known_json: String,
+    /// HAI.ai registration URL.
+    pub hai_registration_url: String,
+    /// JSON payload to POST to HAI.ai for registration.
+    pub hai_registration_payload: String,
+    /// Human-readable instructions for HAI.ai registration.
+    pub hai_registration_instructions: String,
+    /// Human-readable summary of all setup steps.
+    pub summary: String,
 }
 
 // =============================================================================
@@ -755,7 +806,7 @@ impl SimpleAgent {
             params.name, algorithm
         );
 
-        // Create directories
+        // Create directories (including agent/ and public_keys/ subdirs that save() expects)
         let keys_dir = Path::new(&params.key_directory);
         let data_dir = Path::new(&params.data_directory);
 
@@ -763,9 +814,15 @@ impl SimpleAgent {
             path: keys_dir.to_string_lossy().to_string(),
             reason: e.to_string(),
         })?;
-        fs::create_dir_all(data_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-            path: data_dir.to_string_lossy().to_string(),
+        fs::create_dir_all(data_dir.join("agent")).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: data_dir.join("agent").to_string_lossy().to_string(),
             reason: e.to_string(),
+        })?;
+        fs::create_dir_all(data_dir.join("public_keys")).map_err(|e| {
+            JacsError::DirectoryCreateFailed {
+                path: data_dir.join("public_keys").to_string_lossy().to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
         let env_keys = [
@@ -824,29 +881,122 @@ impl SimpleAgent {
 
         let lookup_id = format!("{}:{}", agent_id, version);
 
-        // Save the agent
+        // Resolve the config: if one already exists at config_path, read it
+        // and only update the agent ID. Log differences between existing values
+        // and params so the caller knows. If no config exists, create one fresh.
+        let config_path = Path::new(&params.config_path);
+        let config_str = if config_path.exists() {
+            let existing_str = fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
+                message: format!("Failed to read existing config '{}': {}", params.config_path, e),
+            })?;
+            let mut existing: serde_json::Value =
+                serde_json::from_str(&existing_str).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to parse existing config: {}", e),
+                })?;
+
+            // Log differences between existing config and params
+            let check = |field: &str, existing_val: Option<&str>, param_val: &str| {
+                if let Some(ev) = existing_val {
+                    if ev != param_val {
+                        warn!(
+                            "Config '{}' differs: existing='{}', param='{}'. Keeping existing value.",
+                            field, ev, param_val
+                        );
+                    }
+                }
+            };
+            check(
+                "jacs_data_directory",
+                existing.get("jacs_data_directory").and_then(|v| v.as_str()),
+                &params.data_directory,
+            );
+            check(
+                "jacs_key_directory",
+                existing.get("jacs_key_directory").and_then(|v| v.as_str()),
+                &params.key_directory,
+            );
+            check(
+                "jacs_agent_key_algorithm",
+                existing.get("jacs_agent_key_algorithm").and_then(|v| v.as_str()),
+                &algorithm,
+            );
+            check(
+                "jacs_default_storage",
+                existing.get("jacs_default_storage").and_then(|v| v.as_str()),
+                &params.default_storage,
+            );
+
+            // Only update the agent ID (the new agent we just created)
+            if let Some(obj) = existing.as_object_mut() {
+                obj.insert(
+                    "jacs_agent_id_and_version".to_string(),
+                    json!(lookup_id),
+                );
+            }
+
+            let updated_str =
+                serde_json::to_string_pretty(&existing).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to serialize updated config: {}", e),
+                })?;
+            fs::write(config_path, &updated_str).map_err(|e| JacsError::Internal {
+                message: format!("Failed to write config to '{}': {}", params.config_path, e),
+            })?;
+            info!(
+                "Updated existing config '{}' with new agent ID {}",
+                params.config_path, lookup_id
+            );
+            updated_str
+        } else {
+            // No config exists -- create one from params
+            let config_json = json!({
+                "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+                "jacs_agent_id_and_version": lookup_id,
+                "jacs_data_directory": params.data_directory,
+                "jacs_key_directory": params.key_directory,
+                "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
+                "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
+                "jacs_agent_key_algorithm": algorithm,
+                "jacs_default_storage": params.default_storage,
+            });
+
+            let new_str =
+                serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to serialize config: {}", e),
+                })?;
+            // Create parent directories if needed
+            if let Some(parent) = config_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent).map_err(|e| JacsError::DirectoryCreateFailed {
+                        path: parent.to_string_lossy().to_string(),
+                        reason: e.to_string(),
+                    })?;
+                }
+            }
+            fs::write(config_path, &new_str).map_err(|e| JacsError::Internal {
+                message: format!("Failed to write config to '{}': {}", params.config_path, e),
+            })?;
+            info!(
+                "Created new config '{}' for agent {}",
+                params.config_path, lookup_id
+            );
+            new_str
+        };
+
+        // Set the agent's in-memory config from the resolved config so save()
+        // uses the correct data_directory and key_directory.
+        let validated_config_value =
+            crate::config::validate_config(&config_str).map_err(|e| JacsError::Internal {
+                message: format!("Failed to validate config: {}", e),
+            })?;
+        agent.config = Some(
+            serde_json::from_value(validated_config_value).map_err(|e| JacsError::Internal {
+                message: format!("Failed to parse config: {}", e),
+            })?,
+        );
+
+        // Save the agent (uses directories from the resolved config)
         agent.save().map_err(|e| JacsError::Internal {
             message: format!("Failed to save agent: {}", e),
-        })?;
-
-        // Create config file using Config::builder
-        let config_json = json!({
-            "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-            "jacs_agent_id_and_version": lookup_id,
-            "jacs_data_directory": params.data_directory,
-            "jacs_key_directory": params.key_directory,
-            "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
-            "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
-            "jacs_agent_key_algorithm": algorithm,
-            "jacs_default_storage": params.default_storage,
-        });
-
-        let config_str =
-            serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
-                message: format!("Failed to serialize config: {}", e),
-            })?;
-        fs::write(&params.config_path, &config_str).map_err(|e| JacsError::Internal {
-            message: format!("Failed to write config to '{}': {}", params.config_path, e),
         })?;
 
         // Handle DNS record generation if domain is set
@@ -1720,9 +1870,166 @@ impl SimpleAgent {
         })
     }
 
+    /// Returns diagnostic information including loaded agent details.
+    pub fn diagnostics(&self) -> serde_json::Value {
+        let mut info = diagnostics(); // call the standalone version
+
+        if let Ok(agent) = self.agent.lock() {
+            if agent.ready() {
+                info["agent_loaded"] = serde_json::json!(true);
+                if let Some(value) = agent.get_value() {
+                    info["agent_id"] =
+                        serde_json::json!(value.get("jacsId").and_then(|v| v.as_str()));
+                    info["agent_version"] =
+                        serde_json::json!(value.get("jacsVersion").and_then(|v| v.as_str()));
+                }
+            }
+            if let Some(config) = &agent.config {
+                if let Some(dir) = config.jacs_data_directory().as_ref() {
+                    info["data_directory"] = serde_json::json!(dir);
+                }
+                if let Some(dir) = config.jacs_key_directory().as_ref() {
+                    info["key_directory"] = serde_json::json!(dir);
+                }
+                if let Some(storage) = config.jacs_default_storage().as_ref() {
+                    info["default_storage"] = serde_json::json!(storage);
+                }
+                if let Some(algo) = config.jacs_agent_key_algorithm().as_ref() {
+                    info["key_algorithm"] = serde_json::json!(algo);
+                }
+            }
+        }
+
+        info
+    }
+
     /// Returns the path to the configuration file, if available.
     pub fn config_path(&self) -> Option<&str> {
         self.config_path.as_deref()
+    }
+
+    /// Returns setup instructions for publishing the agent's DNS record,
+    /// enabling DNSSEC, and registering with HAI.ai.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to publish the DNS TXT record under
+    /// * `ttl` - TTL in seconds for the DNS record (e.g. 3600)
+    pub fn get_setup_instructions(
+        &self,
+        domain: &str,
+        ttl: u32,
+    ) -> Result<SetupInstructions, JacsError> {
+        use crate::dns::bootstrap::{
+            DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli, emit_cloudflare_curl,
+            emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch, tld_requirement_text,
+        };
+
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to lock agent: {}", e),
+        })?;
+
+        let agent_value = agent.get_value().cloned().unwrap_or(json!({}));
+        let agent_id = agent_value.get_str_or("jacsId", "");
+        if agent_id.is_empty() {
+            return Err(JacsError::AgentNotLoaded);
+        }
+
+        let pk = agent.get_public_key().map_err(|e| JacsError::Internal {
+            message: format!("Failed to get public key: {}", e),
+        })?;
+        let digest = crate::dns::bootstrap::pubkey_digest_b64(&pk);
+        let rr = build_dns_record(domain, ttl, &agent_id, &digest, DigestEncoding::Base64);
+
+        let dns_record_bind = emit_plain_bind(&rr);
+        let dns_record_value = rr.txt.clone();
+        let dns_owner = rr.owner.clone();
+
+        // Provider commands
+        let mut provider_commands = std::collections::HashMap::new();
+        provider_commands.insert("bind".to_string(), dns_record_bind.clone());
+        provider_commands.insert("route53".to_string(), emit_route53_change_batch(&rr));
+        provider_commands.insert(
+            "gcloud".to_string(),
+            emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"),
+        );
+        provider_commands.insert(
+            "azure".to_string(),
+            emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"),
+        );
+        provider_commands.insert(
+            "cloudflare".to_string(),
+            emit_cloudflare_curl(&rr, "YOUR_ZONE_ID"),
+        );
+
+        // DNSSEC guidance per provider
+        let mut dnssec_instructions = std::collections::HashMap::new();
+        for name in &["aws", "cloudflare", "azure", "gcloud"] {
+            dnssec_instructions.insert(name.to_string(), dnssec_guidance(name).to_string());
+        }
+
+        let tld_requirement = tld_requirement_text().to_string();
+
+        // .well-known JSON
+        let well_known = json!({
+            "jacs_agent_id": agent_id,
+            "jacs_public_key_hash": digest,
+            "jacs_dns_record": dns_owner,
+        });
+        let well_known_json =
+            serde_json::to_string_pretty(&well_known).unwrap_or_default();
+
+        // HAI registration
+        let hai_url = std::env::var("HAI_API_URL")
+            .unwrap_or_else(|_| "https://api.hai.ai".to_string());
+        let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
+        let hai_payload = json!({
+            "agent_id": agent_id,
+            "public_key_hash": digest,
+            "domain": domain,
+        });
+        let hai_registration_payload =
+            serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
+        let hai_registration_instructions = format!(
+            "POST the payload to {} with your HAI API key in the Authorization header.",
+            hai_registration_url
+        );
+
+        // Build summary
+        let summary = format!(
+            "Setup instructions for agent {agent_id} on domain {domain}:\n\
+             \n\
+             1. DNS: Publish the following TXT record:\n\
+             {bind}\n\
+             \n\
+             2. DNSSEC: {dnssec}\n\
+             \n\
+             3. Domain requirement: {tld}\n\
+             \n\
+             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json\n\
+             \n\
+             5. HAI registration: {hai_instr}",
+            agent_id = agent_id,
+            domain = domain,
+            bind = dns_record_bind,
+            dnssec = dnssec_guidance("aws"),
+            tld = tld_requirement,
+            hai_instr = hai_registration_instructions,
+        );
+
+        Ok(SetupInstructions {
+            dns_record_bind,
+            dns_record_value,
+            dns_owner,
+            provider_commands,
+            dnssec_instructions,
+            tld_requirement,
+            well_known_json,
+            hai_registration_url,
+            hai_registration_payload,
+            hai_registration_instructions,
+            summary,
+        })
     }
 
     /// Verifies multiple signed documents in a batch operation.
@@ -2066,6 +2373,85 @@ impl SimpleAgent {
             pending: unsigned,
         })
     }
+
+    /// Register the loaded agent with HAI.ai.
+    ///
+    /// POSTs the exported agent JSON to the HAI registration endpoint.
+    /// If `preview` is true, returns a preview result without actually registering.
+    ///
+    /// # Arguments
+    /// * `api_key` - HAI API key (or reads `HAI_API_KEY` env var if `None`)
+    /// * `hai_url` - Base URL for HAI (e.g. `"https://hai.ai"`)
+    /// * `preview` - If true, validate without registering
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn register_with_hai(
+        &self,
+        api_key: Option<&str>,
+        hai_url: &str,
+        preview: bool,
+    ) -> Result<RegistrationInfo, Box<dyn std::error::Error>> {
+        if preview {
+            return Ok(RegistrationInfo {
+                hai_registered: false,
+                hai_error: "preview mode".to_string(),
+                dns_record: String::new(),
+                dns_route53: String::new(),
+            });
+        }
+
+        let key = match api_key {
+            Some(k) => k.to_string(),
+            None => std::env::var("HAI_API_KEY").map_err(|_| {
+                "No API key provided and HAI_API_KEY environment variable not set"
+            })?,
+        };
+
+        let agent_json = self.export_agent()?;
+
+        let url = format!(
+            "{}/api/v1/agents/register",
+            hai_url.trim_end_matches('/')
+        );
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", key))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "agent_json": agent_json }))
+            .send()?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            return Ok(RegistrationInfo {
+                hai_registered: false,
+                hai_error: format!("HTTP {}: {}", status, body),
+                dns_record: String::new(),
+                dns_route53: String::new(),
+            });
+        }
+
+        let body: Value = response.json()?;
+
+        Ok(RegistrationInfo {
+            hai_registered: true,
+            hai_error: String::new(),
+            dns_record: body
+                .get("dns_record")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            dns_route53: body
+                .get("dns_route53")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        })
+    }
 }
 
 // =============================================================================
@@ -2348,6 +2734,16 @@ fn extract_attachments(doc: &Value) -> Vec<Attachment> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_diagnostics_returns_version() {
+        let info = diagnostics();
+        let version = info["jacs_version"].as_str().unwrap();
+        assert!(!version.is_empty(), "jacs_version should not be empty");
+        assert_eq!(info["agent_loaded"], false);
+        assert!(info["os"].as_str().is_some());
+        assert!(info["arch"].as_str().is_some());
+    }
 
     #[test]
     fn test_agent_info_serialization() {
@@ -2671,5 +3067,54 @@ mod tests {
         // Empty string should fail at JSON parse, not at pre-check
         let result = agent.verify("");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_register_with_hai_preview() {
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+        };
+
+        let result = agent
+            .register_with_hai(None, "https://hai.ai", true)
+            .expect("preview should succeed");
+        assert!(!result.hai_registered);
+        assert_eq!(result.hai_error, "preview mode");
+        assert!(result.dns_record.is_empty());
+        assert!(result.dns_route53.is_empty());
+    }
+
+    #[test]
+    fn test_setup_instructions_serialization() {
+        let instr = SetupInstructions {
+            dns_record_bind: "example.com. 3600 IN TXT \"test\"".to_string(),
+            dns_record_value: "test".to_string(),
+            dns_owner: "_v1.agent.jacs.example.com.".to_string(),
+            provider_commands: std::collections::HashMap::new(),
+            dnssec_instructions: std::collections::HashMap::new(),
+            tld_requirement: "You must own a domain".to_string(),
+            well_known_json: "{}".to_string(),
+            hai_registration_url: "https://api.hai.ai/v1/agents".to_string(),
+            hai_registration_payload: "{}".to_string(),
+            hai_registration_instructions: "POST to the URL".to_string(),
+            summary: "Setup summary".to_string(),
+        };
+
+        let json = serde_json::to_string(&instr).unwrap();
+        assert!(json.contains("dns_record_bind"));
+        assert!(json.contains("_v1.agent.jacs.example.com."));
+        assert!(json.contains("hai_registration_url"));
+    }
+
+    #[test]
+    fn test_get_setup_instructions_requires_loaded_agent() {
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+        };
+
+        let result = agent.get_setup_instructions("example.com", 3600);
+        assert!(result.is_err(), "should fail without a loaded agent");
     }
 }

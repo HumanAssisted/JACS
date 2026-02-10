@@ -261,8 +261,16 @@ impl Agent {
         }
     }
 
-    pub fn ready(&mut self) -> bool {
-        true
+    /// Returns true if the agent is fully initialized and ready for signing/verification.
+    ///
+    /// Checks that all required state is present: ID, version, keys, config, and value.
+    pub fn ready(&self) -> bool {
+        self.id.is_some()
+            && self.version.is_some()
+            && self.public_key.is_some()
+            && self.private_key.is_some()
+            && self.config.is_some()
+            && self.value.is_some()
     }
 
     /// Get the agent's JSON value
@@ -1377,6 +1385,13 @@ mod builder_tests {
         assert!(agent.get_value().is_none());
         // Config should be loaded
         assert!(agent.config.is_some());
+    }
+
+    #[test]
+    fn test_ready_false_on_fresh_agent() {
+        let agent = Agent::builder().build().expect("Should build");
+        // A freshly built agent has config but no id, keys, or value
+        assert!(!agent.ready(), "ready() should be false without keys/id/value");
     }
 
     #[test]

@@ -51,7 +51,8 @@ Choose your implementation and get started in minutes:
 
 ### Rust CLI
 ```bash
-cargo install jacs
+cargo install jacs --features cli
+# Upgrade to latest: cargo install jacs --features cli --force
 jacs init  # Create config, keys, and agent
 ```
 

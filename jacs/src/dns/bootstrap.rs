@@ -478,3 +478,50 @@ pub fn verify_hai_registration_sync(
         public_key_hash: registered_hash.to_string(),
     })
 }
+
+pub fn dnssec_guidance(provider: &str) -> &'static str {
+    match provider {
+        "aws" | "route53" => "Enable DNSSEC signing in Route53 hosted zone settings, then publish the DS record at your registrar.",
+        "cloudflare" => "DNSSEC is one-click in the Cloudflare dashboard under DNS > Settings. Copy the DS record to your registrar.",
+        "azure" => "Enable DNSSEC signing on the Azure DNS zone, then publish the DS record at your registrar.",
+        "gcloud" | "google" => "Enable DNSSEC on the Cloud DNS zone (gcloud dns managed-zones update --dnssec-state on), then publish DS at registrar.",
+        _ => "Enable DNSSEC zone signing with your DNS provider, then publish the DS record at your domain registrar.",
+    }
+}
+
+pub fn tld_requirement_text() -> &'static str {
+    "You must own a registered domain (TLD or subdomain of a TLD you control). Example: example.com or agents.example.com. The JACS TXT record is placed at _v1.agent.jacs.{your-domain}."
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dnssec_guidance_known_providers() {
+        for provider in &["aws", "route53", "cloudflare", "azure", "gcloud", "google"] {
+            let text = dnssec_guidance(provider);
+            assert!(!text.is_empty(), "guidance for {} should be non-empty", provider);
+            assert!(
+                text.contains("DNSSEC"),
+                "guidance for {} should contain 'DNSSEC', got: {}",
+                provider,
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn test_dnssec_guidance_unknown_provider() {
+        let text = dnssec_guidance("unknown-provider");
+        assert!(text.contains("DNSSEC"));
+        assert!(text.contains("DNS provider"));
+    }
+
+    #[test]
+    fn test_tld_requirement_text() {
+        let text = tld_requirement_text();
+        assert!(!text.is_empty());
+        assert!(text.contains("_v1.agent.jacs"));
+    }
+}

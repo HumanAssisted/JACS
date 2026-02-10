@@ -344,7 +344,7 @@ Ensure the JACS MCP server is running. You can start it with:
 ```bash
 python -m jacs.mcp_server
 # or
-fastmcp run jacs.mcp_simple:mcp
+fastmcp run jacs.mcp:mcp
 ```
 
 ### Signature verification failed

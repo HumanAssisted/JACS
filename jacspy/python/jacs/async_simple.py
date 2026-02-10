@@ -574,6 +574,37 @@ async def fetch_remote_key(agent_id: str, version: str = "latest"):
     return await asyncio.to_thread(simple.fetch_remote_key, agent_id, version)
 
 
+async def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
+    """Get setup instructions for DNS, DNSSEC, and HAI registration.
+
+    Args:
+        domain: The domain to publish the DNS TXT record under.
+        ttl: TTL in seconds for the DNS record (default: 3600).
+
+    Returns:
+        Dict with dns_record_bind, provider_commands, dnssec_instructions, etc.
+    """
+    return await asyncio.to_thread(simple.get_setup_instructions, domain, ttl)
+
+
+async def register_with_hai(
+    api_key: Optional[str] = None,
+    hai_url: str = "https://hai.ai",
+    preview: bool = False,
+) -> dict:
+    """Register this agent with HAI.ai.
+
+    Args:
+        api_key: HAI API key (reads HAI_API_KEY env var if None).
+        hai_url: Base URL for HAI (default: "https://hai.ai").
+        preview: If True, validate without actually registering.
+
+    Returns:
+        Dict with hai_registered, hai_error, dns_record, dns_route53.
+    """
+    return await asyncio.to_thread(simple.register_with_hai, api_key, hai_url, preview)
+
+
 def get_agent_info() -> Optional[AgentInfo]:
     """Get information about the currently loaded agent.
 
@@ -594,6 +625,14 @@ def is_loaded() -> bool:
         True if an agent is loaded, False otherwise
     """
     return simple.is_loaded()
+
+
+def reset():
+    """Clear global agent state. Useful for test isolation.
+
+    Note: This is synchronous as it delegates to simple.reset().
+    """
+    simple.reset()
 
 
 __all__ = [
@@ -626,8 +665,13 @@ __all__ = [
     "untrust_agent",
     "is_trusted",
     "get_trusted_agent",
+    # Test utilities
+    "reset",
     # Remote key fetch
     "fetch_remote_key",
+    # Setup and registration
+    "get_setup_instructions",
+    "register_with_hai",
     # Types (re-exported for convenience)
     "AgentInfo",
     "SignedDocument",

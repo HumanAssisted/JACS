@@ -1,6 +1,6 @@
 ## setting up
 
-Once you've installed the jacs cli with `cargo install jacs` 
+Once you've installed the jacs CLI with `cargo install jacs --features cli` 
 
 First, create your configuration which can also be loaded loaded as environment variables.
 

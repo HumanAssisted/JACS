@@ -376,6 +376,23 @@ export declare function getAgentInfo(): AgentInfo | null;
  */
 export declare function isLoaded(): boolean;
 /**
+ * Clear global agent state. Useful for test isolation.
+ *
+ * After calling reset(), you must call load() or create() again before
+ * using any signing or verification functions.
+ */
+export declare function reset(): void;
+/**
+ * Return JACS diagnostic info (version, config, agent status).
+ *
+ * Returns an object with keys like jacs_version, os, arch, agent_loaded,
+ * data_directory, key_directory, etc. If an agent is loaded, includes
+ * agent_id and agent_version.
+ *
+ * @returns Diagnostic information object
+ */
+export declare function debugInfo(): Record<string, unknown>;
+/**
  * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
  * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
  */
@@ -390,6 +407,14 @@ export declare function getWellKnownJson(): {
     algorithm: string;
     agentId: string;
 };
+/**
+ * Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
+ *
+ * @param domain - The domain to publish the DNS TXT record under
+ * @param ttl - TTL in seconds for the DNS record (default: 3600)
+ * @returns Structured setup instructions
+ */
+export declare function getSetupInstructions(domain: string, ttl?: number): Record<string, unknown>;
 /**
  * Register the loaded agent with HAI.ai.
  * Requires a loaded agent (uses exportAgent() for the payload).
