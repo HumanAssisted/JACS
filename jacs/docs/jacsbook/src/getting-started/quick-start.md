@@ -40,9 +40,9 @@ npm install @hai.ai/jacs
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-jacs.quickstart();
-const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-const result = jacs.verify(signed.raw);
+await jacs.quickstart();
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
@@ -127,10 +127,10 @@ npm install @hai.ai/jacs
 const jacs = require('@hai.ai/jacs/simple');
 
 // Load from config file
-jacs.load('./jacs.config.json');
+await jacs.load('./jacs.config.json');
 
-const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-const result = jacs.verify(signed.raw);
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}`);
 ```
 
@@ -195,7 +195,7 @@ print(f"Agent: {agent.agent_id}")
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-const agent = jacs.create({
+const agent = await jacs.create({
   name: 'my-agent',
   password: process.env.JACS_PRIVATE_KEY_PASSWORD,
   algorithm: 'pq2025',
@@ -297,21 +297,13 @@ jacs document sign -f ./jacs_data/[document-id].json
 <div class="content">
 
 ```javascript
-// Verify agent signature
+// Verify agent signature (async)
 const isValid = await agent.verifyAgent();
 console.log('Agent signature valid:', isValid);
-
-// List all documents
-const documents = await agent.listDocuments();
-console.log('Documents:', documents.length);
 
 // Verify task signature
 const taskValid = await agent.verifyDocument(signedTask);
 console.log('Task signature valid:', taskValid);
-
-// Get document details
-const taskDetails = await agent.getDocument(signedTask.jacsId);
-console.log('Task details:', taskDetails);
 ```
 
 </div>
@@ -393,31 +385,22 @@ reviewerConfig.jacs_agent_id_and_version = null;
 fs.writeFileSync('./reviewer.config.json', JSON.stringify(reviewerConfig, null, 2));
 
 const reviewer = new JacsAgent();
-reviewer.load('./reviewer.config.json');
-await reviewer.generateKeys();
-
-const reviewerDoc = await reviewer.createAgent({
-  name: "Content Reviewer Bot",
-  description: "AI agent specialized in content review"
-});
+await reviewer.load('./reviewer.config.json');
 
 // Create agreement between agents
-const agreement = {
-  title: "Content Collaboration Agreement",
-  question: "Do you agree to collaborate on this content task?",
-  context: `Task: ${signedTask.jacsId}`,
-  agents: [agentDoc.jacsId, reviewerDoc.jacsId]
-};
-
-const signedAgreement = await agent.createAgreement(agreement);
+const signedAgreement = await agent.createAgreement(
+  signedTask,
+  [agentDoc.jacsId, reviewerDoc.jacsId],
+  'Do you agree to collaborate on this content task?'
+);
 
 // Both agents sign the agreement
-await agent.signAgreement(signedAgreement.jacsId);
-await reviewer.signAgreement(signedAgreement.jacsId);
+const signed1 = await agent.signAgreement(signedAgreement);
+const signed2 = await reviewer.signAgreement(signed1);
 
-// Verify all signatures
-const agreementValid = await agent.verifyAgreement(signedAgreement.jacsId);
-console.log('Agreement complete:', agreementValid);
+// Check agreement status
+const status = await agent.checkAgreement(signed2);
+console.log('Agreement status:', JSON.parse(status));
 ```
 
 </div>

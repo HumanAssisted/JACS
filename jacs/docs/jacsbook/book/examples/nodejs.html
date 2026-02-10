@@ -179,7 +179,8 @@
 <pre><code class="language-bash"># Install dependencies
 npm install @hai.ai/jacs express @modelcontextprotocol/sdk zod
 </code></pre>
-<pre><code class="language-javascript">// Initialize JACS (ES Modules)
+<p>v0.7.0 uses an async-first API. All NAPI operations return Promises by default; sync variants use a <code>Sync</code> suffix.</p>
+<pre><code class="language-javascript">// Initialize JACS (ES Modules, async)
 import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();

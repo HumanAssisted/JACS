@@ -45,6 +45,15 @@ Send and receive cryptographically signed messages between agents:
 | `jacs_message_agree` | Verify and co-sign a received message |
 | `jacs_message_receive` | Verify a received message and extract its content |
 
+### Document Sign / Verify
+
+Sign and verify arbitrary documents without requiring file paths or agent state metadata:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_sign_document` | Sign arbitrary JSON content to create a signed JACS document for attestation |
+| `jacs_verify_document` | Verify a signed JACS document given its full JSON string (hash + signature check) |
+
 ### Agreements (Multi-Party)
 
 Create multi-party cryptographic agreements — multiple agents formally commit to a shared decision:
@@ -266,6 +275,25 @@ Check the status of an agreement.
 - `agreement_fieldname` (optional): Custom agreement field name (default: `jacsAgreement`)
 
 **Returns:** `complete`, `quorum_met`, `expired`, `signatures_collected`, `signatures_required`, `signed_by`, `unsigned`
+
+### jacs_sign_document
+
+Sign arbitrary JSON content to create a cryptographically signed JACS document.
+
+**Parameters:**
+- `content` (required): The JSON content to sign
+- `content_type` (optional): MIME type of the content (default: `application/json`)
+
+**Returns:** `success`, `signed_document` (full signed JACS envelope), `content_hash` (SHA-256), `jacs_document_id`
+
+### jacs_verify_document
+
+Verify a signed JACS document given its full JSON string. Checks both the content hash and cryptographic signature. Use this when you have a signed document in memory (e.g. from an approval context or message payload).
+
+**Parameters:**
+- `document` (required): The full signed JACS document JSON string
+
+**Returns:** `success`, `valid`, `signer_id` (optional -- extracted from document if available), `message`
 
 ### fetch_agent_key
 

@@ -2,17 +2,16 @@
 /**
  * JACS Instance-Based Client API
  *
- * Provides `JacsClient`, a class that wraps its own `JacsAgent` instance so
- * multiple clients can coexist in the same process without shared mutable
- * global state. This is the recommended API for new code.
+ * v0.7.0: Async-first API. All methods that call native JACS operations
+ * return Promises by default. Use `*Sync` variants for synchronous execution.
  *
  * @example
  * ```typescript
  * import { JacsClient } from '@hai.ai/jacs/client';
  *
- * const client = JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
- * const signed = client.signMessage({ action: 'approve' });
- * const result = client.verify(signed.raw);
+ * const client = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+ * const signed = await client.signMessage({ action: 'approve' });
+ * const result = await client.verify(signed.raw);
  * console.log(`Valid: ${result.valid}`);
  * ```
  */
@@ -50,10 +49,9 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.JacsClient = exports.createConfig = exports.verifyString = exports.hashString = void 0;
+exports.JacsClient = exports.createConfig = exports.hashString = void 0;
 const index_1 = require("./index");
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
-Object.defineProperty(exports, "verifyString", { enumerable: true, get: function () { return index_1.verifyString; } });
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -87,14 +85,55 @@ function normalizeDocumentInput(document) {
     }
     return JSON.stringify(document);
 }
+function extractAgentInfo(resolvedConfigPath) {
+    const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
+    const agentIdVersion = config.jacs_agent_id_and_version || '';
+    const [agentId] = agentIdVersion.split(':');
+    const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
+    return {
+        agentId: agentId || '',
+        name: config.name || '',
+        publicKeyPath: path.join(keyDir, 'jacs.public.pem'),
+        configPath: resolvedConfigPath,
+    };
+}
+function parseSignedResult(result) {
+    const doc = JSON.parse(result);
+    return {
+        raw: result,
+        documentId: doc.jacsId || '',
+        agentId: doc.jacsSignature?.agentID || '',
+        timestamp: doc.jacsSignature?.date || '',
+    };
+}
+function ensurePassword() {
+    let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
+    if (!password) {
+        const crypto = require('crypto');
+        const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const lower = 'abcdefghijklmnopqrstuvwxyz';
+        const digits = '0123456789';
+        const special = '!@#$%^&*()-_=+';
+        const all = upper + lower + digits + special;
+        password =
+            upper[crypto.randomInt(upper.length)] +
+                lower[crypto.randomInt(lower.length)] +
+                digits[crypto.randomInt(digits.length)] +
+                special[crypto.randomInt(special.length)];
+        for (let i = 4; i < 32; i++) {
+            password += all[crypto.randomInt(all.length)];
+        }
+        const keysDir = './jacs_keys';
+        fs.mkdirSync(keysDir, { recursive: true });
+        const pwPath = path.join(keysDir, '.jacs_password');
+        fs.writeFileSync(pwPath, password, { mode: 0o600 });
+        process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+    }
+    return password;
+}
 // =============================================================================
 // JacsClient
 // =============================================================================
-/**
- * Instance-based JACS client. Each instance owns its own `JacsAgent` and
- * maintains independent state, so multiple clients can coexist in the same
- * process without interference.
- */
 class JacsClient {
     constructor(options) {
         this.agent = null;
@@ -103,61 +142,62 @@ class JacsClient {
         this._strict = resolveStrict(options?.strict);
     }
     // ---------------------------------------------------------------------------
-    // Static factories
+    // Static factories (async)
     // ---------------------------------------------------------------------------
     /**
      * Zero-config factory: loads or creates a persistent agent.
-     *
-     * If a config file already exists at `options.configPath` (default
-     * `./jacs.config.json`) the agent is loaded from it. Otherwise a new
-     * agent is created with auto-generated keys.
      */
-    static quickstart(options) {
+    static async quickstart(options) {
         const client = new JacsClient({ strict: options?.strict });
         const configPath = options?.configPath || './jacs.config.json';
         if (fs.existsSync(configPath)) {
-            client.load(configPath);
+            await client.load(configPath);
             return client;
         }
-        // Create new persistent agent
-        const crypto = require('crypto');
-        let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
-        if (!password) {
-            const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-            const lower = 'abcdefghijklmnopqrstuvwxyz';
-            const digits = '0123456789';
-            const special = '!@#$%^&*()-_=+';
-            const all = upper + lower + digits + special;
-            password =
-                upper[crypto.randomInt(upper.length)] +
-                    lower[crypto.randomInt(lower.length)] +
-                    digits[crypto.randomInt(digits.length)] +
-                    special[crypto.randomInt(special.length)];
-            for (let i = 4; i < 32; i++) {
-                password += all[crypto.randomInt(all.length)];
-            }
-            const keysDir = './jacs_keys';
-            fs.mkdirSync(keysDir, { recursive: true });
-            const pwPath = path.join(keysDir, '.jacs_password');
-            fs.writeFileSync(pwPath, password, { mode: 0o600 });
-            process.env.JACS_PRIVATE_KEY_PASSWORD = password;
-        }
+        const password = ensurePassword();
         const algo = options?.algorithm || 'pq2025';
-        client.create({
-            name: 'jacs-agent',
-            password,
-            algorithm: algo,
-        });
+        await client.create({ name: 'jacs-agent', password, algorithm: algo });
+        return client;
+    }
+    /**
+     * Zero-config factory (sync variant).
+     */
+    static quickstartSync(options) {
+        const client = new JacsClient({ strict: options?.strict });
+        const configPath = options?.configPath || './jacs.config.json';
+        if (fs.existsSync(configPath)) {
+            client.loadSync(configPath);
+            return client;
+        }
+        const password = ensurePassword();
+        const algo = options?.algorithm || 'pq2025';
+        client.createSync({ name: 'jacs-agent', password, algorithm: algo });
         return client;
     }
     /**
      * Create an ephemeral in-memory client for testing.
-     * No config files, no key files, no environment variables needed.
      */
-    static ephemeral(algorithm) {
+    static async ephemeral(algorithm) {
         const client = new JacsClient();
         const nativeAgent = new index_1.JacsAgent();
-        const resultJson = nativeAgent.ephemeral(algorithm ?? null);
+        const resultJson = await nativeAgent.ephemeral(algorithm ?? null);
+        const result = JSON.parse(resultJson);
+        client.agent = nativeAgent;
+        client.info = {
+            agentId: result.agent_id || '',
+            name: result.name || 'ephemeral',
+            publicKeyPath: '',
+            configPath: '',
+        };
+        return client;
+    }
+    /**
+     * Create an ephemeral in-memory client (sync variant).
+     */
+    static ephemeralSync(algorithm) {
+        const client = new JacsClient();
+        const nativeAgent = new index_1.JacsAgent();
+        const resultJson = nativeAgent.ephemeralSync(algorithm ?? null);
         const result = JSON.parse(resultJson);
         client.agent = nativeAgent;
         client.info = {
@@ -171,10 +211,7 @@ class JacsClient {
     // ---------------------------------------------------------------------------
     // Lifecycle
     // ---------------------------------------------------------------------------
-    /**
-     * Load an agent from a configuration file.
-     */
-    load(configPath, options) {
+    async load(configPath, options) {
         if (options?.strict !== undefined) {
             this._strict = options.strict;
         }
@@ -184,54 +221,65 @@ class JacsClient {
             throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
         }
         this.agent = new index_1.JacsAgent();
-        this.agent.load(resolvedConfigPath);
-        const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
-        const agentIdVersion = config.jacs_agent_id_and_version || '';
-        const [agentId] = agentIdVersion.split(':');
-        const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
-        this.info = {
-            agentId: agentId || '',
-            name: config.name || '',
-            publicKeyPath: path.join(keyDir, 'jacs.public.pem'),
-            configPath: resolvedConfigPath,
-        };
+        await this.agent.load(resolvedConfigPath);
+        this.info = extractAgentInfo(resolvedConfigPath);
         return this.info;
     }
-    /**
-     * Create a new agent with cryptographic keys.
-     */
-    create(options) {
+    loadSync(configPath, options) {
+        if (options?.strict !== undefined) {
+            this._strict = options.strict;
+        }
+        const requestedPath = configPath || './jacs.config.json';
+        const resolvedConfigPath = path.resolve(requestedPath);
+        if (!fs.existsSync(resolvedConfigPath)) {
+            throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
+        }
+        this.agent = new index_1.JacsAgent();
+        this.agent.loadSync(resolvedConfigPath);
+        this.info = extractAgentInfo(resolvedConfigPath);
+        return this.info;
+    }
+    async create(options) {
         const resolvedPassword = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
         if (!resolvedPassword) {
             throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
         }
-        const resultJson = (0, index_1.createAgent)(options.name, resolvedPassword, options.algorithm ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null, options.configPath ?? null, options.agentType ?? null, options.description ?? null, options.domain ?? null, options.defaultStorage ?? null);
+        const resultJson = await (0, index_1.createAgent)(options.name, resolvedPassword, options.algorithm ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null, options.configPath ?? null, options.agentType ?? null, options.description ?? null, options.domain ?? null, options.defaultStorage ?? null);
         const result = JSON.parse(resultJson);
-        const configPath = result.config_path || options.configPath || './jacs.config.json';
+        const cfgPath = result.config_path || options.configPath || './jacs.config.json';
         this.info = {
             agentId: result.agent_id || '',
             name: result.name || options.name,
-            publicKeyPath: result.public_key_path ||
-                `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
-            configPath,
+            publicKeyPath: result.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+            configPath: cfgPath,
         };
-        // Load the agent from the newly created config
         this.agent = new index_1.JacsAgent();
-        this.agent.load(path.resolve(configPath));
+        await this.agent.load(path.resolve(cfgPath));
         return this.info;
     }
-    /**
-     * Clear internal state. After calling reset() you must call load(), create(),
-     * quickstart(), or ephemeral() again before using signing/verification.
-     */
+    createSync(options) {
+        const resolvedPassword = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
+        if (!resolvedPassword) {
+            throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
+        }
+        const resultJson = (0, index_1.createAgentSync)(options.name, resolvedPassword, options.algorithm ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null, options.configPath ?? null, options.agentType ?? null, options.description ?? null, options.domain ?? null, options.defaultStorage ?? null);
+        const result = JSON.parse(resultJson);
+        const cfgPath = result.config_path || options.configPath || './jacs.config.json';
+        this.info = {
+            agentId: result.agent_id || '',
+            name: result.name || options.name,
+            publicKeyPath: result.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+            configPath: cfgPath,
+        };
+        this.agent = new index_1.JacsAgent();
+        this.agent.loadSync(path.resolve(cfgPath));
+        return this.info;
+    }
     reset() {
         this.agent = null;
         this.info = null;
         this._strict = false;
     }
-    /**
-     * Alias for reset(). Satisfies the disposable pattern.
-     */
     dispose() {
         this.reset();
     }
@@ -241,15 +289,12 @@ class JacsClient {
     // ---------------------------------------------------------------------------
     // Getters
     // ---------------------------------------------------------------------------
-    /** The current agent's UUID. */
     get agentId() {
         return this.info?.agentId || '';
     }
-    /** The current agent's human-readable name. */
     get name() {
         return this.info?.name || '';
     }
-    /** Whether strict mode is enabled. */
     get strict() {
         return this._strict;
     }
@@ -262,284 +307,244 @@ class JacsClient {
         }
         return this.agent;
     }
-    /**
-     * Sign arbitrary data as a JACS message.
-     */
-    signMessage(data) {
+    async signMessage(data) {
         const agent = this.requireAgent();
-        const docContent = {
-            jacsType: 'message',
-            jacsLevel: 'raw',
-            content: data,
-        };
-        const result = agent.createDocument(JSON.stringify(docContent), null, null, true, null, null);
-        const doc = JSON.parse(result);
-        return {
-            raw: result,
-            documentId: doc.jacsId || '',
-            agentId: doc.jacsSignature?.agentID || '',
-            timestamp: doc.jacsSignature?.date || '',
-        };
+        const docContent = { jacsType: 'message', jacsLevel: 'raw', content: data };
+        const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, null, null);
+        return parseSignedResult(result);
     }
-    /**
-     * Verify a signed document and extract its content.
-     */
-    verify(signedDocument) {
+    signMessageSync(data) {
+        const agent = this.requireAgent();
+        const docContent = { jacsType: 'message', jacsLevel: 'raw', content: data };
+        const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, null, null);
+        return parseSignedResult(result);
+    }
+    async verify(signedDocument) {
         const agent = this.requireAgent();
         const trimmed = signedDocument.trim();
         if (trimmed.length > 0 && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-            return {
-                valid: false,
-                signerId: '',
-                timestamp: '',
-                attachments: [],
-                errors: [
-                    `Input does not appear to be a JSON document. If you have a document ID (e.g., 'uuid:version'), use verifyById() instead. Received: '${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}'`,
-                ],
-            };
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Input does not appear to be a JSON document. If you have a document ID (e.g., 'uuid:version'), use verifyById() instead. Received: '${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}'`] };
         }
         let doc;
         try {
             doc = JSON.parse(signedDocument);
         }
         catch (e) {
-            return {
-                valid: false,
-                signerId: '',
-                timestamp: '',
-                attachments: [],
-                errors: [`Invalid JSON: ${e}`],
-            };
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Invalid JSON: ${e}`] };
         }
         try {
-            agent.verifyDocument(signedDocument);
+            await agent.verifyDocument(signedDocument);
             const attachments = (doc.jacsFiles || []).map((f) => ({
-                filename: f.path || '',
-                mimeType: f.mimetype || 'application/octet-stream',
-                hash: f.sha256 || '',
-                embedded: f.embed || false,
+                filename: f.path || '', mimeType: f.mimetype || 'application/octet-stream',
+                hash: f.sha256 || '', embedded: f.embed || false,
                 content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
             }));
-            return {
-                valid: true,
-                data: doc.content,
-                signerId: doc.jacsSignature?.agentID || '',
-                timestamp: doc.jacsSignature?.date || '',
-                attachments,
-                errors: [],
-            };
+            return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
         }
         catch (e) {
-            if (this._strict) {
+            if (this._strict)
                 throw new Error(`Verification failed (strict mode): ${e}`);
-            }
-            return {
-                valid: false,
-                signerId: doc.jacsSignature?.agentID || '',
-                timestamp: doc.jacsSignature?.date || '',
-                attachments: [],
-                errors: [String(e)],
-            };
+            return { valid: false, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments: [], errors: [String(e)] };
         }
     }
-    /**
-     * Verify the loaded agent's integrity.
-     */
-    verifySelf() {
+    verifySync(signedDocument) {
+        const agent = this.requireAgent();
+        const trimmed = signedDocument.trim();
+        if (trimmed.length > 0 && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Input does not appear to be a JSON document.`] };
+        }
+        let doc;
+        try {
+            doc = JSON.parse(signedDocument);
+        }
+        catch (e) {
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Invalid JSON: ${e}`] };
+        }
+        try {
+            agent.verifyDocumentSync(signedDocument);
+            const attachments = (doc.jacsFiles || []).map((f) => ({
+                filename: f.path || '', mimeType: f.mimetype || 'application/octet-stream',
+                hash: f.sha256 || '', embedded: f.embed || false,
+                content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
+            }));
+            return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
+        }
+        catch (e) {
+            if (this._strict)
+                throw new Error(`Verification failed (strict mode): ${e}`);
+            return { valid: false, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments: [], errors: [String(e)] };
+        }
+    }
+    async verifySelf() {
         const agent = this.requireAgent();
         try {
-            agent.verifyAgent();
-            return {
-                valid: true,
-                signerId: this.info?.agentId || '',
-                timestamp: '',
-                attachments: [],
-                errors: [],
-            };
+            await agent.verifyAgent();
+            return { valid: true, signerId: this.info?.agentId || '', timestamp: '', attachments: [], errors: [] };
         }
         catch (e) {
-            if (this._strict) {
+            if (this._strict)
                 throw new Error(`Self-verification failed (strict mode): ${e}`);
-            }
-            return {
-                valid: false,
-                signerId: '',
-                timestamp: '',
-                attachments: [],
-                errors: [String(e)],
-            };
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
         }
     }
-    /**
-     * Verify a document by its storage ID ("uuid:version").
-     */
-    verifyById(documentId) {
+    verifySelfSync() {
+        const agent = this.requireAgent();
+        try {
+            agent.verifyAgentSync();
+            return { valid: true, signerId: this.info?.agentId || '', timestamp: '', attachments: [], errors: [] };
+        }
+        catch (e) {
+            if (this._strict)
+                throw new Error(`Self-verification failed (strict mode): ${e}`);
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
+        }
+    }
+    async verifyById(documentId) {
         const agent = this.requireAgent();
         if (!documentId.includes(':')) {
-            return {
-                valid: false,
-                signerId: '',
-                timestamp: '',
-                attachments: [],
-                errors: [
-                    `Document ID must be in 'uuid:version' format, got '${documentId}'. Use verify() with the full JSON string instead.`,
-                ],
-            };
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Document ID must be in 'uuid:version' format, got '${documentId}'.`] };
         }
         try {
-            agent.verifyDocumentById(documentId);
-            return {
-                valid: true,
-                signerId: '',
-                timestamp: '',
-                attachments: [],
-                errors: [],
-            };
+            await agent.verifyDocumentById(documentId);
+            return { valid: true, signerId: '', timestamp: '', attachments: [], errors: [] };
         }
         catch (e) {
-            if (this._strict) {
+            if (this._strict)
                 throw new Error(`Verification failed (strict mode): ${e}`);
-            }
-            return {
-                valid: false,
-                signerId: '',
-                timestamp: '',
-                attachments: [],
-                errors: [String(e)],
-            };
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
+        }
+    }
+    verifyByIdSync(documentId) {
+        const agent = this.requireAgent();
+        if (!documentId.includes(':')) {
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Document ID must be in 'uuid:version' format, got '${documentId}'.`] };
+        }
+        try {
+            agent.verifyDocumentByIdSync(documentId);
+            return { valid: true, signerId: '', timestamp: '', attachments: [], errors: [] };
+        }
+        catch (e) {
+            if (this._strict)
+                throw new Error(`Verification failed (strict mode): ${e}`);
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
         }
     }
     // ---------------------------------------------------------------------------
     // Files
     // ---------------------------------------------------------------------------
-    /**
-     * Sign a file with optional content embedding.
-     */
-    signFile(filePath, embed = false) {
+    async signFile(filePath, embed = false) {
         const agent = this.requireAgent();
-        if (!fs.existsSync(filePath)) {
+        if (!fs.existsSync(filePath))
             throw new Error(`File not found: ${filePath}`);
-        }
-        const docContent = {
-            jacsType: 'file',
-            jacsLevel: 'raw',
-            filename: path.basename(filePath),
-        };
-        const result = agent.createDocument(JSON.stringify(docContent), null, null, true, filePath, embed);
-        const doc = JSON.parse(result);
-        return {
-            raw: result,
-            documentId: doc.jacsId || '',
-            agentId: doc.jacsSignature?.agentID || '',
-            timestamp: doc.jacsSignature?.date || '',
-        };
+        const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
+        const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, filePath, embed);
+        return parseSignedResult(result);
+    }
+    signFileSync(filePath, embed = false) {
+        const agent = this.requireAgent();
+        if (!fs.existsSync(filePath))
+            throw new Error(`File not found: ${filePath}`);
+        const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
+        const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, filePath, embed);
+        return parseSignedResult(result);
     }
     // ---------------------------------------------------------------------------
     // Agreements
     // ---------------------------------------------------------------------------
-    /**
-     * Create a multi-party agreement.
-     *
-     * Supports extended options: timeout, quorum, requiredAlgorithms, minimumStrength.
-     */
-    createAgreement(document, agentIds, options) {
+    async createAgreement(document, agentIds, options) {
         const agent = this.requireAgent();
         const docString = normalizeDocumentInput(document);
-        const hasExtendedOptions = options?.timeout ||
-            options?.quorum !== undefined ||
-            options?.requiredAlgorithms ||
-            options?.minimumStrength;
+        const hasExtended = options?.timeout || options?.quorum !== undefined || options?.requiredAlgorithms || options?.minimumStrength;
         let result;
-        if (hasExtendedOptions) {
-            result = agent.createAgreementWithOptions(docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null, options?.timeout || null, options?.quorum ?? null, options?.requiredAlgorithms || null, options?.minimumStrength || null);
+        if (hasExtended) {
+            result = await agent.createAgreementWithOptions(docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null, options?.timeout || null, options?.quorum ?? null, options?.requiredAlgorithms || null, options?.minimumStrength || null);
         }
         else {
-            result = agent.createAgreement(docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null);
+            result = await agent.createAgreement(docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null);
         }
-        const doc = JSON.parse(result);
-        return {
-            raw: result,
-            documentId: doc.jacsId || '',
-            agentId: doc.jacsSignature?.agentID || '',
-            timestamp: doc.jacsSignature?.date || '',
-        };
+        return parseSignedResult(result);
     }
-    /**
-     * Sign an existing multi-party agreement.
-     */
-    signAgreement(document, fieldName) {
+    createAgreementSync(document, agentIds, options) {
         const agent = this.requireAgent();
         const docString = normalizeDocumentInput(document);
-        const result = agent.signAgreement(docString, fieldName || null);
-        const doc = JSON.parse(result);
-        return {
-            raw: result,
-            documentId: doc.jacsId || '',
-            agentId: doc.jacsSignature?.agentID || '',
-            timestamp: doc.jacsSignature?.date || '',
-        };
+        const hasExtended = options?.timeout || options?.quorum !== undefined || options?.requiredAlgorithms || options?.minimumStrength;
+        let result;
+        if (hasExtended) {
+            result = agent.createAgreementWithOptionsSync(docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null, options?.timeout || null, options?.quorum ?? null, options?.requiredAlgorithms || null, options?.minimumStrength || null);
+        }
+        else {
+            result = agent.createAgreementSync(docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null);
+        }
+        return parseSignedResult(result);
     }
-    /**
-     * Check the status of a multi-party agreement.
-     */
-    checkAgreement(document, fieldName) {
+    async signAgreement(document, fieldName) {
         const agent = this.requireAgent();
         const docString = normalizeDocumentInput(document);
-        const result = agent.checkAgreement(docString, fieldName || null);
+        const result = await agent.signAgreement(docString, fieldName || null);
+        return parseSignedResult(result);
+    }
+    signAgreementSync(document, fieldName) {
+        const agent = this.requireAgent();
+        const docString = normalizeDocumentInput(document);
+        const result = agent.signAgreementSync(docString, fieldName || null);
+        return parseSignedResult(result);
+    }
+    async checkAgreement(document, fieldName) {
+        const agent = this.requireAgent();
+        const docString = normalizeDocumentInput(document);
+        const result = await agent.checkAgreement(docString, fieldName || null);
+        return JSON.parse(result);
+    }
+    checkAgreementSync(document, fieldName) {
+        const agent = this.requireAgent();
+        const docString = normalizeDocumentInput(document);
+        const result = agent.checkAgreementSync(docString, fieldName || null);
         return JSON.parse(result);
     }
     // ---------------------------------------------------------------------------
     // Agent management
     // ---------------------------------------------------------------------------
-    /**
-     * Update the agent document with new data and re-sign it.
-     */
-    updateAgent(newAgentData) {
+    async updateAgent(newAgentData) {
         const agent = this.requireAgent();
         const dataString = typeof newAgentData === 'string' ? newAgentData : JSON.stringify(newAgentData);
         return agent.updateAgent(dataString);
     }
-    /**
-     * Update an existing document with new data and re-sign it.
-     */
-    updateDocument(documentId, newDocumentData, attachments, embed) {
+    updateAgentSync(newAgentData) {
         const agent = this.requireAgent();
-        const dataString = typeof newDocumentData === 'string'
-            ? newDocumentData
-            : JSON.stringify(newDocumentData);
-        const result = agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
-        const doc = JSON.parse(result);
-        return {
-            raw: result,
-            documentId: doc.jacsId || '',
-            agentId: doc.jacsSignature?.agentID || '',
-            timestamp: doc.jacsSignature?.date || '',
-        };
+        const dataString = typeof newAgentData === 'string' ? newAgentData : JSON.stringify(newAgentData);
+        return agent.updateAgentSync(dataString);
+    }
+    async updateDocument(documentId, newDocumentData, attachments, embed) {
+        const agent = this.requireAgent();
+        const dataString = typeof newDocumentData === 'string' ? newDocumentData : JSON.stringify(newDocumentData);
+        const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
+        return parseSignedResult(result);
+    }
+    updateDocumentSync(documentId, newDocumentData, attachments, embed) {
+        const agent = this.requireAgent();
+        const dataString = typeof newDocumentData === 'string' ? newDocumentData : JSON.stringify(newDocumentData);
+        const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
+        return parseSignedResult(result);
     }
     // ---------------------------------------------------------------------------
-    // Trust Store
+    // Trust Store (sync-only)
     // ---------------------------------------------------------------------------
-    trustAgent(agentJson) {
-        return (0, index_1.trustAgent)(agentJson);
-    }
-    listTrustedAgents() {
-        return (0, index_1.listTrustedAgents)();
-    }
-    untrustAgent(agentId) {
-        (0, index_1.untrustAgent)(agentId);
-    }
-    isTrusted(agentId) {
-        return (0, index_1.isTrusted)(agentId);
-    }
-    getTrustedAgent(agentId) {
-        return (0, index_1.getTrustedAgent)(agentId);
-    }
+    trustAgent(agentJson) { return (0, index_1.trustAgent)(agentJson); }
+    listTrustedAgents() { return (0, index_1.listTrustedAgents)(); }
+    untrustAgent(agentId) { (0, index_1.untrustAgent)(agentId); }
+    isTrusted(agentId) { return (0, index_1.isTrusted)(agentId); }
+    getTrustedAgent(agentId) { return (0, index_1.getTrustedAgent)(agentId); }
     // ---------------------------------------------------------------------------
     // Audit
     // ---------------------------------------------------------------------------
-    audit(options) {
-        const json = (0, index_1.audit)(options?.configPath ?? undefined, options?.recentN ?? undefined);
+    async audit(options) {
+        const json = await (0, index_1.audit)(options?.configPath ?? undefined, options?.recentN ?? undefined);
+        return JSON.parse(json);
+    }
+    auditSync(options) {
+        const json = (0, index_1.auditSync)(options?.configPath ?? undefined, options?.recentN ?? undefined);
         return JSON.parse(json);
     }
 }
 exports.JacsClient = JacsClient;
+//# sourceMappingURL=client.js.map

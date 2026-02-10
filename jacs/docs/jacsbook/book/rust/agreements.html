@@ -323,18 +323,95 @@ jacs document check-agreement -f ./task.json
 <li>If content changes, hash changes, invalidating existing signatures</li>
 </ol>
 <p>This prevents modifications after some parties have signed.</p>
+<h2 id="agreement-options-v062"><a class="header" href="#agreement-options-v062">Agreement Options (v0.6.2+)</a></h2>
+<h3 id="timeout"><a class="header" href="#timeout">Timeout</a></h3>
+<p>Set a deadline after which the agreement expires:</p>
+<pre><code class="language-python"># Python
+agreement = client.create_agreement(
+    document=proposal,
+    agent_ids=[alice.agent_id, bob.agent_id],
+    timeout="2025-12-31T23:59:59Z"
+)
+</code></pre>
+<p>If the deadline passes before all required signatures are collected, <code>check_agreement()</code> returns an error.</p>
+<h3 id="quorum-m-of-n-signing"><a class="header" href="#quorum-m-of-n-signing">Quorum (M-of-N Signing)</a></h3>
+<p>Require only a subset of agents to sign:</p>
+<pre><code class="language-python"># Only 2 of 3 agents need to sign
+agreement = client.create_agreement(
+    document=proposal,
+    agent_ids=[alice.agent_id, bob.agent_id, carol.agent_id],
+    quorum=2
+)
+</code></pre>
+<p>When quorum is met, <code>check_agreement()</code> succeeds even if some agents haven't signed.</p>
+<h3 id="algorithm-constraints"><a class="header" href="#algorithm-constraints">Algorithm Constraints</a></h3>
+<p>Enforce that only specific cryptographic algorithms can be used:</p>
+<pre><code class="language-python"># Only post-quantum algorithms allowed
+agreement = client.create_agreement(
+    document=proposal,
+    agent_ids=agent_ids,
+    required_algorithms=["pq2025", "pq-dilithium"],
+    minimum_strength="post-quantum"
+)
+</code></pre>
+<p>An agent using RSA-PSS or Ed25519 will be rejected when trying to sign this agreement.</p>
+<h3 id="combined-options"><a class="header" href="#combined-options">Combined Options</a></h3>
+<pre><code class="language-python">agreement = client.create_agreement(
+    document={"proposal": "Deploy model v2"},
+    agent_ids=[alice.agent_id, bob.agent_id, mediator.agent_id],
+    question="Do you approve deployment?",
+    timeout="2025-06-30T00:00:00Z",
+    quorum=2,
+    minimum_strength="post-quantum"
+)
+</code></pre>
+<h2 id="using-jacsclient-instance-based-api"><a class="header" href="#using-jacsclient-instance-based-api">Using JacsClient (Instance-Based API)</a></h2>
+<p>For running multiple agents in one process, use <code>JacsClient</code> instead of the module-level API:</p>
+<h3 id="python"><a class="header" href="#python">Python</a></h3>
+<pre><code class="language-python">from jacs.client import JacsClient
+
+alice = JacsClient.ephemeral("ring-Ed25519")  # for testing
+bob = JacsClient.ephemeral("ring-Ed25519")
+
+signed = alice.sign_message({"action": "approve"})
+# alice.agent_id, bob.agent_id are unique
+</code></pre>
+<p>See the full example: <a href="https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.py">examples/multi_agent_agreement.py</a></p>
+<h3 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h3>
+<pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
+
+const alice = JacsClient.ephemeral('ring-Ed25519');
+const bob = JacsClient.ephemeral('ring-Ed25519');
+
+const signed = alice.signMessage({ action: 'approve' });
+</code></pre>
+<p>See the full example: <a href="https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.ts">examples/multi_agent_agreement.ts</a></p>
+<h2 id="mcp-tools-for-agreements"><a class="header" href="#mcp-tools-for-agreements">MCP Tools for Agreements</a></h2>
+<p>The JACS MCP server exposes agreement tools that LLMs can use directly:</p>
+<div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>jacs_create_agreement</code></td><td>Create agreement with quorum, timeout, algorithm constraints</td></tr>
+<tr><td><code>jacs_sign_agreement</code></td><td>Co-sign an agreement</td></tr>
+<tr><td><code>jacs_check_agreement</code></td><td>Check status: who signed, quorum met, expired</td></tr>
+</tbody></table>
+</div>
+<p>See <a href="../integrations/mcp.html">MCP Integration</a> for setup.</p>
 <h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
 <ol>
 <li><strong>Verify before signing</strong>: Always review documents before signing</li>
 <li><strong>Check agent identities</strong>: Verify who you're agreeing with (use DNS)</li>
 <li><strong>Include context</strong>: Make the agreement purpose clear</li>
 <li><strong>Handle disagreement</strong>: Have a process for when agents disagree</li>
+<li><strong>Use quorum for resilience</strong>: Don't require unanimous consent unless necessary</li>
+<li><strong>Set timeouts</strong>: Prevent agreements from hanging indefinitely</li>
+<li><strong>Enforce post-quantum for sensitive agreements</strong>: Use <code>minimum_strength: "post-quantum"</code> for long-term security</li>
 </ol>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
 <ul>
 <li><a href="dns.html">DNS Verification</a> - Verify agent identities</li>
 <li><a href="../schemas/task.html">Task Schema</a> - Task-specific agreements</li>
 <li><a href="../advanced/security.html">Security Model</a> - Agreement security</li>
+<li><a href="https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.py">Multi-Agent Agreement Example (Python)</a></li>
+<li><a href="https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.ts">Multi-Agent Agreement Example (Node.js)</a></li>
 </ul>
 
                     </main>

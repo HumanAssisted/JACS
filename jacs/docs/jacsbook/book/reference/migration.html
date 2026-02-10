@@ -181,6 +181,76 @@
 <li>Documents signed with older versions can be verified with newer versions</li>
 <li>Older JACS versions cannot verify documents using newer cryptographic algorithms</li>
 </ul>
+<h2 id="migrating-nodejs-from-06x-to-070"><a class="header" href="#migrating-nodejs-from-06x-to-070">Migrating Node.js from 0.6.x to 0.7.0</a></h2>
+<h3 id="breaking-change-async-first-api"><a class="header" href="#breaking-change-async-first-api">Breaking Change: Async-First API</a></h3>
+<p>In v0.7.0, all NAPI operations return Promises by default. Sync variants are available with a <code>Sync</code> suffix, following the Node.js convention (like <code>fs.readFile</code> vs <code>fs.readFileSync</code>).</p>
+<p><strong>Before (v0.6.x):</strong></p>
+<pre><code class="language-javascript">const agent = new JacsAgent();
+agent.load('./jacs.config.json');
+const doc = agent.createDocument(JSON.stringify(content));
+const isValid = agent.verifyDocument(doc);
+</code></pre>
+<p><strong>After (v0.7.0, async -- recommended):</strong></p>
+<pre><code class="language-javascript">const agent = new JacsAgent();
+await agent.load('./jacs.config.json');
+const doc = await agent.createDocument(JSON.stringify(content));
+const isValid = await agent.verifyDocument(doc);
+</code></pre>
+<p><strong>After (v0.7.0, sync -- for scripts/CLI):</strong></p>
+<pre><code class="language-javascript">const agent = new JacsAgent();
+agent.loadSync('./jacs.config.json');
+const doc = agent.createDocumentSync(JSON.stringify(content));
+const isValid = agent.verifyDocumentSync(doc);
+</code></pre>
+<h3 id="method-renaming-summary"><a class="header" href="#method-renaming-summary">Method Renaming Summary</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>v0.6.x</th><th>v0.7.0 Async (default)</th><th>v0.7.0 Sync</th></tr></thead><tbody>
+<tr><td><code>agent.load(path)</code></td><td><code>await agent.load(path)</code></td><td><code>agent.loadSync(path)</code></td></tr>
+<tr><td><code>agent.createDocument(...)</code></td><td><code>await agent.createDocument(...)</code></td><td><code>agent.createDocumentSync(...)</code></td></tr>
+<tr><td><code>agent.verifyDocument(doc)</code></td><td><code>await agent.verifyDocument(doc)</code></td><td><code>agent.verifyDocumentSync(doc)</code></td></tr>
+<tr><td><code>agent.verifyAgent()</code></td><td><code>await agent.verifyAgent()</code></td><td><code>agent.verifyAgentSync()</code></td></tr>
+<tr><td><code>agent.updateAgent(json)</code></td><td><code>await agent.updateAgent(json)</code></td><td><code>agent.updateAgentSync(json)</code></td></tr>
+<tr><td><code>agent.updateDocument(...)</code></td><td><code>await agent.updateDocument(...)</code></td><td><code>agent.updateDocumentSync(...)</code></td></tr>
+<tr><td><code>agent.signString(data)</code></td><td><code>await agent.signString(data)</code></td><td><code>agent.signStringSync(data)</code></td></tr>
+<tr><td><code>agent.createAgreement(...)</code></td><td><code>await agent.createAgreement(...)</code></td><td><code>agent.createAgreementSync(...)</code></td></tr>
+<tr><td><code>agent.signAgreement(...)</code></td><td><code>await agent.signAgreement(...)</code></td><td><code>agent.signAgreementSync(...)</code></td></tr>
+<tr><td><code>agent.checkAgreement(...)</code></td><td><code>await agent.checkAgreement(...)</code></td><td><code>agent.checkAgreementSync(...)</code></td></tr>
+</tbody></table>
+</div>
+<h3 id="v8-thread-only-methods-no-change"><a class="header" href="#v8-thread-only-methods-no-change">V8-Thread-Only Methods (No Change)</a></h3>
+<p>These methods remain synchronous without a <code>Sync</code> suffix because they use V8-thread-only APIs (<code>Env</code>, <code>JsObject</code>):</p>
+<ul>
+<li><code>agent.signRequest(params)</code> -- unchanged</li>
+<li><code>agent.verifyResponse(doc)</code> -- unchanged</li>
+<li><code>agent.verifyResponseWithAgentId(doc)</code> -- unchanged</li>
+</ul>
+<h3 id="simplified-api-module-level"><a class="header" href="#simplified-api-module-level">Simplified API (Module-Level)</a></h3>
+<p>The <code>@hai.ai/jacs/simple</code> module follows the same pattern:</p>
+<pre><code class="language-javascript">// v0.6.x
+jacs.quickstart();
+const signed = jacs.signMessage({ action: 'approve' });
+
+// v0.7.0 async (recommended)
+await jacs.quickstart();
+const signed = await jacs.signMessage({ action: 'approve' });
+
+// v0.7.0 sync
+jacs.quickstartSync();
+const signed = jacs.signMessageSync({ action: 'approve' });
+</code></pre>
+<h3 id="pure-sync-functions-no-change"><a class="header" href="#pure-sync-functions-no-change">Pure Sync Functions (No Change)</a></h3>
+<p>These functions do not call NAPI and remain unchanged (no suffix needed):</p>
+<ul>
+<li><code>hashString()</code>, <code>createConfig()</code>, <code>getPublicKey()</code>, <code>isLoaded()</code>, <code>exportAgent()</code>, <code>getAgentInfo()</code></li>
+<li><code>getDnsRecord()</code>, <code>getWellKnownJson()</code>, <code>verifyStandalone()</code></li>
+<li>Trust store: <code>trustAgent()</code>, <code>listTrustedAgents()</code>, <code>untrustAgent()</code>, <code>isTrusted()</code>, <code>getTrustedAgent()</code></li>
+</ul>
+<h3 id="migration-steps"><a class="header" href="#migration-steps">Migration Steps</a></h3>
+<ol>
+<li><strong>Update dependency:</strong> <code>npm install @hai.ai/jacs@0.7.0</code></li>
+<li><strong>Add <code>await</code></strong> to all NAPI method calls, or append <code>Sync</code> to method names</li>
+<li><strong>Update test assertions</strong> to handle Promises (use <code>async/await</code> in test functions)</li>
+<li><strong>V8-thread-only methods</strong> (<code>signRequest</code>, <code>verifyResponse</code>, <code>verifyResponseWithAgentId</code>) need no changes</li>
+</ol>
 <h2 id="migrating-from-051-to-052"><a class="header" href="#migrating-from-051-to-052">Migrating from 0.5.1 to 0.5.2</a></h2>
 <h3 id="migration-notes"><a class="header" href="#migration-notes">Migration Notes</a></h3>
 <p><strong>PBKDF2 Iteration Count</strong>: New key encryptions use 600,000 iterations (up from 100,000). Existing encrypted keys are decrypted automatically via fallback. To upgrade existing keys, re-encrypt them:</p>
@@ -214,7 +284,7 @@ jacs keygen
 <li><code>jacs_log_level</code> → Use <code>observability.logs.level</code></li>
 <li><code>jacs_log_file</code> → Use <code>observability.logs.destination</code></li>
 </ul>
-<h3 id="migration-steps"><a class="header" href="#migration-steps">Migration Steps</a></h3>
+<h3 id="migration-steps-1"><a class="header" href="#migration-steps-1">Migration Steps</a></h3>
 <ol>
 <li>
 <p><strong>Update Configuration:</strong></p>

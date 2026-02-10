@@ -1,13 +1,10 @@
 /**
  * Tests for JACS JacsClient (instance-based API)
  *
- * These tests verify that multiple JacsClient instances can coexist,
- * sign/verify independently, and support agreement options.
- *
- * Ephemeral agents can sign and verifySelf but cannot verify documents
- * (public key resolution requires disk or HAI key service).
- * Fixture-based tests require jacs/tests/scratch/ to be set up with a
- * matching JACS_PRIVATE_KEY_PASSWORD and are skipped if unavailable.
+ * Updated for v0.7.0 async-first API:
+ * - Static factories: ephemeral() → async, ephemeralSync() → sync
+ * - Instance methods: methodName() → async, methodNameSync() → sync
+ * - Async tests added for key operations
  */
 
 const { expect } = require('chai');
@@ -40,7 +37,7 @@ if (clientModule && fs.existsSync(TEST_CONFIG)) {
     const originalCwd = process.cwd();
     process.chdir(FIXTURES_DIR);
     try {
-      probe.load(TEST_CONFIG);
+      probe.loadSync(TEST_CONFIG);
       fixturesLoadable = true;
     } catch (_) {
       // password mismatch or other issue
@@ -63,31 +60,49 @@ describe('JacsClient', function () {
   });
 
   // ---------------------------------------------------------------------------
-  // Ephemeral factory
+  // Ephemeral factory (sync)
   // ---------------------------------------------------------------------------
 
-  describe('ephemeral factory', () => {
+  describe('ephemeralSync factory', () => {
     (available ? it : it.skip)('should create an ephemeral client with an agent ID', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       expect(client.agentId).to.be.a('string').and.not.empty;
       expect(client.name).to.be.a('string');
     });
 
     (available ? it : it.skip)('two ephemeral clients should have different agent IDs', () => {
-      const a = clientModule.JacsClient.ephemeral('ring-Ed25519');
-      const b = clientModule.JacsClient.ephemeral('ring-Ed25519');
+      const a = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const b = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       expect(a.agentId).to.not.equal(b.agentId);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Signing (ephemeral)
+  // Ephemeral factory (async)
   // ---------------------------------------------------------------------------
 
-  describe('signMessage on ephemeral', () => {
+  describe('ephemeral (async) factory', () => {
+    (available ? it : it.skip)('should create an ephemeral client with an agent ID (async)', async () => {
+      const client = await clientModule.JacsClient.ephemeral('ring-Ed25519');
+      expect(client.agentId).to.be.a('string').and.not.empty;
+      expect(client.name).to.be.a('string');
+    });
+
+    (available ? it : it.skip)('two async ephemeral clients should have different agent IDs', async () => {
+      const a = await clientModule.JacsClient.ephemeral('ring-Ed25519');
+      const b = await clientModule.JacsClient.ephemeral('ring-Ed25519');
+      expect(a.agentId).to.not.equal(b.agentId);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Signing (ephemeral, sync)
+  // ---------------------------------------------------------------------------
+
+  describe('signMessageSync on ephemeral', () => {
     (available ? it : it.skip)('should sign data and return SignedDocument', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
-      const signed = client.signMessage({ action: 'test', value: 42 });
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const signed = client.signMessageSync({ action: 'test', value: 42 });
 
       expect(signed).to.have.property('raw');
       expect(signed).to.have.property('documentId').that.is.a('string').and.not.empty;
@@ -100,10 +115,10 @@ describe('JacsClient', function () {
     });
 
     (available ? it : it.skip)('should produce unique document IDs', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
-      const s1 = client.signMessage({ seq: 1 });
-      const s2 = client.signMessage({ seq: 2 });
-      const s3 = client.signMessage({ seq: 3 });
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const s1 = client.signMessageSync({ seq: 1 });
+      const s2 = client.signMessageSync({ seq: 2 });
+      const s3 = client.signMessageSync({ seq: 3 });
 
       expect(s1.documentId).to.not.equal(s2.documentId);
       expect(s2.documentId).to.not.equal(s3.documentId);
@@ -111,10 +126,28 @@ describe('JacsClient', function () {
   });
 
   // ---------------------------------------------------------------------------
-  // Sign + verify (fixtures-based, skipped if fixtures unavailable)
+  // Signing (ephemeral, async)
   // ---------------------------------------------------------------------------
 
-  describe('sign + verify round-trip (fixtures)', () => {
+  describe('signMessage (async) on ephemeral', () => {
+    (available ? it : it.skip)('should sign data and return SignedDocument (async)', async () => {
+      const client = await clientModule.JacsClient.ephemeral('ring-Ed25519');
+      const signed = await client.signMessage({ action: 'async-test', value: 99 });
+
+      expect(signed).to.have.property('raw');
+      expect(signed).to.have.property('documentId').that.is.a('string').and.not.empty;
+      expect(signed).to.have.property('agentId').that.is.a('string').and.not.empty;
+
+      const doc = JSON.parse(signed.raw);
+      expect(doc).to.have.property('jacsSignature');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sign + verify (fixtures-based, sync)
+  // ---------------------------------------------------------------------------
+
+  describe('sign + verify round-trip (fixtures, sync)', () => {
     (available && fixturesLoadable ? it : it.skip)(
       'should sign and verify on fixture-loaded instance',
       () => {
@@ -122,10 +155,10 @@ describe('JacsClient', function () {
         const originalCwd = process.cwd();
         process.chdir(FIXTURES_DIR);
         try {
-          client.load(TEST_CONFIG);
-          const signed = client.signMessage({ action: 'approve', value: 100 });
+          client.loadSync(TEST_CONFIG);
+          const signed = client.signMessageSync({ action: 'approve', value: 100 });
 
-          const result = client.verify(signed.raw);
+          const result = client.verifySync(signed.raw);
           expect(result.valid).to.equal(true);
           expect(result.errors).to.be.an('array').that.is.empty;
           expect(result.signerId).to.equal(signed.agentId);
@@ -142,14 +175,40 @@ describe('JacsClient', function () {
         process.chdir(FIXTURES_DIR);
         try {
           const a = new clientModule.JacsClient();
-          a.load(TEST_CONFIG);
+          a.loadSync(TEST_CONFIG);
           const b = new clientModule.JacsClient();
-          b.load(TEST_CONFIG);
+          b.loadSync(TEST_CONFIG);
           expect(a.agentId).to.equal(b.agentId);
 
-          const sA = a.signMessage({ from: 'a' });
-          const sB = b.signMessage({ from: 'b' });
+          const sA = a.signMessageSync({ from: 'a' });
+          const sB = b.signMessageSync({ from: 'b' });
           expect(sA.documentId).to.not.equal(sB.documentId);
+        } finally {
+          process.chdir(originalCwd);
+        }
+      },
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sign + verify (fixtures-based, async)
+  // ---------------------------------------------------------------------------
+
+  describe('sign + verify round-trip (fixtures, async)', () => {
+    (available && fixturesLoadable ? it : it.skip)(
+      'should sign and verify on fixture-loaded instance (async)',
+      async () => {
+        const client = new clientModule.JacsClient();
+        const originalCwd = process.cwd();
+        process.chdir(FIXTURES_DIR);
+        try {
+          await client.load(TEST_CONFIG);
+          const signed = await client.signMessage({ action: 'approve-async', value: 200 });
+
+          const result = await client.verify(signed.raw);
+          expect(result.valid).to.equal(true);
+          expect(result.errors).to.be.an('array').that.is.empty;
+          expect(result.signerId).to.equal(signed.agentId);
         } finally {
           process.chdir(originalCwd);
         }
@@ -169,8 +228,8 @@ describe('JacsClient', function () {
         const freshSimple = require('../simple.js');
         freshSimple.reset();
 
-        const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
-        const signed = client.signMessage({ isolated: true });
+        const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+        const signed = client.signMessageSync({ isolated: true });
         expect(signed.documentId).to.be.a('string').and.not.empty;
 
         expect(freshSimple.isLoaded()).to.be.false;
@@ -182,10 +241,18 @@ describe('JacsClient', function () {
   // verifySelf
   // ---------------------------------------------------------------------------
 
-  describe('verifySelf', () => {
+  describe('verifySelfSync', () => {
     (available ? it : it.skip)('should verify ephemeral agent integrity', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
-      const result = client.verifySelf();
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const result = client.verifySelfSync();
+      expect(result.valid).to.equal(true);
+    });
+  });
+
+  describe('verifySelf (async)', () => {
+    (available ? it : it.skip)('should verify ephemeral agent integrity (async)', async () => {
+      const client = await clientModule.JacsClient.ephemeral('ring-Ed25519');
+      const result = await client.verifySelf();
       expect(result.valid).to.equal(true);
     });
   });
@@ -196,17 +263,17 @@ describe('JacsClient', function () {
 
   describe('reset / dispose', () => {
     (available ? it : it.skip)('should clear internal state', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       expect(client.agentId).to.not.equal('');
 
       client.reset();
 
       expect(client.agentId).to.equal('');
-      expect(() => client.signMessage({ fail: true })).to.throw(/No agent loaded/);
+      expect(() => client.signMessageSync({ fail: true })).to.throw(/No agent loaded/);
     });
 
     (available ? it : it.skip)('dispose should also clear state', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       client.dispose();
       expect(client.agentId).to.equal('');
     });
@@ -225,22 +292,22 @@ describe('JacsClient', function () {
 
   describe('strict mode', () => {
     (available ? it : it.skip)('should return valid=false for tampered doc (non-strict)', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
-      const signed = client.signMessage({ original: true });
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const signed = client.signMessageSync({ original: true });
       const doc = JSON.parse(signed.raw);
       doc.content = { tampered: true };
       const tampered = JSON.stringify(doc);
 
-      const result = client.verify(tampered);
+      const result = client.verifySync(tampered);
       expect(result.valid).to.equal(false);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Agreements (fixture-based)
+  // Agreements (fixture-based, sync)
   // ---------------------------------------------------------------------------
 
-  describe('agreements (fixture-based)', () => {
+  describe('agreements (fixture-based, sync)', () => {
     (available && fixturesLoadable ? it : it.skip)(
       'should create, sign, and check a single-agent agreement',
       () => {
@@ -248,10 +315,10 @@ describe('JacsClient', function () {
         const originalCwd = process.cwd();
         process.chdir(FIXTURES_DIR);
         try {
-          client.load(TEST_CONFIG);
+          client.loadSync(TEST_CONFIG);
           const agentId = client.agentId;
 
-          const agreement = client.createAgreement(
+          const agreement = client.createAgreementSync(
             { proposal: 'approve budget', amount: 5000 },
             [agentId],
             { question: 'Do you approve?', context: 'Q4 budget review' },
@@ -262,17 +329,17 @@ describe('JacsClient', function () {
 
           let checkError = null;
           try {
-            client.checkAgreement(agreement);
+            client.checkAgreementSync(agreement);
           } catch (e) {
             checkError = e;
           }
           expect(checkError).to.not.equal(null);
           expect(String(checkError)).to.match(/not all agents have signed/i);
 
-          const signed = client.signAgreement(agreement);
+          const signed = client.signAgreementSync(agreement);
           expect(signed.documentId).to.be.a('string').and.not.empty;
 
-          const status = client.checkAgreement(signed);
+          const status = client.checkAgreementSync(signed);
           expect(status.complete).to.equal(true);
           expect(status.pending).to.be.an('array').that.is.empty;
         } finally {
@@ -288,10 +355,10 @@ describe('JacsClient', function () {
         const originalCwd = process.cwd();
         process.chdir(FIXTURES_DIR);
         try {
-          client.load(TEST_CONFIG);
+          client.loadSync(TEST_CONFIG);
           const agentId = client.agentId;
 
-          const agreement = client.createAgreement(
+          const agreement = client.createAgreementSync(
             { proposal: 'quorum test' },
             [agentId],
             { question: 'Approve?', quorum: 1 },
@@ -299,8 +366,8 @@ describe('JacsClient', function () {
 
           expect(agreement.documentId).to.be.a('string').and.not.empty;
 
-          const signed = client.signAgreement(agreement);
-          const status = client.checkAgreement(signed);
+          const signed = client.signAgreementSync(agreement);
+          const status = client.checkAgreementSync(signed);
           expect(status.complete).to.equal(true);
         } finally {
           process.chdir(originalCwd);
@@ -316,21 +383,21 @@ describe('JacsClient', function () {
   describe('error handling', () => {
     (available ? it : it.skip)('should throw for operations before loading', () => {
       const client = new clientModule.JacsClient();
-      expect(() => client.signMessage({ data: 1 })).to.throw(/No agent loaded/);
-      expect(() => client.verify('{}')).to.throw(/No agent loaded/);
-      expect(() => client.verifySelf()).to.throw(/No agent loaded/);
+      expect(() => client.signMessageSync({ data: 1 })).to.throw(/No agent loaded/);
+      expect(() => client.verifySync('{}')).to.throw(/No agent loaded/);
+      expect(() => client.verifySelfSync()).to.throw(/No agent loaded/);
     });
 
     (available ? it : it.skip)('should return valid=false for invalid JSON in verify', () => {
-      const client = clientModule.JacsClient.ephemeral('ring-Ed25519');
-      const result = client.verify('not-json');
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const result = client.verifySync('not-json');
       expect(result.valid).to.equal(false);
       expect(result.errors).to.have.length.greaterThan(0);
     });
 
     (available ? it : it.skip)('should reject non-existent config in load', () => {
       const client = new clientModule.JacsClient();
-      expect(() => client.load('/nonexistent/jacs.config.json')).to.throw(
+      expect(() => client.loadSync('/nonexistent/jacs.config.json')).to.throw(
         /Config file not found/,
       );
     });

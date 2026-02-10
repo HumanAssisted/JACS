@@ -21,7 +21,7 @@ http = []
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["server", "transport-io", "macros"], optional = true }
+rmcp = { version = "0.12", features = ["server", "transport-io", "macros"], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
 jacs = { path = "../jacs", default-features = true }
 jacs-binding-core = { path = "../binding-core", features = ["hai"] }

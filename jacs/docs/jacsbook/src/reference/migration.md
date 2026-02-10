@@ -8,6 +8,92 @@ JACS maintains backward compatibility for document verification:
 - Documents signed with older versions can be verified with newer versions
 - Older JACS versions cannot verify documents using newer cryptographic algorithms
 
+## Migrating Node.js from 0.6.x to 0.7.0
+
+### Breaking Change: Async-First API
+
+In v0.7.0, all NAPI operations return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+
+**Before (v0.6.x):**
+```javascript
+const agent = new JacsAgent();
+agent.load('./jacs.config.json');
+const doc = agent.createDocument(JSON.stringify(content));
+const isValid = agent.verifyDocument(doc);
+```
+
+**After (v0.7.0, async -- recommended):**
+```javascript
+const agent = new JacsAgent();
+await agent.load('./jacs.config.json');
+const doc = await agent.createDocument(JSON.stringify(content));
+const isValid = await agent.verifyDocument(doc);
+```
+
+**After (v0.7.0, sync -- for scripts/CLI):**
+```javascript
+const agent = new JacsAgent();
+agent.loadSync('./jacs.config.json');
+const doc = agent.createDocumentSync(JSON.stringify(content));
+const isValid = agent.verifyDocumentSync(doc);
+```
+
+### Method Renaming Summary
+
+| v0.6.x | v0.7.0 Async (default) | v0.7.0 Sync |
+|--------|----------------------|-------------|
+| `agent.load(path)` | `await agent.load(path)` | `agent.loadSync(path)` |
+| `agent.createDocument(...)` | `await agent.createDocument(...)` | `agent.createDocumentSync(...)` |
+| `agent.verifyDocument(doc)` | `await agent.verifyDocument(doc)` | `agent.verifyDocumentSync(doc)` |
+| `agent.verifyAgent()` | `await agent.verifyAgent()` | `agent.verifyAgentSync()` |
+| `agent.updateAgent(json)` | `await agent.updateAgent(json)` | `agent.updateAgentSync(json)` |
+| `agent.updateDocument(...)` | `await agent.updateDocument(...)` | `agent.updateDocumentSync(...)` |
+| `agent.signString(data)` | `await agent.signString(data)` | `agent.signStringSync(data)` |
+| `agent.createAgreement(...)` | `await agent.createAgreement(...)` | `agent.createAgreementSync(...)` |
+| `agent.signAgreement(...)` | `await agent.signAgreement(...)` | `agent.signAgreementSync(...)` |
+| `agent.checkAgreement(...)` | `await agent.checkAgreement(...)` | `agent.checkAgreementSync(...)` |
+
+### V8-Thread-Only Methods (No Change)
+
+These methods remain synchronous without a `Sync` suffix because they use V8-thread-only APIs (`Env`, `JsObject`):
+
+- `agent.signRequest(params)` -- unchanged
+- `agent.verifyResponse(doc)` -- unchanged
+- `agent.verifyResponseWithAgentId(doc)` -- unchanged
+
+### Simplified API (Module-Level)
+
+The `@hai.ai/jacs/simple` module follows the same pattern:
+
+```javascript
+// v0.6.x
+jacs.quickstart();
+const signed = jacs.signMessage({ action: 'approve' });
+
+// v0.7.0 async (recommended)
+await jacs.quickstart();
+const signed = await jacs.signMessage({ action: 'approve' });
+
+// v0.7.0 sync
+jacs.quickstartSync();
+const signed = jacs.signMessageSync({ action: 'approve' });
+```
+
+### Pure Sync Functions (No Change)
+
+These functions do not call NAPI and remain unchanged (no suffix needed):
+
+- `hashString()`, `createConfig()`, `getPublicKey()`, `isLoaded()`, `exportAgent()`, `getAgentInfo()`
+- `getDnsRecord()`, `getWellKnownJson()`, `verifyStandalone()`
+- Trust store: `trustAgent()`, `listTrustedAgents()`, `untrustAgent()`, `isTrusted()`, `getTrustedAgent()`
+
+### Migration Steps
+
+1. **Update dependency:** `npm install @hai.ai/jacs@0.7.0`
+2. **Add `await`** to all NAPI method calls, or append `Sync` to method names
+3. **Update test assertions** to handle Promises (use `async/await` in test functions)
+4. **V8-thread-only methods** (`signRequest`, `verifyResponse`, `verifyResponseWithAgentId`) need no changes
+
 ## Migrating from 0.5.1 to 0.5.2
 
 ### Migration Notes

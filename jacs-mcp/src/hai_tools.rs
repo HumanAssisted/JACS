@@ -639,6 +639,77 @@ pub struct AdoptStateResult {
 }
 
 // =============================================================================
+// Document Sign/Verify Request/Response Types
+// =============================================================================
+
+/// Parameters for verifying a raw signed JACS document string.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyDocumentParams {
+    /// The full JACS signed document as a JSON string.
+    #[schemars(description = "The full signed JACS document JSON string to verify")]
+    pub document: String,
+}
+
+/// Result of verifying a signed document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyDocumentResult {
+    /// Whether the operation completed without error.
+    pub success: bool,
+
+    /// Whether the document's hash and signature are valid.
+    pub valid: bool,
+
+    /// The signer's agent ID, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signer_id: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if verification failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for signing arbitrary content as a JACS document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignDocumentParams {
+    /// The JSON content string to sign.
+    #[schemars(description = "The JSON content to sign as a JACS document")]
+    pub content: String,
+
+    /// Optional MIME type of the content (default: "application/json").
+    #[schemars(description = "MIME type of the content (default: 'application/json')")]
+    pub content_type: Option<String>,
+}
+
+/// Result of signing a document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignDocumentResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The full signed JACS document as a JSON string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_document: Option<String>,
+
+    /// SHA-256 hash of the signed document content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+
+    /// The JACS document ID assigned to the signed document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_document_id: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if signing failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
 // Message Request/Response Types
 // =============================================================================
 
@@ -1213,6 +1284,22 @@ impl HaiMcpServer {
                  decide whether an agreement is complete and ready to act on.",
                 Self::jacs_check_agreement_schema(),
             ),
+            // --- Document sign/verify tools ---
+            Tool::new(
+                "jacs_sign_document",
+                "Sign arbitrary JSON content to create a cryptographically signed JACS document. \
+                 Use this for attestation -- when you want to prove that content was signed by \
+                 this agent. Returns the signed envelope with hash and document ID.",
+                Self::jacs_sign_document_schema(),
+            ),
+            Tool::new(
+                "jacs_verify_document",
+                "Verify a signed JACS document given its full JSON string. Checks both the \
+                 content hash and cryptographic signature. Use this when you have a signed \
+                 document in memory (e.g. from an approval context or message payload) and \
+                 need to confirm its integrity and authenticity.",
+                Self::jacs_verify_document_schema(),
+            ),
         ]
     }
 
@@ -1378,6 +1465,22 @@ impl HaiMcpServer {
 
     fn jacs_check_agreement_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(CheckAgreementParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_sign_document_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(SignDocumentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_verify_document_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(VerifyDocumentParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -3256,6 +3359,153 @@ impl HaiMcpServer {
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
+
+    // =========================================================================
+    // Document Sign / Verify tools
+    // =========================================================================
+
+    /// Sign arbitrary JSON content to create a cryptographically signed JACS document.
+    #[tool(
+        name = "jacs_sign_document",
+        description = "Sign arbitrary JSON content to create a signed JACS document for attestation."
+    )]
+    pub async fn jacs_sign_document(
+        &self,
+        Parameters(params): Parameters<SignDocumentParams>,
+    ) -> String {
+        // Validate content is valid JSON
+        let content_value: serde_json::Value = match serde_json::from_str(&params.content) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = SignDocumentResult {
+                    success: false,
+                    signed_document: None,
+                    content_hash: None,
+                    jacs_document_id: None,
+                    message: "Content is not valid JSON".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Wrap content in a JACS-compatible envelope if it doesn't already have jacsType
+        let doc_to_sign = if content_value.get("jacsType").is_some() {
+            params.content.clone()
+        } else {
+            let wrapper = serde_json::json!({
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": content_value,
+            });
+            wrapper.to_string()
+        };
+
+        // Sign via create_document (no_save=true)
+        match self
+            .agent
+            .create_document(&doc_to_sign, None, None, true, None, None)
+        {
+            Ok(signed_doc_string) => {
+                // Extract document ID and compute content hash
+                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from));
+
+                let hash = {
+                    let mut hasher = Sha256::new();
+                    hasher.update(signed_doc_string.as_bytes());
+                    format!("{:x}", hasher.finalize())
+                };
+
+                let result = SignDocumentResult {
+                    success: true,
+                    signed_document: Some(signed_doc_string),
+                    content_hash: Some(hash),
+                    jacs_document_id: doc_id,
+                    message: "Document signed successfully".to_string(),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = SignDocumentResult {
+                    success: false,
+                    signed_document: None,
+                    content_hash: None,
+                    jacs_document_id: None,
+                    message: "Failed to sign document".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Verify a signed JACS document given its full JSON string.
+    #[tool(
+        name = "jacs_verify_document",
+        description = "Verify a signed JACS document's hash and cryptographic signature."
+    )]
+    pub async fn jacs_verify_document(
+        &self,
+        Parameters(params): Parameters<VerifyDocumentParams>,
+    ) -> String {
+        if params.document.is_empty() {
+            let result = VerifyDocumentResult {
+                success: false,
+                valid: false,
+                signer_id: None,
+                message: "Document string is empty".to_string(),
+                error: Some("EMPTY_DOCUMENT".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Try verify_signature first (works for both self-signed and external docs)
+        match self.agent.verify_signature(&params.document, None) {
+            Ok(valid) => {
+                // Try to extract signer ID from the document
+                let signer_id = serde_json::from_str::<serde_json::Value>(&params.document)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("jacsSignature")
+                            .and_then(|sig| sig.get("agentId").or_else(|| sig.get("agentID")))
+                            .and_then(|id| id.as_str())
+                            .map(String::from)
+                    });
+
+                let result = VerifyDocumentResult {
+                    success: true,
+                    valid,
+                    signer_id,
+                    message: if valid {
+                        "Document verified successfully".to_string()
+                    } else {
+                        "Document signature verification failed".to_string()
+                    },
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = VerifyDocumentResult {
+                    success: false,
+                    valid: false,
+                    signer_id: None,
+                    message: format!("Verification failed: {}", e),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
 }
 
 // Implement the tool handler for the server
@@ -3394,7 +3644,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = HaiMcpServer::tools();
-        assert_eq!(tools.len(), 21);
+        assert_eq!(tools.len(), 23, "HaiMcpServer should expose 23 tools");
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"fetch_agent_key"));
@@ -3415,6 +3665,11 @@ mod tests {
         assert!(names.contains(&"jacs_message_update"));
         assert!(names.contains(&"jacs_message_agree"));
         assert!(names.contains(&"jacs_message_receive"));
+        assert!(names.contains(&"jacs_create_agreement"));
+        assert!(names.contains(&"jacs_sign_agreement"));
+        assert!(names.contains(&"jacs_check_agreement"));
+        assert!(names.contains(&"jacs_sign_document"));
+        assert!(names.contains(&"jacs_verify_document"));
     }
 
     #[test]

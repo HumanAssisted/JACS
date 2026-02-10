@@ -1,5 +1,9 @@
 /**
  * Tests for JACS Agent class - Core functionality
+ *
+ * Updated for v0.7.0 async-first API:
+ * - Instance methods use Sync suffix for blocking variants
+ * - signRequest/verifyResponse remain sync (V8-thread-only)
  */
 
 const { expect } = require('chai');
@@ -37,13 +41,13 @@ describe('JacsAgent Class', () => {
     });
   });
 
-  describe('load', function() {
+  describe('loadSync', function() {
     // Loading can take a moment
     this.timeout(10000);
 
     it('should throw error for non-existent config file', () => {
       const agent = new JacsAgent();
-      expect(() => agent.load('/nonexistent/path/jacs.config.json'))
+      expect(() => agent.loadSync('/nonexistent/path/jacs.config.json'))
         .to.throw();
     });
 
@@ -54,7 +58,7 @@ describe('JacsAgent Class', () => {
       fs.writeFileSync(tempPath, 'not valid json');
 
       try {
-        expect(() => agent.load(tempPath)).to.throw();
+        expect(() => agent.loadSync(tempPath)).to.throw();
       } finally {
         fs.unlinkSync(tempPath);
       }
@@ -66,13 +70,42 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should load agent from valid config', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        const result = agent.load(TEST_CONFIG);
+        const result = agent.loadSync(TEST_CONFIG);
         expect(result).to.be.a('string');
       });
     });
   });
 
-  describe('signString and verifyString', function() {
+  describe('load (async)', function() {
+    this.timeout(10000);
+
+    const fixturesExist = fs.existsSync(TEST_CONFIG);
+
+    it('should reject for non-existent config file', async () => {
+      const agent = new JacsAgent();
+      let caught = null;
+      try {
+        await agent.load('/nonexistent/path/jacs.config.json');
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).to.not.equal(null);
+    });
+
+    (fixturesExist ? it : it.skip)('should load agent from valid config (async)', async () => {
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const agent = new JacsAgent();
+        const result = await agent.load(TEST_CONFIG);
+        expect(result).to.be.a('string');
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+  });
+
+  describe('signStringSync and verifyStringSync', function() {
     this.timeout(10000);
 
     const fixturesExist = fs.existsSync(TEST_CONFIG);
@@ -80,10 +113,10 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should sign and verify a string', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         const data = 'Hello, JACS!';
-        const signature = agent.signString(data);
+        const signature = agent.signStringSync(data);
 
         expect(signature).to.be.a('string');
         expect(signature.length).to.be.greaterThan(0);
@@ -91,7 +124,7 @@ describe('JacsAgent Class', () => {
     });
   });
 
-  describe('createDocument', function() {
+  describe('createDocumentSync', function() {
     this.timeout(10000);
 
     const fixturesExist = fs.existsSync(TEST_CONFIG);
@@ -99,7 +132,7 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should create a signed document', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         const docContent = JSON.stringify({
           jacsType: 'message',
@@ -107,7 +140,7 @@ describe('JacsAgent Class', () => {
           content: { message: 'test' }
         });
 
-        const result = agent.createDocument(
+        const result = agent.createDocumentSync(
           docContent,
           null, // customSchema
           null, // outputfilename
@@ -130,7 +163,7 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should create documents with different content', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         const doc1Content = JSON.stringify({
           jacsType: 'message',
@@ -144,8 +177,8 @@ describe('JacsAgent Class', () => {
           content: { value: 2 }
         });
 
-        const result1 = agent.createDocument(doc1Content, null, null, true, null, null);
-        const result2 = agent.createDocument(doc2Content, null, null, true, null, null);
+        const result1 = agent.createDocumentSync(doc1Content, null, null, true, null, null);
+        const result2 = agent.createDocumentSync(doc2Content, null, null, true, null, null);
 
         const parsed1 = JSON.parse(result1);
         const parsed2 = JSON.parse(result2);
@@ -158,7 +191,7 @@ describe('JacsAgent Class', () => {
     });
   });
 
-  describe('verifyDocument', function() {
+  describe('verifyDocumentSync', function() {
     this.timeout(10000);
 
     const fixturesExist = fs.existsSync(TEST_CONFIG);
@@ -166,7 +199,7 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should verify a valid signed document', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         // Create a document first
         const docContent = JSON.stringify({
@@ -175,10 +208,10 @@ describe('JacsAgent Class', () => {
           content: { action: 'approve' }
         });
 
-        const signedDoc = agent.createDocument(docContent, null, null, true, null, null);
+        const signedDoc = agent.createDocumentSync(docContent, null, null, true, null, null);
 
         // Verify the document
-        const isValid = agent.verifyDocument(signedDoc);
+        const isValid = agent.verifyDocumentSync(signedDoc);
         expect(isValid).to.be.true;
       });
     });
@@ -186,7 +219,7 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should reject a tampered document', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         // Create a document first
         const docContent = JSON.stringify({
@@ -195,7 +228,7 @@ describe('JacsAgent Class', () => {
           content: { action: 'approve' }
         });
 
-        const signedDoc = agent.createDocument(docContent, null, null, true, null, null);
+        const signedDoc = agent.createDocumentSync(docContent, null, null, true, null, null);
         const doc = JSON.parse(signedDoc);
 
         // Tamper with the content
@@ -203,12 +236,12 @@ describe('JacsAgent Class', () => {
         const tamperedDoc = JSON.stringify(doc);
 
         // Verification should fail
-        expect(() => agent.verifyDocument(tamperedDoc)).to.throw();
+        expect(() => agent.verifyDocumentSync(tamperedDoc)).to.throw();
       });
     });
   });
 
-  describe('verifyAgent', function() {
+  describe('verifyAgentSync', function() {
     this.timeout(10000);
 
     const fixturesExist = fs.existsSync(TEST_CONFIG);
@@ -216,16 +249,16 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should verify agent integrity', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         // verifyAgent should return true or throw if invalid
-        const result = agent.verifyAgent();
+        const result = agent.verifyAgentSync();
         expect(result).to.be.true;
       });
     });
   });
 
-  describe('signRequest and verifyResponse', function() {
+  describe('signRequest and verifyResponse (V8-thread-only, no Sync suffix)', function() {
     this.timeout(10000);
 
     const fixturesExist = fs.existsSync(TEST_CONFIG);
@@ -233,7 +266,7 @@ describe('JacsAgent Class', () => {
     (fixturesExist ? it : it.skip)('should sign and verify a request/response', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         const payload = {
           method: 'test',
@@ -250,6 +283,51 @@ describe('JacsAgent Class', () => {
         const result = agent.verifyResponse(signedRequest);
         expect(result).to.be.an('object');
       });
+    });
+  });
+
+  // --- Async variants of key operations ---
+  describe('async operations', function() {
+    this.timeout(10000);
+
+    const fixturesExist = fs.existsSync(TEST_CONFIG);
+
+    (fixturesExist ? it : it.skip)('should create and verify document (async)', async () => {
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const agent = new JacsAgent();
+        await agent.load(TEST_CONFIG);
+
+        const docContent = JSON.stringify({
+          jacsType: 'message',
+          jacsLevel: 'raw',
+          content: { message: 'async test' }
+        });
+
+        const signedDoc = await agent.createDocument(docContent, null, null, true, null, null);
+        expect(signedDoc).to.be.a('string');
+        const doc = JSON.parse(signedDoc);
+        expect(doc).to.have.property('jacsId');
+
+        const isValid = await agent.verifyDocument(signedDoc);
+        expect(isValid).to.be.true;
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+
+    (fixturesExist ? it : it.skip)('should verify agent integrity (async)', async () => {
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const agent = new JacsAgent();
+        await agent.load(TEST_CONFIG);
+        const result = await agent.verifyAgent();
+        expect(result).to.be.true;
+      } finally {
+        process.chdir(originalCwd);
+      }
     });
   });
 });

@@ -310,34 +310,36 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { JacsAgent, hashString, createConfig, createAgent, trustAgent, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, audit, load, signAgent, verifyString, signString, verifyAgent, updateAgent, verifyDocumentStandalone, verifyDocument, updateDocument, verifySignature, createAgreement, signAgreement, createDocument, checkAgreement, signRequest, verifyResponse, verifyResponseWithAgentId, fetchRemoteKey, generateVerifyLink } = nativeBinding
+const { JacsAgent, hashString, createConfig, createAgentSync, createAgent, trustAgent, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, auditSync, audit, legacyLoad, legacySignAgent, legacyVerifyString, legacySignString, legacyVerifyAgent, legacyUpdateAgent, verifyDocumentStandalone, legacyVerifyDocument, legacyUpdateDocument, legacyVerifySignature, legacyCreateAgreement, legacySignAgreement, legacyCreateDocument, legacyCheckAgreement, legacySignRequest, legacyVerifyResponse, legacyVerifyResponseWithAgentId, fetchRemoteKey, generateVerifyLink } = nativeBinding
 
 module.exports.JacsAgent = JacsAgent
 module.exports.hashString = hashString
 module.exports.createConfig = createConfig
+module.exports.createAgentSync = createAgentSync
 module.exports.createAgent = createAgent
 module.exports.trustAgent = trustAgent
 module.exports.listTrustedAgents = listTrustedAgents
 module.exports.untrustAgent = untrustAgent
 module.exports.isTrusted = isTrusted
 module.exports.getTrustedAgent = getTrustedAgent
+module.exports.auditSync = auditSync
 module.exports.audit = audit
-module.exports.load = load
-module.exports.signAgent = signAgent
-module.exports.verifyString = verifyString
-module.exports.signString = signString
-module.exports.verifyAgent = verifyAgent
-module.exports.updateAgent = updateAgent
+module.exports.legacyLoad = legacyLoad
+module.exports.legacySignAgent = legacySignAgent
+module.exports.legacyVerifyString = legacyVerifyString
+module.exports.legacySignString = legacySignString
+module.exports.legacyVerifyAgent = legacyVerifyAgent
+module.exports.legacyUpdateAgent = legacyUpdateAgent
 module.exports.verifyDocumentStandalone = verifyDocumentStandalone
-module.exports.verifyDocument = verifyDocument
-module.exports.updateDocument = updateDocument
-module.exports.verifySignature = verifySignature
-module.exports.createAgreement = createAgreement
-module.exports.signAgreement = signAgreement
-module.exports.createDocument = createDocument
-module.exports.checkAgreement = checkAgreement
-module.exports.signRequest = signRequest
-module.exports.verifyResponse = verifyResponse
-module.exports.verifyResponseWithAgentId = verifyResponseWithAgentId
+module.exports.legacyVerifyDocument = legacyVerifyDocument
+module.exports.legacyUpdateDocument = legacyUpdateDocument
+module.exports.legacyVerifySignature = legacyVerifySignature
+module.exports.legacyCreateAgreement = legacyCreateAgreement
+module.exports.legacySignAgreement = legacySignAgreement
+module.exports.legacyCreateDocument = legacyCreateDocument
+module.exports.legacyCheckAgreement = legacyCheckAgreement
+module.exports.legacySignRequest = legacySignRequest
+module.exports.legacyVerifyResponse = legacyVerifyResponse
+module.exports.legacyVerifyResponseWithAgentId = legacyVerifyResponseWithAgentId
 module.exports.fetchRemoteKey = fetchRemoteKey
 module.exports.generateVerifyLink = generateVerifyLink

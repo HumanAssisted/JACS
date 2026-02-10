@@ -9,8 +9,10 @@ This chapter provides practical Node.js examples using the `@hai.ai/jacs` packag
 npm install @hai.ai/jacs express @modelcontextprotocol/sdk zod
 ```
 
+v0.7.0 uses an async-first API. All NAPI operations return Promises by default; sync variants use a `Sync` suffix.
+
 ```javascript
-// Initialize JACS (ES Modules)
+// Initialize JACS (ES Modules, async)
 import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();

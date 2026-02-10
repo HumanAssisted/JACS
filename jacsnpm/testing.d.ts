@@ -6,20 +6,34 @@
  *
  * @example
  * ```typescript
- * import { createTestClient } from '@hai.ai/jacs/testing';
+ * import { createTestClient, createTestClientSync } from '@hai.ai/jacs/testing';
  *
- * const client = createTestClient('ring-Ed25519');
- * const signed = client.signMessage({ hello: 'test' });
- * const result = client.verify(signed.raw);
+ * // Async (preferred)
+ * const client = await createTestClient('ring-Ed25519');
+ * const signed = await client.signMessage({ hello: 'test' });
+ * const result = await client.verify(signed.raw);
  * assert(result.valid);
+ *
+ * // Sync
+ * const client2 = createTestClientSync('ring-Ed25519');
+ * const signed2 = client2.signMessageSync({ hello: 'test' });
+ * const result2 = client2.verifySync(signed2.raw);
+ * assert(result2.valid);
  * ```
  */
 import { JacsClient } from './client';
 export { JacsClient };
 /**
- * Create an ephemeral JacsClient for testing. No files or env vars needed.
+ * Create an ephemeral JacsClient for testing (async). No files or env vars needed.
  *
  * @param algorithm - Signing algorithm (default: "ring-Ed25519" for speed)
  * @returns A fully-initialized JacsClient backed by an in-memory agent
  */
-export declare function createTestClient(algorithm?: string): JacsClient;
+export declare function createTestClient(algorithm?: string): Promise<JacsClient>;
+/**
+ * Create an ephemeral JacsClient for testing (sync). No files or env vars needed.
+ *
+ * @param algorithm - Signing algorithm (default: "ring-Ed25519" for speed)
+ * @returns A fully-initialized JacsClient backed by an in-memory agent
+ */
+export declare function createTestClientSync(algorithm?: string): JacsClient;

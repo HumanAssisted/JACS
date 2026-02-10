@@ -1,7 +1,7 @@
 // Transport Proxy Pattern - Intercepts at network boundary, not message level
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import jacs from './index.js';
+import { JacsAgent } from './index.js';
 import { IncomingMessage, ServerResponse } from "node:http";
 
 // Add near the top, after imports:
@@ -18,6 +18,7 @@ function jacslog(...args: any[]): void {
 // Load JACS config only once
 let jacsLoaded = false;
 let jacsLoadError: Error | null = null;
+let jacsAgent: JacsAgent | null = null;
 
 async function ensureJacsLoaded(configPath: string): Promise<void> {
   if (jacsLoaded) return;
@@ -25,13 +26,15 @@ async function ensureJacsLoaded(configPath: string): Promise<void> {
 
   try {
     jacslog(`ensureJacsLoaded: Attempting to load JACS config from: ${configPath}`);
-    jacsLoadError = null; 
-    await jacs.load(configPath);
+    jacsLoadError = null;
+    jacsAgent = new JacsAgent();
+    await jacsAgent.load(configPath);
     jacsLoaded = true;
     jacslog(`ensureJacsLoaded: JACS agent loaded successfully from ${configPath}.`);
   } catch (error) {
     jacsLoadError = error as Error;
-    console.error(`ensureJacsLoaded: CRITICAL: Failed to load JACS config from '${configPath}'. Error:`, jacsLoadError.message); 
+    jacsAgent = null;
+    console.error(`ensureJacsLoaded: CRITICAL: Failed to load JACS config from '${configPath}'. Error:`, jacsLoadError.message);
     throw jacsLoadError;
   }
 }
@@ -92,7 +95,7 @@ export class JACSTransportProxy implements Transport {
             // Try to decrypt/verify the string as a JACS artifact
             try {
               if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification of string...`);
-              const verificationResult = await jacs.verifyResponse(incomingData);
+              const verificationResult = await jacsAgent!.verifyResponse(incomingData);
               
               let decryptedMessage: JSONRPCMessage;
               if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
@@ -196,7 +199,7 @@ export class JACSTransportProxy implements Transport {
             try {
               // Try JACS verification first
               if (this.jacsOperational) {
-                const verificationResult = await jacs.verifyResponse(event.data);
+                const verificationResult = await jacsAgent!.verifyResponse(event.data);
                 
                 let decryptedMessage: JSONRPCMessage;
                 if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
@@ -273,7 +276,7 @@ export class JACSTransportProxy implements Transport {
               delete cleanMessage.params;
             }
             
-            const jacsArtifact = await jacs.signRequest(cleanMessage);
+            const jacsArtifact = await jacsAgent!.signRequest(cleanMessage);
             await this.transport.send(jacsArtifact as any);  
             
           } catch (jacsError) {
@@ -360,7 +363,7 @@ export class JACSTransportProxy implements Transport {
           const normalizedJsonString = JSON.stringify(parsedJson);
           
           if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification with normalized JSON...`);
-          const verificationResult = await jacs.verifyResponse(normalizedJsonString);
+          const verificationResult = await jacsAgent!.verifyResponse(normalizedJsonString);
           
           let decryptedMessage: JSONRPCMessage;
           if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
@@ -382,7 +385,7 @@ export class JACSTransportProxy implements Transport {
         } catch (parseError) {
           // If it's not valid JSON, try with original string
           if (enableDiagnosticLogging) jacslog(`${logPrefix}: JSON normalization failed, trying original string...`);
-          const verificationResult = await jacs.verifyResponse(bodyToProcess);
+          const verificationResult = await jacsAgent!.verifyResponse(bodyToProcess);
           
           let decryptedMessage: JSONRPCMessage;
           if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
@@ -428,7 +431,7 @@ export class JACSTransportProxy implements Transport {
         if (this.jacsOperational) {
           try {
             if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification of string...`);
-            const verificationResult = await jacs.verifyResponse(incomingData);
+            const verificationResult = await jacsAgent!.verifyResponse(incomingData);
             
             let decryptedMessage: JSONRPCMessage;
             if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {

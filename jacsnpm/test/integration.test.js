@@ -1,7 +1,10 @@
 /**
  * Integration tests for JACS Node.js bindings
  *
- * These tests verify end-to-end workflows and cross-module functionality.
+ * Updated for v0.7.0 async-first API:
+ * - Instance methods use Sync suffix for blocking variants
+ * - signRequest/verifyResponse remain sync (V8-thread-only)
+ * - Async integration tests added
  */
 
 const { expect } = require('chai');
@@ -30,11 +33,11 @@ describe('JACS Integration Tests', function() {
 
   const fixturesExist = fs.existsSync(TEST_CONFIG);
 
-  describe('Document Lifecycle', () => {
+  describe('Document Lifecycle (sync)', () => {
     (fixturesExist ? it : it.skip)('should create, sign, and verify a document', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         // Create document
         const content = {
@@ -48,13 +51,13 @@ describe('JACS Integration Tests', function() {
           }
         };
 
-        const signedDoc = agent.createDocument(
+        const signedDoc = agent.createDocumentSync(
           JSON.stringify(content),
           null, null, true, null, null
         );
 
         // Verify document
-        const isValid = agent.verifyDocument(signedDoc);
+        const isValid = agent.verifyDocumentSync(signedDoc);
         expect(isValid).to.be.true;
 
         // Parse and inspect
@@ -69,7 +72,7 @@ describe('JACS Integration Tests', function() {
     (fixturesExist ? it : it.skip)('should handle multiple document operations sequentially', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         const documents = [];
 
@@ -81,7 +84,7 @@ describe('JACS Integration Tests', function() {
             content: { index: i, timestamp: Date.now() }
           };
 
-          const signedDoc = agent.createDocument(
+          const signedDoc = agent.createDocumentSync(
             JSON.stringify(content),
             null, null, true, null, null
           );
@@ -91,7 +94,7 @@ describe('JACS Integration Tests', function() {
 
         // Verify all documents
         for (const doc of documents) {
-          const isValid = agent.verifyDocument(doc);
+          const isValid = agent.verifyDocumentSync(doc);
           expect(isValid).to.be.true;
         }
 
@@ -100,6 +103,41 @@ describe('JACS Integration Tests', function() {
         const uniqueIds = new Set(ids);
         expect(uniqueIds.size).to.equal(5);
       });
+    });
+  });
+
+  describe('Document Lifecycle (async)', () => {
+    (fixturesExist ? it : it.skip)('should create, sign, and verify a document (async)', async () => {
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const agent = new JacsAgent();
+        await agent.load(TEST_CONFIG);
+
+        const content = {
+          jacsType: 'message',
+          jacsLevel: 'raw',
+          content: {
+            type: 'order',
+            orderId: 'ORD-ASYNC-' + Date.now(),
+            items: ['item1', 'item2'],
+            total: 250.00
+          }
+        };
+
+        const signedDoc = await agent.createDocument(
+          JSON.stringify(content),
+          null, null, true, null, null
+        );
+
+        const isValid = await agent.verifyDocument(signedDoc);
+        expect(isValid).to.be.true;
+
+        const doc = JSON.parse(signedDoc);
+        expect(doc.jacsId).to.be.a('string');
+      } finally {
+        process.chdir(originalCwd);
+      }
     });
   });
 
@@ -121,7 +159,7 @@ describe('JACS Integration Tests', function() {
     (fixturesExist ? it : it.skip)('should produce different hashes for different document content', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         const contents = [
           { jacsType: 'message', jacsLevel: 'raw', content: { v: 1 } },
@@ -130,7 +168,7 @@ describe('JACS Integration Tests', function() {
         ];
 
         const hashes = contents.map(c => {
-          const signedDoc = agent.createDocument(
+          const signedDoc = agent.createDocumentSync(
             JSON.stringify(c), null, null, true, null, null
           );
           return JSON.parse(signedDoc).jacsSha256;
@@ -143,11 +181,11 @@ describe('JACS Integration Tests', function() {
     });
   });
 
-  describe('Request/Response Signing', () => {
+  describe('Request/Response Signing (V8-thread-only)', () => {
     (fixturesExist ? it : it.skip)('should sign requests and verify responses', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         // Sign a request payload
         const request = {
@@ -181,8 +219,8 @@ describe('JACS Integration Tests', function() {
         const agent1 = new JacsAgent();
         const agent2 = new JacsAgent();
 
-        agent1.load(TEST_CONFIG);
-        agent2.load(TEST_CONFIG);
+        agent1.loadSync(TEST_CONFIG);
+        agent2.loadSync(TEST_CONFIG);
 
         // Both should be able to sign documents
         const content1 = {
@@ -197,16 +235,16 @@ describe('JACS Integration Tests', function() {
           content: { from: 'agent2' }
         };
 
-        const doc1 = agent1.createDocument(JSON.stringify(content1), null, null, true, null, null);
-        const doc2 = agent2.createDocument(JSON.stringify(content2), null, null, true, null, null);
+        const doc1 = agent1.createDocumentSync(JSON.stringify(content1), null, null, true, null, null);
+        const doc2 = agent2.createDocumentSync(JSON.stringify(content2), null, null, true, null, null);
 
         // Both should be verifiable
-        expect(agent1.verifyDocument(doc1)).to.be.true;
-        expect(agent2.verifyDocument(doc2)).to.be.true;
+        expect(agent1.verifyDocumentSync(doc1)).to.be.true;
+        expect(agent2.verifyDocumentSync(doc2)).to.be.true;
 
         // Cross-verification should also work (same key)
-        expect(agent1.verifyDocument(doc2)).to.be.true;
-        expect(agent2.verifyDocument(doc1)).to.be.true;
+        expect(agent1.verifyDocumentSync(doc2)).to.be.true;
+        expect(agent2.verifyDocumentSync(doc1)).to.be.true;
       });
     });
   });
@@ -216,13 +254,13 @@ describe('JACS Integration Tests', function() {
       const agent = new JacsAgent();
 
       // Agent must be loaded first
-      expect(() => agent.verifyDocument('not valid json')).to.throw();
+      expect(() => agent.verifyDocumentSync('not valid json')).to.throw();
     });
 
     (fixturesExist ? it : it.skip)('should reject tampered document signatures', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         // Create valid document
         const content = {
@@ -231,7 +269,7 @@ describe('JACS Integration Tests', function() {
           content: { original: 'data' }
         };
 
-        const signedDoc = agent.createDocument(
+        const signedDoc = agent.createDocumentSync(
           JSON.stringify(content), null, null, true, null, null
         );
 
@@ -239,14 +277,14 @@ describe('JACS Integration Tests', function() {
         const doc = JSON.parse(signedDoc);
         doc.jacsSignature.signature = 'tampered-signature-value';
 
-        expect(() => agent.verifyDocument(JSON.stringify(doc))).to.throw();
+        expect(() => agent.verifyDocumentSync(JSON.stringify(doc))).to.throw();
       });
     });
 
     (fixturesExist ? it : it.skip)('should reject documents with modified hash', () => {
       withFixturesDir(() => {
         const agent = new JacsAgent();
-        agent.load(TEST_CONFIG);
+        agent.loadSync(TEST_CONFIG);
 
         // Create valid document
         const content = {
@@ -255,7 +293,7 @@ describe('JACS Integration Tests', function() {
           content: { test: 'data' }
         };
 
-        const signedDoc = agent.createDocument(
+        const signedDoc = agent.createDocumentSync(
           JSON.stringify(content), null, null, true, null, null
         );
 
@@ -263,7 +301,7 @@ describe('JACS Integration Tests', function() {
         const doc = JSON.parse(signedDoc);
         doc.jacsSha256 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
-        expect(() => agent.verifyDocument(JSON.stringify(doc))).to.throw();
+        expect(() => agent.verifyDocumentSync(JSON.stringify(doc))).to.throw();
       });
     });
   });

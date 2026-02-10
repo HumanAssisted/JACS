@@ -12,6 +12,18 @@ npm install @hai.ai/jacs
 
 The npm package ships prebuilt native bindings for supported targets and does not compile Rust during `npm install`.
 
+## v0.7.0: Async-First API
+
+All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+
+```javascript
+// Async (default, recommended -- does not block the event loop)
+const signed = await jacs.signMessage({ action: 'approve' });
+
+// Sync (blocks event loop, use in scripts or CLI tools)
+const signed = jacs.signMessageSync({ action: 'approve' });
+```
+
 ## Quick Start
 
 Zero-config -- one call to start signing:
@@ -19,9 +31,9 @@ Zero-config -- one call to start signing:
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-jacs.quickstart();
-const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-const result = jacs.verify(signed.raw);
+await jacs.quickstart();
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
@@ -34,41 +46,51 @@ If you already have an agent (e.g., created by a previous `quickstart()` call), 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-const agent = jacs.load('./jacs.config.json');
+await jacs.load('./jacs.config.json');
 
-const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-const result = jacs.verify(signed.raw);
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
 ## Core API
 
+Every function that calls into NAPI has both async (default) and sync variants:
+
+| Function | Sync Variant | Description |
+|----------|-------------|-------------|
+| `quickstart(options?)` | `quickstartSync(options?)` | Create a persistent agent with keys on disk |
+| `create(options)` | `createSync(options)` | Create a new agent programmatically |
+| `load(configPath)` | `loadSync(configPath)` | Load agent from config file |
+| `verifySelf()` | `verifySelfSync()` | Verify agent's own integrity |
+| `updateAgent(data)` | `updateAgentSync(data)` | Update agent document |
+| `updateDocument(id, data)` | `updateDocumentSync(id, data)` | Update existing document |
+| `signMessage(data)` | `signMessageSync(data)` | Sign any JSON data |
+| `signFile(path, embed)` | `signFileSync(path, embed)` | Sign a file |
+| `verify(doc)` | `verifySync(doc)` | Verify signed document |
+| `verifyById(id)` | `verifyByIdSync(id)` | Verify by storage ID |
+| `reencryptKey(old, new)` | `reencryptKeySync(old, new)` | Re-encrypt private key |
+| `getSetupInstructions(domain)` | `getSetupInstructionsSync(domain)` | Get DNS/well-known setup |
+| `createAgreement(doc, ids, ...)` | `createAgreementSync(doc, ids, ...)` | Create multi-party agreement |
+| `signAgreement(doc)` | `signAgreementSync(doc)` | Sign an agreement |
+| `checkAgreement(doc)` | `checkAgreementSync(doc)` | Check agreement status |
+| `audit(options?)` | `auditSync(options?)` | Run a security audit |
+
+Pure sync functions (no NAPI call, no suffix needed):
+
 | Function | Description |
 |----------|-------------|
-| `quickstart(options?)` | Create a persistent agent with keys on disk -- zero config, no manual setup |
-| `create(options)` | Create a new agent programmatically (non-interactive) |
-| `load(configPath)` | Load agent from config file |
-| `verifySelf()` | Verify agent's own integrity |
-| `updateAgent(data)` | Update agent document with new data |
-| `updateDocument(id, data)` | Update existing document with new data |
-| `signMessage(data)` | Sign any JSON data |
-| `signFile(path, embed)` | Sign a file |
-| `verify(doc)` | Verify signed document (JSON string) |
-| `verifyStandalone(doc, opts?)` | Verify without loading an agent (one-off) |
-| `verifyById(id)` | Verify a document by storage ID (`uuid:version`) |
-| `registerWithHai(opts?)` | Register the loaded agent with HAI.ai |
-| `getDnsRecord(domain, ttl?)` | Get DNS TXT record line for the agent |
-| `getWellKnownJson()` | Get well-known JSON for `/.well-known/jacs-pubkey.json` |
-| `reencryptKey(oldPw, newPw)` | Re-encrypt private key with new password |
-| `getPublicKey()` | Get public key for sharing |
+| `verifyStandalone(doc, opts?)` | Verify without loading an agent |
+| `getPublicKey()` | Get public key |
 | `isLoaded()` | Check if agent is loaded |
-| `trustAgent(json)` | Add an agent to the local trust store |
-| `listTrustedAgents()` | List all trusted agent IDs |
-| `untrustAgent(id)` | Remove an agent from the trust store |
-| `isTrusted(id)` | Check if an agent is trusted |
-| `getTrustedAgent(id)` | Get a trusted agent's JSON document |
-| `audit(options?)` | Run a read-only security audit; optional `configPath`, `recentN` |
-| `generateVerifyLink(doc, baseUrl?)` | Generate a shareable hai.ai verification URL for a signed document |
+| `getDnsRecord(domain, ttl?)` | Get DNS TXT record |
+| `getWellKnownJson()` | Get well-known JSON |
+| `trustAgent(json)` | Add agent to trust store |
+| `listTrustedAgents()` | List trusted agent IDs |
+| `untrustAgent(id)` | Remove from trust store |
+| `isTrusted(id)` | Check if agent is trusted |
+| `getTrustedAgent(id)` | Get trusted agent's JSON |
+| `generateVerifyLink(doc, baseUrl?)` | Generate verification URL |
 
 ## Types
 
@@ -95,7 +117,7 @@ interface VerificationResult {
 ```typescript
 const jacs = require('@hai.ai/jacs/simple');
 
-const agent = jacs.create({
+const agent = await jacs.create({
   name: 'my-agent',
   password: process.env.JACS_PRIVATE_KEY_PASSWORD,  // required
   algorithm: 'pq2025',                  // default; also: "ring-Ed25519", "RSA-PSS"
@@ -108,14 +130,14 @@ console.log(`Created: ${agent.agentId}`);
 ### Verify by Document ID
 
 ```javascript
-const result = jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
+const result = await jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
 console.log(`Valid: ${result.valid}`);
 ```
 
 ### Re-encrypt Private Key
 
 ```javascript
-jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
+await jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
 ```
 
 ### Password Requirements
@@ -133,17 +155,17 @@ The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) i
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-jacs.load('./jacs.config.json');
+await jacs.load('./jacs.config.json');
 
 // Sign data
-const signed = jacs.signMessage({
+const signed = await jacs.signMessage({
   action: 'transfer',
   amount: 500,
   to: 'agent-123'
 });
 
 // Later, verify received data
-const result = jacs.verify(receivedJson);
+const result = await jacs.verify(receivedJson);
 if (result.valid) {
   console.log(`Signed by: ${result.signerId}`);
   console.log(`Data: ${JSON.stringify(result.data)}`);
@@ -156,7 +178,7 @@ if (result.valid) {
 // Get current agent, modify, and update
 const agentDoc = JSON.parse(jacs.exportAgent());
 agentDoc.jacsAgentType = 'updated-service';
-const updated = jacs.updateAgent(agentDoc);
+const updated = await jacs.updateAgent(agentDoc);
 console.log('Agent updated with new version');
 ```
 
@@ -164,12 +186,12 @@ console.log('Agent updated with new version');
 
 ```javascript
 // Create a document
-const signed = jacs.signMessage({ status: 'pending', amount: 100 });
+const signed = await jacs.signMessage({ status: 'pending', amount: 100 });
 
 // Later, update it
 const doc = JSON.parse(signed.raw);
 doc.content.status = 'approved';
-const updated = jacs.updateDocument(signed.documentId, doc);
+const updated = await jacs.updateDocument(signed.documentId, doc);
 console.log('Document updated with new version');
 ```
 
@@ -177,10 +199,10 @@ console.log('Document updated with new version');
 
 ```javascript
 // Reference only (stores hash)
-const signed = jacs.signFile('contract.pdf', false);
+const signed = await jacs.signFile('contract.pdf', false);
 
 // Embed content (portable document)
-const embedded = jacs.signFile('contract.pdf', true);
+const embedded = await jacs.signFile('contract.pdf', true);
 ```
 
 ### MCP Integration
@@ -208,10 +230,10 @@ See `examples/mcp.simple.server.js` for a complete MCP server example with JACS-
 import { JacsClient } from '@hai.ai/jacs/client';
 
 // Zero-config: loads or creates a persistent agent
-const client = JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+const client = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
 
-const signed = client.signMessage({ action: 'approve', amount: 100 });
-const result = client.verify(signed.raw);
+const signed = await client.signMessage({ action: 'approve', amount: 100 });
+const result = await client.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
@@ -220,9 +242,17 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 For testing or throwaway use, create an in-memory client with no files or env vars:
 
 ```typescript
-const client = JacsClient.ephemeral('ring-Ed25519');
-const signed = client.signMessage({ hello: 'world' });
-const result = client.verify(signed.raw);
+const client = await JacsClient.ephemeral('ring-Ed25519');
+const signed = await client.signMessage({ hello: 'world' });
+const result = await client.verify(signed.raw);
+```
+
+Sync variants are also available:
+
+```typescript
+const client = JacsClient.ephemeralSync('ring-Ed25519');
+const signed = client.signMessageSync({ hello: 'world' });
+const result = client.verifySync(signed.raw);
 ```
 
 ### Multi-Party Agreements
@@ -230,7 +260,7 @@ const result = client.verify(signed.raw);
 Create agreements that require signatures from multiple agents, with optional constraints:
 
 ```typescript
-const agreement = client.createAgreement(
+const agreement = await client.createAgreement(
   { action: 'deploy', version: '2.0' },
   [agentA.agentId, agentB.agentId],
   {
@@ -243,49 +273,55 @@ const agreement = client.createAgreement(
 );
 
 // Other agents sign the agreement
-const signed = agentB.signAgreement(agreement.raw);
+const signed = await agentB.signAgreement(agreement.raw);
 
 // Check agreement status
-const status = client.checkAgreement(signed.raw);
+const status = await client.checkAgreement(signed.raw);
 console.log(`Complete: ${status.complete}, Signatures: ${status.signedCount}/${status.totalRequired}`);
 ```
 
 ### JacsClient API
 
-| Method | Description |
-|--------|-------------|
-| `JacsClient.quickstart(options?)` | Load or create a persistent agent (static factory) |
-| `JacsClient.ephemeral(algorithm?)` | Create an in-memory agent for testing (static factory) |
-| `client.load(configPath?)` | Load agent from config file |
-| `client.create(options)` | Create a new agent with keys |
-| `client.signMessage(data)` | Sign any JSON data |
-| `client.verify(doc)` | Verify a signed document |
-| `client.verifySelf()` | Verify agent's own integrity |
-| `client.verifyById(id)` | Verify by storage ID (`uuid:version`) |
-| `client.signFile(path, embed?)` | Sign a file |
-| `client.createAgreement(doc, agentIds, options?)` | Create a multi-party agreement |
-| `client.signAgreement(doc, fieldName?)` | Sign an existing agreement |
-| `client.checkAgreement(doc, fieldName?)` | Check agreement status |
-| `client.updateAgent(data)` | Update and re-sign the agent document |
-| `client.updateDocument(id, data)` | Update and re-sign a document |
-| `client.reset()` | Clear internal state |
+All instance methods have async (default) and sync variants:
+
+| Method | Sync Variant | Description |
+|--------|-------------|-------------|
+| `JacsClient.quickstart(options?)` | `JacsClient.quickstartSync(options?)` | Load or create a persistent agent |
+| `JacsClient.ephemeral(algorithm?)` | `JacsClient.ephemeralSync(algorithm?)` | Create an in-memory agent |
+| `client.load(configPath?)` | `client.loadSync(configPath?)` | Load agent from config file |
+| `client.create(options)` | `client.createSync(options)` | Create a new agent |
+| `client.signMessage(data)` | `client.signMessageSync(data)` | Sign any JSON data |
+| `client.verify(doc)` | `client.verifySync(doc)` | Verify a signed document |
+| `client.verifySelf()` | `client.verifySelfSync()` | Verify agent's own integrity |
+| `client.verifyById(id)` | `client.verifyByIdSync(id)` | Verify by storage ID |
+| `client.signFile(path, embed?)` | `client.signFileSync(path, embed?)` | Sign a file |
+| `client.createAgreement(...)` | `client.createAgreementSync(...)` | Create multi-party agreement |
+| `client.signAgreement(...)` | `client.signAgreementSync(...)` | Sign an agreement |
+| `client.checkAgreement(...)` | `client.checkAgreementSync(...)` | Check agreement status |
+| `client.updateAgent(data)` | `client.updateAgentSync(data)` | Update agent document |
+| `client.updateDocument(id, data)` | `client.updateDocumentSync(id, data)` | Update a document |
 
 See [`examples/multi_agent_agreement.ts`](./examples/multi_agent_agreement.ts) for a complete multi-agent agreement demo.
 
 ## Testing
 
-The `@hai.ai/jacs/testing` module provides a zero-setup test helper:
+The `@hai.ai/jacs/testing` module provides zero-setup test helpers:
 
 ```typescript
-import { createTestClient } from '@hai.ai/jacs/testing';
+import { createTestClient, createTestClientSync } from '@hai.ai/jacs/testing';
 
-const client = createTestClient('ring-Ed25519');
-const signed = client.signMessage({ hello: 'test' });
-const result = client.verify(signed.raw);
+// Async (preferred)
+const client = await createTestClient('ring-Ed25519');
+const signed = await client.signMessage({ hello: 'test' });
+const result = await client.verify(signed.raw);
 assert(result.valid);
-```
 
-`createTestClient` returns a `JacsClient.ephemeral()` instance -- no config files, no key files, no env vars needed.
+// Sync
+const client2 = createTestClientSync('ring-Ed25519');
+const signed2 = client2.signMessageSync({ hello: 'test' });
+const result2 = client2.verifySync(signed2.raw);
+assert(result2.valid);
+```
 
 ## HAI Integration
 

@@ -332,7 +332,7 @@ class JACSA2AIntegration {
       wrapped.jacsParentSignatures = parentSignatures;
     }
 
-    return jacs.signRequest(wrapped);
+    return jacs.legacySignRequest(wrapped);
   }
 
   /**
@@ -449,7 +449,7 @@ class JACSA2AIntegration {
     }
 
     try {
-      const isValid = jacs.verifyResponse(wrappedArtifact);
+      const isValid = jacs.legacyVerifyResponse(wrappedArtifact);
       const signatureInfo = wrappedArtifact.jacsSignature || {};
 
       const result = {
