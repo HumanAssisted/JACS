@@ -75,6 +75,9 @@ from .types import (
     NetworkError,
 )
 
+# Make instance-based client API available
+from .client import JacsClient
+
 # Make simplified API available as jacs.simple
 from . import simple
 
@@ -96,6 +99,7 @@ except ImportError:
 __all__ = [
     # Primary API Classes
     "JacsAgent",
+    "JacsClient",
     "SimpleAgent",
     # Stateless utilities
     "hash_string",
@@ -125,6 +129,7 @@ __all__ = [
     # Submodules
     "simple",
     "async_simple",
+    "testing",
     "hai",
 ]
 

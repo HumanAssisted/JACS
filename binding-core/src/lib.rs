@@ -472,16 +472,59 @@ impl AgentWrapper {
         context: Option<String>,
         agreement_fieldname: Option<String>,
     ) -> BindingResult<String> {
+        self.create_agreement_with_options(
+            document_string,
+            agentids,
+            question,
+            context,
+            agreement_fieldname,
+            None,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// Create an agreement with extended options (timeout, quorum, algorithm constraints).
+    ///
+    /// All option parameters are optional:
+    /// - `timeout`: ISO 8601 deadline after which the agreement expires
+    /// - `quorum`: minimum number of signatures required (M-of-N)
+    /// - `required_algorithms`: only accept signatures from these algorithms
+    /// - `minimum_strength`: "classical" or "post-quantum"
+    pub fn create_agreement_with_options(
+        &self,
+        document_string: &str,
+        agentids: Vec<String>,
+        question: Option<String>,
+        context: Option<String>,
+        agreement_fieldname: Option<String>,
+        timeout: Option<String>,
+        quorum: Option<u32>,
+        required_algorithms: Option<Vec<String>>,
+        minimum_strength: Option<String>,
+    ) -> BindingResult<String> {
+        use jacs::agent::agreement::{Agreement, AgreementOptions};
+
         let mut agent = self.lock()?;
         let base_doc = ensure_editable_agreement_document(&mut agent, document_string)?;
         let document_key = base_doc.getkey();
+
+        let options = AgreementOptions {
+            timeout,
+            quorum,
+            required_algorithms,
+            minimum_strength,
+        };
+
         let agreement_doc = agent
-            .create_agreement(
+            .create_agreement_with_options(
                 &document_key,
                 agentids.as_slice(),
                 question.as_deref(),
                 context.as_deref(),
                 agreement_fieldname,
+                &options,
             )
             .map_err(|e| {
                 BindingCoreError::agreement_failed(format!("Failed to create agreement: {}", e))

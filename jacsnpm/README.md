@@ -200,6 +200,93 @@ const jacsTransport = createJACSTransportProxy(
 
 See `examples/mcp.simple.server.js` for a complete MCP server example with JACS-signed tools.
 
+## JacsClient (Instance-Based API)
+
+`JacsClient` is the recommended API for new code. Each instance owns its own agent, so multiple clients can coexist in the same process without shared global state.
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+// Zero-config: loads or creates a persistent agent
+const client = JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+
+const signed = client.signMessage({ action: 'approve', amount: 100 });
+const result = client.verify(signed.raw);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+```
+
+### Ephemeral Clients
+
+For testing or throwaway use, create an in-memory client with no files or env vars:
+
+```typescript
+const client = JacsClient.ephemeral('ring-Ed25519');
+const signed = client.signMessage({ hello: 'world' });
+const result = client.verify(signed.raw);
+```
+
+### Multi-Party Agreements
+
+Create agreements that require signatures from multiple agents, with optional constraints:
+
+```typescript
+const agreement = client.createAgreement(
+  { action: 'deploy', version: '2.0' },
+  [agentA.agentId, agentB.agentId],
+  {
+    question: 'Approve deployment?',
+    timeout: '2026-03-01T00:00:00Z',    // ISO 8601 deadline
+    quorum: 2,                            // M-of-N signatures required
+    requiredAlgorithms: ['ring-Ed25519'], // restrict signing algorithms
+    minimumStrength: 'classical',         // "classical" or "post-quantum"
+  },
+);
+
+// Other agents sign the agreement
+const signed = agentB.signAgreement(agreement.raw);
+
+// Check agreement status
+const status = client.checkAgreement(signed.raw);
+console.log(`Complete: ${status.complete}, Signatures: ${status.signedCount}/${status.totalRequired}`);
+```
+
+### JacsClient API
+
+| Method | Description |
+|--------|-------------|
+| `JacsClient.quickstart(options?)` | Load or create a persistent agent (static factory) |
+| `JacsClient.ephemeral(algorithm?)` | Create an in-memory agent for testing (static factory) |
+| `client.load(configPath?)` | Load agent from config file |
+| `client.create(options)` | Create a new agent with keys |
+| `client.signMessage(data)` | Sign any JSON data |
+| `client.verify(doc)` | Verify a signed document |
+| `client.verifySelf()` | Verify agent's own integrity |
+| `client.verifyById(id)` | Verify by storage ID (`uuid:version`) |
+| `client.signFile(path, embed?)` | Sign a file |
+| `client.createAgreement(doc, agentIds, options?)` | Create a multi-party agreement |
+| `client.signAgreement(doc, fieldName?)` | Sign an existing agreement |
+| `client.checkAgreement(doc, fieldName?)` | Check agreement status |
+| `client.updateAgent(data)` | Update and re-sign the agent document |
+| `client.updateDocument(id, data)` | Update and re-sign a document |
+| `client.reset()` | Clear internal state |
+
+See [`examples/multi_agent_agreement.ts`](./examples/multi_agent_agreement.ts) for a complete multi-agent agreement demo.
+
+## Testing
+
+The `@hai.ai/jacs/testing` module provides a zero-setup test helper:
+
+```typescript
+import { createTestClient } from '@hai.ai/jacs/testing';
+
+const client = createTestClient('ring-Ed25519');
+const signed = client.signMessage({ hello: 'test' });
+const result = client.verify(signed.raw);
+assert(result.valid);
+```
+
+`createTestClient` returns a `JacsClient.ephemeral()` instance -- no config files, no key files, no env vars needed.
+
 ## HAI Integration
 
 The JACS package includes integration with HAI's key distribution service for fetching public keys without requiring local key storage.

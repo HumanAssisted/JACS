@@ -137,6 +137,14 @@ export declare class JacsAgent {
   constructor()
   /** Load an agent from a configuration file. */
   load(configPath: string): string
+  /**
+   * Create an ephemeral in-memory agent. No config, no files, no env vars needed.
+   *
+   * Replaces this instance's inner agent with a freshly created ephemeral agent
+   * that lives entirely in memory. Returns a JSON string with agent info
+   * (agent_id, name, version, algorithm).
+   */
+  ephemeral(algorithm?: string | undefined | null): string
   /** Sign an external agent's document with this agent's registration signature. */
   signAgent(agentString: string, publicKey: Buffer, publicKeyEncType: string): string
   /** Verify a signature on arbitrary string data. */
@@ -155,12 +163,26 @@ export declare class JacsAgent {
   verifySignature(documentString: string, signatureField?: string | undefined | null): boolean
   /** Create an agreement on a document. */
   createAgreement(documentString: string, agentids: Array<string>, question?: string | undefined | null, context?: string | undefined | null, agreementFieldname?: string | undefined | null): string
+  /** Create an agreement with extended options (timeout, quorum, algorithm constraints). */
+  createAgreementWithOptions(documentString: string, agentids: Array<string>, question?: string | undefined | null, context?: string | undefined | null, agreementFieldname?: string | undefined | null, timeout?: string | undefined | null, quorum?: number | undefined | null, requiredAlgorithms?: Array<string> | undefined | null, minimumStrength?: string | undefined | null): string
   /** Sign an agreement on a document. */
   signAgreement(documentString: string, agreementFieldname?: string | undefined | null): string
   /** Create a new JACS document. */
   createDocument(documentString: string, customSchema?: string | undefined | null, outputfilename?: string | undefined | null, noSave?: boolean | undefined | null, attachments?: string | undefined | null, embed?: boolean | undefined | null): string
   /** Check an agreement on a document. */
   checkAgreement(documentString: string, agreementFieldname?: string | undefined | null): string
+  /**
+   * Get setup instructions for publishing DNS records, DNSSEC, and HAI registration.
+   * Returns a JSON string with dns_record_bind, provider_commands, dnssec_instructions, etc.
+   */
+  getSetupInstructions(domain: string, ttl?: number | undefined | null): string
+  /**
+   * Register this agent with HAI.ai.
+   * Returns a JSON string with hai_registered, hai_error, dns_record, dns_route53.
+   */
+  registerWithHai(apiKey?: string | undefined | null, haiUrl?: string | undefined | null, preview?: boolean | undefined | null): string
+  /** Returns diagnostic information as a JSON string. */
+  diagnostics(): string
   /**
    * Verify a document looked up by ID from storage.
    *

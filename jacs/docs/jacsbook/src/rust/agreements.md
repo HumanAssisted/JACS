@@ -186,15 +186,124 @@ The `jacsAgreementHash` ensures all agents agree to the same content:
 
 This prevents modifications after some parties have signed.
 
+## Agreement Options (v0.6.2+)
+
+### Timeout
+
+Set a deadline after which the agreement expires:
+
+```python
+# Python
+agreement = client.create_agreement(
+    document=proposal,
+    agent_ids=[alice.agent_id, bob.agent_id],
+    timeout="2025-12-31T23:59:59Z"
+)
+```
+
+If the deadline passes before all required signatures are collected, `check_agreement()` returns an error.
+
+### Quorum (M-of-N Signing)
+
+Require only a subset of agents to sign:
+
+```python
+# Only 2 of 3 agents need to sign
+agreement = client.create_agreement(
+    document=proposal,
+    agent_ids=[alice.agent_id, bob.agent_id, carol.agent_id],
+    quorum=2
+)
+```
+
+When quorum is met, `check_agreement()` succeeds even if some agents haven't signed.
+
+### Algorithm Constraints
+
+Enforce that only specific cryptographic algorithms can be used:
+
+```python
+# Only post-quantum algorithms allowed
+agreement = client.create_agreement(
+    document=proposal,
+    agent_ids=agent_ids,
+    required_algorithms=["pq2025", "pq-dilithium"],
+    minimum_strength="post-quantum"
+)
+```
+
+An agent using RSA-PSS or Ed25519 will be rejected when trying to sign this agreement.
+
+### Combined Options
+
+```python
+agreement = client.create_agreement(
+    document={"proposal": "Deploy model v2"},
+    agent_ids=[alice.agent_id, bob.agent_id, mediator.agent_id],
+    question="Do you approve deployment?",
+    timeout="2025-06-30T00:00:00Z",
+    quorum=2,
+    minimum_strength="post-quantum"
+)
+```
+
+## Using JacsClient (Instance-Based API)
+
+For running multiple agents in one process, use `JacsClient` instead of the module-level API:
+
+### Python
+
+```python
+from jacs.client import JacsClient
+
+alice = JacsClient.ephemeral("ring-Ed25519")  # for testing
+bob = JacsClient.ephemeral("ring-Ed25519")
+
+signed = alice.sign_message({"action": "approve"})
+# alice.agent_id, bob.agent_id are unique
+```
+
+See the full example: [examples/multi_agent_agreement.py](https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.py)
+
+### Node.js
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const alice = JacsClient.ephemeral('ring-Ed25519');
+const bob = JacsClient.ephemeral('ring-Ed25519');
+
+const signed = alice.signMessage({ action: 'approve' });
+```
+
+See the full example: [examples/multi_agent_agreement.ts](https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.ts)
+
+## MCP Tools for Agreements
+
+The JACS MCP server exposes agreement tools that LLMs can use directly:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_create_agreement` | Create agreement with quorum, timeout, algorithm constraints |
+| `jacs_sign_agreement` | Co-sign an agreement |
+| `jacs_check_agreement` | Check status: who signed, quorum met, expired |
+
+See [MCP Integration](../integrations/mcp.md) for setup.
+
 ## Best Practices
 
 1. **Verify before signing**: Always review documents before signing
 2. **Check agent identities**: Verify who you're agreeing with (use DNS)
 3. **Include context**: Make the agreement purpose clear
 4. **Handle disagreement**: Have a process for when agents disagree
+5. **Use quorum for resilience**: Don't require unanimous consent unless necessary
+6. **Set timeouts**: Prevent agreements from hanging indefinitely
+7. **Enforce post-quantum for sensitive agreements**: Use `minimum_strength: "post-quantum"` for long-term security
 
 ## Next Steps
 
 - [DNS Verification](dns.md) - Verify agent identities
 - [Task Schema](../schemas/task.md) - Task-specific agreements
 - [Security Model](../advanced/security.md) - Agreement security
+- [Multi-Agent Agreement Example (Python)](https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.py)
+- [Multi-Agent Agreement Example (Node.js)](https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.ts)

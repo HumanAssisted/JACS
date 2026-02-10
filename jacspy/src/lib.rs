@@ -174,6 +174,46 @@ impl JacsAgent {
             .to_py()
     }
 
+    /// Create an agreement with extended options (timeout, quorum, algorithm constraints).
+    ///
+    /// Args:
+    ///     document_string: The document JSON string
+    ///     agentids: List of agent IDs required to sign
+    ///     question: Optional question or purpose
+    ///     context: Optional additional context
+    ///     agreement_fieldname: Optional custom field name
+    ///     timeout: Optional ISO 8601 deadline
+    ///     quorum: Optional minimum signatures required (M-of-N)
+    ///     required_algorithms: Optional list of accepted algorithms
+    ///     minimum_strength: Optional "classical" or "post-quantum"
+    #[pyo3(signature = (document_string, agentids, question=None, context=None, agreement_fieldname=None, timeout=None, quorum=None, required_algorithms=None, minimum_strength=None))]
+    fn create_agreement_with_options(
+        &self,
+        document_string: String,
+        agentids: Vec<String>,
+        question: Option<String>,
+        context: Option<String>,
+        agreement_fieldname: Option<String>,
+        timeout: Option<String>,
+        quorum: Option<u32>,
+        required_algorithms: Option<Vec<String>>,
+        minimum_strength: Option<String>,
+    ) -> PyResult<String> {
+        self.inner
+            .create_agreement_with_options(
+                &document_string,
+                agentids,
+                question,
+                context,
+                agreement_fieldname,
+                timeout,
+                quorum,
+                required_algorithms,
+                minimum_strength,
+            )
+            .to_py()
+    }
+
     /// Sign an agreement on a document.
     fn sign_agreement(
         &self,

@@ -6,7 +6,7 @@ JACS (JSON Agent Communication Standard) ensures that every file, memory, or con
 
 ## What can it do?
 
-The server exposes **14 tools** in four categories:
+The server exposes **21 tools** in five categories:
 
 ### Agent State (Data Provenance)
 
@@ -33,6 +33,33 @@ Sign, verify, and manage files that represent agent state (memories, skills, pla
 | Tool | Description |
 |------|-------------|
 | `jacs_audit` | Run a read-only security audit and health checks (risks, health_checks, summary). Optional: `config_path`, `recent_n`. |
+
+### Messaging
+
+Send and receive cryptographically signed messages between agents:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_message_send` | Create and sign a message for another agent |
+| `jacs_message_update` | Update and re-sign an existing message |
+| `jacs_message_agree` | Verify and co-sign a received message |
+| `jacs_message_receive` | Verify a received message and extract its content |
+
+### Agreements (Multi-Party)
+
+Create multi-party cryptographic agreements — multiple agents formally commit to a shared decision:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_create_agreement` | Create an agreement specifying which agents must sign, with optional quorum (M-of-N), timeout, and algorithm constraints |
+| `jacs_sign_agreement` | Co-sign an existing agreement, adding your agent's cryptographic signature |
+| `jacs_check_agreement` | Check agreement status: who signed, quorum met, expired, who still needs to sign |
+
+**Use agreements when agents need to:**
+- Approve a deployment, data transfer, or configuration change
+- Reach consensus on a proposal (e.g., 2-of-3 signers required)
+- Enforce that only post-quantum algorithms are used for signing
+- Set a deadline after which the agreement expires
 
 ### HAI Integration (Optional)
 
@@ -207,6 +234,38 @@ Adopt an external file as signed agent state, marking its origin as "adopted".
 - `name` (required): Human-readable name
 - `source_url` (optional): URL where the content was originally obtained
 - `description` (optional): Description of the adopted state
+
+### jacs_create_agreement
+
+Create a multi-party cryptographic agreement that other agents can co-sign.
+
+**Parameters:**
+- `document` (required): JSON document that all parties will agree to
+- `agent_ids` (required): List of agent IDs (UUIDs) that are parties to this agreement
+- `question` (optional): Human-readable question for signers (e.g., "Do you approve deploying model v2?")
+- `context` (optional): Additional context to help signers decide
+- `timeout` (optional): ISO 8601 deadline after which the agreement expires (e.g., "2025-12-31T23:59:59Z")
+- `quorum` (optional): Minimum signatures required (M-of-N). If omitted, all agents must sign.
+- `required_algorithms` (optional): Only allow these signing algorithms: `RSA-PSS`, `ring-Ed25519`, `pq-dilithium`, `pq2025`
+- `minimum_strength` (optional): `classical` (any algorithm) or `post-quantum` (pq-dilithium/pq2025 only)
+
+### jacs_sign_agreement
+
+Co-sign an existing agreement, adding your agent's cryptographic signature.
+
+**Parameters:**
+- `signed_agreement` (required): The full agreement JSON to sign
+- `agreement_fieldname` (optional): Custom agreement field name (default: `jacsAgreement`)
+
+### jacs_check_agreement
+
+Check the status of an agreement.
+
+**Parameters:**
+- `signed_agreement` (required): The agreement JSON to check
+- `agreement_fieldname` (optional): Custom agreement field name (default: `jacsAgreement`)
+
+**Returns:** `complete`, `quorum_met`, `expired`, `signatures_collected`, `signatures_required`, `signed_by`, `unsigned`
 
 ### fetch_agent_key
 

@@ -14,12 +14,50 @@ use crate::crypt::hash::hash_string;
 use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
 use crate::validation::normalize_agent_id;
+use chrono::Utc;
 use serde::ser::StdError;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashSet;
 use std::error::Error;
 use tracing::debug;
+
+/// Options for creating and checking agreements.
+///
+/// All fields are optional. When omitted, the existing behavior is preserved:
+/// - No timeout (agreement never expires)
+/// - No quorum (all listed agents must sign)
+/// - No algorithm constraints (any algorithm accepted)
+#[derive(Debug, Clone, Default)]
+pub struct AgreementOptions {
+    /// ISO 8601 deadline after which the agreement expires.
+    pub timeout: Option<String>,
+    /// Minimum number of signatures required (M-of-N). If `None`, all agents must sign.
+    pub quorum: Option<u32>,
+    /// Only accept signatures using one of these algorithms.
+    pub required_algorithms: Option<Vec<String>>,
+    /// Minimum strength tier: "classical" or "post-quantum".
+    pub minimum_strength: Option<String>,
+}
+
+/// Returns the strength tier for a signing algorithm.
+/// "post-quantum" algorithms: pq-dilithium, pq-dilithium-alt, pq2025
+/// Everything else is "classical".
+pub fn algorithm_strength(algo: &str) -> &'static str {
+    match algo {
+        "pq-dilithium" | "pq-dilithium-alt" | "pq2025" => "post-quantum",
+        _ => "classical",
+    }
+}
+
+/// Returns true if `algo` meets the `minimum_strength` requirement.
+fn meets_strength_requirement(algo: &str, minimum_strength: &str) -> bool {
+    match minimum_strength {
+        "post-quantum" => algorithm_strength(algo) == "post-quantum",
+        // "classical" accepts everything
+        _ => true,
+    }
+}
 
 pub trait Agreement {
     /// given a document id and a list of agents, return an updated document with an agreement field
@@ -33,6 +71,16 @@ pub trait Agreement {
         question: Option<&str>,
         context: Option<&str>,
         agreement_fieldname: Option<String>,
+    ) -> Result<JACSDocument, Box<dyn Error>>;
+    /// Create an agreement with extended options (timeout, quorum, algorithm constraints).
+    fn create_agreement_with_options(
+        &mut self,
+        document_key: &str,
+        agentids: &[String],
+        question: Option<&str>,
+        context: Option<&str>,
+        agreement_fieldname: Option<String>,
+        options: &AgreementOptions,
     ) -> Result<JACSDocument, Box<dyn Error>>;
     /// given a document id and a list of agents, return an updated document
     fn add_agents_to_agreement(
@@ -141,27 +189,109 @@ impl Agreement for Agent {
         context: Option<&str>,
         agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
+        self.create_agreement_with_options(
+            document_key,
+            agentids,
+            question,
+            context,
+            agreement_fieldname,
+            &AgreementOptions::default(),
+        )
+    }
+
+    fn create_agreement_with_options(
+        &mut self,
+        document_key: &str,
+        agentids: &[String],
+        question: Option<&str>,
+        context: Option<&str>,
+        agreement_fieldname: Option<String>,
+        options: &AgreementOptions,
+    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
         };
+
+        // Validate quorum
+        if let Some(q) = options.quorum {
+            if q == 0 {
+                return Err(JacsError::DocumentError(
+                    "Quorum must be at least 1".to_string(),
+                )
+                .into());
+            }
+            if q as usize > agentids.len() {
+                return Err(JacsError::DocumentError(format!(
+                    "Quorum ({}) cannot exceed the number of agents ({})",
+                    q,
+                    agentids.len()
+                ))
+                .into());
+            }
+        }
+
+        // Validate timeout is in the future
+        if let Some(ref timeout_str) = options.timeout {
+            let deadline = chrono::DateTime::parse_from_rfc3339(timeout_str).map_err(|e| {
+                JacsError::DocumentError(format!(
+                    "Invalid timeout '{}': must be ISO 8601 date-time (e.g., '2025-12-31T23:59:59Z'). Error: {}",
+                    timeout_str, e
+                ))
+            })?;
+            if deadline <= Utc::now() {
+                return Err(JacsError::DocumentError(format!(
+                    "Timeout '{}' is in the past",
+                    timeout_str
+                ))
+                .into());
+            }
+        }
+
+        // Validate minimum_strength
+        if let Some(ref strength) = options.minimum_strength {
+            if strength != "classical" && strength != "post-quantum" {
+                return Err(JacsError::DocumentError(format!(
+                    "Invalid minimumStrength '{}': must be 'classical' or 'post-quantum'",
+                    strength
+                ))
+                .into());
+            }
+        }
+
         let document = self.get_document(document_key)?;
         let mut value = document.value;
 
         let context_string = context.unwrap_or_default();
-
         let question_string = question.unwrap_or_default();
-        // todo error if value[AGENT_AGREEMENT_FIELDNAME] exists.validate
+
         let agreement_hash_value =
             json!(self.agreement_hash(value.clone(), &agreement_fieldname_key)?);
         value[DOCUMENT_AGREEMENT_HASH_FIELDNAME] = agreement_hash_value.clone();
-        value[agreement_fieldname_key.clone()] = json!({
-            // based on v1
+
+        let mut agreement_obj = json!({
             "signatures": [],
             "agentIDs": agentids,
             "question": question_string,
             "context": context_string
         });
+
+        // Add optional fields from AgreementOptions
+        if let Some(ref timeout) = options.timeout {
+            agreement_obj["timeout"] = json!(timeout);
+        }
+        if let Some(quorum) = options.quorum {
+            agreement_obj["quorum"] = json!(quorum);
+        }
+        if let Some(ref algos) = options.required_algorithms {
+            agreement_obj["requiredAlgorithms"] = json!(algos);
+        }
+        if let Some(ref strength) = options.minimum_strength {
+            agreement_obj["minimumStrength"] = json!(strength);
+        }
+
+        value[agreement_fieldname_key.clone()] = agreement_obj;
+
         let updated_document =
             self.update_document(document_key, &serde_json::to_string(&value)?, None, None)?;
 
@@ -308,6 +438,48 @@ impl Agreement for Agent {
 
         let document = self.get_document(document_key)?;
         let mut value = document.value;
+
+        // --- Pre-signing checks for timeout and algorithm constraints ---
+        if let Some(jacs_agreement) = value.get(&agreement_fieldname_key) {
+            // Timeout check
+            if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str()) {
+                if let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str) {
+                    if Utc::now() > deadline {
+                        return Err(JacsError::DocumentError(format!(
+                            "Cannot sign: agreement has expired (deadline was {})",
+                            timeout_str
+                        ))
+                        .into());
+                    }
+                }
+            }
+
+            // Algorithm constraint checks against this agent's signing algorithm
+            if let Some(algo) = &self.key_algorithm {
+                if let Some(required) = jacs_agreement.get("requiredAlgorithms").and_then(|v| v.as_array()) {
+                    let required_algos: Vec<String> = required
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect();
+                    if !required_algos.contains(algo) {
+                        return Err(JacsError::DocumentError(format!(
+                            "Cannot sign: agent's algorithm '{}' is not in requiredAlgorithms {:?}",
+                            algo, required_algos
+                        ))
+                        .into());
+                    }
+                }
+                if let Some(strength) = jacs_agreement.get("minimumStrength").and_then(|v| v.as_str()) {
+                    if !meets_strength_requirement(algo, strength) {
+                        return Err(JacsError::DocumentError(format!(
+                            "Cannot sign: agent's algorithm '{}' does not meet minimumStrength '{}'",
+                            algo, strength
+                        ))
+                        .into());
+                    }
+                }
+            }
+        }
         let binding = value[DOCUMENT_AGREEMENT_HASH_FIELDNAME].clone();
         let original_agreement_hash_value = binding.as_str();
         // todo use this
@@ -444,6 +616,12 @@ impl Agreement for Agent {
 
     /// checking agreements requires you have the public key of each signatory
     /// if the document hashes don't match or there are unsigned, it will fail
+    ///
+    /// Enforces optional agreement constraints:
+    /// - **timeout**: if set and expired, returns an error
+    /// - **quorum**: if set, only `quorum` signatures are required (M-of-N)
+    /// - **requiredAlgorithms**: if set, rejects signatures not using a listed algorithm
+    /// - **minimumStrength**: if set, rejects signatures below the strength tier
     fn check_agreement(
         &self,
         document_key: &str,
@@ -466,22 +644,72 @@ impl Agreement for Agent {
             return Err("Agreement verification failed: agreement hashes do not match".into());
         }
 
-        let unsigned = document.agreement_unsigned_agents(agreement_fieldname.clone())?;
-        if !unsigned.is_empty() {
-            return Err(JacsError::DocumentError(format!(
-                "not all agents have signed: {:?} {:?}",
-                unsigned,
-                document.value.get(agreement_fieldname_key).unwrap()
-            ))
-            .into());
+        let jacs_agreement = document
+            .value
+            .get(agreement_fieldname_key.clone())
+            .ok_or("Agreement verification failed: document has no agreement")?;
+
+        // --- Timeout check ---
+        if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str()) {
+            if let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str) {
+                if Utc::now() > deadline {
+                    return Err(JacsError::DocumentError(format!(
+                        "Agreement has expired: deadline was {}",
+                        timeout_str
+                    ))
+                    .into());
+                }
+            }
         }
 
-        if let Some(jacs_agreement) = document.value.get(agreement_fieldname_key.clone())
-            && let Some(signatures) = jacs_agreement.get("signatures")
+        // --- Read quorum ---
+        let quorum: Option<u32> = jacs_agreement
+            .get("quorum")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32);
+
+        // --- Read algorithm constraints ---
+        let required_algorithms: Option<Vec<String>> = jacs_agreement
+            .get("requiredAlgorithms")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            });
+        let minimum_strength: Option<&str> = jacs_agreement
+            .get("minimumStrength")
+            .and_then(|v| v.as_str());
+
+        // --- Unsigned check (respects quorum) ---
+        let unsigned = document.agreement_unsigned_agents(agreement_fieldname.clone())?;
+        let all_agents = document.agreement_requested_agents(agreement_fieldname.clone())?;
+        let signed_count = all_agents.len() - unsigned.len();
+
+        if let Some(q) = quorum {
+            if (signed_count as u32) < q {
+                return Err(JacsError::DocumentError(format!(
+                    "Quorum not met: need {} signatures, have {} (unsigned: {:?})",
+                    q, signed_count, unsigned
+                ))
+                .into());
+            }
+        } else {
+            // Original behavior: all agents must sign
+            if !unsigned.is_empty() {
+                return Err(JacsError::DocumentError(format!(
+                    "not all agents have signed: {:?} {:?}",
+                    unsigned, jacs_agreement
+                ))
+                .into());
+            }
+        }
+
+        // --- Verify each signature ---
+        if let Some(signatures) = jacs_agreement.get("signatures")
             && let Some(signatures_array) = signatures.as_array()
         {
             for signature in signatures_array {
-                // todo validate each signature
                 let agent_id_and_version = format!(
                     "{}:{}",
                     signature
@@ -502,6 +730,27 @@ impl Agreement for Agent {
                     .get_str("signingAlgorithm")
                     .expect("REASON public_key_enc_type")
                     .to_string();
+
+                // --- Algorithm constraint enforcement ---
+                if let Some(ref algos) = required_algorithms {
+                    if !algos.contains(&public_key_enc_type) {
+                        return Err(JacsError::DocumentError(format!(
+                            "Signature from {} uses algorithm '{}' which is not in requiredAlgorithms {:?}",
+                            agent_id_and_version, public_key_enc_type, algos
+                        ))
+                        .into());
+                    }
+                }
+                if let Some(strength) = minimum_strength {
+                    if !meets_strength_requirement(&public_key_enc_type, strength) {
+                        return Err(JacsError::DocumentError(format!(
+                            "Signature from {} uses algorithm '{}' which does not meet minimumStrength '{}'",
+                            agent_id_and_version, public_key_enc_type, strength
+                        ))
+                        .into());
+                    }
+                }
+
                 let agents_signature = signature
                     .get_str("signature")
                     .expect("REASON public_key_enc_type")
@@ -532,6 +781,14 @@ impl Agreement for Agent {
                     Some(noted_hash.clone()),
                     Some(agents_signature),
                 )?;
+            }
+            if let Some(q) = quorum {
+                return Ok(format!(
+                    "Quorum met: {}/{} signatures verified (required: {})",
+                    signed_count,
+                    all_agents.len(),
+                    q
+                ));
             }
             return Ok("All signatures passed".to_string());
         }

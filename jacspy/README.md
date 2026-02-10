@@ -140,6 +140,106 @@ signed: SignedDocument = jacs.sign_message({"data": "hello"})
 result: VerificationResult = jacs.verify(signed.raw)
 ```
 
+## JacsClient (Instance-Based API)
+
+When you need multiple agents in one process, or want to avoid global state, use `JacsClient`. Each instance wraps its own `JacsAgent` with independent keys and config.
+
+```python
+from jacs.client import JacsClient
+
+# Load from config
+client = JacsClient("./jacs.config.json")
+signed = client.sign_message({"action": "approve"})
+result = client.verify(signed.raw_json)
+print(f"Valid: {result.valid}, Agent: {client.agent_id}")
+
+# Or zero-config quickstart (creates keys on disk)
+client = JacsClient.quickstart()
+
+# Context manager for automatic cleanup
+with JacsClient.quickstart() as client:
+    signed = client.sign_message("hello")
+```
+
+### Multi-Agent Example
+
+```python
+from jacs.client import JacsClient
+
+alice = JacsClient.ephemeral()
+bob = JacsClient.ephemeral()
+
+signed = alice.sign_message({"from": "alice"})
+result = bob.verify(signed.raw_json)
+print(f"Alice: {alice.agent_id}")
+print(f"Bob verifies Alice's message: {result.valid}")
+```
+
+### Agreements with Timeout and Quorum
+
+`create_agreement` accepts flat keyword arguments for advanced options:
+
+```python
+from datetime import datetime, timedelta, timezone
+
+agreement = client.create_agreement(
+    document={"proposal": "Deploy model v2"},
+    agent_ids=[alice.agent_id, bob.agent_id, mediator.agent_id],
+    question="Do you approve?",
+    quorum=2,                    # 2-of-3 signatures required
+    timeout=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    required_algorithms=None,    # optional: restrict signing algorithms
+    minimum_strength=None,       # optional: "classical" or "post-quantum"
+)
+
+signed = alice.sign_agreement(agreement)
+status = alice.check_agreement(signed)
+print(f"Complete: {status.complete}, Pending: {status.pending}")
+```
+
+See [`examples/multi_agent_agreement.py`](../examples/multi_agent_agreement.py) for a full 3-agent agreement demo with crypto proof chain.
+
+### JacsClient API Reference
+
+| Method | Description |
+|--------|-------------|
+| `JacsClient(config_path)` | Load from config |
+| `JacsClient.quickstart()` | Zero-config persistent agent |
+| `JacsClient.ephemeral()` | In-memory agent (no disk, for tests) |
+| `sign_message(data)` | Sign JSON-serializable data |
+| `verify(document)` | Verify a signed document |
+| `verify_self()` | Verify agent integrity |
+| `verify_by_id(doc_id)` | Verify by storage ID |
+| `sign_file(path, embed)` | Sign a file |
+| `create_agreement(...)` | Create multi-party agreement |
+| `sign_agreement(doc)` | Co-sign an agreement |
+| `check_agreement(doc)` | Check agreement status |
+| `trust_agent(json)` | Add agent to trust store |
+| `list_trusted_agents()` | List trusted agent IDs |
+| `update_agent(data)` | Update and re-sign agent |
+| `update_document(id, data)` | Update and re-sign document |
+| `export_agent()` | Export agent JSON for sharing |
+| `audit()` | Run security audit |
+| `reset()` | Clear internal state |
+
+## Testing
+
+The `jacs.testing` module provides a pytest fixture that creates an ephemeral client with no disk I/O or env vars required:
+
+```python
+from jacs.testing import jacs_agent
+
+def test_sign_and_verify(jacs_agent):
+    signed = jacs_agent.sign_message({"test": True})
+    result = jacs_agent.verify(signed.raw_json)
+    assert result.valid
+
+def test_agent_has_unique_id(jacs_agent):
+    assert jacs_agent.agent_id
+```
+
+The fixture automatically resets after each test.
+
 ## MCP Integration
 
 For AI tool servers using the Model Context Protocol:
@@ -275,6 +375,7 @@ See the [examples/](./examples/) directory:
 - `sign_file.py` - File signing with embeddings
 - `mcp_server.py` - Authenticated MCP server
 - `p2p_exchange.py` - Peer-to-peer trust establishment
+- [`multi_agent_agreement.py`](../examples/multi_agent_agreement.py) - Three-agent agreement with quorum, timeout, and crypto proof chain
 
 ## Development
 

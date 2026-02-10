@@ -227,6 +227,8 @@ export interface QuickstartOptions {
   algorithm?: string;
   /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
   strict?: boolean;
+  /** Path to config file (default: "./jacs.config.json"). */
+  configPath?: string;
 }
 
 /**

@@ -20,3 +20,8 @@ scratch.md
 jacs.config.json
 !jacs/jacs.config.json
 .DS_Store
+
+# Runtime artifacts from tests
+var/
+documents/
+jacsnpm/var/

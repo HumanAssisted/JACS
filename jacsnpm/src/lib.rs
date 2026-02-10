@@ -179,6 +179,35 @@ impl JacsAgent {
             .to_napi()
     }
 
+    /// Create an agreement with extended options (timeout, quorum, algorithm constraints).
+    #[napi]
+    pub fn create_agreement_with_options(
+        &self,
+        document_string: String,
+        agentids: Vec<String>,
+        question: Option<String>,
+        context: Option<String>,
+        agreement_fieldname: Option<String>,
+        timeout: Option<String>,
+        quorum: Option<u32>,
+        required_algorithms: Option<Vec<String>>,
+        minimum_strength: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .create_agreement_with_options(
+                &document_string,
+                agentids,
+                question,
+                context,
+                agreement_fieldname,
+                timeout,
+                quorum,
+                required_algorithms,
+                minimum_strength,
+            )
+            .to_napi()
+    }
+
     /// Sign an agreement on a document.
     #[napi]
     pub fn sign_agreement(

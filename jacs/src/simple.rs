@@ -980,21 +980,16 @@ impl SimpleAgent {
             );
             updated_str
         } else {
-            // No config exists -- create minimal config (only required fields + non-defaults)
+            // No config exists -- create config with all required fields
             let mut config_map = serde_json::Map::new();
             config_map.insert("$schema".to_string(), json!("https://hai.ai/schemas/jacs.config.schema.json"));
             config_map.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
             config_map.insert("jacs_agent_key_algorithm".to_string(), json!(algorithm));
-            // Only include paths if they differ from defaults
-            if params.data_directory != "./jacs_data" {
-                config_map.insert("jacs_data_directory".to_string(), json!(params.data_directory));
-            }
-            if params.key_directory != "./jacs_keys" {
-                config_map.insert("jacs_key_directory".to_string(), json!(params.key_directory));
-            }
-            if params.default_storage != "fs" {
-                config_map.insert("jacs_default_storage".to_string(), json!(params.default_storage));
-            }
+            config_map.insert("jacs_data_directory".to_string(), json!(params.data_directory));
+            config_map.insert("jacs_key_directory".to_string(), json!(params.key_directory));
+            config_map.insert("jacs_default_storage".to_string(), json!(params.default_storage));
+            config_map.insert("jacs_agent_private_key_filename".to_string(), json!(DEFAULT_PRIVATE_KEY_FILENAME));
+            config_map.insert("jacs_agent_public_key_filename".to_string(), json!(DEFAULT_PUBLIC_KEY_FILENAME));
             let config_json = Value::Object(config_map);
 
             let new_str =
@@ -2389,12 +2384,44 @@ impl SimpleAgent {
         question: Option<&str>,
         context: Option<&str>,
     ) -> Result<SignedDocument, JacsError> {
-        use crate::agent::agreement::Agreement;
+        self.create_agreement_with_options(
+            document,
+            agent_ids,
+            question,
+            context,
+            None,
+        )
+    }
 
-        debug!("create_agreement() called with {} signers", agent_ids.len());
+    /// Creates a multi-party agreement with extended options.
+    ///
+    /// Like `create_agreement`, but accepts `AgreementOptions` for timeout,
+    /// quorum (M-of-N), and algorithm constraints.
+    ///
+    /// # Arguments
+    ///
+    /// * `document` - The document to create an agreement on (JSON string)
+    /// * `agent_ids` - List of agent IDs required to sign
+    /// * `question` - Optional prompt describing what agents are agreeing to
+    /// * `context` - Optional context for the agreement
+    /// * `options` - Optional `AgreementOptions` (timeout, quorum, algorithm constraints)
+    pub fn create_agreement_with_options(
+        &self,
+        document: &str,
+        agent_ids: &[String],
+        question: Option<&str>,
+        context: Option<&str>,
+        options: Option<&crate::agent::agreement::AgreementOptions>,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::agent::agreement::{Agreement, AgreementOptions};
+
+        debug!("create_agreement_with_options() called with {} signers", agent_ids.len());
 
         // Check document size before processing
         check_document_size(document)?;
+
+        let default_opts = AgreementOptions::default();
+        let opts = options.unwrap_or(&default_opts);
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -2409,7 +2436,14 @@ impl SimpleAgent {
 
         // Then create the agreement on it
         let agreement_doc = agent
-            .create_agreement(&jacs_doc.getkey(), agent_ids, question, context, None)
+            .create_agreement_with_options(
+                &jacs_doc.getkey(),
+                agent_ids,
+                question,
+                context,
+                None,
+                opts,
+            )
             .map_err(|e| JacsError::Internal {
                 message: format!("Failed to create agreement: {}", e),
             })?;

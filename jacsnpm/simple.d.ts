@@ -2,6 +2,7 @@
  * JACS Simplified API for TypeScript/JavaScript
  *
  * A streamlined interface for the most common JACS operations:
+ * - quickstart(): Zero-config ephemeral agent (no files, no env vars)
  * - load(): Load an existing agent from config
  * - verifySelf(): Verify the loaded agent's integrity
  * - signMessage(): Sign a message or data
@@ -130,10 +131,21 @@ export interface HaiRegistrationResult {
     signatures: string[];
 }
 /**
- * Options for quickstart agent creation.
+ * Options for loading an agent.
+ */
+export interface LoadOptions {
+    /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
+    strict?: boolean;
+}
+/**
+ * Returns whether the current agent is in strict mode.
+ */
+export declare function isStrict(): boolean;
+/**
+ * Options for quickstart ephemeral agent creation.
  */
 export interface QuickstartOptions {
-    /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". */
+    /** Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025". */
     algorithm?: string;
     /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
     strict?: boolean;
@@ -141,16 +153,16 @@ export interface QuickstartOptions {
     configPath?: string;
 }
 /**
- * Information about the agent created or loaded by quickstart().
+ * Information about an ephemeral agent created by quickstart().
  */
 export interface QuickstartInfo {
     /** Unique identifier for the agent (UUID). */
     agentId: string;
-    /** Human-readable name of the agent. */
+    /** Human-readable name of the agent (always "ephemeral"). */
     name: string;
     /** Agent version string. */
     version: string;
-    /** Signing algorithm used. */
+    /** Signing algorithm used (internal name, e.g. "ring-Ed25519"). */
     algorithm: string;
 }
 /**
@@ -227,30 +239,18 @@ export interface CreateAgentOptions {
  */
 export declare function create(options: CreateAgentOptions): AgentInfo;
 /**
- * Options for loading an agent.
- */
-export interface LoadOptions {
-    /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
-    strict?: boolean;
-}
-/**
  * Loads an existing agent from a configuration file.
  *
  * @param configPath - Path to jacs.config.json (default: "./jacs.config.json")
- * @param options - Optional load options (e.g. { strict: true })
  * @returns AgentInfo with the loaded agent's details
  *
  * @example
  * ```typescript
- * const agent = jacs.load('./jacs.config.json', { strict: true });
+ * const agent = jacs.load('./jacs.config.json');
  * console.log(`Loaded: ${agent.agentId}`);
  * ```
  */
 export declare function load(configPath?: string, options?: LoadOptions): AgentInfo;
-/**
- * Returns whether the current agent is in strict mode.
- */
-export declare function isStrict(): boolean;
 /**
  * Verifies the currently loaded agent's integrity.
  *
@@ -439,13 +439,6 @@ export declare function getAgentInfo(): AgentInfo | null;
  */
 export declare function isLoaded(): boolean;
 /**
- * Clear global agent state. Useful for test isolation.
- *
- * After calling reset(), you must call load() or create() again before
- * using any signing or verification functions.
- */
-export declare function reset(): void;
-/**
  * Return JACS diagnostic info (version, config, agent status).
  *
  * Returns an object with keys like jacs_version, os, arch, agent_loaded,
@@ -453,8 +446,21 @@ export declare function reset(): void;
  * agent_id and agent_version.
  *
  * @returns Diagnostic information object
+ *
+ * @example
+ * ```typescript
+ * const info = jacs.debugInfo();
+ * console.log(`Version: ${info.jacs_version}, OS: ${info.os}`);
+ * ```
  */
 export declare function debugInfo(): Record<string, unknown>;
+/**
+ * Clear global agent state. Useful for test isolation.
+ *
+ * After calling reset(), you must call quickstart(), load(), or create() again
+ * before using any signing or verification functions.
+ */
+export declare function reset(): void;
 /**
  * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
  * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
@@ -471,11 +477,23 @@ export declare function getWellKnownJson(): {
     agentId: string;
 };
 /**
- * Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
+ * Get comprehensive setup instructions for publishing DNS records, enabling DNSSEC,
+ * and registering with HAI.ai.
+ *
+ * Returns structured data with provider-specific commands for AWS Route53, Cloudflare,
+ * Azure DNS, Google Cloud DNS, and plain BIND format. Also includes DNSSEC guidance,
+ * well-known JSON payload, HAI registration details, and a human-readable summary.
  *
  * @param domain - The domain to publish the DNS TXT record under
  * @param ttl - TTL in seconds for the DNS record (default: 3600)
  * @returns Structured setup instructions
+ *
+ * @example
+ * ```typescript
+ * const instructions = jacs.getSetupInstructions('example.com');
+ * console.log(instructions.summary);
+ * console.log(instructions.providerCommands.route53);
+ * ```
  */
 export declare function getSetupInstructions(domain: string, ttl?: number): Record<string, unknown>;
 /**

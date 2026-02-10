@@ -3,6 +3,7 @@
  * JACS Simplified API for TypeScript/JavaScript
  *
  * A streamlined interface for the most common JACS operations:
+ * - quickstart(): Zero-config ephemeral agent (no files, no env vars)
  * - load(): Load an existing agent from config
  * - verifySelf(): Verify the loaded agent's integrity
  * - signMessage(): Sign a message or data
@@ -79,6 +80,8 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MAX_VERIFY_DOCUMENT_BYTES = exports.MAX_VERIFY_URL_LEN = exports.createConfig = exports.verifyString = exports.hashString = exports.JacsAgent = void 0;
+exports.isStrict = isStrict;
+exports.quickstart = quickstart;
 exports.create = create;
 exports.load = load;
 exports.verifySelf = verifySelf;
@@ -94,8 +97,11 @@ exports.getPublicKey = getPublicKey;
 exports.exportAgent = exportAgent;
 exports.getAgentInfo = getAgentInfo;
 exports.isLoaded = isLoaded;
+exports.debugInfo = debugInfo;
+exports.reset = reset;
 exports.getDnsRecord = getDnsRecord;
 exports.getWellKnownJson = getWellKnownJson;
+exports.getSetupInstructions = getSetupInstructions;
 exports.registerWithHai = registerWithHai;
 exports.createAgreement = createAgreement;
 exports.signAgreement = signAgreement;
@@ -119,6 +125,20 @@ const path = __importStar(require("path"));
 // =============================================================================
 let globalAgent = null;
 let agentInfo = null;
+let strictMode = false;
+function resolveStrict(explicit) {
+    if (explicit !== undefined) {
+        return explicit;
+    }
+    const envStrict = process.env.JACS_STRICT_MODE;
+    return envStrict === 'true' || envStrict === '1';
+}
+/**
+ * Returns whether the current agent is in strict mode.
+ */
+function isStrict() {
+    return strictMode;
+}
 function resolveConfigRelativePath(configPath, candidate) {
     if (path.isAbsolute(candidate)) {
         return candidate;
@@ -138,6 +158,86 @@ function normalizeDocumentInput(document) {
         }
     }
     return JSON.stringify(document);
+}
+/**
+ * Creates an ephemeral in-memory agent with zero configuration.
+ *
+ * No config files, no key files, no environment variables needed.
+ * The agent lives entirely in memory and is lost when the process exits.
+ * Perfect for quick prototyping, testing, and one-off signing.
+ *
+ * @param options - Optional algorithm and strict mode settings
+ * @returns QuickstartInfo with the ephemeral agent's details
+ *
+ * @example
+ * ```typescript
+ * import * as jacs from '@hai.ai/jacs/simple';
+ *
+ * // Zero-config start
+ * const info = jacs.quickstart();
+ * console.log(`Agent: ${info.agentId}`);
+ *
+ * // Sign something immediately
+ * const signed = jacs.signMessage({ hello: 'world' });
+ *
+ * // Verify it
+ * const result = jacs.verify(signed.raw);
+ * console.log(`Valid: ${result.valid}`);
+ * ```
+ */
+function quickstart(options) {
+    strictMode = resolveStrict(options?.strict);
+    const configPath = options?.configPath || './jacs.config.json';
+    const fs = require('fs');
+    const path = require('path');
+    const crypto = require('crypto');
+    if (fs.existsSync(configPath)) {
+        // Load existing agent
+        const info = load(configPath);
+        return {
+            agentId: info.agentId,
+            name: info.name || 'jacs-agent',
+            version: '',
+            algorithm: '',
+        };
+    }
+    // No existing config -- create a new persistent agent
+    // Ensure password is available
+    let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
+    if (!password) {
+        // Generate a secure password
+        const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const lower = 'abcdefghijklmnopqrstuvwxyz';
+        const digits = '0123456789';
+        const special = '!@#$%^&*()-_=+';
+        const all = upper + lower + digits + special;
+        password =
+            upper[crypto.randomInt(upper.length)] +
+                lower[crypto.randomInt(lower.length)] +
+                digits[crypto.randomInt(digits.length)] +
+                special[crypto.randomInt(special.length)];
+        for (let i = 4; i < 32; i++) {
+            password += all[crypto.randomInt(all.length)];
+        }
+        // Save to file
+        const keysDir = './jacs_keys';
+        fs.mkdirSync(keysDir, { recursive: true });
+        const pwPath = path.join(keysDir, '.jacs_password');
+        fs.writeFileSync(pwPath, password, { mode: 0o600 });
+        process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+    }
+    const algo = options?.algorithm || 'pq2025';
+    const result = create({
+        name: 'jacs-agent',
+        password,
+        algorithm: algo,
+    });
+    return {
+        agentId: result.agentId,
+        name: 'jacs-agent',
+        version: '',
+        algorithm: algo,
+    };
 }
 /**
  * Creates a new JACS agent with cryptographic keys.
@@ -185,7 +285,8 @@ function create(options) {
  * console.log(`Loaded: ${agent.agentId}`);
  * ```
  */
-function load(configPath) {
+function load(configPath, options) {
+    strictMode = resolveStrict(options?.strict);
     const requestedPath = configPath || './jacs.config.json';
     const resolvedConfigPath = path.resolve(requestedPath);
     if (!fs.existsSync(resolvedConfigPath)) {
@@ -222,7 +323,7 @@ function load(configPath) {
  */
 function verifySelf() {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     try {
         globalAgent.verifyAgent();
@@ -235,6 +336,9 @@ function verifySelf() {
         };
     }
     catch (e) {
+        if (strictMode) {
+            throw new Error(`Self-verification failed (strict mode): ${e}`);
+        }
         return {
             valid: false,
             signerId: '',
@@ -258,7 +362,7 @@ function verifySelf() {
  */
 function signMessage(data) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     // Create document structure
     const docContent = {
@@ -298,7 +402,7 @@ function signMessage(data) {
  */
 function updateAgent(newAgentData) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const dataString = typeof newAgentData === 'string'
         ? newAgentData
@@ -331,7 +435,7 @@ function updateAgent(newAgentData) {
  */
 function updateDocument(documentId, newDocumentData, attachments, embed) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const dataString = typeof newDocumentData === 'string'
         ? newDocumentData
@@ -360,7 +464,7 @@ function updateDocument(documentId, newDocumentData, attachments, embed) {
  */
 function signFile(filePath, embed = false) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     if (!fs.existsSync(filePath)) {
         throw new Error(`File not found: ${filePath}`);
@@ -398,7 +502,7 @@ function signFile(filePath, embed = false) {
  */
 function verify(signedDocument) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     // Detect non-JSON input and provide helpful error
     const trimmed = signedDocument.trim();
@@ -446,6 +550,9 @@ function verify(signedDocument) {
         };
     }
     catch (e) {
+        if (strictMode) {
+            throw new Error(`Verification failed (strict mode): ${e}`);
+        }
         return {
             valid: false,
             signerId: doc.jacsSignature?.agentID || '',
@@ -499,7 +606,7 @@ function verifyStandalone(signedDocument, options) {
  */
 function verifyById(documentId) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     if (!documentId.includes(':')) {
         return {
@@ -523,6 +630,9 @@ function verifyById(documentId) {
         };
     }
     catch (e) {
+        if (strictMode) {
+            throw new Error(`Verification failed (strict mode): ${e}`);
+        }
         return {
             valid: false,
             signerId: '',
@@ -546,7 +656,7 @@ function verifyById(documentId) {
  */
 function reencryptKey(oldPassword, newPassword) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     globalAgent.reencryptKey(oldPassword, newPassword);
 }
@@ -563,7 +673,7 @@ function reencryptKey(oldPassword, newPassword) {
  */
 function getPublicKey() {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     if (!fs.existsSync(agentInfo.publicKeyPath)) {
         throw new Error(`Public key not found: ${agentInfo.publicKeyPath}`);
@@ -583,7 +693,7 @@ function getPublicKey() {
  */
 function exportAgent() {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     // Read agent file
     const configPath = path.resolve(agentInfo.configPath);
@@ -613,12 +723,49 @@ function isLoaded() {
     return globalAgent !== null;
 }
 /**
+ * Return JACS diagnostic info (version, config, agent status).
+ *
+ * Returns an object with keys like jacs_version, os, arch, agent_loaded,
+ * data_directory, key_directory, etc. If an agent is loaded, includes
+ * agent_id and agent_version.
+ *
+ * @returns Diagnostic information object
+ *
+ * @example
+ * ```typescript
+ * const info = jacs.debugInfo();
+ * console.log(`Version: ${info.jacs_version}, OS: ${info.os}`);
+ * ```
+ */
+function debugInfo() {
+    if (!globalAgent) {
+        return { jacs_version: 'unknown', agent_loaded: false };
+    }
+    try {
+        return JSON.parse(globalAgent.diagnostics());
+    }
+    catch {
+        return { jacs_version: 'unknown', agent_loaded: false };
+    }
+}
+/**
+ * Clear global agent state. Useful for test isolation.
+ *
+ * After calling reset(), you must call quickstart(), load(), or create() again
+ * before using any signing or verification functions.
+ */
+function reset() {
+    globalAgent = null;
+    agentInfo = null;
+    strictMode = false;
+}
+/**
  * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
  * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
  */
 function getDnsRecord(domain, ttl = 3600) {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const agentDoc = JSON.parse(exportAgent());
     const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
@@ -636,7 +783,7 @@ function getDnsRecord(domain, ttl = 3600) {
  */
 function getWellKnownJson() {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const agentDoc = JSON.parse(exportAgent());
     const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
@@ -658,6 +805,32 @@ function getWellKnownJson() {
     };
 }
 /**
+ * Get comprehensive setup instructions for publishing DNS records, enabling DNSSEC,
+ * and registering with HAI.ai.
+ *
+ * Returns structured data with provider-specific commands for AWS Route53, Cloudflare,
+ * Azure DNS, Google Cloud DNS, and plain BIND format. Also includes DNSSEC guidance,
+ * well-known JSON payload, HAI registration details, and a human-readable summary.
+ *
+ * @param domain - The domain to publish the DNS TXT record under
+ * @param ttl - TTL in seconds for the DNS record (default: 3600)
+ * @returns Structured setup instructions
+ *
+ * @example
+ * ```typescript
+ * const instructions = jacs.getSetupInstructions('example.com');
+ * console.log(instructions.summary);
+ * console.log(instructions.providerCommands.route53);
+ * ```
+ */
+function getSetupInstructions(domain, ttl = 3600) {
+    if (!globalAgent) {
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
+    }
+    const json = globalAgent.getSetupInstructions(domain, ttl);
+    return JSON.parse(json);
+}
+/**
  * Register the loaded agent with HAI.ai.
  * Requires a loaded agent (uses exportAgent() for the payload).
  * Calls POST {haiUrl}/api/v1/agents/register with Bearer token and agent JSON.
@@ -667,7 +840,7 @@ function getWellKnownJson() {
  */
 async function registerWithHai(options) {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const apiKey = options?.apiKey ?? process.env.HAI_API_KEY;
     if (!apiKey) {
@@ -727,7 +900,7 @@ async function registerWithHai(options) {
  */
 function createAgreement(document, agentIds, question, context, fieldName) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const docString = normalizeDocumentInput(document);
     const result = globalAgent.createAgreement(docString, agentIds, question || null, context || null, fieldName || null);
@@ -755,7 +928,7 @@ function createAgreement(document, agentIds, question, context, fieldName) {
  */
 function signAgreement(document, fieldName) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const docString = normalizeDocumentInput(document);
     const result = globalAgent.signAgreement(docString, fieldName || null);
@@ -786,7 +959,7 @@ function signAgreement(document, fieldName) {
  */
 function checkAgreement(document, fieldName) {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call load() first.');
+        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
     }
     const docString = normalizeDocumentInput(document);
     const result = globalAgent.checkAgreement(docString, fieldName || null);
@@ -917,4 +1090,3 @@ function generateVerifyLink(document, baseUrl = 'https://hai.ai') {
     }
     return fullUrl;
 }
-//# sourceMappingURL=simple.js.map

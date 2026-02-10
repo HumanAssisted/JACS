@@ -30,6 +30,28 @@
       "type": "string",
       "description": "Context for the question?",
       "hai": "agent"
+    },
+    "timeout": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 deadline after which the agreement expires and no more signatures are accepted."
+    },
+    "quorum": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum number of signatures required for the agreement to be considered complete (M-of-N). If omitted, all agents in agentIDs must sign."
+    },
+    "requiredAlgorithms": {
+      "type": "array",
+      "description": "If specified, only signatures using one of these algorithms are accepted.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "minimumStrength": {
+      "type": "string",
+      "enum": ["classical", "post-quantum"],
+      "description": "Minimum cryptographic strength tier required for signatures. 'classical' accepts any algorithm; 'post-quantum' requires pq-dilithium or pq2025."
     }
   },
   "additionalProperties": false,
