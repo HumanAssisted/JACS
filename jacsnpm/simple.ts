@@ -2,6 +2,7 @@
  * JACS Simplified API for TypeScript/JavaScript
  *
  * A streamlined interface for the most common JACS operations:
+ * - quickstart(): Zero-config ephemeral agent (no files, no env vars)
  * - load(): Load an existing agent from config
  * - verifySelf(): Verify the loaded agent's integrity
  * - signMessage(): Sign a message or data
@@ -215,6 +216,84 @@ function normalizeDocumentInput(document: any): string {
 }
 
 // =============================================================================
+// Quickstart (Zero-Config Ephemeral Agent)
+// =============================================================================
+
+/**
+ * Options for quickstart ephemeral agent creation.
+ */
+export interface QuickstartOptions {
+  /** Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025". */
+  algorithm?: string;
+  /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
+  strict?: boolean;
+}
+
+/**
+ * Information about an ephemeral agent created by quickstart().
+ */
+export interface QuickstartInfo {
+  /** Unique identifier for the agent (UUID). */
+  agentId: string;
+  /** Human-readable name of the agent (always "ephemeral"). */
+  name: string;
+  /** Agent version string. */
+  version: string;
+  /** Signing algorithm used (internal name, e.g. "ring-Ed25519"). */
+  algorithm: string;
+}
+
+/**
+ * Creates an ephemeral in-memory agent with zero configuration.
+ *
+ * No config files, no key files, no environment variables needed.
+ * The agent lives entirely in memory and is lost when the process exits.
+ * Perfect for quick prototyping, testing, and one-off signing.
+ *
+ * @param options - Optional algorithm and strict mode settings
+ * @returns QuickstartInfo with the ephemeral agent's details
+ *
+ * @example
+ * ```typescript
+ * import * as jacs from '@hai.ai/jacs/simple';
+ *
+ * // Zero-config start
+ * const info = jacs.quickstart();
+ * console.log(`Agent: ${info.agentId}`);
+ *
+ * // Sign something immediately
+ * const signed = jacs.signMessage({ hello: 'world' });
+ *
+ * // Verify it
+ * const result = jacs.verify(signed.raw);
+ * console.log(`Valid: ${result.valid}`);
+ * ```
+ */
+export function quickstart(options?: QuickstartOptions): QuickstartInfo {
+  strictMode = resolveStrict(options?.strict);
+
+  // Create a new JacsAgent and initialize it as ephemeral
+  globalAgent = new JacsAgent();
+  const infoJson = globalAgent.ephemeral(options?.algorithm ?? null);
+  const info = JSON.parse(infoJson);
+
+  // Set agentInfo for functions that use it (verifySelf, etc.)
+  agentInfo = {
+    agentId: info.agent_id || '',
+    name: info.name || 'ephemeral',
+    publicKeyPath: '',
+    configPath: '',
+  };
+
+  return {
+    agentId: info.agent_id || '',
+    name: info.name || 'ephemeral',
+    version: info.version || '',
+    algorithm: info.algorithm || '',
+  };
+}
+
+// =============================================================================
 // Core Operations
 // =============================================================================
 
@@ -357,7 +436,7 @@ export function load(configPath?: string, options?: LoadOptions): AgentInfo {
  */
 export function verifySelf(): VerificationResult {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   try {
@@ -397,7 +476,7 @@ export function verifySelf(): VerificationResult {
  */
 export function signMessage(data: any): SignedDocument {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   // Create document structure
@@ -448,7 +527,7 @@ export function signMessage(data: any): SignedDocument {
  */
 export function updateAgent(newAgentData: any): string {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   const dataString = typeof newAgentData === 'string'
@@ -489,7 +568,7 @@ export function updateDocument(
   embed?: boolean
 ): SignedDocument {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   const dataString = typeof newDocumentData === 'string'
@@ -528,7 +607,7 @@ export function updateDocument(
  */
 export function signFile(filePath: string, embed: boolean = false): SignedDocument {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   if (!fs.existsSync(filePath)) {
@@ -578,7 +657,7 @@ export function signFile(filePath: string, embed: boolean = false): SignedDocume
  */
 export function verify(signedDocument: string): VerificationResult {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   // Detect non-JSON input and provide helpful error
@@ -695,7 +774,7 @@ export function verifyStandalone(
  */
 export function verifyById(documentId: string): VerificationResult {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   if (!documentId.includes(':')) {
@@ -747,7 +826,7 @@ export function verifyById(documentId: string): VerificationResult {
  */
 export function reencryptKey(oldPassword: string, newPassword: string): void {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   globalAgent.reencryptKey(oldPassword, newPassword);
@@ -766,7 +845,7 @@ export function reencryptKey(oldPassword: string, newPassword: string): void {
  */
 export function getPublicKey(): string {
   if (!agentInfo) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   if (!fs.existsSync(agentInfo.publicKeyPath)) {
@@ -789,7 +868,7 @@ export function getPublicKey(): string {
  */
 export function exportAgent(): string {
   if (!agentInfo) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   // Read agent file
@@ -856,8 +935,8 @@ export function debugInfo(): Record<string, unknown> {
 /**
  * Clear global agent state. Useful for test isolation.
  *
- * After calling reset(), you must call load() or create() again before
- * using any signing or verification functions.
+ * After calling reset(), you must call quickstart(), load(), or create() again
+ * before using any signing or verification functions.
  */
 export function reset(): void {
   globalAgent = null;
@@ -871,7 +950,7 @@ export function reset(): void {
  */
 export function getDnsRecord(domain: string, ttl: number = 3600): string {
   if (!agentInfo) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
   const agentDoc = JSON.parse(exportAgent());
   const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
@@ -896,7 +975,7 @@ export function getWellKnownJson(): {
   agentId: string;
 } {
   if (!agentInfo) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
   const agentDoc = JSON.parse(exportAgent());
   const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
@@ -942,7 +1021,7 @@ export function getSetupInstructions(
   ttl: number = 3600,
 ): Record<string, unknown> {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
   const json = globalAgent.getSetupInstructions(domain, ttl);
   return JSON.parse(json) as Record<string, unknown>;
@@ -960,7 +1039,7 @@ export async function registerWithHai(
   options?: HaiRegistrationOptions
 ): Promise<HaiRegistrationResult> {
   if (!agentInfo) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
   const apiKey = options?.apiKey ?? process.env.HAI_API_KEY;
   if (!apiKey) {
@@ -1054,7 +1133,7 @@ export function createAgreement(
   fieldName?: string
 ): SignedDocument {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   const docString = normalizeDocumentInput(document);
@@ -1096,7 +1175,7 @@ export function signAgreement(
   fieldName?: string
 ): SignedDocument {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   const docString = normalizeDocumentInput(document);
@@ -1134,7 +1213,7 @@ export function checkAgreement(
   fieldName?: string
 ): AgreementStatus {
   if (!globalAgent) {
-    throw new Error('No agent loaded. Call load() first.');
+    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
   }
 
   const docString = normalizeDocumentInput(document);

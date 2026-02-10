@@ -754,6 +754,76 @@ impl AgentWrapper {
         Ok(())
     }
 
+    /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
+    ///
+    /// Replaces the inner agent with a freshly created ephemeral agent that
+    /// lives entirely in memory. Returns a JSON string with agent info
+    /// (agent_id, name, version, algorithm).
+    pub fn ephemeral(&self, algorithm: Option<&str>) -> BindingResult<String> {
+        // Map user-friendly names to internal algorithm strings
+        let algo = match algorithm.unwrap_or("ed25519") {
+            "ed25519" => "ring-Ed25519",
+            "rsa-pss" => "RSA-PSS",
+            "pq2025" => "pq2025",
+            other => other,
+        };
+
+        let mut agent = Agent::ephemeral(algo).map_err(|e| {
+            BindingCoreError::agent_load(format!("Failed to create ephemeral agent: {}", e))
+        })?;
+
+        let template = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!(
+                    "Failed to create minimal agent template: {}",
+                    e
+                ))
+            })?;
+        let mut agent_json: Value = serde_json::from_str(&template).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse agent template JSON: {}",
+                e
+            ))
+        })?;
+        if let Some(obj) = agent_json.as_object_mut() {
+            obj.insert("name".to_string(), json!("ephemeral"));
+            obj.insert(
+                "description".to_string(),
+                json!("Ephemeral JACS agent"),
+            );
+        }
+
+        let instance = agent
+            .create_agent_and_load(&agent_json.to_string(), true, Some(algo))
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!(
+                    "Failed to initialize ephemeral agent: {}",
+                    e
+                ))
+            })?;
+
+        let agent_id = instance["jacsId"].as_str().unwrap_or("").to_string();
+        let version = instance["jacsVersion"].as_str().unwrap_or("").to_string();
+
+        // Replace the inner agent with the ephemeral one
+        let mut inner = self.lock()?;
+        *inner = agent;
+
+        let info = json!({
+            "agent_id": agent_id,
+            "name": "ephemeral",
+            "version": version,
+            "algorithm": algo,
+        });
+
+        serde_json::to_string_pretty(&info).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize ephemeral agent info: {}",
+                e
+            ))
+        })
+    }
+
     /// Returns diagnostic information including loaded agent details as a JSON string.
     pub fn diagnostics(&self) -> String {
         let mut info = jacs::simple::diagnostics();

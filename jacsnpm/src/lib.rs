@@ -66,6 +66,16 @@ impl JacsAgent {
         self.inner.load(config_path).to_napi()
     }
 
+    /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
+    ///
+    /// Replaces this instance's inner agent with a freshly created ephemeral agent
+    /// that lives entirely in memory. Returns a JSON string with agent info
+    /// (agent_id, name, version, algorithm).
+    #[napi]
+    pub fn ephemeral(&self, algorithm: Option<String>) -> Result<String> {
+        self.inner.ephemeral(algorithm.as_deref()).to_napi()
+    }
+
     /// Sign an external agent's document with this agent's registration signature.
     #[napi]
     pub fn sign_agent(

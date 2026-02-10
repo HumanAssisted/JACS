@@ -1112,6 +1112,74 @@ impl SimpleAgent {
         })
     }
 
+    /// Creates an ephemeral in-memory agent. No config file, no directories,
+    /// no environment variables, no password needed.
+    ///
+    /// # Arguments
+    ///
+    /// * `algorithm` - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+    ///
+    /// # Returns
+    ///
+    /// A `SimpleAgent` instance with in-memory keys, along with `AgentInfo`.
+    /// Keys are lost when the agent is dropped.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let (agent, info) = SimpleAgent::ephemeral(None)?;
+    /// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
+    /// ```
+    #[must_use = "ephemeral agent result must be checked for errors"]
+    pub fn ephemeral(algorithm: Option<&str>) -> Result<(Self, AgentInfo), JacsError> {
+        // Map user-friendly names to internal algorithm strings
+        let algo = match algorithm.unwrap_or("ed25519") {
+            "ed25519" => "ring-Ed25519",
+            "rsa-pss" => "RSA-PSS",
+            "pq2025" => "pq2025",
+            other => other,
+        };
+
+        let mut agent = Agent::ephemeral(algo).map_err(|e| JacsError::Internal {
+            message: format!("Failed to create ephemeral agent: {}", e),
+        })?;
+
+        let agent_json = build_agent_document("ai", "ephemeral", "Ephemeral JACS agent")?;
+        let instance = agent
+            .create_agent_and_load(&agent_json.to_string(), true, Some(algo))
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to initialize ephemeral agent: {}", e),
+            })?;
+
+        let agent_id = instance["jacsId"].as_str().unwrap_or("").to_string();
+        let version = instance["jacsVersion"].as_str().unwrap_or("").to_string();
+        let info = AgentInfo {
+            agent_id,
+            name: "ephemeral".to_string(),
+            public_key_path: String::new(),
+            config_path: String::new(),
+            version,
+            algorithm: algo.to_string(),
+            private_key_path: String::new(),
+            data_directory: String::new(),
+            key_directory: String::new(),
+            domain: String::new(),
+            dns_record: String::new(),
+            hai_registered: false,
+        };
+
+        Ok((
+            Self {
+                agent: Mutex::new(agent),
+                config_path: None,
+                strict: resolve_strict(None),
+            },
+            info,
+        ))
+    }
+
     /// Verifies the loaded agent's own identity.
     ///
     /// This checks:
@@ -3232,5 +3300,48 @@ mod tests {
             Err(JacsError::DocumentMalformed { .. }) => {} // expected
             other => panic!("Expected DocumentMalformed, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_simple_ephemeral_default_ed25519() {
+        let (agent, info) = SimpleAgent::ephemeral(None).unwrap();
+        assert!(!info.agent_id.is_empty());
+        assert_eq!(info.algorithm, "ring-Ed25519");
+        assert_eq!(info.name, "ephemeral");
+        assert!(info.config_path.is_empty());
+        assert!(info.public_key_path.is_empty());
+        // Verify self works
+        let result = agent.verify_self().unwrap();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_simple_ephemeral_pq2025() {
+        let (agent, info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
+        assert_eq!(info.algorithm, "pq2025");
+        let result = agent.verify_self().unwrap();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_simple_ephemeral_sign_and_verify() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let msg = serde_json::json!({"hello": "world"});
+        let signed = agent.sign_message(&msg).unwrap();
+        assert!(!signed.raw.is_empty());
+        // Verify the signed document
+        let result = agent.verify(&signed.raw).unwrap();
+        assert!(result.valid, "Signed message should verify: {:?}", result.errors);
+    }
+
+    #[test]
+    fn test_simple_ephemeral_no_files() {
+        let temp = std::env::temp_dir().join("jacs_simple_ephemeral_no_files");
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).unwrap();
+        let (_agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
+        assert!(entries.is_empty());
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

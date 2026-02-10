@@ -188,7 +188,7 @@ def _get_agent() -> JacsAgent:
     """Get the global agent, raising an error if not loaded."""
     if _global_agent is None:
         raise AgentNotLoadedError(
-            "No agent loaded. Call jacs.load() or jacs.create() first."
+            "No agent loaded. Call jacs.quickstart() for zero-config setup, or jacs.load('path/to/config.json') for a persistent agent."
         )
     return _global_agent
 
@@ -435,6 +435,159 @@ def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> Ag
     except Exception as e:
         logger.error("Failed to load agent: %s", e)
         raise JacsError(f"Failed to load agent: {e}")
+
+
+class _EphemeralAgentAdapter:
+    """Adapter that wraps a native SimpleAgent to provide the JacsAgent-compatible
+    interface expected by the simple.py module functions.
+
+    The simple.py functions call JacsAgent methods (create_document, verify_document,
+    verify_agent, etc.) on the global agent. The native SimpleAgent has a different
+    API (sign_message, verify, verify_self, etc.). This adapter bridges the gap.
+    """
+
+    def __init__(self, native_agent):
+        self._native = native_agent
+
+    def verify_agent(self, agentfile=None):
+        """Delegate to SimpleAgent.verify_self(); returns True or raises."""
+        result = self._native.verify_self()
+        if not result.get("valid", False):
+            errors = result.get("errors", [])
+            raise RuntimeError(f"Agent verification failed: {errors}")
+        return True
+
+    def create_document(self, document_string, custom_schema=None,
+                        outputfilename=None, no_save=None, attachments=None,
+                        embed=None):
+        """Delegate to SimpleAgent.sign_message() for message signing,
+        or sign_file() for file attachments."""
+        if attachments:
+            result = self._native.sign_file(attachments, embed or False)
+        else:
+            # Parse the document JSON and sign the value
+            data = json.loads(document_string)
+            result = self._native.sign_message(data)
+        return result.get("raw", "")
+
+    def verify_document(self, document_string):
+        """Delegate to SimpleAgent.verify()."""
+        result = self._native.verify(document_string)
+        return result.get("valid", False)
+
+    def get_agent_json(self):
+        """Delegate to SimpleAgent.export_agent()."""
+        return self._native.export_agent()
+
+    def update_agent(self, new_agent_string):
+        raise JacsError(
+            "update_agent() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def update_document(self, document_key, new_document_string,
+                        attachments=None, embed=None):
+        raise JacsError(
+            "update_document() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def create_agreement(self, document_string, agentids, question=None,
+                         context=None, agreement_fieldname=None):
+        raise JacsError(
+            "create_agreement() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def sign_agreement(self, document_string, agreement_fieldname=None):
+        raise JacsError(
+            "sign_agreement() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def check_agreement(self, document_string, agreement_fieldname=None):
+        raise JacsError(
+            "check_agreement() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def verify_document_by_id(self, document_id):
+        result = self._native.verify_by_id(document_id)
+        return result.get("valid", False)
+
+    def reencrypt_key(self, old_password, new_password):
+        return self._native.reencrypt_key(old_password, new_password)
+
+    def diagnostics(self):
+        return json.dumps({"agent_loaded": True, "ephemeral": True})
+
+    def get_setup_instructions(self, domain, ttl=3600):
+        raise JacsError(
+            "get_setup_instructions() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def register_with_hai(self, api_key=None, hai_url="https://hai.ai",
+                          preview=False):
+        raise JacsError(
+            "register_with_hai() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+
+def quickstart(algorithm=None, strict=None):
+    """One-line agent creation. No config file, no directories, no env vars needed.
+
+    Creates an ephemeral in-memory agent that can sign and verify documents
+    immediately. Perfect for scripts, notebooks, tests, and quick prototyping.
+
+    Example:
+        import jacs.simple as jacs
+        jacs.quickstart()
+        signed = jacs.sign_message({"hello": "world"})
+
+    Args:
+        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        strict: Enable strict verification mode
+
+    Returns:
+        AgentInfo with agent_id, name, algorithm, version
+    """
+    global _global_agent, _agent_info, _strict
+
+    _strict = _resolve_strict(strict)
+
+    try:
+        from . import SimpleAgent as _SimpleAgent
+
+        agent_instance, info_dict = _SimpleAgent.ephemeral(algorithm)
+
+        # Wrap the native SimpleAgent in an adapter that provides the
+        # JacsAgent-compatible interface expected by the rest of simple.py.
+        _global_agent = _EphemeralAgentAdapter(agent_instance)
+
+        _agent_info = AgentInfo(
+            agent_id=info_dict.get("agent_id", ""),
+            version=info_dict.get("version", ""),
+            name=info_dict.get("name", "ephemeral"),
+            public_key_hash="",
+            created_at="",
+            algorithm=info_dict.get("algorithm", "ed25519"),
+            config_path="",
+            public_key_path="",
+        )
+
+        logger.info("Ephemeral agent created: id=%s, algorithm=%s",
+                     _agent_info.agent_id, _agent_info.algorithm)
+        return _agent_info
+
+    except ImportError:
+        raise JacsError(
+            "Quickstart requires the full JACS native module. "
+            "Install with: pip install jacs"
+        )
+    except Exception as e:
+        raise JacsError(f"Failed to create ephemeral agent: {e}")
 
 
 def verify_self() -> VerificationResult:
@@ -1490,6 +1643,7 @@ def register_with_hai(
 
 __all__ = [
     # Core operations
+    "quickstart",
     "create",
     "load",
     "verify_self",

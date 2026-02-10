@@ -130,6 +130,55 @@ export interface HaiRegistrationResult {
     signatures: string[];
 }
 /**
+ * Options for quickstart ephemeral agent creation.
+ */
+export interface QuickstartOptions {
+    /** Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025". */
+    algorithm?: string;
+    /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
+    strict?: boolean;
+}
+/**
+ * Information about an ephemeral agent created by quickstart().
+ */
+export interface QuickstartInfo {
+    /** Unique identifier for the agent (UUID). */
+    agentId: string;
+    /** Human-readable name of the agent (always "ephemeral"). */
+    name: string;
+    /** Agent version string. */
+    version: string;
+    /** Signing algorithm used (internal name, e.g. "ring-Ed25519"). */
+    algorithm: string;
+}
+/**
+ * Creates an ephemeral in-memory agent with zero configuration.
+ *
+ * No config files, no key files, no environment variables needed.
+ * The agent lives entirely in memory and is lost when the process exits.
+ * Perfect for quick prototyping, testing, and one-off signing.
+ *
+ * @param options - Optional algorithm and strict mode settings
+ * @returns QuickstartInfo with the ephemeral agent's details
+ *
+ * @example
+ * ```typescript
+ * import * as jacs from '@hai.ai/jacs/simple';
+ *
+ * // Zero-config start
+ * const info = jacs.quickstart();
+ * console.log(`Agent: ${info.agentId}`);
+ *
+ * // Sign something immediately
+ * const signed = jacs.signMessage({ hello: 'world' });
+ *
+ * // Verify it
+ * const result = jacs.verify(signed.raw);
+ * console.log(`Valid: ${result.valid}`);
+ * ```
+ */
+export declare function quickstart(options?: QuickstartOptions): QuickstartInfo;
+/**
  * Options for creating a new JACS agent.
  */
 export interface CreateAgentOptions {

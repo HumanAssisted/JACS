@@ -141,6 +141,29 @@ async def create(
     )
 
 
+async def quickstart(algorithm=None, strict=None) -> AgentInfo:
+    """One-line agent creation. No config file, no directories, no env vars needed.
+
+    Creates an ephemeral in-memory agent that can sign and verify documents
+    immediately. Perfect for scripts, notebooks, tests, and quick prototyping.
+
+    Example:
+        import jacs.async_simple as jacs
+
+        async def main():
+            await jacs.quickstart()
+            signed = await jacs.sign_message({"hello": "world"})
+
+    Args:
+        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        strict: Enable strict verification mode
+
+    Returns:
+        AgentInfo with agent_id, name, algorithm, version
+    """
+    return await asyncio.to_thread(simple.quickstart, algorithm, strict)
+
+
 async def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> AgentInfo:
     """Load an existing JACS agent from configuration.
 
@@ -641,6 +664,7 @@ def reset():
 
 __all__ = [
     # Core operations
+    "quickstart",
     "create",
     "load",
     "verify_self",

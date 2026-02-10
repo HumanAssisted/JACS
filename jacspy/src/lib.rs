@@ -409,6 +409,33 @@ impl SimpleAgent {
         Ok(SimpleAgent { inner: agent })
     }
 
+    /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
+    ///
+    /// Args:
+    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "ed25519"
+    ///
+    /// Returns:
+    ///     Tuple of (SimpleAgent instance, dict with agent_id, name, algorithm, version)
+    #[staticmethod]
+    #[pyo3(signature = (algorithm=None))]
+    fn ephemeral(py: Python, algorithm: Option<&str>) -> PyResult<(Self, PyObject)> {
+        let (agent, info) = jacs_core::simple::SimpleAgent::ephemeral(algorithm)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create ephemeral agent: {}",
+                    e
+                ))
+            })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("agent_id", &info.agent_id)?;
+        dict.set_item("name", &info.name)?;
+        dict.set_item("algorithm", &info.algorithm)?;
+        dict.set_item("version", &info.version)?;
+
+        Ok((SimpleAgent { inner: agent }, dict.into()))
+    }
+
     /// Returns whether this agent is in strict mode.
     fn is_strict(&self) -> bool {
         self.inner.is_strict()
