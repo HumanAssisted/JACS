@@ -793,6 +793,43 @@ export function isLoaded(): boolean {
 }
 
 /**
+ * Return JACS diagnostic info (version, config, agent status).
+ *
+ * Returns an object with keys like jacs_version, os, arch, agent_loaded,
+ * data_directory, key_directory, etc. If an agent is loaded, includes
+ * agent_id and agent_version.
+ *
+ * @returns Diagnostic information object
+ *
+ * @example
+ * ```typescript
+ * const info = jacs.debugInfo();
+ * console.log(`Version: ${info.jacs_version}, OS: ${info.os}`);
+ * ```
+ */
+export function debugInfo(): Record<string, unknown> {
+  if (!globalAgent) {
+    return { jacs_version: 'unknown', agent_loaded: false };
+  }
+  try {
+    return JSON.parse(globalAgent.diagnostics());
+  } catch {
+    return { jacs_version: 'unknown', agent_loaded: false };
+  }
+}
+
+/**
+ * Clear global agent state. Useful for test isolation.
+ *
+ * After calling reset(), you must call load() or create() again before
+ * using any signing or verification functions.
+ */
+export function reset(): void {
+  globalAgent = null;
+  agentInfo = null;
+}
+
+/**
  * Returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
  * Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
  */

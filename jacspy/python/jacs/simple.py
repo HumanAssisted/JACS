@@ -116,6 +116,17 @@ except ImportError:
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
 
+def reset():
+    """Clear global agent state. Useful for test isolation.
+
+    After calling reset(), you must call load() or create() again before
+    using any signing or verification functions.
+    """
+    global _global_agent, _agent_info
+    _global_agent = None
+    _agent_info = None
+
+
 # Verify link constants (HAI / public verification URLs)
 MAX_VERIFY_URL_LEN = 2048
 MAX_VERIFY_DOCUMENT_BYTES = 1515
@@ -1153,6 +1164,24 @@ def is_loaded() -> bool:
     return _global_agent is not None
 
 
+def debug_info() -> dict:
+    """Return JACS diagnostic info (version, config, agent status).
+
+    Returns a dict with keys like jacs_version, os, arch, agent_loaded,
+    data_directory, key_directory, etc. If an agent is loaded, includes
+    agent_id and agent_version.
+
+    Returns:
+        dict with diagnostic information
+    """
+    if _global_agent is not None:
+        try:
+            return json.loads(_global_agent.diagnostics())
+        except Exception:
+            pass
+    return {"jacs_version": "unknown", "agent_loaded": False}
+
+
 def trust_agent(agent_json: str) -> str:
     """Add an agent to the local trust store.
 
@@ -1404,6 +1433,10 @@ __all__ = [
     "untrust_agent",
     "is_trusted",
     "get_trusted_agent",
+    # Diagnostics
+    "debug_info",
+    # Test utilities
+    "reset",
     # Remote key fetch
     "fetch_remote_key",
     # Types (re-exported for convenience)

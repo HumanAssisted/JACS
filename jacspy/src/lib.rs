@@ -276,6 +276,11 @@ impl JacsAgent {
         self.inner.get_agent_json().to_py()
     }
 
+    /// Returns diagnostic information as a JSON string.
+    fn diagnostics(&self) -> PyResult<String> {
+        Ok(self.inner.diagnostics())
+    }
+
     /// Hash a string using the JACS hash function.
     #[staticmethod]
     fn hash_string(data: &str) -> PyResult<String> {

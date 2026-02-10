@@ -754,6 +754,39 @@ impl AgentWrapper {
         Ok(())
     }
 
+    /// Returns diagnostic information including loaded agent details as a JSON string.
+    pub fn diagnostics(&self) -> String {
+        let mut info = jacs::simple::diagnostics();
+
+        if let Ok(agent) = self.inner.lock() {
+            if agent.ready() {
+                info["agent_loaded"] = json!(true);
+                if let Some(value) = agent.get_value() {
+                    info["agent_id"] =
+                        json!(value.get("jacsId").and_then(|v| v.as_str()));
+                    info["agent_version"] =
+                        json!(value.get("jacsVersion").and_then(|v| v.as_str()));
+                }
+            }
+            if let Some(config) = &agent.config {
+                if let Some(dir) = config.jacs_data_directory().as_ref() {
+                    info["data_directory"] = json!(dir);
+                }
+                if let Some(dir) = config.jacs_key_directory().as_ref() {
+                    info["key_directory"] = json!(dir);
+                }
+                if let Some(storage) = config.jacs_default_storage().as_ref() {
+                    info["default_storage"] = json!(storage);
+                }
+                if let Some(algo) = config.jacs_agent_key_algorithm().as_ref() {
+                    info["key_algorithm"] = json!(algo);
+                }
+            }
+        }
+
+        serde_json::to_string_pretty(&info).unwrap_or_default()
+    }
+
     /// Get the agent's JSON representation as a string.
     ///
     /// Returns the agent's full JSON document, suitable for registration
@@ -767,6 +800,16 @@ impl AgentWrapper {
             )),
         }
     }
+}
+
+// =============================================================================
+// Standalone diagnostics (no agent required)
+// =============================================================================
+
+/// Returns basic JACS diagnostic info as a pretty-printed JSON string.
+/// Does not require a loaded agent.
+pub fn diagnostics_standalone() -> String {
+    serde_json::to_string_pretty(&jacs::simple::diagnostics()).unwrap_or_default()
 }
 
 // =============================================================================

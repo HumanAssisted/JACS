@@ -221,22 +221,29 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Check against common weak passwords (case-insensitive)
     let lower = trimmed.to_lowercase();
     if WEAK_PASSWORDS.contains(&lower.as_str()) {
-        return Err(
-            "Password is too common and easily guessable. Please use a unique password.".into(),
-        );
+        return Err(format!(
+            "Password is too common and easily guessable. Please use a unique password.\n\n{}",
+            password_requirements()
+        )
+        .into());
     }
 
     // Check for excessive repetition
     if has_excessive_repetition(trimmed) {
-        return Err(
-            "Password contains too many repeated characters (4+ in a row). Use more variety."
-                .into(),
-        );
+        return Err(format!(
+            "Password contains too many repeated characters (4+ in a row). Use more variety.\n\n{}",
+            password_requirements()
+        )
+        .into());
     }
 
     // Check for sequential patterns
     if has_sequential_pattern(trimmed) {
-        return Err("Password contains sequential characters (like '12345' or 'abcde'). Use a less predictable pattern.".into());
+        return Err(format!(
+            "Password contains sequential characters (like '12345' or 'abcde'). Use a less predictable pattern.\n\n{}",
+            password_requirements()
+        )
+        .into());
     }
 
     // Calculate entropy
@@ -264,12 +271,21 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
     let char_classes = count_character_classes(trimmed);
     if char_classes < 2 && entropy < SINGLE_CLASS_MIN_ENTROPY_BITS {
         return Err(JacsError::CryptoError(format!(
-            "Password uses only {} character class(es) with insufficient length. Use at least 2 character types (uppercase, lowercase, digits, symbols) or use a longer password.",
-            char_classes
+            "Password uses only {} character class(es) with insufficient length. Use at least 2 character types (uppercase, lowercase, digits, symbols) or use a longer password.\n\n{}",
+            char_classes,
+            password_requirements()
         )).into());
     }
 
     Ok(())
+}
+
+/// Check if a password meets JACS requirements without performing any encryption.
+///
+/// Returns `Ok(())` if the password is acceptable, or `Err` with a detailed message
+/// explaining which rule failed and the full requirements.
+pub fn check_password_strength(password: &str) -> Result<(), Box<dyn std::error::Error>> {
+    validate_password(password)
 }
 
 /// Derive a 256-bit key from a password using PBKDF2-HMAC-SHA256 with a specific iteration count.

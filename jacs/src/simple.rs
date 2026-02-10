@@ -71,6 +71,29 @@ use std::sync::Mutex;
 use tracing::{debug, info, warn};
 
 // =============================================================================
+// Diagnostics (standalone, no agent required)
+// =============================================================================
+
+/// Returns diagnostic information about the JACS installation.
+/// Does not require a loaded agent.
+pub fn diagnostics() -> serde_json::Value {
+    serde_json::json!({
+        "jacs_version": env!("CARGO_PKG_VERSION"),
+        "rust_version": option_env!("CARGO_PKG_RUST_VERSION").unwrap_or("unknown"),
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "config_path": std::env::var("JACS_CONFIG").unwrap_or_default(),
+        "data_directory": std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default(),
+        "key_directory": std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default(),
+        "key_algorithm": std::env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_default(),
+        "default_storage": std::env::var("JACS_DEFAULT_STORAGE").unwrap_or_default(),
+        "strict_mode": std::env::var("JACS_STRICT_MODE").unwrap_or_default(),
+        "agent_loaded": false,
+        "agent_id": serde_json::Value::Null,
+    })
+}
+
+// =============================================================================
 // Verify link constants (HAI / public verification URLs)
 // =============================================================================
 
@@ -1819,6 +1842,39 @@ impl SimpleAgent {
         })
     }
 
+    /// Returns diagnostic information including loaded agent details.
+    pub fn diagnostics(&self) -> serde_json::Value {
+        let mut info = diagnostics(); // call the standalone version
+
+        if let Ok(agent) = self.agent.lock() {
+            if agent.ready() {
+                info["agent_loaded"] = serde_json::json!(true);
+                if let Some(value) = agent.get_value() {
+                    info["agent_id"] =
+                        serde_json::json!(value.get("jacsId").and_then(|v| v.as_str()));
+                    info["agent_version"] =
+                        serde_json::json!(value.get("jacsVersion").and_then(|v| v.as_str()));
+                }
+            }
+            if let Some(config) = &agent.config {
+                if let Some(dir) = config.jacs_data_directory().as_ref() {
+                    info["data_directory"] = serde_json::json!(dir);
+                }
+                if let Some(dir) = config.jacs_key_directory().as_ref() {
+                    info["key_directory"] = serde_json::json!(dir);
+                }
+                if let Some(storage) = config.jacs_default_storage().as_ref() {
+                    info["default_storage"] = serde_json::json!(storage);
+                }
+                if let Some(algo) = config.jacs_agent_key_algorithm().as_ref() {
+                    info["key_algorithm"] = serde_json::json!(algo);
+                }
+            }
+        }
+
+        info
+    }
+
     /// Returns the path to the configuration file, if available.
     pub fn config_path(&self) -> Option<&str> {
         self.config_path.as_deref()
@@ -2447,6 +2503,16 @@ fn extract_attachments(doc: &Value) -> Vec<Attachment> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_diagnostics_returns_version() {
+        let info = diagnostics();
+        let version = info["jacs_version"].as_str().unwrap();
+        assert!(!version.is_empty(), "jacs_version should not be empty");
+        assert_eq!(info["agent_loaded"], false);
+        assert!(info["os"].as_str().is_some());
+        assert!(info["arch"].as_str().is_some());
+    }
 
     #[test]
     fn test_agent_info_serialization() {

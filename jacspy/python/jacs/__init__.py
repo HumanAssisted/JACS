@@ -83,9 +83,9 @@ from . import async_simple
 
 # Make MCP helpers available (optional, may fail if fastmcp not installed)
 try:
-    from . import mcp_simple
+    from . import mcp
 except ImportError:
-    mcp_simple = None  # fastmcp not installed
+    mcp = None  # fastmcp not installed
 
 # Make HAI.ai integration available (optional, may fail if httpx not installed)
 try:

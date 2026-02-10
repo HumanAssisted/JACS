@@ -1,5 +1,4 @@
 mod hai_tools;
-mod handlers;
 
 #[cfg(feature = "mcp")]
 use hai_tools::HaiMcpServer;

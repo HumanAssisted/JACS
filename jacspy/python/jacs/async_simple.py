@@ -596,6 +596,14 @@ def is_loaded() -> bool:
     return simple.is_loaded()
 
 
+def reset():
+    """Clear global agent state. Useful for test isolation.
+
+    Note: This is synchronous as it delegates to simple.reset().
+    """
+    simple.reset()
+
+
 __all__ = [
     # Core operations
     "create",
@@ -626,6 +634,8 @@ __all__ = [
     "untrust_agent",
     "is_trusted",
     "get_trusted_agent",
+    # Test utilities
+    "reset",
     # Remote key fetch
     "fetch_remote_key",
     # Types (re-exported for convenience)

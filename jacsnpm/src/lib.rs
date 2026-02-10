@@ -216,6 +216,12 @@ impl JacsAgent {
             .to_napi()
     }
 
+    /// Returns diagnostic information as a JSON string.
+    #[napi]
+    pub fn diagnostics(&self) -> String {
+        self.inner.diagnostics()
+    }
+
     /// Verify a document looked up by ID from storage.
     ///
     /// The document_id should be in "uuid:version" format.
