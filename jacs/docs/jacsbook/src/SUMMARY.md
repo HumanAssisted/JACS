@@ -22,9 +22,12 @@
 - [Installation](nodejs/installation.md)
 - [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)
+- [LangChain.js](nodejs/langchain.md)
+- [Vercel AI SDK](nodejs/vercel-ai.md)
+- [Express Middleware](nodejs/express.md)
+- [Koa Middleware](nodejs/koa.md)
 - [MCP Integration](nodejs/mcp.md)
 - [HTTP Server](nodejs/http.md)
-- [Express Middleware](nodejs/express.md)
 - [API Reference](nodejs/api.md)
 
 ## Python (jacs)
