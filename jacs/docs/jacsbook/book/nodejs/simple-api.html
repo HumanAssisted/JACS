@@ -184,8 +184,8 @@ const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 const result = jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 </code></pre>
-<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No config file, no setup. Pass <code>{ algorithm: 'ring-Ed25519' }</code> to override the default (<code>pq2025</code>).</p>
-<p>For production use with persistent keys, load from a config file instead:</p>
+<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. Pass <code>{ algorithm: 'ring-Ed25519' }</code> to override the default (<code>pq2025</code>).</p>
+<p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-javascript">const agent = jacs.load('./jacs.config.json');
 const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 </code></pre>
@@ -200,7 +200,7 @@ const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 <hr />
 <h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
 <h3 id="quickstartoptions"><a class="header" href="#quickstartoptions">quickstart(options?)</a></h3>
-<p>Create an ephemeral agent with keys in memory. No config file, no directories, no setup. Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
+<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>options</code> (object, optional): <code>{ algorithm?: string }</code>. Default algorithm: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
@@ -214,7 +214,7 @@ const info = jacs.quickstart({ algorithm: 'ring-Ed25519' });
 </code></pre>
 <hr />
 <h3 id="loadconfigpath"><a class="header" href="#loadconfigpath">load(configPath?)</a></h3>
-<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you need keys on disk.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you want to load a specific config file explicitly.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>configPath</code> (string, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>

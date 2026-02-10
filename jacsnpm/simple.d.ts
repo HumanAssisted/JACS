@@ -130,25 +130,27 @@ export interface HaiRegistrationResult {
     signatures: string[];
 }
 /**
- * Options for quickstart ephemeral agent creation.
+ * Options for quickstart agent creation.
  */
 export interface QuickstartOptions {
-    /** Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025". */
+    /** Signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS". */
     algorithm?: string;
     /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
     strict?: boolean;
+    /** Path to config file (default: "./jacs.config.json"). */
+    configPath?: string;
 }
 /**
- * Information about an ephemeral agent created by quickstart().
+ * Information about the agent created or loaded by quickstart().
  */
 export interface QuickstartInfo {
     /** Unique identifier for the agent (UUID). */
     agentId: string;
-    /** Human-readable name of the agent (always "ephemeral"). */
+    /** Human-readable name of the agent. */
     name: string;
     /** Agent version string. */
     version: string;
-    /** Signing algorithm used (internal name, e.g. "ring-Ed25519"). */
+    /** Signing algorithm used. */
     algorithm: string;
 }
 /**

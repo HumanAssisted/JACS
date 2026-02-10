@@ -15,9 +15,9 @@ result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
-`quickstart()` creates an ephemeral agent with keys in memory. No config file, no setup. Pass `algorithm="ring-Ed25519"` to override the default (`pq2025`).
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` to override the default (`pq2025`).
 
-For production use with persistent keys, load from a config file instead:
+To load an existing agent explicitly, use `load()` instead:
 
 ```python
 agent = jacs.load("./jacs.config.json")
@@ -39,7 +39,7 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 
 ### quickstart(algorithm=None)
 
-Create an ephemeral agent with keys in memory. No config file, no directories, no setup. Call this once before `sign_message()` or `verify()`.
+Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Call this once before `sign_message()` or `verify()`.
 
 **Parameters:**
 - `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.
@@ -58,7 +58,7 @@ info = jacs.quickstart(algorithm="ring-Ed25519")
 
 ### load(config_path=None)
 
-Load a persistent agent from a configuration file. Use this instead of `quickstart()` when you need keys on disk.
+Load a persistent agent from a configuration file. Use this instead of `quickstart()` when you want to load a specific config file explicitly.
 
 **Parameters:**
 - `config_path` (str, optional): Path to jacs.config.json (default: "./jacs.config.json")

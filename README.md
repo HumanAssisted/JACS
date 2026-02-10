@@ -20,7 +20,7 @@ Available as a library for **Python**, **Node.js**, **Go**, and **Rust**, plus a
 
 ## Quick Start
 
-Zero-config -- no config file, no setup. One call creates an ephemeral agent and you're signing.
+Zero-config -- no manual setup needed. One call creates a persistent agent with keys on disk and you're signing.
 
 ### Python
 
@@ -64,13 +64,12 @@ jacs quickstart
 jacs document create -f mydata.json
 ```
 
-### Advanced: Loading a persistent agent
+### Advanced: Loading an existing agent
 
-For production use, create a persistent agent with keys on disk:
+If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:
 
-1. Copy `jacs.config.example.json` to `jacs.config.json` (or use `jacs config create`).
-2. Set `JACS_PRIVATE_KEY_PASSWORD` in your environment.
-3. Run `jacs init` to create the agent.
+1. Ensure `jacs.config.json` exists (created automatically by `quickstart()`, or manually via `jacs config create`).
+2. Optionally set `JACS_PRIVATE_KEY_PASSWORD` (if not set, the auto-generated password in `./jacs_keys/.jacs_password` is used).
 
 Then load it in code:
 
@@ -93,7 +92,7 @@ jacs.Load(nil)
 
 | Function | Description |
 |----------|-------------|
-| `quickstart(options?)` | Create an ephemeral agent in memory -- zero config, no files |
+| `quickstart(options?)` | Create a persistent agent with keys on disk -- zero config, no manual setup |
 | `create(name, options)` | Create a new agent programmatically (non-interactive) |
 | `load(config)` | Load agent from config file |
 | `sign_message(data)` | Sign any JSON data |

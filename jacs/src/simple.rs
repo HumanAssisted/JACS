@@ -109,6 +109,25 @@ pub const MAX_VERIFY_DOCUMENT_BYTES: usize = 1515;
 const DEFAULT_PRIVATE_KEY_FILENAME: &str = "jacs.private.pem.enc";
 const DEFAULT_PUBLIC_KEY_FILENAME: &str = "jacs.public.pem";
 
+/// Generate a cryptographically secure random password that meets JACS requirements.
+/// (8+ chars, uppercase, lowercase, digit, special character.)
+fn generate_secure_password() -> String {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    let charset: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
+    // Guarantee complexity: start with one of each required class
+    let mut password = String::with_capacity(32);
+    password.push(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rng.random_range(0..26)] as char);
+    password.push(b"abcdefghijklmnopqrstuvwxyz"[rng.random_range(0..26)] as char);
+    password.push(b"0123456789"[rng.random_range(0..10)] as char);
+    password.push(b"!@#$%^&*()-_=+"[rng.random_range(0..14)] as char);
+    // Fill rest with random charset
+    for _ in 4..32 {
+        password.push(charset[rng.random_range(0..charset.len())] as char);
+    }
+    password
+}
+
 fn build_agent_document(
     agent_type: &str,
     name: &str,
@@ -1178,6 +1197,136 @@ impl SimpleAgent {
             },
             info,
         ))
+    }
+
+    /// Zero-config persistent agent creation.
+    ///
+    /// If a config file already exists at `config_path` (default: `./jacs.config.json`),
+    /// loads the existing agent. Otherwise, creates a new persistent agent with keys
+    /// on disk and a minimal config file.
+    ///
+    /// If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure random password is
+    /// generated and written to `<key_directory>/.jacs_password` (mode 0600).
+    ///
+    /// # Arguments
+    ///
+    /// * `algorithm` - Signing algorithm (default: "ed25519"). Also: "rsa-pss", "pq2025"
+    /// * `config_path` - Config file path (default: "./jacs.config.json")
+    ///
+    /// # Returns
+    ///
+    /// A `SimpleAgent` with persistent keys on disk, along with `AgentInfo`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let (agent, info) = SimpleAgent::quickstart(None, None)?;
+    /// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
+    /// // Keys and config are saved to disk -- the same agent is loaded next time.
+    /// ```
+    #[must_use = "quickstart result must be checked for errors"]
+    pub fn quickstart(
+        algorithm: Option<&str>,
+        config_path: Option<&str>,
+    ) -> Result<(Self, AgentInfo), JacsError> {
+        let config = config_path.unwrap_or("./jacs.config.json");
+
+        // If config already exists, load the existing agent
+        if Path::new(config).exists() {
+            info!("quickstart: found existing config at {}, loading agent", config);
+            let agent = Self::load(Some(config), None)?;
+
+            // Build AgentInfo from the loaded agent
+            let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+                message: format!("Failed to acquire agent lock: {}", e),
+            })?;
+            let agent_value = inner.get_value()
+                .cloned()
+                .ok_or(JacsError::AgentNotLoaded)?;
+            let agent_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
+            let version = agent_value["jacsVersion"].as_str().unwrap_or("").to_string();
+            let (algo, key_dir, data_dir) = if let Some(ref cfg) = inner.config {
+                let a = cfg.jacs_agent_key_algorithm()
+                    .as_deref().unwrap_or("").to_string();
+                let k = cfg.jacs_key_directory()
+                    .as_deref().unwrap_or("./jacs_keys").to_string();
+                let d = cfg.jacs_data_directory()
+                    .as_deref().unwrap_or("./jacs_data").to_string();
+                (a, k, d)
+            } else {
+                (String::new(), "./jacs_keys".to_string(), "./jacs_data".to_string())
+            };
+            drop(inner);
+
+            let info = AgentInfo {
+                agent_id,
+                name: "jacs-agent".to_string(),
+                public_key_path: format!("{}/{}", key_dir, DEFAULT_PUBLIC_KEY_FILENAME),
+                config_path: config.to_string(),
+                version,
+                algorithm: algo,
+                private_key_path: format!("{}/{}", key_dir, DEFAULT_PRIVATE_KEY_FILENAME),
+                data_directory: data_dir,
+                key_directory: key_dir,
+                domain: String::new(),
+                dns_record: String::new(),
+                hai_registered: false,
+            };
+
+            return Ok((agent, info));
+        }
+
+        // No existing config -- create a new persistent agent
+        info!("quickstart: no config at {}, creating new persistent agent", config);
+
+        // Ensure password is available
+        let password = match std::env::var("JACS_PRIVATE_KEY_PASSWORD") {
+            Ok(pw) if !pw.is_empty() => pw,
+            _ => {
+                // Auto-generate a secure password and save it
+                let generated = generate_secure_password();
+                let keys_dir = Path::new("./jacs_keys");
+                fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+                    path: keys_dir.to_string_lossy().to_string(),
+                    reason: e.to_string(),
+                })?;
+                let password_file = keys_dir.join(".jacs_password");
+                fs::write(&password_file, &generated).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to write password file: {}", e),
+                })?;
+                // Set restrictive permissions (Unix only)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let perms = std::fs::Permissions::from_mode(0o600);
+                    let _ = std::fs::set_permissions(&password_file, perms);
+                }
+                info!("quickstart: generated password saved to {}", password_file.display());
+                // Set env var for the current process so create() can use it
+                unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &generated); }
+                generated
+            }
+        };
+
+        // Use create_with_params for full control
+        let algo = match algorithm.unwrap_or("ed25519") {
+            "ed25519" => "ring-Ed25519",
+            "rsa-pss" => "RSA-PSS",
+            "pq2025" => "pq2025",
+            other => other,
+        };
+
+        let params = CreateAgentParams {
+            name: "jacs-agent".to_string(),
+            password,
+            algorithm: algo.to_string(),
+            config_path: config.to_string(),
+            ..Default::default()
+        };
+
+        Self::create_with_params(params)
     }
 
     /// Verifies the loaded agent's own identity.

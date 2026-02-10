@@ -25,11 +25,11 @@ const result = jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
-`quickstart()` creates an ephemeral agent with keys in memory. No config file, no setup. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
 
-### Advanced: Loading a persistent agent
+### Advanced: Loading an existing agent
 
-For production use, load a persistent agent from a config file:
+If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
@@ -45,7 +45,7 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 
 | Function | Description |
 |----------|-------------|
-| `quickstart(options?)` | Create an ephemeral agent in memory -- zero config, no files |
+| `quickstart(options?)` | Create a persistent agent with keys on disk -- zero config, no manual setup |
 | `create(options)` | Create a new agent programmatically (non-interactive) |
 | `load(configPath)` | Load agent from config file |
 | `verifySelf()` | Verify agent's own integrity |

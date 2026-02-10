@@ -1,10 +1,10 @@
 # Quick Start Guide
 
-Get signing and verifying in under a minute. No config files, no setup.
+Get signing and verifying in under a minute. No manual setup needed.
 
 ## Zero-Config Quick Start
 
-`quickstart()` creates an ephemeral agent with keys in memory. One call and you're signing.
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. One call and you're signing.
 
 <div class="tabs">
 <div class="tab">
@@ -75,9 +75,9 @@ jacs quickstart --sign --file mydata.json
 
 Pass `algorithm="ring-Ed25519"` (or `{ algorithm: 'ring-Ed25519' }` in JS, `--algorithm ring-Ed25519` in CLI) to override the default (`pq2025`).
 
-## Advanced: Persistent Agent Setup
+## Advanced: Explicit Agent Setup
 
-For production use, create a persistent agent with keys on disk. This requires a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable.
+For full control over agent creation, you can set up an agent manually with a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable. This is optional since `quickstart()` already creates a persistent agent.
 
 <div class="tabs">
 <div class="tab">
@@ -165,7 +165,7 @@ print(f"Valid: {result.valid}")
 
 ## Programmatic Agent Creation (v0.6.0+)
 
-For scripts, CI/CD, and server environments where you need **persistent** agents created programmatically (without interactive prompts), use `create()`. If you don't need persistence, `quickstart()` above is simpler.
+For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use `create()`. For most cases, `quickstart()` above is simpler and also creates a persistent agent.
 
 <div class="tabs">
 <div class="tab">

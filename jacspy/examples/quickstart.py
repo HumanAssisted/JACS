@@ -25,8 +25,8 @@ def main():
     print("JACS Quickstart")
     print("=" * 60)
 
-    # Step 1: One call creates an ephemeral agent with keys in memory
-    print("\n1. Creating ephemeral agent...")
+    # Step 1: One call creates a persistent agent with keys on disk
+    print("\n1. Creating persistent agent...")
     info = jacs.quickstart()
     print(f"   Agent ID: {info.agent_id}")
     print(f"   Algorithm: {info.algorithm}")

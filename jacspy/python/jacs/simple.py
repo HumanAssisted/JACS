@@ -535,11 +535,14 @@ class _EphemeralAgentAdapter:
         )
 
 
-def quickstart(algorithm=None, strict=None):
-    """One-line agent creation. No config file, no directories, no env vars needed.
+def quickstart(algorithm=None, strict=None, config_path=None):
+    """One-line agent creation with persistent keys on disk.
 
-    Creates an ephemeral in-memory agent that can sign and verify documents
-    immediately. Perfect for scripts, notebooks, tests, and quick prototyping.
+    If a config file already exists, loads the existing agent. Otherwise,
+    creates a new agent with keys on disk and a minimal config file.
+
+    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated
+    and saved to ./jacs_keys/.jacs_password.
 
     Example:
         import jacs.simple as jacs
@@ -549,6 +552,7 @@ def quickstart(algorithm=None, strict=None):
     Args:
         algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
         strict: Enable strict verification mode
+        config_path: Path to config file (default: "./jacs.config.json")
 
     Returns:
         AgentInfo with agent_id, name, algorithm, version
@@ -556,30 +560,49 @@ def quickstart(algorithm=None, strict=None):
     global _global_agent, _agent_info, _strict
 
     _strict = _resolve_strict(strict)
+    cfg_path = config_path or "./jacs.config.json"
 
     try:
-        from . import SimpleAgent as _SimpleAgent
+        if os.path.exists(cfg_path):
+            # Load existing agent
+            logger.info("quickstart: found existing config at %s, loading", cfg_path)
+            return load(cfg_path, strict=strict)
 
-        agent_instance, info_dict = _SimpleAgent.ephemeral(algorithm)
+        # No existing config -- create a new persistent agent
+        logger.info("quickstart: no config at %s, creating new agent", cfg_path)
 
-        # Wrap the native SimpleAgent in an adapter that provides the
-        # JacsAgent-compatible interface expected by the rest of simple.py.
-        _global_agent = _EphemeralAgentAdapter(agent_instance)
+        # Ensure password is available
+        password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
+        if not password:
+            import secrets
+            import string
+            # Generate a secure password meeting JACS requirements
+            chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
+            password = (
+                secrets.choice(string.ascii_uppercase)
+                + secrets.choice(string.ascii_lowercase)
+                + secrets.choice(string.digits)
+                + secrets.choice("!@#$%^&*()-_=+")
+                + ''.join(secrets.choice(chars) for _ in range(28))
+            )
+            # Save password to file
+            keys_dir = "./jacs_keys"
+            os.makedirs(keys_dir, exist_ok=True)
+            pw_path = os.path.join(keys_dir, ".jacs_password")
+            with open(pw_path, "w") as f:
+                f.write(password)
+            os.chmod(pw_path, 0o600)
+            logger.info("quickstart: generated password saved to %s", pw_path)
+            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
 
-        _agent_info = AgentInfo(
-            agent_id=info_dict.get("agent_id", ""),
-            version=info_dict.get("version", ""),
-            name=info_dict.get("name", "ephemeral"),
-            public_key_hash="",
-            created_at="",
-            algorithm=info_dict.get("algorithm", "ed25519"),
-            config_path="",
-            public_key_path="",
+        algo = algorithm or "pq2025"
+        return create(
+            name="jacs-agent",
+            password=password,
+            algorithm=algo,
+            config_path=cfg_path,
+            strict=strict,
         )
-
-        logger.info("Ephemeral agent created: id=%s, algorithm=%s",
-                     _agent_info.agent_id, _agent_info.algorithm)
-        return _agent_info
 
     except ImportError:
         raise JacsError(
@@ -587,7 +610,7 @@ def quickstart(algorithm=None, strict=None):
             "Install with: pip install jacs"
         )
     except Exception as e:
-        raise JacsError(f"Failed to create ephemeral agent: {e}")
+        raise JacsError(f"quickstart failed: {e}")
 
 
 def verify_self() -> VerificationResult:

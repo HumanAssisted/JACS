@@ -174,9 +174,9 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>Get signing and verifying in under a minute. No config files, no setup.</p>
+<p>Get signing and verifying in under a minute. No manual setup needed.</p>
 <h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
-<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. One call and you're signing.</p>
+<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="tab-python" name="tab-group" checked>
@@ -227,8 +227,8 @@ jacs quickstart --sign --file mydata.json
 </div>
 </div>
 <p>Pass <code>algorithm="ring-Ed25519"</code> (or <code>{ algorithm: 'ring-Ed25519' }</code> in JS, <code>--algorithm ring-Ed25519</code> in CLI) to override the default (<code>pq2025</code>).</p>
-<h2 id="advanced-persistent-agent-setup"><a class="header" href="#advanced-persistent-agent-setup">Advanced: Persistent Agent Setup</a></h2>
-<p>For production use, create a persistent agent with keys on disk. This requires a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable.</p>
+<h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
+<p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart()</code> already creates a persistent agent.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="adv-rust" name="adv-group" checked>
@@ -294,7 +294,7 @@ print(f"Valid: {result.valid}")
 </div>
 </div>
 <h2 id="programmatic-agent-creation-v060"><a class="header" href="#programmatic-agent-creation-v060">Programmatic Agent Creation (v0.6.0+)</a></h2>
-<p>For scripts, CI/CD, and server environments where you need <strong>persistent</strong> agents created programmatically (without interactive prompts), use <code>create()</code>. If you don't need persistence, <code>quickstart()</code> above is simpler.</p>
+<p>For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use <code>create()</code>. For most cases, <code>quickstart()</code> above is simpler and also creates a persistent agent.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="prog-python" name="prog-group" checked>

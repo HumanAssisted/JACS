@@ -187,7 +187,7 @@ jacs.quickstart();  // No config file needed
 </code></pre>
 <pre><code class="language-bash">jacs quickstart  # CLI -- no config file needed
 </code></pre>
-<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No files are written to disk.</p>
+<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.</p>
 <h2 id="minimal-configuration"><a class="header" href="#minimal-configuration">Minimal Configuration</a></h2>
 <p>For persistent agents, a config file needs only two fields (plus <code>$schema</code>):</p>
 <pre><code class="language-json">{

@@ -271,25 +271,61 @@ export interface QuickstartInfo {
  */
 export function quickstart(options?: QuickstartOptions): QuickstartInfo {
   strictMode = resolveStrict(options?.strict);
+  const configPath = options?.configPath || './jacs.config.json';
+  const fs = require('fs');
+  const path = require('path');
+  const crypto = require('crypto');
 
-  // Create a new JacsAgent and initialize it as ephemeral
-  globalAgent = new JacsAgent();
-  const infoJson = globalAgent.ephemeral(options?.algorithm ?? null);
-  const info = JSON.parse(infoJson);
+  if (fs.existsSync(configPath)) {
+    // Load existing agent
+    const info = load(configPath);
+    return {
+      agentId: info.agentId,
+      name: info.name || 'jacs-agent',
+      version: '',
+      algorithm: '',
+    };
+  }
 
-  // Set agentInfo for functions that use it (verifySelf, etc.)
-  agentInfo = {
-    agentId: info.agent_id || '',
-    name: info.name || 'ephemeral',
-    publicKeyPath: '',
-    configPath: '',
-  };
+  // No existing config -- create a new persistent agent
+  // Ensure password is available
+  let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
+  if (!password) {
+    // Generate a secure password
+    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lower = 'abcdefghijklmnopqrstuvwxyz';
+    const digits = '0123456789';
+    const special = '!@#$%^&*()-_=+';
+    const all = upper + lower + digits + special;
+    password =
+      upper[crypto.randomInt(upper.length)] +
+      lower[crypto.randomInt(lower.length)] +
+      digits[crypto.randomInt(digits.length)] +
+      special[crypto.randomInt(special.length)];
+    for (let i = 4; i < 32; i++) {
+      password += all[crypto.randomInt(all.length)];
+    }
+
+    // Save to file
+    const keysDir = './jacs_keys';
+    fs.mkdirSync(keysDir, { recursive: true });
+    const pwPath = path.join(keysDir, '.jacs_password');
+    fs.writeFileSync(pwPath, password, { mode: 0o600 });
+    process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+  }
+
+  const algo = options?.algorithm || 'pq2025';
+  const result = create({
+    name: 'jacs-agent',
+    password,
+    algorithm: algo,
+  });
 
   return {
-    agentId: info.agent_id || '',
-    name: info.name || 'ephemeral',
-    version: info.version || '',
-    algorithm: info.algorithm || '',
+    agentId: result.agentId,
+    name: 'jacs-agent',
+    version: '',
+    algorithm: algo,
   };
 }
 

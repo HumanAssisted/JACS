@@ -547,14 +547,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         )
         .subcommand(
             Command::new("quickstart")
-                .about("Create an ephemeral in-memory agent for instant sign/verify (zero config)")
+                .about("Create or load a persistent agent for instant sign/verify (zero config)")
                 .arg(
                     Arg::new("algorithm")
                         .long("algorithm")
                         .short('a')
                         .value_parser(["ed25519", "rsa-pss", "pq2025"])
-                        .default_value("ed25519")
-                        .help("Signing algorithm (default: ed25519)"),
+                        .default_value("pq2025")
+                        .help("Signing algorithm (default: pq2025)"),
                 )
                 .arg(
                     Arg::new("sign")
@@ -568,19 +568,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .long("file")
                         .value_parser(value_parser!(String))
                         .help("Sign a JSON file instead of reading from stdin (used with --sign)"),
-                )
-                .arg(
-                    Arg::new("persist")
-                        .long("persist")
-                        .help("Save the agent to disk for reuse")
-                        .action(ArgAction::SetTrue),
-                )
-                .arg(
-                    Arg::new("path")
-                        .long("path")
-                        .value_parser(value_parser!(String))
-                        .default_value(".")
-                        .help("Directory to save agent files when using --persist"),
                 )
         )
         .subcommand(
@@ -1077,11 +1064,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
             let algorithm = qs_matches.get_one::<String>("algorithm").map(|s| s.as_str());
             let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
-            let do_persist = *qs_matches.get_one::<bool>("persist").unwrap_or(&false);
-            let persist_path = qs_matches.get_one::<String>("path").map(|s| s.as_str()).unwrap_or(".");
             let sign_file = qs_matches.get_one::<String>("file");
 
-            let (agent, info) = SimpleAgent::ephemeral(algorithm).map_err(|e| -> Box<dyn Error> {
+            let (agent, info) = SimpleAgent::quickstart(algorithm, None).map_err(|e| -> Box<dyn Error> {
                 Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     format!("{}", e),
@@ -1113,20 +1098,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("{}", signed.raw);
             } else {
                 // Info mode: print agent details
-                println!("Created ephemeral JACS agent ({})", info.algorithm);
+                println!("JACS agent ready ({})", info.algorithm);
                 println!("  Agent ID: {}", info.agent_id);
                 println!("  Version:  {}", info.version);
-                println!("  Keys:     in-memory (will be lost on exit)");
+                println!("  Config:   {}", info.config_path);
+                println!("  Keys:     {}", info.key_directory);
                 println!();
-                println!("Try signing something:");
+                println!("Sign something:");
                 println!("  echo '{{\"hello\":\"world\"}}' | jacs quickstart --sign");
-                println!();
-                println!("To persist this agent for reuse:");
-                println!("  jacs quickstart --persist --path ./my-agent/");
-            }
-
-            if do_persist {
-                eprintln!("Note: --persist is not yet implemented. Use jacs init for persistent agents.");
             }
         }
         Some(("init", _init_matches)) => {

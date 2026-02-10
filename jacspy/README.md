@@ -30,11 +30,11 @@ result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
-`quickstart()` creates an ephemeral agent with keys in memory. No config file, no setup. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
 
-### Advanced: Loading a persistent agent
+### Advanced: Loading an existing agent
 
-For production use, load a persistent agent from a config file:
+If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:
 
 ```python
 import jacs.simple as jacs
@@ -69,7 +69,7 @@ The simplified API provides these core operations:
 
 | Operation | Description |
 |-----------|-------------|
-| `quickstart()` | Create an ephemeral agent in memory -- zero config, no files |
+| `quickstart()` | Create a persistent agent with keys on disk -- zero config, no manual setup |
 | `create()` | Create a new agent programmatically (non-interactive) |
 | `load()` | Load an existing agent from config |
 | `verify_self()` | Verify the loaded agent's integrity |

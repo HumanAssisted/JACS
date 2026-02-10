@@ -15,8 +15,8 @@ async function main() {
   console.log('JACS Quickstart');
   console.log('='.repeat(60));
 
-  // Step 1: One call creates an ephemeral agent -- no config file needed
-  console.log('\n1. Creating ephemeral agent...');
+  // Step 1: One call creates a persistent agent with keys on disk -- no manual setup needed
+  console.log('\n1. Creating persistent agent...');
   const info = jacs.quickstart();
   console.log(`   Agent ID: ${info.agentId}`);
   console.log(`   Algorithm: ${info.algorithm}`);

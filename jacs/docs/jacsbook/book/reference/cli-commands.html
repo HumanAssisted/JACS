@@ -181,7 +181,7 @@
 <pre><code class="language-bash">jacs version
 </code></pre>
 <h3 id="jacs-quickstart"><a class="header" href="#jacs-quickstart"><code>jacs quickstart</code></a></h3>
-<p>Create an ephemeral agent and optionally sign data -- no config file, no setup. This is the fastest way to start using JACS.</p>
+<p>Create a persistent agent with keys on disk and optionally sign data -- no manual setup needed. If <code>./jacs.config.json</code> already exists, loads it; otherwise creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. This is the fastest way to start using JACS.</p>
 <pre><code class="language-bash"># Print agent info (ID, algorithm)
 jacs quickstart
 
