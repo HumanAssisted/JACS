@@ -177,6 +177,26 @@
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
 <h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
 <p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (trust store), <code>dns</code> (DNS TXT record), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that returns a key for the signer’s ID is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
+<h2 id="zero-config-path"><a class="header" href="#zero-config-path">Zero-Config Path</a></h2>
+<p>If you just want to sign and verify without any configuration, use <code>quickstart()</code>:</p>
+<pre><code class="language-python">import jacs.simple as jacs
+jacs.quickstart()  # No config file needed
+</code></pre>
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
+jacs.quickstart();  // No config file needed
+</code></pre>
+<pre><code class="language-bash">jacs quickstart  # CLI -- no config file needed
+</code></pre>
+<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No files are written to disk.</p>
+<h2 id="minimal-configuration"><a class="header" href="#minimal-configuration">Minimal Configuration</a></h2>
+<p>For persistent agents, a config file needs only two fields (plus <code>$schema</code>):</p>
+<pre><code class="language-json">{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
+  "jacs_agent_key_algorithm": "ring-Ed25519"
+}
+</code></pre>
+<p>All other settings use sensible defaults (<code>./jacs_data</code>, <code>./jacs_keys</code>, <code>fs</code> storage). Override only what you need.</p>
 <h2 id="complete-example-configuration"><a class="header" href="#complete-example-configuration">Complete Example Configuration</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",

@@ -710,217 +710,127 @@ agent.load("./config.json")
 <li><strong><a href="getting-started/../examples/cli.html">Examples</a></strong> - See real-world usage patterns</li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>This guide will get you up and running with JACS in under 10 minutes. We'll create an agent, generate a task, and demonstrate the core workflow across all three implementations.</p>
-<h2 id="choose-your-implementation"><a class="header" href="#choose-your-implementation">Choose Your Implementation</a></h2>
-<p>Select the implementation that best fits your needs:</p>
+<p>Get signing and verifying in under a minute. No config files, no setup.</p>
+<h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
+<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">
-<input type="radio" id="tab-rust" name="tab-group" checked>
-<label for="tab-rust">🦀 Rust CLI</label>
+<input type="radio" id="tab-python" name="tab-group" checked>
+<label for="tab-python">Python</label>
 <div class="content">
-<h3 id="install-rust-cli"><a class="header" href="#install-rust-cli">Install Rust CLI</a></h3>
-<pre><code class="language-bash"># Install from crates.io (--features cli is required for the binary)
-cargo install jacs --features cli
-# Upgrade to latest: cargo install jacs --features cli --force
-
-# Or build from source
-git clone https://github.com/HumanAssisted/JACS
-cd JACS/jacs
-cargo install --path . --features cli
+<pre><code class="language-bash">pip install jacs
 </code></pre>
-<h3 id="initialize-jacs"><a class="header" href="#initialize-jacs">Initialize JACS</a></h3>
-<pre><code class="language-bash"># Create configuration and agent in one step
-jacs init
+<pre><code class="language-python">import jacs.simple as jacs
 
-# This creates:
-# - ~/.jacs/config.json
-# - Agent keys and documents
-# - Basic directory structure
-</code></pre>
-<h3 id="create-your-first-agent"><a class="header" href="#create-your-first-agent">Create Your First Agent</a></h3>
-<pre><code class="language-bash"># Create an agent (if not done via jacs init)
-# Agent type is defined in the input JSON file or default template
-jacs agent create --create-keys true
-
-# Or provide a custom agent definition file
-jacs agent create --create-keys true -f my-agent.json
-
-# Verify your agent was created correctly
-jacs agent verify
-</code></pre>
-<h3 id="create-and-sign-a-task"><a class="header" href="#create-and-sign-a-task">Create and Sign a Task</a></h3>
-<pre><code class="language-bash"># Create a task document with name and description
-jacs task create \
-  -n "Write Product Description" \
-  -d "Create compelling copy for new product launch"
-
-# The task is automatically signed by your agent
+jacs.quickstart()
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+result = jacs.verify(signed.raw)
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
 </div>
 </div>
 <div class="tab">
 <input type="radio" id="tab-nodejs" name="tab-group">
-<label for="tab-nodejs">🟢 Node.js</label>
+<label for="tab-nodejs">Node.js</label>
 <div class="content">
-<h3 id="install-nodejs-package"><a class="header" href="#install-nodejs-package">Install Node.js Package</a></h3>
 <pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
-<h3 id="basic-setup"><a class="header" href="#basic-setup">Basic Setup</a></h3>
-<pre><code class="language-javascript">import { JacsAgent, createConfig } from '@hai.ai/jacs';
-import fs from 'fs';
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
-// Create configuration
-const config = {
-  jacs_agent_id_and_version: null,
-  jacs_data_directory: "./jacs_data",
-  jacs_key_directory: "./jacs_keys",
-  jacs_default_storage: "fs",
-  jacs_agent_key_algorithm: "ring-Ed25519"
-};
-
-// Save config
-fs.writeFileSync('./jacs.config.json', JSON.stringify(config, null, 2));
-
-// Create agent instance and load configuration
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
-</code></pre>
-<h3 id="create-agent-document"><a class="header" href="#create-agent-document">Create Agent Document</a></h3>
-<pre><code class="language-javascript">// Create agent with services
-const agentData = {
-  name: "Content Creator Bot",
-  description: "AI agent specialized in content creation",
-  services: [
-    {
-      type: "content_generation",
-      name: "Product Description Writer",
-      description: "Creates compelling product descriptions",
-      success: "Engaging copy that converts visitors",
-      failure: "Generic or low-quality content"
-    }
-  ]
-};
-
-// Generate keys and create agent
-await agent.generateKeys();
-const agentDoc = await agent.createAgent(agentData);
-console.log('Agent created:', agentDoc.jacsId);
-</code></pre>
-<h3 id="create-a-task"><a class="header" href="#create-a-task">Create a Task</a></h3>
-<pre><code class="language-javascript">// Create task document
-const task = {
-  title: "Write Product Description",
-  description: "Create compelling copy for new product launch",
-  actions: [
-    {
-      id: "research",
-      name: "Product Research", 
-      description: "Analyze product features and benefits",
-      success: "Complete understanding of product value",
-      failure: "Insufficient product knowledge"
-    },
-    {
-      id: "write",
-      name: "Write Copy",
-      description: "Create engaging product description",
-      success: "200-word compelling description",
-      failure: "Generic or unconvincing copy"
-    }
-  ]
-};
-
-// Sign and create task
-const signedTask = await agent.createTask(task);
-console.log('Task created:', signedTask.jacsId);
+jacs.quickstart();
+const signed = jacs.signMessage({ action: 'approve', amount: 100 });
+const result = jacs.verify(signed.raw);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 </code></pre>
 </div>
 </div>
 <div class="tab">
-<input type="radio" id="tab-python" name="tab-group">
-<label for="tab-python">🐍 Python</label>
+<input type="radio" id="tab-rust" name="tab-group">
+<label for="tab-rust">Rust CLI</label>
 <div class="content">
-<h3 id="install-python-package"><a class="header" href="#install-python-package">Install Python Package</a></h3>
+<pre><code class="language-bash">cargo install jacs --features cli
+</code></pre>
+<pre><code class="language-bash"># Info mode -- prints agent ID and algorithm
+jacs quickstart
+
+# Sign JSON from stdin
+echo '{"action":"approve"}' | jacs quickstart --sign
+
+# Sign a file
+jacs quickstart --sign --file mydata.json
+</code></pre>
+</div>
+</div>
+</div>
+<p>Pass <code>algorithm="ring-Ed25519"</code> (or <code>{ algorithm: 'ring-Ed25519' }</code> in JS, <code>--algorithm ring-Ed25519</code> in CLI) to override the default (<code>pq2025</code>).</p>
+<h2 id="advanced-persistent-agent-setup"><a class="header" href="#advanced-persistent-agent-setup">Advanced: Persistent Agent Setup</a></h2>
+<p>For production use, create a persistent agent with keys on disk. This requires a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable.</p>
+<div class="tabs">
+<div class="tab">
+<input type="radio" id="adv-rust" name="adv-group" checked>
+<label for="adv-rust">Rust CLI</label>
+<div class="content">
+<h3 id="install"><a class="header" href="#install">Install</a></h3>
+<pre><code class="language-bash">cargo install jacs --features cli
+</code></pre>
+<h3 id="initialize"><a class="header" href="#initialize">Initialize</a></h3>
+<pre><code class="language-bash"># Create configuration and agent in one step
+jacs init
+
+# Or step by step:
+# 1. Create config
+jacs config create
+# 2. Create agent with keys
+jacs agent create --create-keys true
+# 3. Verify
+jacs agent verify
+</code></pre>
+<h3 id="sign-a-document"><a class="header" href="#sign-a-document">Sign a document</a></h3>
+<pre><code class="language-bash">jacs document create -f mydata.json
+</code></pre>
+</div>
+</div>
+<div class="tab">
+<input type="radio" id="adv-nodejs" name="adv-group">
+<label for="adv-nodejs">Node.js</label>
+<div class="content">
+<h3 id="install-1"><a class="header" href="#install-1">Install</a></h3>
+<pre><code class="language-bash">npm install @hai.ai/jacs
+</code></pre>
+<h3 id="load-and-use"><a class="header" href="#load-and-use">Load and use</a></h3>
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
+
+// Load from config file
+jacs.load('./jacs.config.json');
+
+const signed = jacs.signMessage({ action: 'approve', amount: 100 });
+const result = jacs.verify(signed.raw);
+console.log(`Valid: ${result.valid}`);
+</code></pre>
+</div>
+</div>
+<div class="tab">
+<input type="radio" id="adv-python" name="adv-group">
+<label for="adv-python">Python</label>
+<div class="content">
+<h3 id="install-2"><a class="header" href="#install-2">Install</a></h3>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
-<h3 id="basic-setup-1"><a class="header" href="#basic-setup-1">Basic Setup</a></h3>
-<pre><code class="language-python">import jacs
-import json
-import os
+<h3 id="load-and-use-1"><a class="header" href="#load-and-use-1">Load and use</a></h3>
+<pre><code class="language-python">import jacs.simple as jacs
 
-# Create configuration
-config = {
-    "jacs_agent_id_and_version": None,
-    "jacs_data_directory": "./jacs_data",
-    "jacs_key_directory": "./jacs_keys",
-    "jacs_default_storage": "fs",
-    "jacs_agent_key_algorithm": "ring-Ed25519"
-}
+# Load from config file
+jacs.load("./jacs.config.json")
 
-# Ensure directories exist
-os.makedirs("./jacs_data", exist_ok=True)
-os.makedirs("./jacs_keys", exist_ok=True)
-
-# Save config
-with open('jacs.config.json', 'w') as f:
-    json.dump(config, f, indent=2)
-
-# Create agent instance and load configuration
-agent = jacs.JacsAgent()
-agent.load("./jacs.config.json")
-</code></pre>
-<h3 id="create-agent-document-1"><a class="header" href="#create-agent-document-1">Create Agent Document</a></h3>
-<pre><code class="language-python"># Define agent capabilities
-agent_data = {
-    "name": "Content Creator Bot",
-    "description": "AI agent specialized in content creation",
-    "services": [
-        {
-            "type": "content_generation",
-            "name": "Product Description Writer", 
-            "description": "Creates compelling product descriptions",
-            "success": "Engaging copy that converts visitors",
-            "failure": "Generic or low-quality content"
-        }
-    ]
-}
-
-# Generate keys and create agent
-agent.generate_keys()
-agent_doc = agent.create_agent(agent_data)
-print(f'Agent created: {agent_doc["jacsId"]}')
-</code></pre>
-<h3 id="create-a-task-1"><a class="header" href="#create-a-task-1">Create a Task</a></h3>
-<pre><code class="language-python"># Define task
-task = {
-    "title": "Write Product Description",
-    "description": "Create compelling copy for new product launch",
-    "actions": [
-        {
-            "id": "research",
-            "name": "Product Research",
-            "description": "Analyze product features and benefits", 
-            "success": "Complete understanding of product value",
-            "failure": "Insufficient product knowledge"
-        },
-        {
-            "id": "write", 
-            "name": "Write Copy",
-            "description": "Create engaging product description",
-            "success": "200-word compelling description",
-            "failure": "Generic or unconvincing copy"
-        }
-    ]
-}
-
-# Sign and create task
-signed_task = agent.create_task(task)
-print(f'Task created: {signed_task["jacsId"]}')
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+result = jacs.verify(signed.raw)
+print(f"Valid: {result.valid}")
 </code></pre>
 </div>
 </div>
 </div>
-<h2 id="non-interactive-agent-creation-v060"><a class="header" href="#non-interactive-agent-creation-v060">Non-Interactive Agent Creation (v0.6.0+)</a></h2>
-<p>For scripts, CI/CD, and server environments, all bindings support fully programmatic agent creation without interactive prompts:</p>
+<h2 id="programmatic-agent-creation-v060"><a class="header" href="#programmatic-agent-creation-v060">Programmatic Agent Creation (v0.6.0+)</a></h2>
+<p>For scripts, CI/CD, and server environments where you need <strong>persistent</strong> agents created programmatically (without interactive prompts), use <code>create()</code>. If you don't need persistence, <code>quickstart()</code> above is simpler.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="prog-python" name="prog-group" checked>
@@ -3824,18 +3734,18 @@ npm install @hai.ai/jacs
 <div style="break-before: page; page-break-before: always;"></div><h1 id="simplified-api"><a class="header" href="#simplified-api">Simplified API</a></h1>
 <p>The simplified API (<code>@hai.ai/jacs/simple</code>) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.</p>
 <h2 id="quick-start-3"><a class="header" href="#quick-start-3">Quick Start</a></h2>
+<p>Zero-config -- one call to start signing:</p>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
-// Load your agent
-const agent = jacs.load('./jacs.config.json');
-
-// Sign a message
+jacs.quickstart();
 const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-console.log(`Document ID: ${signed.documentId}`);
-
-// Verify it
 const result = jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}`);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+</code></pre>
+<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No config file, no setup. Pass <code>{ algorithm: 'ring-Ed25519' }</code> to override the default (<code>pq2025</code>).</p>
+<p>For production use with persistent keys, load from a config file instead:</p>
+<pre><code class="language-javascript">const agent = jacs.load('./jacs.config.json');
+const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 </code></pre>
 <h2 id="when-to-use-the-simplified-api"><a class="header" href="#when-to-use-the-simplified-api">When to Use the Simplified API</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Simplified API</th><th>JacsAgent Class</th></tr></thead><tbody>
@@ -3847,8 +3757,22 @@ console.log(`Valid: ${result.valid}`);
 </div>
 <hr />
 <h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
+<h3 id="quickstartoptions"><a class="header" href="#quickstartoptions">quickstart(options?)</a></h3>
+<p>Create an ephemeral agent with keys in memory. No config file, no directories, no setup. Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>options</code> (object, optional): <code>{ algorithm?: string }</code>. Default algorithm: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+</ul>
+<p><strong>Returns:</strong> <code>AgentInfo</code> object</p>
+<pre><code class="language-javascript">const info = jacs.quickstart();
+console.log(`Agent ID: ${info.agentId}`);
+
+// Or with a specific algorithm
+const info = jacs.quickstart({ algorithm: 'ring-Ed25519' });
+</code></pre>
+<hr />
 <h3 id="loadconfigpath"><a class="header" href="#loadconfigpath">load(configPath?)</a></h3>
-<p>Load an agent from a configuration file. This must be called before any other operations.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you need keys on disk.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>configPath</code> (string, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
@@ -6696,18 +6620,18 @@ if __name__ == "__main__":
 <div style="break-before: page; page-break-before: always;"></div><h1 id="simplified-api-1"><a class="header" href="#simplified-api-1">Simplified API</a></h1>
 <p>The simplified API (<code>jacs.simple</code>) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.</p>
 <h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
+<p>Zero-config -- one call to start signing:</p>
 <pre><code class="language-python">import jacs.simple as jacs
 
-# Load your agent
-agent = jacs.load("./jacs.config.json")
-
-# Sign a message
+jacs.quickstart()
 signed = jacs.sign_message({"action": "approve", "amount": 100})
-print(f"Document ID: {signed.document_id}")
-
-# Verify it
 result = jacs.verify(signed.raw)
-print(f"Valid: {result.valid}")
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
+</code></pre>
+<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No config file, no setup. Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
+<p>For production use with persistent keys, load from a config file instead:</p>
+<pre><code class="language-python">agent = jacs.load("./jacs.config.json")
+signed = jacs.sign_message({"action": "approve", "amount": 100})
 </code></pre>
 <h2 id="when-to-use-the-simplified-api-1"><a class="header" href="#when-to-use-the-simplified-api-1">When to Use the Simplified API</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Simplified API</th><th>JacsAgent Class</th></tr></thead><tbody>
@@ -6719,8 +6643,22 @@ print(f"Valid: {result.valid}")
 </div>
 <hr />
 <h2 id="api-reference-4"><a class="header" href="#api-reference-4">API Reference</a></h2>
+<h3 id="quickstartalgorithmnone"><a class="header" href="#quickstartalgorithmnone">quickstart(algorithm=None)</a></h3>
+<p>Create an ephemeral agent with keys in memory. No config file, no directories, no setup. Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+</ul>
+<p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
+<pre><code class="language-python">info = jacs.quickstart()
+print(f"Agent ID: {info.agent_id}")
+
+# Or with a specific algorithm
+info = jacs.quickstart(algorithm="ring-Ed25519")
+</code></pre>
+<hr />
 <h3 id="loadconfig_pathnone"><a class="header" href="#loadconfig_pathnone">load(config_path=None)</a></h3>
-<p>Load an agent from a configuration file. This must be called before any other operations.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you need keys on disk.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>config_path</code> (str, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
@@ -17811,8 +17749,28 @@ app.listen(PORT, () =&gt; {
 <p>Prints version and build information for the JACS installation.</p>
 <pre><code class="language-bash">jacs version
 </code></pre>
+<h3 id="jacs-quickstart"><a class="header" href="#jacs-quickstart"><code>jacs quickstart</code></a></h3>
+<p>Create an ephemeral agent and optionally sign data -- no config file, no setup. This is the fastest way to start using JACS.</p>
+<pre><code class="language-bash"># Print agent info (ID, algorithm)
+jacs quickstart
+
+# Sign JSON from stdin
+echo '{"action":"approve"}' | jacs quickstart --sign
+
+# Sign a file
+jacs quickstart --sign --file mydata.json
+
+# Use a specific algorithm
+jacs quickstart --algorithm ring-Ed25519
+</code></pre>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>--algorithm &lt;algo&gt;</code> - Signing algorithm (default: <code>pq2025</code>). Also: <code>ring-Ed25519</code>, <code>RSA-PSS</code></li>
+<li><code>--sign</code> - Sign input (from stdin or <code>--file</code>) instead of printing info</li>
+<li><code>--file &lt;path&gt;</code> - Read JSON input from file instead of stdin (requires <code>--sign</code>)</li>
+</ul>
 <h3 id="jacs-init"><a class="header" href="#jacs-init"><code>jacs init</code></a></h3>
-<p>Initialize JACS by creating both configuration and agent (with cryptographic keys). This is typically the first command run when setting up JACS.</p>
+<p>Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.</p>
 <pre><code class="language-bash">jacs init
 </code></pre>
 <h3 id="jacs-help"><a class="header" href="#jacs-help"><code>jacs help</code></a></h3>
@@ -18047,6 +18005,26 @@ jacs document verify -f document.json -s schema.json
 <h2 id="overview-17"><a class="header" href="#overview-17">Overview</a></h2>
 <h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
 <p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (trust store), <code>dns</code> (DNS TXT record), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that returns a key for the signer’s ID is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
+<h2 id="zero-config-path"><a class="header" href="#zero-config-path">Zero-Config Path</a></h2>
+<p>If you just want to sign and verify without any configuration, use <code>quickstart()</code>:</p>
+<pre><code class="language-python">import jacs.simple as jacs
+jacs.quickstart()  # No config file needed
+</code></pre>
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
+jacs.quickstart();  // No config file needed
+</code></pre>
+<pre><code class="language-bash">jacs quickstart  # CLI -- no config file needed
+</code></pre>
+<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No files are written to disk.</p>
+<h2 id="minimal-configuration"><a class="header" href="#minimal-configuration">Minimal Configuration</a></h2>
+<p>For persistent agents, a config file needs only two fields (plus <code>$schema</code>):</p>
+<pre><code class="language-json">{
+  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
+  "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
+  "jacs_agent_key_algorithm": "ring-Ed25519"
+}
+</code></pre>
+<p>All other settings use sensible defaults (<code>./jacs_data</code>, <code>./jacs_keys</code>, <code>fs</code> storage). Override only what you need.</p>
 <h2 id="complete-example-configuration"><a class="header" href="#complete-example-configuration">Complete Example Configuration</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",

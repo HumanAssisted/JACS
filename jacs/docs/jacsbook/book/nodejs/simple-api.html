@@ -176,18 +176,18 @@
                         <h1 id="simplified-api"><a class="header" href="#simplified-api">Simplified API</a></h1>
 <p>The simplified API (<code>@hai.ai/jacs/simple</code>) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.</p>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<p>Zero-config -- one call to start signing:</p>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
-// Load your agent
-const agent = jacs.load('./jacs.config.json');
-
-// Sign a message
+jacs.quickstart();
 const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-console.log(`Document ID: ${signed.documentId}`);
-
-// Verify it
 const result = jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}`);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+</code></pre>
+<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No config file, no setup. Pass <code>{ algorithm: 'ring-Ed25519' }</code> to override the default (<code>pq2025</code>).</p>
+<p>For production use with persistent keys, load from a config file instead:</p>
+<pre><code class="language-javascript">const agent = jacs.load('./jacs.config.json');
+const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 </code></pre>
 <h2 id="when-to-use-the-simplified-api"><a class="header" href="#when-to-use-the-simplified-api">When to Use the Simplified API</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Simplified API</th><th>JacsAgent Class</th></tr></thead><tbody>
@@ -199,8 +199,22 @@ console.log(`Valid: ${result.valid}`);
 </div>
 <hr />
 <h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
+<h3 id="quickstartoptions"><a class="header" href="#quickstartoptions">quickstart(options?)</a></h3>
+<p>Create an ephemeral agent with keys in memory. No config file, no directories, no setup. Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>options</code> (object, optional): <code>{ algorithm?: string }</code>. Default algorithm: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+</ul>
+<p><strong>Returns:</strong> <code>AgentInfo</code> object</p>
+<pre><code class="language-javascript">const info = jacs.quickstart();
+console.log(`Agent ID: ${info.agentId}`);
+
+// Or with a specific algorithm
+const info = jacs.quickstart({ algorithm: 'ring-Ed25519' });
+</code></pre>
+<hr />
 <h3 id="loadconfigpath"><a class="header" href="#loadconfigpath">load(configPath?)</a></h3>
-<p>Load an agent from a configuration file. This must be called before any other operations.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you need keys on disk.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>configPath</code> (string, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>

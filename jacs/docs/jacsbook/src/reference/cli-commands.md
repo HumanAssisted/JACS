@@ -11,8 +11,30 @@ Prints version and build information for the JACS installation.
 jacs version
 ```
 
+### `jacs quickstart`
+Create an ephemeral agent and optionally sign data -- no config file, no setup. This is the fastest way to start using JACS.
+
+```bash
+# Print agent info (ID, algorithm)
+jacs quickstart
+
+# Sign JSON from stdin
+echo '{"action":"approve"}' | jacs quickstart --sign
+
+# Sign a file
+jacs quickstart --sign --file mydata.json
+
+# Use a specific algorithm
+jacs quickstart --algorithm ring-Ed25519
+```
+
+**Options:**
+- `--algorithm <algo>` - Signing algorithm (default: `pq2025`). Also: `ring-Ed25519`, `RSA-PSS`
+- `--sign` - Sign input (from stdin or `--file`) instead of printing info
+- `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)
+
 ### `jacs init`
-Initialize JACS by creating both configuration and agent (with cryptographic keys). This is typically the first command run when setting up JACS.
+Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.
 
 ```bash
 jacs init

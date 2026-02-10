@@ -4,19 +4,24 @@ The simplified API (`@hai.ai/jacs/simple`) provides a streamlined, module-level 
 
 ## Quick Start
 
+Zero-config -- one call to start signing:
+
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-// Load your agent
-const agent = jacs.load('./jacs.config.json');
-
-// Sign a message
+jacs.quickstart();
 const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-console.log(`Document ID: ${signed.documentId}`);
-
-// Verify it
 const result = jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}`);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+```
+
+`quickstart()` creates an ephemeral agent with keys in memory. No config file, no setup. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+
+For production use with persistent keys, load from a config file instead:
+
+```javascript
+const agent = jacs.load('./jacs.config.json');
+const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 ```
 
 ## When to Use the Simplified API
@@ -32,9 +37,28 @@ console.log(`Valid: ${result.valid}`);
 
 ## API Reference
 
+### quickstart(options?)
+
+Create an ephemeral agent with keys in memory. No config file, no directories, no setup. Call this once before `signMessage()` or `verify()`.
+
+**Parameters:**
+- `options` (object, optional): `{ algorithm?: string }`. Default algorithm: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.
+
+**Returns:** `AgentInfo` object
+
+```javascript
+const info = jacs.quickstart();
+console.log(`Agent ID: ${info.agentId}`);
+
+// Or with a specific algorithm
+const info = jacs.quickstart({ algorithm: 'ring-Ed25519' });
+```
+
+---
+
 ### load(configPath?)
 
-Load an agent from a configuration file. This must be called before any other operations.
+Load a persistent agent from a configuration file. Use this instead of `quickstart()` when you need keys on disk.
 
 **Parameters:**
 - `configPath` (string, optional): Path to jacs.config.json (default: "./jacs.config.json")

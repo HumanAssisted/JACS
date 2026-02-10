@@ -176,18 +176,18 @@
                         <h1 id="simplified-api"><a class="header" href="#simplified-api">Simplified API</a></h1>
 <p>The simplified API (<code>jacs.simple</code>) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.</p>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<p>Zero-config -- one call to start signing:</p>
 <pre><code class="language-python">import jacs.simple as jacs
 
-# Load your agent
-agent = jacs.load("./jacs.config.json")
-
-# Sign a message
+jacs.quickstart()
 signed = jacs.sign_message({"action": "approve", "amount": 100})
-print(f"Document ID: {signed.document_id}")
-
-# Verify it
 result = jacs.verify(signed.raw)
-print(f"Valid: {result.valid}")
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
+</code></pre>
+<p><code>quickstart()</code> creates an ephemeral agent with keys in memory. No config file, no setup. Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
+<p>For production use with persistent keys, load from a config file instead:</p>
+<pre><code class="language-python">agent = jacs.load("./jacs.config.json")
+signed = jacs.sign_message({"action": "approve", "amount": 100})
 </code></pre>
 <h2 id="when-to-use-the-simplified-api"><a class="header" href="#when-to-use-the-simplified-api">When to Use the Simplified API</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Simplified API</th><th>JacsAgent Class</th></tr></thead><tbody>
@@ -199,8 +199,22 @@ print(f"Valid: {result.valid}")
 </div>
 <hr />
 <h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
+<h3 id="quickstartalgorithmnone"><a class="header" href="#quickstartalgorithmnone">quickstart(algorithm=None)</a></h3>
+<p>Create an ephemeral agent with keys in memory. No config file, no directories, no setup. Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+</ul>
+<p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
+<pre><code class="language-python">info = jacs.quickstart()
+print(f"Agent ID: {info.agent_id}")
+
+# Or with a specific algorithm
+info = jacs.quickstart(algorithm="ring-Ed25519")
+</code></pre>
+<hr />
 <h3 id="loadconfig_pathnone"><a class="header" href="#loadconfig_pathnone">load(config_path=None)</a></h3>
-<p>Load an agent from a configuration file. This must be called before any other operations.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you need keys on disk.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>config_path</code> (str, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
