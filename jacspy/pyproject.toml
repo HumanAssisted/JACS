@@ -44,6 +44,9 @@ Issues = "https://github.com/HumanAssisted/JACS/issues"
 
 # scripts.jacs = "jacs.cli_runner:main"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.maturin]
 features = ["pyo3/extension-module"] 
 module-name = "jacs"  

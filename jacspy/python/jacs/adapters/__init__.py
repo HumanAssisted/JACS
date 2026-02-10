@@ -7,7 +7,8 @@ Usage:
     from jacs.adapters.base import BaseJacsAdapter
     from jacs.adapters.crewai import jacs_guardrail, JacsSignedTool
     from jacs.adapters.fastapi import JacsMiddleware, jacs_route
-    from jacs.adapters.langchain import jacs_signing_middleware, JacsSigningMiddleware
+    from jacs.adapters.langchain import jacs_wrap_tool_call, with_jacs_signing
+    from jacs.adapters.mcp import register_jacs_tools, JacsMCPMiddleware
 """
 
 from .base import BaseJacsAdapter
@@ -53,5 +54,12 @@ try:
         "langchain_signed_tool",
         "with_jacs_signing",
     ]
+except ImportError:
+    pass
+
+try:
+    from .mcp import register_jacs_tools, JacsMCPMiddleware
+
+    __all__ += ["register_jacs_tools", "JacsMCPMiddleware"]
 except ImportError:
     pass
