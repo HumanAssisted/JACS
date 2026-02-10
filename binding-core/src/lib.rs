@@ -1147,7 +1147,10 @@ pub fn verify_document_standalone(
         BindingCoreError::serialization_failed(format!("Failed to serialize config: {}", e))
     })?;
 
-    let config_path = std::env::temp_dir().join("jacs_standalone_verify_config.json");
+    let config_path = std::env::temp_dir().join(format!(
+        "jacs_standalone_verify_config_{:?}.json",
+        std::thread::current().id()
+    ));
     std::fs::write(&config_path, &config_json)
         .map_err(|e| BindingCoreError::generic(format!("Failed to write temp config: {}", e)))?;
 
@@ -1179,6 +1182,9 @@ pub fn verify_document_standalone(
             signer_id: signer_id.clone(),
         })
     })();
+
+    // Clean up temp config file
+    let _ = std::fs::remove_file(&config_path);
 
     match result {
         Ok(r) => Ok(r),

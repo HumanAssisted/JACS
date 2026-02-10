@@ -18,15 +18,9 @@ Available as a library for **Python**, **Node.js**, **Go**, and **Rust**, plus a
 - **Non-repudiation**: Signed actions can't be denied
 - **Post-quantum ready**: NIST-standardized ML-DSA (FIPS-204) signatures out of the box
 
-## First run (minimal setup)
-
-1. Copy `jacs.config.example.json` to `jacs.config.json` (or use `jacs config create`).
-2. Set `JACS_PRIVATE_KEY_PASSWORD` in your environment (never put the password in the config file).
-3. Run `jacs agent create` or `jacs init` as documented, then sign/verify as in Quick Start below.
-
-For runtime signing, set `JACS_PRIVATE_KEY_PASSWORD` (or use a keychain). The CLI can prompt during init; scripts and servers must set the env var.
-
 ## Quick Start
+
+Zero-config -- no config file, no setup. One call creates an ephemeral agent and you're signing.
 
 ### Python
 
@@ -35,16 +29,11 @@ pip install jacs
 ```
 
 ```python
-from jacs import simple
+import jacs.simple as jacs
 
-# Load your agent
-simple.load('./jacs.config.json')
-
-# Sign any data
-signed = simple.sign_message({'action': 'approve', 'amount': 100})
-
-# Verify signatures
-result = simple.verify(signed.raw)
+jacs.quickstart()
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
@@ -57,23 +46,10 @@ npm install @hai.ai/jacs
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-jacs.load('./jacs.config.json');
-
+jacs.quickstart();
 const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 const result = jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
-```
-
-### Go
-
-```go
-import jacs "github.com/HumanAssisted/JACS/jacsgo"
-
-jacs.Load(nil)
-
-signed, _ := jacs.SignMessage(map[string]interface{}{"action": "approve"})
-result, _ := jacs.Verify(signed.Raw)
-fmt.Printf("Valid: %t, Signer: %s\n", result.Valid, result.SignerID)
 ```
 
 ### Rust / CLI
@@ -81,20 +57,43 @@ fmt.Printf("Valid: %t, Signer: %s\n", result.Valid, result.SignerID)
 ```bash
 cargo install jacs --features cli
 
-# Upgrade to latest (overwrite existing install)
-cargo install jacs --features cli --force
-
-# Create an agent
-jacs init
+# Zero-config quickstart
+jacs quickstart
 
 # Sign a document
 jacs document create -f mydata.json
+```
+
+### Advanced: Loading a persistent agent
+
+For production use, create a persistent agent with keys on disk:
+
+1. Copy `jacs.config.example.json` to `jacs.config.json` (or use `jacs config create`).
+2. Set `JACS_PRIVATE_KEY_PASSWORD` in your environment.
+3. Run `jacs init` to create the agent.
+
+Then load it in code:
+
+```python
+import jacs.simple as jacs
+jacs.load("./jacs.config.json")
+```
+
+```javascript
+const jacs = require('@hai.ai/jacs/simple');
+jacs.load('./jacs.config.json');
+```
+
+```go
+import jacs "github.com/HumanAssisted/JACS/jacsgo"
+jacs.Load(nil)
 ```
 
 ## Core API (All Languages)
 
 | Function | Description |
 |----------|-------------|
+| `quickstart(options?)` | Create an ephemeral agent in memory -- zero config, no files |
 | `create(name, options)` | Create a new agent programmatically (non-interactive) |
 | `load(config)` | Load agent from config file |
 | `sign_message(data)` | Sign any JSON data |

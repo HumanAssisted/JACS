@@ -14,7 +14,7 @@ use crate::crypt::hash::hash_public_key;
 use crate::error::JacsError;
 use crate::storage::MultiStorage;
 
-use crate::config::{Config, find_config, load_config, load_config_12factor};
+use crate::config::{Config, load_config_12factor, load_config_12factor_optional};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::crypt::private_key::ZeroizingVec;
@@ -139,7 +139,7 @@ impl Agent {
     ) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
-        let config = Some(find_config("./".to_string())?);
+        let config = Some(load_config_12factor_optional(None)?);
         Ok(Self {
             schema,
             value: None,
@@ -216,7 +216,7 @@ impl Agent {
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
 
-        self.config = Some(find_config("./".to_string()).map_err(|e| {
+        self.config = Some(load_config_12factor_optional(None).map_err(|e| {
             format!(
                 "load_by_id failed for agent '{}': Could not find or load configuration: {}",
                 lookup_id, e
@@ -259,7 +259,7 @@ impl Agent {
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
         // load config string
-        self.config = Some(load_config(&path).map_err(|e| {
+        self.config = Some(load_config_12factor(Some(&path)).map_err(|e| {
             format!(
                 "load_by_config failed: Could not load configuration from '{}': {}",
                 path, e

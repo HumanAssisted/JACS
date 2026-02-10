@@ -697,16 +697,11 @@ impl SimpleAgent {
             message: format!("Failed to save agent: {}", e),
         })?;
 
-        // Create config file
+        // Create minimal config file (only required fields; defaults handle the rest)
         let config_json = json!({
             "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
             "jacs_agent_id_and_version": lookup_id,
-            "jacs_data_directory": "./jacs_data",
-            "jacs_key_directory": "./jacs_keys",
-            "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
-            "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
-            "jacs_agent_key_algorithm": algorithm,
-            "jacs_default_storage": "fs"
+            "jacs_agent_key_algorithm": algorithm
         });
 
         let config_path = "./jacs.config.json";
@@ -966,17 +961,22 @@ impl SimpleAgent {
             );
             updated_str
         } else {
-            // No config exists -- create one from params
-            let config_json = json!({
-                "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-                "jacs_agent_id_and_version": lookup_id,
-                "jacs_data_directory": params.data_directory,
-                "jacs_key_directory": params.key_directory,
-                "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
-                "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
-                "jacs_agent_key_algorithm": algorithm,
-                "jacs_default_storage": params.default_storage,
-            });
+            // No config exists -- create minimal config (only required fields + non-defaults)
+            let mut config_map = serde_json::Map::new();
+            config_map.insert("$schema".to_string(), json!("https://hai.ai/schemas/jacs.config.schema.json"));
+            config_map.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
+            config_map.insert("jacs_agent_key_algorithm".to_string(), json!(algorithm));
+            // Only include paths if they differ from defaults
+            if params.data_directory != "./jacs_data" {
+                config_map.insert("jacs_data_directory".to_string(), json!(params.data_directory));
+            }
+            if params.key_directory != "./jacs_keys" {
+                config_map.insert("jacs_key_directory".to_string(), json!(params.key_directory));
+            }
+            if params.default_storage != "fs" {
+                config_map.insert("jacs_default_storage".to_string(), json!(params.default_storage));
+            }
+            let config_json = Value::Object(config_map);
 
             let new_str =
                 serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {

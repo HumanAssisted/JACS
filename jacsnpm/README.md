@@ -14,28 +14,38 @@ The npm package ships prebuilt native bindings for supported targets and does no
 
 ## Quick Start
 
+Zero-config -- one call to start signing:
+
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-// Load your agent (run `jacs create` first if needed)
+jacs.quickstart();
+const signed = jacs.signMessage({ action: 'approve', amount: 100 });
+const result = jacs.verify(signed.raw);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+```
+
+`quickstart()` creates an ephemeral agent with keys in memory. No config file, no setup. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+
+### Advanced: Loading a persistent agent
+
+For production use, load a persistent agent from a config file:
+
+```javascript
+const jacs = require('@hai.ai/jacs/simple');
+
 const agent = jacs.load('./jacs.config.json');
 
-// Sign a message
-const signed = jacs.signMessage({
-  action: 'approve',
-  amount: 100
-});
-
-// Verify it
+const signed = jacs.signMessage({ action: 'approve', amount: 100 });
 const result = jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}`);
-console.log(`Signer: ${result.signerId}`);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
 ## Core API
 
 | Function | Description |
 |----------|-------------|
+| `quickstart(options?)` | Create an ephemeral agent in memory -- zero config, no files |
 | `create(options)` | Create a new agent programmatically (non-interactive) |
 | `load(configPath)` | Load agent from config file |
 | `verifySelf()` | Verify agent's own integrity |

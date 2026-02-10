@@ -10,7 +10,7 @@ use jacs::cli_utils::document::{
     check_agreement, create_agreement, create_documents, extract_documents, sign_documents,
     update_documents, verify_documents,
 };
-use jacs::config::find_config;
+use jacs::config::load_config_12factor_optional;
 // use jacs::create_task; // unused
 use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::shutdown::{ShutdownGuard, install_signal_handler};
@@ -546,6 +546,44 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 )
         )
         .subcommand(
+            Command::new("quickstart")
+                .about("Create an ephemeral in-memory agent for instant sign/verify (zero config)")
+                .arg(
+                    Arg::new("algorithm")
+                        .long("algorithm")
+                        .short('a')
+                        .value_parser(["ed25519", "rsa-pss", "pq2025"])
+                        .default_value("ed25519")
+                        .help("Signing algorithm (default: ed25519)"),
+                )
+                .arg(
+                    Arg::new("sign")
+                        .long("sign")
+                        .help("Sign JSON from stdin and print signed document to stdout")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("file")
+                        .short('f')
+                        .long("file")
+                        .value_parser(value_parser!(String))
+                        .help("Sign a JSON file instead of reading from stdin (used with --sign)"),
+                )
+                .arg(
+                    Arg::new("persist")
+                        .long("persist")
+                        .help("Save the agent to disk for reuse")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("path")
+                        .long("path")
+                        .value_parser(value_parser!(String))
+                        .default_value(".")
+                        .help("Directory to save agent files when using --persist"),
+                )
+        )
+        .subcommand(
             Command::new("init")
                 .about("Initialize JACS by creating both config and agent (with keys)")
         )
@@ -567,8 +605,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Call the refactored handler function
                 handle_config_create()?;
             }
-            Some(("read", verify_matches)) => {
-                let config = find_config("./".to_string())?;
+            Some(("read", _read_matches)) => {
+                let config = load_config_12factor_optional(Some("./jacs.config.json"))?;
                 println!("{}", config);
             }
             _ => println!("please enter subcommand see jacs config --help"),
@@ -1034,6 +1072,63 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             }
             _ => println!("please enter subcommand see jacs key --help"),
         },
+        Some(("quickstart", qs_matches)) => {
+            use jacs::simple::SimpleAgent;
+
+            let algorithm = qs_matches.get_one::<String>("algorithm").map(|s| s.as_str());
+            let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
+            let do_persist = *qs_matches.get_one::<bool>("persist").unwrap_or(&false);
+            let persist_path = qs_matches.get_one::<String>("path").map(|s| s.as_str()).unwrap_or(".");
+            let sign_file = qs_matches.get_one::<String>("file");
+
+            let (agent, info) = SimpleAgent::ephemeral(algorithm).map_err(|e| -> Box<dyn Error> {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("{}", e),
+                ))
+            })?;
+
+            if do_sign {
+                // Sign mode: read JSON, sign it, print signed document
+                let input = if let Some(file_path) = sign_file {
+                    std::fs::read_to_string(file_path)?
+                } else {
+                    use std::io::Read;
+                    let mut buf = String::new();
+                    std::io::stdin().read_to_string(&mut buf)?;
+                    buf
+                };
+
+                let value: serde_json::Value = serde_json::from_str(&input).map_err(|e| {
+                    format!("Invalid JSON input: {}", e)
+                })?;
+
+                let signed = agent.sign_message(&value).map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Signing failed: {}", e),
+                    ))
+                })?;
+
+                println!("{}", signed.raw);
+            } else {
+                // Info mode: print agent details
+                println!("Created ephemeral JACS agent ({})", info.algorithm);
+                println!("  Agent ID: {}", info.agent_id);
+                println!("  Version:  {}", info.version);
+                println!("  Keys:     in-memory (will be lost on exit)");
+                println!();
+                println!("Try signing something:");
+                println!("  echo '{{\"hello\":\"world\"}}' | jacs quickstart --sign");
+                println!();
+                println!("To persist this agent for reuse:");
+                println!("  jacs quickstart --persist --path ./my-agent/");
+            }
+
+            if do_persist {
+                eprintln!("Note: --persist is not yet implemented. Use jacs init for persistent agents.");
+            }
+        }
         Some(("init", _init_matches)) => {
             println!("--- Running Config Creation ---");
             handle_config_create()?;

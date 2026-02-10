@@ -17,14 +17,28 @@ Packaging/build metadata is defined in `pyproject.toml` (maturin). `setup.py` is
 
 To check dependencies for known vulnerabilities when using optional extras, run `pip audit` (or `safety check`).
 
-## Quick Start (Simplified API)
+## Quick Start
 
-The simplified API gets you signing in under 2 minutes:
+Zero-config -- one call to start signing:
 
 ```python
 import jacs.simple as jacs
 
-# Load your agent
+jacs.quickstart()
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+result = jacs.verify(signed.raw)
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
+```
+
+`quickstart()` creates an ephemeral agent with keys in memory. No config file, no setup. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
+
+### Advanced: Loading a persistent agent
+
+For production use, load a persistent agent from a config file:
+
+```python
+import jacs.simple as jacs
+
 agent = jacs.load("./jacs.config.json")
 
 # Sign a message (accepts dict, list, str, or any JSON-serializable data)
@@ -55,6 +69,7 @@ The simplified API provides these core operations:
 
 | Operation | Description |
 |-----------|-------------|
+| `quickstart()` | Create an ephemeral agent in memory -- zero config, no files |
 | `create()` | Create a new agent programmatically (non-interactive) |
 | `load()` | Load an existing agent from config |
 | `verify_self()` | Verify the loaded agent's integrity |
