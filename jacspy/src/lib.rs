@@ -398,14 +398,20 @@ impl SimpleAgent {
     /// Returns:
     ///     A SimpleAgent instance
     #[staticmethod]
-    fn load(config_path: Option<&str>) -> PyResult<Self> {
-        let agent = jacs_core::simple::SimpleAgent::load(config_path).map_err(|e| {
+    #[pyo3(signature = (config_path=None, strict=None))]
+    fn load(config_path: Option<&str>, strict: Option<bool>) -> PyResult<Self> {
+        let agent = jacs_core::simple::SimpleAgent::load(config_path, strict).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to load agent: {}",
                 e
             ))
         })?;
         Ok(SimpleAgent { inner: agent })
+    }
+
+    /// Returns whether this agent is in strict mode.
+    fn is_strict(&self) -> bool {
+        self.inner.is_strict()
     }
 
     /// Verify the loaded agent's own integrity.

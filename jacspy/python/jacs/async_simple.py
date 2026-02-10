@@ -91,6 +91,7 @@ async def create(
     description: str = "",
     domain: Optional[str] = None,
     default_storage: str = "fs",
+    strict: Optional[bool] = None,
 ) -> AgentInfo:
     """Create a new JACS agent with cryptographic keys.
 
@@ -136,14 +137,17 @@ async def create(
         description,
         domain,
         default_storage,
+        strict,
     )
 
 
-async def load(config_path: Optional[str] = None) -> AgentInfo:
+async def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> AgentInfo:
     """Load an existing JACS agent from configuration.
 
     Args:
         config_path: Path to jacs.config.json (default: ./jacs.config.json)
+        strict: Enable strict mode. When True, verification failures raise
+                exceptions instead of returning VerificationResult(valid=False).
 
     Returns:
         AgentInfo with the loaded agent's details
@@ -153,10 +157,10 @@ async def load(config_path: Optional[str] = None) -> AgentInfo:
         JacsError: If agent loading fails
 
     Example:
-        agent = await jacs.load("./jacs.config.json")
+        agent = await jacs.load("./jacs.config.json", strict=True)
         print(f"Loaded: {agent.name}")
     """
-    return await asyncio.to_thread(simple.load, config_path)
+    return await asyncio.to_thread(simple.load, config_path, strict)
 
 
 async def verify_self() -> VerificationResult:

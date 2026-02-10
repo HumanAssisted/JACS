@@ -167,6 +167,30 @@ export interface HaiRegistrationResult {
 
 let globalAgent: JacsAgent | null = null;
 let agentInfo: AgentInfo | null = null;
+let strictMode: boolean = false;
+
+/**
+ * Options for loading an agent.
+ */
+export interface LoadOptions {
+  /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
+  strict?: boolean;
+}
+
+function resolveStrict(explicit?: boolean): boolean {
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  const envStrict = process.env.JACS_STRICT_MODE;
+  return envStrict === 'true' || envStrict === '1';
+}
+
+/**
+ * Returns whether the current agent is in strict mode.
+ */
+export function isStrict(): boolean {
+  return strictMode;
+}
 
 function resolveConfigRelativePath(configPath: string, candidate: string): string {
   if (path.isAbsolute(candidate)) {
@@ -283,7 +307,9 @@ export function create(options: CreateAgentOptions): AgentInfo {
  * console.log(`Loaded: ${agent.agentId}`);
  * ```
  */
-export function load(configPath?: string): AgentInfo {
+export function load(configPath?: string, options?: LoadOptions): AgentInfo {
+  strictMode = resolveStrict(options?.strict);
+
   const requestedPath = configPath || './jacs.config.json';
   const resolvedConfigPath = path.resolve(requestedPath);
 
@@ -344,6 +370,9 @@ export function verifySelf(): VerificationResult {
       errors: [],
     };
   } catch (e) {
+    if (strictMode) {
+      throw new Error(`Self-verification failed (strict mode): ${e}`);
+    }
     return {
       valid: false,
       signerId: '',
@@ -600,6 +629,9 @@ export function verify(signedDocument: string): VerificationResult {
       errors: [],
     };
   } catch (e) {
+    if (strictMode) {
+      throw new Error(`Verification failed (strict mode): ${e}`);
+    }
     return {
       valid: false,
       signerId: doc.jacsSignature?.agentID || '',
@@ -688,6 +720,9 @@ export function verifyById(documentId: string): VerificationResult {
       errors: [],
     };
   } catch (e) {
+    if (strictMode) {
+      throw new Error(`Verification failed (strict mode): ${e}`);
+    }
     return {
       valid: false,
       signerId: '',
@@ -827,6 +862,7 @@ export function debugInfo(): Record<string, unknown> {
 export function reset(): void {
   globalAgent = null;
   agentInfo = null;
+  strictMode = false;
 }
 
 /**

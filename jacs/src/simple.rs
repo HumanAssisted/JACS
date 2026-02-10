@@ -427,6 +427,16 @@ fn default_storage() -> String {
     "fs".to_string()
 }
 
+/// Resolve strict mode: explicit parameter wins, then env var, then false.
+fn resolve_strict(explicit: Option<bool>) -> bool {
+    if let Some(s) = explicit {
+        return s;
+    }
+    std::env::var("JACS_STRICT_MODE")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+}
+
 impl Default for CreateAgentParams {
     fn default() -> Self {
         Self {
@@ -591,9 +601,17 @@ pub struct AgreementStatus {
 pub struct SimpleAgent {
     agent: Mutex<Agent>,
     config_path: Option<String>,
+    /// When true, verification failures return `Err` instead of `Ok(valid=false)`.
+    /// Resolved from explicit param > `JACS_STRICT_MODE` env var > false.
+    strict: bool,
 }
 
 impl SimpleAgent {
+    /// Returns whether this agent is in strict mode.
+    pub fn is_strict(&self) -> bool {
+        self.strict
+    }
+
     /// Creates a new JACS agent with persistent identity.
     ///
     /// This generates cryptographic keys, creates configuration files, and saves
@@ -721,6 +739,7 @@ impl SimpleAgent {
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(config_path.to_string()),
+                strict: resolve_strict(None),
             },
             info,
         ))
@@ -1043,6 +1062,7 @@ impl SimpleAgent {
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(params.config_path),
+                strict: resolve_strict(None),
             },
             info,
         ))
@@ -1059,12 +1079,12 @@ impl SimpleAgent {
     /// ```rust,ignore
     /// use jacs::simple::SimpleAgent;
     ///
-    /// let agent = SimpleAgent::load(None)?;  // Load from ./jacs.config.json
-    /// // or
-    /// let agent = SimpleAgent::load(Some("./my-agent/jacs.config.json"))?;
+    /// let agent = SimpleAgent::load(None, None)?;  // Load from ./jacs.config.json
+    /// // or with strict mode:
+    /// let agent = SimpleAgent::load(Some("./my-agent/jacs.config.json"), Some(true))?;
     /// ```
     #[must_use = "agent loading result must be checked for errors"]
-    pub fn load(config_path: Option<&str>) -> Result<Self, JacsError> {
+    pub fn load(config_path: Option<&str>, strict: Option<bool>) -> Result<Self, JacsError> {
         let path = config_path.unwrap_or("./jacs.config.json");
 
         debug!("Loading agent from config: {}", path);
@@ -1088,6 +1108,7 @@ impl SimpleAgent {
         Ok(Self {
             agent: Mutex::new(agent),
             config_path: Some(path.to_string()),
+            strict: resolve_strict(strict),
         })
     }
 
@@ -1128,6 +1149,13 @@ impl SimpleAgent {
         }
 
         let valid = errors.is_empty();
+
+        // In strict mode, verification failure is a hard error
+        if self.strict && !valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: errors.join("; "),
+            });
+        }
 
         // Extract agent info
         let agent_value = agent.get_value().cloned().unwrap_or(json!({}));
@@ -1673,6 +1701,13 @@ impl SimpleAgent {
         }
 
         let valid = errors.is_empty();
+
+        // In strict mode, verification failure is a hard error
+        if self.strict && !valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: errors.join("; "),
+            });
+        }
 
         // Extract signer info
         let signer_id = jacs_doc
@@ -2537,7 +2572,7 @@ pub fn create_with_params(params: CreateAgentParams) -> Result<AgentInfo, JacsEr
 /// ```
 #[deprecated(since = "0.3.0", note = "Use SimpleAgent::load() instead")]
 pub fn load(config_path: Option<&str>) -> Result<(), JacsError> {
-    let agent = SimpleAgent::load(config_path)?;
+    let agent = SimpleAgent::load(config_path, None)?;
     THREAD_AGENT.with(|cell| {
         *cell.borrow_mut() = Some(agent);
     });
@@ -2863,7 +2898,7 @@ mod tests {
 
     #[test]
     fn test_simple_agent_load_missing_config() {
-        let result = SimpleAgent::load(Some("/nonexistent/path/config.json"));
+        let result = SimpleAgent::load(Some("/nonexistent/path/config.json"), None);
         assert!(result.is_err());
 
         match result {
@@ -2976,7 +3011,7 @@ mod tests {
         // Test that SimpleAgent can store and return config path
         // Note: We can't fully test create/load without a valid config,
         // but we can verify the struct design
-        let result = SimpleAgent::load(Some("./nonexistent.json"));
+        let result = SimpleAgent::load(Some("./nonexistent.json"), None);
         assert!(result.is_err());
     }
 
@@ -3024,6 +3059,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         // Plain text that's not JSON
@@ -3043,6 +3079,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         // A document ID like "uuid:version"
@@ -3062,6 +3099,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         // Empty string should fail at JSON parse, not at pre-check
@@ -3074,6 +3112,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         let result = agent
@@ -3112,9 +3151,86 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         let result = agent.get_setup_instructions("example.com", 3600);
         assert!(result.is_err(), "should fail without a loaded agent");
+    }
+
+    #[test]
+    fn test_resolve_strict_defaults_to_false() {
+        // With no explicit param and no env var, strict should be false
+        assert!(!resolve_strict(None));
+    }
+
+    #[test]
+    fn test_resolve_strict_explicit_overrides() {
+        assert!(resolve_strict(Some(true)));
+        assert!(!resolve_strict(Some(false)));
+    }
+
+    #[test]
+    fn test_resolve_strict_env_var() {
+        // SAFETY: Tests run single-threaded (serial_test or #[test] default)
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "true");
+        }
+        assert!(resolve_strict(None));
+
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "1");
+        }
+        assert!(resolve_strict(None));
+
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "false");
+        }
+        assert!(!resolve_strict(None));
+
+        // Explicit overrides env var
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "true");
+        }
+        assert!(!resolve_strict(Some(false)));
+
+        unsafe {
+            std::env::remove_var("JACS_STRICT_MODE");
+        }
+    }
+
+    #[test]
+    fn test_simple_agent_is_strict_accessor() {
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+            strict: true,
+        };
+        assert!(agent.is_strict());
+
+        let agent2 = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+            strict: false,
+        };
+        assert!(!agent2.is_strict());
+    }
+
+    #[test]
+    fn test_verify_non_json_strict_still_returns_err() {
+        // Strict mode shouldn't change behavior for malformed input — it should
+        // still return Err(DocumentMalformed), not SignatureVerificationFailed
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+            strict: true,
+        };
+
+        let result = agent.verify("not-json-at-all");
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::DocumentMalformed { .. }) => {} // expected
+            other => panic!("Expected DocumentMalformed, got {:?}", other),
+        }
     }
 }

@@ -115,6 +115,20 @@ except ImportError:
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
+_strict: bool = False
+
+
+def _resolve_strict(explicit: Optional[bool]) -> bool:
+    """Resolve strict mode: explicit param > JACS_STRICT_MODE env var > False."""
+    if explicit is not None:
+        return explicit
+    return os.environ.get("JACS_STRICT_MODE", "").lower() in ("true", "1")
+
+
+def is_strict() -> bool:
+    """Returns whether the current agent is in strict mode."""
+    return _strict
+
 
 def reset():
     """Clear global agent state. Useful for test isolation.
@@ -122,9 +136,10 @@ def reset():
     After calling reset(), you must call load() or create() again before
     using any signing or verification functions.
     """
-    global _global_agent, _agent_info
+    global _global_agent, _agent_info, _strict
     _global_agent = None
     _agent_info = None
+    _strict = False
 
 
 # Verify link constants (HAI / public verification URLs)
@@ -238,6 +253,7 @@ def create(
     description: str = "",
     domain: Optional[str] = None,
     default_storage: str = "fs",
+    strict: Optional[bool] = None,
 ) -> AgentInfo:
     """Create a new JACS agent with cryptographic keys (programmatic).
 
@@ -275,7 +291,9 @@ def create(
         )
         print(f"Created agent: {agent.agent_id}")
     """
-    global _global_agent, _agent_info
+    global _global_agent, _agent_info, _strict
+
+    _strict = _resolve_strict(strict)
 
     # Resolve password
     resolved_password = password or os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
@@ -338,11 +356,14 @@ def create(
         raise JacsError(f"Failed to create agent: {e}")
 
 
-def load(config_path: Optional[str] = None) -> AgentInfo:
+def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> AgentInfo:
     """Load an existing JACS agent from configuration.
 
     Args:
         config_path: Path to jacs.config.json (default: ./jacs.config.json)
+        strict: Enable strict mode. When True, verification failures raise
+                exceptions instead of returning VerificationResult(valid=False).
+                If None, falls back to JACS_STRICT_MODE env var, then False.
 
     Returns:
         AgentInfo with the loaded agent's details
@@ -352,10 +373,12 @@ def load(config_path: Optional[str] = None) -> AgentInfo:
         JacsError: If agent loading fails
 
     Example:
-        agent = jacs.load("./jacs.config.json")
+        agent = jacs.load("./jacs.config.json", strict=True)
         print(f"Loaded: {agent.name}")
     """
-    global _global_agent, _agent_info
+    global _global_agent, _agent_info, _strict
+
+    _strict = _resolve_strict(strict)
 
     # Use default config path if not provided
     if config_path is None:
@@ -447,6 +470,8 @@ def verify_self() -> VerificationResult:
             signature_valid=True,
         )
     except Exception as e:
+        if _strict:
+            raise VerificationError(f"Self-verification failed (strict mode): {e}") from e
         return VerificationResult(
             valid=False,
             errors=[str(e)],
@@ -946,6 +971,8 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
 
     except Exception as e:
         logger.warning("Verification failed: %s", e)
+        if _strict:
+            raise VerificationError(f"Verification failed (strict mode): {e}") from e
         return VerificationResult(
             valid=False,
             errors=[str(e)],
@@ -994,6 +1021,8 @@ def verify_by_id(document_id: str) -> VerificationResult:
         )
     except Exception as e:
         logger.warning("verify_by_id failed: %s", e)
+        if _strict:
+            raise VerificationError(f"Verification failed (strict mode): {e}") from e
         return VerificationResult(
             valid=False,
             errors=[str(e)],
@@ -1493,6 +1522,8 @@ __all__ = [
     "get_trusted_agent",
     # Diagnostics
     "debug_info",
+    # Strict mode
+    "is_strict",
     # Test utilities
     "reset",
     # Remote key fetch

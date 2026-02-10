@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"       
 [project]
 name = "jacs"
-version = "0.6.1"
+version = "0.6.2"
 description = "JACS - JSON AI Communication Standard: Cryptographic signing and verification for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"

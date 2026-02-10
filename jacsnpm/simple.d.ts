@@ -176,18 +176,30 @@ export interface CreateAgentOptions {
  */
 export declare function create(options: CreateAgentOptions): AgentInfo;
 /**
+ * Options for loading an agent.
+ */
+export interface LoadOptions {
+    /** Enable strict mode: verification failures throw instead of returning { valid: false }. */
+    strict?: boolean;
+}
+/**
  * Loads an existing agent from a configuration file.
  *
  * @param configPath - Path to jacs.config.json (default: "./jacs.config.json")
+ * @param options - Optional load options (e.g. { strict: true })
  * @returns AgentInfo with the loaded agent's details
  *
  * @example
  * ```typescript
- * const agent = jacs.load('./jacs.config.json');
+ * const agent = jacs.load('./jacs.config.json', { strict: true });
  * console.log(`Loaded: ${agent.agentId}`);
  * ```
  */
-export declare function load(configPath?: string): AgentInfo;
+export declare function load(configPath?: string, options?: LoadOptions): AgentInfo;
+/**
+ * Returns whether the current agent is in strict mode.
+ */
+export declare function isStrict(): boolean;
 /**
  * Verifies the currently loaded agent's integrity.
  *

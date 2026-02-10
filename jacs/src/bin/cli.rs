@@ -975,7 +975,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 use jacs::simple::SimpleAgent;
 
                 // Load the agent first to find the key file
-                let agent = SimpleAgent::load(None).map_err(|e| -> Box<dyn Error> {
+                let agent = SimpleAgent::load(None, None).map_err(|e| -> Box<dyn Error> {
                     Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         format!("Failed to load agent: {}", e),
