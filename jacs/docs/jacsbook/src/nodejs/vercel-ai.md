@@ -4,6 +4,37 @@
 
 The JACS Vercel AI SDK adapter adds cryptographic provenance to AI-generated text and tool results using the `LanguageModelV3Middleware` pattern. Works with `generateText`, `streamText`, and any model provider (OpenAI, Anthropic, etc.).
 
+## 5-Minute Quickstart
+
+### 1. Install
+
+```bash
+npm install @hai.ai/jacs ai @ai-sdk/openai
+```
+
+### 2. Create a JACS client
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const client = await JacsClient.quickstart();
+```
+
+### 3. Sign every model output
+
+```typescript
+import { withProvenance } from '@hai.ai/jacs/vercel-ai';
+import { openai } from '@ai-sdk/openai';
+import { generateText } from 'ai';
+
+const model = withProvenance(openai('gpt-4'), { client });
+const { text, providerMetadata } = await generateText({ model, prompt: 'Hello!' });
+
+console.log(providerMetadata?.jacs?.text?.documentId); // JACS document ID
+```
+
+---
+
 ## Quick Start
 
 ```typescript

@@ -7,6 +7,7 @@
 - [Core Concepts](getting-started/concepts.md)
 - [Quick Start](getting-started/quick-start.md)
 - [Which Integration?](getting-started/decision-tree.md)
+- [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
 - [Use cases](usecases.md)
 
 ## Rust CLI & Library

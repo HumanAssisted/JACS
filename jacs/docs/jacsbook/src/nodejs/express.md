@@ -4,6 +4,42 @@
 
 JACS provides `jacsMiddleware` for Express v4/v5 that verifies incoming signed request bodies and optionally auto-signs JSON responses. No body-parser gymnastics, no monkey-patching.
 
+## 5-Minute Quickstart
+
+### 1. Install
+
+```bash
+npm install @hai.ai/jacs express
+```
+
+### 2. Create a JACS client
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const client = await JacsClient.quickstart();
+```
+
+### 3. Add signing middleware
+
+```typescript
+import express from 'express';
+import { jacsMiddleware } from '@hai.ai/jacs/express';
+
+const app = express();
+app.use(express.text({ type: 'application/json' }));
+app.use(jacsMiddleware({ client, verify: true }));
+
+app.post('/api/data', (req, res) => {
+  console.log(req.jacsPayload); // verified payload
+  res.json({ status: 'ok' });
+});
+
+app.listen(3000);
+```
+
+---
+
 ## Quick Start
 
 ```typescript

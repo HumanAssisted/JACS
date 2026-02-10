@@ -16,6 +16,93 @@ Every adapter wraps a `JacsClient` instance and provides `strict` mode (raise on
 
 ---
 
+## 5-Minute Quickstarts
+
+### JACS + LangChain in 5 Minutes
+
+Sign it. Prove it. -- every tool call, automatically.
+
+```python
+# 1. Install
+# pip install jacs[langchain]
+
+# 2. Set up client and middleware
+from jacs.client import JacsClient
+from jacs.adapters.langchain import jacs_signing_middleware
+
+client = JacsClient.quickstart()
+middleware = jacs_signing_middleware(client=client)
+
+# 3. Sign every tool call in your agent
+from langchain.agents import create_agent
+
+agent = create_agent(
+    model="openai:gpt-4o",
+    tools=[my_search_tool, my_calc_tool],
+    middleware=[middleware],
+)
+# All tool results are now cryptographically signed
+```
+
+Or for LangGraph workflows, wrap your ToolNode in one line:
+
+```python
+from jacs.adapters.langchain import with_jacs_signing
+
+tool_node = with_jacs_signing([search_tool, calc_tool], client=client)
+```
+
+### JACS + CrewAI in 5 Minutes
+
+Sign it. Prove it. -- every task output, with a guardrail.
+
+```python
+# 1. Install
+# pip install jacs[crewai]
+
+# 2. Set up client and guardrail
+from jacs.client import JacsClient
+from jacs.adapters.crewai import jacs_guardrail
+
+client = JacsClient.quickstart()
+
+# 3. Attach to any CrewAI task
+from crewai import Task
+
+task = Task(
+    description="Summarize the quarterly report",
+    agent=analyst_agent,
+    guardrail=jacs_guardrail(client=client),
+)
+# Task output is signed before it is accepted
+```
+
+### JACS + FastAPI in 5 Minutes
+
+Sign it. Prove it. -- every API response, with middleware.
+
+```python
+# 1. Install
+# pip install jacs[fastapi]
+
+# 2. Create your app
+from fastapi import FastAPI
+from jacs.adapters.fastapi import JacsMiddleware
+
+app = FastAPI()
+
+# 3. Add JACS middleware -- all JSON responses are signed
+app.add_middleware(JacsMiddleware)
+
+@app.get("/data")
+async def get_data():
+    return {"result": "signed automatically"}
+```
+
+Pass `strict=True` to return 401 on verification failures, or use `sign_responses=False` / `verify_requests=False` to toggle behavior.
+
+---
+
 ## LangChain / LangGraph
 
 ### LangGraph ToolNode (preferred)

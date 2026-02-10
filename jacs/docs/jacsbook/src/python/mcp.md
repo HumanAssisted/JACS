@@ -2,6 +2,46 @@
 
 JACS provides seamless integration with the Model Context Protocol (MCP), enabling cryptographically signed and verified communication between AI agents and MCP servers. This integration ensures that all tool calls, resource requests, and prompt interactions are authenticated and tamper-proof.
 
+## 5-Minute Quickstart
+
+Sign it. Prove it. -- every MCP tool call, automatically.
+
+### Signed MCP Server
+
+```python
+# 1. Install
+# pip install jacs fastmcp
+
+# 2. Create a signed MCP server in one call
+from jacs.mcp import create_jacs_mcp_server
+
+mcp = create_jacs_mcp_server("My Server", "./jacs.config.json")
+
+# 3. Define tools as usual -- responses are auto-signed
+@mcp.tool()
+def hello(name: str) -> str:
+    return f"Hello, {name}!"
+
+mcp.run()
+```
+
+### Signed MCP Client
+
+```python
+# 1. Connect to a JACS-enabled server
+from jacs.mcp import JACSMCPClient
+
+client = JACSMCPClient("http://localhost:8000/sse", "./jacs.config.json")
+
+# 2. Calls are signed outgoing, verified incoming
+async with client:
+    result = await client.call_tool("hello", {"name": "World"})
+```
+
+Both `JACSMCPServer` and `JACSMCPClient` support `strict=True` to reject unsigned messages, or permissive mode (default) to log and pass through.
+
+---
+
 ## Overview
 
 JACS MCP integration provides:
@@ -10,7 +50,7 @@ JACS MCP integration provides:
 - **HTTP & SSE Transports**: Support for Server-Sent Events transport
 - **Transparent Security**: Existing MCP code works with minimal changes
 
-## Quick Start
+## Detailed Setup
 
 ### Basic MCP Server with JACS
 

@@ -5,6 +5,43 @@ JACS provides two integration patterns for LangChain.js:
 1. **Full toolkit** -- expose all JACS operations as LangChain tools your agent can call
 2. **Auto-signing wrappers** -- transparently sign existing tool outputs
 
+## 5-Minute Quickstart
+
+### 1. Install
+
+```bash
+npm install @hai.ai/jacs @langchain/core
+```
+
+### 2. Create a JACS client
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const client = await JacsClient.quickstart();
+```
+
+### 3. Sign tool outputs
+
+```typescript
+import { signedTool } from '@hai.ai/jacs/langchain';
+
+const signed = signedTool(mySearchTool, { client });
+const result = await signed.invoke({ query: 'hello' }); // result is JACS-signed
+```
+
+Or give your agent the full JACS toolkit:
+
+```typescript
+import { createJacsTools } from '@hai.ai/jacs/langchain';
+
+const jacsTools = createJacsTools({ client });
+const allTools = [...myTools, ...jacsTools];
+const llmWithTools = model.bindTools(allTools);
+```
+
+---
+
 ## Full Toolkit
 
 `createJacsTools()` returns an array of LangChain `DynamicStructuredTool` instances wrapping the full JacsClient API. Bind these to your LLM so the agent can sign, verify, create agreements, manage trust, and audit -- all as part of its reasoning.

@@ -2,6 +2,40 @@
 
 JACS provides a transport proxy that wraps any MCP transport with cryptographic signing and verification. Every JSON-RPC message is signed outgoing and verified incoming -- transparently.
 
+## 5-Minute Quickstart
+
+### 1. Install
+
+```bash
+npm install @hai.ai/jacs @modelcontextprotocol/sdk
+```
+
+### 2. Create a JACS client
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const client = await JacsClient.quickstart();
+```
+
+### 3. Wrap your MCP transport
+
+```typescript
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
+
+const transport = new StdioServerTransport();
+const secureTransport = createJACSTransportProxy(transport, client, 'server');
+
+const server = new McpServer({ name: 'my-server', version: '1.0.0' });
+await server.connect(secureTransport);
+```
+
+Every JSON-RPC message is now signed outgoing and verified incoming.
+
+---
+
 ## How It Works
 
 The `JACSTransportProxy` sits between your MCP server/client and the underlying transport (STDIO, WebSocket, etc.):
