@@ -9,6 +9,8 @@
 - [Which Integration?](getting-started/decision-tree.md)
 - [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
 - [Use cases](usecases.md)
+- [Deployment Compatibility](getting-started/deployment.md)
+- [Troubleshooting](getting-started/troubleshooting.md)
 
 ## Rust CLI & Library
 - [Installation](rust/installation.md)
@@ -59,11 +61,16 @@
 - [Algorithm Selection Guide](advanced/algorithm-guide.md)
 - [Storage Backends](advanced/storage.md)
 - [Custom Schemas](advanced/custom-schemas.md)
+- [Trust Store](advanced/trust-store.md)
+- [Infrastructure vs Tools](advanced/infrastructure.md)
+- [DNS Trust Anchoring](advanced/dns-trust.md)
+- [Failure Modes](advanced/failure-modes.md)
 - [Testing](advanced/testing.md)
 
 ## Integrations
 - [Model Context Protocol (MCP)](integrations/mcp.md)
 - [A2A Interoperability](integrations/a2a.md)
+- [HAI.ai Platform](integrations/hai.md)
 - [OpenClaw](integrations/openclaw.md)
 - [Web Servers](integrations/web-servers.md)
 - [Databases](integrations/databases.md)

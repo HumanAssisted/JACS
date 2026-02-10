@@ -13,6 +13,10 @@ JACS provides a standard way for AI agents to:
 
 As a developer, JACS gives you the tools to build trustworthy AI systems where agents can securely exchange tasks, agreements, and data with verifiable integrity.
 
+## What Can You Do with JACS?
+
+Sign AI agent output and verify every LLM response with cryptographic proof. JACS enables agent-to-agent trust through non-repudiation -- every action is signed and independently verifiable. Add MCP authentication to your tool servers, integrate LangGraph signing into your workflows, and build multi-agent systems where no output goes unverified. Whether you need to prove who said what or establish a chain of custody for AI-generated content, JACS provides the cryptographic foundation.
+
 ## Key Features
 
 - 🔐 **Cryptographic Security**: RSA, Ed25519, and post-quantum cryptographic algorithms
