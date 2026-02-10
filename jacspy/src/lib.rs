@@ -276,6 +276,42 @@ impl JacsAgent {
         self.inner.get_agent_json().to_py()
     }
 
+    /// Get setup instructions for publishing DNS records, DNSSEC, and HAI registration.
+    ///
+    /// Args:
+    ///     domain: The domain to publish DNS TXT records under
+    ///     ttl: TTL in seconds for the DNS record (e.g. 3600)
+    ///
+    /// Returns:
+    ///     JSON string with dns_record_bind, provider_commands, dnssec_instructions, etc.
+    #[pyo3(signature = (domain, ttl=3600))]
+    fn get_setup_instructions(&self, domain: &str, ttl: Option<u32>) -> PyResult<String> {
+        self.inner
+            .get_setup_instructions(domain, ttl.unwrap_or(3600))
+            .to_py()
+    }
+
+    /// Register this agent with HAI.ai.
+    ///
+    /// Args:
+    ///     api_key: HAI API key (or reads HAI_API_KEY env var if None)
+    ///     hai_url: Base URL for HAI (default: "https://hai.ai")
+    ///     preview: If True, validate without registering (default: False)
+    ///
+    /// Returns:
+    ///     JSON string with hai_registered, hai_error, dns_record, dns_route53
+    #[pyo3(signature = (api_key=None, hai_url="https://hai.ai", preview=false))]
+    fn register_with_hai(
+        &self,
+        api_key: Option<&str>,
+        hai_url: &str,
+        preview: bool,
+    ) -> PyResult<String> {
+        self.inner
+            .register_with_hai(api_key, hai_url, preview)
+            .to_py()
+    }
+
     /// Returns diagnostic information as a JSON string.
     fn diagnostics(&self) -> PyResult<String> {
         Ok(self.inner.diagnostics())

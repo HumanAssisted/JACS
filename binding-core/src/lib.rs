@@ -787,6 +787,198 @@ impl AgentWrapper {
         serde_json::to_string_pretty(&info).unwrap_or_default()
     }
 
+    /// Returns setup instructions for publishing DNS records, enabling DNSSEC,
+    /// and registering with HAI.ai.
+    ///
+    /// Requires a loaded agent (call `load()` first).
+    pub fn get_setup_instructions(
+        &self,
+        domain: &str,
+        ttl: u32,
+    ) -> BindingResult<String> {
+        use jacs::agent::boilerplate::BoilerPlate;
+        use jacs::dns::bootstrap::{
+            DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli,
+            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind,
+            emit_route53_change_batch, tld_requirement_text,
+        };
+
+        let agent = self.lock()?;
+        let agent_value = agent.get_value().cloned().unwrap_or(json!({}));
+        let agent_id = agent_value
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if agent_id.is_empty() {
+            return Err(BindingCoreError::agent_load(
+                "Agent not loaded or has no jacsId. Call load() first.",
+            ));
+        }
+
+        let pk = agent.get_public_key().map_err(|e| {
+            BindingCoreError::generic(format!("Failed to get public key: {}", e))
+        })?;
+        let digest = jacs::dns::bootstrap::pubkey_digest_b64(&pk);
+        let rr = build_dns_record(domain, ttl, agent_id, &digest, DigestEncoding::Base64);
+
+        let dns_record_bind = emit_plain_bind(&rr);
+        let dns_owner = rr.owner.clone();
+        let dns_record_value = rr.txt.clone();
+
+        let mut provider_commands = std::collections::HashMap::new();
+        provider_commands.insert("bind".to_string(), dns_record_bind.clone());
+        provider_commands.insert("route53".to_string(), emit_route53_change_batch(&rr));
+        provider_commands.insert("gcloud".to_string(), emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"));
+        provider_commands.insert("azure".to_string(), emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"));
+        provider_commands.insert("cloudflare".to_string(), emit_cloudflare_curl(&rr, "YOUR_ZONE_ID"));
+
+        let mut dnssec_instructions = std::collections::HashMap::new();
+        for name in &["aws", "cloudflare", "azure", "gcloud"] {
+            dnssec_instructions.insert(name.to_string(), dnssec_guidance(name).to_string());
+        }
+
+        let tld_requirement = tld_requirement_text().to_string();
+
+        let well_known = json!({
+            "jacs_agent_id": agent_id,
+            "jacs_public_key_hash": digest,
+            "jacs_dns_record": dns_owner,
+        });
+        let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
+
+        let hai_url = std::env::var("HAI_API_URL")
+            .unwrap_or_else(|_| "https://api.hai.ai".to_string());
+        let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
+        let hai_payload = json!({
+            "agent_id": agent_id,
+            "public_key_hash": digest,
+            "domain": domain,
+        });
+        let hai_registration_payload = serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
+        let hai_registration_instructions = format!(
+            "POST the payload to {} with your HAI API key in the Authorization header.",
+            hai_registration_url
+        );
+
+        let summary = format!(
+            "Setup instructions for agent {agent_id} on domain {domain}:\n\
+             \n\
+             1. DNS: Publish the following TXT record:\n\
+             {bind}\n\
+             \n\
+             2. DNSSEC: {dnssec}\n\
+             \n\
+             3. Domain requirement: {tld}\n\
+             \n\
+             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json\n\
+             \n\
+             5. HAI registration: {hai_instr}",
+            agent_id = agent_id,
+            domain = domain,
+            bind = dns_record_bind,
+            dnssec = dnssec_guidance("aws"),
+            tld = tld_requirement,
+            hai_instr = hai_registration_instructions,
+        );
+
+        let result = json!({
+            "dns_record_bind": dns_record_bind,
+            "dns_record_value": dns_record_value,
+            "dns_owner": dns_owner,
+            "provider_commands": provider_commands,
+            "dnssec_instructions": dnssec_instructions,
+            "tld_requirement": tld_requirement,
+            "well_known_json": well_known_json,
+            "hai_registration_url": hai_registration_url,
+            "hai_registration_payload": hai_registration_payload,
+            "hai_registration_instructions": hai_registration_instructions,
+            "summary": summary,
+        });
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize setup instructions: {}", e
+            ))
+        })
+    }
+
+    /// Register this agent with HAI.ai.
+    ///
+    /// If `preview` is true, returns a preview without actually registering.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn register_with_hai(
+        &self,
+        api_key: Option<&str>,
+        hai_url: &str,
+        preview: bool,
+    ) -> BindingResult<String> {
+        if preview {
+            let result = json!({
+                "hai_registered": false,
+                "hai_error": "preview mode",
+                "dns_record": "",
+                "dns_route53": "",
+            });
+            return serde_json::to_string_pretty(&result).map_err(|e| {
+                BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
+            });
+        }
+
+        let key = match api_key {
+            Some(k) => k.to_string(),
+            None => std::env::var("HAI_API_KEY").map_err(|_| {
+                BindingCoreError::invalid_argument(
+                    "No API key provided and HAI_API_KEY environment variable not set",
+                )
+            })?,
+        };
+
+        let agent_json = self.get_agent_json()?;
+        let url = format!("{}/api/v1/agents/register", hai_url.trim_end_matches('/'));
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e)))?;
+
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", key))
+            .header("Content-Type", "application/json")
+            .json(&json!({ "agent_json": agent_json }))
+            .send()
+            .map_err(|e| BindingCoreError::network_failed(format!("HAI registration request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            let result = json!({
+                "hai_registered": false,
+                "hai_error": format!("HTTP {}: {}", status, body),
+                "dns_record": "",
+                "dns_route53": "",
+            });
+            return serde_json::to_string_pretty(&result).map_err(|e| {
+                BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
+            });
+        }
+
+        let body: Value = response.json().map_err(|e| {
+            BindingCoreError::network_failed(format!("Failed to parse HAI response: {}", e))
+        })?;
+
+        let result = json!({
+            "hai_registered": true,
+            "hai_error": "",
+            "dns_record": body.get("dns_record").and_then(|v| v.as_str()).unwrap_or_default(),
+            "dns_route53": body.get("dns_route53").and_then(|v| v.as_str()).unwrap_or_default(),
+        });
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
+        })
+    }
+
     /// Get the agent's JSON representation as a string.
     ///
     /// Returns the agent's full JSON document, suitable for registration

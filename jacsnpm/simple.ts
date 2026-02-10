@@ -883,6 +883,36 @@ export function getWellKnownJson(): {
 }
 
 /**
+ * Get comprehensive setup instructions for publishing DNS records, enabling DNSSEC,
+ * and registering with HAI.ai.
+ *
+ * Returns structured data with provider-specific commands for AWS Route53, Cloudflare,
+ * Azure DNS, Google Cloud DNS, and plain BIND format. Also includes DNSSEC guidance,
+ * well-known JSON payload, HAI registration details, and a human-readable summary.
+ *
+ * @param domain - The domain to publish the DNS TXT record under
+ * @param ttl - TTL in seconds for the DNS record (default: 3600)
+ * @returns Structured setup instructions
+ *
+ * @example
+ * ```typescript
+ * const instructions = jacs.getSetupInstructions('example.com');
+ * console.log(instructions.summary);
+ * console.log(instructions.providerCommands.route53);
+ * ```
+ */
+export function getSetupInstructions(
+  domain: string,
+  ttl: number = 3600,
+): Record<string, unknown> {
+  if (!globalAgent) {
+    throw new Error('No agent loaded. Call load() first.');
+  }
+  const json = globalAgent.getSetupInstructions(domain, ttl);
+  return JSON.parse(json) as Record<string, unknown>;
+}
+
+/**
  * Register the loaded agent with HAI.ai.
  * Requires a loaded agent (uses exportAgent() for the payload).
  * Calls POST {haiUrl}/api/v1/agents/register with Bearer token and agent JSON.

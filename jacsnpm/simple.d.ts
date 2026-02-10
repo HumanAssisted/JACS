@@ -408,6 +408,14 @@ export declare function getWellKnownJson(): {
     agentId: string;
 };
 /**
+ * Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
+ *
+ * @param domain - The domain to publish the DNS TXT record under
+ * @param ttl - TTL in seconds for the DNS record (default: 3600)
+ * @returns Structured setup instructions
+ */
+export declare function getSetupInstructions(domain: string, ttl?: number): Record<string, unknown>;
+/**
  * Register the loaded agent with HAI.ai.
  * Requires a loaded agent (uses exportAgent() for the payload).
  * Calls POST {haiUrl}/api/v1/agents/register with Bearer token and agent JSON.
