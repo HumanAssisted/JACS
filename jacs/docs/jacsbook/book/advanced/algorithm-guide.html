@@ -1,0 +1,282 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Algorithm Selection Guide - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../getting-started/decision-tree.html"><strong aria-hidden="true">4.</strong> Which Integration?</a></li><li class="chapter-item expanded "><a href="../usecases.html"><strong aria-hidden="true">5.</strong> Use cases</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">6.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">7.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">8.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">9.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">10.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">11.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">12.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">13.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">14.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/simple-api.html"><strong aria-hidden="true">15.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">16.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/langchain.html"><strong aria-hidden="true">17.</strong> LangChain.js</a></li><li class="chapter-item expanded "><a href="../nodejs/vercel-ai.html"><strong aria-hidden="true">18.</strong> Vercel AI SDK</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">19.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/koa.html"><strong aria-hidden="true">20.</strong> Koa Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">21.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">22.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">23.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">24.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/simple-api.html"><strong aria-hidden="true">25.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">26.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/adapters.html"><strong aria-hidden="true">27.</strong> Framework Adapters</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">28.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">29.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">30.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">31.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">32.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">33.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/agentstate.html"><strong aria-hidden="true">34.</strong> Agent State Schema</a></li><li class="chapter-item expanded "><a href="../schemas/commitment.html"><strong aria-hidden="true">35.</strong> Commitment Schema</a></li><li class="chapter-item expanded "><a href="../schemas/todo.html"><strong aria-hidden="true">36.</strong> Todo List Schema</a></li><li class="chapter-item expanded "><a href="../schemas/conversation.html"><strong aria-hidden="true">37.</strong> Conversation Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">38.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">39.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/key-rotation.html"><strong aria-hidden="true">40.</strong> Key Rotation</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">41.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/algorithm-guide.html" class="active"><strong aria-hidden="true">42.</strong> Algorithm Selection Guide</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">43.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">44.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">45.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">46.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/a2a.html"><strong aria-hidden="true">47.</strong> A2A Interoperability</a></li><li class="chapter-item expanded "><a href="../integrations/openclaw.html"><strong aria-hidden="true">48.</strong> OpenClaw</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">49.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">50.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">51.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">52.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">53.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">54.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">55.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">56.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">57.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">58.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="algorithm-selection-guide"><a class="header" href="#algorithm-selection-guide">Algorithm Selection Guide</a></h1>
+<p>Choosing the right signing algorithm affects key size, signature size, verification speed, and compliance posture. This guide helps you pick the right one.</p>
+<h2 id="supported-algorithms"><a class="header" href="#supported-algorithms">Supported Algorithms</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Public Key</th><th>Signature</th><th>Best For</th></tr></thead><tbody>
+<tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>32 bytes</td><td>64 bytes</td><td>Speed, small signatures</td></tr>
+<tr><td>RSA-PSS</td><td><code>RSA-PSS</code></td><td>~550 bytes (4096-bit)</td><td>~512 bytes</td><td>Broad compatibility</td></tr>
+<tr><td>ML-DSA-87</td><td><code>pq2025</code></td><td>2,592 bytes</td><td>4,627 bytes</td><td>Post-quantum compliance (FIPS-204)</td></tr>
+<tr><td>Dilithium</td><td><code>pq-dilithium</code></td><td>&gt;1,000 bytes</td><td>~3,293-4,644 bytes</td><td><strong>Deprecated</strong> -- use <code>pq2025</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="how-to-choose"><a class="header" href="#how-to-choose">How to Choose</a></h2>
+<pre><code>Do you need FIPS/NIST post-quantum compliance?
+  ├── Yes → pq2025
+  └── No
+       ├── Need maximum interop with existing PKI/TLS systems? → RSA-PSS
+       └── Need speed and small payloads? → ring-Ed25519
+</code></pre>
+<p><strong>Default recommendation for new projects: <code>pq2025</code></strong></p>
+<p>Ed25519 and RSA-PSS are well-understood and widely deployed, but neither is quantum-resistant. If you don't have a specific reason to choose one of them, start with <code>pq2025</code> so you don't have to migrate later.</p>
+<h2 id="when-to-choose-post-quantum"><a class="header" href="#when-to-choose-post-quantum">When to Choose Post-Quantum</a></h2>
+<p>Choose <code>pq2025</code> (ML-DSA-87, FIPS-204) when:</p>
+<ul>
+<li>Your compliance team asks about quantum readiness</li>
+<li>Government or defense contracts require FIPS-204</li>
+<li>You need long-lived signatures that must remain valid for 10+ years</li>
+<li>You want to avoid a future algorithm migration</li>
+</ul>
+<p>JACS supports ML-DSA-87 (FIPS-204) for post-quantum digital signatures. When your compliance team asks about quantum readiness, JACS already has the answer.</p>
+<p>The tradeoff is size: ML-DSA-87 public keys are 2,592 bytes and signatures are 4,627 bytes -- roughly 80x larger than Ed25519. For most applications this is negligible, but if you're signing millions of small messages and bandwidth matters, consider Ed25519.</p>
+<h2 id="cross-algorithm-verification"><a class="header" href="#cross-algorithm-verification">Cross-Algorithm Verification</a></h2>
+<p>JACS verification works across algorithms. An agreement can contain signatures from RSA, Ed25519, and ML-DSA agents and all verify correctly. This heterogeneous verification is important for cross-organization scenarios where different parties chose different algorithms.</p>
+<p>Each agent uses one algorithm (chosen at creation time), but can <strong>verify</strong> signatures from all supported algorithms.</p>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<p>Set the algorithm in your <code>jacs.config.json</code>:</p>
+<pre><code class="language-json">{
+  "jacs_agent_key_algorithm": "pq2025"
+}
+</code></pre>
+<p>Or via environment variable:</p>
+<pre><code class="language-bash">export JACS_AGENT_KEY_ALGORITHM=pq2025
+</code></pre>
+<p>Valid values: <code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code>, <code>pq-dilithium</code></p>
+<p>In Python and Node.js, pass the algorithm to <code>quickstart()</code>:</p>
+<pre><code class="language-python">from jacs.client import JacsClient
+client = JacsClient.quickstart(algorithm="pq2025")
+</code></pre>
+<pre><code class="language-typescript">import { JacsClient } from "@hai.ai/jacs";
+const client = await JacsClient.quickstart({ algorithm: "pq2025" });
+</code></pre>
+<h2 id="current-limitations"><a class="header" href="#current-limitations">Current Limitations</a></h2>
+<ul>
+<li>Each agent uses one algorithm, chosen at creation time. You cannot change an agent's algorithm after creation.</li>
+<li>Algorithm negotiation between agents is planned but not yet implemented.</li>
+<li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). It remains available for backward compatibility but should not be used for new agents.</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../advanced/crypto.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../advanced/storage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../advanced/crypto.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../advanced/storage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

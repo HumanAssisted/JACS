@@ -6,6 +6,7 @@
 - [What is JACS?](getting-started/what-is-jacs.md)
 - [Core Concepts](getting-started/concepts.md)
 - [Quick Start](getting-started/quick-start.md)
+- [Which Integration?](getting-started/decision-tree.md)
 - [Use cases](usecases.md)
 
 ## Rust CLI & Library
@@ -54,6 +55,7 @@
 - [Security Model](advanced/security.md)
 - [Key Rotation](advanced/key-rotation.md)
 - [Cryptographic Algorithms](advanced/crypto.md)
+- [Algorithm Selection Guide](advanced/algorithm-guide.md)
 - [Storage Backends](advanced/storage.md)
 - [Custom Schemas](advanced/custom-schemas.md)
 - [Testing](advanced/testing.md)
