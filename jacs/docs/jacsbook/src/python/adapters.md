@@ -154,6 +154,42 @@ hook = JacsToolHook(client=JacsClient.ephemeral())
 
 ---
 
+## MCP (Model Context Protocol)
+
+### Register JACS as MCP Tools
+
+Expose signing, verification, agreements, and audit as tools an LLM can call — matching the Rust `jacs-mcp` tool surface.
+
+```python
+from fastmcp import FastMCP
+from jacs.adapters.mcp import register_jacs_tools
+
+mcp = FastMCP("jacs-server")
+register_jacs_tools(mcp)  # adds 9 tools: jacs_sign_document, jacs_verify_document, …
+mcp.run()
+```
+
+Register only specific tools:
+
+```python
+register_jacs_tools(mcp, tools=["sign_document", "verify_document"])
+```
+
+### MCP Middleware (sign tool outputs)
+
+Signs all tool results at the MCP protocol level (transport-agnostic).
+
+```python
+from jacs.adapters.mcp import JacsMCPMiddleware
+
+mcp = FastMCP("my-server")
+mcp.add_middleware(JacsMCPMiddleware())
+```
+
+Options: `sign_tool_results=True`, `verify_tool_inputs=False`, `strict=False`.
+
+---
+
 ## Write Your Own Adapter
 
 All adapters extend `BaseJacsAdapter`, which provides two primitives:
