@@ -12,12 +12,12 @@
 
 import { JacsClient } from '../jacsnpm/client';
 
-function main(): void {
+async function main(): Promise<void> {
   // -- Step 1: Create three ephemeral agents ----------------------------------
   console.log('Step 1 -- Create agents');
-  const alice = JacsClient.ephemeral('ring-Ed25519');
-  const bob = JacsClient.ephemeral('ring-Ed25519');
-  const mediator = JacsClient.ephemeral('ring-Ed25519');
+  const alice = await JacsClient.ephemeral('ring-Ed25519');
+  const bob = await JacsClient.ephemeral('ring-Ed25519');
+  const mediator = await JacsClient.ephemeral('ring-Ed25519');
 
   console.log(`  Alice    : ${alice.agentId}`);
   console.log(`  Bob      : ${bob.agentId}`);
@@ -33,7 +33,7 @@ function main(): void {
   const deadline = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   const agentIds = [alice.agentId, bob.agentId, mediator.agentId];
 
-  let agreement = alice.createAgreement(proposal, agentIds, {
+  let agreement = await alice.createAgreement(proposal, agentIds, {
     question: 'Do you approve deployment of model v2?',
     context: 'Production rollout pending safety audit sign-off.',
     quorum: 2,
@@ -45,17 +45,17 @@ function main(): void {
 
   // -- Step 3: Alice signs ----------------------------------------------------
   console.log('\nStep 3 -- Alice signs');
-  agreement = alice.signAgreement(agreement);
+  agreement = await alice.signAgreement(agreement);
   console.log(`  Signed by Alice    (${alice.agentId.substring(0, 12)}...)`);
 
   // -- Step 4: Bob co-signs ---------------------------------------------------
   console.log('\nStep 4 -- Bob co-signs');
-  agreement = bob.signAgreement(agreement);
+  agreement = await bob.signAgreement(agreement);
   console.log(`  Signed by Bob      (${bob.agentId.substring(0, 12)}...)`);
 
   // -- Step 5: Mediator countersigns ------------------------------------------
   console.log('\nStep 5 -- Mediator countersigns');
-  agreement = mediator.signAgreement(agreement);
+  agreement = await mediator.signAgreement(agreement);
   console.log(`  Signed by Mediator (${mediator.agentId.substring(0, 12)}...)`);
 
   // -- Step 6: Inspect agreement status ---------------------------------------
@@ -81,7 +81,7 @@ function main(): void {
     ['Bob', bob],
     ['Mediator', mediator],
   ] as const) {
-    const result = client.verifySelf();
+    const result = await client.verifySelf();
     console.log(`  ${name} verifies self: valid=${result.valid}`);
   }
 
@@ -92,4 +92,4 @@ function main(): void {
   console.log('\nDone.');
 }
 
-main();
+main().catch(console.error);

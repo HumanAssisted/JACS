@@ -17,20 +17,20 @@ async function main() {
 
   // Step 1: One call creates a persistent agent with keys on disk -- no manual setup needed
   console.log('\n1. Creating persistent agent...');
-  const info = jacs.quickstart();
+  const info = await jacs.quickstart();
   console.log(`   Agent ID: ${info.agentId}`);
   console.log(`   Algorithm: ${info.algorithm}`);
 
   // Step 2: Sign a message
   console.log('\n2. Signing a message...');
-  const signed = jacs.signMessage({ hello: 'world', action: 'approve' });
+  const signed = await jacs.signMessage({ hello: 'world', action: 'approve' });
   console.log(`   Document ID: ${signed.documentId}`);
   console.log(`   Signed by: ${signed.agentId}`);
   console.log(`   Timestamp: ${signed.timestamp}`);
 
   // Step 3: Verify it
   console.log('\n3. Verifying the signed message...');
-  const result = jacs.verify(signed.raw);
+  const result = await jacs.verify(signed.raw);
   console.log(`   Valid: ${result.valid}`);
   console.log(`   Signer: ${result.signerId}`);
 
@@ -46,7 +46,7 @@ async function advanced() {
 
   // Load existing agent from config
   try {
-    const agent = jacs.load('./jacs.config.json');
+    const agent = await jacs.load('./jacs.config.json');
     console.log(`\nLoaded agent: ${agent.agentId}`);
   } catch (e) {
     console.error('No agent found. Run: jacs create --name "my-agent"');
@@ -54,7 +54,7 @@ async function advanced() {
   }
 
   // Sign a message
-  const signed = jacs.signMessage({
+  const signed = await jacs.signMessage({
     action: 'approve',
     amount: 100,
     currency: 'USD',
@@ -64,13 +64,13 @@ async function advanced() {
   console.log(`Signed by: ${signed.agentId}`);
 
   // Verify the signed document
-  const result = jacs.verify(signed.raw);
+  const result = await jacs.verify(signed.raw);
   console.log(`\nVerification:`);
   console.log(`  Valid: ${result.valid}`);
   console.log(`  Signer: ${result.signerId}`);
 
   // Verify agent's own integrity
-  const selfVerify = jacs.verifySelf();
+  const selfVerify = await jacs.verifySelf();
   console.log(`\nSelf verification: ${selfVerify.valid ? 'PASSED' : 'FAILED'}`);
 }
 

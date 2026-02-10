@@ -34,14 +34,14 @@ if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
 /**
  * Initialize JACS and create tools that wrap the JACS simple API.
  */
-function initializeJACSTools() {
+async function initializeJACSTools() {
   // Load the JACS agent
   console.log(`Loading JACS agent from: ${CONFIG_PATH}`);
-  const agentInfo = jacs.load(CONFIG_PATH);
+  const agentInfo = await jacs.load(CONFIG_PATH);
   console.log(`Agent loaded: ${agentInfo.agentId}`);
 
   // Verify agent integrity
-  const selfCheck = jacs.verifySelf();
+  const selfCheck = await jacs.verifySelf();
   if (!selfCheck.valid) {
     console.warn(`Warning: Agent verification failed: ${selfCheck.errors.join(", ")}`);
   } else {
@@ -60,7 +60,7 @@ function initializeJACSTools() {
           payload = data;
         }
 
-        const signed = jacs.signMessage(payload);
+        const signed = await jacs.signMessage(payload);
         return JSON.stringify({
           success: true,
           document_id: signed.documentId,
@@ -87,7 +87,7 @@ function initializeJACSTools() {
   const verifyDocumentTool = tool(
     async ({ signed_document }) => {
       try {
-        const result = jacs.verify(signed_document);
+        const result = await jacs.verify(signed_document);
         return JSON.stringify({
           valid: result.valid,
           signer_id: result.signerId,
@@ -132,7 +132,7 @@ function initializeJACSTools() {
 
   const verifySelfTool = tool(
     async () => {
-      const result = jacs.verifySelf();
+      const result = await jacs.verifySelf();
       return JSON.stringify({
         valid: result.valid,
         errors: result.errors,
@@ -167,7 +167,7 @@ function initializeJACSTools() {
           payload = document;
         }
 
-        const agreement = jacs.createAgreement(
+        const agreement = await jacs.createAgreement(
           payload,
           agent_ids,
           question || undefined,
@@ -203,7 +203,7 @@ function initializeJACSTools() {
   const checkAgreementTool = tool(
     async ({ agreement_document }) => {
       try {
-        const status = jacs.checkAgreement(agreement_document);
+        const status = await jacs.checkAgreement(agreement_document);
         return JSON.stringify({
           complete: status.complete,
           signers: status.signers,
@@ -239,7 +239,7 @@ async function main() {
   console.log("\n=== JACS + LangChain.js Basic Agent Example ===\n");
 
   // Initialize JACS tools
-  const tools = initializeJACSTools();
+  const tools = await initializeJACSTools();
   console.log(`\nLoaded ${tools.length} JACS tools:`);
   tools.forEach(t => console.log(`  - ${t.name}: ${t.description?.slice(0, 50)}...`));
 

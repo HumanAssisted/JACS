@@ -80,11 +80,11 @@ class SignedOutputsAuditTrail {
     );
   }
 
-  verifyAll(): Map<string, boolean> {
+  async verifyAll(): Promise<Map<string, boolean>> {
     const results = new Map<string, boolean>();
     for (const output of this.outputs) {
       try {
-        const result = jacs.verify(output.rawSignedDocument);
+        const result = await jacs.verify(output.rawSignedDocument);
         results.set(output.documentId, result.valid);
       } catch {
         results.set(output.documentId, false);
@@ -105,20 +105,11 @@ class JACSSigningCallback {
   auditTrail: SignedOutputsAuditTrail;
   private isLoaded: boolean;
 
-  constructor(configPath?: string) {
+  constructor() {
     this.auditTrail = new SignedOutputsAuditTrail();
-    this.isLoaded = false;
-
-    // Load the JACS agent
-    const path = configPath || CONFIG_PATH;
-    try {
-      if (!jacs.isLoaded()) {
-        jacs.load(path);
-        console.log(`JACS agent loaded from ${path}`);
-      }
-      this.isLoaded = true;
-    } catch (error) {
-      console.warn(`Warning: Could not load JACS agent: ${error}`);
+    this.isLoaded = jacs.isLoaded();
+    if (!this.isLoaded) {
+      console.warn("Warning: JACS agent not loaded. Call jacs.load() before creating JACSSigningCallback.");
       console.warn("Signing will be disabled.");
     }
   }
@@ -126,12 +117,12 @@ class JACSSigningCallback {
   /**
    * Sign a tool output and add it to the audit trail.
    */
-  signOutput(
+  async signOutput(
     toolName: string,
     toolInput: Record<string, unknown>,
     toolOutput: unknown,
     runId?: string
-  ): SignedOutput | null {
+  ): Promise<SignedOutput | null> {
     if (!this.isLoaded) {
       return null;
     }
@@ -148,7 +139,7 @@ class JACSSigningCallback {
       };
 
       // Sign with JACS
-      const signed = jacs.signMessage(payload);
+      const signed = await jacs.signMessage(payload);
 
       // Create audit trail entry
       const signedOutput: SignedOutput = {
@@ -235,7 +226,7 @@ async function main() {
   // Initialize JACS agent first
   console.log(`Loading JACS agent from: ${CONFIG_PATH}`);
   try {
-    const agentInfo = jacs.load(CONFIG_PATH);
+    const agentInfo = await jacs.load(CONFIG_PATH);
     console.log(`Agent loaded: ${agentInfo.agentId}`);
   } catch (error) {
     console.error(`Error loading JACS agent: ${error}`);
@@ -278,7 +269,7 @@ async function main() {
     messages: [{ role: "user", content: "What is 42 * 17?" }],
   });
   const response1 = result1.messages[result1.messages.length - 1].content;
-  callback.signOutput(
+  await callback.signOutput(
     "final_response",
     { query: "What is 42 * 17?" },
     response1
@@ -291,7 +282,7 @@ async function main() {
     messages: [{ role: "user", content: "What time is it now in UTC?" }],
   });
   const response2 = result2.messages[result2.messages.length - 1].content;
-  callback.signOutput(
+  await callback.signOutput(
     "final_response",
     { query: "What time is it now in UTC?" },
     response2
@@ -309,7 +300,7 @@ async function main() {
     ],
   });
   const response3 = result3.messages[result3.messages.length - 1].content;
-  callback.signOutput(
+  await callback.signOutput(
     "final_response",
     { query: "Generate Q4 Summary report" },
     response3
@@ -332,7 +323,7 @@ async function main() {
 
   // Verify all outputs
   console.log("\n--- Verifying All Signed Outputs ---\n");
-  const verificationResults = callback.auditTrail.verifyAll();
+  const verificationResults = await callback.auditTrail.verifyAll();
   for (const [docId, valid] of verificationResults) {
     const status = valid ? "VALID" : "INVALID";
     console.log(`Document ${docId.slice(0, 8)}...: ${status}`);

@@ -31,14 +31,14 @@ async function main() {
 
   // Load agent
   try {
-    jacs.load('./jacs.config.json');
+    await jacs.load('./jacs.config.json');
   } catch (e) {
     console.error('No agent found. Run: jacs create --name "my-agent"');
     process.exit(1);
   }
 
   // Sign the file
-  const signed = jacs.signFile(filePath, embed);
+  const signed = await jacs.signFile(filePath, embed);
 
   console.log('File signed successfully!');
   console.log(`  Document ID: ${signed.documentId}`);
@@ -52,7 +52,7 @@ async function main() {
   console.log(`\nSaved to: ${outputPath}`);
 
   // Verify it
-  const result = jacs.verify(signed.raw);
+  const result = await jacs.verify(signed.raw);
   console.log(`\nVerification: ${result.valid ? 'VALID' : 'INVALID'}`);
 }
 
