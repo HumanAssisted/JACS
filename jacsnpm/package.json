@@ -1,6 +1,6 @@
 {
   "name": "@hai.ai/jacs",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "JACS (JSON Agent Communication Standard) - Data provenance and cryptographic signing for AI agents",
   "main": "index.js",
   "types": "index.d.ts",
@@ -34,6 +34,21 @@
       "require": "./http.js",
       "types": "./http.d.ts"
     },
+    "./express": {
+      "types": "./express.d.ts",
+      "import": "./express.js",
+      "require": "./express.js"
+    },
+    "./koa": {
+      "types": "./koa.d.ts",
+      "import": "./koa.js",
+      "require": "./koa.js"
+    },
+    "./vercel-ai": {
+      "types": "./vercel-ai.d.ts",
+      "import": "./vercel-ai.js",
+      "require": "./vercel-ai.js"
+    },
     "./client": {
       "import": "./client.js",
       "require": "./client.js",
@@ -43,6 +58,11 @@
       "import": "./testing.js",
       "require": "./testing.js",
       "types": "./testing.d.ts"
+    },
+    "./langchain": {
+      "types": "./langchain.d.ts",
+      "import": "./langchain.js",
+      "require": "./langchain.js"
     }
   },
   "scripts": {
@@ -55,14 +75,38 @@
     "test:simple": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/simple.test.js'",
     "test:a2a": "mocha --timeout 15000 'test/a2a.test.js'",
     "test:integration": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/integration.test.js'",
-    "test:client": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/client.test.js'"
+    "test:client": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 15000 'test/client.test.js'",
+    "test:express": "mocha --timeout 15000 'test/express.test.js'",
+    "test:koa": "mocha --timeout 15000 'test/koa.test.js'",
+    "test:mcp": "mocha --timeout 15000 'test/mcp.test.js'",
+    "test:vercel-ai": "mocha --timeout 15000 'test/vercel-ai.test.js'",
+    "test:langchain": "mocha --timeout 15000 'test/langchain.test.js'",
+    "test:adapters": "mocha --timeout 15000 'test/express.test.js' 'test/koa.test.js' 'test/mcp.test.js' 'test/vercel-ai.test.js' 'test/langchain.test.js'"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.3",
     "@napi-rs/cli": "^2.16.3",
     "uuid": "^13.0.0"
   },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "ai": ">=4.0.0",
+    "@ai-sdk/provider": ">=1.0.0",
+    "express": "^4.17.0 || ^5.0.0",
+    "koa": "^2.0.0",
+    "@langchain/core": ">=0.3.0",
+    "@langchain/langgraph": ">=0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/sdk": { "optional": true },
+    "ai": { "optional": true },
+    "@ai-sdk/provider": { "optional": true },
+    "express": { "optional": true },
+    "koa": { "optional": true },
+    "@langchain/core": { "optional": true },
+    "@langchain/langgraph": { "optional": true }
+  },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
     "@types/node": "^22.15",
     "chai": "^6.2.2",
     "mocha": "^11.7.5",
@@ -93,16 +137,27 @@
     "simple.d.ts",
     "src/a2a.js",
     "src/a2a.d.ts",
-    "mcp.ts",
-    "mcp.d.ts",
     "mcp.js",
+    "mcp.d.ts",
     "mcp.js.map",
     "http.js",
     "http.d.ts",
+    "express.js",
+    "express.d.ts",
+    "express.js.map",
+    "koa.js",
+    "koa.d.ts",
+    "koa.js.map",
+    "vercel-ai.js",
+    "vercel-ai.d.ts",
+    "vercel-ai.js.map",
     "client.js",
     "client.d.ts",
     "testing.js",
     "testing.d.ts",
+    "langchain.js",
+    "langchain.d.ts",
+    "langchain.js.map",
     "jacs.*.node"
   ],
   "keywords": [
@@ -112,7 +167,14 @@
     "signing",
     "verification",
     "cryptography",
+    "provenance",
+    "data-provenance",
     "mcp",
-    "model-context-protocol"
+    "model-context-protocol",
+    "vercel-ai",
+    "express",
+    "middleware",
+    "langchain",
+    "langgraph"
   ]
 }

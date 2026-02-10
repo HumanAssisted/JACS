@@ -12,9 +12,13 @@ npm install @hai.ai/jacs
 
 The npm package ships prebuilt native bindings for supported targets and does not compile Rust during `npm install`.
 
-## v0.7.0: Async-First API
+## v0.8.0: Framework Adapters
 
-All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+New in v0.8.0: first-class adapters for **Vercel AI SDK**, **Express**, **Koa**, **LangChain.js**, and a full **MCP tool suite**. All framework dependencies are optional peer deps — install only what you use.
+
+### Async-First API
+
+All NAPI operations return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
 
 ```javascript
 // Async (default, recommended -- does not block the event loop)
@@ -205,22 +209,140 @@ const signed = await jacs.signFile('contract.pdf', false);
 const embedded = await jacs.signFile('contract.pdf', true);
 ```
 
-### MCP Integration
+## Framework Adapters
 
-JACS provides a transport proxy that wraps any MCP transport with automatic signing and verification at the network boundary:
+### Vercel AI SDK (`@hai.ai/jacs/vercel-ai`)
 
-```javascript
+Sign AI model outputs with cryptographic provenance using the AI SDK's middleware pattern:
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+import { withProvenance } from '@hai.ai/jacs/vercel-ai';
+import { openai } from '@ai-sdk/openai';
+import { generateText } from 'ai';
+
+const client = await JacsClient.quickstart();
+const model = withProvenance(openai('gpt-4o'), { client });
+
+const { text, providerMetadata } = await generateText({ model, prompt: 'Hello!' });
+console.log(providerMetadata?.jacs?.text?.documentId); // signed proof
+```
+
+Works with `generateText`, `streamText` (signs after stream completes), and tool calls. Compose with other middleware via `jacsProvenance()`.
+
+**Peer deps**: `npm install ai @ai-sdk/provider`
+
+### Express Middleware (`@hai.ai/jacs/express`)
+
+Verify incoming signed requests, optionally auto-sign responses:
+
+```typescript
+import express from 'express';
+import { JacsClient } from '@hai.ai/jacs/client';
+import { jacsMiddleware } from '@hai.ai/jacs/express';
+
+const client = await JacsClient.quickstart();
+const app = express();
+app.use(express.text({ type: 'application/json' }));
+app.use(jacsMiddleware({ client, verify: true }));
+
+app.post('/api/data', (req, res) => {
+  console.log(req.jacsPayload); // verified payload
+  // Manual signing via req.jacsClient:
+  req.jacsClient.signMessage({ status: 'ok' }).then(signed => {
+    res.type('text/plain').send(signed.raw);
+  });
+});
+```
+
+Options: `client`, `configPath`, `sign` (auto-sign, default false), `verify` (default true), `optional` (allow unsigned, default false). Supports Express v4 + v5.
+
+**Peer dep**: `npm install express`
+
+### Koa Middleware (`@hai.ai/jacs/koa`)
+
+```typescript
+import Koa from 'koa';
+import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
+
+const app = new Koa();
+app.use(jacsKoaMiddleware({ client, verify: true, sign: true }));
+app.use(async (ctx) => {
+  console.log(ctx.state.jacsPayload); // verified
+  ctx.body = { status: 'ok' };        // auto-signed when sign: true
+});
+```
+
+**Peer dep**: `npm install koa`
+
+### LangChain.js (`@hai.ai/jacs/langchain`)
+
+Two integration patterns — full toolkit or auto-signing wrappers:
+
+**Full toolkit** — give your LangChain agent access to all JACS operations (sign, verify, agreements, trust, audit):
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+import { createJacsTools } from '@hai.ai/jacs/langchain';
+
+const client = await JacsClient.quickstart();
+const jacsTools = createJacsTools({ client });
+
+// Bind to your LLM — agent can now sign, verify, create agreements, etc.
+const llm = model.bindTools([...myTools, ...jacsTools]);
+```
+
+Returns 11 tools: `jacs_sign`, `jacs_verify`, `jacs_create_agreement`, `jacs_sign_agreement`, `jacs_check_agreement`, `jacs_verify_self`, `jacs_trust_agent`, `jacs_list_trusted`, `jacs_is_trusted`, `jacs_audit`, `jacs_agent_info`.
+
+**Auto-signing wrappers** — transparently sign existing tool outputs:
+
+```typescript
+import { signedTool, jacsToolNode } from '@hai.ai/jacs/langchain';
+
+// Wrap a single tool
+const signed = signedTool(myTool, { client });
+
+// Or wrap all tools in a ToolNode (LangGraph)
+const node = jacsToolNode([tool1, tool2], { client });
+```
+
+**Peer deps**: `npm install @langchain/core` (and optionally `@langchain/langgraph` for `jacsToolNode`)
+
+### MCP (`@hai.ai/jacs/mcp`)
+
+Two integration patterns — transport proxy or full tool registration:
+
+**Transport proxy** — wrap any MCP transport with signing/verification:
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-// Wrap any MCP transport with JACS signing
+const client = await JacsClient.quickstart();
 const baseTransport = new StdioServerTransport();
-const jacsTransport = createJACSTransportProxy(
-  baseTransport, './jacs.config.json', 'server'
-);
+const secureTransport = createJACSTransportProxy(baseTransport, client, 'server');
 ```
 
-See `examples/mcp.simple.server.js` for a complete MCP server example with JACS-signed tools.
+**MCP tool registration** — add all JACS tools to your MCP server (mirrors the Rust `jacs-mcp` server):
+
+```typescript
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { JacsClient } from '@hai.ai/jacs/client';
+import { registerJacsTools } from '@hai.ai/jacs/mcp';
+
+const server = new Server({ name: 'my-server', version: '1.0.0' }, { capabilities: { tools: {} } });
+const client = await JacsClient.quickstart();
+registerJacsTools(server, client);
+```
+
+Registers 17 tools: signing, verification, agreements, trust store, audit, HAI integration, file signing, and more. Use `getJacsMcpToolDefinitions()` and `handleJacsMcpToolCall()` for custom integration.
+
+**Peer dep**: `npm install @modelcontextprotocol/sdk`
+
+### Legacy: `@hai.ai/jacs/http`
+
+The old `JACSExpressMiddleware` and `JACSKoaMiddleware` are still available from `@hai.ai/jacs/http` for backward compatibility. New code should use `@hai.ai/jacs/express` and `@hai.ai/jacs/koa`.
 
 ## JacsClient (Instance-Based API)
 

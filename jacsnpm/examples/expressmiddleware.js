@@ -1,46 +1,56 @@
+/**
+ * Express Middleware Example — JACS v0.8.0
+ *
+ * Demonstrates the new jacsMiddleware() from @hai.ai/jacs/express.
+ * Verifies incoming signed requests and provides req.jacsClient
+ * for manual signing in route handlers.
+ *
+ * Usage:
+ *   npm install express
+ *   node expressmiddleware.js
+ */
 import express from 'express';
-import { JACSExpressMiddleware } from '../http.js'; // Assuming http.js is in parent directory
+import { JacsClient } from '../client.js';
+import { jacsMiddleware } from '../express.js';
 
 const app = express();
 const PORT = 3002;
 
-// 1. Middleware to get raw body as text for JACS processing
-// IMPORTANT: This MUST come before JACSExpressMiddleware for routes that need JACS.
-app.use('/jacs-echo', express.text({ type: '*/*' })); // Ensures req.body is a string for JACS
+async function main() {
+  // Initialize JACS client once
+  const client = await JacsClient.quickstart();
 
-// 2. Apply JACS Express Middleware
-// It expects req.body to be a string (from express.text), handles JACS verification,
-// and wraps res.send() to automatically sign object responses.
-app.use('/jacs-echo', JACSExpressMiddleware({ configPath: './jacs.server.config.json' }));
+  // Parse bodies as text so JACS can verify the raw signed document
+  app.use('/api', express.text({ type: '*/*' }));
 
-// 3. Route Handler
-app.post('/jacs-echo', (req, res) => {
-  // Access the verified JACS payload from req.jacsPayload
-  const requestPayload = req.jacsPayload;
-  console.log(`Express Server: Received verified JACS payload:`, requestPayload);
+  // Apply JACS middleware — verifies incoming, exposes req.jacsClient
+  app.use('/api', jacsMiddleware({ client, verify: true }));
 
-  if (!requestPayload) {
-      // This case should ideally be handled by JACSExpressMiddleware sending a 400
-      // if JACS verification failed or no payload was derived.
-      return res.status(400).send("JACS payload missing after verification.");
-  }
+  // Echo route: verifies incoming, manually signs response
+  app.post('/api/echo', async (req, res) => {
+    const payload = req.jacsPayload;
+    if (!payload) {
+      return res.status(400).json({ error: 'No verified payload' });
+    }
 
-  const responsePayloadObject = {
-    echo: "Express server says hello!",
-    received_payload: requestPayload,
-    server_timestamp: new Date().toISOString()
-  };
+    console.log('Verified payload:', payload);
 
-  // Send the object. JACSExpressMiddleware will intercept this call to res.send(),
-  // sign the object, and then send the actual JACS string.
-  res.send(responsePayloadObject);
-});
+    // Sign and send response using req.jacsClient
+    const signed = await req.jacsClient.signMessage({
+      echo: 'Hello from Express!',
+      received: payload,
+      timestamp: new Date().toISOString(),
+    });
+    res.type('text/plain').send(signed.raw);
+  });
 
-// Fallback for other routes
-app.use((req, res) => {
-  res.status(404).send('Not Found. Try POST to /jacs-echo');
-});
+  // Health check (no JACS)
+  app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-app.listen(PORT, () => {
-  console.log(`Express server with JACS middleware listening on http://localhost:${PORT}`);
-});
+  app.listen(PORT, () => {
+    console.log(`Express + JACS listening on http://localhost:${PORT}`);
+    console.log('POST /api/echo with a JACS-signed body to test');
+  });
+}
+
+main().catch(console.error);

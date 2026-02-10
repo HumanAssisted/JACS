@@ -1,497 +1,186 @@
-// Transport Proxy Pattern - Intercepts at network boundary, not message level
+// JACS MCP — Transport proxy + full tool suite for Node.js MCP servers
+//
+// Two integration patterns:
+//
+// 1. Transport proxy: wrap any MCP transport with JACS signing/verification.
+//    `createJACSTransportProxy(transport, client)`
+//
+// 2. Tool registration: expose JACS operations as MCP tools in your server.
+//    `registerJacsTools(server, client)`
+//
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { JacsAgent } from './index.js';
-import { IncomingMessage, ServerResponse } from "node:http";
+import { JacsAgent, fetchRemoteKey } from './index.js';
+import { JacsClient } from './client.js';
 
-// Add near the top, after imports:
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 const isStdioTransport = (transport: any): boolean => {
-  return transport.constructor.name === 'StdioServerTransport' || 
+  return transport.constructor.name === 'StdioServerTransport' ||
          transport.constructor.name === 'StdioClientTransport';
 };
-let enableDiagnosticLogging = false;
 
-function jacslog(...args: any[]): void {
-  console.error(...args);
-}
-
-// Load JACS config only once
-let jacsLoaded = false;
-let jacsLoadError: Error | null = null;
-let jacsAgent: JacsAgent | null = null;
-
-async function ensureJacsLoaded(configPath: string): Promise<void> {
-  if (jacsLoaded) return;
-  if (jacsLoadError) throw jacsLoadError;
-
-  try {
-    jacslog(`ensureJacsLoaded: Attempting to load JACS config from: ${configPath}`);
-    jacsLoadError = null;
-    jacsAgent = new JacsAgent();
-    await jacsAgent.load(configPath);
-    jacsLoaded = true;
-    jacslog(`ensureJacsLoaded: JACS agent loaded successfully from ${configPath}.`);
-  } catch (error) {
-    jacsLoadError = error as Error;
-    jacsAgent = null;
-    console.error(`ensureJacsLoaded: CRITICAL: Failed to load JACS config from '${configPath}'. Error:`, jacsLoadError.message);
-    throw jacsLoadError;
-  }
+function debugLog(proxyId: string, enabled: boolean, ...args: any[]): void {
+  if (enabled) console.error(`[${proxyId}]`, ...args);
 }
 
 /**
- * JACS Transport Proxy - Wraps any transport with JACS encryption
- * 
- * This proxy sits between the MCP SDK and the actual transport,
- * intercepting serialized JSON strings (not JSON-RPC objects)
+ * Extract the native JacsAgent from either a JacsAgent or JacsClient instance.
+ * JacsClient stores its native agent in a private `agent` field.
+ */
+function extractNativeAgent(clientOrAgent: JacsClient | JacsAgent): JacsAgent {
+  if (clientOrAgent instanceof JacsAgent) {
+    return clientOrAgent;
+  }
+  // JacsClient - access the private native agent at runtime
+  const native = (clientOrAgent as any).agent as JacsAgent | null;
+  if (!native) {
+    throw new Error(
+      'JacsClient has no loaded agent. Call quickstart(), ephemeral(), load(), or create() before wrapping with JACSTransportProxy.'
+    );
+  }
+  return native;
+}
+
+// ---------------------------------------------------------------------------
+// JACSTransportProxy
+// ---------------------------------------------------------------------------
+
+/**
+ * JACS Transport Proxy - Wraps any MCP transport with JACS signing/verification.
+ *
+ * Outgoing messages are signed with `signRequest()`.
+ * Incoming messages are verified with `verifyResponse()`, falling back to
+ * plain JSON if verification fails (the message was not JACS-signed).
  */
 export class JACSTransportProxy implements Transport {
-  private jacsOperational = true;
+  private nativeAgent: JacsAgent;
   private proxyId: string;
+  private debug: boolean;
 
-  constructor(
-    private transport: Transport,
-    role: "client" | "server",
-    private jacsConfigPath?: string
-  ) {
-    this.proxyId = `JACS_${role.toUpperCase()}_PROXY`;
-    
-    // Disable JACS debugging for STDIO transports to prevent stdout contamination
-    const suppressDebugForStdio = isStdioTransport(transport);
-    const enableDiagnosticLogging = process.env.JACS_MCP_DEBUG === 'true' && !suppressDebugForStdio;
-    
-    if (suppressDebugForStdio) {
-      console.error(`[${this.proxyId}] STDIO transport detected, suppressing debug output`);
-    }
-    
-    jacslog(`[${this.proxyId}] CONSTRUCTOR: Wrapping transport with JACS. Config: ${jacsConfigPath}`);
-
-    if (jacsConfigPath) {
-      ensureJacsLoaded(jacsConfigPath)
-        .then(() => { 
-          this.jacsOperational = true; 
-          jacslog(`[${this.proxyId}] JACS Loaded and operational.`); 
-        })
-        .catch(err => { 
-          this.jacsOperational = false; 
-          console.error(`[${this.proxyId}] JACS Load FAILED:`, err.message); 
-        });
-    } else {
-      this.jacsOperational = false;
-      console.warn(`[${this.proxyId}] No JACS config provided. Operating in passthrough mode.`);
-    }
-
-    // Intercept incoming messages from the transport
-    this.transport.onmessage = async (incomingData: string | JSONRPCMessage | object) => {
-      const logPrefix = `[${this.proxyId}] INCOMING`;
-      
-      try {
-        let messageForSDK: JSONRPCMessage;
-
-        if (typeof incomingData === 'string') {
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received string from transport (len ${incomingData.length}): ${incomingData.substring(0,100)}...`);
-          
-          if (this.jacsOperational) {
-            // Try to decrypt/verify the string as a JACS artifact
-            try {
-              if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification of string...`);
-              const verificationResult = await jacsAgent!.verifyResponse(incomingData);
-              
-              let decryptedMessage: JSONRPCMessage;
-              if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
-                decryptedMessage = verificationResult.payload as JSONRPCMessage;
-              } else {
-                decryptedMessage = verificationResult as JSONRPCMessage;
-              }
-              
-              if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted message: ${JSON.stringify(decryptedMessage).substring(0,100)}...`);
-              messageForSDK = decryptedMessage;
-            } catch (jacsError) {
-              // Not a JACS artifact, treat as plain JSON
-              const errorMessage = jacsError instanceof Error ? jacsError.message : "Unknown JACS error";
-              if (enableDiagnosticLogging) jacslog(`${logPrefix}: Not a JACS artifact, parsing as plain JSON. JACS error was: ${errorMessage}`);
-              messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
-            }
-          } else {
-            // JACS not operational, parse as plain JSON
-            if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS not operational, parsing as plain JSON.`);
-            messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
-          }
-        } else if (typeof incomingData === 'object' && incomingData !== null && 'jsonrpc' in incomingData) {
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received object from transport, using as-is.`);
-          messageForSDK = incomingData as JSONRPCMessage;
-        } else {
-          console.error(`${logPrefix}: Unexpected data type from transport:`, typeof incomingData);
-          throw new Error("Invalid data type from transport");
-        }
-
-        if (enableDiagnosticLogging) jacslog(`${logPrefix}: Passing to MCP SDK: ${JSON.stringify(messageForSDK).substring(0,100)}...`);
-        
-        // Pass the clean JSON-RPC message to the MCP SDK
-        if (this.onmessage) {
-          this.onmessage(messageForSDK);
-        }
-      } catch (error) {
-        console.error(`${logPrefix}: Error processing incoming message:`, error);
-        if (this.onerror) this.onerror(error as Error);
-      }
-    };
-
-    // Forward transport events
-    this.transport.onclose = () => { 
-      jacslog(`[${this.proxyId}] Transport closed.`);
-      if (this.onclose) this.onclose(); 
-    };
-    
-    this.transport.onerror = (error) => { 
-      console.error(`[${this.proxyId}] Transport error:`, error);
-      if (this.onerror) this.onerror(error); 
-    };
-
-    jacslog(`[${this.proxyId}] CONSTRUCTOR: Transport proxy initialized.`);
-
-    if ('send' in this.transport && typeof this.transport.send === 'function') {
-      const originalSend = this.transport.send.bind(this.transport);
-      this.transport.send = async (data: any) => {
-        if (typeof data === 'string') {
-          // Check if this is a server-side SSE transport
-          const sseTransport = this.transport as any;
-          if (sseTransport._sseResponse) {
-            // Server-side: write directly to SSE stream
-            sseTransport._sseResponse.write(`event: message\ndata: ${data}\n\n`);
-            return;
-          } else if (sseTransport._endpoint) {
-            // Client-side: use fetch (existing code)
-            const headers = await (sseTransport._commonHeaders?.() || Promise.resolve({}));
-            const response = await fetch(sseTransport._endpoint, {
-              method: "POST",
-              headers: {
-                ...headers,
-                "content-type": "application/json",
-              },
-              body: data, // Send raw string without JSON.stringify()
-            });
-            if (!response.ok) {
-              const text = await response.text().catch(() => null);
-              throw new Error(`Error POSTing to endpoint (HTTP ${response.status}): ${text}`);
-            }
-            return;
-          }
-        }
-        return originalSend(data);
-      };
-    }
-
-    // Replace the client monkey patch section in the constructor with this:
-    if (role === "client") {
-      jacslog(`[${this.proxyId}] Setting up EventSource interception for client...`);
-      
-      // Wait for the transport to be initialized, then intercept its EventSource
-      setTimeout(() => {
-        const sseTransport = this.transport as any;
-        if (sseTransport._eventSource) {
-          jacslog(`[${this.proxyId}] Found EventSource, intercepting onmessage...`);
-          const originalOnMessage = sseTransport._eventSource.onmessage;
-          
-          sseTransport._eventSource.onmessage = async (event: MessageEvent) => {
-            jacslog(`[${this.proxyId}] EventSource received message:`, event.data?.substring(0, 100));
-            
-            try {
-              // Try JACS verification first
-              if (this.jacsOperational) {
-                const verificationResult = await jacsAgent!.verifyResponse(event.data);
-                
-                let decryptedMessage: JSONRPCMessage;
-                if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
-                  decryptedMessage = verificationResult.payload as JSONRPCMessage;
-                } else {
-                  decryptedMessage = verificationResult as JSONRPCMessage;
-                }
-                
-                // Clean up JACS-added null values before passing to MCP SDK
-                const cleanedMessage = this.removeNullValues(decryptedMessage);
-                
-                jacslog(`[${this.proxyId}] JACS verification successful, passing decrypted message to MCP SDK`);
-                const newEvent = new MessageEvent('message', {
-                  data: JSON.stringify(cleanedMessage)
-                });
-                originalOnMessage.call(sseTransport._eventSource, newEvent);
-                return;
-              }
-            } catch (jacsError) {
-              jacslog(`[${this.proxyId}] Not a JACS artifact, passing original message to MCP SDK`);
-            }
-            
-            // Not JACS or JACS failed, use original handler
-            originalOnMessage.call(sseTransport._eventSource, event);
-          };
-        } else {
-          jacslog(`[${this.proxyId}] EventSource not found, will retry...`);
-          // Retry after transport is fully initialized
-          setTimeout(() => {
-            if ((this.transport as any)._eventSource) {
-              jacslog(`[${this.proxyId}] Found EventSource on retry, intercepting...`);
-              // Same logic as above
-            }
-          }, 100);
-        }
-      }, 50);
-    }
-  }
-
-  // MCP SDK will set these
+  // MCP SDK sets these
   onclose?: () => void;
   onerror?: (error: Error) => void;
   onmessage?: (message: JSONRPCMessage) => void;
 
-  async start(): Promise<void> { 
-    jacslog(`[${this.proxyId}] Starting underlying transport...`);
-    return this.transport.start(); 
-  }
-  
-  async close(): Promise<void> { 
-    jacslog(`[${this.proxyId}] Closing underlying transport...`);
-    return this.transport.close(); 
+  constructor(
+    private transport: Transport,
+    clientOrAgent: JacsClient | JacsAgent,
+    role: "client" | "server" = "server",
+  ) {
+    this.nativeAgent = extractNativeAgent(clientOrAgent);
+    this.proxyId = `JACS_${role.toUpperCase()}_PROXY`;
+
+    const suppressDebugForStdio = isStdioTransport(transport);
+    this.debug = process.env.JACS_MCP_DEBUG === 'true' && !suppressDebugForStdio;
+
+    // Intercept incoming messages from the wrapped transport
+    this.transport.onmessage = (incomingData: any) => {
+      this.handleIncoming(incomingData);
+    };
+
+    // Forward transport lifecycle events
+    this.transport.onclose = () => {
+      if (this.onclose) this.onclose();
+    };
+    this.transport.onerror = (error: Error) => {
+      console.error(`[${this.proxyId}] Transport error:`, error);
+      if (this.onerror) this.onerror(error);
+    };
   }
 
-  // Intercept outgoing messages to the transport
+  // -------------------------------------------------------------------------
+  // Transport interface
+  // -------------------------------------------------------------------------
+
+  async start(): Promise<void> {
+    return this.transport.start();
+  }
+
+  async close(): Promise<void> {
+    return this.transport.close();
+  }
+
   async send(message: JSONRPCMessage): Promise<void> {
-    const logPrefix = `[${this.proxyId}] OUTGOING`;
-    
-    try {
-      if (enableDiagnosticLogging) jacslog(`${logPrefix}: MCP SDK sending message: ${JSON.stringify(message).substring(0,100)}...`);
-
-      if (this.jacsOperational) {
-        // Skip JACS for error responses
-        if ('error' in message) {
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Error response, skipping JACS encryption.`);
-          await this.transport.send(message);
-        } else {
-          try {
-            if (enableDiagnosticLogging) jacslog(`${logPrefix}: Applying JACS encryption to message...`);
-            
-            // Clean up the message before JACS signing - remove null params
-            const cleanMessage = { ...message };
-            if ('params' in cleanMessage && cleanMessage.params === null) {
-              delete cleanMessage.params;
-            }
-            
-            const jacsArtifact = await jacsAgent!.signRequest(cleanMessage);
-            await this.transport.send(jacsArtifact as any);  
-            
-          } catch (jacsError) {
-            console.error(`${logPrefix}: JACS encryption failed, sending plain message. Error:`, jacsError);
-            await this.transport.send(message);
-          }
-        }
-      } else {
-        if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS not operational, sending plain message.`);
-        await this.transport.send(message);
-      }
-      
-      if (enableDiagnosticLogging) jacslog(`${logPrefix}: Successfully sent to transport.`);
-    } catch (error) {
-      console.error(`${logPrefix}: Error sending message:`, error);
-      throw error;
-    }
-  }
-
-  // Forward transport properties
-  get sessionId(): string | undefined { 
-    return (this.transport as any).sessionId; 
-  }
-
-  // Handle HTTP POST for SSE transports (if applicable)
-  /**
-   * REQUIRED for SSE (Server-Sent Events) transport pattern in MCP.
-   * 
-   * WHY THIS EXISTS:
-   * SSE is inherently unidirectional (server→client), but MCP requires bidirectional communication.
-   * The MCP SSE implementation solves this with a hybrid approach:
-   * - Server→Client: Uses SSE stream for real-time messages  
-   * - Client→Server: Uses HTTP POST to a specific endpoint
-   * 
-   * This function intercepts those client POST requests, decrypts JACS payloads,
-   * and forwards the decrypted messages to the underlying SSE transport handler.
-   * 
-   * Without this, JACS-encrypted client messages would never reach the MCP server.
-   */
-  async handlePostMessage?(req: IncomingMessage & { auth?: any }, res: ServerResponse, rawBodyString?: string): Promise<void> {
-    const logPrefix = `[${this.proxyId}] HTTP_POST`;
-    
-    // Verify the underlying transport actually supports POST handling
-    // (not all MCP transports do - only SSE transports need this)
-    if (!('handlePostMessage' in this.transport) || typeof this.transport.handlePostMessage !== 'function') {
-      console.error(`${logPrefix}: Underlying transport does not support handlePostMessage`);
-      if (!res.writableEnded) res.writeHead(500).end("Transport does not support POST handling");
+    // Skip signing for error responses
+    if ('error' in message) {
+      debugLog(this.proxyId, this.debug, 'OUTGOING: error response, skipping signing');
+      await this.transport.send(message);
       return;
     }
 
-    // Extract the request body (which contains the JACS-encrypted payload)
-    let bodyToProcess: string;
-    if (rawBodyString !== undefined) {
-      // Body already provided (likely from Express middleware)
-      bodyToProcess = rawBodyString;
-    } else {
-      // Manually read the request body from the HTTP stream
-      const bodyBuffer = [];
-      for await (const chunk of req) { bodyBuffer.push(chunk); }
-      bodyToProcess = Buffer.concat(bodyBuffer).toString();
-      if (!bodyToProcess) {
-        if (!res.writableEnded) res.writeHead(400).end("Empty body");
-        return;
-      }
-    }
-
-    if (enableDiagnosticLogging) jacslog(`${logPrefix}: Raw body (len ${bodyToProcess.length}): ${bodyToProcess.substring(0,100)}...`);
-
-    // Add this debug line before calling jacs.verifyResponse:
-    jacslog(`${logPrefix}: JACS Debug - Body type: ${typeof bodyToProcess}`);
-    jacslog(`${logPrefix}: JACS Debug - First 200 chars:`, JSON.stringify(bodyToProcess.substring(0, 200)));
-    jacslog(`${logPrefix}: JACS Debug - Is valid JSON?`, (() => {
-      try { JSON.parse(bodyToProcess); return true; } catch { return false; }
-    })());
-
     try {
-      let processedBody = bodyToProcess;
-
-      if (this.jacsOperational) {
-        // Try normalizing the JSON string before JACS verification:
-        try {
-          // First, try to parse and re-stringify to normalize
-          const parsedJson = JSON.parse(bodyToProcess);
-          const normalizedJsonString = JSON.stringify(parsedJson);
-          
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification with normalized JSON...`);
-          const verificationResult = await jacsAgent!.verifyResponse(normalizedJsonString);
-          
-          let decryptedMessage: JSONRPCMessage;
-          if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
-            decryptedMessage = verificationResult.payload as JSONRPCMessage;
-          } else {
-            decryptedMessage = verificationResult as JSONRPCMessage;
-          }
-          
-          // Clean up JACS-added null params before passing to MCP SDK
-          if ('params' in decryptedMessage && decryptedMessage.params === null) {
-            const cleanMessage = { ...decryptedMessage };
-            delete cleanMessage.params;
-            processedBody = JSON.stringify(cleanMessage);
-          } else {
-            processedBody = JSON.stringify(decryptedMessage);
-          }
-          
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
-        } catch (parseError) {
-          // If it's not valid JSON, try with original string
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JSON normalization failed, trying original string...`);
-          const verificationResult = await jacsAgent!.verifyResponse(bodyToProcess);
-          
-          let decryptedMessage: JSONRPCMessage;
-          if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
-            decryptedMessage = verificationResult.payload as JSONRPCMessage;
-          } else {
-            decryptedMessage = verificationResult as JSONRPCMessage;
-          }
-          
-          // Clean up JACS-added null params before passing to MCP SDK
-          if ('params' in decryptedMessage && decryptedMessage.params === null) {
-            const cleanMessage = { ...decryptedMessage };
-            delete cleanMessage.params;
-            processedBody = JSON.stringify(cleanMessage);
-          } else {
-            processedBody = JSON.stringify(decryptedMessage);
-          }
-          
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted to: ${processedBody.substring(0,100)}...`);
-        }
+      // Clean null params before signing (MCP SDK sometimes sends null params)
+      const cleanMessage = { ...message };
+      if ('params' in cleanMessage && cleanMessage.params === null) {
+        delete cleanMessage.params;
       }
 
-      // Forward to underlying transport's POST handler
-      await this.transport.handlePostMessage(req, res, processedBody);
-      
-    } catch (error) {
-      console.error(`${logPrefix}: Error processing POST:`, error);
-      if (!res.writableEnded) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        res.writeHead(500).end(`Error: ${errorMessage}`);
-      }
+      debugLog(this.proxyId, this.debug, 'OUTGOING: signing message');
+      const signed = this.nativeAgent.signRequest(cleanMessage);
+      await this.transport.send(signed as any);
+    } catch (signError) {
+      console.error(`[${this.proxyId}] Signing failed, sending plain message:`, signError);
+      await this.transport.send(message);
     }
   }
 
-  private async handleIncomingMessage(incomingData: string | JSONRPCMessage | object): Promise<void> {
-    const logPrefix = `[${this.proxyId}] INCOMING`;
-    
+  get sessionId(): string | undefined {
+    return (this.transport as any).sessionId;
+  }
+
+  // -------------------------------------------------------------------------
+  // Internal
+  // -------------------------------------------------------------------------
+
+  private handleIncoming(incomingData: string | JSONRPCMessage | object): void {
     try {
       let messageForSDK: JSONRPCMessage;
 
       if (typeof incomingData === 'string') {
-        if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received string from transport (len ${incomingData.length}): ${incomingData.substring(0,100)}...`);
-        
-        if (this.jacsOperational) {
-          try {
-            if (enableDiagnosticLogging) jacslog(`${logPrefix}: Attempting JACS verification of string...`);
-            const verificationResult = await jacsAgent!.verifyResponse(incomingData);
-            
-            let decryptedMessage: JSONRPCMessage;
-            if (verificationResult && typeof verificationResult === 'object' && 'payload' in verificationResult) {
-              decryptedMessage = verificationResult.payload as JSONRPCMessage;
-            } else {
-              decryptedMessage = verificationResult as JSONRPCMessage;
-            }
-            
-            if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS verification successful. Decrypted message: ${JSON.stringify(decryptedMessage).substring(0,100)}...`);
-            messageForSDK = decryptedMessage;
-          } catch (jacsError) {
-            const errorMessage = jacsError instanceof Error ? jacsError.message : "Unknown JACS error";
-            if (enableDiagnosticLogging) jacslog(`${logPrefix}: Not a JACS artifact, parsing as plain JSON. JACS error was: ${errorMessage}`);
-            messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
-          }
-        } else {
-          if (enableDiagnosticLogging) jacslog(`${logPrefix}: JACS not operational, parsing as plain JSON.`);
+        // Try JACS verification first
+        try {
+          debugLog(this.proxyId, this.debug, 'INCOMING: attempting JACS verification');
+          const result = this.nativeAgent.verifyResponse(incomingData);
+          messageForSDK = (result && typeof result === 'object' && 'payload' in result)
+            ? (result as any).payload as JSONRPCMessage
+            : result as JSONRPCMessage;
+        } catch {
+          // Not a JACS artifact, parse as plain JSON
+          debugLog(this.proxyId, this.debug, 'INCOMING: not a JACS artifact, parsing as plain JSON');
           messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
         }
       } else if (typeof incomingData === 'object' && incomingData !== null && 'jsonrpc' in incomingData) {
-        if (enableDiagnosticLogging) jacslog(`${logPrefix}: Received object from transport, using as-is.`);
         messageForSDK = incomingData as JSONRPCMessage;
       } else {
-        console.error(`${logPrefix}: Unexpected data type from transport:`, typeof incomingData);
-        throw new Error("Invalid data type from transport");
+        throw new Error(`Unexpected incoming data type: ${typeof incomingData}`);
       }
 
-      if (enableDiagnosticLogging) jacslog(`${logPrefix}: Passing to MCP SDK: ${JSON.stringify(messageForSDK).substring(0,100)}...`);
-      
       if (this.onmessage) {
         this.onmessage(messageForSDK);
       }
     } catch (error) {
-      console.error(`${logPrefix}: Error processing incoming message:`, error);
+      console.error(`[${this.proxyId}] Error processing incoming message:`, error);
       if (this.onerror) this.onerror(error as Error);
     }
   }
 
   /**
-   * Removes null and undefined values from JSON objects to prevent MCP schema validation failures.
-   * 
-   * WORKAROUND for MCP JSON Schema validation issues:
-   * - Addresses strict validators (like Anthropic's API) that reject schemas with null values
-   * - Handles edge cases where tools have null inputSchema causing client validation errors
-   * - Prevents "invalid_type: expected object, received undefined" errors in TypeScript SDK v1.9.0
-   * - Cleans up malformed schemas before transmission to avoid -32602 JSON-RPC errors
-   * 
-   * Related issues:
-   * - https://github.com/modelcontextprotocol/typescript-sdk/issues/400 (null schema tools)
-   * - https://github.com/anthropics/claude-code/issues/586 (Anthropic strict Draft 2020-12)
-   * - https://github.com/agno-agi/agno/issues/2791 (missing type field)
-   * 
-   * @param obj - The object to clean (typically MCP tool/resource schemas)
-   * @returns A new object with all null/undefined values recursively removed
+   * Removes null and undefined values from JSON objects to prevent MCP schema
+   * validation failures with strict validators.
+   *
+   * Workaround for:
+   * - https://github.com/modelcontextprotocol/typescript-sdk/issues/400
+   * - https://github.com/anthropics/claude-code/issues/586
+   * - https://github.com/agno-agi/agno/issues/2791
    */
-  private removeNullValues(obj: any): any {
+  removeNullValues(obj: any): any {
     if (obj === null || obj === undefined) return undefined;
     if (typeof obj !== 'object') return obj;
     if (Array.isArray(obj)) return obj.map(item => this.removeNullValues(item));
-    
+
     const cleaned: any = {};
     for (const [key, value] of Object.entries(obj)) {
       const cleanedValue = this.removeNullValues(value);
@@ -503,22 +192,429 @@ export class JACSTransportProxy implements Transport {
   }
 }
 
+// ---------------------------------------------------------------------------
 // Factory functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a transport proxy from a pre-loaded JacsClient or JacsAgent.
+ */
 export function createJACSTransportProxy(
-  transport: Transport, 
-  configPath: string,
-  role: "client" | "server"
+  transport: Transport,
+  clientOrAgent: JacsClient | JacsAgent,
+  role: "client" | "server" = "server",
 ): JACSTransportProxy {
-  jacslog(`Creating JACS Transport Proxy for role: ${role}`);
-  return new JACSTransportProxy(transport, role, configPath);
+  return new JACSTransportProxy(transport, clientOrAgent, role);
 }
 
+/**
+ * Create a transport proxy by loading a JACS agent from a config file.
+ * Awaits agent loading before returning, so the proxy is immediately usable.
+ */
 export async function createJACSTransportProxyAsync(
   transport: Transport,
   configPath: string,
-  role: "client" | "server"
+  role: "client" | "server" = "server",
 ): Promise<JACSTransportProxy> {
-  jacslog(`Creating JACS Transport Proxy (async) for role: ${role}`);
-  await ensureJacsLoaded(configPath);
-  return new JACSTransportProxy(transport, role, configPath);
+  const agent = new JacsAgent();
+  await agent.load(configPath);
+  return new JACSTransportProxy(transport, agent, role);
+}
+
+// ---------------------------------------------------------------------------
+// MCP Tool Definitions — mirrors the Rust jacs-mcp tool suite
+// ---------------------------------------------------------------------------
+
+/** MCP tool definition shape (matches @modelcontextprotocol/sdk Tool type). */
+export interface JacsMcpToolDef {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
+
+/**
+ * Returns the full list of JACS MCP tool definitions.
+ *
+ * Use this with `server.setRequestHandler(ListToolsRequestSchema, ...)` to
+ * advertise JACS tools from a Node.js MCP server.
+ */
+export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
+  return [
+    {
+      name: 'jacs_sign_document',
+      description: 'Sign arbitrary JSON data with JACS cryptographic provenance.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          data: { type: 'string', description: 'JSON string of data to sign' },
+        },
+        required: ['data'],
+      },
+    },
+    {
+      name: 'jacs_verify_document',
+      description: 'Verify a JACS-signed document. Returns validity, signer, and errors.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          document: { type: 'string', description: 'The signed JSON document to verify' },
+        },
+        required: ['document'],
+      },
+    },
+    {
+      name: 'jacs_verify_by_id',
+      description: 'Verify a document by its storage ID (uuid:version format).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          document_id: { type: 'string', description: 'Document ID in uuid:version format' },
+        },
+        required: ['document_id'],
+      },
+    },
+    {
+      name: 'jacs_create_agreement',
+      description: 'Create a multi-party agreement requiring signatures from specified agents.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          document: { type: 'string', description: 'JSON string of document to agree on' },
+          agent_ids: { type: 'array', items: { type: 'string' }, description: 'Agent IDs who must sign' },
+          question: { type: 'string', description: 'Question or prompt for signers' },
+          timeout: { type: 'string', description: 'ISO 8601 deadline' },
+          quorum: { type: 'number', description: 'Minimum signatures required (M-of-N)' },
+        },
+        required: ['document', 'agent_ids'],
+      },
+    },
+    {
+      name: 'jacs_sign_agreement',
+      description: 'Sign an existing multi-party agreement.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          document: { type: 'string', description: 'The agreement document to sign' },
+        },
+        required: ['document'],
+      },
+    },
+    {
+      name: 'jacs_check_agreement',
+      description: 'Check the status of a multi-party agreement.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          document: { type: 'string', description: 'The agreement document to check' },
+        },
+        required: ['document'],
+      },
+    },
+    {
+      name: 'jacs_audit',
+      description: 'Run a JACS security audit on documents and keys.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          recent_n: { type: 'number', description: 'Number of recent documents to audit' },
+        },
+      },
+    },
+    {
+      name: 'jacs_sign_file',
+      description: 'Sign a file with JACS. Optionally embed the file content.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the file to sign' },
+          embed: { type: 'boolean', description: 'Embed file content in the document (default false)' },
+        },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'jacs_verify_self',
+      description: "Verify this agent's own cryptographic integrity.",
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'jacs_agent_info',
+      description: 'Get the current agent ID, name, and diagnostics.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'fetch_agent_key',
+      description: "Fetch an agent's public key from HAI's key distribution service.",
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_id: { type: 'string', description: 'Agent ID (UUID format)' },
+          version: { type: 'string', description: "Key version or 'latest'" },
+        },
+        required: ['agent_id'],
+      },
+    },
+    {
+      name: 'jacs_register',
+      description: 'Register this agent with HAI.ai for cross-organization key discovery.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          api_key: { type: 'string', description: 'HAI API key (optional, uses env if not set)' },
+          preview: { type: 'boolean', description: 'Preview mode (default true)' },
+        },
+      },
+    },
+    {
+      name: 'jacs_setup_instructions',
+      description: 'Get DNS and well-known setup instructions for a domain.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          domain: { type: 'string', description: 'Domain name for setup' },
+        },
+        required: ['domain'],
+      },
+    },
+    {
+      name: 'jacs_trust_agent',
+      description: 'Add an agent to the local trust store.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_json: { type: 'string', description: 'Agent JSON document to trust' },
+        },
+        required: ['agent_json'],
+      },
+    },
+    {
+      name: 'jacs_list_trusted',
+      description: 'List all agent IDs in the local trust store.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'jacs_is_trusted',
+      description: 'Check if a specific agent is in the local trust store.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_id: { type: 'string', description: 'Agent ID to check' },
+        },
+        required: ['agent_id'],
+      },
+    },
+    {
+      name: 'jacs_reencrypt_key',
+      description: 'Re-encrypt the private key with a new password.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          old_password: { type: 'string', description: 'Current password' },
+          new_password: { type: 'string', description: 'New password' },
+        },
+        required: ['old_password', 'new_password'],
+      },
+    },
+  ];
+}
+
+/**
+ * Handle a JACS MCP tool call. Returns a JSON string result.
+ *
+ * Use this with `server.setRequestHandler(CallToolRequestSchema, ...)`.
+ */
+export async function handleJacsMcpToolCall(
+  client: JacsClient,
+  toolName: string,
+  args: Record<string, any>,
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
+
+  try {
+    switch (toolName) {
+      case 'jacs_sign_document': {
+        const data = JSON.parse(args.data);
+        const signed = await client.signMessage(data);
+        return text(JSON.stringify({
+          success: true, documentId: signed.documentId,
+          agentId: signed.agentId, timestamp: signed.timestamp,
+          raw: signed.raw,
+        }));
+      }
+
+      case 'jacs_verify_document': {
+        const result = await client.verify(args.document);
+        return text(JSON.stringify({
+          success: result.valid, valid: result.valid,
+          signerId: result.signerId, timestamp: result.timestamp,
+          data: result.data, errors: result.errors,
+        }));
+      }
+
+      case 'jacs_verify_by_id': {
+        const result = await client.verifyById(args.document_id);
+        return text(JSON.stringify({
+          success: result.valid, valid: result.valid,
+          errors: result.errors,
+        }));
+      }
+
+      case 'jacs_create_agreement': {
+        const doc = JSON.parse(args.document);
+        const opts: any = {};
+        if (args.question) opts.question = args.question;
+        if (args.timeout) opts.timeout = args.timeout;
+        if (args.quorum !== undefined) opts.quorum = args.quorum;
+        const signed = await client.createAgreement(doc, args.agent_ids, opts);
+        return text(JSON.stringify({
+          success: true, documentId: signed.documentId,
+          agentId: signed.agentId, raw: signed.raw,
+        }));
+      }
+
+      case 'jacs_sign_agreement': {
+        const signed = await client.signAgreement(args.document);
+        return text(JSON.stringify({
+          success: true, documentId: signed.documentId,
+          agentId: signed.agentId, raw: signed.raw,
+        }));
+      }
+
+      case 'jacs_check_agreement': {
+        const status = await client.checkAgreement(args.document);
+        return text(JSON.stringify({ success: true, ...status }));
+      }
+
+      case 'jacs_audit': {
+        const result = await client.audit(
+          args.recent_n !== undefined ? { recentN: args.recent_n } : undefined,
+        );
+        return text(JSON.stringify({ success: true, ...result }));
+      }
+
+      case 'jacs_sign_file': {
+        const signed = await client.signFile(args.file_path, args.embed || false);
+        return text(JSON.stringify({
+          success: true, documentId: signed.documentId,
+          agentId: signed.agentId, raw: signed.raw,
+        }));
+      }
+
+      case 'jacs_verify_self': {
+        const result = await client.verifySelf();
+        return text(JSON.stringify({
+          success: result.valid, valid: result.valid,
+          signerId: result.signerId, errors: result.errors,
+        }));
+      }
+
+      case 'jacs_agent_info': {
+        const nativeAgent = extractNativeAgent(client);
+        let diagnostics = {};
+        try { diagnostics = JSON.parse(nativeAgent.diagnostics()); } catch { /* ok */ }
+        return text(JSON.stringify({
+          agentId: client.agentId, name: client.name,
+          strict: client.strict, diagnostics,
+        }));
+      }
+
+      case 'fetch_agent_key': {
+        const keyInfo = fetchRemoteKey(args.agent_id, args.version || null);
+        return text(JSON.stringify({
+          success: true, agentId: keyInfo.agentId,
+          version: keyInfo.version, algorithm: keyInfo.algorithm,
+          publicKeyHash: keyInfo.publicKeyHash,
+        }));
+      }
+
+      case 'jacs_register': {
+        const nativeAgent = extractNativeAgent(client);
+        const result = await nativeAgent.registerWithHai(
+          args.api_key || null, null, args.preview !== false,
+        );
+        return text(result);
+      }
+
+      case 'jacs_setup_instructions': {
+        const nativeAgent = extractNativeAgent(client);
+        const result = await nativeAgent.getSetupInstructions(args.domain, null);
+        return text(result);
+      }
+
+      case 'jacs_trust_agent': {
+        const result = client.trustAgent(args.agent_json);
+        return text(JSON.stringify({ success: true, result }));
+      }
+
+      case 'jacs_list_trusted': {
+        const agents = client.listTrustedAgents();
+        return text(JSON.stringify({ success: true, trustedAgents: agents }));
+      }
+
+      case 'jacs_is_trusted': {
+        const trusted = client.isTrusted(args.agent_id);
+        return text(JSON.stringify({ agentId: args.agent_id, trusted }));
+      }
+
+      case 'jacs_reencrypt_key': {
+        const nativeAgent = extractNativeAgent(client);
+        await nativeAgent.reencryptKey(args.old_password, args.new_password);
+        return text(JSON.stringify({ success: true, message: 'Key re-encrypted' }));
+      }
+
+      default:
+        return text(JSON.stringify({ error: `Unknown tool: ${toolName}` }));
+    }
+  } catch (err: any) {
+    return text(JSON.stringify({ success: false, error: String(err) }));
+  }
+}
+
+/**
+ * Register all JACS tools on an MCP Server instance.
+ *
+ * Call this once during server setup to add JACS signing, verification,
+ * agreements, trust, audit, and HAI integration tools.
+ *
+ * @example
+ * ```typescript
+ * import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+ * import { JacsClient } from '@hai.ai/jacs/client';
+ * import { registerJacsTools } from '@hai.ai/jacs/mcp';
+ *
+ * const server = new Server(
+ *   { name: 'my-server', version: '1.0.0' },
+ *   { capabilities: { tools: {} } },
+ * );
+ * const client = await JacsClient.quickstart();
+ * registerJacsTools(server, client);
+ * ```
+ */
+export function registerJacsTools(server: any, client: JacsClient): void {
+  // Lazy import MCP SDK schemas — only needed if registering tools
+  let ListToolsRequestSchema: any;
+  let CallToolRequestSchema: any;
+  try {
+    const types = require('@modelcontextprotocol/sdk/types.js');
+    ListToolsRequestSchema = types.ListToolsRequestSchema;
+    CallToolRequestSchema = types.CallToolRequestSchema;
+  } catch {
+    throw new Error(
+      '@modelcontextprotocol/sdk is required for registerJacsTools. ' +
+      'Install it with: npm install @modelcontextprotocol/sdk'
+    );
+  }
+
+  const tools = getJacsMcpToolDefinitions();
+
+  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+    const { name, arguments: args } = request.params;
+    return handleJacsMcpToolCall(client, name, args || {});
+  });
 }

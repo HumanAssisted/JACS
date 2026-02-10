@@ -1,61 +1,94 @@
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { IncomingMessage, ServerResponse } from "node:http";
+import { JacsAgent } from './index.js';
+import { JacsClient } from './client.js';
 /**
- * JACS Transport Proxy - Wraps any transport with JACS encryption
+ * JACS Transport Proxy - Wraps any MCP transport with JACS signing/verification.
  *
- * This proxy sits between the MCP SDK and the actual transport,
- * intercepting serialized JSON strings (not JSON-RPC objects)
+ * Outgoing messages are signed with `signRequest()`.
+ * Incoming messages are verified with `verifyResponse()`, falling back to
+ * plain JSON if verification fails (the message was not JACS-signed).
  */
 export declare class JACSTransportProxy implements Transport {
     private transport;
-    private jacsConfigPath?;
-    private jacsOperational;
+    private nativeAgent;
     private proxyId;
-    constructor(transport: Transport, role: "client" | "server", jacsConfigPath?: string | undefined);
+    private debug;
     onclose?: () => void;
     onerror?: (error: Error) => void;
     onmessage?: (message: JSONRPCMessage) => void;
+    constructor(transport: Transport, clientOrAgent: JacsClient | JacsAgent, role?: "client" | "server");
     start(): Promise<void>;
     close(): Promise<void>;
     send(message: JSONRPCMessage): Promise<void>;
     get sessionId(): string | undefined;
+    private handleIncoming;
     /**
-     * REQUIRED for SSE (Server-Sent Events) transport pattern in MCP.
+     * Removes null and undefined values from JSON objects to prevent MCP schema
+     * validation failures with strict validators.
      *
-     * WHY THIS EXISTS:
-     * SSE is inherently unidirectional (server→client), but MCP requires bidirectional communication.
-     * The MCP SSE implementation solves this with a hybrid approach:
-     * - Server→Client: Uses SSE stream for real-time messages
-     * - Client→Server: Uses HTTP POST to a specific endpoint
-     *
-     * This function intercepts those client POST requests, decrypts JACS payloads,
-     * and forwards the decrypted messages to the underlying SSE transport handler.
-     *
-     * Without this, JACS-encrypted client messages would never reach the MCP server.
+     * Workaround for:
+     * - https://github.com/modelcontextprotocol/typescript-sdk/issues/400
+     * - https://github.com/anthropics/claude-code/issues/586
+     * - https://github.com/agno-agi/agno/issues/2791
      */
-    handlePostMessage?(req: IncomingMessage & {
-        auth?: any;
-    }, res: ServerResponse, rawBodyString?: string): Promise<void>;
-    private handleIncomingMessage;
-    /**
-     * Removes null and undefined values from JSON objects to prevent MCP schema validation failures.
-     *
-     * WORKAROUND for MCP JSON Schema validation issues:
-     * - Addresses strict validators (like Anthropic's API) that reject schemas with null values
-     * - Handles edge cases where tools have null inputSchema causing client validation errors
-     * - Prevents "invalid_type: expected object, received undefined" errors in TypeScript SDK v1.9.0
-     * - Cleans up malformed schemas before transmission to avoid -32602 JSON-RPC errors
-     *
-     * Related issues:
-     * - https://github.com/modelcontextprotocol/typescript-sdk/issues/400 (null schema tools)
-     * - https://github.com/anthropics/claude-code/issues/586 (Anthropic strict Draft 2020-12)
-     * - https://github.com/agno-agi/agno/issues/2791 (missing type field)
-     *
-     * @param obj - The object to clean (typically MCP tool/resource schemas)
-     * @returns A new object with all null/undefined values recursively removed
-     */
-    private removeNullValues;
+    removeNullValues(obj: any): any;
 }
-export declare function createJACSTransportProxy(transport: Transport, configPath: string, role: "client" | "server"): JACSTransportProxy;
-export declare function createJACSTransportProxyAsync(transport: Transport, configPath: string, role: "client" | "server"): Promise<JACSTransportProxy>;
+/**
+ * Create a transport proxy from a pre-loaded JacsClient or JacsAgent.
+ */
+export declare function createJACSTransportProxy(transport: Transport, clientOrAgent: JacsClient | JacsAgent, role?: "client" | "server"): JACSTransportProxy;
+/**
+ * Create a transport proxy by loading a JACS agent from a config file.
+ * Awaits agent loading before returning, so the proxy is immediately usable.
+ */
+export declare function createJACSTransportProxyAsync(transport: Transport, configPath: string, role?: "client" | "server"): Promise<JACSTransportProxy>;
+/** MCP tool definition shape (matches @modelcontextprotocol/sdk Tool type). */
+export interface JacsMcpToolDef {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: 'object';
+        properties: Record<string, any>;
+        required?: string[];
+    };
+}
+/**
+ * Returns the full list of JACS MCP tool definitions.
+ *
+ * Use this with `server.setRequestHandler(ListToolsRequestSchema, ...)` to
+ * advertise JACS tools from a Node.js MCP server.
+ */
+export declare function getJacsMcpToolDefinitions(): JacsMcpToolDef[];
+/**
+ * Handle a JACS MCP tool call. Returns a JSON string result.
+ *
+ * Use this with `server.setRequestHandler(CallToolRequestSchema, ...)`.
+ */
+export declare function handleJacsMcpToolCall(client: JacsClient, toolName: string, args: Record<string, any>): Promise<{
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+}>;
+/**
+ * Register all JACS tools on an MCP Server instance.
+ *
+ * Call this once during server setup to add JACS signing, verification,
+ * agreements, trust, audit, and HAI integration tools.
+ *
+ * @example
+ * ```typescript
+ * import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+ * import { JacsClient } from '@hai.ai/jacs/client';
+ * import { registerJacsTools } from '@hai.ai/jacs/mcp';
+ *
+ * const server = new Server(
+ *   { name: 'my-server', version: '1.0.0' },
+ *   { capabilities: { tools: {} } },
+ * );
+ * const client = await JacsClient.quickstart();
+ * registerJacsTools(server, client);
+ * ```
+ */
+export declare function registerJacsTools(server: any, client: JacsClient): void;
