@@ -81,6 +81,46 @@ fn test_verify_document_tampered() {
 }
 
 #[test]
+fn test_sign_batch_returns_signatures_for_each_message() {
+    let wrapper = create_ephemeral_wrapper();
+
+    let messages = vec![
+        "message one".to_string(),
+        "message two".to_string(),
+        "message three".to_string(),
+    ];
+    let signatures = wrapper
+        .sign_batch(messages.clone())
+        .expect("sign_batch should succeed");
+
+    assert_eq!(
+        signatures.len(),
+        messages.len(),
+        "should return one signature per message"
+    );
+    for (i, sig) in signatures.iter().enumerate() {
+        assert!(!sig.is_empty(), "signature {} should not be empty", i);
+    }
+
+    // Each signature should be unique (different messages -> different sigs)
+    let unique: std::collections::HashSet<&String> = signatures.iter().collect();
+    assert_eq!(
+        unique.len(),
+        signatures.len(),
+        "all signatures should be distinct"
+    );
+}
+
+#[test]
+fn test_sign_batch_empty_input() {
+    let wrapper = create_ephemeral_wrapper();
+    let signatures = wrapper
+        .sign_batch(vec![])
+        .expect("sign_batch with empty input should succeed");
+    assert!(signatures.is_empty(), "empty input should return empty output");
+}
+
+#[test]
 fn test_sign_document_roundtrip() {
     let wrapper = create_ephemeral_wrapper();
 

@@ -222,6 +222,47 @@ See [`examples/multi_agent_agreement.py`](../examples/multi_agent_agreement.py) 
 | `audit()` | Run security audit |
 | `reset()` | Clear internal state |
 
+## Framework Adapters
+
+Auto-sign AI framework outputs with zero infrastructure. Install the extra for your framework:
+
+```bash
+pip install jacs[langchain]   # LangChain / LangGraph
+pip install jacs[fastapi]     # FastAPI / Starlette
+pip install jacs[crewai]      # CrewAI
+pip install jacs[anthropic]   # Anthropic / Claude SDK
+pip install jacs[all]         # Everything
+```
+
+**LangChain** -- sign every tool result via middleware:
+```python
+from jacs.adapters.langchain import jacs_signing_middleware
+agent = create_agent(model="openai:gpt-4o", tools=tools, middleware=[jacs_signing_middleware()])
+```
+
+**FastAPI** -- sign all JSON responses:
+```python
+from jacs.adapters.fastapi import JacsMiddleware
+app.add_middleware(JacsMiddleware)
+```
+
+**CrewAI** -- sign task outputs via guardrail:
+```python
+from jacs.adapters.crewai import jacs_guardrail
+task = Task(description="Analyze data", agent=my_agent, guardrail=jacs_guardrail())
+```
+
+**Anthropic / Claude SDK** -- sign tool return values:
+```python
+from jacs.adapters.anthropic import signed_tool
+
+@signed_tool()
+def get_weather(location: str) -> str:
+    return f"Weather in {location}: sunny"
+```
+
+See the [Framework Adapters guide](https://humanassisted.github.io/JACS/python/adapters.html) for full documentation, custom adapters, and strict/permissive mode details.
+
 ## Testing
 
 The `jacs.testing` module provides a pytest fixture that creates an ephemeral client with no disk I/O or env vars required:
@@ -360,6 +401,13 @@ else:
 ```bash
 # Basic installation
 pip install jacs
+
+# With framework adapters
+pip install jacs[langchain]    # LangChain / LangGraph
+pip install jacs[fastapi]      # FastAPI / Starlette
+pip install jacs[crewai]       # CrewAI
+pip install jacs[anthropic]    # Anthropic / Claude SDK
+pip install jacs[all]          # All adapters + MCP + HAI
 
 # With MCP support
 pip install jacs[mcp]

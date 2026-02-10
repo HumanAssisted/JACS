@@ -115,6 +115,18 @@ impl JacsAgent {
         self.inner.sign_string(data).to_py()
     }
 
+    /// Sign multiple messages in a single batch (one key decryption).
+    ///
+    /// Args:
+    ///     messages: List of strings to sign
+    ///
+    /// Returns:
+    ///     List of base64-encoded signatures, one per message
+    #[pyo3(signature = (messages,))]
+    fn sign_batch(&self, messages: Vec<String>) -> PyResult<Vec<String>> {
+        self.inner.sign_batch(messages).to_py()
+    }
+
     /// Verify this agent's self-signature.
     fn verify_agent(&self, agentfile: Option<String>) -> PyResult<bool> {
         self.inner.verify_agent(agentfile).to_py()

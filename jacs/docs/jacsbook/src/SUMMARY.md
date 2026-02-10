@@ -31,6 +31,7 @@
 - [Installation](python/installation.md)
 - [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
+- [Framework Adapters](python/adapters.md)
 - [MCP Integration](python/mcp.md)
 <!-- - [FastMCP Integration](python/fastmcp.md) -->
 - [API Reference](python/api.md)

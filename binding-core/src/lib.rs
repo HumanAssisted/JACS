@@ -353,6 +353,15 @@ impl AgentWrapper {
             .map_err(|e| BindingCoreError::signing_failed(format!("Failed to sign string: {}", e)))
     }
 
+    /// Sign multiple messages in a single batch, decrypting the private key only once.
+    pub fn sign_batch(&self, messages: Vec<String>) -> BindingResult<Vec<String>> {
+        let mut agent = self.lock()?;
+        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
+        agent
+            .sign_batch(&refs)
+            .map_err(|e| BindingCoreError::signing_failed(format!("Batch sign failed: {}", e)))
+    }
+
     /// Verify this agent's signature and hash.
     pub fn verify_agent(&self, agentfile: Option<String>) -> BindingResult<bool> {
         let mut agent = self.lock()?;

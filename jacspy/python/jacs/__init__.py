@@ -96,6 +96,9 @@ try:
 except ImportError:
     hai = None  # httpx not installed
 
+# Make framework adapters available (optional, no hard deps)
+from . import adapters
+
 __all__ = [
     # Primary API Classes
     "JacsAgent",
@@ -131,6 +134,7 @@ __all__ = [
     "async_simple",
     "testing",
     "hai",
+    "adapters",
 ]
 
  

@@ -473,11 +473,13 @@ Congratulations! You've successfully:
 
 Now that you have the basics working:
 
-1. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
-2. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
-3. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
-4. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
-5. **[Real Examples](../examples/integrations.md)** - See production patterns
+1. **[Framework Adapters](../python/adapters.md)** - Add auto-signing to LangChain, FastAPI, CrewAI, or Anthropic SDK in 1-3 lines
+2. **[Multi-Agent Agreements](../rust/agreements.md)** - Cross-trust-boundary verification with quorum and timeout
+3. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
+4. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
+5. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
+6. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
+7. **[Real Examples](../examples/integrations.md)** - See production patterns
 
 ## Troubleshooting
 
