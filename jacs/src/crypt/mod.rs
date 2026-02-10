@@ -215,21 +215,36 @@ pub trait KeyManager {
     fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>>;
 }
 
-impl KeyManager for Agent {
-    /// this necessatates updateding the version of the agent
-    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+impl Agent {
+    /// Generate keys using a specific KeyStore implementation.
+    /// For ephemeral agents, uses set_keys_raw (no AES encryption).
+    /// For persistent agents, uses set_keys (AES-encrypts private key).
+    pub fn generate_keys_with_store(
+        &mut self,
+        ks: &dyn KeyStore,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let key_algorithm = config.get_key_algorithm()?;
         info!(algorithm = %key_algorithm, "Generating new keypair");
-        let ks = FsEncryptedStore;
         let spec = KeySpec {
             algorithm: key_algorithm.clone(),
             key_id: None,
         };
         let (private_key, public_key) = ks.generate(&spec)?;
-        self.set_keys(private_key, public_key, &key_algorithm)?;
+        if self.is_ephemeral() {
+            self.set_keys_raw(private_key, public_key, &key_algorithm);
+        } else {
+            self.set_keys(private_key, public_key, &key_algorithm)?;
+        }
         info!(algorithm = %key_algorithm, "Keypair generated successfully");
         Ok(())
+    }
+}
+
+impl KeyManager for Agent {
+    /// this necessatates updateding the version of the agent
+    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.generate_keys_with_store(&FsEncryptedStore)
     }
 
     fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -258,8 +273,6 @@ impl KeyManager for Agent {
             )
         })?;
         {
-            // Delegate to keystore; we expect detached signature bytes, return base64
-            let ks = FsEncryptedStore;
             let binding = self.get_private_key().map_err(|e| {
                 format!(
                     "Document signing failed: private key not loaded. \
@@ -267,18 +280,36 @@ impl KeyManager for Agent {
                     e
                 )
             })?;
-            // Use secure decryption - ZeroizingVec will be zeroized when it goes out of scope
-            let decrypted =
-                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
-                    .map_err(|e| {
-                        format!(
-                            "Document signing failed: could not decrypt private key. \
-                            Check that the password is correct. Error: {}",
-                            e
-                        )
-                    })?;
-            let sig_bytes = ks
-                .sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)
+
+            // Ephemeral agents: raw key, no AES decryption needed
+            // Persistent agents: AES-encrypted key, must decrypt first
+            let is_ephemeral = self.is_ephemeral();
+            let has_key_store = self.get_key_store().is_some();
+            let stored_algo = self.get_key_algorithm().cloned();
+            let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+                let raw = binding.expose_secret().clone();
+                let ks: Box<dyn KeyStore> = if has_key_store {
+                    let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                    Box::new(crate::keystore::InMemoryKeyStore::new(algo))
+                } else {
+                    Box::new(FsEncryptedStore)
+                };
+                (raw, ks)
+            } else {
+                let decrypted =
+                    crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                        .map_err(|e| {
+                            format!(
+                                "Document signing failed: could not decrypt private key. \
+                                Check that the password is correct. Error: {}",
+                                e
+                            )
+                        })?;
+                (decrypted.as_slice().to_vec(), Box::new(FsEncryptedStore) as Box<dyn KeyStore>)
+            };
+
+            let sig_bytes = ks_box
+                .sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)
                 .map_err(|e| {
                     format!(
                         "Document signing failed: cryptographic signing operation failed. \
@@ -327,8 +358,6 @@ impl KeyManager for Agent {
             )
         })?;
 
-        // Decrypt the private key once for all signatures
-        let ks = FsEncryptedStore;
         let binding = self.get_private_key().map_err(|e| {
             format!(
                 "Batch signing failed: private key not loaded. \
@@ -336,17 +365,34 @@ impl KeyManager for Agent {
                 e
             )
         })?;
-        let decrypted =
-            crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
-                .map_err(|e| {
-                    format!(
-                        "Batch signing failed: could not decrypt private key. \
-                        Check that the password is correct. Error: {}",
-                        e
-                    )
-                })?;
 
-        // Sign all messages with the same decrypted key
+        // Ephemeral: raw key, no AES. Persistent: decrypt first.
+        let is_ephemeral = self.is_ephemeral();
+        let has_key_store = self.get_key_store().is_some();
+        let stored_algo = self.get_key_algorithm().cloned();
+        let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+            let raw = binding.expose_secret().clone();
+            let ks: Box<dyn KeyStore> = if has_key_store {
+                let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                Box::new(crate::keystore::InMemoryKeyStore::new(algo))
+            } else {
+                Box::new(FsEncryptedStore)
+            };
+            (raw, ks)
+        } else {
+            let decrypted =
+                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                    .map_err(|e| {
+                        format!(
+                            "Batch signing failed: could not decrypt private key. \
+                            Check that the password is correct. Error: {}",
+                            e
+                        )
+                    })?;
+            (decrypted.as_slice().to_vec(), Box::new(FsEncryptedStore) as Box<dyn KeyStore>)
+        };
+
+        // Sign all messages with the same key
         let mut signatures = Vec::with_capacity(messages.len());
         for (index, data) in messages.iter().enumerate() {
             trace!(
@@ -356,7 +402,7 @@ impl KeyManager for Agent {
                 "Signing batch item"
             );
             let sig_bytes =
-                ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
+                ks_box.sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)?;
             signatures.push(STANDARD.encode(sig_bytes));
         }
 
