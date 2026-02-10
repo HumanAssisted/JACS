@@ -325,7 +325,7 @@ fn test_well_known_endpoints_generation() {
 
 #[test]
 fn test_create_extension_descriptor() {
-    let descriptor = create_extension_descriptor();
+    let descriptor = create_extension_descriptor("pq2025");
 
     // Verify descriptor structure
     assert_eq!(descriptor["uri"], "urn:hai.ai:jacs-provenance-v1");
@@ -335,6 +335,29 @@ fn test_create_extension_descriptor() {
     assert!(descriptor["capabilities"]["postQuantumCrypto"].is_object());
     assert!(descriptor["endpoints"]["sign"].is_object());
     assert!(descriptor["endpoints"]["verify"].is_object());
+
+    // Verify signing algorithm is the one passed in
+    assert_eq!(descriptor["capabilities"]["documentSigning"]["signingAlgorithm"], "pq2025");
+
+    // Verify verification algorithms are real JACS algorithms
+    let verification_algs = descriptor["capabilities"]["documentVerification"]["algorithms"]
+        .as_array()
+        .expect("verification algorithms should be an array");
+    let alg_strings: Vec<&str> = verification_algs.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(alg_strings.contains(&"ring-Ed25519"));
+    assert!(alg_strings.contains(&"RSA-PSS"));
+    assert!(alg_strings.contains(&"pq-dilithium"));
+    assert!(alg_strings.contains(&"pq2025"));
+
+    // Verify PQ algorithms are real
+    let pq_algs = descriptor["capabilities"]["postQuantumCrypto"]["algorithms"]
+        .as_array()
+        .expect("PQ algorithms should be an array");
+    let pq_strings: Vec<&str> = pq_algs.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(pq_strings.contains(&"pq-dilithium"));
+    assert!(pq_strings.contains(&"pq2025"));
+    assert!(!pq_strings.contains(&"falcon"));
+    assert!(!pq_strings.contains(&"sphincs+"));
 }
 
 #[test]

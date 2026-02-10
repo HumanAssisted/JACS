@@ -5,6 +5,7 @@ use crate::a2a::{
     JACS_EXTENSION_URI, SecurityScheme,
 };
 use crate::agent::Agent;
+use crate::crypt::{supported_pq_algorithms, supported_verification_algorithms};
 use crate::schema::utils::ValueExt;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -169,9 +170,7 @@ fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, Bo
 fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, Box<dyn Error>> {
     let key_algorithm = agent.get_key_algorithm().ok_or("Key algorithm not set")?;
 
-    let is_pqc = key_algorithm.contains("dilithium")
-        || key_algorithm.contains("falcon")
-        || key_algorithm.contains("sphincs");
+    let is_pqc = key_algorithm.contains("dilithium") || key_algorithm.contains("pq2025");
 
     let desc = if is_pqc {
         "JACS cryptographic document signing (sacred, irreversible commitment) and verification with post-quantum support. Signing creates permanent, non-repudiable proof."
@@ -190,7 +189,12 @@ fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, Box<dyn Error>
 ///
 /// This is a JACS-specific document served at the extension descriptor URL;
 /// it is separate from the AgentExtension declaration in the AgentCard.
-pub fn create_extension_descriptor() -> Value {
+///
+/// `signing_algorithm` is the agent's own signing algorithm (e.g. "pq2025").
+pub fn create_extension_descriptor(signing_algorithm: &str) -> Value {
+    let verification_algorithms = supported_verification_algorithms();
+    let pq_algorithms = supported_pq_algorithms();
+
     json!({
         "uri": JACS_EXTENSION_URI,
         "name": "JACS Document Provenance",
@@ -212,18 +216,19 @@ pub fn create_extension_descriptor() -> Value {
         "capabilities": {
             "documentSigning": {
                 "description": "SACRED OPERATION: Sign documents with JACS signatures. Creates permanent, non-repudiable cryptographic proof of commitment. The signer is forever accountable for signed content. Do not sign without fully understanding the document.",
-                "algorithms": ["dilithium", "falcon", "sphincs+", "rsa", "ecdsa"],
+                "signingAlgorithm": signing_algorithm,
                 "formats": ["jacs-v1", "jws-detached"],
                 "warning": "Signing is irreversible. Review document carefully before signing."
             },
             "documentVerification": {
                 "description": "Verify JACS signatures on documents. Confirms document integrity and signer identity.",
+                "algorithms": verification_algorithms,
                 "offlineCapable": true,
                 "chainOfCustody": true
             },
             "postQuantumCrypto": {
                 "description": "Support for quantum-resistant signatures",
-                "algorithms": ["dilithium", "falcon", "sphincs+"]
+                "algorithms": pq_algorithms
             }
         },
         "endpoints": {
@@ -278,9 +283,59 @@ mod tests {
 
     #[test]
     fn test_create_extension_descriptor() {
-        let descriptor = create_extension_descriptor();
+        let descriptor = create_extension_descriptor("pq2025");
         assert_eq!(descriptor["uri"], JACS_EXTENSION_URI);
         assert!(descriptor["capabilities"]["postQuantumCrypto"].is_object());
+        assert_eq!(
+            descriptor["capabilities"]["documentSigning"]["signingAlgorithm"],
+            "pq2025"
+        );
+    }
+
+    #[test]
+    fn test_extension_descriptor_no_fake_algorithms() {
+        let descriptor = create_extension_descriptor("ring-Ed25519");
+        let descriptor_str = serde_json::to_string(&descriptor).unwrap();
+
+        // These fake algorithms must never appear
+        assert!(
+            !descriptor_str.contains("\"falcon\""),
+            "falcon is not a JACS algorithm"
+        );
+        assert!(
+            !descriptor_str.contains("\"sphincs+\""),
+            "sphincs+ is not a JACS algorithm"
+        );
+        assert!(
+            !descriptor_str.contains("\"ecdsa\""),
+            "ecdsa is not a JACS algorithm"
+        );
+
+        // Only real algorithms should appear in verification
+        let verification_algs = descriptor["capabilities"]["documentVerification"]["algorithms"]
+            .as_array()
+            .expect("verification algorithms should be an array");
+        let alg_strings: Vec<&str> =
+            verification_algs.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(alg_strings.contains(&"ring-Ed25519"));
+        assert!(alg_strings.contains(&"RSA-PSS"));
+        assert!(alg_strings.contains(&"pq-dilithium"));
+        assert!(alg_strings.contains(&"pq2025"));
+    }
+
+    #[test]
+    fn test_extension_descriptor_only_real_pq_algorithms() {
+        let descriptor = create_extension_descriptor("pq2025");
+        let pq_algs = descriptor["capabilities"]["postQuantumCrypto"]["algorithms"]
+            .as_array()
+            .expect("PQ algorithms should be an array");
+        let pq_strings: Vec<&str> = pq_algs.iter().map(|v| v.as_str().unwrap()).collect();
+
+        assert!(pq_strings.contains(&"pq-dilithium"));
+        assert!(pq_strings.contains(&"pq2025"));
+        assert!(!pq_strings.contains(&"falcon"));
+        assert!(!pq_strings.contains(&"sphincs+"));
+        assert_eq!(pq_strings.len(), 2);
     }
 
     #[test]

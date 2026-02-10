@@ -61,6 +61,16 @@ pub enum CryptoSigningAlgorithm {
     Pq2025, // ML-DSA-87 (FIPS-204)
 }
 
+/// Returns the list of verification algorithms actually implemented in JACS.
+pub fn supported_verification_algorithms() -> Vec<&'static str> {
+    vec!["ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"]
+}
+
+/// Returns the list of post-quantum algorithms actually implemented in JACS.
+pub fn supported_pq_algorithms() -> Vec<&'static str> {
+    vec!["pq-dilithium", "pq2025"]
+}
+
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
 pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
 

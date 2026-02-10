@@ -3,6 +3,7 @@
 use crate::a2a::keys::{create_jwk_set, export_as_jwk, sign_jws};
 use crate::a2a::{AgentCard, AgentCardSignature};
 use crate::agent::{Agent, boilerplate::BoilerPlate};
+use crate::crypt::supported_verification_algorithms;
 use crate::time_utils;
 use serde_json::{Value, json};
 use std::error::Error;
@@ -124,8 +125,9 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> 
         "capabilities": {
             "signing": true,
             "verification": true,
+            "verificationAlgorithms": supported_verification_algorithms(),
             "postQuantum": key_algorithm
-                .map(|alg| alg.contains("dilithium") || alg.contains("falcon") || alg.contains("sphincs"))
+                .map(|alg| alg.contains("dilithium") || alg.contains("pq2025"))
                 .unwrap_or(false),
         },
         "schemas": {

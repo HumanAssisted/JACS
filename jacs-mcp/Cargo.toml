@@ -1,6 +1,6 @@
 [package]
 name = "jacs-mcp"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.93"
 description = "MCP server for JACS: data provenance and cryptographic signing of agent state, with optional HAI.ai integration"

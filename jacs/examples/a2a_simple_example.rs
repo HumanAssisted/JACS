@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 3: Create JACS extension descriptor
     println!("\n3. JACS Extension Descriptor:");
-    let descriptor = create_extension_descriptor();
+    let descriptor = create_extension_descriptor("pq2025");
     println!("{}", serde_json::to_string_pretty(&descriptor)?);
 
     // Step 4: Show how the Agent Card would be served
