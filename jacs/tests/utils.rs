@@ -505,9 +505,9 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
 /// Creates and configures an Agent for pq-dilithium tests.
 ///
 /// This helper:
-/// 1. Sets up minimal test environment variables
+/// 1. Sets up isolated pq-dilithium test environment variables
 /// 2. Creates a v1 agent
-/// 3. Loads the pq-dilithium configuration
+/// 3. Applies pq-dilithium config directly from env values
 ///
 /// # Example
 /// ```ignore
@@ -517,9 +517,39 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
 /// ```
 #[cfg(test)]
 pub fn create_pq_test_agent() -> Result<Agent, Box<dyn Error>> {
-    set_min_test_env_vars();
+    // Use isolated scratch paths for pq-dilithium tests so they do not rely on
+    // committed fixture keys (which may have legacy formats).
+    unsafe {
+        env::set_var("JACS_USE_SECURITY", "false");
+        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch/pq_dilithium_data");
+        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/pq_dilithium_keys");
+        env::set_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "pq_dilithium_private.bin.enc",
+        );
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "pq_dilithium_public.bin");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
+        env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_ALT);
+        env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
+    }
+
     let mut agent = create_agent_v1()?;
-    agent.load_by_config(get_pq_config())?;
+
+    // Build config directly from explicit env values to avoid unrelated env
+    // leakage from other tests.
+    let config = Config::new(
+        Some("false".to_string()),
+        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
+        Some("pq-dilithium".to_string()),
+        Some(std::env::var(PASSWORD_ENV_VAR).unwrap_or_default()),
+        None,
+        Some("fs".to_string()),
+    );
+    agent.config = Some(config);
+
     Ok(agent)
 }
 

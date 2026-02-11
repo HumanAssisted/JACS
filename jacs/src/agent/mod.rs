@@ -581,6 +581,14 @@ impl Agent {
                 .to_string(),
         };
 
+        // Prefer explicit signingAlgorithm from function argument, then from the
+        // document signature. Only fall back to key-format heuristics when absent.
+        let resolved_public_key_enc_type = public_key_enc_type.or_else(|| {
+            json_value[signature_key_from]["signingAlgorithm"]
+                .as_str()
+                .map(std::string::ToString::to_string)
+        });
+
         // DNS policy resolution
         let maybe_domain = self
             .value
@@ -659,7 +667,7 @@ impl Agent {
                 error!("{}", error_message);
 
                 let _duration_ms = start_time.elapsed().as_millis() as u64;
-                let _algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+                let _algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
                 #[cfg(feature = "observability-convenience")]
                 {
                     record_signature_verification("unknown_agent", false, algorithm);
@@ -723,12 +731,12 @@ impl Agent {
             &document_values_string,
             &signature_base64,
             public_key,
-            public_key_enc_type.clone(),
+            resolved_public_key_enc_type.clone(),
         );
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
-        let algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+        let algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
         let agent_id = json_value
             .get("jacsId")
             .and_then(|v| v.as_str())
