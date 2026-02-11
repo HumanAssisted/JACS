@@ -1,5 +1,18 @@
 #!/bin/sh
 
+# Prevent accidental cross-language fixture churn.
+# Regeneration is intentionally gated to explicit runs:
+#   UPDATE_CROSS_LANG_FIXTURES=1 <regen commands>
+CROSS_LANG_FIXTURE_DIR="jacs/tests/fixtures/cross-language"
+STAGED_CROSS_LANG_FIXTURES="$(git diff --cached --name-only -- "$CROSS_LANG_FIXTURE_DIR")"
+if [ -n "$STAGED_CROSS_LANG_FIXTURES" ] && [ "${UPDATE_CROSS_LANG_FIXTURES:-0}" != "1" ]; then
+  echo "ERROR: Cross-language fixtures are staged, but UPDATE_CROSS_LANG_FIXTURES is not set."
+  echo "Staged fixture files:"
+  echo "$STAGED_CROSS_LANG_FIXTURES"
+  echo "If intentional, rerun commit with UPDATE_CROSS_LANG_FIXTURES=1."
+  exit 1
+fi
+
 # Run cargo fmt for all workspace members
 cargo fmt --all
 
@@ -34,7 +47,7 @@ git add jacs/benches/.
 
 # Add workspace members
 git add jacs-mcp/src/.
-git add jacs-python/src/.
+git add jacspy/src/.
 
 # Add workspace configuration
 git add Cargo.toml

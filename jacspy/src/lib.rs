@@ -8,9 +8,9 @@ use jacs_binding_core::hai::{
     BenchmarkResult, ConnectionState, HaiClient, HaiError, RegistrationResult, StatusResult,
 };
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
+use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
-use pyo3::IntoPyObjectExt;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
@@ -115,6 +115,18 @@ impl JacsAgent {
         self.inner.sign_string(data).to_py()
     }
 
+    /// Sign multiple messages in a single batch (one key decryption).
+    ///
+    /// Args:
+    ///     messages: List of strings to sign
+    ///
+    /// Returns:
+    ///     List of base64-encoded signatures, one per message
+    #[pyo3(signature = (messages,))]
+    fn sign_batch(&self, messages: Vec<String>) -> PyResult<Vec<String>> {
+        self.inner.sign_batch(messages).to_py()
+    }
+
     /// Verify this agent's self-signature.
     fn verify_agent(&self, agentfile: Option<String>) -> PyResult<bool> {
         self.inner.verify_agent(agentfile).to_py()
@@ -170,6 +182,46 @@ impl JacsAgent {
                 question,
                 context,
                 agreement_fieldname,
+            )
+            .to_py()
+    }
+
+    /// Create an agreement with extended options (timeout, quorum, algorithm constraints).
+    ///
+    /// Args:
+    ///     document_string: The document JSON string
+    ///     agentids: List of agent IDs required to sign
+    ///     question: Optional question or purpose
+    ///     context: Optional additional context
+    ///     agreement_fieldname: Optional custom field name
+    ///     timeout: Optional ISO 8601 deadline
+    ///     quorum: Optional minimum signatures required (M-of-N)
+    ///     required_algorithms: Optional list of accepted algorithms
+    ///     minimum_strength: Optional "classical" or "post-quantum"
+    #[pyo3(signature = (document_string, agentids, question=None, context=None, agreement_fieldname=None, timeout=None, quorum=None, required_algorithms=None, minimum_strength=None))]
+    fn create_agreement_with_options(
+        &self,
+        document_string: String,
+        agentids: Vec<String>,
+        question: Option<String>,
+        context: Option<String>,
+        agreement_fieldname: Option<String>,
+        timeout: Option<String>,
+        quorum: Option<u32>,
+        required_algorithms: Option<Vec<String>>,
+        minimum_strength: Option<String>,
+    ) -> PyResult<String> {
+        self.inner
+            .create_agreement_with_options(
+                &document_string,
+                agentids,
+                question,
+                context,
+                agreement_fieldname,
+                timeout,
+                quorum,
+                required_algorithms,
+                minimum_strength,
             )
             .to_py()
     }
@@ -398,14 +450,46 @@ impl SimpleAgent {
     /// Returns:
     ///     A SimpleAgent instance
     #[staticmethod]
-    fn load(config_path: Option<&str>) -> PyResult<Self> {
-        let agent = jacs_core::simple::SimpleAgent::load(config_path).map_err(|e| {
+    #[pyo3(signature = (config_path=None, strict=None))]
+    fn load(config_path: Option<&str>, strict: Option<bool>) -> PyResult<Self> {
+        let agent = jacs_core::simple::SimpleAgent::load(config_path, strict).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to load agent: {}",
                 e
             ))
         })?;
         Ok(SimpleAgent { inner: agent })
+    }
+
+    /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
+    ///
+    /// Args:
+    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "ed25519"
+    ///
+    /// Returns:
+    ///     Tuple of (SimpleAgent instance, dict with agent_id, name, algorithm, version)
+    #[staticmethod]
+    #[pyo3(signature = (algorithm=None))]
+    fn ephemeral(py: Python, algorithm: Option<&str>) -> PyResult<(Self, PyObject)> {
+        let (agent, info) = jacs_core::simple::SimpleAgent::ephemeral(algorithm).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create ephemeral agent: {}",
+                e
+            ))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("agent_id", &info.agent_id)?;
+        dict.set_item("name", &info.name)?;
+        dict.set_item("algorithm", &info.algorithm)?;
+        dict.set_item("version", &info.version)?;
+
+        Ok((SimpleAgent { inner: agent }, dict.into()))
+    }
+
+    /// Returns whether this agent is in strict mode.
+    fn is_strict(&self) -> bool {
+        self.inner.is_strict()
     }
 
     /// Verify the loaded agent's own integrity.
@@ -933,6 +1017,23 @@ fn verify_document_standalone(
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("valid", r.valid)?;
     dict.set_item("signer_id", r.signer_id)?;
+    dict.set_item("timestamp", r.timestamp)?;
+    dict.set_item("agent_version", r.agent_version)?;
+    Ok(dict.into())
+}
+
+/// Verify an agent's DNS TXT record matches its public key hash.
+#[pyfunction]
+#[pyo3(signature = (agent_json, domain))]
+fn verify_agent_dns(py: Python, agent_json: &str, domain: &str) -> PyResult<PyObject> {
+    let r = jacs_binding_core::verify_agent_dns(agent_json, domain).to_py()?;
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("verified", r.verified)?;
+    dict.set_item("agent_id", &r.agent_id)?;
+    dict.set_item("domain", &r.domain)?;
+    dict.set_item("document_hash", &r.document_hash)?;
+    dict.set_item("dns_hash", &r.dns_hash)?;
+    dict.set_item("message", &r.message)?;
     Ok(dict.into())
 }
 
@@ -1534,6 +1635,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
     m.add_function(wrap_pyfunction!(audit, m)?)?;
     m.add_function(wrap_pyfunction!(generate_verify_link, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_agent_dns, m)?)?;
 
     // =============================================================================
     // Remote Key Fetch Functions

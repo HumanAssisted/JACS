@@ -57,6 +57,73 @@ JACS uses a **transport proxy pattern** that wraps any MCP transport with crypto
 2. **Incoming Messages**: The proxy verifies signatures before passing messages to the application
 3. **Graceful Fallback**: If verification fails, messages can be passed through as plain JSON for interoperability
 
+## Transport Interceptors (Infrastructure Layer)
+
+JACS MCP is not just a set of tools -- it is **middleware-level infrastructure** that wraps any MCP transport with transparent cryptographic signing and verification. Every JSON-RPC message flowing through the transport is signed on send and verified on receive, with zero changes to your application code.
+
+### Python: `JACSMCPClient` and `JACSMCPServer`
+
+These are factory functions (not classes) that return patched FastMCP objects with JACS interceptors wired in.
+
+**`JACSMCPClient(url, config_path, strict=False)`** -- Wraps a FastMCP `SSETransport` with send/receive interceptors:
+
+```python
+from jacs.mcp import JACSMCPClient
+
+# Every outgoing JSON-RPC message is signed with agent.sign_request()
+# Every incoming JSON-RPC message is verified with agent.verify_response()
+client = JACSMCPClient("http://localhost:8000/sse", "./jacs.config.json")
+
+async with client:
+    # This tool call is signed transparently
+    result = await client.call_tool("analyze", {"text": "hello"})
+```
+
+Internally, `JACSMCPClient` monkey-patches the SSE transport's `send` and `receive` methods:
+
+- **`intercepted_send`**: calls `agent.sign_request(message.root)` on every outgoing `JSONRPCMessage`
+- **`intercepted_receive`**: calls `agent.verify_response(json.dumps(message.root))` on every incoming message
+
+**`JACSMCPServer(mcp_server, config_path, strict=False)`** -- Wraps a FastMCP server's SSE app with Starlette HTTP middleware:
+
+```python
+from jacs.mcp import JACSMCPServer
+from fastmcp import FastMCP
+
+mcp = FastMCP("My Server")
+
+@mcp.tool()
+def hello(name: str) -> str:
+    return f"Hello, {name}!"
+
+# Wrap the server -- all /messages/ requests are verified,
+# all JSON responses are signed
+mcp = JACSMCPServer(mcp, "./jacs.config.json")
+```
+
+The server middleware intercepts at the HTTP level:
+- **Inbound**: reads request body on `/messages/` endpoints, calls `agent.verify_response()` to validate the sender's signature
+- **Outbound**: collects the response body stream, calls `agent.sign_request()` on JSON responses before returning them
+
+### Strict Mode
+
+Both `JACSMCPClient` and `JACSMCPServer` support `strict=True` (or `JACS_STRICT_MODE=true` env var). In strict mode, if the JACS config cannot be loaded, the transport **refuses to start** instead of falling back to unsigned communication.
+
+```python
+# Fail-fast: do not allow unsigned transport
+client = JACSMCPClient(url, config_path, strict=True)
+```
+
+### Additional Python APIs
+
+| API | Description |
+|-----|-------------|
+| `JacsSSETransport(url)` | SSE transport wrapper using module-level `simple.*` API |
+| `create_jacs_mcp_server(name, config_path)` | One-liner: creates FastMCP + loads agent + wires middleware |
+| `jacs_tool` | Decorator that signs individual tool responses |
+| `jacs_middleware()` | Standalone Starlette middleware factory using `simple.*` globals |
+| `jacs_call(server_url, method, **params)` | One-shot authenticated MCP call |
+
 ## Quick Start
 
 ### Node.js

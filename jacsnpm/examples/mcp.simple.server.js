@@ -37,12 +37,12 @@ async function main() {
   try {
     // Load JACS agent using simplified API
     console.error(`Loading JACS agent from: ${CONFIG_PATH}`);
-    const agentInfo = jacs.load(CONFIG_PATH);
+    const agentInfo = await jacs.load(CONFIG_PATH);
     console.error(`Agent loaded: ${agentInfo.agentId}`);
 
     // Verify agent integrity
     console.error("Verifying agent integrity...");
-    const selfCheck = jacs.verifySelf();
+    const selfCheck = await jacs.verifySelf();
     if (!selfCheck.valid) {
       console.error(`Warning: Agent verification failed: ${selfCheck.errors.join(', ')}`);
     } else {
@@ -62,7 +62,7 @@ async function main() {
       { message: z.string().describe("The message to echo back") },
       async ({ message }) => {
         console.error(`[JACS] Tool 'echo' called with message="${message}"`);
-        const signed = jacs.signMessage({ echo: message });
+        const signed = await jacs.signMessage({ echo: message });
         return {
           content: [{
             type: "text",
@@ -92,7 +92,7 @@ async function main() {
         } catch {
           payload = data;
         }
-        const signed = jacs.signMessage(payload);
+        const signed = await jacs.signMessage(payload);
         return {
           content: [{ type: "text", text: signed.raw }]
         };
@@ -106,7 +106,7 @@ async function main() {
       { signed_document: z.string().describe("The signed JACS document JSON") },
       async ({ signed_document }) => {
         console.error(`[JACS] Tool 'verify_data' called`);
-        const result = jacs.verify(signed_document);
+        const result = await jacs.verify(signed_document);
         return {
           content: [{
             type: "text",

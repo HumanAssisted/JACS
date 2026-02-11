@@ -98,6 +98,7 @@ try:
     from .jacs import is_trusted as _is_trusted
     from .jacs import get_trusted_agent as _get_trusted_agent
     from .jacs import verify_document_standalone as _verify_document_standalone
+    from .jacs import verify_agent_dns as _verify_agent_dns
     from .jacs import audit as _audit
 except ImportError:
     # Fallback for when running directly
@@ -105,6 +106,7 @@ except ImportError:
     JacsAgent = _jacs_module.JacsAgent
     _fetch_remote_key = _jacs_module.fetch_remote_key
     _verify_document_standalone = _jacs_module.verify_document_standalone
+    _verify_agent_dns = _jacs_module.verify_agent_dns
     _trust_agent = _jacs_module.trust_agent
     _list_trusted_agents = _jacs_module.list_trusted_agents
     _untrust_agent = _jacs_module.untrust_agent
@@ -115,6 +117,20 @@ except ImportError:
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
+_strict: bool = False
+
+
+def _resolve_strict(explicit: Optional[bool]) -> bool:
+    """Resolve strict mode: explicit param > JACS_STRICT_MODE env var > False."""
+    if explicit is not None:
+        return explicit
+    return os.environ.get("JACS_STRICT_MODE", "").lower() in ("true", "1")
+
+
+def is_strict() -> bool:
+    """Returns whether the current agent is in strict mode."""
+    return _strict
+
 
 def reset():
     """Clear global agent state. Useful for test isolation.
@@ -122,9 +138,10 @@ def reset():
     After calling reset(), you must call load() or create() again before
     using any signing or verification functions.
     """
-    global _global_agent, _agent_info
+    global _global_agent, _agent_info, _strict
     _global_agent = None
     _agent_info = None
+    _strict = False
 
 
 # Verify link constants (HAI / public verification URLs)
@@ -173,7 +190,7 @@ def _get_agent() -> JacsAgent:
     """Get the global agent, raising an error if not loaded."""
     if _global_agent is None:
         raise AgentNotLoadedError(
-            "No agent loaded. Call jacs.load() or jacs.create() first."
+            "No agent loaded. Call jacs.quickstart() for zero-config setup, or jacs.load('path/to/config.json') for a persistent agent."
         )
     return _global_agent
 
@@ -238,6 +255,7 @@ def create(
     description: str = "",
     domain: Optional[str] = None,
     default_storage: str = "fs",
+    strict: Optional[bool] = None,
 ) -> AgentInfo:
     """Create a new JACS agent with cryptographic keys (programmatic).
 
@@ -275,7 +293,9 @@ def create(
         )
         print(f"Created agent: {agent.agent_id}")
     """
-    global _global_agent, _agent_info
+    global _global_agent, _agent_info, _strict
+
+    _strict = _resolve_strict(strict)
 
     # Resolve password
     resolved_password = password or os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
@@ -338,11 +358,14 @@ def create(
         raise JacsError(f"Failed to create agent: {e}")
 
 
-def load(config_path: Optional[str] = None) -> AgentInfo:
+def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> AgentInfo:
     """Load an existing JACS agent from configuration.
 
     Args:
         config_path: Path to jacs.config.json (default: ./jacs.config.json)
+        strict: Enable strict mode. When True, verification failures raise
+                exceptions instead of returning VerificationResult(valid=False).
+                If None, falls back to JACS_STRICT_MODE env var, then False.
 
     Returns:
         AgentInfo with the loaded agent's details
@@ -352,10 +375,12 @@ def load(config_path: Optional[str] = None) -> AgentInfo:
         JacsError: If agent loading fails
 
     Example:
-        agent = jacs.load("./jacs.config.json")
+        agent = jacs.load("./jacs.config.json", strict=True)
         print(f"Loaded: {agent.name}")
     """
-    global _global_agent, _agent_info
+    global _global_agent, _agent_info, _strict
+
+    _strict = _resolve_strict(strict)
 
     # Use default config path if not provided
     if config_path is None:
@@ -414,6 +439,182 @@ def load(config_path: Optional[str] = None) -> AgentInfo:
         raise JacsError(f"Failed to load agent: {e}")
 
 
+class _EphemeralAgentAdapter:
+    """Adapter that wraps a native SimpleAgent to provide the JacsAgent-compatible
+    interface expected by the simple.py module functions.
+
+    The simple.py functions call JacsAgent methods (create_document, verify_document,
+    verify_agent, etc.) on the global agent. The native SimpleAgent has a different
+    API (sign_message, verify, verify_self, etc.). This adapter bridges the gap.
+    """
+
+    def __init__(self, native_agent):
+        self._native = native_agent
+
+    def verify_agent(self, agentfile=None):
+        """Delegate to SimpleAgent.verify_self(); returns True or raises."""
+        result = self._native.verify_self()
+        if not result.get("valid", False):
+            errors = result.get("errors", [])
+            raise RuntimeError(f"Agent verification failed: {errors}")
+        return True
+
+    def create_document(self, document_string, custom_schema=None,
+                        outputfilename=None, no_save=None, attachments=None,
+                        embed=None):
+        """Delegate to SimpleAgent.sign_message() for message signing,
+        or sign_file() for file attachments."""
+        if attachments:
+            result = self._native.sign_file(attachments, embed or False)
+        else:
+            # Parse the document JSON and sign the value
+            data = json.loads(document_string)
+            result = self._native.sign_message(data)
+        return result.get("raw", "")
+
+    def verify_document(self, document_string):
+        """Delegate to SimpleAgent.verify()."""
+        result = self._native.verify(document_string)
+        return result.get("valid", False)
+
+    def get_agent_json(self):
+        """Delegate to SimpleAgent.export_agent()."""
+        return self._native.export_agent()
+
+    def update_agent(self, new_agent_string):
+        raise JacsError(
+            "update_agent() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def update_document(self, document_key, new_document_string,
+                        attachments=None, embed=None):
+        raise JacsError(
+            "update_document() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def create_agreement(self, document_string, agentids, question=None,
+                         context=None, agreement_fieldname=None):
+        raise JacsError(
+            "create_agreement() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def sign_agreement(self, document_string, agreement_fieldname=None):
+        raise JacsError(
+            "sign_agreement() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def check_agreement(self, document_string, agreement_fieldname=None):
+        raise JacsError(
+            "check_agreement() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def verify_document_by_id(self, document_id):
+        result = self._native.verify_by_id(document_id)
+        return result.get("valid", False)
+
+    def reencrypt_key(self, old_password, new_password):
+        return self._native.reencrypt_key(old_password, new_password)
+
+    def diagnostics(self):
+        return json.dumps({"agent_loaded": True, "ephemeral": True})
+
+    def get_setup_instructions(self, domain, ttl=3600):
+        raise JacsError(
+            "get_setup_instructions() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+    def register_with_hai(self, api_key=None, hai_url="https://hai.ai",
+                          preview=False):
+        raise JacsError(
+            "register_with_hai() is not supported on ephemeral agents. "
+            "Use jacs.create() or jacs.load() for a persistent agent."
+        )
+
+
+def quickstart(algorithm=None, strict=None, config_path=None):
+    """One-line agent creation with persistent keys on disk.
+
+    If a config file already exists, loads the existing agent. Otherwise,
+    creates a new agent with keys on disk and a minimal config file.
+
+    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated
+    and saved to ./jacs_keys/.jacs_password.
+
+    Example:
+        import jacs.simple as jacs
+        jacs.quickstart()
+        signed = jacs.sign_message({"hello": "world"})
+
+    Args:
+        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        strict: Enable strict verification mode
+        config_path: Path to config file (default: "./jacs.config.json")
+
+    Returns:
+        AgentInfo with agent_id, name, algorithm, version
+    """
+    global _global_agent, _agent_info, _strict
+
+    _strict = _resolve_strict(strict)
+    cfg_path = config_path or "./jacs.config.json"
+
+    try:
+        if os.path.exists(cfg_path):
+            # Load existing agent
+            logger.info("quickstart: found existing config at %s, loading", cfg_path)
+            return load(cfg_path, strict=strict)
+
+        # No existing config -- create a new persistent agent
+        logger.info("quickstart: no config at %s, creating new agent", cfg_path)
+
+        # Ensure password is available
+        password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
+        if not password:
+            import secrets
+            import string
+            # Generate a secure password meeting JACS requirements
+            chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
+            password = (
+                secrets.choice(string.ascii_uppercase)
+                + secrets.choice(string.ascii_lowercase)
+                + secrets.choice(string.digits)
+                + secrets.choice("!@#$%^&*()-_=+")
+                + ''.join(secrets.choice(chars) for _ in range(28))
+            )
+            # Save password to file
+            keys_dir = "./jacs_keys"
+            os.makedirs(keys_dir, exist_ok=True)
+            pw_path = os.path.join(keys_dir, ".jacs_password")
+            with open(pw_path, "w") as f:
+                f.write(password)
+            os.chmod(pw_path, 0o600)
+            logger.info("quickstart: generated password saved to %s", pw_path)
+            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
+
+        algo = algorithm or "pq2025"
+        return create(
+            name="jacs-agent",
+            password=password,
+            algorithm=algo,
+            config_path=cfg_path,
+            strict=strict,
+        )
+
+    except ImportError:
+        raise JacsError(
+            "Quickstart requires the full JACS native module. "
+            "Install with: pip install jacs"
+        )
+    except Exception as e:
+        raise JacsError(f"quickstart failed: {e}")
+
+
 def verify_self() -> VerificationResult:
     """Verify the currently loaded agent's integrity.
 
@@ -447,6 +648,8 @@ def verify_self() -> VerificationResult:
             signature_valid=True,
         )
     except Exception as e:
+        if _strict:
+            raise VerificationError(f"Self-verification failed (strict mode): {e}") from e
         return VerificationResult(
             valid=False,
             errors=[str(e)],
@@ -946,6 +1149,8 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
 
     except Exception as e:
         logger.warning("Verification failed: %s", e)
+        if _strict:
+            raise VerificationError(f"Verification failed (strict mode): {e}") from e
         return VerificationResult(
             valid=False,
             errors=[str(e)],
@@ -994,6 +1199,8 @@ def verify_by_id(document_id: str) -> VerificationResult:
         )
     except Exception as e:
         logger.warning("verify_by_id failed: %s", e)
+        if _strict:
+            raise VerificationError(f"Verification failed (strict mode): {e}") from e
         return VerificationResult(
             valid=False,
             errors=[str(e)],
@@ -1401,6 +1608,34 @@ def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
         raise
 
 
+def verify_dns(
+    agent_document: Union[str, dict],
+    domain: str,
+) -> VerificationResult:
+    """Verify an agent's identity via DNS TXT record lookup.
+
+    Checks that the agent's public key hash published in a DNS TXT record
+    at _v1.agent.jacs.{domain} matches the key in the agent document.
+
+    Args:
+        agent_document: The agent document to verify (JSON string or dict).
+        domain: The domain to look up (e.g. "example.com").
+
+    Returns:
+        VerificationResult with valid=True if DNS record matches.
+    """
+    doc_str = json.dumps(agent_document) if isinstance(agent_document, dict) else agent_document
+    try:
+        d = _verify_agent_dns(doc_str, domain)
+        return VerificationResult(
+            valid=bool(d.get("verified", False)),
+            signer_id=str(d.get("agent_id", "")),
+            errors=[d["message"]] if not d.get("verified") and d.get("message") else [],
+        )
+    except Exception as e:
+        return VerificationResult(valid=False, errors=[str(e)])
+
+
 def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
     """Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
 
@@ -1461,6 +1696,7 @@ def register_with_hai(
 
 __all__ = [
     # Core operations
+    "quickstart",
     "create",
     "load",
     "verify_self",
@@ -1475,6 +1711,9 @@ __all__ = [
     "create_agreement",
     "sign_agreement",
     "check_agreement",
+    # Standalone verification
+    "verify_standalone",
+    "verify_dns",
     # Utility functions
     "generate_verify_link",
     "MAX_VERIFY_URL_LEN",
@@ -1493,6 +1732,8 @@ __all__ = [
     "get_trusted_agent",
     # Diagnostics
     "debug_info",
+    # Strict mode
+    "is_strict",
     # Test utilities
     "reset",
     # Remote key fetch

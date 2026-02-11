@@ -1,6 +1,10 @@
 # JACS Python Library
 
-Python bindings for JACS (JSON Agent Communication Standard) -- an open data provenance toolkit for signing and verifying AI agent communications. JACS works standalone with no server required; optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
+**Sign it. Prove it.**
+
+Cryptographic signatures for AI agent outputs -- so anyone can verify who said what and whether it was changed. No server. Three lines of code. Optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
+
+[Which integration should I use?](https://humanassisted.github.io/JACS/getting-started/decision-tree.html) | [Full documentation](https://humanassisted.github.io/JACS/)
 
 ```bash
 # Using uv (recommended)
@@ -17,14 +21,30 @@ Packaging/build metadata is defined in `pyproject.toml` (maturin). `setup.py` is
 
 To check dependencies for known vulnerabilities when using optional extras, run `pip audit` (or `safety check`).
 
-## Quick Start (Simplified API)
+## Quick Start
 
-The simplified API gets you signing in under 2 minutes:
+Zero-config -- one call to start signing:
 
 ```python
 import jacs.simple as jacs
 
-# Load your agent
+jacs.quickstart()
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+result = jacs.verify(signed.raw)
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
+```
+
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
+
+**Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#agreements-with-timeout-and-quorum) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+
+### Advanced: Loading an existing agent
+
+If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:
+
+```python
+import jacs.simple as jacs
+
 agent = jacs.load("./jacs.config.json")
 
 # Sign a message (accepts dict, list, str, or any JSON-serializable data)
@@ -55,6 +75,7 @@ The simplified API provides these core operations:
 
 | Operation | Description |
 |-----------|-------------|
+| `quickstart()` | Create a persistent agent with keys on disk -- zero config, no manual setup |
 | `create()` | Create a new agent programmatically (non-interactive) |
 | `load()` | Load an existing agent from config |
 | `verify_self()` | Verify the loaded agent's integrity |
@@ -92,6 +113,31 @@ agent = jacs.create(
 print(f"Created agent: {agent.agent_id}")
 ```
 
+### Standalone Verification (No Agent Required)
+
+Verify a signed document without loading an agent. Useful for one-off verification, CI/CD pipelines, or services that only need to verify, not sign.
+
+```python
+import jacs.simple as jacs
+
+result = jacs.verify_standalone(
+    signed_json,
+    key_resolution="local",
+    key_directory="./trusted-keys/"
+)
+if result.valid:
+    print(f"Signed by: {result.signer_id}")
+```
+
+Generate a shareable verification link:
+
+```python
+url = jacs.generate_verify_link(signed_doc.raw_json)
+# https://hai.ai/jacs/verify?s=<base64url-encoded-document>
+```
+
+Documents signed by Rust or Node.js agents verify identically in Python -- cross-language interop is tested on every commit with Ed25519 and pq2025 (ML-DSA-87). See the full [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) for CLI, DNS, and cross-language examples.
+
 ### Verify by Document ID
 
 ```python
@@ -124,6 +170,147 @@ agent: AgentInfo = jacs.load()
 signed: SignedDocument = jacs.sign_message({"data": "hello"})
 result: VerificationResult = jacs.verify(signed.raw)
 ```
+
+## JacsClient (Instance-Based API)
+
+When you need multiple agents in one process, or want to avoid global state, use `JacsClient`. Each instance wraps its own `JacsAgent` with independent keys and config.
+
+```python
+from jacs.client import JacsClient
+
+# Load from config
+client = JacsClient("./jacs.config.json")
+signed = client.sign_message({"action": "approve"})
+result = client.verify(signed.raw_json)
+print(f"Valid: {result.valid}, Agent: {client.agent_id}")
+
+# Or zero-config quickstart (creates keys on disk)
+client = JacsClient.quickstart()
+
+# Context manager for automatic cleanup
+with JacsClient.quickstart() as client:
+    signed = client.sign_message("hello")
+```
+
+### Multi-Agent Example
+
+```python
+from jacs.client import JacsClient
+
+alice = JacsClient.ephemeral()
+bob = JacsClient.ephemeral()
+
+signed = alice.sign_message({"from": "alice"})
+result = bob.verify(signed.raw_json)
+print(f"Alice: {alice.agent_id}")
+print(f"Bob verifies Alice's message: {result.valid}")
+```
+
+### Agreements with Timeout and Quorum
+
+`create_agreement` accepts flat keyword arguments for advanced options:
+
+```python
+from datetime import datetime, timedelta, timezone
+
+agreement = client.create_agreement(
+    document={"proposal": "Deploy model v2"},
+    agent_ids=[alice.agent_id, bob.agent_id, mediator.agent_id],
+    question="Do you approve?",
+    quorum=2,                    # 2-of-3 signatures required
+    timeout=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    required_algorithms=None,    # optional: restrict signing algorithms
+    minimum_strength=None,       # optional: "classical" or "post-quantum"
+)
+
+signed = alice.sign_agreement(agreement)
+status = alice.check_agreement(signed)
+print(f"Complete: {status.complete}, Pending: {status.pending}")
+```
+
+See [`examples/multi_agent_agreement.py`](../examples/multi_agent_agreement.py) for a full 3-agent agreement demo with crypto proof chain.
+
+### JacsClient API Reference
+
+| Method | Description |
+|--------|-------------|
+| `JacsClient(config_path)` | Load from config |
+| `JacsClient.quickstart()` | Zero-config persistent agent |
+| `JacsClient.ephemeral()` | In-memory agent (no disk, for tests) |
+| `sign_message(data)` | Sign JSON-serializable data |
+| `verify(document)` | Verify a signed document |
+| `verify_self()` | Verify agent integrity |
+| `verify_by_id(doc_id)` | Verify by storage ID |
+| `sign_file(path, embed)` | Sign a file |
+| `create_agreement(...)` | Create multi-party agreement |
+| `sign_agreement(doc)` | Co-sign an agreement |
+| `check_agreement(doc)` | Check agreement status |
+| `trust_agent(json)` | Add agent to trust store |
+| `list_trusted_agents()` | List trusted agent IDs |
+| `update_agent(data)` | Update and re-sign agent |
+| `update_document(id, data)` | Update and re-sign document |
+| `export_agent()` | Export agent JSON for sharing |
+| `audit()` | Run security audit |
+| `reset()` | Clear internal state |
+
+## Framework Adapters
+
+Auto-sign AI framework outputs with zero infrastructure. Install the extra for your framework:
+
+```bash
+pip install jacs[langchain]   # LangChain / LangGraph
+pip install jacs[fastapi]     # FastAPI / Starlette
+pip install jacs[crewai]      # CrewAI
+pip install jacs[anthropic]   # Anthropic / Claude SDK
+pip install jacs[all]         # Everything
+```
+
+**LangChain** -- sign every tool result via middleware:
+```python
+from jacs.adapters.langchain import jacs_signing_middleware
+agent = create_agent(model="openai:gpt-4o", tools=tools, middleware=[jacs_signing_middleware()])
+```
+
+**FastAPI** -- sign all JSON responses:
+```python
+from jacs.adapters.fastapi import JacsMiddleware
+app.add_middleware(JacsMiddleware)
+```
+
+**CrewAI** -- sign task outputs via guardrail:
+```python
+from jacs.adapters.crewai import jacs_guardrail
+task = Task(description="Analyze data", agent=my_agent, guardrail=jacs_guardrail())
+```
+
+**Anthropic / Claude SDK** -- sign tool return values:
+```python
+from jacs.adapters.anthropic import signed_tool
+
+@signed_tool()
+def get_weather(location: str) -> str:
+    return f"Weather in {location}: sunny"
+```
+
+See the [Framework Adapters guide](https://humanassisted.github.io/JACS/python/adapters.html) for full documentation, custom adapters, and strict/permissive mode details.
+
+## Testing
+
+The `jacs.testing` module provides a pytest fixture that creates an ephemeral client with no disk I/O or env vars required:
+
+```python
+from jacs.testing import jacs_agent
+
+def test_sign_and_verify(jacs_agent):
+    signed = jacs_agent.sign_message({"test": True})
+    result = jacs_agent.verify(signed.raw_json)
+    assert result.valid
+
+def test_agent_has_unique_id(jacs_agent):
+    assert jacs_agent.agent_id
+```
+
+The fixture automatically resets after each test.
 
 ## MCP Integration
 
@@ -246,6 +433,13 @@ else:
 # Basic installation
 pip install jacs
 
+# With framework adapters
+pip install jacs[langchain]    # LangChain / LangGraph
+pip install jacs[fastapi]      # FastAPI / Starlette
+pip install jacs[crewai]       # CrewAI
+pip install jacs[anthropic]    # Anthropic / Claude SDK
+pip install jacs[all]          # All adapters + MCP + HAI
+
 # With MCP support
 pip install jacs[mcp]
 
@@ -260,6 +454,7 @@ See the [examples/](./examples/) directory:
 - `sign_file.py` - File signing with embeddings
 - `mcp_server.py` - Authenticated MCP server
 - `p2p_exchange.py` - Peer-to-peer trust establishment
+- [`multi_agent_agreement.py`](../examples/multi_agent_agreement.py) - Three-agent agreement with quorum, timeout, and crypto proof chain
 
 ## Development
 
@@ -292,6 +487,7 @@ uv run python -m pytest tests/ -v
 
 - [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
 - [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) - CLI, standalone, DNS verification
 - [API Reference](https://humanassisted.github.io/JACS/api/python) - Python API docs
 - [Migration Guide](https://humanassisted.github.io/JACS/migration) - Upgrading from v0.4.x
 - [Source](https://github.com/HumanAssisted/JACS) - GitHub repository

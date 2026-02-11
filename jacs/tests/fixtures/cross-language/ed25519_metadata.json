@@ -1,0 +1,10 @@
+{
+  "agent_id": "bf6a44fe-c2c5-4305-81bb-0d54d2dfa76a",
+  "algorithm": "ed25519",
+  "document_id": "8c0f838a-f0ff-432a-9f97-542cf5a96db7",
+  "generated_by": "rust",
+  "jacs_version": "0.8.0",
+  "public_key_hash": "983d6dd3f3fc1d39c8fb97db2766a963b6d2a849a54eb9d9061d6266a410f2f6",
+  "signing_algorithm": "ring-Ed25519",
+  "timestamp": "2026-02-11T04:32:48.197054+00:00"
+}

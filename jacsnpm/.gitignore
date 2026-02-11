@@ -1,2 +1,10 @@
 node_modules
 *.node
+
+# Generated agent data (from examples/tests)
+agent1/
+agent2/
+agent3/
+shared-data/
+jacs_data/
+jacs_keys/

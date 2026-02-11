@@ -33,11 +33,11 @@ from functools import wraps
 from . import simple
 
 
-def _resolve_strict(strict: bool) -> bool:
+def _resolve_strict(strict: Optional[bool] = None) -> bool:
     """Return True if strict mode is active (parameter or env var)."""
-    if strict:
-        return True
-    return os.environ.get("JACS_STRICT_MODE", "").lower() in ("1", "true", "yes")
+    if strict is not None:
+        return strict
+    return os.environ.get("JACS_STRICT_MODE", "").lower() in ("1", "true")
 
 try:
     import jacs

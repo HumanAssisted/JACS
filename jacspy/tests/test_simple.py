@@ -121,6 +121,182 @@ class TestVerifyStandalone:
         assert result.valid is False
         assert result.signer_id == "test-agent"
 
+    def test_verify_standalone_extracts_signer_id(self, loaded_agent, in_fixtures_dir):
+        """verify_standalone() with a real signed doc should extract signer_id even if key not resolvable."""
+        signed = simple.sign_message({"standalone_test": True})
+        signer = signed.signer_id
+        # Reset global agent to prove standalone works without it
+        simple.reset()
+        assert not simple.is_loaded()
+
+        result = simple.verify_standalone(
+            signed.raw_json,
+            key_resolution="local",
+            key_directory=str(in_fixtures_dir / "jacs_keys"),
+            data_directory=str(in_fixtures_dir / "jacs_data"),
+        )
+        assert isinstance(result, VerificationResult)
+        assert result.signer_id == signer
+
+    def test_verify_standalone_returns_result_type(self, loaded_agent, in_fixtures_dir):
+        """verify_standalone() always returns a VerificationResult (never raises for bad docs)."""
+        signed = simple.sign_message({"data": 1})
+        simple.reset()
+        result = simple.verify_standalone(
+            signed.raw_json,
+            key_resolution="local",
+            key_directory=str(in_fixtures_dir / "jacs_keys"),
+            data_directory=str(in_fixtures_dir / "jacs_data"),
+        )
+        assert isinstance(result, VerificationResult)
+        # Either valid or invalid, but always a proper result
+        assert isinstance(result.valid, bool)
+
+    def test_verify_standalone_tampered_content_returns_invalid(self, loaded_agent, in_fixtures_dir):
+        """verify_standalone() with tampered content should return valid=False."""
+        signed = simple.sign_message({"important": "data"})
+        # Tamper with the document content
+        doc = json.loads(signed.raw_json)
+        if "jacsDocument" in doc:
+            doc["jacsDocument"]["content"] = "TAMPERED"
+        else:
+            doc["tampered_field"] = True
+        tampered_json = json.dumps(doc)
+
+        simple.reset()
+        result = simple.verify_standalone(
+            tampered_json,
+            key_resolution="local",
+            key_directory=str(in_fixtures_dir / "jacs_keys"),
+            data_directory=str(in_fixtures_dir / "jacs_data"),
+        )
+        assert result.valid is False
+
+    def test_verify_standalone_accepts_dict(self, loaded_agent, in_fixtures_dir):
+        """verify_standalone() should accept a dict as well as a string."""
+        signed = simple.sign_message({"dict_test": 42})
+        doc_dict = json.loads(signed.raw_json)
+        simple.reset()
+
+        result = simple.verify_standalone(
+            doc_dict,
+            key_resolution="local",
+            key_directory=str(in_fixtures_dir / "jacs_keys"),
+            data_directory=str(in_fixtures_dir / "jacs_data"),
+        )
+        assert isinstance(result, VerificationResult)
+        # signer_id should be extracted from the document
+        assert result.signer_id != ""
+
+    def test_verify_standalone_with_custom_key_directory(self, tmp_path):
+        """verify_standalone() with non-existent key dir should return valid=False (no keys found)."""
+        import importlib
+        importlib.reload(simple)
+        fake_doc = json.dumps({"jacsSignature": {"agentID": "fake"}, "jacsHash": {"hash": "x"}})
+        result = simple.verify_standalone(
+            fake_doc,
+            key_resolution="local",
+            key_directory=str(tmp_path / "empty_keys"),
+        )
+        assert result.valid is False
+
+
+# Test generate_verify_link()
+
+
+class TestGenerateVerifyLink:
+    """Tests for generate_verify_link()."""
+
+    def test_returns_url_string(self):
+        """generate_verify_link() should return a URL string."""
+        doc = '{"test": true}'
+        url = simple.generate_verify_link(doc)
+        assert isinstance(url, str)
+        assert url.startswith("https://hai.ai/jacs/verify?s=")
+
+    def test_url_contains_base64_encoded_document(self):
+        """URL should contain base64url-encoded document data."""
+        import base64
+        doc = '{"hello": "world"}'
+        url = simple.generate_verify_link(doc)
+        # Extract the s= parameter
+        s_param = url.split("?s=")[1]
+        # Pad and decode
+        padded = s_param + "=" * (-len(s_param) % 4)
+        decoded = base64.urlsafe_b64decode(padded).decode("utf-8")
+        assert decoded == doc
+
+    def test_custom_base_url(self):
+        """generate_verify_link() should use a custom base URL."""
+        doc = '{"custom": true}'
+        url = simple.generate_verify_link(doc, base_url="https://example.com")
+        assert url.startswith("https://example.com/jacs/verify?s=")
+
+    def test_strips_trailing_slash_from_base_url(self):
+        """Trailing slash on base URL should be stripped."""
+        doc = '{"slash": true}'
+        url = simple.generate_verify_link(doc, base_url="https://hai.ai/")
+        assert "//" not in url.replace("https://", "", 1)
+
+    def test_raises_for_oversized_document(self):
+        """generate_verify_link() should raise ValueError for documents exceeding size limit."""
+        # Create a document larger than MAX_VERIFY_DOCUMENT_BYTES
+        big_doc = json.dumps({"data": "x" * (simple.MAX_VERIFY_DOCUMENT_BYTES + 500)})
+        with pytest.raises(ValueError, match="max length"):
+            simple.generate_verify_link(big_doc)
+
+    def test_roundtrip_with_signed_document(self, loaded_agent):
+        """generate_verify_link() should work with a small signed document."""
+        # Sign a small message
+        signed = simple.sign_message("hi")
+        # Only test if the raw_json is small enough
+        if len(signed.raw_json.encode("utf-8")) <= simple.MAX_VERIFY_DOCUMENT_BYTES:
+            url = simple.generate_verify_link(signed.raw_json)
+            assert "?s=" in url
+        else:
+            # Document too large for URL encoding - that's expected for most real docs
+            with pytest.raises(ValueError):
+                simple.generate_verify_link(signed.raw_json)
+
+
+# Test verify_dns()
+
+
+class TestVerifyDns:
+    """Tests for verify_dns() — DNS lookup will fail in test env, but function should not raise."""
+
+    def test_verify_dns_returns_verification_result(self, loaded_agent):
+        """verify_dns() should return a VerificationResult (not raise)."""
+        agent_json = simple.export_agent()
+        result = simple.verify_dns(agent_json, "example.com")
+        assert isinstance(result, VerificationResult)
+        # DNS lookup will fail in test env, so verified=False is expected
+        assert result.valid is False
+
+    def test_verify_dns_has_error_message_on_failure(self, loaded_agent):
+        """verify_dns() should include a human-readable message on failure."""
+        agent_json = simple.export_agent()
+        result = simple.verify_dns(agent_json, "nonexistent-domain-xyz.invalid")
+        assert isinstance(result, VerificationResult)
+        assert result.valid is False
+        assert len(result.errors) > 0
+        assert isinstance(result.errors[0], str)
+
+    def test_verify_dns_accepts_dict(self, loaded_agent):
+        """verify_dns() should accept a dict as well as a string."""
+        agent_json = simple.export_agent()
+        agent_dict = json.loads(agent_json)
+        result = simple.verify_dns(agent_dict, "example.com")
+        assert isinstance(result, VerificationResult)
+
+    def test_verify_dns_invalid_document(self):
+        """verify_dns() with invalid agent document should return valid=False."""
+        import importlib
+        importlib.reload(simple)
+        result = simple.verify_dns('{"not": "an agent"}', "example.com")
+        assert isinstance(result, VerificationResult)
+        assert result.valid is False
+
 
 # Test DNS helpers
 

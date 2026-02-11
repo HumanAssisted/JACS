@@ -173,7 +173,10 @@ fn extract_agreement_payload(value: &Value) -> Value {
     Value::Null
 }
 
-fn create_editable_agreement_document(agent: &mut Agent, payload: Value) -> BindingResult<JACSDocument> {
+fn create_editable_agreement_document(
+    agent: &mut Agent,
+    payload: Value,
+) -> BindingResult<JACSDocument> {
     let wrapped = json!({
         "jacsType": "artifact",
         "jacsLevel": "artifact",
@@ -195,7 +198,11 @@ fn ensure_editable_agreement_document(
 ) -> BindingResult<JACSDocument> {
     match agent.load_document(document_string) {
         Ok(doc) => {
-            let level = doc.value.get("jacsLevel").and_then(|v| v.as_str()).unwrap_or("");
+            let level = doc
+                .value
+                .get("jacsLevel")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if is_editable_level(level) {
                 Ok(doc)
             } else {
@@ -258,6 +265,20 @@ impl AgentWrapper {
             .load_by_config(config_path)
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
         Ok("Agent loaded".to_string())
+    }
+
+    /// Re-root the internal file storage at `root`.
+    ///
+    /// By default `load_by_config` roots the FS backend at the current
+    /// working directory.  `verify_document_standalone` uses this to
+    /// re-root at `/` so that absolute data/key directory paths work
+    /// regardless of CWD.
+    pub fn set_storage_root(&self, root: std::path::PathBuf) -> BindingResult<()> {
+        let mut agent = self.lock()?;
+        agent
+            .set_storage_root(root)
+            .map_err(|e| BindingCoreError::generic(format!("Failed to set storage root: {}", e)))?;
+        Ok(())
     }
 
     /// Sign an external agent's document with this agent's registration signature.
@@ -351,6 +372,15 @@ impl AgentWrapper {
         agent
             .sign_string(&data.to_string())
             .map_err(|e| BindingCoreError::signing_failed(format!("Failed to sign string: {}", e)))
+    }
+
+    /// Sign multiple messages in a single batch, decrypting the private key only once.
+    pub fn sign_batch(&self, messages: Vec<String>) -> BindingResult<Vec<String>> {
+        let mut agent = self.lock()?;
+        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
+        agent
+            .sign_batch(&refs)
+            .map_err(|e| BindingCoreError::signing_failed(format!("Batch sign failed: {}", e)))
     }
 
     /// Verify this agent's signature and hash.
@@ -472,16 +502,59 @@ impl AgentWrapper {
         context: Option<String>,
         agreement_fieldname: Option<String>,
     ) -> BindingResult<String> {
+        self.create_agreement_with_options(
+            document_string,
+            agentids,
+            question,
+            context,
+            agreement_fieldname,
+            None,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// Create an agreement with extended options (timeout, quorum, algorithm constraints).
+    ///
+    /// All option parameters are optional:
+    /// - `timeout`: ISO 8601 deadline after which the agreement expires
+    /// - `quorum`: minimum number of signatures required (M-of-N)
+    /// - `required_algorithms`: only accept signatures from these algorithms
+    /// - `minimum_strength`: "classical" or "post-quantum"
+    pub fn create_agreement_with_options(
+        &self,
+        document_string: &str,
+        agentids: Vec<String>,
+        question: Option<String>,
+        context: Option<String>,
+        agreement_fieldname: Option<String>,
+        timeout: Option<String>,
+        quorum: Option<u32>,
+        required_algorithms: Option<Vec<String>>,
+        minimum_strength: Option<String>,
+    ) -> BindingResult<String> {
+        use jacs::agent::agreement::{Agreement, AgreementOptions};
+
         let mut agent = self.lock()?;
         let base_doc = ensure_editable_agreement_document(&mut agent, document_string)?;
         let document_key = base_doc.getkey();
+
+        let options = AgreementOptions {
+            timeout,
+            quorum,
+            required_algorithms,
+            minimum_strength,
+        };
+
         let agreement_doc = agent
-            .create_agreement(
+            .create_agreement_with_options(
                 &document_key,
                 agentids.as_slice(),
                 question.as_deref(),
                 context.as_deref(),
                 agreement_fieldname,
+                &options,
             )
             .map_err(|e| {
                 BindingCoreError::agreement_failed(format!("Failed to create agreement: {}", e))
@@ -567,10 +640,7 @@ impl AgentWrapper {
         let pending = doc
             .agreement_unsigned_agents(Some(agreement_fieldname_key.clone()))
             .map_err(|e| {
-                BindingCoreError::agreement_failed(format!(
-                    "Failed to read pending signers: {}",
-                    e
-                ))
+                BindingCoreError::agreement_failed(format!("Failed to read pending signers: {}", e))
             })?;
 
         let signatures = doc
@@ -754,6 +824,70 @@ impl AgentWrapper {
         Ok(())
     }
 
+    /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
+    ///
+    /// Replaces the inner agent with a freshly created ephemeral agent that
+    /// lives entirely in memory. Returns a JSON string with agent info
+    /// (agent_id, name, version, algorithm).
+    pub fn ephemeral(&self, algorithm: Option<&str>) -> BindingResult<String> {
+        // Map user-friendly names to internal algorithm strings
+        let algo = match algorithm.unwrap_or("ed25519") {
+            "ed25519" => "ring-Ed25519",
+            "rsa-pss" => "RSA-PSS",
+            "pq2025" => "pq2025",
+            other => other,
+        };
+
+        let mut agent = Agent::ephemeral(algo).map_err(|e| {
+            BindingCoreError::agent_load(format!("Failed to create ephemeral agent: {}", e))
+        })?;
+
+        let template = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!(
+                    "Failed to create minimal agent template: {}",
+                    e
+                ))
+            })?;
+        let mut agent_json: Value = serde_json::from_str(&template).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse agent template JSON: {}",
+                e
+            ))
+        })?;
+        if let Some(obj) = agent_json.as_object_mut() {
+            obj.insert("name".to_string(), json!("ephemeral"));
+            obj.insert("description".to_string(), json!("Ephemeral JACS agent"));
+        }
+
+        let instance = agent
+            .create_agent_and_load(&agent_json.to_string(), true, Some(algo))
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!("Failed to initialize ephemeral agent: {}", e))
+            })?;
+
+        let agent_id = instance["jacsId"].as_str().unwrap_or("").to_string();
+        let version = instance["jacsVersion"].as_str().unwrap_or("").to_string();
+
+        // Replace the inner agent with the ephemeral one
+        let mut inner = self.lock()?;
+        *inner = agent;
+
+        let info = json!({
+            "agent_id": agent_id,
+            "name": "ephemeral",
+            "version": version,
+            "algorithm": algo,
+        });
+
+        serde_json::to_string_pretty(&info).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize ephemeral agent info: {}",
+                e
+            ))
+        })
+    }
+
     /// Returns diagnostic information including loaded agent details as a JSON string.
     pub fn diagnostics(&self) -> String {
         let mut info = jacs::simple::diagnostics();
@@ -762,8 +896,7 @@ impl AgentWrapper {
             if agent.ready() {
                 info["agent_loaded"] = json!(true);
                 if let Some(value) = agent.get_value() {
-                    info["agent_id"] =
-                        json!(value.get("jacsId").and_then(|v| v.as_str()));
+                    info["agent_id"] = json!(value.get("jacsId").and_then(|v| v.as_str()));
                     info["agent_version"] =
                         json!(value.get("jacsVersion").and_then(|v| v.as_str()));
                 }
@@ -791,16 +924,12 @@ impl AgentWrapper {
     /// and registering with HAI.ai.
     ///
     /// Requires a loaded agent (call `load()` first).
-    pub fn get_setup_instructions(
-        &self,
-        domain: &str,
-        ttl: u32,
-    ) -> BindingResult<String> {
+    pub fn get_setup_instructions(&self, domain: &str, ttl: u32) -> BindingResult<String> {
         use jacs::agent::boilerplate::BoilerPlate;
         use jacs::dns::bootstrap::{
             DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli,
-            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind,
-            emit_route53_change_batch, tld_requirement_text,
+            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch,
+            tld_requirement_text,
         };
 
         let agent = self.lock()?;
@@ -815,9 +944,9 @@ impl AgentWrapper {
             ));
         }
 
-        let pk = agent.get_public_key().map_err(|e| {
-            BindingCoreError::generic(format!("Failed to get public key: {}", e))
-        })?;
+        let pk = agent
+            .get_public_key()
+            .map_err(|e| BindingCoreError::generic(format!("Failed to get public key: {}", e)))?;
         let digest = jacs::dns::bootstrap::pubkey_digest_b64(&pk);
         let rr = build_dns_record(domain, ttl, agent_id, &digest, DigestEncoding::Base64);
 
@@ -829,8 +958,14 @@ impl AgentWrapper {
         provider_commands.insert("bind".to_string(), dns_record_bind.clone());
         provider_commands.insert("route53".to_string(), emit_route53_change_batch(&rr));
         provider_commands.insert("gcloud".to_string(), emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"));
-        provider_commands.insert("azure".to_string(), emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"));
-        provider_commands.insert("cloudflare".to_string(), emit_cloudflare_curl(&rr, "YOUR_ZONE_ID"));
+        provider_commands.insert(
+            "azure".to_string(),
+            emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"),
+        );
+        provider_commands.insert(
+            "cloudflare".to_string(),
+            emit_cloudflare_curl(&rr, "YOUR_ZONE_ID"),
+        );
 
         let mut dnssec_instructions = std::collections::HashMap::new();
         for name in &["aws", "cloudflare", "azure", "gcloud"] {
@@ -846,15 +981,16 @@ impl AgentWrapper {
         });
         let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
-        let hai_url = std::env::var("HAI_API_URL")
-            .unwrap_or_else(|_| "https://api.hai.ai".to_string());
+        let hai_url =
+            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
         let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
         let hai_payload = json!({
             "agent_id": agent_id,
             "public_key_hash": digest,
             "domain": domain,
         });
-        let hai_registration_payload = serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
+        let hai_registration_payload =
+            serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
         let hai_registration_instructions = format!(
             "POST the payload to {} with your HAI API key in the Authorization header.",
             hai_registration_url
@@ -897,7 +1033,8 @@ impl AgentWrapper {
 
         serde_json::to_string_pretty(&result).map_err(|e| {
             BindingCoreError::serialization_failed(format!(
-                "Failed to serialize setup instructions: {}", e
+                "Failed to serialize setup instructions: {}",
+                e
             ))
         })
     }
@@ -939,7 +1076,9 @@ impl AgentWrapper {
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e)))?;
+            .map_err(|e| {
+                BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e))
+            })?;
 
         let response = client
             .post(&url)
@@ -947,7 +1086,9 @@ impl AgentWrapper {
             .header("Content-Type", "application/json")
             .json(&json!({ "agent_json": agent_json }))
             .send()
-            .map_err(|e| BindingCoreError::network_failed(format!("HAI registration request failed: {}", e)))?;
+            .map_err(|e| {
+                BindingCoreError::network_failed(format!("HAI registration request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1015,6 +1156,10 @@ pub struct VerificationResult {
     pub valid: bool,
     /// The signer's agent ID from the document's jacsSignature.agentID (empty if unparseable).
     pub signer_id: String,
+    /// The signing timestamp from jacsSignature.date (empty if unparseable).
+    pub timestamp: String,
+    /// The signer's agent version from jacsSignature.agentVersion (empty if unparseable).
+    pub agent_version: String,
 }
 
 /// Verify a signed JACS document without loading an agent.
@@ -1041,26 +1186,62 @@ pub fn verify_document_standalone(
     data_directory: Option<&str>,
     key_directory: Option<&str>,
 ) -> BindingResult<VerificationResult> {
-    fn signer_id_from_doc(doc: &str) -> String {
+    fn absolutize_dir(raw: &str) -> String {
+        let p = std::path::PathBuf::from(raw);
+        if p.is_absolute() {
+            p.to_string_lossy().to_string()
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(p)
+                .to_string_lossy()
+                .to_string()
+        }
+    }
+
+    fn sig_field(doc: &str, field: &str) -> String {
         serde_json::from_str::<Value>(doc)
             .ok()
             .and_then(|v| {
                 v.get("jacsSignature")
-                    .and_then(|s| s.get("agentID"))
-                    .and_then(|id| id.as_str())
+                    .and_then(|s| s.get(field))
+                    .and_then(|f| f.as_str())
                     .map(String::from)
             })
             .unwrap_or_default()
     }
 
-    let signer_id = signer_id_from_doc(signed_document);
+    let signer_id = sig_field(signed_document, "agentID");
+    let timestamp = sig_field(signed_document, "date");
+    let agent_version = sig_field(signed_document, "agentVersion");
 
-    let data_dir = data_directory
+    // Always resolve caller-provided directories to absolute paths so relative
+    // inputs like "../fixtures" work regardless of process CWD.
+    let temp_dir = std::env::temp_dir().to_string_lossy().to_string();
+    let raw_data_dir = data_directory
         .map(String::from)
-        .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
-    let key_dir = key_directory
+        .unwrap_or_else(|| temp_dir.clone());
+    let raw_key_dir = key_directory
         .map(String::from)
-        .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
+        .unwrap_or_else(|| raw_data_dir.clone());
+
+    let absolute_data_dir = absolutize_dir(&raw_data_dir);
+    let absolute_key_dir = absolutize_dir(&raw_key_dir);
+
+    // Verification loads public keys from {data_directory}/public_keys.
+    // If only key_directory is supplied, use it as the storage root fallback.
+    let storage_root = if data_directory.is_some() {
+        absolute_data_dir.clone()
+    } else if key_directory.is_some() {
+        absolute_key_dir.clone()
+    } else {
+        absolute_data_dir.clone()
+    };
+
+    // Re-root storage and keep config dirs empty so path construction remains
+    // relative to storage_root (e.g., "public_keys/<hash>.pem").
+    let data_dir = String::new();
+    let key_dir = String::new();
 
     let config = Config::new(
         Some("false".to_string()),
@@ -1077,38 +1258,97 @@ pub fn verify_document_standalone(
         BindingCoreError::serialization_failed(format!("Failed to serialize config: {}", e))
     })?;
 
-    let config_path = std::env::temp_dir().join("jacs_standalone_verify_config.json");
+    let thread_id = format!("{:?}", std::thread::current().id())
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect::<String>();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let config_path = std::env::temp_dir().join(format!(
+        "jacs_standalone_verify_config_{}_{}_{}.json",
+        std::process::id(),
+        thread_id,
+        nonce
+    ));
     std::fs::write(&config_path, &config_json)
         .map_err(|e| BindingCoreError::generic(format!("Failed to write temp config: {}", e)))?;
 
-    struct EnvGuard(std::option::Option<std::ffi::OsString>);
+    struct EnvGuard {
+        saved: Vec<(&'static str, std::option::Option<std::ffi::OsString>)>,
+    }
     impl Drop for EnvGuard {
         fn drop(&mut self) {
-            if let Some(ref prev) = self.0 {
-                // SAFETY: single-threaded test/standalone use; restore of previous value
-                unsafe { std::env::set_var("JACS_KEY_RESOLUTION", prev) }
-            } else {
-                unsafe { std::env::remove_var("JACS_KEY_RESOLUTION") }
+            for (key, prev) in &self.saved {
+                if let Some(val) = prev {
+                    // SAFETY: test/standalone path restores process env to prior values.
+                    unsafe { std::env::set_var(key, val) }
+                } else {
+                    // SAFETY: removing a missing key is a no-op.
+                    unsafe { std::env::remove_var(key) }
+                }
             }
         }
     }
-    let _env_guard = if let Some(kr) = key_resolution {
-        let prev = std::env::var_os("JACS_KEY_RESOLUTION");
+
+    // Isolate standalone verification from ambient env var pollution.
+    // Several test suites set JACS_* vars globally; load_config_12factor would
+    // otherwise override our temp config and silently point key lookups elsewhere.
+    let isolated_keys: [&'static str; 16] = [
+        "JACS_USE_SECURITY",
+        "JACS_DATA_DIRECTORY",
+        "JACS_KEY_DIRECTORY",
+        "JACS_AGENT_PRIVATE_KEY_FILENAME",
+        "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        "JACS_AGENT_KEY_ALGORITHM",
+        "JACS_AGENT_ID_AND_VERSION",
+        "JACS_DEFAULT_STORAGE",
+        "JACS_AGENT_DOMAIN",
+        "JACS_DNS_VALIDATE",
+        "JACS_DNS_STRICT",
+        "JACS_DNS_REQUIRED",
+        "JACS_DATABASE_URL",
+        "JACS_DATABASE_MAX_CONNECTIONS",
+        "JACS_DATABASE_MIN_CONNECTIONS",
+        "JACS_DATABASE_CONNECT_TIMEOUT_SECS",
+    ];
+    let mut saved: Vec<(&'static str, std::option::Option<std::ffi::OsString>)> = Vec::new();
+    for key in isolated_keys {
+        saved.push((key, std::env::var_os(key)));
+        // SAFETY: intentionally clearing process env vars for isolated verification.
+        unsafe { std::env::remove_var(key) }
+    }
+    saved.push((
+        "JACS_KEY_RESOLUTION",
+        std::env::var_os("JACS_KEY_RESOLUTION"),
+    ));
+    if let Some(kr) = key_resolution {
+        // SAFETY: set explicit key resolution only for this call.
         unsafe { std::env::set_var("JACS_KEY_RESOLUTION", kr) }
-        Some(EnvGuard(prev))
     } else {
-        None
-    };
+        // SAFETY: ensure no inherited override leaks in.
+        unsafe { std::env::remove_var("JACS_KEY_RESOLUTION") }
+    }
+    let _env_guard = EnvGuard { saved };
 
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();
         wrapper.load(config_path.to_string_lossy().to_string())?;
+        // If re-rooting fails (e.g. directory doesn't exist), fall through to
+        // return valid=false from the verification step.
+        let _ = wrapper.set_storage_root(std::path::PathBuf::from(&storage_root));
         let valid = wrapper.verify_document(signed_document)?;
         Ok(VerificationResult {
             valid,
             signer_id: signer_id.clone(),
+            timestamp: timestamp.clone(),
+            agent_version: agent_version.clone(),
         })
     })();
+
+    // Clean up temp config file
+    let _ = std::fs::remove_file(&config_path);
 
     match result {
         Ok(r) => Ok(r),
@@ -1120,6 +1360,8 @@ pub fn verify_document_standalone(
                 Ok(VerificationResult {
                     valid: false,
                     signer_id,
+                    timestamp,
+                    agent_version,
                 })
             } else {
                 Err(e)
@@ -1377,6 +1619,23 @@ pub fn fetch_remote_key(agent_id: &str, version: &str) -> BindingResult<RemotePu
 }
 
 // =============================================================================
+// DNS Verification
+// =============================================================================
+
+/// Re-export DNS verification result for bindings.
+pub use jacs::dns::bootstrap::DnsVerificationResult;
+
+/// Verify an agent's DNS TXT record matches its public key hash.
+///
+/// Parses the agent JSON and looks up `_v1.agent.jacs.{domain}` to compare hashes.
+/// Returns a structured result — never errors for DNS failures (those are `verified: false`).
+pub fn verify_agent_dns(agent_json: &str, domain: &str) -> BindingResult<DnsVerificationResult> {
+    jacs::dns::bootstrap::verify_agent_dns(agent_json, domain).map_err(|e| {
+        BindingCoreError::invalid_argument(format!("DNS verification setup failed: {}", e))
+    })
+}
+
+// =============================================================================
 // Re-exports for convenience
 // =============================================================================
 
@@ -1389,6 +1648,15 @@ pub use jacs;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn cross_language_fixtures_dir() -> Option<PathBuf> {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()?
+            .to_path_buf();
+        let dir = workspace.join("jacs/tests/fixtures/cross-language");
+        if dir.exists() { Some(dir) } else { None }
+    }
 
     #[test]
     fn verify_standalone_invalid_json_returns_valid_false() {
@@ -1436,6 +1704,178 @@ mod tests {
         .unwrap();
         assert!(!result.valid);
         assert_eq!(result.signer_id, "some-agent");
+    }
+
+    #[test]
+    fn verify_standalone_accepts_relative_parent_paths_from_subdir() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root")
+            .to_path_buf();
+        let jacsnpm_dir = workspace.join("jacsnpm");
+        if !jacsnpm_dir.exists() {
+            eprintln!("Skipping: jacsnpm directory not found");
+            return;
+        }
+
+        struct CwdGuard(PathBuf);
+        impl Drop for CwdGuard {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+
+        let original_cwd = std::env::current_dir().expect("current dir");
+        std::env::set_current_dir(&jacsnpm_dir).expect("chdir to jacsnpm");
+        let _guard = CwdGuard(original_cwd);
+
+        let rel = "../jacs/tests/fixtures/cross-language";
+        let result = verify_document_standalone(&signed, Some("local"), Some(rel), Some(rel))
+            .expect("standalone verify should not error");
+        assert!(result.valid, "relative parent-path fixture should verify");
+    }
+
+    #[test]
+    fn verify_standalone_accepts_absolute_fixture_paths() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+        let fixtures_abs = fixtures_dir
+            .canonicalize()
+            .unwrap_or_else(|_| fixtures_dir.clone());
+        let fixtures_abs_str = fixtures_abs.to_string_lossy().to_string();
+
+        let result = verify_document_standalone(
+            &signed,
+            Some("local"),
+            Some(&fixtures_abs_str),
+            Some(&fixtures_abs_str),
+        )
+        .expect("standalone verify should not error");
+        assert!(result.valid, "absolute-path fixture should verify");
+    }
+
+    #[test]
+    fn verify_standalone_uses_key_directory_when_data_directory_missing() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+        let fixtures_abs = fixtures_dir
+            .canonicalize()
+            .unwrap_or_else(|_| fixtures_dir.clone());
+        let fixtures_abs_str = fixtures_abs.to_string_lossy().to_string();
+
+        let result =
+            verify_document_standalone(&signed, Some("local"), None, Some(&fixtures_abs_str))
+                .expect("standalone verify should not error");
+        assert!(
+            result.valid,
+            "key_directory should be usable as standalone storage root when data_directory is omitted"
+        );
+    }
+
+    #[test]
+    fn verify_standalone_ignores_polluting_env_overrides() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+        let fixtures_abs = fixtures_dir
+            .canonicalize()
+            .unwrap_or_else(|_| fixtures_dir.clone());
+        let fixtures_abs_str = fixtures_abs.to_string_lossy().to_string();
+
+        struct EnvRestore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for EnvRestore {
+            fn drop(&mut self) {
+                for (k, v) in &self.0 {
+                    if let Some(val) = v {
+                        // SAFETY: test-only env restoration.
+                        unsafe { std::env::set_var(k, val) }
+                    } else {
+                        // SAFETY: removing missing env vars is safe.
+                        unsafe { std::env::remove_var(k) }
+                    }
+                }
+            }
+        }
+
+        let keys = [
+            "JACS_DATA_DIRECTORY",
+            "JACS_KEY_DIRECTORY",
+            "JACS_DEFAULT_STORAGE",
+            "JACS_KEY_RESOLUTION",
+        ];
+        let mut prev = Vec::new();
+        for k in keys {
+            prev.push((k, std::env::var_os(k)));
+        }
+        let _restore = EnvRestore(prev);
+
+        // Simulate pollution from earlier tests in the same process.
+        // SAFETY: test-only env manipulation.
+        unsafe {
+            std::env::set_var("JACS_DATA_DIRECTORY", "/tmp/does-not-exist");
+            std::env::set_var("JACS_KEY_DIRECTORY", "/tmp/does-not-exist");
+            std::env::set_var("JACS_DEFAULT_STORAGE", "memory");
+            std::env::set_var("JACS_KEY_RESOLUTION", "hai");
+        }
+
+        let result = verify_document_standalone(
+            &signed,
+            Some("local"),
+            Some(&fixtures_abs_str),
+            Some(&fixtures_abs_str),
+        )
+        .expect("standalone verify should not error");
+
+        assert!(
+            result.valid,
+            "verification should ignore ambient JACS_* env pollution"
+        );
     }
 
     #[test]

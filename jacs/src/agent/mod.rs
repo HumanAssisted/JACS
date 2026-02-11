@@ -14,12 +14,13 @@ use crate::crypt::hash::hash_public_key;
 use crate::error::JacsError;
 use crate::storage::MultiStorage;
 
-use crate::config::{Config, find_config, load_config, load_config_12factor};
+use crate::config::{Config, load_config_12factor, load_config_12factor_optional};
 
 use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
+use crate::keystore::{KeySpec, KeyStore};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dns::bootstrap::verify_hai_registration_sync;
@@ -106,6 +107,10 @@ pub struct Agent {
     public_key: Option<Vec<u8>>,
     private_key: Option<SecretPrivateKey>,
     key_algorithm: Option<String>,
+    /// optional key store for ephemeral agents (replaces FsEncryptedStore)
+    key_store: Option<Box<dyn KeyStore>>,
+    /// true for ephemeral agents (in-memory keys, no AES encryption)
+    ephemeral: bool,
     /// control DNS strictness for public key verification
     dns_strict: bool,
     /// whether DNS validation is enabled (None means derive from config/domain presence)
@@ -134,7 +139,7 @@ impl Agent {
     ) -> Result<Self, Box<dyn Error>> {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
-        let config = Some(find_config("./".to_string())?);
+        let config = Some(load_config_12factor_optional(None)?);
         Ok(Self {
             schema,
             value: None,
@@ -146,10 +151,51 @@ impl Agent {
             key_algorithm: None,
             public_key: None,
             private_key: None,
+            key_store: None,
+            ephemeral: false,
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
         })
+    }
+
+    /// Create an ephemeral agent with in-memory keys and storage.
+    /// No config file, no directories, no environment variables needed.
+    pub fn ephemeral(algorithm: &str) -> Result<Self, Box<dyn Error>> {
+        let config = Config::builder()
+            .key_algorithm(algorithm)
+            .default_storage("memory")
+            .build();
+        let storage = MultiStorage::new("memory".to_string())?;
+        let schema = Schema::new("v1", "v1", "v1")?;
+        let key_store = crate::keystore::InMemoryKeyStore::new(algorithm);
+        Ok(Self {
+            schema,
+            value: None,
+            config: Some(config),
+            storage,
+            document_schemas: Arc::new(Mutex::new(HashMap::new())),
+            id: None,
+            version: None,
+            public_key: None,
+            private_key: None,
+            key_algorithm: None,
+            key_store: Some(Box::new(key_store)),
+            ephemeral: true,
+            dns_strict: false,
+            dns_validate_enabled: None,
+            dns_required: None,
+        })
+    }
+
+    /// Returns true if this is an ephemeral (in-memory) agent.
+    pub fn is_ephemeral(&self) -> bool {
+        self.ephemeral
+    }
+
+    /// Get a reference to the agent's key store, if any.
+    pub fn get_key_store(&self) -> Option<&dyn KeyStore> {
+        self.key_store.as_deref()
     }
 
     pub fn set_dns_strict(&mut self, strict: bool) {
@@ -170,7 +216,7 @@ impl Agent {
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
 
-        self.config = Some(find_config("./".to_string()).map_err(|e| {
+        self.config = Some(load_config_12factor_optional(None).map_err(|e| {
             format!(
                 "load_by_id failed for agent '{}': Could not find or load configuration: {}",
                 lookup_id, e
@@ -213,7 +259,7 @@ impl Agent {
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
         // load config string
-        self.config = Some(load_config(&path).map_err(|e| {
+        self.config = Some(load_config_12factor(Some(&path)).map_err(|e| {
             format!(
                 "load_by_config failed: Could not load configuration from '{}': {}",
                 path, e
@@ -259,6 +305,23 @@ impl Agent {
         } else {
             Ok(())
         }
+    }
+
+    /// Replace the internal storage with one rooted at `root`.
+    ///
+    /// This is used by `verify_document_standalone` so that absolute
+    /// data/key directory paths work regardless of the current working
+    /// directory.  `MultiStorage::clean_path` strips leading slashes,
+    /// turning absolute paths into paths relative to the FS store root.
+    /// By rooting at `/` the resolved path is still correct.
+    pub fn set_storage_root(&mut self, root: std::path::PathBuf) -> Result<(), Box<dyn Error>> {
+        let storage_type: String = self
+            .config
+            .as_ref()
+            .and_then(|c| c.jacs_default_storage().clone())
+            .unwrap_or_else(|| "fs".to_string());
+        self.storage = MultiStorage::_new(storage_type, root)?;
+        Ok(())
     }
 
     /// Returns true if the agent is fully initialized and ready for signing/verification.
@@ -307,6 +370,14 @@ impl Agent {
         self.public_key = Some(public_key);
         self.key_algorithm = Some(key_algorithm.to_string());
         Ok(())
+    }
+
+    /// Store keys without AES encryption. For ephemeral agents only.
+    /// The raw private key bytes are wrapped in SecretBox directly.
+    pub fn set_keys_raw(&mut self, private_key: Vec<u8>, public_key: Vec<u8>, key_algorithm: &str) {
+        self.private_key = Some(SecretBox::new(Box::new(private_key)));
+        self.public_key = Some(public_key);
+        self.key_algorithm = Some(key_algorithm.to_string());
     }
 
     #[must_use = "private key must be used for signing operations"]
@@ -362,12 +433,19 @@ impl Agent {
         if self.id.is_some() {
             // check if keys are already loaded
             if self.public_key.is_none() || self.private_key.is_none() {
-                self.fs_load_keys().map_err(|e| {
-                    format!(
-                        "Agent load failed for '{}' at key loading step: {}",
-                        agent_id_for_errors, e
-                    )
-                })?;
+                if self.ephemeral {
+                    // Ephemeral agents should already have keys set; skip fs
+                    warn!(
+                        "Ephemeral agent missing keys during load — keys should be set before load()"
+                    );
+                } else {
+                    self.fs_load_keys().map_err(|e| {
+                        format!(
+                            "Agent load failed for '{}' at key loading step: {}",
+                            agent_id_for_errors, e
+                        )
+                    })?;
+                }
             } else {
                 info!("Keys already loaded for agent");
             }
@@ -462,6 +540,11 @@ impl Agent {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(
+        name = "jacs.signature_verification",
+        skip(self, json_value, fields, public_key, signature),
+        fields(signature_key_from, public_key_enc_type)
+    )]
     pub fn signature_verification_procedure(
         &self,
         json_value: &Value,
@@ -497,6 +580,14 @@ impl Agent {
                 .trim_matches('"')
                 .to_string(),
         };
+
+        // Prefer explicit signingAlgorithm from function argument, then from the
+        // document signature. Only fall back to key-format heuristics when absent.
+        let resolved_public_key_enc_type = public_key_enc_type.or_else(|| {
+            json_value[signature_key_from]["signingAlgorithm"]
+                .as_str()
+                .map(std::string::ToString::to_string)
+        });
 
         // DNS policy resolution
         let maybe_domain = self
@@ -576,7 +667,7 @@ impl Agent {
                 error!("{}", error_message);
 
                 let _duration_ms = start_time.elapsed().as_millis() as u64;
-                let _algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+                let _algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
                 #[cfg(feature = "observability-convenience")]
                 {
                     record_signature_verification("unknown_agent", false, algorithm);
@@ -640,16 +731,26 @@ impl Agent {
             &document_values_string,
             &signature_base64,
             public_key,
-            public_key_enc_type.clone(),
+            resolved_public_key_enc_type.clone(),
         );
 
-        let _duration_ms = start_time.elapsed().as_millis() as u64;
+        let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
-        let _algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+        let algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
         let agent_id = json_value
             .get("jacsId")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown_agent");
+        let signer_id = json_value
+            .get(signature_key_from)
+            .and_then(|sig| sig.get("agentID"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let timestamp = json_value
+            .get(signature_key_from)
+            .and_then(|sig| sig.get("date"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
 
         #[cfg(feature = "observability-convenience")]
         {
@@ -657,9 +758,26 @@ impl Agent {
         }
 
         if success {
-            info!("Signature verification successful for agent: {}", agent_id);
+            info!(
+                event = "verification_complete",
+                document_id = %agent_id,
+                signer_id = %signer_id,
+                algorithm = %algorithm,
+                timestamp = %timestamp,
+                valid = true,
+                duration_ms = duration_ms,
+                "Signature verification successful"
+            );
         } else {
-            error!("Signature verification failed for agent: {}", agent_id);
+            error!(
+                event = "verification_complete",
+                document_id = %agent_id,
+                signer_id = %signer_id,
+                algorithm = %algorithm,
+                valid = false,
+                duration_ms = duration_ms,
+                "Signature verification failed"
+            );
         }
 
         result
@@ -698,6 +816,11 @@ impl Agent {
     /// * If an error occurs while serializing the accepted fields.
     /// * If an error occurs while retrieving the agent's public key.
     /// * If an error occurs while validating the generated signature against the schema.
+    #[tracing::instrument(
+        name = "jacs.signing_procedure",
+        skip(self, json_value, fields),
+        fields(placement_key)
+    )]
     pub fn signing_procedure(
         &mut self,
         json_value: &Value,
@@ -750,6 +873,15 @@ impl Agent {
         // TODO add sha256 of public key
         // validate signature schema
         self.schema.validate_signature(&signature_document)?;
+
+        info!(
+            event = "signing_procedure_complete",
+            agent_id = %agent_id,
+            algorithm = %signing_algorithm,
+            timestamp = %date,
+            placement_key = %placement_key,
+            "Signing procedure completed"
+        );
 
         Ok(signature_document)
     }
@@ -998,23 +1130,38 @@ impl Agent {
         self.version = instance.get_str("jacsVersion");
 
         if create_keys {
-            self.generate_keys()?;
+            if let Some(ref ks) = self.key_store {
+                // Ephemeral: use the in-memory key store
+                // Clone the Box<dyn KeyStore> reference data we need before mutable borrow
+                let algo = {
+                    let config = self.config.as_ref().ok_or("Agent config not initialized")?;
+                    config.get_key_algorithm()?
+                };
+                let spec = KeySpec {
+                    algorithm: algo.clone(),
+                    key_id: None,
+                };
+                let (private_key, public_key) = ks.generate(&spec)?;
+                self.set_keys_raw(private_key, public_key, &algo);
+            } else {
+                self.generate_keys()?;
+            }
         }
-        if self.public_key.is_none() || self.private_key.is_none() {
+        if !self.ephemeral && (self.public_key.is_none() || self.private_key.is_none()) {
             self.fs_load_keys()?;
         }
 
-        // Instead of using ID:version as the filename, we should use the public key hash
-        if let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm) {
-            // Calculate hash of public key to use as filename
-            let public_key_hash = hash_public_key(public_key.clone());
-
-            // Save public key using its hash as the identifier
-            let _ = self.fs_save_remote_public_key(
-                &public_key_hash,
-                public_key,
-                key_algorithm.as_bytes(),
-            );
+        // Save public key hash — skip for ephemeral (no filesystem)
+        if !self.ephemeral {
+            if let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm)
+            {
+                let public_key_hash = hash_public_key(public_key.clone());
+                let _ = self.fs_save_remote_public_key(
+                    &public_key_hash,
+                    public_key,
+                    key_algorithm.as_bytes(),
+                );
+            }
         }
 
         // schema.create will call this "document" otherwise
@@ -1328,6 +1475,8 @@ impl AgentBuilder {
             key_algorithm: None,
             public_key: None,
             private_key: None,
+            key_store: None,
+            ephemeral: false,
             dns_strict: self.dns_strict.unwrap_or(false),
             dns_validate_enabled: self.dns_validate,
             dns_required: self.dns_required,
@@ -1391,7 +1540,10 @@ mod builder_tests {
     fn test_ready_false_on_fresh_agent() {
         let agent = Agent::builder().build().expect("Should build");
         // A freshly built agent has config but no id, keys, or value
-        assert!(!agent.ready(), "ready() should be false without keys/id/value");
+        assert!(
+            !agent.ready(),
+            "ready() should be false without keys/id/value"
+        );
     }
 
     #[test]
@@ -1554,5 +1706,127 @@ mod builder_tests {
         for result in &results {
             assert!(result.is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod ephemeral_tests {
+    use super::*;
+    use crate::create_minimal_blank_agent;
+
+    fn make_agent_json() -> String {
+        create_minimal_blank_agent("ai".to_string(), None, None, None).unwrap()
+    }
+
+    #[test]
+    fn test_ephemeral_creates_without_config_file() {
+        let agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        assert!(agent.is_ephemeral());
+        assert!(agent.config.is_some());
+        // No files should be created — config is in-memory
+    }
+
+    #[test]
+    fn test_ephemeral_creates_without_env_vars() {
+        // No JACS_KEY_DIRECTORY or JACS_PRIVATE_KEY_PASSWORD needed
+        let agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        assert!(agent.is_ephemeral());
+    }
+
+    #[test]
+    fn test_ephemeral_create_agent_and_load() {
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let json = make_agent_json();
+        let result = agent.create_agent_and_load(&json, true, Some("ring-Ed25519"));
+        assert!(
+            result.is_ok(),
+            "create_agent_and_load failed: {:?}",
+            result.err()
+        );
+        let instance = result.unwrap();
+        assert!(instance.get("jacsId").is_some());
+        assert!(instance.get("jacsVersion").is_some());
+        assert!(instance.get("jacsSignature").is_some());
+    }
+
+    #[test]
+    fn test_ephemeral_sign_and_verify_round_trip() {
+        use crate::agent::document::DocumentTraits;
+
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let json = make_agent_json();
+        agent
+            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .unwrap();
+
+        // Sign a document
+        let doc_json = r#"{"message": "hello world"}"#;
+        let signed = agent
+            .create_document_and_load(doc_json, None, None)
+            .unwrap();
+        let value = signed.getvalue();
+        assert!(
+            value.get("jacsSignature").is_some(),
+            "Document should have signature"
+        );
+        assert!(
+            value.get("jacsSha256").is_some(),
+            "Document should have hash"
+        );
+
+        // Verify the document via key lookup
+        let lookup = signed.getkey();
+        let result = agent.verify_document_signature(&lookup, None, None, None, None);
+        assert!(
+            result.is_ok(),
+            "Document verification failed: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_ephemeral_agent_is_ready() {
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let json = make_agent_json();
+        agent
+            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .unwrap();
+        assert!(
+            agent.ready(),
+            "Ephemeral agent should be ready after create_agent_and_load"
+        );
+    }
+
+    #[test]
+    fn test_ephemeral_no_files_on_disk() {
+        let temp = std::env::temp_dir().join("jacs_ephemeral_test_no_files");
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).unwrap();
+
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let json = make_agent_json();
+        agent
+            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .unwrap();
+
+        // Temp dir should still be empty
+        let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
+        assert!(
+            entries.is_empty(),
+            "Ephemeral agent should not create files"
+        );
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn test_ephemeral_pq2025() {
+        let mut agent = Agent::ephemeral("pq2025").unwrap();
+        let json = make_agent_json();
+        let result = agent.create_agent_and_load(&json, true, Some("pq2025"));
+        assert!(
+            result.is_ok(),
+            "pq2025 ephemeral agent failed: {:?}",
+            result.err()
+        );
     }
 }

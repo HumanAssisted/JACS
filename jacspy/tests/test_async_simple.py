@@ -43,9 +43,11 @@ async def loaded_agent(config_path):
     from jacs import simple
     importlib.reload(simple)
 
+    # async_simple.load is actually sync under the hood (wraps sync call)
+    # but we call it via the async API for consistency
     info = await async_simple.load(config_path)
     assert info is not None
-    return info
+    yield info
 
 
 # Test async load()

@@ -1,61 +1,28 @@
 # Quick Start Guide
 
-This guide will get you up and running with JACS in under 10 minutes. We'll create an agent, generate a task, and demonstrate the core workflow across all three implementations.
+Get signing and verifying in under a minute. No manual setup needed.
 
-## Choose Your Implementation
+## Zero-Config Quick Start
 
-Select the implementation that best fits your needs:
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. One call and you're signing.
 
 <div class="tabs">
 <div class="tab">
-<input type="radio" id="tab-rust" name="tab-group" checked>
-<label for="tab-rust">🦀 Rust CLI</label>
+<input type="radio" id="tab-python" name="tab-group" checked>
+<label for="tab-python">Python</label>
 <div class="content">
 
-### Install Rust CLI
 ```bash
-# Install from crates.io (--features cli is required for the binary)
-cargo install jacs --features cli
-# Upgrade to latest: cargo install jacs --features cli --force
-
-# Or build from source
-git clone https://github.com/HumanAssisted/JACS
-cd JACS/jacs
-cargo install --path . --features cli
+pip install jacs
 ```
 
-### Initialize JACS
-```bash
-# Create configuration and agent in one step
-jacs init
+```python
+import jacs.simple as jacs
 
-# This creates:
-# - ~/.jacs/config.json
-# - Agent keys and documents
-# - Basic directory structure
-```
-
-### Create Your First Agent
-```bash
-# Create an agent (if not done via jacs init)
-# Agent type is defined in the input JSON file or default template
-jacs agent create --create-keys true
-
-# Or provide a custom agent definition file
-jacs agent create --create-keys true -f my-agent.json
-
-# Verify your agent was created correctly
-jacs agent verify
-```
-
-### Create and Sign a Task
-```bash
-# Create a task document with name and description
-jacs task create \
-  -n "Write Product Description" \
-  -d "Create compelling copy for new product launch"
-
-# The task is automatically signed by your agent
+jacs.quickstart()
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+result = jacs.verify(signed.raw)
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
 </div>
@@ -63,188 +30,144 @@ jacs task create \
 
 <div class="tab">
 <input type="radio" id="tab-nodejs" name="tab-group">
-<label for="tab-nodejs">🟢 Node.js</label>
+<label for="tab-nodejs">Node.js</label>
 <div class="content">
 
-### Install Node.js Package
 ```bash
 npm install @hai.ai/jacs
 ```
 
-### Basic Setup
 ```javascript
-import { JacsAgent, createConfig } from '@hai.ai/jacs';
-import fs from 'fs';
+const jacs = require('@hai.ai/jacs/simple');
 
-// Create configuration
-const config = {
-  jacs_agent_id_and_version: null,
-  jacs_data_directory: "./jacs_data",
-  jacs_key_directory: "./jacs_keys",
-  jacs_default_storage: "fs",
-  jacs_agent_key_algorithm: "ring-Ed25519"
-};
-
-// Save config
-fs.writeFileSync('./jacs.config.json', JSON.stringify(config, null, 2));
-
-// Create agent instance and load configuration
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
-```
-
-### Create Agent Document
-```javascript
-// Create agent with services
-const agentData = {
-  name: "Content Creator Bot",
-  description: "AI agent specialized in content creation",
-  services: [
-    {
-      type: "content_generation",
-      name: "Product Description Writer",
-      description: "Creates compelling product descriptions",
-      success: "Engaging copy that converts visitors",
-      failure: "Generic or low-quality content"
-    }
-  ]
-};
-
-// Generate keys and create agent
-await agent.generateKeys();
-const agentDoc = await agent.createAgent(agentData);
-console.log('Agent created:', agentDoc.jacsId);
-```
-
-### Create a Task
-```javascript
-// Create task document
-const task = {
-  title: "Write Product Description",
-  description: "Create compelling copy for new product launch",
-  actions: [
-    {
-      id: "research",
-      name: "Product Research", 
-      description: "Analyze product features and benefits",
-      success: "Complete understanding of product value",
-      failure: "Insufficient product knowledge"
-    },
-    {
-      id: "write",
-      name: "Write Copy",
-      description: "Create engaging product description",
-      success: "200-word compelling description",
-      failure: "Generic or unconvincing copy"
-    }
-  ]
-};
-
-// Sign and create task
-const signedTask = await agent.createTask(task);
-console.log('Task created:', signedTask.jacsId);
+await jacs.quickstart();
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+const result = await jacs.verify(signed.raw);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
 </div>
 </div>
 
 <div class="tab">
-<input type="radio" id="tab-python" name="tab-group">
-<label for="tab-python">🐍 Python</label>
+<input type="radio" id="tab-rust" name="tab-group">
+<label for="tab-rust">Rust CLI</label>
 <div class="content">
 
-### Install Python Package
+```bash
+cargo install jacs --features cli
+```
+
+```bash
+# Info mode -- prints agent ID and algorithm
+jacs quickstart
+
+# Sign JSON from stdin
+echo '{"action":"approve"}' | jacs quickstart --sign
+
+# Sign a file
+jacs quickstart --sign --file mydata.json
+```
+
+</div>
+</div>
+</div>
+
+Pass `algorithm="ring-Ed25519"` (or `{ algorithm: 'ring-Ed25519' }` in JS, `--algorithm ring-Ed25519` in CLI) to override the default (`pq2025`).
+
+> **That's it -- you're signing.** For most use cases, the quick start above is all you need. Jump to [Which integration should I use?](../getting-started/decision-tree.md) to find the right framework adapter, or read on for manual agent setup.
+
+## Advanced: Explicit Agent Setup
+
+For full control over agent creation, you can set up an agent manually with a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable. This is optional since `quickstart()` already creates a persistent agent.
+
+<div class="tabs">
+<div class="tab">
+<input type="radio" id="adv-rust" name="adv-group" checked>
+<label for="adv-rust">Rust CLI</label>
+<div class="content">
+
+### Install
+```bash
+cargo install jacs --features cli
+```
+
+### Initialize
+```bash
+# Create configuration and agent in one step
+jacs init
+
+# Or step by step:
+# 1. Create config
+jacs config create
+# 2. Create agent with keys
+jacs agent create --create-keys true
+# 3. Verify
+jacs agent verify
+```
+
+### Sign a document
+```bash
+jacs document create -f mydata.json
+```
+
+</div>
+</div>
+
+<div class="tab">
+<input type="radio" id="adv-nodejs" name="adv-group">
+<label for="adv-nodejs">Node.js</label>
+<div class="content">
+
+### Install
+```bash
+npm install @hai.ai/jacs
+```
+
+### Load and use
+```javascript
+const jacs = require('@hai.ai/jacs/simple');
+
+// Load from config file
+await jacs.load('./jacs.config.json');
+
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+const result = await jacs.verify(signed.raw);
+console.log(`Valid: ${result.valid}`);
+```
+
+</div>
+</div>
+
+<div class="tab">
+<input type="radio" id="adv-python" name="adv-group">
+<label for="adv-python">Python</label>
+<div class="content">
+
+### Install
 ```bash
 pip install jacs
 ```
 
-### Basic Setup
+### Load and use
 ```python
-import jacs
-import json
-import os
+import jacs.simple as jacs
 
-# Create configuration
-config = {
-    "jacs_agent_id_and_version": None,
-    "jacs_data_directory": "./jacs_data",
-    "jacs_key_directory": "./jacs_keys",
-    "jacs_default_storage": "fs",
-    "jacs_agent_key_algorithm": "ring-Ed25519"
-}
+# Load from config file
+jacs.load("./jacs.config.json")
 
-# Ensure directories exist
-os.makedirs("./jacs_data", exist_ok=True)
-os.makedirs("./jacs_keys", exist_ok=True)
-
-# Save config
-with open('jacs.config.json', 'w') as f:
-    json.dump(config, f, indent=2)
-
-# Create agent instance and load configuration
-agent = jacs.JacsAgent()
-agent.load("./jacs.config.json")
-```
-
-### Create Agent Document
-```python
-# Define agent capabilities
-agent_data = {
-    "name": "Content Creator Bot",
-    "description": "AI agent specialized in content creation",
-    "services": [
-        {
-            "type": "content_generation",
-            "name": "Product Description Writer", 
-            "description": "Creates compelling product descriptions",
-            "success": "Engaging copy that converts visitors",
-            "failure": "Generic or low-quality content"
-        }
-    ]
-}
-
-# Generate keys and create agent
-agent.generate_keys()
-agent_doc = agent.create_agent(agent_data)
-print(f'Agent created: {agent_doc["jacsId"]}')
-```
-
-### Create a Task
-```python
-# Define task
-task = {
-    "title": "Write Product Description",
-    "description": "Create compelling copy for new product launch",
-    "actions": [
-        {
-            "id": "research",
-            "name": "Product Research",
-            "description": "Analyze product features and benefits", 
-            "success": "Complete understanding of product value",
-            "failure": "Insufficient product knowledge"
-        },
-        {
-            "id": "write", 
-            "name": "Write Copy",
-            "description": "Create engaging product description",
-            "success": "200-word compelling description",
-            "failure": "Generic or unconvincing copy"
-        }
-    ]
-}
-
-# Sign and create task
-signed_task = agent.create_task(task)
-print(f'Task created: {signed_task["jacsId"]}')
+signed = jacs.sign_message({"action": "approve", "amount": 100})
+result = jacs.verify(signed.raw)
+print(f"Valid: {result.valid}")
 ```
 
 </div>
 </div>
 </div>
 
-## Non-Interactive Agent Creation (v0.6.0+)
+## Programmatic Agent Creation (v0.6.0+)
 
-For scripts, CI/CD, and server environments, all bindings support fully programmatic agent creation without interactive prompts:
+For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use `create()`. For most cases, `quickstart()` above is simpler and also creates a persistent agent.
 
 <div class="tabs">
 <div class="tab">
@@ -274,7 +197,7 @@ print(f"Agent: {agent.agent_id}")
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-const agent = jacs.create({
+const agent = await jacs.create({
   name: 'my-agent',
   password: process.env.JACS_PRIVATE_KEY_PASSWORD,
   algorithm: 'pq2025',
@@ -376,21 +299,13 @@ jacs document sign -f ./jacs_data/[document-id].json
 <div class="content">
 
 ```javascript
-// Verify agent signature
+// Verify agent signature (async)
 const isValid = await agent.verifyAgent();
 console.log('Agent signature valid:', isValid);
-
-// List all documents
-const documents = await agent.listDocuments();
-console.log('Documents:', documents.length);
 
 // Verify task signature
 const taskValid = await agent.verifyDocument(signedTask);
 console.log('Task signature valid:', taskValid);
-
-// Get document details
-const taskDetails = await agent.getDocument(signedTask.jacsId);
-console.log('Task details:', taskDetails);
 ```
 
 </div>
@@ -472,31 +387,22 @@ reviewerConfig.jacs_agent_id_and_version = null;
 fs.writeFileSync('./reviewer.config.json', JSON.stringify(reviewerConfig, null, 2));
 
 const reviewer = new JacsAgent();
-reviewer.load('./reviewer.config.json');
-await reviewer.generateKeys();
-
-const reviewerDoc = await reviewer.createAgent({
-  name: "Content Reviewer Bot",
-  description: "AI agent specialized in content review"
-});
+await reviewer.load('./reviewer.config.json');
 
 // Create agreement between agents
-const agreement = {
-  title: "Content Collaboration Agreement",
-  question: "Do you agree to collaborate on this content task?",
-  context: `Task: ${signedTask.jacsId}`,
-  agents: [agentDoc.jacsId, reviewerDoc.jacsId]
-};
-
-const signedAgreement = await agent.createAgreement(agreement);
+const signedAgreement = await agent.createAgreement(
+  signedTask,
+  [agentDoc.jacsId, reviewerDoc.jacsId],
+  'Do you agree to collaborate on this content task?'
+);
 
 // Both agents sign the agreement
-await agent.signAgreement(signedAgreement.jacsId);
-await reviewer.signAgreement(signedAgreement.jacsId);
+const signed1 = await agent.signAgreement(signedAgreement);
+const signed2 = await reviewer.signAgreement(signed1);
 
-// Verify all signatures
-const agreementValid = await agent.verifyAgreement(signedAgreement.jacsId);
-console.log('Agreement complete:', agreementValid);
+// Check agreement status
+const status = await agent.checkAgreement(signed2);
+console.log('Agreement status:', JSON.parse(status));
 ```
 
 </div>
@@ -569,11 +475,14 @@ Congratulations! You've successfully:
 
 Now that you have the basics working:
 
-1. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
-2. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
-3. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
-4. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
-5. **[Real Examples](../examples/integrations.md)** - See production patterns
+1. **[Verify Signed Documents](verification.md)** - Verify any document from CLI, Python, or Node.js -- no agent required
+2. **[Framework Adapters](../python/adapters.md)** - Add auto-signing to LangChain, FastAPI, CrewAI, or Anthropic SDK in 1-3 lines
+3. **[Multi-Agent Agreements](../rust/agreements.md)** - Cross-trust-boundary verification with quorum and timeout
+4. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
+5. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
+6. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
+7. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
+8. **[Real Examples](../examples/integrations.md)** - See production patterns
 
 ## Troubleshooting
 

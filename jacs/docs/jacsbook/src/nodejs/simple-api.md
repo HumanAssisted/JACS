@@ -2,21 +2,38 @@
 
 The simplified API (`@hai.ai/jacs/simple`) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.
 
+## v0.7.0: Async-First API
+
+All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+
+```javascript
+// Async (default, recommended -- does not block the event loop)
+const signed = await jacs.signMessage({ action: 'approve' });
+
+// Sync (blocks event loop, use in scripts or CLI tools)
+const signed = jacs.signMessageSync({ action: 'approve' });
+```
+
 ## Quick Start
+
+Zero-config -- one call to start signing:
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-// Load your agent
-const agent = jacs.load('./jacs.config.json');
+await jacs.quickstart();
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+const result = await jacs.verify(signed.raw);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+```
 
-// Sign a message
-const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-console.log(`Document ID: ${signed.documentId}`);
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
 
-// Verify it
-const result = jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}`);
+To load an existing agent explicitly, use `load()` instead:
+
+```javascript
+const agent = await jacs.load('./jacs.config.json');
+const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 ```
 
 ## When to Use the Simplified API
@@ -32,19 +49,81 @@ console.log(`Valid: ${result.valid}`);
 
 ## API Reference
 
+Every function that calls into NAPI has both async (default) and sync variants:
+
+| Function | Sync Variant | Description |
+|----------|-------------|-------------|
+| `quickstart(options?)` | `quickstartSync(options?)` | Create a persistent agent with keys on disk |
+| `create(options)` | `createSync(options)` | Create a new agent programmatically |
+| `load(configPath)` | `loadSync(configPath)` | Load agent from config file |
+| `verifySelf()` | `verifySelfSync()` | Verify agent's own integrity |
+| `updateAgent(data)` | `updateAgentSync(data)` | Update agent document |
+| `updateDocument(id, data)` | `updateDocumentSync(id, data)` | Update existing document |
+| `signMessage(data)` | `signMessageSync(data)` | Sign any JSON data |
+| `signFile(path, embed)` | `signFileSync(path, embed)` | Sign a file |
+| `verify(doc)` | `verifySync(doc)` | Verify signed document |
+| `verifyById(id)` | `verifyByIdSync(id)` | Verify by storage ID |
+| `reencryptKey(old, new)` | `reencryptKeySync(old, new)` | Re-encrypt private key |
+| `createAgreement(doc, ids, ...)` | `createAgreementSync(doc, ids, ...)` | Create multi-party agreement |
+| `signAgreement(doc)` | `signAgreementSync(doc)` | Sign an agreement |
+| `checkAgreement(doc)` | `checkAgreementSync(doc)` | Check agreement status |
+| `audit(options?)` | `auditSync(options?)` | Run a security audit |
+
+Pure sync functions (no NAPI call, no suffix needed):
+
+| Function | Description |
+|----------|-------------|
+| `verifyStandalone(doc, opts?)` | Verify without loading an agent |
+| `getPublicKey()` | Get public key |
+| `isLoaded()` | Check if agent is loaded |
+| `getDnsRecord(domain, ttl?)` | Get DNS TXT record |
+| `getWellKnownJson()` | Get well-known JSON |
+| `trustAgent(json)` | Add agent to trust store |
+| `listTrustedAgents()` | List trusted agent IDs |
+| `untrustAgent(id)` | Remove from trust store |
+| `isTrusted(id)` | Check if agent is trusted |
+| `getTrustedAgent(id)` | Get trusted agent's JSON |
+| `generateVerifyLink(doc, baseUrl?)` | Generate verification URL |
+
+---
+
+### quickstart(options?)
+
+Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Call this once before `signMessage()` or `verify()`.
+
+**Parameters:**
+- `options` (object, optional): `{ algorithm?: string }`. Default algorithm: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.
+
+**Returns:** `Promise<AgentInfo>` (async) or `AgentInfo` (sync)
+
+```javascript
+const info = await jacs.quickstart();
+console.log(`Agent ID: ${info.agentId}`);
+
+// Or with a specific algorithm
+const info = await jacs.quickstart({ algorithm: 'ring-Ed25519' });
+
+// Sync variant (blocks event loop)
+const info = jacs.quickstartSync({ algorithm: 'ring-Ed25519' });
+```
+
+---
+
 ### load(configPath?)
 
-Load an agent from a configuration file. This must be called before any other operations.
+Load a persistent agent from a configuration file. Use this instead of `quickstart()` when you want to load a specific config file explicitly.
 
 **Parameters:**
 - `configPath` (string, optional): Path to jacs.config.json (default: "./jacs.config.json")
 
-**Returns:** `AgentInfo` object
+**Returns:** `Promise<AgentInfo>` (async) or `AgentInfo` (sync)
 
 ```javascript
-const info = jacs.load('./jacs.config.json');
+const info = await jacs.load('./jacs.config.json');
 console.log(`Agent ID: ${info.agentId}`);
-console.log(`Config: ${info.configPath}`);
+
+// Sync variant
+const info = jacs.loadSync('./jacs.config.json');
 ```
 
 ---
@@ -57,7 +136,7 @@ Check if an agent is currently loaded.
 
 ```javascript
 if (!jacs.isLoaded()) {
-  jacs.load('./jacs.config.json');
+  await jacs.load('./jacs.config.json');
 }
 ```
 
@@ -82,12 +161,12 @@ if (info) {
 
 Verify the loaded agent's own integrity (signature and hash).
 
-**Returns:** `VerificationResult`
+**Returns:** `Promise<VerificationResult>` (async) or `VerificationResult` (sync)
 
 **Throws:** Error if no agent is loaded
 
 ```javascript
-const result = jacs.verifySelf();
+const result = await jacs.verifySelf();
 if (result.valid) {
   console.log('Agent integrity verified');
 } else {
@@ -104,13 +183,20 @@ Sign arbitrary data as a JACS document.
 **Parameters:**
 - `data` (any): Object, array, string, or any JSON-serializable value
 
-**Returns:** `SignedDocument`
+**Returns:** `Promise<SignedDocument>` (async) or `SignedDocument` (sync)
 
 **Throws:** Error if no agent is loaded
 
 ```javascript
-// Sign an object
-const signed = jacs.signMessage({
+// Async (recommended)
+const signed = await jacs.signMessage({
+  action: 'transfer',
+  amount: 500,
+  recipient: 'agent-123'
+});
+
+// Sync
+const signed = jacs.signMessageSync({
   action: 'transfer',
   amount: 500,
   recipient: 'agent-123'
@@ -118,8 +204,6 @@ const signed = jacs.signMessage({
 
 console.log(`Document ID: ${signed.documentId}`);
 console.log(`Signed by: ${signed.agentId}`);
-console.log(`Timestamp: ${signed.timestamp}`);
-console.log(`Raw JSON: ${signed.raw}`);
 ```
 
 ---
@@ -132,16 +216,14 @@ Sign a file with optional content embedding.
 - `filePath` (string): Path to the file to sign
 - `embed` (boolean, optional): If true, embed file content in the document (default: false)
 
-**Returns:** `SignedDocument`
-
-**Throws:** Error if file not found or no agent loaded
+**Returns:** `Promise<SignedDocument>` (async) or `SignedDocument` (sync)
 
 ```javascript
 // Reference only (stores hash)
-const signed = jacs.signFile('contract.pdf', false);
+const signed = await jacs.signFile('contract.pdf', false);
 
 // Embed content (creates portable document)
-const embedded = jacs.signFile('contract.pdf', true);
+const embedded = await jacs.signFile('contract.pdf', true);
 ```
 
 ---
@@ -153,16 +235,13 @@ Verify a signed document and extract its content.
 **Parameters:**
 - `signedDocument` (string): The JSON string of the signed document
 
-**Returns:** `VerificationResult`
-
-**Throws:** Error if no agent is loaded
+**Returns:** `Promise<VerificationResult>` (async) or `VerificationResult` (sync)
 
 ```javascript
-const result = jacs.verify(signedJson);
+const result = await jacs.verify(signedJson);
 
 if (result.valid) {
   console.log(`Signed by: ${result.signerId}`);
-  console.log(`Timestamp: ${result.timestamp}`);
   console.log(`Data: ${JSON.stringify(result.data)}`);
 } else {
   console.log(`Invalid: ${result.errors.join(', ')}`);
@@ -179,7 +258,7 @@ Verify a signed document **without** loading an agent. Use when you only need to
 - `signedDocument` (string): The signed JACS document JSON
 - `options` (object, optional): `{ keyResolution?, dataDirectory?, keyDirectory? }`
 
-**Returns:** `VerificationResult` (same shape as `verify()`)
+**Returns:** `VerificationResult` (always sync -- no NAPI call)
 
 ```javascript
 const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
@@ -194,12 +273,12 @@ Run a read-only security audit and health checks. Returns an object with `risks`
 
 **Parameters:** `options` (object, optional): `{ configPath?, recentN? }`
 
-**Returns:** Object with `risks`, `health_checks`, `summary`, `overall_status`, etc.
+**Returns:** `Promise<object>` (async) or `object` (sync)
 
-See [Security Model — Security Audit](../advanced/security.md#security-audit-audit) for full details and options.
+See [Security Model -- Security Audit](../advanced/security.md#security-audit-audit) for full details and options.
 
 ```javascript
-const result = jacs.audit();
+const result = await jacs.audit();
 console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
 ```
 
@@ -214,27 +293,13 @@ This function expects a **complete agent document** (not partial updates). Use `
 **Parameters:**
 - `newAgentData` (object|string): Complete agent document as JSON string or object
 
-**Returns:** string - The updated and re-signed agent document
-
-**Throws:** Error if no agent loaded or validation fails
+**Returns:** `Promise<string>` (async) or `string` (sync) -- The updated and re-signed agent document
 
 ```javascript
-// Get current agent document
 const agentDoc = JSON.parse(jacs.exportAgent());
-
-// Modify fields
 agentDoc.jacsAgentType = 'hybrid';
-agentDoc.jacsContacts = [{ contactFirstName: 'Jane', contactLastName: 'Doe' }];
-
-// Update (creates new version, re-signs, re-hashes)
-const updated = jacs.updateAgent(agentDoc);
-const newDoc = JSON.parse(updated);
-
-console.log(`New version: ${newDoc.jacsVersion}`);
-console.log(`Previous: ${newDoc.jacsPreviousVersion}`);
+const updated = await jacs.updateAgent(agentDoc);
 ```
-
-**Valid `jacsAgentType` values:** `"human"`, `"human-org"`, `"hybrid"`, `"ai"`
 
 ---
 
@@ -242,31 +307,19 @@ console.log(`Previous: ${newDoc.jacsPreviousVersion}`);
 
 Update an existing document with new data and re-sign it.
 
-**Note:** The original document must have been saved to disk (created without `noSave: true`).
-
 **Parameters:**
 - `documentId` (string): The document ID (jacsId) to update
 - `newDocumentData` (object|string): Updated document as JSON string or object
 - `attachments` (string[], optional): Array of file paths to attach
 - `embed` (boolean, optional): If true, embed attachment contents
 
-**Returns:** `SignedDocument` with the updated document
-
-**Throws:** Error if document not found, no agent loaded, or validation fails
+**Returns:** `Promise<SignedDocument>` (async) or `SignedDocument` (sync)
 
 ```javascript
-// Create a document (must be saved to disk)
-const original = jacs.signMessage({ status: 'pending', amount: 100 });
-
-// Later, update it
+const original = await jacs.signMessage({ status: 'pending', amount: 100 });
 const doc = JSON.parse(original.raw);
 doc.content.status = 'approved';
-
-const updated = jacs.updateDocument(original.documentId, doc);
-const newDoc = JSON.parse(updated.raw);
-
-console.log(`New version: ${newDoc.jacsVersion}`);
-console.log(`Previous: ${newDoc.jacsPreviousVersion}`);
+const updated = await jacs.updateDocument(original.documentId, doc);
 ```
 
 ---
@@ -275,34 +328,19 @@ console.log(`Previous: ${newDoc.jacsPreviousVersion}`);
 
 Export the current agent document for sharing or inspection.
 
-**Returns:** string - The agent JSON document
-
-**Throws:** Error if no agent loaded
+**Returns:** string -- The agent JSON document (pure sync, no suffix needed)
 
 ```javascript
 const agentDoc = jacs.exportAgent();
-console.log(agentDoc);
-
-// Parse to inspect
 const agent = JSON.parse(agentDoc);
 console.log(`Agent type: ${agent.jacsAgentType}`);
 ```
 
 ---
 
-### registerWithHai(options?)
-
-Register the loaded agent with HAI.ai. Requires a loaded agent and an API key (`options.apiKey` or `HAI_API_KEY`).
-
-**Parameters:** `options` (object, optional): `{ apiKey?, haiUrl?, preview? }`
-
-**Returns:** `Promise<HaiRegistrationResult>` with `agentId`, `jacsId`, `dnsVerified`, `signatures`
-
----
-
 ### getDnsRecord(domain, ttl?)
 
-Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: `_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."`.
+Return the DNS TXT record line for the loaded agent. Pure sync, no suffix needed.
 
 **Parameters:** `domain` (string), `ttl` (number, optional, default 3600)
 
@@ -312,7 +350,7 @@ Return the DNS TXT record line for the loaded agent (for DNS-based discovery). F
 
 ### getWellKnownJson()
 
-Return the well-known JSON object for the loaded agent (e.g. for `/.well-known/jacs-pubkey.json`). Keys: `publicKey`, `publicKeyHash`, `algorithm`, `agentId`.
+Return the well-known JSON object for the loaded agent. Pure sync, no suffix needed.
 
 **Returns:** object
 
@@ -320,18 +358,13 @@ Return the well-known JSON object for the loaded agent (e.g. for `/.well-known/j
 
 ### getPublicKey()
 
-Get the loaded agent's public key in PEM format for sharing with others.
+Get the loaded agent's public key in PEM format. Pure sync, no suffix needed.
 
-**Returns:** string - PEM-encoded public key
-
-**Throws:** Error if no agent loaded
+**Returns:** string -- PEM-encoded public key
 
 ```javascript
 const pem = jacs.getPublicKey();
 console.log(pem);
-// -----BEGIN PUBLIC KEY-----
-// ...
-// -----END PUBLIC KEY-----
 ```
 
 ---
@@ -393,11 +426,11 @@ interface Attachment {
 const jacs = require('@hai.ai/jacs/simple');
 
 // Load agent
-const agent = jacs.load('./jacs.config.json');
+const agent = await jacs.load('./jacs.config.json');
 console.log(`Loaded agent: ${agent.agentId}`);
 
 // Verify agent integrity
-const selfCheck = jacs.verifySelf();
+const selfCheck = await jacs.verifySelf();
 if (!selfCheck.valid) {
   throw new Error('Agent integrity check failed');
 }
@@ -412,11 +445,11 @@ const transaction = {
   memo: 'Q1 Service Payment'
 };
 
-const signed = jacs.signMessage(transaction);
+const signed = await jacs.signMessage(transaction);
 console.log(`Transaction signed: ${signed.documentId}`);
 
 // Verify the transaction (simulating recipient)
-const verification = jacs.verify(signed.raw);
+const verification = await jacs.verify(signed.raw);
 
 if (verification.valid) {
   console.log(`Payment verified from: ${verification.signerId}`);
@@ -426,16 +459,13 @@ if (verification.valid) {
 }
 
 // Sign a file
-const contractSigned = jacs.signFile('./contract.pdf', true);
+const contractSigned = await jacs.signFile('./contract.pdf', true);
 console.log(`Contract signed: ${contractSigned.documentId}`);
 
 // Update agent metadata
 const agentDoc = JSON.parse(jacs.exportAgent());
 agentDoc.jacsAgentType = 'ai';
-if (!agentDoc.jacsContacts || agentDoc.jacsContacts.length === 0) {
-  agentDoc.jacsContacts = [{ contactFirstName: 'AI', contactLastName: 'Agent' }];
-}
-const updatedAgent = jacs.updateAgent(agentDoc);
+const updatedAgent = await jacs.updateAgent(agentDoc);
 console.log('Agent metadata updated');
 
 // Share public key
@@ -455,14 +485,14 @@ const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const jacs = require('@hai.ai/jacs/simple');
 
 // Load agent once at startup
-jacs.load('./jacs.config.json');
+await jacs.load('./jacs.config.json');
 
 // Define a signed tool
 server.setRequestHandler('tools/call', async (request) => {
   const { name, arguments: args } = request.params;
 
   if (name === 'approve_request') {
-    const signed = jacs.signMessage({
+    const signed = await jacs.signMessage({
       action: 'approve',
       requestId: args.requestId,
       approvedBy: jacs.getAgentInfo().agentId
@@ -483,26 +513,26 @@ server.setRequestHandler('tools/call', async (request) => {
 const jacs = require('@hai.ai/jacs/simple');
 
 try {
-  jacs.load('./missing-config.json');
+  await jacs.load('./missing-config.json');
 } catch (e) {
   console.error('Config not found:', e.message);
 }
 
 try {
   // Will fail if no agent loaded
-  jacs.signMessage({ data: 'test' });
+  await jacs.signMessage({ data: 'test' });
 } catch (e) {
   console.error('No agent:', e.message);
 }
 
 try {
-  jacs.signFile('/nonexistent/file.pdf');
+  await jacs.signFile('/nonexistent/file.pdf');
 } catch (e) {
   console.error('File not found:', e.message);
 }
 
 // Verification doesn't throw - check result.valid
-const result = jacs.verify('invalid json');
+const result = await jacs.verify('invalid json');
 if (!result.valid) {
   console.error('Verification errors:', result.errors);
 }
@@ -515,3 +545,4 @@ if (!result.valid) {
 - [Basic Usage](basic-usage.md) - JacsAgent class usage
 - [API Reference](api.md) - Complete JacsAgent API
 - [MCP Integration](mcp.md) - Model Context Protocol
+

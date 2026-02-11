@@ -2,6 +2,20 @@
 
 This chapter covers fundamental JACS operations in Node.js, including agent initialization, document creation, signing, and verification.
 
+## v0.7.0: Async-First API
+
+All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+
+```javascript
+// Async (default, recommended)
+await agent.load('./jacs.config.json');
+const doc = await agent.createDocument(JSON.stringify(content));
+
+// Sync (blocks event loop)
+agent.loadSync('./jacs.config.json');
+const doc = agent.createDocumentSync(JSON.stringify(content));
+```
+
 ## Initializing an Agent
 
 ### Create and Load Agent
@@ -12,8 +26,11 @@ import { JacsAgent } from '@hai.ai/jacs';
 // Create a new agent instance
 const agent = new JacsAgent();
 
-// Load configuration from file
-agent.load('./jacs.config.json');
+// Load configuration from file (async)
+await agent.load('./jacs.config.json');
+
+// Or use sync variant
+agent.loadSync('./jacs.config.json');
 ```
 
 ### Configuration File
@@ -39,7 +56,7 @@ Create `jacs.config.json`:
 import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
-agent.load('./jacs.config.json');
+await agent.load('./jacs.config.json');
 
 // Create a document from JSON
 const documentData = {
@@ -48,7 +65,7 @@ const documentData = {
   budget: 50000
 };
 
-const signedDocument = agent.createDocument(JSON.stringify(documentData));
+const signedDocument = await agent.createDocument(JSON.stringify(documentData));
 console.log('Signed document:', signedDocument);
 ```
 
@@ -57,7 +74,7 @@ console.log('Signed document:', signedDocument);
 Validate against a custom JSON Schema:
 
 ```javascript
-const signedDocument = agent.createDocument(
+const signedDocument = await agent.createDocument(
   JSON.stringify(documentData),
   './schemas/proposal.schema.json'  // custom schema path
 );
@@ -66,7 +83,7 @@ const signedDocument = agent.createDocument(
 ### With Output File
 
 ```javascript
-const signedDocument = agent.createDocument(
+const signedDocument = await agent.createDocument(
   JSON.stringify(documentData),
   null,                    // no custom schema
   './output/proposal.json' // output filename
@@ -76,7 +93,7 @@ const signedDocument = agent.createDocument(
 ### Without Saving
 
 ```javascript
-const signedDocument = agent.createDocument(
+const signedDocument = await agent.createDocument(
   JSON.stringify(documentData),
   null,   // no custom schema
   null,   // no output filename
@@ -87,7 +104,7 @@ const signedDocument = agent.createDocument(
 ### With Attachments
 
 ```javascript
-const signedDocument = agent.createDocument(
+const signedDocument = await agent.createDocument(
   JSON.stringify(documentData),
   null,                      // no custom schema
   null,                      // no output filename
@@ -103,7 +120,7 @@ const signedDocument = agent.createDocument(
 
 ```javascript
 // Verify a document's signature and hash
-const isValid = agent.verifyDocument(signedDocumentJson);
+const isValid = await agent.verifyDocument(signedDocumentJson);
 console.log('Document valid:', isValid);
 ```
 
@@ -111,7 +128,7 @@ console.log('Document valid:', isValid);
 
 ```javascript
 // Verify with a custom signature field
-const isValid = agent.verifySignature(
+const isValid = await agent.verifySignature(
   signedDocumentJson,
   'jacsSignature'  // signature field name
 );
@@ -134,7 +151,7 @@ const updatedData = {
   budget: 75000
 };
 
-const updatedDocument = agent.updateDocument(
+const updatedDocument = await agent.updateDocument(
   documentKey,
   JSON.stringify(updatedData)
 );
@@ -145,7 +162,7 @@ console.log('Updated document:', updatedDocument);
 ### Update with New Attachments
 
 ```javascript
-const updatedDocument = agent.updateDocument(
+const updatedDocument = await agent.updateDocument(
   documentKey,
   JSON.stringify(updatedData),
   ['./new-report.pdf'],  // new attachments
@@ -159,7 +176,7 @@ const updatedDocument = agent.updateDocument(
 
 ```javascript
 // Sign any string data
-const signature = agent.signString('Important message to sign');
+const signature = await agent.signString('Important message to sign');
 console.log('Signature:', signature);
 ```
 
@@ -167,7 +184,7 @@ console.log('Signature:', signature);
 
 ```javascript
 // Verify a signature on string data
-const isValid = agent.verifyString(
+const isValid = await agent.verifyString(
   'Important message to sign',  // original data
   signatureBase64,              // base64 signature
   publicKeyBuffer,              // public key as Buffer
@@ -181,7 +198,7 @@ const isValid = agent.verifyString(
 
 ```javascript
 // Add agreement requiring multiple agent signatures
-const documentWithAgreement = agent.createAgreement(
+const documentWithAgreement = await agent.createAgreement(
   signedDocumentJson,
   ['agent1-uuid', 'agent2-uuid'],           // required signers
   'Do you agree to these terms?',            // question
@@ -194,7 +211,7 @@ const documentWithAgreement = agent.createAgreement(
 
 ```javascript
 // Sign the agreement as the current agent
-const signedAgreement = agent.signAgreement(
+const signedAgreement = await agent.signAgreement(
   documentWithAgreementJson,
   'jacsAgreement'  // agreement field name
 );
@@ -204,7 +221,7 @@ const signedAgreement = agent.signAgreement(
 
 ```javascript
 // Check which agents have signed
-const status = agent.checkAgreement(
+const status = await agent.checkAgreement(
   documentWithAgreementJson,
   'jacsAgreement'
 );
@@ -218,18 +235,15 @@ console.log('Agreement status:', JSON.parse(status));
 
 ```javascript
 // Verify the loaded agent's signature
-const isValid = agent.verifyAgent();
+const isValid = await agent.verifyAgent();
 console.log('Agent valid:', isValid);
-
-// Verify a specific agent file
-const isValidOther = agent.verifyAgent('./other-agent.json');
 ```
 
 ### Update Agent
 
 ```javascript
 // Update agent document
-const updatedAgentJson = agent.updateAgent(JSON.stringify({
+const updatedAgentJson = await agent.updateAgent(JSON.stringify({
   jacsId: 'agent-uuid',
   jacsVersion: 'version-uuid',
   name: 'Updated Agent Name',
@@ -241,7 +255,7 @@ const updatedAgentJson = agent.updateAgent(JSON.stringify({
 
 ```javascript
 // Sign another agent's document with registration signature
-const signedAgentJson = agent.signAgent(
+const signedAgentJson = await agent.signAgent(
   externalAgentJson,
   publicKeyBuffer,
   'ring-Ed25519'
@@ -249,6 +263,8 @@ const signedAgentJson = agent.signAgent(
 ```
 
 ## Request/Response Signing
+
+These methods remain synchronous (V8-thread-only, no `Sync` suffix):
 
 ### Sign a Request
 
@@ -315,20 +331,20 @@ import { JacsAgent } from '@hai.ai/jacs';
 const agent = new JacsAgent();
 
 try {
-  agent.load('./jacs.config.json');
+  await agent.load('./jacs.config.json');
 } catch (error) {
   console.error('Failed to load agent:', error.message);
 }
 
 try {
-  const doc = agent.createDocument(JSON.stringify({ data: 'test' }));
+  const doc = await agent.createDocument(JSON.stringify({ data: 'test' }));
   console.log('Document created');
 } catch (error) {
   console.error('Failed to create document:', error.message);
 }
 
 try {
-  const isValid = agent.verifyDocument(invalidJson);
+  const isValid = await agent.verifyDocument(invalidJson);
 } catch (error) {
   console.error('Verification failed:', error.message);
 }
@@ -342,7 +358,7 @@ import { JacsAgent, hashString } from '@hai.ai/jacs';
 async function main() {
   // Initialize agent
   const agent = new JacsAgent();
-  agent.load('./jacs.config.json');
+  await agent.load('./jacs.config.json');
 
   // Create a task document
   const task = {
@@ -352,27 +368,27 @@ async function main() {
     deadline: '2024-02-01'
   };
 
-  const signedTask = agent.createDocument(JSON.stringify(task));
+  const signedTask = await agent.createDocument(JSON.stringify(task));
   console.log('Task created');
 
   // Verify the task
-  if (agent.verifyDocument(signedTask)) {
+  if (await agent.verifyDocument(signedTask)) {
     console.log('Task signature valid');
   }
 
   // Create agreement for task acceptance
-  const taskWithAgreement = agent.createAgreement(
+  const taskWithAgreement = await agent.createAgreement(
     signedTask,
     ['manager-uuid', 'developer-uuid'],
     'Do you accept this task assignment?'
   );
 
   // Sign the agreement
-  const signedAgreement = agent.signAgreement(taskWithAgreement);
+  const signedAgreement = await agent.signAgreement(taskWithAgreement);
   console.log('Agreement signed');
 
   // Check agreement status
-  const status = agent.checkAgreement(signedAgreement);
+  const status = await agent.checkAgreement(signedAgreement);
   console.log('Status:', status);
 
   // Hash some data for reference

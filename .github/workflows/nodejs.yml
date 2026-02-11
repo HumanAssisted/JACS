@@ -6,12 +6,14 @@ on:
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
+      - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
   pull_request:
     branches: [ "main" ]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
+      - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
   workflow_dispatch: # Allows manual triggering
 
@@ -51,6 +53,15 @@ jobs:
       - name: Build native module
         working-directory: jacsnpm
         run: npm run build
+
+      - name: Run cross-language tests (hermetic env)
+        working-directory: jacsnpm
+        env:
+          JACS_DATA_DIRECTORY: /tmp/does-not-exist
+          JACS_KEY_DIRECTORY: /tmp/does-not-exist
+          JACS_DEFAULT_STORAGE: memory
+          JACS_KEY_RESOLUTION: hai
+        run: npm run test:cross-language
 
       - name: Run tests
         working-directory: jacsnpm

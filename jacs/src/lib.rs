@@ -122,10 +122,74 @@ pub fn get_empty_agent() -> Agent {
     .expect("Failed to init Agent in get_empty_agent") // Panic if Agent::new fails
 }
 
+fn find_config_for_agent_path(filepath: &str) -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("jacs.config.json"));
+
+        let input = Path::new(filepath);
+        let absolute_input = if input.is_absolute() {
+            input.to_path_buf()
+        } else {
+            cwd.join(input)
+        };
+
+        if let Some(mut dir) = absolute_input.parent().map(|p| p.to_path_buf()) {
+            loop {
+                candidates.push(dir.join("jacs.config.json"));
+                if !dir.pop() {
+                    break;
+                }
+            }
+        }
+    }
+
+    candidates.into_iter().find(|p| p.exists())
+}
+
+fn prepare_agent_for_agent_path(agent: &mut Agent, filepath: &str) {
+    let Some(config_path) = find_config_for_agent_path(filepath) else {
+        debug!(
+            "[load_path_agent] No nearby jacs.config.json found for '{}'; using defaults/env",
+            filepath
+        );
+        return;
+    };
+
+    let config_path_str = config_path.to_string_lossy().to_string();
+    match crate::config::load_config_12factor_optional(Some(&config_path_str)) {
+        Ok(config) => {
+            debug!(
+                "[load_path_agent] Loaded config context from '{}'",
+                config_path.display()
+            );
+            agent.config = Some(config);
+            if let Some(root) = config_path.parent() {
+                if let Err(e) = agent.set_storage_root(root.to_path_buf()) {
+                    debug!(
+                        "[load_path_agent] Failed to re-root storage to '{}': {}",
+                        root.display(),
+                        e
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            debug!(
+                "[load_path_agent] Failed to load config '{}' (continuing with defaults/env): {}",
+                config_path.display(),
+                e
+            );
+        }
+    }
+}
+
 /// Load agent using specific path
 fn load_path_agent(filepath: String) -> Agent {
     debug!("[load_path_agent] Loading from path: {}", filepath);
     let mut agent = get_empty_agent(); // Assuming get_empty_agent() returns Agent directly
+    prepare_agent_for_agent_path(&mut agent, &filepath);
 
     // Extract filename (e.g., "ID:VERSION.json") from the full path
     let agent_filename = Path::new(&filepath)
@@ -173,6 +237,7 @@ pub fn load_agent_with_dns_strict(
 ) -> Result<agent::Agent, Box<dyn Error>> {
     let mut agent = get_empty_agent();
     agent.set_dns_strict(dns_strict);
+    prepare_agent_for_agent_path(&mut agent, &agentfile);
 
     // Extract logical ID from provided path (expects .../agent/ID:VERSION.json)
     let agent_filename = std::path::Path::new(&agentfile)

@@ -4,19 +4,24 @@ The simplified API (`jacs.simple`) provides a streamlined, module-level interfac
 
 ## Quick Start
 
+Zero-config -- one call to start signing:
+
 ```python
 import jacs.simple as jacs
 
-# Load your agent
-agent = jacs.load("./jacs.config.json")
-
-# Sign a message
+jacs.quickstart()
 signed = jacs.sign_message({"action": "approve", "amount": 100})
-print(f"Document ID: {signed.document_id}")
-
-# Verify it
 result = jacs.verify(signed.raw)
-print(f"Valid: {result.valid}")
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
+```
+
+`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` to override the default (`pq2025`).
+
+To load an existing agent explicitly, use `load()` instead:
+
+```python
+agent = jacs.load("./jacs.config.json")
+signed = jacs.sign_message({"action": "approve", "amount": 100})
 ```
 
 ## When to Use the Simplified API
@@ -32,9 +37,28 @@ print(f"Valid: {result.valid}")
 
 ## API Reference
 
+### quickstart(algorithm=None)
+
+Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Call this once before `sign_message()` or `verify()`.
+
+**Parameters:**
+- `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.
+
+**Returns:** `AgentInfo` dataclass
+
+```python
+info = jacs.quickstart()
+print(f"Agent ID: {info.agent_id}")
+
+# Or with a specific algorithm
+info = jacs.quickstart(algorithm="ring-Ed25519")
+```
+
+---
+
 ### load(config_path=None)
 
-Load an agent from a configuration file. This must be called before any other operations.
+Load a persistent agent from a configuration file. Use this instead of `quickstart()` when you want to load a specific config file explicitly.
 
 **Parameters:**
 - `config_path` (str, optional): Path to jacs.config.json (default: "./jacs.config.json")

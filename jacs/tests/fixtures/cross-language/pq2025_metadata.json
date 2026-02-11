@@ -1,0 +1,10 @@
+{
+  "agent_id": "886ee5bb-420d-4eae-81f0-b2b82751fc2f",
+  "algorithm": "pq2025",
+  "document_id": "c81636dd-d769-43c1-b83f-5fca8fd629fc",
+  "generated_by": "rust",
+  "jacs_version": "0.8.0",
+  "public_key_hash": "d7b196ba90967281130c5b7082bf683ba0b51092ba1fab6eee5b73d9df2f89fb",
+  "signing_algorithm": "pq2025",
+  "timestamp": "2026-02-11T04:32:03.862668+00:00"
+}

@@ -2,14 +2,11 @@
 """
 JACS Quickstart Example
 
-This example demonstrates the simplified JACS API in under 2 minutes.
+Sign it. Prove it. This example gets you signing in 3 lines.
 
 Usage:
-    # First, create an agent (only needed once)
-    python quickstart.py --create
-
-    # Then run the example
     python quickstart.py
+    python quickstart.py --advanced   # Load from config file instead
 """
 
 import argparse
@@ -22,26 +19,48 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
 import jacs.simple as jacs
 
 
-def create_agent():
-    """Create a new JACS agent."""
-    print("Creating a new JACS agent...")
-
-    try:
-        agent = jacs.create(name="Quickstart Agent")
-        print(f"Agent created successfully!")
-        print(f"  Agent ID: {agent.agent_id}")
-        print(f"  Algorithm: {agent.algorithm}")
-    except jacs.JacsError as e:
-        print(f"Error creating agent: {e}")
-        print("\nTry using the CLI instead:")
-        print("  jacs create")
-        sys.exit(1)
-
-
 def main():
-    """Main example demonstrating the simplified API."""
+    """Zero-config quickstart -- no config file, no setup."""
     print("=" * 60)
-    print("JACS Quickstart Example")
+    print("JACS Quickstart")
+    print("=" * 60)
+
+    # Step 1: One call creates a persistent agent with keys on disk
+    print("\n1. Creating persistent agent...")
+    info = jacs.quickstart()
+    print(f"   Agent ID: {info.agent_id}")
+    print(f"   Algorithm: {info.algorithm}")
+
+    # Step 2: Sign a message
+    print("\n2. Signing a message...")
+    signed = jacs.sign_message({"hello": "world", "action": "approve"})
+    print(f"   Document ID: {signed.document_id}")
+    print(f"   Signer: {signed.signer_id}")
+    print(f"   Signed at: {signed.signed_at}")
+
+    # Step 3: Verify it
+    print("\n3. Verifying the signed message...")
+    result = jacs.verify(signed.raw_json)
+    if result.valid:
+        print("   Signature verified!")
+        print(f"   Signer ID: {result.signer_id}")
+    else:
+        print(f"   Verification failed: {result.error}")
+
+    print("\n" + "=" * 60)
+    print("Done. Three lines to sign and verify.")
+    print("=" * 60)
+
+    print("\nNext steps:")
+    print("  - Sign a file:    jacs.sign_file('document.pdf')")
+    print("  - Export agent:   jacs.export_agent()")
+    print("  - Get public key: jacs.get_public_key()")
+
+
+def advanced():
+    """Load a persistent agent from a config file."""
+    print("=" * 60)
+    print("JACS Advanced Example (config file)")
     print("=" * 60)
 
     # Step 1: Load the agent
@@ -51,7 +70,7 @@ def main():
         print(f"   Loaded agent: {agent.agent_id}")
     except jacs.ConfigError:
         print("   No agent found. Creating one first...")
-        create_agent()
+        jacs.create(name="Quickstart Agent")
         agent = jacs.load("./jacs.config.json")
 
     # Step 2: Verify the agent's integrity
@@ -80,32 +99,21 @@ def main():
     else:
         print(f"   Verification failed: {verify_result.error}")
 
-    # Step 5: Display the signed document
-    print("\n5. Signed document (truncated):")
-    preview = signed.raw_json[:500] + "..." if len(signed.raw_json) > 500 else signed.raw_json
-    print(f"   {preview}")
-
     print("\n" + "=" * 60)
     print("Example completed successfully!")
     print("=" * 60)
-
-    # Show next steps
-    print("\nNext steps:")
-    print("  - Sign a file:    jacs.sign_file('document.pdf')")
-    print("  - Export agent:   jacs.export_agent()")
-    print("  - Get public key: jacs.get_public_key()")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="JACS Quickstart Example")
     parser.add_argument(
-        "--create",
+        "--advanced",
         action="store_true",
-        help="Create a new agent before running the example"
+        help="Load a persistent agent from config instead of using quickstart()"
     )
     args = parser.parse_args()
 
-    if args.create:
-        create_agent()
+    if args.advanced:
+        advanced()
     else:
         main()

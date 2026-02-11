@@ -10,14 +10,17 @@
  * 4. Create workflows with chain of custody
  */
 
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 const fs = require('fs').promises;
 const path = require('path');
-const jacs = require('../src/index');
+const jacs = require('../index.js');
 const {
   JACSA2AIntegration,
   A2A_PROTOCOL_VERSION,
   JACS_EXTENSION_URI
-} = require('../src/a2a');
+} = require('../src/a2a.js');
 
 // Example agent data
 const exampleAgentData = {

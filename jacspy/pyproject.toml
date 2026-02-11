@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"       
 [project]
 name = "jacs"
-version = "0.6.1"
+version = "0.8.0"
 description = "JACS - JSON AI Communication Standard: Cryptographic signing and verification for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -11,7 +11,7 @@ license = { text = "Apache-2.0 with Common Clause" }
 authors = [
     { name = "HAI.AI", email = "engineering@hai.io" },
 ]
-keywords = ["cryptography", "signing", "verification", "ai", "agents", "mcp"]
+keywords = ["cryptography", "signing", "verification", "ai", "agents", "mcp", "langgraph", "langchain", "crewai", "fastapi", "data-provenance"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -31,12 +31,25 @@ dependencies = []
 [project.optional-dependencies]
 mcp = ["fastmcp>=0.1.0"]
 hai = ["httpx>=0.24.0", "httpx-sse>=0.4.0"]
+langchain = ["langchain>=1.0.0,<2.0.0"]
+langgraph = ["langgraph>=1.0.0,<2.0.0"]
+crewai = ["crewai>=1.9.0,<2.0.0"]
+fastapi = ["fastapi>=0.115.0,<1.0.0", "starlette>=0.37.0"]
+anthropic = ["anthropic>=0.79.0"]
+all = ["jacs[mcp,hai,langchain,crewai,fastapi,anthropic]"]
 
 [project.urls] 
 Homepage = "https://github.com/HumanAssisted/JACS" 
 Issues = "https://github.com/HumanAssisted/JACS/issues"  
 
-# scripts.jacs = "jacs.cli_runner:main"
+[project.scripts]
+jacs = "jacs.cli_runner:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "asyncio: mark async tests that require an event loop",
+]
 
 [tool.maturin]
 features = ["pyo3/extension-module"] 

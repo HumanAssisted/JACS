@@ -1376,10 +1376,7 @@ pub extern "C" fn jacs_verify_signature(
 /// config_path and recent_n may be null for defaults.
 /// Returns a JSON string that must be freed with jacs_free_string(), or null on error.
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_audit(
-    config_path: *const c_char,
-    recent_n: c_int,
-) -> *mut c_char {
+pub extern "C" fn jacs_audit(config_path: *const c_char, recent_n: c_int) -> *mut c_char {
     let config = if config_path.is_null() {
         None
     } else {

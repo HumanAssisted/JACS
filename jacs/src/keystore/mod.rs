@@ -1,6 +1,9 @@
 use crate::error::JacsError;
 use std::error::Error;
+use std::fmt;
+use std::sync::Mutex;
 use tracing::warn;
+use zeroize::Zeroize;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -48,7 +51,7 @@ pub struct KeySpec {
     pub key_id: Option<String>, // Remote key identifier / ARN / URL
 }
 
-pub trait KeyStore: Send + Sync {
+pub trait KeyStore: Send + Sync + fmt::Debug {
     fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>>;
     fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>>;
     fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>>;
@@ -70,6 +73,7 @@ use crate::storage::jenv::{get_env_var, get_required_env_var};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tracing::debug;
 
+#[derive(Debug)]
 pub struct FsEncryptedStore;
 impl KeyStore for FsEncryptedStore {
     fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
@@ -279,6 +283,7 @@ impl KeyStore for FsEncryptedStore {
 
 macro_rules! unimplemented_store {
     ($name:ident) => {
+        #[derive(Debug)]
         pub struct $name;
         impl KeyStore for $name {
             fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
@@ -309,3 +314,273 @@ unimplemented_store!(AzureKeyVaultStore);
 unimplemented_store!(Pkcs11Store);
 unimplemented_store!(IosKeychainStore);
 unimplemented_store!(AndroidKeystoreStore);
+
+/// In-memory key store for ephemeral agents. Keys never touch disk.
+/// Private key bytes are zeroized on Drop.
+pub struct InMemoryKeyStore {
+    private_key: Mutex<Option<Vec<u8>>>,
+    public_key: Mutex<Option<Vec<u8>>>,
+    algorithm: String,
+}
+
+impl InMemoryKeyStore {
+    pub fn new(algorithm: &str) -> Self {
+        Self {
+            private_key: Mutex::new(None),
+            public_key: Mutex::new(None),
+            algorithm: algorithm.to_string(),
+        }
+    }
+}
+
+impl fmt::Debug for InMemoryKeyStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InMemoryKeyStore")
+            .field("algorithm", &self.algorithm)
+            .field(
+                "has_private_key",
+                &self.private_key.lock().unwrap().is_some(),
+            )
+            .field("has_public_key", &self.public_key.lock().unwrap().is_some())
+            .finish()
+    }
+}
+
+impl Drop for InMemoryKeyStore {
+    fn drop(&mut self) {
+        if let Ok(mut key) = self.private_key.lock() {
+            if let Some(ref mut bytes) = *key {
+                bytes.zeroize();
+            }
+        }
+    }
+}
+
+impl KeyStore for InMemoryKeyStore {
+    fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+        let algo = match spec.algorithm.as_str() {
+            "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
+            "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
+            "pq-dilithium" => {
+                warn!(
+                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated. \
+                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
+                );
+                CryptoSigningAlgorithm::PqDilithium
+            }
+            "pq2025" => CryptoSigningAlgorithm::Pq2025,
+            other => {
+                return Err(JacsError::CryptoError(format!(
+                    "Unsupported key algorithm: '{}'. Supported: 'ring-Ed25519', 'RSA-PSS', 'pq2025'.",
+                    other
+                ))
+                .into());
+            }
+        };
+        let (priv_key, pub_key) = match algo {
+            CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::generate_keys()?,
+            CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
+            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
+                crypt::pq::generate_keys()?
+            }
+            CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
+        };
+        // Store copies in memory — no disk, no encryption
+        *self.private_key.lock().unwrap() = Some(priv_key.clone());
+        *self.public_key.lock().unwrap() = Some(pub_key.clone());
+        Ok((priv_key, pub_key))
+    }
+
+    fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.private_key
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| "InMemoryKeyStore: no private key generated yet".into())
+    }
+
+    fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.public_key
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| "InMemoryKeyStore: no public key generated yet".into())
+    }
+
+    fn sign_detached(
+        &self,
+        private_key: &[u8],
+        message: &[u8],
+        algorithm: &str,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let algo = match algorithm {
+            "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
+            "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
+            "pq-dilithium" => {
+                warn!(
+                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated for signing. \
+                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
+                );
+                CryptoSigningAlgorithm::PqDilithium
+            }
+            "pq2025" => CryptoSigningAlgorithm::Pq2025,
+            other => {
+                return Err(
+                    JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into(),
+                );
+            }
+        };
+        let data = std::str::from_utf8(message).unwrap_or("").to_string();
+        let sig_b64 = match algo {
+            CryptoSigningAlgorithm::RsaPss => {
+                crypt::rsawrapper::sign_string(private_key.to_vec(), &data)?
+            }
+            CryptoSigningAlgorithm::RingEd25519 => {
+                crypt::ringwrapper::sign_string(private_key.to_vec(), &data)?
+            }
+            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
+                crypt::pq::sign_string(private_key.to_vec(), &data)?
+            }
+            CryptoSigningAlgorithm::Pq2025 => {
+                crypt::pq2025::sign_string(private_key.to_vec(), &data)?
+            }
+        };
+        Ok(STANDARD.decode(sig_b64)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_in_memory_generate_returns_keys() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (priv_key, pub_key) = ks.generate(&spec).unwrap();
+        assert!(!priv_key.is_empty(), "private key should not be empty");
+        assert!(!pub_key.is_empty(), "public key should not be empty");
+    }
+
+    #[test]
+    fn test_in_memory_load_private_returns_generated_key() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (priv_key, _) = ks.generate(&spec).unwrap();
+        let loaded = ks.load_private().unwrap();
+        assert_eq!(priv_key, loaded);
+    }
+
+    #[test]
+    fn test_in_memory_load_public_returns_generated_key() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (_, pub_key) = ks.generate(&spec).unwrap();
+        let loaded = ks.load_public().unwrap();
+        assert_eq!(pub_key, loaded);
+    }
+
+    #[test]
+    fn test_in_memory_load_before_generate_errors() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        assert!(ks.load_private().is_err());
+        assert!(ks.load_public().is_err());
+    }
+
+    #[test]
+    fn test_in_memory_sign_detached_produces_valid_signature() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (priv_key, pub_key) = ks.generate(&spec).unwrap();
+        let message = b"hello world";
+        let sig_bytes = ks
+            .sign_detached(&priv_key, message, "ring-Ed25519")
+            .unwrap();
+        assert!(!sig_bytes.is_empty());
+        // Verify using the public key
+        let sig_b64 = STANDARD.encode(&sig_bytes);
+        crypt::ringwrapper::verify_string(pub_key, "hello world", &sig_b64).unwrap();
+    }
+
+    #[test]
+    fn test_in_memory_no_files_on_disk() {
+        let temp = std::env::temp_dir().join("jacs_in_memory_test_no_files");
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).unwrap();
+
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let _ = ks.generate(&spec).unwrap();
+
+        // No files should have been created in the temp dir
+        let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
+        assert!(
+            entries.is_empty(),
+            "InMemoryKeyStore should not create files"
+        );
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn test_in_memory_ed25519_keys() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (priv_key, pub_key) = ks.generate(&spec).unwrap();
+        // Ed25519 PKCS8 keys are typically 83 bytes, public keys are 32 bytes
+        assert!(priv_key.len() > 30, "Ed25519 private key too small");
+        assert_eq!(pub_key.len(), 32, "Ed25519 public key should be 32 bytes");
+    }
+
+    #[test]
+    fn test_in_memory_pq2025_keys() {
+        let ks = InMemoryKeyStore::new("pq2025");
+        let spec = KeySpec {
+            algorithm: "pq2025".to_string(),
+            key_id: None,
+        };
+        let (priv_key, pub_key) = ks.generate(&spec).unwrap();
+        // ML-DSA-87 keys are large
+        assert!(
+            priv_key.len() > 1000,
+            "ML-DSA-87 private key should be large"
+        );
+        assert!(pub_key.len() > 1000, "ML-DSA-87 public key should be large");
+    }
+
+    #[test]
+    fn test_in_memory_unsupported_algorithm() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "not-a-real-algo".to_string(),
+            key_id: None,
+        };
+        assert!(ks.generate(&spec).is_err());
+    }
+
+    #[test]
+    fn test_in_memory_debug_impl() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let debug_str = format!("{:?}", ks);
+        assert!(debug_str.contains("InMemoryKeyStore"));
+        assert!(debug_str.contains("ring-Ed25519"));
+        assert!(debug_str.contains("has_private_key"));
+    }
+}

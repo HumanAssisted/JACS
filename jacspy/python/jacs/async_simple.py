@@ -91,6 +91,7 @@ async def create(
     description: str = "",
     domain: Optional[str] = None,
     default_storage: str = "fs",
+    strict: Optional[bool] = None,
 ) -> AgentInfo:
     """Create a new JACS agent with cryptographic keys.
 
@@ -136,14 +137,41 @@ async def create(
         description,
         domain,
         default_storage,
+        strict,
     )
 
 
-async def load(config_path: Optional[str] = None) -> AgentInfo:
+async def quickstart(algorithm=None, strict=None, config_path=None) -> AgentInfo:
+    """One-line agent creation with persistent keys on disk.
+
+    If a config file already exists, loads the existing agent. Otherwise,
+    creates a new agent with keys on disk and a minimal config file.
+
+    Example:
+        import jacs.async_simple as jacs
+
+        async def main():
+            await jacs.quickstart()
+            signed = await jacs.sign_message({"hello": "world"})
+
+    Args:
+        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        strict: Enable strict verification mode
+        config_path: Path to config file (default: "./jacs.config.json")
+
+    Returns:
+        AgentInfo with agent_id, name, algorithm, version
+    """
+    return await asyncio.to_thread(simple.quickstart, algorithm, strict, config_path)
+
+
+async def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> AgentInfo:
     """Load an existing JACS agent from configuration.
 
     Args:
         config_path: Path to jacs.config.json (default: ./jacs.config.json)
+        strict: Enable strict mode. When True, verification failures raise
+                exceptions instead of returning VerificationResult(valid=False).
 
     Returns:
         AgentInfo with the loaded agent's details
@@ -153,10 +181,10 @@ async def load(config_path: Optional[str] = None) -> AgentInfo:
         JacsError: If agent loading fails
 
     Example:
-        agent = await jacs.load("./jacs.config.json")
+        agent = await jacs.load("./jacs.config.json", strict=True)
         print(f"Loaded: {agent.name}")
     """
-    return await asyncio.to_thread(simple.load, config_path)
+    return await asyncio.to_thread(simple.load, config_path, strict)
 
 
 async def verify_self() -> VerificationResult:
@@ -574,6 +602,65 @@ async def fetch_remote_key(agent_id: str, version: str = "latest"):
     return await asyncio.to_thread(simple.fetch_remote_key, agent_id, version)
 
 
+def generate_verify_link(
+    document: str,
+    base_url: str = "https://hai.ai",
+) -> str:
+    """Build a verification URL for a signed JACS document.
+
+    Note: This is synchronous as it is a pure computation (no I/O).
+
+    Args:
+        document: The full signed JACS document string (JSON).
+        base_url: Base URL of the verifier (default "https://hai.ai").
+
+    Returns:
+        Full URL: {base_url}/jacs/verify?s={base64url(document)}
+    """
+    return simple.generate_verify_link(document, base_url)
+
+
+async def verify_standalone(
+    document,
+    key_resolution: str = "local",
+    data_directory=None,
+    key_directory=None,
+) -> "VerificationResult":
+    """Verify a signed JACS document without loading an agent.
+
+    Args:
+        document: Signed JACS document (JSON string or dict).
+        key_resolution: Key resolution order (default "local").
+        data_directory: Optional path for data/trust store.
+        key_directory: Optional path for public keys.
+
+    Returns:
+        VerificationResult with valid and signer_id.
+    """
+    return await asyncio.to_thread(
+        simple.verify_standalone, document, key_resolution, data_directory, key_directory
+    )
+
+
+async def verify_dns(
+    agent_document,
+    domain: str,
+) -> "VerificationResult":
+    """Verify an agent's identity via DNS TXT record lookup.
+
+    Args:
+        agent_document: The agent document to verify (JSON string or dict).
+        domain: The domain to look up.
+
+    Returns:
+        VerificationResult with valid=True if DNS record matches.
+
+    Raises:
+        NotImplementedError: Until the Rust binding is available.
+    """
+    return await asyncio.to_thread(simple.verify_dns, agent_document, domain)
+
+
 async def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
     """Get setup instructions for DNS, DNSSEC, and HAI registration.
 
@@ -637,6 +724,7 @@ def reset():
 
 __all__ = [
     # Core operations
+    "quickstart",
     "create",
     "load",
     "verify_self",
@@ -648,6 +736,9 @@ __all__ = [
     # Verification
     "verify",
     "verify_by_id",
+    "verify_standalone",
+    "verify_dns",
+    "generate_verify_link",
     # Key management
     "reencrypt_key",
     # Agreements

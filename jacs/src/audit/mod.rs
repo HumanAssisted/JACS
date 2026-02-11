@@ -876,7 +876,7 @@ fn reverify_recent_documents(config: &Config, n: u32, result: &mut AuditResult) 
     }
 
     let agent_result =
-        crate::simple::SimpleAgent::load(Some(temp_config_path.to_str().unwrap_or("")));
+        crate::simple::SimpleAgent::load(Some(temp_config_path.to_str().unwrap_or("")), None);
 
     // SAFETY: restore env; audit is single-threaded
     unsafe {

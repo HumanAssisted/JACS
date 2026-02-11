@@ -1,17 +1,10 @@
 /**
  * Tests for JACS Simple API
  *
- * The simple API provides a streamlined interface for common JACS operations:
- * - load(): Load an agent from config
- * - verifySelf(): Verify agent integrity
- * - updateAgent(): Update the agent document
- * - updateDocument(): Update an existing document
- * - signMessage(): Sign arbitrary data
- * - signFile(): Sign a file
- * - verify(): Verify a signed document
- * - getPublicKey(): Get public key
- * - getAgentInfo(): Get agent info
- * - isLoaded(): Check if agent is loaded
+ * Updated for v0.7.0 async-first API:
+ * - Functions that hit NAPI use Sync suffix for blocking variants
+ * - Pure sync helpers (getPublicKey, exportAgent, etc.) stay unchanged
+ * - Async tests added for key operations
  */
 
 const { expect } = require('chai');
@@ -33,7 +26,7 @@ try {
 const FIXTURES_DIR = path.resolve(__dirname, '../../jacs/tests/scratch');
 const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
 
-// Helper to get a fresh simple module and load it in the fixtures directory
+// Helper to get a fresh simple module and load it in the fixtures directory (sync)
 function loadSimpleInFixtures() {
   delete require.cache[require.resolve('../simple.js')];
   const freshSimple = require('../simple.js');
@@ -42,7 +35,7 @@ function loadSimpleInFixtures() {
   const originalCwd = process.cwd();
   process.chdir(FIXTURES_DIR);
   try {
-    freshSimple.load(TEST_CONFIG);
+    freshSimple.loadSync(TEST_CONFIG);
   } finally {
     process.chdir(originalCwd);
   }
@@ -51,7 +44,6 @@ function loadSimpleInFixtures() {
 }
 
 // Helper for tests that need to run in the fixtures directory context
-// (e.g., tests using exportAgent, which reads files relative to CWD)
 function runInFixturesDir(fn) {
   const originalCwd = process.cwd();
   process.chdir(FIXTURES_DIR);
@@ -60,6 +52,37 @@ function runInFixturesDir(fn) {
   } finally {
     process.chdir(originalCwd);
   }
+}
+
+function buildStandaloneKeyCacheFromSigned(signedRaw) {
+  const doc = JSON.parse(signedRaw);
+  const sig = doc.jacsSignature || {};
+  const keyHash = sig.publicKeyHash;
+  const signingAlgorithm = sig.signingAlgorithm;
+  if (!keyHash) {
+    throw new Error('Signed document missing jacsSignature.publicKeyHash');
+  }
+  if (!signingAlgorithm) {
+    throw new Error('Signed document missing jacsSignature.signingAlgorithm');
+  }
+
+  const config = JSON.parse(fs.readFileSync(TEST_CONFIG, 'utf8'));
+  const keyDir = path.resolve(FIXTURES_DIR, config.jacs_key_directory || './jacs_keys');
+  const publicKeyFile = config.jacs_agent_public_key_filename || 'jacs.public.pem';
+  const publicKeyPath = path.join(keyDir, publicKeyFile);
+  const publicKeyBytes = fs.readFileSync(publicKeyPath);
+
+  const varDir = path.resolve(__dirname, '../var');
+  fs.mkdirSync(varDir, { recursive: true });
+  const cacheDir = fs.mkdtempSync(path.join(varDir, 'standalone-key-cache-'));
+  const publicKeysDir = path.join(cacheDir, 'public_keys');
+  fs.mkdirSync(publicKeysDir, { recursive: true });
+
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), publicKeyBytes);
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.enc_type`), signingAlgorithm);
+
+  const rel = path.relative(process.cwd(), cacheDir) || '.';
+  return { cacheDir, relPath: rel };
 }
 
 describe('JACS Simple API', function() {
@@ -84,11 +107,11 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('load', () => {
+  describe('loadSync', () => {
     (simpleExists ? it : it.skip)('should throw error for non-existent config', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      expect(() => freshSimple.load('/nonexistent/jacs.config.json'))
+      expect(() => freshSimple.loadSync('/nonexistent/jacs.config.json'))
         .to.throw(/Config file not found/);
     });
 
@@ -98,6 +121,69 @@ describe('JACS Simple API', function() {
       expect(freshSimple.isLoaded()).to.be.true;
       const info = freshSimple.getAgentInfo();
       expect(info).to.have.property('agentId');
+    });
+  });
+
+  describe('load (async)', () => {
+    (simpleExists ? it : it.skip)('should reject for non-existent config', async () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      let caught = null;
+      try {
+        await freshSimple.load('/nonexistent/jacs.config.json');
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).to.not.equal(null);
+      expect(String(caught)).to.match(/Config file not found/);
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should load agent from valid config (async)', async () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const info = await freshSimple.load(TEST_CONFIG);
+        expect(freshSimple.isLoaded()).to.be.true;
+        expect(info).to.have.property('agentId');
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+  });
+
+  describe('quickstart', () => {
+    (simpleExists ? it : it.skip)('should create and load an agent at a custom configPath', async function () {
+      this.timeout(30000);
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-quickstart-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        const info = await freshSimple.quickstart({
+          algorithm: 'ring-Ed25519',
+          configPath: 'custom/jacs.config.json',
+        });
+        expect(info).to.have.property('agentId').that.is.a('string').and.not.empty;
+        expect(freshSimple.isLoaded()).to.equal(true);
+        expect(fs.existsSync(path.join(tmpDir, 'custom', 'jacs.config.json'))).to.equal(true);
+
+        const signed = await freshSimple.signMessage({ quickstart: true });
+        expect(signed.documentId).to.be.a('string').and.not.empty;
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 
@@ -118,17 +204,17 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('verifySelf', () => {
+  describe('verifySelfSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      expect(() => freshSimple.verifySelf()).to.throw(/No agent loaded/);
+      expect(() => freshSimple.verifySelfSync()).to.throw(/No agent loaded/);
     });
 
     (simpleExists && fixturesExist ? it : it.skip)('should verify a loaded agent', () => {
       const freshSimple = loadSimpleInFixtures();
 
-      const result = freshSimple.verifySelf();
+      const result = freshSimple.verifySelfSync();
       expect(result).to.be.an('object');
       expect(result).to.have.property('valid');
       expect(result.valid).to.be.true;
@@ -155,19 +241,146 @@ describe('JACS Simple API', function() {
       expect(result.valid).to.be.false;
       expect(result.signerId).to.equal('');
     });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should verify a valid signed document without a loaded agent', () => {
+      // Sign with a loaded agent, then verify standalone
+      const freshSimple = loadSimpleInFixtures();
+      const signed = freshSimple.signMessageSync({ standalone: 'test' });
+      const cache = buildStandaloneKeyCacheFromSigned(signed.raw);
+      freshSimple.reset();
+
+      delete require.cache[require.resolve('../simple.js')];
+      const cleanSimple = require('../simple.js');
+      expect(cleanSimple.isLoaded()).to.be.false;
+
+      try {
+        const result = cleanSimple.verifyStandalone(signed.raw, {
+          keyResolution: 'local',
+          dataDirectory: cache.relPath,
+          keyDirectory: cache.relPath,
+        });
+        expect(result.valid).to.be.true;
+        expect(result.signerId).to.be.a('string').and.not.empty;
+      } finally {
+        fs.rmSync(cache.cacheDir, { recursive: true, force: true });
+      }
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should reject a tampered signed document', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const signed = freshSimple.signMessageSync({ original: true });
+      const doc = JSON.parse(signed.raw);
+      doc.content = { tampered: true };
+      freshSimple.reset();
+
+      delete require.cache[require.resolve('../simple.js')];
+      const cleanSimple = require('../simple.js');
+
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const result = cleanSimple.verifyStandalone(JSON.stringify(doc));
+        expect(result.valid).to.be.false;
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should work with custom keyDirectory option', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const signed = freshSimple.signMessageSync({ customKey: true });
+      const cache = buildStandaloneKeyCacheFromSigned(signed.raw);
+      freshSimple.reset();
+
+      delete require.cache[require.resolve('../simple.js')];
+      const cleanSimple = require('../simple.js');
+
+      try {
+        const result = cleanSimple.verifyStandalone(signed.raw, {
+          keyResolution: 'local',
+          dataDirectory: cache.relPath,
+          keyDirectory: cache.relPath,
+        });
+        expect(result.valid).to.be.true;
+        expect(result.signerId).to.be.a('string').and.not.empty;
+      } finally {
+        fs.rmSync(cache.cacheDir, { recursive: true, force: true });
+      }
+    });
+
+    (simpleExists ? it : it.skip)('should return result shape with all expected fields', () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const result = freshSimple.verifyStandalone('{}');
+      expect(result).to.have.property('valid');
+      expect(result).to.have.property('signerId');
+      expect(result).to.have.property('timestamp');
+      expect(result).to.have.property('attachments');
+      expect(result).to.have.property('errors');
+      expect(result.attachments).to.be.an('array');
+      expect(result.errors).to.be.an('array');
+    });
   });
 
-  describe('signMessage', () => {
+  describe('generateVerifyLink', () => {
+    (simpleExists ? it : it.skip)('should produce a valid hai.ai URL with base64url-encoded document', () => {
+      const doc = '{"jacsId":"test","jacsSignature":{}}';
+      const url = simple.generateVerifyLink(doc);
+      expect(url).to.be.a('string');
+      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+      // Should not contain standard base64 chars that are URL-unsafe
+      const param = url.split('?s=')[1];
+      expect(param).to.not.include('+');
+      expect(param).to.not.include('/');
+      expect(param).to.not.include('=');
+    });
+
+    (simpleExists ? it : it.skip)('should allow a custom base URL', () => {
+      const doc = '{"test": true}';
+      const url = simple.generateVerifyLink(doc, 'https://custom.example.com');
+      expect(url).to.match(/^https:\/\/custom\.example\.com\/jacs\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should strip trailing slashes from base URL', () => {
+      const doc = '{"test": true}';
+      const url = simple.generateVerifyLink(doc, 'https://hai.ai///');
+      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should round-trip: decode produces the original document', () => {
+      const doc = '{"jacsId":"abc-123","content":"hello"}';
+      const url = simple.generateVerifyLink(doc);
+      const encoded = url.split('?s=')[1];
+      // Restore standard base64 padding
+      let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4 !== 0) b64 += '=';
+      const decoded = Buffer.from(b64, 'base64').toString('utf8');
+      expect(decoded).to.equal(doc);
+    });
+
+    (simpleExists ? it : it.skip)('should throw for documents exceeding max URL length', () => {
+      // Create a document larger than MAX_VERIFY_DOCUMENT_BYTES
+      const bigDoc = JSON.stringify({ data: 'x'.repeat(2000) });
+      expect(() => simple.generateVerifyLink(bigDoc)).to.throw(/max length/i);
+    });
+
+    (simpleExists ? it : it.skip)('should export MAX_VERIFY_URL_LEN and MAX_VERIFY_DOCUMENT_BYTES constants', () => {
+      expect(simple.MAX_VERIFY_URL_LEN).to.equal(2048);
+      expect(simple.MAX_VERIFY_DOCUMENT_BYTES).to.equal(1515);
+    });
+  });
+
+  describe('signMessageSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      expect(() => freshSimple.signMessage({ test: 'data' })).to.throw(/No agent loaded/);
+      expect(() => freshSimple.signMessageSync({ test: 'data' })).to.throw(/No agent loaded/);
     });
 
     (simpleExists && fixturesExist ? it : it.skip)('should sign an object', () => {
       const freshSimple = loadSimpleInFixtures();
 
-      const signed = freshSimple.signMessage({ action: 'approve', amount: 100 });
+      const signed = freshSimple.signMessageSync({ action: 'approve', amount: 100 });
 
       expect(signed).to.be.an('object');
       expect(signed).to.have.property('raw');
@@ -183,7 +396,7 @@ describe('JACS Simple API', function() {
     (simpleExists && fixturesExist ? it : it.skip)('should sign a string', () => {
       const freshSimple = loadSimpleInFixtures();
 
-      const signed = freshSimple.signMessage('Hello, JACS!');
+      const signed = freshSimple.signMessageSync('Hello, JACS!');
 
       expect(signed).to.be.an('object');
       expect(signed.raw).to.be.a('string');
@@ -207,7 +420,7 @@ describe('JACS Simple API', function() {
         }
       };
 
-      const signed = freshSimple.signMessage(data);
+      const signed = freshSimple.signMessageSync(data);
       expect(signed.documentId).to.be.a('string');
     });
   });
@@ -219,7 +432,7 @@ describe('JACS Simple API', function() {
       expect(info).to.be.an('object');
       const agentId = info.agentId;
 
-      const agreement = freshSimple.createAgreement(
+      const agreement = freshSimple.createAgreementSync(
         { proposal: 'Approve Q4 budget', amount: 10000 },
         [agentId],
         'Do you approve this budget?',
@@ -230,21 +443,21 @@ describe('JACS Simple API', function() {
 
       let pendingError = null;
       try {
-        freshSimple.checkAgreement(agreement);
+        freshSimple.checkAgreementSync(agreement);
       } catch (e) {
         pendingError = e;
       }
       expect(pendingError).to.not.equal(null);
       expect(String(pendingError)).to.match(/not all agents have signed/i);
 
-      const signed = freshSimple.signAgreement(agreement);
+      const signed = freshSimple.signAgreementSync(agreement);
       expect(signed.documentId).to.be.a('string').and.not.empty;
 
-      const complete = freshSimple.checkAgreement(signed);
+      const complete = freshSimple.checkAgreementSync(signed);
       expect(complete.complete).to.equal(true);
       expect(complete.pending).to.be.an('array').that.is.empty;
 
-      const verified = freshSimple.verify(signed.raw);
+      const verified = freshSimple.verifySync(signed.raw);
       expect(verified.valid).to.equal(true);
     });
 
@@ -252,7 +465,7 @@ describe('JACS Simple API', function() {
       const freshSimple = loadSimpleInFixtures();
       const info = freshSimple.getAgentInfo();
       const payload = JSON.stringify({ proposal: 'String payload agreement' });
-      const agreement = freshSimple.createAgreement(payload, [info.agentId]);
+      const agreement = freshSimple.createAgreementSync(payload, [info.agentId]);
       expect(agreement.documentId).to.be.a('string').and.not.empty;
     });
 
@@ -276,7 +489,7 @@ describe('JACS Simple API', function() {
         const simpleA = freshSimpleModule();
         const simpleB = freshSimpleModule();
 
-        simpleA.create({
+        simpleA.createSync({
           name: 'mocha-agent-a',
           password,
           algorithm: 'ring-Ed25519',
@@ -284,7 +497,7 @@ describe('JACS Simple API', function() {
           keyDirectory: 'agent1/keys',
           configPath: 'agent1/jacs.config.json',
         });
-        simpleB.create({
+        simpleB.createSync({
           name: 'mocha-agent-b',
           password,
           algorithm: 'ring-Ed25519',
@@ -293,15 +506,15 @@ describe('JACS Simple API', function() {
           configPath: 'agent2/jacs.config.json',
         });
 
-        simpleA.load('agent1/jacs.config.json');
-        simpleB.load('agent2/jacs.config.json');
+        simpleA.loadSync('agent1/jacs.config.json');
+        simpleB.loadSync('agent2/jacs.config.json');
 
         const infoA = simpleA.getAgentInfo();
         const infoB = simpleB.getAgentInfo();
         expect(infoA).to.be.an('object');
         expect(infoB).to.be.an('object');
 
-        const agreement = simpleA.createAgreement(
+        const agreement = simpleA.createAgreementSync(
           { proposal: 'two-party-approval', scope: 'integration-test' },
           [infoA.agentId, infoB.agentId],
           'Do both parties approve?',
@@ -309,13 +522,13 @@ describe('JACS Simple API', function() {
         );
         expect(agreement.documentId).to.be.a('string').and.not.empty;
 
-        expect(() => simpleA.checkAgreement(agreement)).to.throw(/not all agents have signed/i);
+        expect(() => simpleA.checkAgreementSync(agreement)).to.throw(/not all agents have signed/i);
 
-        const signedByA = simpleA.signAgreement(agreement);
-        expect(() => simpleA.checkAgreement(signedByA)).to.throw(/not all agents have signed/i);
+        const signedByA = simpleA.signAgreementSync(agreement);
+        expect(() => simpleA.checkAgreementSync(signedByA)).to.throw(/not all agents have signed/i);
 
-        const signedByBoth = simpleB.signAgreement(signedByA);
-        const status = simpleB.checkAgreement(signedByBoth);
+        const signedByBoth = simpleB.signAgreementSync(signedByA);
+        const status = simpleB.checkAgreementSync(signedByBoth);
         expect(status.complete).to.equal(true);
         expect(status.pending).to.be.an('array').that.is.empty;
       } finally {
@@ -325,18 +538,18 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('updateAgent', () => {
+  describe('updateAgentSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      expect(() => freshSimple.updateAgent({ name: 'test' })).to.throw(/No agent loaded/);
+      expect(() => freshSimple.updateAgentSync({ name: 'test' })).to.throw(/No agent loaded/);
     });
 
     (simpleExists && fixturesExist ? it : it.skip)('should reject incomplete agent data', () => {
       const freshSimple = loadSimpleInFixtures();
 
       // Passing incomplete data should fail validation
-      expect(() => freshSimple.updateAgent({ name: 'test' }))
+      expect(() => freshSimple.updateAgentSync({ name: 'test' }))
         .to.throw(/jacsId.*required/i);
     });
 
@@ -358,7 +571,7 @@ describe('JACS Simple API', function() {
         agent.jacsAgentType = 'hybrid';
 
         // Update with modified document
-        const result = freshSimple.updateAgent(agent);
+        const result = freshSimple.updateAgentSync(agent);
 
         expect(result).to.be.a('string');
         const doc = JSON.parse(result);
@@ -385,7 +598,7 @@ describe('JACS Simple API', function() {
 
         agent.jacsAgentType = 'human-org';
 
-        const result = freshSimple.updateAgent(JSON.stringify(agent));
+        const result = freshSimple.updateAgentSync(JSON.stringify(agent));
 
         expect(result).to.be.a('string');
         const doc = JSON.parse(result);
@@ -410,7 +623,7 @@ describe('JACS Simple API', function() {
 
         // Modify and update
         agent.jacsAgentType = 'human';
-        const result = freshSimple.updateAgent(agent);
+        const result = freshSimple.updateAgentSync(agent);
         const updated = JSON.parse(result);
 
         // Should have new version
@@ -420,43 +633,37 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('updateDocument', () => {
+  describe('updateDocumentSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      expect(() => freshSimple.updateDocument('doc-id', {})).to.throw(/No agent loaded/);
+      expect(() => freshSimple.updateDocumentSync('doc-id', {})).to.throw(/No agent loaded/);
     });
 
     (simpleExists && fixturesExist ? it : it.skip)('should fail for non-existent document', () => {
       const freshSimple = loadSimpleInFixtures();
 
       // Try to update a document that doesn't exist on disk
-      expect(() => freshSimple.updateDocument('non-existent-id', { data: 'test' }))
+      expect(() => freshSimple.updateDocumentSync('non-existent-id', { data: 'test' }))
         .to.throw(/not found|Failed to update/i);
     });
-
-    // Note: updateDocument requires the original document to be persisted to disk.
-    // For a full test, we would need to:
-    // 1. Create a document with persistence (no_save=false)
-    // 2. Then update it
-    // This is demonstrated in the integration tests with proper fixtures.
   });
 
-  describe('verify', () => {
+  describe('verifySync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      expect(() => freshSimple.verify('{}')).to.throw(/No agent loaded/);
+      expect(() => freshSimple.verifySync('{}')).to.throw(/No agent loaded/);
     });
 
     (simpleExists && fixturesExist ? it : it.skip)('should verify a valid signed document', () => {
       const freshSimple = loadSimpleInFixtures();
 
       // Sign a message first
-      const signed = freshSimple.signMessage({ test: 'verify' });
+      const signed = freshSimple.signMessageSync({ test: 'verify' });
 
       // Verify it
-      const result = freshSimple.verify(signed.raw);
+      const result = freshSimple.verifySync(signed.raw);
 
       expect(result).to.be.an('object');
       expect(result.valid).to.be.true;
@@ -467,7 +674,7 @@ describe('JACS Simple API', function() {
     (simpleExists && fixturesExist ? it : it.skip)('should reject invalid JSON', () => {
       const freshSimple = loadSimpleInFixtures();
 
-      const result = freshSimple.verify('not valid json');
+      const result = freshSimple.verifySync('not valid json');
 
       expect(result.valid).to.be.false;
       expect(result.errors).to.have.length.greaterThan(0);
@@ -477,29 +684,29 @@ describe('JACS Simple API', function() {
       const freshSimple = loadSimpleInFixtures();
 
       // Sign a message first
-      const signed = freshSimple.signMessage({ original: 'data' });
+      const signed = freshSimple.signMessageSync({ original: 'data' });
       const doc = JSON.parse(signed.raw);
 
       // Tamper with the content
       doc.content = { tampered: 'data' };
 
-      const result = freshSimple.verify(JSON.stringify(doc));
+      const result = freshSimple.verifySync(JSON.stringify(doc));
 
       expect(result.valid).to.be.false;
     });
   });
 
-  describe('signFile', () => {
+  describe('signFileSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      expect(() => freshSimple.signFile('test.txt')).to.throw(/No agent loaded/);
+      expect(() => freshSimple.signFileSync('test.txt')).to.throw(/No agent loaded/);
     });
 
     (simpleExists && fixturesExist ? it : it.skip)('should throw for non-existent file', () => {
       const freshSimple = loadSimpleInFixtures();
 
-      expect(() => freshSimple.signFile('/nonexistent/file.txt'))
+      expect(() => freshSimple.signFileSync('/nonexistent/file.txt'))
         .to.throw(/File not found/);
     });
 
@@ -511,7 +718,7 @@ describe('JACS Simple API', function() {
       fs.writeFileSync(tempFile, 'Test file content for signing');
 
       try {
-        const signed = freshSimple.signFile(tempFile, false);
+        const signed = freshSimple.signFileSync(tempFile, false);
 
         expect(signed).to.be.an('object');
         expect(signed).to.have.property('raw');
@@ -530,14 +737,12 @@ describe('JACS Simple API', function() {
       fs.writeFileSync(tempFile, fileContent);
 
       try {
-        const signed = freshSimple.signFile(tempFile, true);
+        const signed = freshSimple.signFileSync(tempFile, true);
 
         expect(signed).to.be.an('object');
         expect(signed).to.have.property('raw');
         expect(signed).to.have.property('documentId');
 
-        // Note: jacsFiles embedding only works for files within JACS data directory
-        // For files outside the data directory, signing works but embedding is skipped
         const doc = JSON.parse(signed.raw);
         expect(doc).to.have.property('jacsSignature');
       } finally {
@@ -629,7 +834,7 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('round-trip: sign and verify', () => {
+  describe('round-trip: sign and verify (sync)', () => {
     (simpleExists && fixturesExist ? it : it.skip)('should complete a full sign-verify cycle', () => {
       const freshSimple = loadSimpleInFixtures();
 
@@ -642,10 +847,10 @@ describe('JACS Simple API', function() {
       };
 
       // Sign the data
-      const signed = freshSimple.signMessage(originalData);
+      const signed = freshSimple.signMessageSync(originalData);
 
       // Verify the signed document
-      const result = freshSimple.verify(signed.raw);
+      const result = freshSimple.verifySync(signed.raw);
 
       expect(result.valid).to.be.true;
       expect(result.errors).to.be.empty;
@@ -660,7 +865,7 @@ describe('JACS Simple API', function() {
         { seq: 3, msg: 'Third' }
       ];
 
-      const signedMessages = messages.map(m => freshSimple.signMessage(m));
+      const signedMessages = messages.map(m => freshSimple.signMessageSync(m));
 
       // All should have unique document IDs
       const docIds = signedMessages.map(s => s.documentId);
@@ -669,15 +874,37 @@ describe('JACS Simple API', function() {
 
       // All should be verifiable
       for (const signed of signedMessages) {
-        const result = freshSimple.verify(signed.raw);
+        const result = freshSimple.verifySync(signed.raw);
         expect(result.valid).to.be.true;
       }
     });
   });
 
-  describe('audit', () => {
+  describe('round-trip: sign and verify (async)', () => {
+    (simpleExists && fixturesExist ? it : it.skip)('should complete a full async sign-verify cycle', async () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        await freshSimple.load(TEST_CONFIG);
+      } finally {
+        process.chdir(originalCwd);
+      }
+
+      const signed = await freshSimple.signMessage({ type: 'async-test', value: 42 });
+      expect(signed).to.have.property('raw');
+      expect(signed).to.have.property('documentId');
+
+      const result = await freshSimple.verify(signed.raw);
+      expect(result.valid).to.be.true;
+      expect(result.errors).to.be.empty;
+    });
+  });
+
+  describe('auditSync', () => {
     (simpleExists ? it : it.skip)('should return object with risks and health_checks', () => {
-      const result = simple.audit();
+      const result = simple.auditSync();
       expect(result).to.have.property('risks');
       expect(result).to.have.property('health_checks');
       expect(result.risks).to.be.an('array');
@@ -685,10 +912,20 @@ describe('JACS Simple API', function() {
     });
 
     (simpleExists ? it : it.skip)('should return summary and overall_status', () => {
-      const result = simple.audit();
+      const result = simple.auditSync();
       expect(result).to.have.property('summary');
       expect(result).to.have.property('overall_status');
       expect(result.summary).to.be.a('string');
+    });
+  });
+
+  describe('audit (async)', () => {
+    (simpleExists ? it : it.skip)('should return object with risks and health_checks (async)', async () => {
+      const result = await simple.audit();
+      expect(result).to.have.property('risks');
+      expect(result).to.have.property('health_checks');
+      expect(result.risks).to.be.an('array');
+      expect(result.health_checks).to.be.an('array');
     });
   });
 });

@@ -61,6 +61,16 @@ pub enum CryptoSigningAlgorithm {
     Pq2025, // ML-DSA-87 (FIPS-204)
 }
 
+/// Returns the list of verification algorithms actually implemented in JACS.
+pub fn supported_verification_algorithms() -> Vec<&'static str> {
+    vec!["ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"]
+}
+
+/// Returns the list of post-quantum algorithms actually implemented in JACS.
+pub fn supported_pq_algorithms() -> Vec<&'static str> {
+    vec!["pq-dilithium", "pq2025"]
+}
+
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
 pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
 
@@ -215,21 +225,36 @@ pub trait KeyManager {
     fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>>;
 }
 
-impl KeyManager for Agent {
-    /// this necessatates updateding the version of the agent
-    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+impl Agent {
+    /// Generate keys using a specific KeyStore implementation.
+    /// For ephemeral agents, uses set_keys_raw (no AES encryption).
+    /// For persistent agents, uses set_keys (AES-encrypts private key).
+    pub fn generate_keys_with_store(
+        &mut self,
+        ks: &dyn KeyStore,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let key_algorithm = config.get_key_algorithm()?;
         info!(algorithm = %key_algorithm, "Generating new keypair");
-        let ks = FsEncryptedStore;
         let spec = KeySpec {
             algorithm: key_algorithm.clone(),
             key_id: None,
         };
         let (private_key, public_key) = ks.generate(&spec)?;
-        self.set_keys(private_key, public_key, &key_algorithm)?;
+        if self.is_ephemeral() {
+            self.set_keys_raw(private_key, public_key, &key_algorithm);
+        } else {
+            self.set_keys(private_key, public_key, &key_algorithm)?;
+        }
         info!(algorithm = %key_algorithm, "Keypair generated successfully");
         Ok(())
+    }
+}
+
+impl KeyManager for Agent {
+    /// this necessatates updateding the version of the agent
+    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.generate_keys_with_store(&FsEncryptedStore)
     }
 
     fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -249,6 +274,7 @@ impl KeyManager for Agent {
             data_len = data.len(),
             "Signing data"
         );
+        let sign_start = std::time::Instant::now();
         // Validate algorithm is known (result unused but validates early)
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
             format!(
@@ -258,8 +284,6 @@ impl KeyManager for Agent {
             )
         })?;
         {
-            // Delegate to keystore; we expect detached signature bytes, return base64
-            let ks = FsEncryptedStore;
             let binding = self.get_private_key().map_err(|e| {
                 format!(
                     "Document signing failed: private key not loaded. \
@@ -267,18 +291,39 @@ impl KeyManager for Agent {
                     e
                 )
             })?;
-            // Use secure decryption - ZeroizingVec will be zeroized when it goes out of scope
-            let decrypted =
-                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
-                    .map_err(|e| {
-                        format!(
-                            "Document signing failed: could not decrypt private key. \
-                            Check that the password is correct. Error: {}",
-                            e
-                        )
-                    })?;
-            let sig_bytes = ks
-                .sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)
+
+            // Ephemeral agents: raw key, no AES decryption needed
+            // Persistent agents: AES-encrypted key, must decrypt first
+            let is_ephemeral = self.is_ephemeral();
+            let has_key_store = self.get_key_store().is_some();
+            let stored_algo = self.get_key_algorithm().cloned();
+            let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+                let raw = binding.expose_secret().clone();
+                let ks: Box<dyn KeyStore> = if has_key_store {
+                    let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                    Box::new(crate::keystore::InMemoryKeyStore::new(algo))
+                } else {
+                    Box::new(FsEncryptedStore)
+                };
+                (raw, ks)
+            } else {
+                let decrypted =
+                    crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                        .map_err(|e| {
+                            format!(
+                                "Document signing failed: could not decrypt private key. \
+                                Check that the password is correct. Error: {}",
+                                e
+                            )
+                        })?;
+                (
+                    decrypted.as_slice().to_vec(),
+                    Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+                )
+            };
+
+            let sig_bytes = ks_box
+                .sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)
                 .map_err(|e| {
                     format!(
                         "Document signing failed: cryptographic signing operation failed. \
@@ -286,10 +331,17 @@ impl KeyManager for Agent {
                         e
                     )
                 })?;
+            let sign_duration_ms = sign_start.elapsed().as_millis() as u64;
             debug!(
                 algorithm = %key_algorithm,
                 signature_len = sig_bytes.len(),
                 "Signing completed successfully"
+            );
+            info!(
+                event = "document_signed",
+                algorithm = %key_algorithm,
+                duration_ms = sign_duration_ms,
+                "Document signed"
             );
             Ok(STANDARD.encode(sig_bytes))
         }
@@ -312,6 +364,7 @@ impl KeyManager for Agent {
             )
         })?;
 
+        let batch_start = std::time::Instant::now();
         info!(
             algorithm = %key_algorithm,
             batch_size = messages.len(),
@@ -327,8 +380,6 @@ impl KeyManager for Agent {
             )
         })?;
 
-        // Decrypt the private key once for all signatures
-        let ks = FsEncryptedStore;
         let binding = self.get_private_key().map_err(|e| {
             format!(
                 "Batch signing failed: private key not loaded. \
@@ -336,17 +387,37 @@ impl KeyManager for Agent {
                 e
             )
         })?;
-        let decrypted =
-            crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
-                .map_err(|e| {
-                    format!(
-                        "Batch signing failed: could not decrypt private key. \
-                        Check that the password is correct. Error: {}",
-                        e
-                    )
-                })?;
 
-        // Sign all messages with the same decrypted key
+        // Ephemeral: raw key, no AES. Persistent: decrypt first.
+        let is_ephemeral = self.is_ephemeral();
+        let has_key_store = self.get_key_store().is_some();
+        let stored_algo = self.get_key_algorithm().cloned();
+        let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+            let raw = binding.expose_secret().clone();
+            let ks: Box<dyn KeyStore> = if has_key_store {
+                let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                Box::new(crate::keystore::InMemoryKeyStore::new(algo))
+            } else {
+                Box::new(FsEncryptedStore)
+            };
+            (raw, ks)
+        } else {
+            let decrypted =
+                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                    .map_err(|e| {
+                        format!(
+                            "Batch signing failed: could not decrypt private key. \
+                            Check that the password is correct. Error: {}",
+                            e
+                        )
+                    })?;
+            (
+                decrypted.as_slice().to_vec(),
+                Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+            )
+        };
+
+        // Sign all messages with the same key
         let mut signatures = Vec::with_capacity(messages.len());
         for (index, data) in messages.iter().enumerate() {
             trace!(
@@ -355,15 +426,22 @@ impl KeyManager for Agent {
                 data_len = data.len(),
                 "Signing batch item"
             );
-            let sig_bytes =
-                ks.sign_detached(decrypted.as_slice(), data.as_bytes(), &key_algorithm)?;
+            let sig_bytes = ks_box.sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)?;
             signatures.push(STANDARD.encode(sig_bytes));
         }
 
+        let batch_duration_ms = batch_start.elapsed().as_millis() as u64;
         debug!(
             algorithm = %key_algorithm,
             batch_size = messages.len(),
             "Batch signing completed successfully"
+        );
+        info!(
+            event = "batch_signed",
+            algorithm = %key_algorithm,
+            batch_size = messages.len(),
+            duration_ms = batch_duration_ms,
+            "Batch signing complete"
         );
 
         Ok(signatures)
@@ -383,6 +461,7 @@ impl KeyManager for Agent {
             explicit_algorithm = ?public_key_enc_type,
             "Verifying signature"
         );
+        let verify_start = std::time::Instant::now();
         // Get the signature bytes for analysis
         let signature_bytes = STANDARD.decode(signature_base64)?;
 
@@ -434,7 +513,8 @@ impl KeyManager for Agent {
             }
         };
 
-        match algo {
+        let algo_str = algo.to_string();
+        let result = match algo {
             CryptoSigningAlgorithm::RsaPss => {
                 rsawrapper::verify_string(public_key, data, signature_base64)
             }
@@ -446,27 +526,32 @@ impl KeyManager for Agent {
                 let result = pq::verify_string(public_key.clone(), data, signature_base64);
 
                 if result.is_ok() {
-                    return Ok(());
-                }
-
-                // If we encounter a signature length error and we're using PqDilithiumAlt,
-                // we could implement a special handling here for the alternative format
-                if let Err(e) = &result
+                    result
+                } else if let Err(e) = &result
                     && e.to_string().contains("BadLength")
                     && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
                 {
-                    // Here we would add special handling for the alternative format
-                    // For now, we'll just log it and fail with a more descriptive error
-                    return Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}", 
-                            signature_bytes.len(), e).into());
+                    Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}",
+                            signature_bytes.len(), e).into())
+                } else {
+                    result
                 }
-
-                // Return the original error
-                result
             }
             CryptoSigningAlgorithm::Pq2025 => {
                 pq2025::verify_string(public_key, data, signature_base64)
             }
-        }
+        };
+
+        let verify_duration_ms = verify_start.elapsed().as_millis() as u64;
+        let valid = result.is_ok();
+        info!(
+            event = "signature_verified",
+            algorithm = %algo_str,
+            valid = valid,
+            duration_ms = verify_duration_ms,
+            "Signature verification complete"
+        );
+
+        result
     }
 }

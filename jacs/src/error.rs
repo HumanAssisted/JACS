@@ -215,7 +215,7 @@ pub enum JacsError {
     VerificationClaimFailed { claim: String, reason: String },
 
     // === Agent State Errors ===
-    /// No agent is currently loaded. Call create() or load() first.
+    /// No agent is currently loaded. Call quickstart(), create(), or load() first.
     AgentNotLoaded,
 
     // === Wrapped Errors ===
@@ -439,7 +439,7 @@ impl fmt::Display for JacsError {
             JacsError::AgentNotLoaded => {
                 write!(
                     f,
-                    "No agent loaded. Call jacs.create(name=\"...\") or jacs.load() first."
+                    "No agent loaded. Call jacs.quickstart() to create or load an agent automatically, or jacs.create() / jacs.load() for explicit control."
                 )
             }
 
@@ -646,6 +646,7 @@ mod tests {
     fn test_error_display_agent_not_loaded() {
         let err = JacsError::AgentNotLoaded;
         let msg = err.to_string();
+        assert!(msg.contains("quickstart"));
         assert!(msg.contains("create"));
         assert!(msg.contains("load"));
     }

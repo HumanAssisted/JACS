@@ -9,6 +9,17 @@ import os
 import pathlib
 import pytest
 
+_JACS_PATH_ENV_VARS = (
+    "JACS_DATA_DIRECTORY",
+    "JACS_KEY_DIRECTORY",
+    "JACS_DEFAULT_STORAGE",
+    "JACS_KEY_RESOLUTION",
+    "JACS_AGENT_PRIVATE_KEY_FILENAME",
+    "JACS_AGENT_PUBLIC_KEY_FILENAME",
+    "JACS_AGENT_ID_AND_VERSION",
+    "JACS_AGENT_KEY_ALGORITHM",
+)
+
 
 def get_shared_fixtures_path():
     """Get path to shared test fixtures in jacs/tests/scratch/."""
@@ -53,6 +64,14 @@ def ensure_private_key_password():
         yield
     finally:
         os.environ.pop(password_env, None)
+
+
+@pytest.fixture(autouse=True)
+def isolate_jacs_path_env(monkeypatch):
+    """Prevent leaked path/config env vars from changing fixture resolution."""
+    for key in _JACS_PATH_ENV_VARS:
+        monkeypatch.delenv(key, raising=False)
+    yield
 
 
 @pytest.fixture

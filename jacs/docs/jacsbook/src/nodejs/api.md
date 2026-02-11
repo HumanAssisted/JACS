@@ -8,6 +8,20 @@ Complete API documentation for the `@hai.ai/jacs` Node.js package.
 npm install @hai.ai/jacs
 ```
 
+## v0.7.0: Async-First API
+
+All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+
+```javascript
+// Async (default, recommended)
+await agent.load('./jacs.config.json');
+const doc = await agent.createDocument(JSON.stringify(content));
+
+// Sync (blocks event loop)
+agent.loadSync('./jacs.config.json');
+const doc = agent.createDocumentSync(JSON.stringify(content));
+```
+
 ## Core Module
 
 ```javascript
@@ -26,35 +40,41 @@ The `JacsAgent` class is the primary interface for JACS operations. Each instanc
 new JacsAgent()
 ```
 
-Creates a new empty JacsAgent instance. Call `load()` to initialize with a configuration.
+Creates a new empty JacsAgent instance. Call `load()` or `loadSync()` to initialize with a configuration.
 
 **Example:**
 ```javascript
 const agent = new JacsAgent();
-agent.load('./jacs.config.json');
+await agent.load('./jacs.config.json');
 ```
 
 ---
 
-### agent.load(configPath)
+### agent.load(configPath) / agent.loadSync(configPath)
 
 Load and initialize the agent from a configuration file.
 
 **Parameters:**
 - `configPath` (string): Path to the JACS configuration file
 
-**Returns:** string - The loaded agent's JSON
+**Returns:** `Promise<string>` (async) or `string` (sync) -- The loaded agent's JSON
 
 **Example:**
 ```javascript
 const agent = new JacsAgent();
-const agentJson = agent.load('./jacs.config.json');
+
+// Async (recommended)
+const agentJson = await agent.load('./jacs.config.json');
+
+// Sync
+const agentJson = agent.loadSync('./jacs.config.json');
+
 console.log('Agent loaded:', JSON.parse(agentJson).jacsId);
 ```
 
 ---
 
-### agent.createDocument(documentString, customSchema?, outputFilename?, noSave?, attachments?, embed?)
+### agent.createDocument(...) / agent.createDocumentSync(...)
 
 Create and sign a new JACS document.
 
@@ -66,65 +86,45 @@ Create and sign a new JACS document.
 - `attachments` (string, optional): Path to file attachments
 - `embed` (boolean, optional): If true, embed attachments in the document
 
-**Returns:** string - The signed document as a JSON string
+**Returns:** `Promise<string>` (async) or `string` (sync) -- The signed document as a JSON string
 
 **Example:**
 ```javascript
-// Basic document creation
-const doc = agent.createDocument(JSON.stringify({
+// Basic document creation (async)
+const doc = await agent.createDocument(JSON.stringify({
   title: 'My Document',
   content: 'Hello, World!'
 }));
 
-// With custom schema
-const validatedDoc = agent.createDocument(
-  JSON.stringify({ title: 'Validated', amount: 100 }),
-  './schemas/invoice.schema.json'
-);
-
-// Without saving
-const tempDoc = agent.createDocument(
+// Without saving (sync)
+const tempDoc = agent.createDocumentSync(
   JSON.stringify({ data: 'temporary' }),
-  null,
-  null,
-  true  // noSave = true
-);
-
-// With attachments
-const docWithFile = agent.createDocument(
-  JSON.stringify({ report: 'Monthly Report' }),
-  null,
-  null,
-  false,
-  './report.pdf',
-  true  // embed = true
+  null, null, true
 );
 ```
 
 ---
 
-### agent.verifyDocument(documentString)
+### agent.verifyDocument(...) / agent.verifyDocumentSync(...)
 
 Verify a document's signature and hash integrity.
 
 **Parameters:**
 - `documentString` (string): The signed document JSON string
 
-**Returns:** boolean - True if the document is valid
+**Returns:** `Promise<boolean>` (async) or `boolean` (sync) -- True if the document is valid
 
 **Example:**
 ```javascript
-const isValid = agent.verifyDocument(signedDocumentJson);
+const isValid = await agent.verifyDocument(signedDocumentJson);
 if (isValid) {
   console.log('Document signature verified');
-} else {
-  console.log('Document verification failed');
 }
 ```
 
 ---
 
-### agent.verifySignature(documentString, signatureField?)
+### agent.verifySignature(...) / agent.verifySignatureSync(...)
 
 Verify a document's signature with an optional custom signature field.
 
@@ -132,20 +132,11 @@ Verify a document's signature with an optional custom signature field.
 - `documentString` (string): The signed document JSON string
 - `signatureField` (string, optional): Name of the signature field (default: 'jacsSignature')
 
-**Returns:** boolean - True if the signature is valid
-
-**Example:**
-```javascript
-// Verify default signature field
-const isValid = agent.verifySignature(docJson);
-
-// Verify custom signature field
-const isValidCustom = agent.verifySignature(docJson, 'customSignature');
-```
+**Returns:** `Promise<boolean>` (async) or `boolean` (sync)
 
 ---
 
-### agent.updateDocument(documentKey, newDocumentString, attachments?, embed?)
+### agent.updateDocument(...) / agent.updateDocumentSync(...)
 
 Update an existing document, creating a new version.
 
@@ -155,28 +146,21 @@ Update an existing document, creating a new version.
 - `attachments` (Array<string>, optional): Array of attachment file paths
 - `embed` (boolean, optional): If true, embed attachments
 
-**Returns:** string - The updated document as a JSON string
+**Returns:** `Promise<string>` (async) or `string` (sync)
 
 **Example:**
 ```javascript
-// Parse existing document to get key
 const doc = JSON.parse(signedDoc);
 const documentKey = `${doc.jacsId}:${doc.jacsVersion}`;
-
-// Update the document
-const updatedDoc = agent.updateDocument(
+const updatedDoc = await agent.updateDocument(
   documentKey,
-  JSON.stringify({
-    ...doc,
-    title: 'Updated Title',
-    content: 'Modified content'
-  })
+  JSON.stringify({ ...doc, title: 'Updated Title' })
 );
 ```
 
 ---
 
-### agent.createAgreement(documentString, agentIds, question?, context?, agreementFieldName?)
+### agent.createAgreement(...) / agent.createAgreementSync(...)
 
 Add an agreement requiring multiple agent signatures to a document.
 
@@ -184,84 +168,49 @@ Add an agreement requiring multiple agent signatures to a document.
 - `documentString` (string): The document JSON string
 - `agentIds` (Array<string>): Array of agent IDs required to sign
 - `question` (string, optional): The agreement question
-- `context` (string, optional): Additional context for the agreement
-- `agreementFieldName` (string, optional): Field name for the agreement (default: 'jacsAgreement')
+- `context` (string, optional): Additional context
+- `agreementFieldName` (string, optional): Field name (default: 'jacsAgreement')
 
-**Returns:** string - The document with agreement as a JSON string
-
-**Example:**
-```javascript
-const docWithAgreement = agent.createAgreement(
-  signedDocumentJson,
-  ['agent-1-uuid', 'agent-2-uuid', 'agent-3-uuid'],
-  'Do you agree to these terms?',
-  'Q1 2024 Service Agreement',
-  'jacsAgreement'
-);
-```
+**Returns:** `Promise<string>` (async) or `string` (sync)
 
 ---
 
-### agent.signAgreement(documentString, agreementFieldName?)
+### agent.signAgreement(...) / agent.signAgreementSync(...)
 
 Sign an agreement as the current agent.
 
 **Parameters:**
 - `documentString` (string): The document with agreement JSON string
-- `agreementFieldName` (string, optional): Field name of the agreement (default: 'jacsAgreement')
+- `agreementFieldName` (string, optional): Field name (default: 'jacsAgreement')
 
-**Returns:** string - The document with this agent's signature added
-
-**Example:**
-```javascript
-const signedAgreement = agent.signAgreement(
-  docWithAgreementJson,
-  'jacsAgreement'
-);
-```
+**Returns:** `Promise<string>` (async) or `string` (sync)
 
 ---
 
-### agent.checkAgreement(documentString, agreementFieldName?)
+### agent.checkAgreement(...) / agent.checkAgreementSync(...)
 
-Check the status of an agreement (which agents have signed).
+Check the status of an agreement.
 
 **Parameters:**
 - `documentString` (string): The document with agreement JSON string
-- `agreementFieldName` (string, optional): Field name of the agreement (default: 'jacsAgreement')
+- `agreementFieldName` (string, optional): Field name (default: 'jacsAgreement')
 
-**Returns:** string - JSON string with agreement status
-
-**Example:**
-```javascript
-const statusJson = agent.checkAgreement(signedAgreementJson);
-const status = JSON.parse(statusJson);
-
-console.log('Required signers:', status.required);
-console.log('Signatures received:', status.signed);
-console.log('Complete:', status.complete);
-```
+**Returns:** `Promise<string>` (async) or `string` (sync) -- JSON string with agreement status
 
 ---
 
-### agent.signString(data)
+### agent.signString(...) / agent.signStringSync(...)
 
 Sign arbitrary string data with the agent's private key.
 
 **Parameters:**
 - `data` (string): The data to sign
 
-**Returns:** string - Base64-encoded signature
-
-**Example:**
-```javascript
-const signature = agent.signString('Important message');
-console.log('Signature:', signature);
-```
+**Returns:** `Promise<string>` (async) or `string` (sync) -- Base64-encoded signature
 
 ---
 
-### agent.verifyString(data, signatureBase64, publicKey, publicKeyEncType)
+### agent.verifyString(...) / agent.verifyStringSync(...)
 
 Verify a signature on arbitrary string data.
 
@@ -271,118 +220,66 @@ Verify a signature on arbitrary string data.
 - `publicKey` (Buffer): The public key as a Buffer
 - `publicKeyEncType` (string): The key algorithm (e.g., 'ring-Ed25519')
 
-**Returns:** boolean - True if the signature is valid
-
-**Example:**
-```javascript
-const isValid = agent.verifyString(
-  'Important message',
-  signatureBase64,
-  publicKeyBuffer,
-  'ring-Ed25519'
-);
-```
+**Returns:** `Promise<boolean>` (async) or `boolean` (sync)
 
 ---
 
-### agent.signRequest(params)
+### agent.signRequest(params) -- V8-thread-only
 
-Sign a request payload, wrapping it in a JACS document.
+Sign a request payload, wrapping it in a JACS document. This method is synchronous (no `Sync` suffix) because it uses V8-thread-only APIs.
 
 **Parameters:**
 - `params` (any): The request payload object
 
-**Returns:** string - JACS-signed request as a JSON string
-
-**Example:**
-```javascript
-const signedRequest = agent.signRequest({
-  method: 'GET',
-  path: '/api/data',
-  timestamp: new Date().toISOString(),
-  body: { query: 'value' }
-});
-```
+**Returns:** string -- JACS-signed request as a JSON string
 
 ---
 
-### agent.verifyResponse(documentString)
+### agent.verifyResponse(documentString) -- V8-thread-only
 
-Verify a JACS-signed response and extract the payload.
+Verify a JACS-signed response and extract the payload. Synchronous only.
 
 **Parameters:**
 - `documentString` (string): The JACS-signed response
 
-**Returns:** object - Object containing the verified payload
-
-**Example:**
-```javascript
-const result = agent.verifyResponse(jacsResponseString);
-const payload = result.payload;
-console.log('Verified payload:', payload);
-```
+**Returns:** object -- Object containing the verified payload
 
 ---
 
-### agent.verifyResponseWithAgentId(documentString)
+### agent.verifyResponseWithAgentId(documentString) -- V8-thread-only
 
-Verify a response and return both the payload and signer's agent ID.
+Verify a response and return both the payload and signer's agent ID. Synchronous only.
 
 **Parameters:**
 - `documentString` (string): The JACS-signed response
 
-**Returns:** object - Object with payload and agent ID
-
-**Example:**
-```javascript
-const result = agent.verifyResponseWithAgentId(jacsResponseString);
-console.log('Payload:', result.payload);
-console.log('Signed by agent:', result.agentId);
-```
+**Returns:** object -- Object with payload and agent ID
 
 ---
 
-### agent.verifyAgent(agentFile?)
+### agent.verifyAgent(...) / agent.verifyAgentSync(...)
 
 Verify the agent's own signature and hash, or verify another agent file.
 
 **Parameters:**
 - `agentFile` (string, optional): Path to an agent file to verify
 
-**Returns:** boolean - True if the agent is valid
-
-**Example:**
-```javascript
-// Verify the loaded agent
-const isValid = agent.verifyAgent();
-
-// Verify another agent file
-const isOtherValid = agent.verifyAgent('./other-agent.json');
-```
+**Returns:** `Promise<boolean>` (async) or `boolean` (sync)
 
 ---
 
-### agent.updateAgent(newAgentString)
+### agent.updateAgent(...) / agent.updateAgentSync(...)
 
 Update the agent document with new data.
 
 **Parameters:**
 - `newAgentString` (string): The modified agent document as JSON string
 
-**Returns:** string - The updated agent document
-
-**Example:**
-```javascript
-const currentAgent = JSON.parse(agent.load('./jacs.config.json'));
-const updatedAgent = agent.updateAgent(JSON.stringify({
-  ...currentAgent,
-  description: 'Updated description'
-}));
-```
+**Returns:** `Promise<string>` (async) or `string` (sync)
 
 ---
 
-### agent.signAgent(agentString, publicKey, publicKeyEncType)
+### agent.signAgent(...) / agent.signAgentSync(...)
 
 Sign another agent's document with a registration signature.
 
@@ -391,16 +288,7 @@ Sign another agent's document with a registration signature.
 - `publicKey` (Buffer): The public key as a Buffer
 - `publicKeyEncType` (string): The key algorithm
 
-**Returns:** string - The signed agent document
-
-**Example:**
-```javascript
-const signedAgent = agent.signAgent(
-  externalAgentJson,
-  publicKeyBuffer,
-  'ring-Ed25519'
-);
-```
+**Returns:** `Promise<string>` (async) or `string` (sync)
 
 ---
 
@@ -413,14 +301,11 @@ Hash a string using SHA-256.
 **Parameters:**
 - `data` (string): The string to hash
 
-**Returns:** string - Hexadecimal hash string
+**Returns:** string -- Hexadecimal hash string
 
-**Example:**
 ```javascript
 import { hashString } from '@hai.ai/jacs';
-
 const hash = hashString('data to hash');
-console.log('SHA-256:', hash);
 ```
 
 ---
@@ -430,37 +315,17 @@ console.log('SHA-256:', hash);
 Create a JACS configuration JSON string programmatically.
 
 **Parameters:**
-- `jacsUseSecurity` (string, optional): Enable security features
-- `jacsDataDirectory` (string, optional): Directory for data storage
-- `jacsKeyDirectory` (string, optional): Directory for key storage
-- `jacsAgentPrivateKeyFilename` (string, optional): Private key filename
-- `jacsAgentPublicKeyFilename` (string, optional): Public key filename
-- `jacsAgentKeyAlgorithm` (string, optional): Signing algorithm
-- `jacsPrivateKeyPassword` (string, optional): Password for private key
-- `jacsAgentIdAndVersion` (string, optional): Agent ID and version to load
-- `jacsDefaultStorage` (string, optional): Storage backend ('fs', 's3', 'memory')
+- `jacsUseSecurity` (string, optional)
+- `jacsDataDirectory` (string, optional)
+- `jacsKeyDirectory` (string, optional)
+- `jacsAgentPrivateKeyFilename` (string, optional)
+- `jacsAgentPublicKeyFilename` (string, optional)
+- `jacsAgentKeyAlgorithm` (string, optional)
+- `jacsPrivateKeyPassword` (string, optional)
+- `jacsAgentIdAndVersion` (string, optional)
+- `jacsDefaultStorage` (string, optional)
 
-**Returns:** string - Configuration as JSON string
-
-**Example:**
-```javascript
-import { createConfig } from '@hai.ai/jacs';
-
-const configJson = createConfig(
-  undefined,           // jacsUseSecurity
-  './jacs_data',       // jacsDataDirectory
-  './jacs_keys',       // jacsKeyDirectory
-  undefined,           // private key filename
-  undefined,           // public key filename
-  'ring-Ed25519',      // algorithm
-  undefined,           // password
-  undefined,           // agent id
-  'fs'                 // storage
-);
-
-// Write to file
-fs.writeFileSync('jacs.config.json', configJson);
-```
+**Returns:** string -- Configuration as JSON string
 
 ---
 
@@ -479,21 +344,6 @@ Express middleware for JACS request/response handling.
 
 **Returns:** Express middleware function
 
-**Example:**
-```javascript
-import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
-
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({
-  configPath: './jacs.config.json'
-}));
-
-app.post('/api/data', (req, res) => {
-  // req.jacsPayload contains verified payload
-  res.send({ received: req.jacsPayload });
-});
-```
-
 ---
 
 ### JACSKoaMiddleware(options)
@@ -504,20 +354,6 @@ Koa middleware for JACS request/response handling.
 - `options.configPath` (string): Path to JACS configuration file
 
 **Returns:** Koa middleware function
-
-**Example:**
-```javascript
-import { JACSKoaMiddleware } from '@hai.ai/jacs/http';
-
-app.use(JACSKoaMiddleware({
-  configPath: './jacs.config.json'
-}));
-
-app.use(async (ctx) => {
-  // ctx.state.jacsPayload contains verified payload
-  ctx.body = { received: ctx.state.jacsPayload };
-});
-```
 
 ---
 
@@ -531,22 +367,6 @@ import {
 } from '@hai.ai/jacs/mcp';
 ```
 
-### JACSTransportProxy
-
-Class that wraps MCP transports with JACS encryption.
-
-**Constructor:**
-```javascript
-new JACSTransportProxy(transport, role, jacsConfigPath)
-```
-
-**Parameters:**
-- `transport`: Any MCP transport (Stdio, SSE, WebSocket)
-- `role` (string): 'server' or 'client'
-- `jacsConfigPath` (string): Path to JACS configuration file
-
----
-
 ### createJACSTransportProxy(transport, configPath, role)
 
 Factory function for creating a transport proxy.
@@ -558,37 +378,13 @@ Factory function for creating a transport proxy.
 
 **Returns:** JACSTransportProxy instance
 
-**Example:**
-```javascript
-import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-
-const baseTransport = new StdioServerTransport();
-const secureTransport = createJACSTransportProxy(
-  baseTransport,
-  './jacs.config.json',
-  'server'
-);
-```
-
 ---
 
 ### createJACSTransportProxyAsync(transport, configPath, role)
 
 Async factory that waits for JACS to be fully loaded.
 
-**Parameters:** Same as `createJACSTransportProxy`
-
 **Returns:** Promise<JACSTransportProxy>
-
-**Example:**
-```javascript
-const secureTransport = await createJACSTransportProxyAsync(
-  baseTransport,
-  './jacs.config.json',
-  'server'
-);
-```
 
 ---
 
@@ -601,11 +397,6 @@ import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
 
 const agent: JacsAgent = new JacsAgent();
 const hash: string = hashString('data');
-const config: string = createConfig(
-  undefined,
-  './data',
-  './keys'
-);
 ```
 
 ---
@@ -614,35 +405,41 @@ const config: string = createConfig(
 
 The following module-level functions are deprecated. Use `new JacsAgent()` and instance methods instead:
 
-- `load()` - Use `agent.load()`
-- `signAgent()` - Use `agent.signAgent()`
-- `verifyString()` - Use `agent.verifyString()`
-- `signString()` - Use `agent.signString()`
-- `verifyAgent()` - Use `agent.verifyAgent()`
-- `updateAgent()` - Use `agent.updateAgent()`
-- `verifyDocument()` - Use `agent.verifyDocument()`
-- `updateDocument()` - Use `agent.updateDocument()`
-- `verifySignature()` - Use `agent.verifySignature()`
-- `createAgreement()` - Use `agent.createAgreement()`
-- `signAgreement()` - Use `agent.signAgreement()`
-- `createDocument()` - Use `agent.createDocument()`
-- `checkAgreement()` - Use `agent.checkAgreement()`
-- `signRequest()` - Use `agent.signRequest()`
-- `verifyResponse()` - Use `agent.verifyResponse()`
-- `verifyResponseWithAgentId()` - Use `agent.verifyResponseWithAgentId()`
+- `load()` -> Use `agent.load()` / `agent.loadSync()`
+- `signAgent()` -> Use `agent.signAgent()` / `agent.signAgentSync()`
+- `verifyString()` -> Use `agent.verifyString()` / `agent.verifyStringSync()`
+- `signString()` -> Use `agent.signString()` / `agent.signStringSync()`
+- `verifyAgent()` -> Use `agent.verifyAgent()` / `agent.verifyAgentSync()`
+- `updateAgent()` -> Use `agent.updateAgent()` / `agent.updateAgentSync()`
+- `verifyDocument()` -> Use `agent.verifyDocument()` / `agent.verifyDocumentSync()`
+- `updateDocument()` -> Use `agent.updateDocument()` / `agent.updateDocumentSync()`
+- `verifySignature()` -> Use `agent.verifySignature()` / `agent.verifySignatureSync()`
+- `createAgreement()` -> Use `agent.createAgreement()` / `agent.createAgreementSync()`
+- `signAgreement()` -> Use `agent.signAgreement()` / `agent.signAgreementSync()`
+- `createDocument()` -> Use `agent.createDocument()` / `agent.createDocumentSync()`
+- `checkAgreement()` -> Use `agent.checkAgreement()` / `agent.checkAgreementSync()`
+- `signRequest()` -> Use `agent.signRequest()` (V8-thread-only, sync)
+- `verifyResponse()` -> Use `agent.verifyResponse()` (V8-thread-only, sync)
+- `verifyResponseWithAgentId()` -> Use `agent.verifyResponseWithAgentId()` (V8-thread-only, sync)
 
 **Migration Example:**
 ```javascript
-// Old (deprecated)
+// Old (deprecated, v0.6.x)
 import jacs from '@hai.ai/jacs';
-await jacs.load('./jacs.config.json');
+jacs.load('./jacs.config.json');
 const doc = jacs.createDocument(JSON.stringify({ data: 'test' }));
 
-// New (recommended)
+// New (v0.7.0, async)
 import { JacsAgent } from '@hai.ai/jacs';
 const agent = new JacsAgent();
-agent.load('./jacs.config.json');
-const doc = agent.createDocument(JSON.stringify({ data: 'test' }));
+await agent.load('./jacs.config.json');
+const doc = await agent.createDocument(JSON.stringify({ data: 'test' }));
+
+// New (v0.7.0, sync)
+import { JacsAgent } from '@hai.ai/jacs';
+const agent = new JacsAgent();
+agent.loadSync('./jacs.config.json');
+const doc = agent.createDocumentSync(JSON.stringify({ data: 'test' }));
 ```
 
 ---
@@ -654,8 +451,8 @@ All methods may throw errors. Use try/catch for error handling:
 ```javascript
 try {
   const agent = new JacsAgent();
-  agent.load('./jacs.config.json');
-  const doc = agent.createDocument(JSON.stringify({ data: 'test' }));
+  await agent.load('./jacs.config.json');
+  const doc = await agent.createDocument(JSON.stringify({ data: 'test' }));
 } catch (error) {
   console.error('JACS error:', error.message);
 }

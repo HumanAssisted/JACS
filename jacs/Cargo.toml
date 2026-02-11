@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.6.1"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -113,6 +113,7 @@ tokio = { version = "1.0", features = ["rt-multi-thread"], optional = true }
 
 
 [dev-dependencies]
+jacs-binding-core = { path = "../binding-core" }
 color-eyre = "0.6"
 criterion = "0.6.0"
 mdbook = "0.4.48"
@@ -190,6 +191,10 @@ otlp-tracing = [
 
 [[bench]]
 name = "sign_and_check_sig"
+harness = false
+
+[[bench]]
+name = "agreement_benchmarks"
 harness = false
 
 [package.metadata.cargo-install]

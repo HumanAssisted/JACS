@@ -39,7 +39,7 @@ jobs:
               cd /workspace/jacspy && \
               /opt/python/cp311-cp311/bin/python3.11 -m venv .venv && \
               source .venv/bin/activate && \
-              pip install maturin pytest && \
+              pip install maturin pytest pytest-asyncio && \
               pip install fastmcp mcp starlette && \
               make test-python"
 
@@ -88,7 +88,7 @@ jobs:
           set -euo pipefail
           uv venv /tmp/jacs-wheel-smoke
           uv pip install --python /tmp/jacs-wheel-smoke/bin/python dist/jacs-*.whl
-          uv run --python /tmp/jacs-wheel-smoke/bin/python python - <<'PY'
+          /tmp/jacs-wheel-smoke/bin/python - <<'PY'
           import jacs
           import jacs.simple
           import jacs.hai

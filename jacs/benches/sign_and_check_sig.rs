@@ -2,7 +2,9 @@ use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
+use jacs::simple::SimpleAgent;
 use log::debug;
+use serde_json::json;
 
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use jacs::storage::jenv::set_env_var;
@@ -152,6 +154,24 @@ fn benchmark_pq(c: &mut Criterion) {
     });
 }
 
+fn benchmark_pq2025(c: &mut Criterion) {
+    // Use SimpleAgent::ephemeral to create a pq2025 agent with in-memory keys
+    let (agent, _info) =
+        SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create ephemeral pq2025 agent");
+    let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
+    c.bench_function("pq2025", |b| {
+        for document in &documents {
+            let data: serde_json::Value = serde_json::from_str(document).unwrap();
+            b.iter(|| {
+                black_box({
+                    let signed = agent.sign_message(&data).unwrap();
+                    agent.verify(&signed.raw).unwrap();
+                });
+            })
+        }
+    });
+}
+
 fn benchmark_ring(c: &mut Criterion) {
     set_enc_to_ring();
     let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
@@ -182,6 +202,6 @@ fn benchmark_ring(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = configure_criterion();
-    targets = benchmark_rsa, benchmark_pq, benchmark_ring
+    targets = benchmark_rsa, benchmark_pq, benchmark_pq2025, benchmark_ring
 }
 criterion_main!(benches);

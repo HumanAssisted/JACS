@@ -102,6 +102,7 @@ class TestJacsAgentClass:
         expected_methods = [
             "load",
             "sign_string",
+            "sign_batch",
             "verify_string",
             "sign_request",
             "verify_response",
@@ -217,6 +218,31 @@ class TestJacsAgentWithFixtures:
         agent_id, payload = result
         assert isinstance(agent_id, str)
         assert payload == request_data
+
+    @pytest.mark.skipif(
+        os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,
+        reason="JACS_PRIVATE_KEY_PASSWORD not set"
+    )
+    def test_sign_batch(self, loaded_agent):
+        """Test batch signing returns one signature per message."""
+        messages = ["message one", "message two", "message three"]
+        signatures = loaded_agent.sign_batch(messages)
+        assert isinstance(signatures, list)
+        assert len(signatures) == len(messages)
+        for sig in signatures:
+            assert isinstance(sig, str)
+            assert len(sig) > 0
+        # Different messages should produce different signatures
+        assert len(set(signatures)) == len(signatures)
+
+    @pytest.mark.skipif(
+        os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,
+        reason="JACS_PRIVATE_KEY_PASSWORD not set"
+    )
+    def test_sign_batch_empty(self, loaded_agent):
+        """Test batch signing with empty list returns empty list."""
+        signatures = loaded_agent.sign_batch([])
+        assert signatures == []
 
 
 class TestCreateConfig:

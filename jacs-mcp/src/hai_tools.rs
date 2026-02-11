@@ -639,6 +639,77 @@ pub struct AdoptStateResult {
 }
 
 // =============================================================================
+// Document Sign/Verify Request/Response Types
+// =============================================================================
+
+/// Parameters for verifying a raw signed JACS document string.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyDocumentParams {
+    /// The full JACS signed document as a JSON string.
+    #[schemars(description = "The full signed JACS document JSON string to verify")]
+    pub document: String,
+}
+
+/// Result of verifying a signed document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyDocumentResult {
+    /// Whether the operation completed without error.
+    pub success: bool,
+
+    /// Whether the document's hash and signature are valid.
+    pub valid: bool,
+
+    /// The signer's agent ID, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signer_id: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if verification failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for signing arbitrary content as a JACS document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignDocumentParams {
+    /// The JSON content string to sign.
+    #[schemars(description = "The JSON content to sign as a JACS document")]
+    pub content: String,
+
+    /// Optional MIME type of the content (default: "application/json").
+    #[schemars(description = "MIME type of the content (default: 'application/json')")]
+    pub content_type: Option<String>,
+}
+
+/// Result of signing a document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignDocumentResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The full signed JACS document as a JSON string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_document: Option<String>,
+
+    /// SHA-256 hash of the signed document content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+
+    /// The JACS document ID assigned to the signed document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_document_id: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if signing failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
 // Message Request/Response Types
 // =============================================================================
 
@@ -781,11 +852,172 @@ pub struct MessageReceiveResult {
     pub error: Option<String>,
 }
 
+// =============================================================================
+// Agreement Types — Multi-party cryptographic agreements
+// =============================================================================
+
+/// Parameters for creating a multi-party agreement.
+///
+/// An agreement is a document that multiple agents must sign. Use this when agents
+/// need to formally commit to a shared decision — for example, approving a deployment,
+/// authorizing a data transfer, or reaching consensus on a proposal.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateAgreementParams {
+    /// The document to create an agreement for, as a JSON string.
+    /// This is the content all parties will be agreeing to.
+    #[schemars(
+        description = "JSON document that all parties will agree to. Can be any valid JSON object."
+    )]
+    pub document: String,
+
+    /// List of agent IDs (UUIDs) that must sign this agreement.
+    /// Include your own agent ID if you want to be a required signer.
+    #[schemars(description = "List of agent IDs (UUIDs) that are parties to this agreement")]
+    pub agent_ids: Vec<String>,
+
+    /// A human-readable question summarizing what signers are agreeing to.
+    #[schemars(description = "Question for signers, e.g. 'Do you approve deploying model v2?'")]
+    pub question: Option<String>,
+
+    /// Additional context to help signers make their decision.
+    #[schemars(description = "Additional context for signers")]
+    pub context: Option<String>,
+
+    /// ISO 8601 deadline. The agreement expires if not fully signed by this time.
+    /// Example: "2025-12-31T23:59:59Z"
+    #[schemars(
+        description = "ISO 8601 deadline after which the agreement expires. Example: '2025-12-31T23:59:59Z'"
+    )]
+    pub timeout: Option<String>,
+
+    /// Minimum number of signatures required (M-of-N). If omitted, ALL agents must sign.
+    /// For example, quorum=2 with 3 agent_ids means any 2 of 3 signers is sufficient.
+    #[schemars(
+        description = "Minimum signatures required (M-of-N). If omitted, all agents must sign."
+    )]
+    pub quorum: Option<u32>,
+
+    /// Only allow agents using these algorithms to sign.
+    /// Values: "RSA-PSS", "ring-Ed25519", "pq-dilithium", "pq2025"
+    #[schemars(
+        description = "Only allow these signing algorithms. Values: 'RSA-PSS', 'ring-Ed25519', 'pq-dilithium', 'pq2025'"
+    )]
+    pub required_algorithms: Option<Vec<String>>,
+
+    /// Minimum cryptographic strength: "classical" (any algorithm) or "post-quantum" (pq-dilithium, pq2025 only).
+    #[schemars(description = "Minimum crypto strength: 'classical' or 'post-quantum'")]
+    pub minimum_strength: Option<String>,
+}
+
+/// Result of creating an agreement.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateAgreementResult {
+    pub success: bool,
+
+    /// The JACS document ID of the agreement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agreement_id: Option<String>,
+
+    /// The full signed agreement JSON. Pass this to other agents for signing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_agreement: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for signing an existing agreement.
+///
+/// Use this after receiving an agreement document from another agent.
+/// Your agent will cryptographically co-sign it, adding your signature
+/// to the agreement's signature list.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignAgreementParams {
+    /// The full signed agreement JSON document to co-sign.
+    #[schemars(
+        description = "The full agreement JSON to sign. Obtained from jacs_create_agreement or from another agent."
+    )]
+    pub signed_agreement: String,
+
+    /// Optional custom agreement field name (default: 'jacsAgreement').
+    #[schemars(description = "Custom agreement field name (default: 'jacsAgreement')")]
+    pub agreement_fieldname: Option<String>,
+}
+
+/// Result of signing an agreement.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignAgreementResult {
+    pub success: bool,
+
+    /// The updated agreement JSON with your signature added.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_agreement: Option<String>,
+
+    /// Number of signatures now on the agreement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_count: Option<usize>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for checking agreement status.
+///
+/// Use this to see how many agents have signed, whether quorum is met,
+/// and whether the agreement has expired.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CheckAgreementParams {
+    /// The full signed agreement JSON document to check.
+    #[schemars(description = "The agreement JSON to check status of")]
+    pub signed_agreement: String,
+
+    /// Optional custom agreement field name (default: 'jacsAgreement').
+    #[schemars(description = "Custom agreement field name (default: 'jacsAgreement')")]
+    pub agreement_fieldname: Option<String>,
+}
+
+/// Result of checking an agreement's status.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CheckAgreementResult {
+    pub success: bool,
+
+    /// Whether the agreement is complete (quorum met, not expired, all signatures valid).
+    pub complete: bool,
+
+    /// Total agents required to sign.
+    pub total_agents: usize,
+
+    /// Number of valid signatures collected.
+    pub signatures_collected: usize,
+
+    /// Minimum signatures required (quorum). Equals total_agents if no quorum set.
+    pub signatures_required: usize,
+
+    /// Whether quorum has been met.
+    pub quorum_met: bool,
+
+    /// Whether the agreement has expired (past timeout).
+    pub expired: bool,
+
+    /// List of agent IDs that have signed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_by: Option<Vec<String>>,
+
+    /// List of agent IDs that have NOT signed yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unsigned: Option<Vec<String>>,
+
+    /// Timeout deadline (if set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// Format a SystemTime as an ISO 8601 UTC timestamp string.
 fn format_iso8601(t: std::time::SystemTime) -> String {
-    let d = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    let d = t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
     let secs = d.as_secs();
     // Simple conversion: seconds -> year/month/day/hour/min/sec
     // Using a basic algorithm that handles dates from 1970 onwards
@@ -1020,6 +1252,46 @@ impl HaiMcpServer {
                  Use this to validate authenticity before processing a message from another agent.",
                 Self::jacs_message_receive_schema(),
             ),
+            // --- Agreement tools ---
+            Tool::new(
+                "jacs_create_agreement",
+                "Create a multi-party cryptographic agreement. Use this when multiple agents need \
+                 to formally agree on something — like approving a deployment, authorizing a data \
+                 transfer, or ratifying a decision. You specify which agents must sign, an optional \
+                 quorum (e.g., 2-of-3), a timeout deadline, and algorithm constraints. Returns a \
+                 signed agreement document to pass to other agents for co-signing.",
+                Self::jacs_create_agreement_schema(),
+            ),
+            Tool::new(
+                "jacs_sign_agreement",
+                "Co-sign an existing agreement. Use this after receiving an agreement document from \
+                 another agent. Your cryptographic signature is added to the agreement. The updated \
+                 document can then be passed to the next signer or checked for completion.",
+                Self::jacs_sign_agreement_schema(),
+            ),
+            Tool::new(
+                "jacs_check_agreement",
+                "Check the status of an agreement: how many agents have signed, whether quorum is \
+                 met, whether it has expired, and which agents still need to sign. Use this to \
+                 decide whether an agreement is complete and ready to act on.",
+                Self::jacs_check_agreement_schema(),
+            ),
+            // --- Document sign/verify tools ---
+            Tool::new(
+                "jacs_sign_document",
+                "Sign arbitrary JSON content to create a cryptographically signed JACS document. \
+                 Use this for attestation -- when you want to prove that content was signed by \
+                 this agent. Returns the signed envelope with hash and document ID.",
+                Self::jacs_sign_document_schema(),
+            ),
+            Tool::new(
+                "jacs_verify_document",
+                "Verify a signed JACS document given its full JSON string. Checks both the \
+                 content hash and cryptographic signature. Use this when you have a signed \
+                 document in memory (e.g. from an approval context or message payload) and \
+                 need to confirm its integrity and authenticity.",
+                Self::jacs_verify_document_schema(),
+            ),
         ]
     }
 
@@ -1161,6 +1433,46 @@ impl HaiMcpServer {
 
     fn jacs_message_receive_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(MessageReceiveParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_create_agreement_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(CreateAgreementParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_sign_agreement_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(SignAgreementParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_check_agreement_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(CheckAgreementParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_sign_document_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(SignDocumentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_verify_document_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(VerifyDocumentParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -2471,11 +2783,11 @@ impl HaiMcpServer {
         // Sign the document
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            true,  // no_save
-            None,  // attachments
-            None,  // embed
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            None, // embed
         ) {
             Ok(signed_doc_string) => {
                 let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
@@ -2514,41 +2826,42 @@ impl HaiMcpServer {
         Parameters(params): Parameters<MessageUpdateParams>,
     ) -> String {
         // Load the existing document by ID
-        let existing_doc_string: Option<String> = match self.agent.verify_document_by_id(&params.jacs_id) {
-            Ok(true) => {
-                // Document verified, now retrieve it. We need the stored document.
-                // Use get_agent_json to get agent context, then load via ID.
-                // The verify_document_by_id already loaded it; we need to get it from storage.
-                // Fall through to attempt update_document with the new content.
-                None
-            }
-            Ok(false) => {
-                let result = MessageUpdateResult {
-                    success: false,
-                    jacs_document_id: None,
-                    signed_message: None,
-                    error: Some(format!(
-                        "Existing document '{}' failed signature verification",
-                        params.jacs_id
-                    )),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
-            Err(e) => {
-                let result = MessageUpdateResult {
-                    success: false,
-                    jacs_document_id: None,
-                    signed_message: None,
-                    error: Some(format!(
-                        "Failed to load document '{}': {}",
-                        params.jacs_id, e
-                    )),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
-        };
+        let existing_doc_string: Option<String> =
+            match self.agent.verify_document_by_id(&params.jacs_id) {
+                Ok(true) => {
+                    // Document verified, now retrieve it. We need the stored document.
+                    // Use get_agent_json to get agent context, then load via ID.
+                    // The verify_document_by_id already loaded it; we need to get it from storage.
+                    // Fall through to attempt update_document with the new content.
+                    None
+                }
+                Ok(false) => {
+                    let result = MessageUpdateResult {
+                        success: false,
+                        jacs_document_id: None,
+                        signed_message: None,
+                        error: Some(format!(
+                            "Existing document '{}' failed signature verification",
+                            params.jacs_id
+                        )),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+                Err(e) => {
+                    let result = MessageUpdateResult {
+                        success: false,
+                        jacs_document_id: None,
+                        signed_message: None,
+                        error: Some(format!(
+                            "Failed to load document '{}': {}",
+                            params.jacs_id, e
+                        )),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            };
 
         let content_type = params
             .content_type
@@ -2614,9 +2927,7 @@ impl HaiMcpServer {
                     original_document_id: None,
                     agreement_document_id: None,
                     signed_agreement: None,
-                    error: Some(
-                        "Original message signature verification failed".to_string(),
-                    ),
+                    error: Some("Original message signature verification failed".to_string()),
                 };
                 return serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
@@ -2664,11 +2975,11 @@ impl HaiMcpServer {
         // Sign the agreement document
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            true,  // no_save
-            None,  // attachments
-            None,  // embed
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            None, // embed
         ) {
             Ok(signed_agreement_string) => {
                 let agreement_id =
@@ -2781,13 +3092,417 @@ impl HaiMcpServer {
             timestamp,
             signature_valid,
             error: if !signature_valid {
-                Some("Message signature is INVALID — content may have been tampered with".to_string())
+                Some(
+                    "Message signature is INVALID — content may have been tampered with"
+                        .to_string(),
+                )
             } else {
                 None
             },
         };
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    // =========================================================================
+    // Agreement tools — multi-party cryptographic agreements
+    // =========================================================================
+
+    /// Create a multi-party agreement that other agents can co-sign.
+    ///
+    /// The agreement specifies which agents must sign, optional quorum (M-of-N),
+    /// timeout, and algorithm constraints. The returned document should be passed
+    /// to other agents for signing via `jacs_sign_agreement`.
+    #[tool(
+        name = "jacs_create_agreement",
+        description = "Create a multi-party cryptographic agreement. Specify which agents must sign, \
+                       optional quorum (e.g., 2-of-3), timeout deadline, and algorithm constraints. \
+                       Returns a signed agreement document to pass to other agents for co-signing."
+    )]
+    pub async fn jacs_create_agreement(
+        &self,
+        Parameters(params): Parameters<CreateAgreementParams>,
+    ) -> String {
+        // Create the base document first
+        let signed_doc = match self.agent.create_document(
+            &params.document,
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            None, // embed
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = CreateAgreementResult {
+                    success: false,
+                    agreement_id: None,
+                    signed_agreement: None,
+                    error: Some(format!("Failed to create document: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Create the agreement on the document
+        let result = match self.agent.create_agreement_with_options(
+            &signed_doc,
+            params.agent_ids,
+            params.question,
+            params.context,
+            None, // agreement_fieldname (use default)
+            params.timeout,
+            params.quorum,
+            params.required_algorithms,
+            params.minimum_strength,
+        ) {
+            Ok(agreement_string) => {
+                let agreement_id = serde_json::from_str::<serde_json::Value>(&agreement_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                CreateAgreementResult {
+                    success: true,
+                    agreement_id: Some(agreement_id),
+                    signed_agreement: Some(agreement_string),
+                    error: None,
+                }
+            }
+            Err(e) => CreateAgreementResult {
+                success: false,
+                agreement_id: None,
+                signed_agreement: None,
+                error: Some(format!("Failed to create agreement: {}", e)),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Co-sign an existing agreement.
+    ///
+    /// Adds this agent's cryptographic signature to the agreement. The agent's
+    /// algorithm must satisfy any constraints specified when the agreement was created.
+    #[tool(
+        name = "jacs_sign_agreement",
+        description = "Co-sign an existing agreement. Adds your agent's cryptographic signature. \
+                       The agreement may have algorithm constraints that your agent must satisfy."
+    )]
+    pub async fn jacs_sign_agreement(
+        &self,
+        Parameters(params): Parameters<SignAgreementParams>,
+    ) -> String {
+        let result = match self
+            .agent
+            .sign_agreement(&params.signed_agreement, params.agreement_fieldname)
+        {
+            Ok(signed_string) => {
+                // Count signatures
+                let sig_count =
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&signed_string) {
+                        v.get("jacsAgreement")
+                            .and_then(|a| a.get("signatures"))
+                            .and_then(|s| s.as_array())
+                            .map(|arr| arr.len())
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
+
+                SignAgreementResult {
+                    success: true,
+                    signed_agreement: Some(signed_string),
+                    signature_count: Some(sig_count),
+                    error: None,
+                }
+            }
+            Err(e) => SignAgreementResult {
+                success: false,
+                signed_agreement: None,
+                signature_count: None,
+                error: Some(format!("Failed to sign agreement: {}", e)),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Check the status of an agreement.
+    ///
+    /// Returns whether quorum is met, which agents have signed, whether the
+    /// agreement has expired, and how many more signatures are needed.
+    #[tool(
+        name = "jacs_check_agreement",
+        description = "Check agreement status: who has signed, whether quorum is met, \
+                       whether it has expired, and who still needs to sign."
+    )]
+    pub async fn jacs_check_agreement(
+        &self,
+        Parameters(params): Parameters<CheckAgreementParams>,
+    ) -> String {
+        // Parse the agreement to extract status without full verification
+        let doc: serde_json::Value = match serde_json::from_str(&params.signed_agreement) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = CheckAgreementResult {
+                    success: false,
+                    complete: false,
+                    total_agents: 0,
+                    signatures_collected: 0,
+                    signatures_required: 0,
+                    quorum_met: false,
+                    expired: false,
+                    signed_by: None,
+                    unsigned: None,
+                    timeout: None,
+                    error: Some(format!("Failed to parse agreement JSON: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let fieldname = params
+            .agreement_fieldname
+            .unwrap_or_else(|| "jacsAgreement".to_string());
+
+        let agreement = match doc.get(&fieldname) {
+            Some(a) => a,
+            None => {
+                let result = CheckAgreementResult {
+                    success: false,
+                    complete: false,
+                    total_agents: 0,
+                    signatures_collected: 0,
+                    signatures_required: 0,
+                    quorum_met: false,
+                    expired: false,
+                    signed_by: None,
+                    unsigned: None,
+                    timeout: None,
+                    error: Some(format!("No '{}' field found in document", fieldname)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Extract agent IDs
+        let agent_ids: Vec<String> = agreement
+            .get("agentIDs")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Extract signatures
+        let signatures = agreement
+            .get("signatures")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let signed_by: Vec<String> = signatures
+            .iter()
+            .filter_map(|sig| {
+                sig.get("agentID")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            })
+            .collect();
+
+        let signed_set: std::collections::HashSet<&str> =
+            signed_by.iter().map(|s| s.as_str()).collect();
+        let unsigned: Vec<String> = agent_ids
+            .iter()
+            .filter(|id| !signed_set.contains(id.as_str()))
+            .cloned()
+            .collect();
+
+        // Quorum
+        let quorum = agreement
+            .get("quorum")
+            .and_then(|v| v.as_u64())
+            .map(|q| q as usize)
+            .unwrap_or(agent_ids.len());
+        let quorum_met = signed_by.len() >= quorum;
+
+        // Timeout
+        let timeout_str = agreement
+            .get("timeout")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let expired = timeout_str
+            .as_ref()
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+            .map(|deadline| chrono::Utc::now() > deadline)
+            .unwrap_or(false);
+
+        let complete = quorum_met && !expired;
+
+        let result = CheckAgreementResult {
+            success: true,
+            complete,
+            total_agents: agent_ids.len(),
+            signatures_collected: signed_by.len(),
+            signatures_required: quorum,
+            quorum_met,
+            expired,
+            signed_by: Some(signed_by),
+            unsigned: Some(unsigned),
+            timeout: timeout_str,
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    // =========================================================================
+    // Document Sign / Verify tools
+    // =========================================================================
+
+    /// Sign arbitrary JSON content to create a cryptographically signed JACS document.
+    #[tool(
+        name = "jacs_sign_document",
+        description = "Sign arbitrary JSON content to create a signed JACS document for attestation."
+    )]
+    pub async fn jacs_sign_document(
+        &self,
+        Parameters(params): Parameters<SignDocumentParams>,
+    ) -> String {
+        // Validate content is valid JSON
+        let content_value: serde_json::Value = match serde_json::from_str(&params.content) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = SignDocumentResult {
+                    success: false,
+                    signed_document: None,
+                    content_hash: None,
+                    jacs_document_id: None,
+                    message: "Content is not valid JSON".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Wrap content in a JACS-compatible envelope if it doesn't already have jacsType
+        let doc_to_sign = if content_value.get("jacsType").is_some() {
+            params.content.clone()
+        } else {
+            let wrapper = serde_json::json!({
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": content_value,
+            });
+            wrapper.to_string()
+        };
+
+        // Sign via create_document (no_save=true)
+        match self
+            .agent
+            .create_document(&doc_to_sign, None, None, true, None, None)
+        {
+            Ok(signed_doc_string) => {
+                // Extract document ID and compute content hash
+                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from));
+
+                let hash = {
+                    let mut hasher = Sha256::new();
+                    hasher.update(signed_doc_string.as_bytes());
+                    format!("{:x}", hasher.finalize())
+                };
+
+                let result = SignDocumentResult {
+                    success: true,
+                    signed_document: Some(signed_doc_string),
+                    content_hash: Some(hash),
+                    jacs_document_id: doc_id,
+                    message: "Document signed successfully".to_string(),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = SignDocumentResult {
+                    success: false,
+                    signed_document: None,
+                    content_hash: None,
+                    jacs_document_id: None,
+                    message: "Failed to sign document".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Verify a signed JACS document given its full JSON string.
+    #[tool(
+        name = "jacs_verify_document",
+        description = "Verify a signed JACS document's hash and cryptographic signature."
+    )]
+    pub async fn jacs_verify_document(
+        &self,
+        Parameters(params): Parameters<VerifyDocumentParams>,
+    ) -> String {
+        if params.document.is_empty() {
+            let result = VerifyDocumentResult {
+                success: false,
+                valid: false,
+                signer_id: None,
+                message: "Document string is empty".to_string(),
+                error: Some("EMPTY_DOCUMENT".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Try verify_signature first (works for both self-signed and external docs)
+        match self.agent.verify_signature(&params.document, None) {
+            Ok(valid) => {
+                // Try to extract signer ID from the document
+                let signer_id = serde_json::from_str::<serde_json::Value>(&params.document)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("jacsSignature")
+                            .and_then(|sig| sig.get("agentId").or_else(|| sig.get("agentID")))
+                            .and_then(|id| id.as_str())
+                            .map(String::from)
+                    });
+
+                let result = VerifyDocumentResult {
+                    success: true,
+                    valid,
+                    signer_id,
+                    message: if valid {
+                        "Document verified successfully".to_string()
+                    } else {
+                        "Document signature verification failed".to_string()
+                    },
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = VerifyDocumentResult {
+                    success: false,
+                    valid: false,
+                    signer_id: None,
+                    message: format!("Verification failed: {}", e),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
     }
 }
 
@@ -2927,7 +3642,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = HaiMcpServer::tools();
-        assert_eq!(tools.len(), 18);
+        assert_eq!(tools.len(), 23, "HaiMcpServer should expose 23 tools");
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"fetch_agent_key"));
@@ -2948,6 +3663,11 @@ mod tests {
         assert!(names.contains(&"jacs_message_update"));
         assert!(names.contains(&"jacs_message_agree"));
         assert!(names.contains(&"jacs_message_receive"));
+        assert!(names.contains(&"jacs_create_agreement"));
+        assert!(names.contains(&"jacs_sign_agreement"));
+        assert!(names.contains(&"jacs_check_agreement"));
+        assert!(names.contains(&"jacs_sign_document"));
+        assert!(names.contains(&"jacs_verify_document"));
     }
 
     #[test]
@@ -3107,5 +3827,51 @@ mod tests {
         // Unix epoch should produce 1970-01-01T00:00:00Z
         let epoch = std::time::UNIX_EPOCH;
         assert_eq!(format_iso8601(epoch), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn test_create_agreement_params_schema() {
+        let schema = schemars::schema_for!(CreateAgreementParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("document"));
+        assert!(json.contains("agent_ids"));
+        assert!(json.contains("timeout"));
+        assert!(json.contains("quorum"));
+        assert!(json.contains("required_algorithms"));
+        assert!(json.contains("minimum_strength"));
+    }
+
+    #[test]
+    fn test_sign_agreement_params_schema() {
+        let schema = schemars::schema_for!(SignAgreementParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("signed_agreement"));
+        assert!(json.contains("agreement_fieldname"));
+    }
+
+    #[test]
+    fn test_check_agreement_params_schema() {
+        let schema = schemars::schema_for!(CheckAgreementParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("signed_agreement"));
+    }
+
+    #[test]
+    fn test_tool_list_includes_agreement_tools() {
+        // Verify the 3 new agreement tools are in the tool list
+        let tools = HaiMcpServer::tools();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        assert!(
+            names.contains(&"jacs_create_agreement"),
+            "Missing jacs_create_agreement"
+        );
+        assert!(
+            names.contains(&"jacs_sign_agreement"),
+            "Missing jacs_sign_agreement"
+        );
+        assert!(
+            names.contains(&"jacs_check_agreement"),
+            "Missing jacs_check_agreement"
+        );
     }
 }

@@ -3,6 +3,7 @@
         release-jacs release-jacspy release-jacsnpm release-all \
         retry-jacspy retry-jacsnpm \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm \
+        install-githooks regen-cross-lang-fixtures \
         help
 
 # ============================================================================
@@ -57,6 +58,18 @@ test-jacsnpm:
 	cd jacsnpm && npm test
 
 test: test-jacs
+
+# Regenerate all canonical cross-language fixtures in sequence.
+# This intentionally mutates tracked fixture files.
+regen-cross-lang-fixtures:
+	UPDATE_CROSS_LANG_FIXTURES=1 cargo test -p jacs --test cross_language_tests -- --nocapture
+	cd jacspy && UPDATE_CROSS_LANG_FIXTURES=1 pytest tests/test_cross_language.py -q
+	cd jacsnpm && UPDATE_CROSS_LANG_FIXTURES=1 npm run test:cross-language --silent
+
+# Install repo-local git hooks (pre-commit guard for fixture changes).
+install-githooks:
+	git config core.hooksPath .githooks
+	@echo "Configured git hooks path to .githooks"
 
 # ============================================================================
 # VERSION INFO
@@ -226,6 +239,10 @@ help:
 	@echo "  make test-jacs-cli   Run CLI integration tests"
 	@echo "  make test-jacspy     Run Python binding tests"
 	@echo "  make test-jacsnpm    Run Node.js binding tests"
+	@echo "  make regen-cross-lang-fixtures  Regenerate Rust->Python->Node fixtures"
+	@echo ""
+	@echo "GIT HOOKS:"
+	@echo "  make install-githooks  Configure core.hooksPath=.githooks"
 	@echo ""
 	@echo "DIRECT PUBLISH (local credentials required):"
 	@echo "  make publish-jacs        Publish to crates.io"

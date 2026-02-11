@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Block accidental mutation of canonical cross-language fixtures.
+# To intentionally update these files, run:
+#   UPDATE_CROSS_LANG_FIXTURES=1 make regen-cross-lang-fixtures
+# and commit with UPDATE_CROSS_LANG_FIXTURES=1 in the environment.
+
+changed="$(git diff --cached --name-only --diff-filter=ACMRD)"
+
+if [ -z "${changed}" ]; then
+  exit 0
+fi
+
+if echo "${changed}" | rg -q '^jacs/tests/fixtures/cross-language/'; then
+  case "${UPDATE_CROSS_LANG_FIXTURES:-}" in
+    1|true|TRUE|yes|YES)
+      ;;
+    *)
+      echo "ERROR: staged cross-language fixture changes detected." >&2
+      echo "Set UPDATE_CROSS_LANG_FIXTURES=1 when intentionally regenerating fixtures." >&2
+      echo "Recommended flow:" >&2
+      echo "  UPDATE_CROSS_LANG_FIXTURES=1 make regen-cross-lang-fixtures" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+exit 0

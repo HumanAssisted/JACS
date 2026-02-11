@@ -1,568 +1,199 @@
 # Express Middleware
 
-This chapter covers advanced Express.js integration patterns with JACS, building on the basics covered in [HTTP Server](http.md).
+**Sign it. Prove it.** -- in your Express app.
 
-## Overview
+JACS provides `jacsMiddleware` for Express v4/v5 that verifies incoming signed request bodies and optionally auto-signs JSON responses. No body-parser gymnastics, no monkey-patching.
 
-JACS provides `JACSExpressMiddleware` for seamless integration with Express.js applications:
+## 5-Minute Quickstart
 
-- Automatic request verification
-- Automatic response signing
-- Access to verified payloads via `req.jacsPayload`
-- Error handling for invalid requests
+### 1. Install
 
-## Quick Start
+```bash
+npm install @hai.ai/jacs express
+```
 
-```javascript
+### 2. Create a JACS client
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const client = await JacsClient.quickstart();
+```
+
+### 3. Add signing middleware
+
+```typescript
 import express from 'express';
-import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
+import { jacsMiddleware } from '@hai.ai/jacs/express';
 
 const app = express();
+app.use(express.text({ type: 'application/json' }));
+app.use(jacsMiddleware({ client, verify: true }));
 
-// Required: Parse body as text before JACS middleware
-app.use('/api', express.text({ type: '*/*' }));
-
-// Apply JACS middleware
-app.use('/api', JACSExpressMiddleware({
-  configPath: './jacs.config.json'
-}));
-
-// Routes automatically get verified payloads and signed responses
 app.post('/api/data', (req, res) => {
-  const payload = req.jacsPayload;
-  res.send({ received: payload, status: 'ok' });
+  console.log(req.jacsPayload); // verified payload
+  res.json({ status: 'ok' });
 });
 
 app.listen(3000);
 ```
 
-## Middleware Configuration
+---
 
-### Basic Configuration
+## Quick Start
 
-```javascript
-JACSExpressMiddleware({
-  configPath: './jacs.config.json'  // Required: path to JACS config
+```typescript
+import express from 'express';
+import { JacsClient } from '@hai.ai/jacs/client';
+import { jacsMiddleware } from '@hai.ai/jacs/express';
+
+const client = await JacsClient.quickstart();
+const app = express();
+
+app.use(express.text({ type: 'application/json' }));
+app.use(jacsMiddleware({ client, verify: true }));
+
+app.post('/api/data', (req, res) => {
+  console.log(req.jacsPayload); // verified payload
+  res.json({ status: 'ok' });
+});
+
+app.listen(3000);
+```
+
+## Options
+
+```typescript
+jacsMiddleware({
+  client?: JacsClient;      // Pre-initialized client (preferred)
+  configPath?: string;       // Path to jacs.config.json (if no client)
+  sign?: boolean;            // Auto-sign res.json() responses (default: false)
+  verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
+  optional?: boolean;        // Allow unsigned requests through (default: false)
 })
 ```
 
-### Per-Route Configuration
+If neither `client` nor `configPath` is provided, the middleware calls `JacsClient.quickstart()` on first request.
 
-Apply JACS to specific routes:
+## What the Middleware Does
 
-```javascript
-const app = express();
+**Every request** gets `req.jacsClient` -- a `JacsClient` instance you can use for manual signing/verification in route handlers.
 
-// Non-JACS routes (public endpoints)
-app.get('/health', (req, res) => res.send({ status: 'ok' }));
-app.get('/public/info', (req, res) => res.send({ name: 'My API' }));
+**POST/PUT/PATCH with `verify: true`** (default): The string body is verified as a JACS document. On success, `req.jacsPayload` contains the extracted payload. On failure, a 401 is returned (unless `optional: true`).
 
-// JACS-protected routes
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({ configPath: './jacs.config.json' }));
+**With `sign: true`**: `res.json()` is intercepted to auto-sign the response body before sending.
 
-app.post('/api/secure', (req, res) => {
-  // Only JACS-signed requests reach here
-  res.send({ data: 'secure response' });
-});
-```
+## Verify Incoming Requests
 
-### Multiple JACS Agents
+```typescript
+app.use(express.text({ type: 'application/json' }));
+app.use(jacsMiddleware({ client }));
 
-Use different JACS agents for different routes:
-
-```javascript
-// Admin routes with admin agent
-app.use('/admin', express.text({ type: '*/*' }));
-app.use('/admin', JACSExpressMiddleware({
-  configPath: './jacs.admin.config.json'
-}));
-
-// User routes with user agent
-app.use('/user', express.text({ type: '*/*' }));
-app.use('/user', JACSExpressMiddleware({
-  configPath: './jacs.user.config.json'
-}));
-```
-
-## Request Handling
-
-### Accessing Verified Payload
-
-The middleware attaches the verified payload to `req.jacsPayload`:
-
-```javascript
 app.post('/api/process', (req, res) => {
-  // req.jacsPayload contains the verified, decrypted payload
-  const { action, data, timestamp } = req.jacsPayload;
-
-  console.log('Action:', action);
-  console.log('Data:', data);
-  console.log('Request timestamp:', timestamp);
-
-  res.send({ processed: true });
-});
-```
-
-### Handling Missing Payload
-
-If JACS verification fails, `req.jacsPayload` will be undefined:
-
-```javascript
-app.post('/api/secure', (req, res) => {
   if (!req.jacsPayload) {
-    return res.status(400).json({ error: 'Invalid JACS request' });
+    return res.status(400).json({ error: 'Missing payload' });
   }
 
-  // Process verified payload
-  res.send({ success: true });
+  const { action, data } = req.jacsPayload;
+  res.json({ processed: true, action });
 });
 ```
 
-### Validation Helper
+With `optional: true`, unsigned requests pass through with `req.jacsPayload` unset:
 
-Create a reusable validation middleware:
+```typescript
+app.use(jacsMiddleware({ client, optional: true }));
 
-```javascript
-function requireJacsPayload(req, res, next) {
-  if (!req.jacsPayload) {
-    return res.status(400).json({
-      error: 'JACS verification failed',
-      message: 'Request must be signed with valid JACS credentials'
-    });
-  }
-  next();
-}
-
-// Apply to routes
-app.post('/api/secure', requireJacsPayload, (req, res) => {
-  // Guaranteed to have valid req.jacsPayload
-  res.send({ data: req.jacsPayload });
-});
-```
-
-## Response Handling
-
-### Automatic Signing
-
-When you call `res.send()` with an object, the middleware automatically signs it:
-
-```javascript
-app.post('/api/data', (req, res) => {
-  // This object will be automatically JACS-signed
-  res.send({
-    result: 'success',
-    data: { value: 42 },
-    timestamp: new Date().toISOString()
-  });
-});
-```
-
-### Sending Unsigned Responses
-
-To bypass automatic signing, send a string directly:
-
-```javascript
-app.post('/api/raw', (req, res) => {
-  // String responses are not signed
-  res.type('text/plain').send('Raw text response');
-});
-```
-
-### Custom Response Format
-
-```javascript
-app.post('/api/custom', (req, res) => {
-  const response = {
-    success: true,
-    payload: {
-      action: 'completed',
-      result: processRequest(req.jacsPayload)
-    },
-    metadata: {
-      serverTime: new Date().toISOString(),
-      requestId: generateRequestId()
-    }
-  };
-
-  // Automatically signed before sending
-  res.send(response);
-});
-```
-
-## Error Handling
-
-### Global Error Handler
-
-```javascript
-import express from 'express';
-import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
-
-const app = express();
-
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({ configPath: './jacs.config.json' }));
-
-app.post('/api/process', (req, res, next) => {
-  try {
-    if (!req.jacsPayload) {
-      throw new Error('Missing JACS payload');
-    }
-
-    const result = processData(req.jacsPayload);
-    res.send({ result });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Global error handler
-app.use((error, req, res, next) => {
-  console.error('Error:', error.message);
-
-  res.status(500).send({
-    error: 'Internal server error',
-    message: error.message
-  });
-});
-```
-
-### Typed Errors
-
-```javascript
-class JacsValidationError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'JacsValidationError';
-    this.statusCode = 400;
-  }
-}
-
-app.post('/api/validate', (req, res, next) => {
-  try {
-    if (!req.jacsPayload) {
-      throw new JacsValidationError('Invalid JACS request');
-    }
-
-    const { requiredField } = req.jacsPayload;
-    if (!requiredField) {
-      throw new JacsValidationError('Missing required field');
-    }
-
-    res.send({ valid: true });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Error handler
-app.use((error, req, res, next) => {
-  const statusCode = error.statusCode || 500;
-  res.status(statusCode).send({
-    error: error.name,
-    message: error.message
-  });
-});
-```
-
-## Advanced Patterns
-
-### Router-Level Middleware
-
-```javascript
-import { Router } from 'express';
-import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
-
-// Create a JACS-enabled router
-function createJacsRouter(configPath) {
-  const router = Router();
-
-  router.use(express.text({ type: '*/*' }));
-  router.use(JACSExpressMiddleware({ configPath }));
-
-  return router;
-}
-
-// Usage
-const apiRouter = createJacsRouter('./jacs.config.json');
-
-apiRouter.post('/users', (req, res) => {
-  res.send({ users: getUserList() });
-});
-
-apiRouter.post('/orders', (req, res) => {
-  res.send({ orders: getOrders(req.jacsPayload.userId) });
-});
-
-app.use('/api', apiRouter);
-```
-
-### Middleware Composition
-
-Combine JACS with other middleware:
-
-```javascript
-import rateLimit from 'express-rate-limit';
-import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
-
-// Apply multiple middleware in order
-app.use('/api',
-  limiter,                              // Rate limiting first
-  express.text({ type: '*/*' }),        // Parse body as text
-  JACSExpressMiddleware({ configPath: './jacs.config.json' })  // JACS verification
-);
-```
-
-### Logging Middleware
-
-Log JACS requests for auditing:
-
-```javascript
-function jacsLogger(req, res, next) {
+app.post('/api/mixed', (req, res) => {
   if (req.jacsPayload) {
-    console.log(JSON.stringify({
-      timestamp: new Date().toISOString(),
-      method: req.method,
-      path: req.path,
-      jacsPayload: req.jacsPayload,
-      ip: req.ip
-    }));
+    // Verified JACS request
+    res.json({ verified: true, data: req.jacsPayload });
+  } else {
+    // Unsigned request -- handle accordingly
+    res.json({ verified: false });
   }
-  next();
-}
-
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({ configPath: './jacs.config.json' }));
-app.use('/api', jacsLogger);  // After JACS middleware
-```
-
-### Authentication Integration
-
-Combine JACS with user authentication:
-
-```javascript
-// JACS middleware first
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({ configPath: './jacs.config.json' }));
-
-// Then authentication check
-function requireAuth(req, res, next) {
-  const payload = req.jacsPayload;
-
-  if (!payload || !payload.userId) {
-    return res.status(401).send({ error: 'Authentication required' });
-  }
-
-  // Attach user to request
-  req.user = { id: payload.userId };
-  next();
-}
-
-app.post('/api/protected', requireAuth, (req, res) => {
-  res.send({
-    message: `Hello, user ${req.user.id}`,
-    data: req.jacsPayload.data
-  });
 });
 ```
 
-## Testing
+## Auto-Sign Responses
 
-### Unit Testing Routes
+Enable `sign: true` to intercept `res.json()` calls:
 
-```javascript
-import request from 'supertest';
-import jacs from '@hai.ai/jacs';
+```typescript
+app.use(jacsMiddleware({ client, sign: true }));
 
-describe('JACS API', () => {
-  beforeAll(async () => {
-    await jacs.load('./jacs.test.config.json');
-  });
-
-  it('should accept valid JACS requests', async () => {
-    const payload = { action: 'test', data: 'hello' };
-    const signedRequest = await jacs.signRequest(payload);
-
-    const response = await request(app)
-      .post('/api/echo')
-      .set('Content-Type', 'text/plain')
-      .send(signedRequest);
-
-    expect(response.status).toBe(200);
-
-    // Verify response is JACS-signed
-    const verified = await jacs.verifyResponse(response.text);
-    expect(verified.payload.echo).toEqual(payload);
-  });
-
-  it('should reject unsigned requests', async () => {
-    const response = await request(app)
-      .post('/api/echo')
-      .set('Content-Type', 'text/plain')
-      .send('{"invalid": "request"}');
-
-    expect(response.status).toBe(400);
-  });
+app.post('/api/data', (req, res) => {
+  // This response will be JACS-signed automatically
+  res.json({ result: 42, timestamp: new Date().toISOString() });
 });
 ```
 
-### Mock JACS for Testing
+## Manual Signing in Routes
 
-```javascript
-// test/mocks/jacs.js
-export const mockJacs = {
-  payload: null,
+Use `req.jacsClient` for fine-grained control:
 
-  setPayload(p) {
-    this.payload = p;
-  },
+```typescript
+app.use(jacsMiddleware({ client }));
 
-  reset() {
-    this.payload = null;
-  }
-};
+app.post('/api/custom', async (req, res) => {
+  const result = processData(req.jacsPayload);
 
-// Mock middleware for testing
-export function mockJacsMiddleware(req, res, next) {
-  req.jacsPayload = mockJacs.payload;
-  next();
-}
-
-// In tests
-describe('API without real JACS', () => {
-  beforeEach(() => {
-    mockJacs.setPayload({ userId: 'test-user', action: 'test' });
-  });
-
-  afterEach(() => {
-    mockJacs.reset();
-  });
-
-  it('processes payload correctly', async () => {
-    const response = await request(testApp)
-      .post('/api/process')
-      .send('test');
-
-    expect(response.status).toBe(200);
-  });
+  // Sign manually
+  const signed = await req.jacsClient.signMessage(result);
+  res.type('application/json').send(signed.raw);
 });
 ```
 
-## Complete Application Example
+## Per-Route Middleware
 
-```javascript
-import express from 'express';
-import { JACSExpressMiddleware } from '@hai.ai/jacs/http';
+Apply JACS to specific routes only:
 
+```typescript
 const app = express();
+const jacs = jacsMiddleware({ client });
 
-// Health check (no JACS)
-app.get('/health', (req, res) => res.send({ status: 'healthy' }));
+// Public routes -- no JACS
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// JACS-protected API routes
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({
-  configPath: './jacs.config.json'
-}));
+// Protected routes
+app.use('/api', express.text({ type: 'application/json' }), jacs);
 
-// Validation middleware
-function requirePayload(req, res, next) {
-  if (!req.jacsPayload) {
-    return res.status(400).send({ error: 'Invalid JACS request' });
-  }
-  next();
-}
-
-// Routes
-app.post('/api/echo', requirePayload, (req, res) => {
-  res.send({ echo: req.jacsPayload });
-});
-
-app.post('/api/users', requirePayload, (req, res) => {
-  const { name, email } = req.jacsPayload;
-
-  if (!name || !email) {
-    return res.status(400).send({ error: 'Name and email required' });
-  }
-
-  const user = createUser({ name, email });
-  res.send({ user, created: true });
-});
-
-app.post('/api/documents', requirePayload, async (req, res) => {
-  const { title, content } = req.jacsPayload;
-
-  const document = await createDocument({ title, content });
-  res.send({ document });
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).send({ error: 'Internal server error' });
-});
-
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`JACS Express server listening on port ${PORT}`);
+app.post('/api/secure', (req, res) => {
+  res.json({ data: req.jacsPayload });
 });
 ```
 
-## Troubleshooting
+## Multiple Agents
 
-### Body Parsing Issues
+Use different `JacsClient` instances per route group:
 
-**Problem**: `req.jacsPayload` is always undefined
+```typescript
+const adminClient = await JacsClient.quickstart({ algorithm: 'pq2025' });
+const userClient = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
 
-**Solution**: Ensure `express.text()` comes before JACS middleware:
+app.use('/admin', express.text({ type: 'application/json' }));
+app.use('/admin', jacsMiddleware({ client: adminClient }));
 
-```javascript
-// Correct
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({ configPath: '...' }));
-
-// Wrong
-app.use('/api', JACSExpressMiddleware({ configPath: '...' }));
-app.use('/api', express.text({ type: '*/*' }));
+app.use('/user', express.text({ type: 'application/json' }));
+app.use('/user', jacsMiddleware({ client: userClient }));
 ```
 
-### JSON Body Parser Conflict
+## Migration from JACSExpressMiddleware
 
-**Problem**: Using `express.json()` interferes with JACS
+The legacy `JACSExpressMiddleware` from `@hai.ai/jacs/http` still works but is deprecated. To migrate:
 
-**Solution**: Use route-specific middleware:
+| Old | New |
+|-----|-----|
+| `import { JACSExpressMiddleware } from '@hai.ai/jacs/http'` | `import { jacsMiddleware } from '@hai.ai/jacs/express'` |
+| `JACSExpressMiddleware({ configPath: '...' })` | `jacsMiddleware({ configPath: '...' })` |
+| Per-request agent init | Shared client, lazy-loaded once |
+| `res.send()` monkey-patch | `res.json()` interception (opt-in) |
 
-```javascript
-// JSON for non-JACS routes
-app.use('/public', express.json());
-
-// Text for JACS routes
-app.use('/api', express.text({ type: '*/*' }));
-app.use('/api', JACSExpressMiddleware({ configPath: '...' }));
-```
-
-### Response Not Signed
-
-**Problem**: Responses are plain JSON, not JACS-signed
-
-**Solution**: Ensure you're sending an object, not a string:
-
-```javascript
-// Will be signed
-res.send({ data: 'value' });
-
-// Will NOT be signed
-res.send(JSON.stringify({ data: 'value' }));
-```
+The new middleware is simpler, faster (no per-request init), and gives you `req.jacsClient` for manual operations.
 
 ## Next Steps
 
+- [Koa Middleware](koa.md) - Same pattern for Koa
 - [HTTP Server](http.md) - Core HTTP integration concepts
-- [MCP Integration](mcp.md) - Model Context Protocol support
+- [Vercel AI SDK](vercel-ai.md) - AI model provenance signing
 - [API Reference](api.md) - Complete API documentation

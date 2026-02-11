@@ -1,0 +1,158 @@
+name: Release CLI Binaries
+
+on:
+  push:
+    tags:
+      - 'cli/v*'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: extract
+        run: |
+          TAG="${GITHUB_REF#refs/tags/cli/v}"
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check Cargo.toml version matches tag
+        run: |
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          CARGO_VERSION=$(grep '^version = ' jacs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
+          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch! jacs/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+            exit 1
+          fi
+
+  build:
+    needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: jacs-cli
+            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-arm64
+            archive: tar.gz
+          - os: macos-14
+            target: x86_64-apple-darwin
+            artifact_name: jacs-cli
+            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-x64
+            archive: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: jacs-cli
+            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-linux-x64
+            archive: tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_name: jacs-cli
+            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-linux-arm64
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: jacs-cli.exe
+            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-windows-x64
+            archive: zip
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.93'
+          targets: ${{ matrix.target }}
+
+      - name: Build CLI binary
+        run: cargo build --release -p jacs --features cli --target ${{ matrix.target }}
+
+      - name: Smoke test (Unix)
+        if: runner.os != 'Windows'
+        run: ./target/${{ matrix.target }}/release/jacs --version
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: .\target\${{ matrix.target }}\release\jacs.exe --version
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/jacs jacs-cli
+          tar czf ${{ matrix.asset_name }}.tar.gz jacs-cli
+          shasum -a 256 ${{ matrix.asset_name }}.tar.gz > ${{ matrix.asset_name }}.tar.gz.sha256
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "target/${{ matrix.target }}/release/jacs.exe" "jacs-cli.exe"
+          Compress-Archive -Path "jacs-cli.exe" -DestinationPath "${{ matrix.asset_name }}.zip"
+          Get-FileHash "${{ matrix.asset_name }}.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  ${{ matrix.asset_name }}.zip" } | Out-File "${{ matrix.asset_name }}.zip.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            ${{ matrix.asset_name }}.*
+
+  release:
+    needs: [verify-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect checksums
+        run: |
+          cd artifacts
+          find . -name "*.sha256" -exec cat {} \; > ../sha256sums.txt
+          cd ..
+          cat sha256sums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cli/v${{ needs.verify-version.outputs.version }}
+          name: JACS CLI v${{ needs.verify-version.outputs.version }}
+          body: |
+            ## JACS CLI v${{ needs.verify-version.outputs.version }}
+
+            Prebuilt CLI binaries for verifying and signing JACS documents.
+
+            ### Install
+
+            Download the binary for your platform, extract, and add to your PATH:
+
+            ```bash
+            # macOS (Apple Silicon)
+            curl -LO https://github.com/HumanAssisted/JACS/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-arm64.tar.gz
+            tar xzf jacs-cli-*.tar.gz
+            sudo mv jacs-cli /usr/local/bin/
+
+            # Linux (x86_64)
+            curl -LO https://github.com/HumanAssisted/JACS/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-linux-x64.tar.gz
+            tar xzf jacs-cli-*.tar.gz
+            sudo mv jacs-cli /usr/local/bin/
+            ```
+
+            Or install via npm/pip (ships with `@hai.ai/jacs` and `jacs`).
+
+            ### Verify checksums
+            ```bash
+            shasum -a 256 -c sha256sums.txt
+            ```
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            sha256sums.txt

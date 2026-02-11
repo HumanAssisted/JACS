@@ -6,7 +6,12 @@
 - [What is JACS?](getting-started/what-is-jacs.md)
 - [Core Concepts](getting-started/concepts.md)
 - [Quick Start](getting-started/quick-start.md)
+- [Which Integration?](getting-started/decision-tree.md)
+- [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
+- [Verifying Signed Documents](getting-started/verification.md)
 - [Use cases](usecases.md)
+- [Deployment Compatibility](getting-started/deployment.md)
+- [Troubleshooting](getting-started/troubleshooting.md)
 
 ## Rust CLI & Library
 - [Installation](rust/installation.md)
@@ -22,15 +27,19 @@
 - [Installation](nodejs/installation.md)
 - [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)
+- [LangChain.js](nodejs/langchain.md)
+- [Vercel AI SDK](nodejs/vercel-ai.md)
+- [Express Middleware](nodejs/express.md)
+- [Koa Middleware](nodejs/koa.md)
 - [MCP Integration](nodejs/mcp.md)
 - [HTTP Server](nodejs/http.md)
-- [Express Middleware](nodejs/express.md)
 - [API Reference](nodejs/api.md)
 
 ## Python (jacs)
 - [Installation](python/installation.md)
 - [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
+- [Framework Adapters](python/adapters.md)
 - [MCP Integration](python/mcp.md)
 <!-- - [FastMCP Integration](python/fastmcp.md) -->
 - [API Reference](python/api.md)
@@ -50,16 +59,26 @@
 - [Security Model](advanced/security.md)
 - [Key Rotation](advanced/key-rotation.md)
 - [Cryptographic Algorithms](advanced/crypto.md)
+- [Algorithm Selection Guide](advanced/algorithm-guide.md)
 - [Storage Backends](advanced/storage.md)
 - [Custom Schemas](advanced/custom-schemas.md)
+- [Trust Store](advanced/trust-store.md)
+- [Infrastructure vs Tools](advanced/infrastructure.md)
+- [DNS Trust Anchoring](advanced/dns-trust.md)
+- [Failure Modes](advanced/failure-modes.md)
 - [Testing](advanced/testing.md)
 
 ## Integrations
 - [Model Context Protocol (MCP)](integrations/mcp.md)
 - [A2A Interoperability](integrations/a2a.md)
+- [HAI.ai Platform](integrations/hai.md)
 - [OpenClaw](integrations/openclaw.md)
 - [Web Servers](integrations/web-servers.md)
 - [Databases](integrations/databases.md)
+
+## Guides
+- [Observability & Monitoring](guides/observability.md)
+- [Streaming Signing](guides/streaming.md)
 
 ## Examples
 - [CLI Examples](examples/cli.md)

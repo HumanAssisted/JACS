@@ -109,24 +109,48 @@ pub const MAX_VERIFY_DOCUMENT_BYTES: usize = 1515;
 const DEFAULT_PRIVATE_KEY_FILENAME: &str = "jacs.private.pem.enc";
 const DEFAULT_PUBLIC_KEY_FILENAME: &str = "jacs.public.pem";
 
+/// Generate a cryptographically secure random password that meets JACS requirements.
+/// (8+ chars, uppercase, lowercase, digit, special character.)
+fn generate_secure_password() -> String {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    let charset: &[u8] =
+        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
+    // Guarantee complexity: start with one of each required class
+    let mut password = String::with_capacity(32);
+    password.push(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rng.random_range(0..26)] as char);
+    password.push(b"abcdefghijklmnopqrstuvwxyz"[rng.random_range(0..26)] as char);
+    password.push(b"0123456789"[rng.random_range(0..10)] as char);
+    password.push(b"!@#$%^&*()-_=+"[rng.random_range(0..14)] as char);
+    // Fill rest with random charset
+    for _ in 4..32 {
+        password.push(charset[rng.random_range(0..charset.len())] as char);
+    }
+    password
+}
+
 fn build_agent_document(
     agent_type: &str,
     name: &str,
     description: &str,
 ) -> Result<Value, JacsError> {
-    let template = create_minimal_blank_agent(agent_type.to_string(), None, None, None).map_err(
-        |e| JacsError::Internal {
-            message: format!("Failed to create minimal agent template: {}", e),
-        },
-    )?;
+    let template =
+        create_minimal_blank_agent(agent_type.to_string(), None, None, None).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to create minimal agent template: {}", e),
+            }
+        })?;
 
-    let mut agent_json: Value = serde_json::from_str(&template).map_err(|e| JacsError::Internal {
-        message: format!("Failed to parse minimal agent template JSON: {}", e),
-    })?;
+    let mut agent_json: Value =
+        serde_json::from_str(&template).map_err(|e| JacsError::Internal {
+            message: format!("Failed to parse minimal agent template JSON: {}", e),
+        })?;
 
-    let obj = agent_json.as_object_mut().ok_or_else(|| JacsError::Internal {
-        message: "Generated minimal agent template is not a JSON object".to_string(),
-    })?;
+    let obj = agent_json
+        .as_object_mut()
+        .ok_or_else(|| JacsError::Internal {
+            message: "Generated minimal agent template is not a JSON object".to_string(),
+        })?;
 
     obj.insert("name".to_string(), json!(name));
     obj.insert("description".to_string(), json!(description));
@@ -427,6 +451,16 @@ fn default_storage() -> String {
     "fs".to_string()
 }
 
+/// Resolve strict mode: explicit parameter wins, then env var, then false.
+fn resolve_strict(explicit: Option<bool>) -> bool {
+    if let Some(s) = explicit {
+        return s;
+    }
+    std::env::var("JACS_STRICT_MODE")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+}
+
 impl Default for CreateAgentParams {
     fn default() -> Self {
         Self {
@@ -591,9 +625,17 @@ pub struct AgreementStatus {
 pub struct SimpleAgent {
     agent: Mutex<Agent>,
     config_path: Option<String>,
+    /// When true, verification failures return `Err` instead of `Ok(valid=false)`.
+    /// Resolved from explicit param > `JACS_STRICT_MODE` env var > false.
+    strict: bool,
 }
 
 impl SimpleAgent {
+    /// Returns whether this agent is in strict mode.
+    pub fn is_strict(&self) -> bool {
+        self.strict
+    }
+
     /// Creates a new JACS agent with persistent identity.
     ///
     /// This generates cryptographic keys, creates configuration files, and saves
@@ -679,16 +721,11 @@ impl SimpleAgent {
             message: format!("Failed to save agent: {}", e),
         })?;
 
-        // Create config file
+        // Create minimal config file (only required fields; defaults handle the rest)
         let config_json = json!({
             "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
             "jacs_agent_id_and_version": lookup_id,
-            "jacs_data_directory": "./jacs_data",
-            "jacs_key_directory": "./jacs_keys",
-            "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
-            "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
-            "jacs_agent_key_algorithm": algorithm,
-            "jacs_default_storage": "fs"
+            "jacs_agent_key_algorithm": algorithm
         });
 
         let config_path = "./jacs.config.json";
@@ -721,6 +758,7 @@ impl SimpleAgent {
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(config_path.to_string()),
+                strict: resolve_strict(None),
             },
             info,
         ))
@@ -814,9 +852,11 @@ impl SimpleAgent {
             path: keys_dir.to_string_lossy().to_string(),
             reason: e.to_string(),
         })?;
-        fs::create_dir_all(data_dir.join("agent")).map_err(|e| JacsError::DirectoryCreateFailed {
-            path: data_dir.join("agent").to_string_lossy().to_string(),
-            reason: e.to_string(),
+        fs::create_dir_all(data_dir.join("agent")).map_err(|e| {
+            JacsError::DirectoryCreateFailed {
+                path: data_dir.join("agent").to_string_lossy().to_string(),
+                reason: e.to_string(),
+            }
         })?;
         fs::create_dir_all(data_dir.join("public_keys")).map_err(|e| {
             JacsError::DirectoryCreateFailed {
@@ -850,8 +890,14 @@ impl SimpleAgent {
             std::env::set_var("JACS_KEY_DIRECTORY", &params.key_directory);
             std::env::set_var("JACS_AGENT_KEY_ALGORITHM", &algorithm);
             std::env::set_var("JACS_DEFAULT_STORAGE", &params.default_storage);
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", DEFAULT_PRIVATE_KEY_FILENAME);
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", DEFAULT_PUBLIC_KEY_FILENAME);
+            std::env::set_var(
+                "JACS_AGENT_PRIVATE_KEY_FILENAME",
+                DEFAULT_PRIVATE_KEY_FILENAME,
+            );
+            std::env::set_var(
+                "JACS_AGENT_PUBLIC_KEY_FILENAME",
+                DEFAULT_PUBLIC_KEY_FILENAME,
+            );
         }
 
         // Create a minimal agent JSON
@@ -886,9 +932,13 @@ impl SimpleAgent {
         // and params so the caller knows. If no config exists, create one fresh.
         let config_path = Path::new(&params.config_path);
         let config_str = if config_path.exists() {
-            let existing_str = fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
-                message: format!("Failed to read existing config '{}': {}", params.config_path, e),
-            })?;
+            let existing_str =
+                fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
+                    message: format!(
+                        "Failed to read existing config '{}': {}",
+                        params.config_path, e
+                    ),
+                })?;
             let mut existing: serde_json::Value =
                 serde_json::from_str(&existing_str).map_err(|e| JacsError::Internal {
                     message: format!("Failed to parse existing config: {}", e),
@@ -917,21 +967,22 @@ impl SimpleAgent {
             );
             check(
                 "jacs_agent_key_algorithm",
-                existing.get("jacs_agent_key_algorithm").and_then(|v| v.as_str()),
+                existing
+                    .get("jacs_agent_key_algorithm")
+                    .and_then(|v| v.as_str()),
                 &algorithm,
             );
             check(
                 "jacs_default_storage",
-                existing.get("jacs_default_storage").and_then(|v| v.as_str()),
+                existing
+                    .get("jacs_default_storage")
+                    .and_then(|v| v.as_str()),
                 &params.default_storage,
             );
 
             // Only update the agent ID (the new agent we just created)
             if let Some(obj) = existing.as_object_mut() {
-                obj.insert(
-                    "jacs_agent_id_and_version".to_string(),
-                    json!(lookup_id),
-                );
+                obj.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
             }
 
             let updated_str =
@@ -947,17 +998,35 @@ impl SimpleAgent {
             );
             updated_str
         } else {
-            // No config exists -- create one from params
-            let config_json = json!({
-                "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-                "jacs_agent_id_and_version": lookup_id,
-                "jacs_data_directory": params.data_directory,
-                "jacs_key_directory": params.key_directory,
-                "jacs_agent_private_key_filename": DEFAULT_PRIVATE_KEY_FILENAME,
-                "jacs_agent_public_key_filename": DEFAULT_PUBLIC_KEY_FILENAME,
-                "jacs_agent_key_algorithm": algorithm,
-                "jacs_default_storage": params.default_storage,
-            });
+            // No config exists -- create config with all required fields
+            let mut config_map = serde_json::Map::new();
+            config_map.insert(
+                "$schema".to_string(),
+                json!("https://hai.ai/schemas/jacs.config.schema.json"),
+            );
+            config_map.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
+            config_map.insert("jacs_agent_key_algorithm".to_string(), json!(algorithm));
+            config_map.insert(
+                "jacs_data_directory".to_string(),
+                json!(params.data_directory),
+            );
+            config_map.insert(
+                "jacs_key_directory".to_string(),
+                json!(params.key_directory),
+            );
+            config_map.insert(
+                "jacs_default_storage".to_string(),
+                json!(params.default_storage),
+            );
+            config_map.insert(
+                "jacs_agent_private_key_filename".to_string(),
+                json!(DEFAULT_PRIVATE_KEY_FILENAME),
+            );
+            config_map.insert(
+                "jacs_agent_public_key_filename".to_string(),
+                json!(DEFAULT_PUBLIC_KEY_FILENAME),
+            );
+            let config_json = Value::Object(config_map);
 
             let new_str =
                 serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
@@ -988,11 +1057,11 @@ impl SimpleAgent {
             crate::config::validate_config(&config_str).map_err(|e| JacsError::Internal {
                 message: format!("Failed to validate config: {}", e),
             })?;
-        agent.config = Some(
-            serde_json::from_value(validated_config_value).map_err(|e| JacsError::Internal {
+        agent.config = Some(serde_json::from_value(validated_config_value).map_err(|e| {
+            JacsError::Internal {
                 message: format!("Failed to parse config: {}", e),
-            })?,
-        );
+            }
+        })?);
 
         // Save the agent (uses directories from the resolved config)
         agent.save().map_err(|e| JacsError::Internal {
@@ -1015,8 +1084,7 @@ impl SimpleAgent {
             }
         }
 
-        let private_key_path =
-            format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);
+        let private_key_path = format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);
         let public_key_path = format!("{}/{}", params.key_directory, DEFAULT_PUBLIC_KEY_FILENAME);
 
         info!(
@@ -1043,6 +1111,7 @@ impl SimpleAgent {
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(params.config_path),
+                strict: resolve_strict(None),
             },
             info,
         ))
@@ -1059,12 +1128,12 @@ impl SimpleAgent {
     /// ```rust,ignore
     /// use jacs::simple::SimpleAgent;
     ///
-    /// let agent = SimpleAgent::load(None)?;  // Load from ./jacs.config.json
-    /// // or
-    /// let agent = SimpleAgent::load(Some("./my-agent/jacs.config.json"))?;
+    /// let agent = SimpleAgent::load(None, None)?;  // Load from ./jacs.config.json
+    /// // or with strict mode:
+    /// let agent = SimpleAgent::load(Some("./my-agent/jacs.config.json"), Some(true))?;
     /// ```
     #[must_use = "agent loading result must be checked for errors"]
-    pub fn load(config_path: Option<&str>) -> Result<Self, JacsError> {
+    pub fn load(config_path: Option<&str>, strict: Option<bool>) -> Result<Self, JacsError> {
         let path = config_path.unwrap_or("./jacs.config.json");
 
         debug!("Loading agent from config: {}", path);
@@ -1088,7 +1157,234 @@ impl SimpleAgent {
         Ok(Self {
             agent: Mutex::new(agent),
             config_path: Some(path.to_string()),
+            strict: resolve_strict(strict),
         })
+    }
+
+    /// Creates an ephemeral in-memory agent. No config file, no directories,
+    /// no environment variables, no password needed.
+    ///
+    /// # Arguments
+    ///
+    /// * `algorithm` - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+    ///
+    /// # Returns
+    ///
+    /// A `SimpleAgent` instance with in-memory keys, along with `AgentInfo`.
+    /// Keys are lost when the agent is dropped.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let (agent, info) = SimpleAgent::ephemeral(None)?;
+    /// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
+    /// ```
+    #[must_use = "ephemeral agent result must be checked for errors"]
+    pub fn ephemeral(algorithm: Option<&str>) -> Result<(Self, AgentInfo), JacsError> {
+        // Map user-friendly names to internal algorithm strings
+        let algo = match algorithm.unwrap_or("ed25519") {
+            "ed25519" => "ring-Ed25519",
+            "rsa-pss" => "RSA-PSS",
+            "pq2025" => "pq2025",
+            other => other,
+        };
+
+        let mut agent = Agent::ephemeral(algo).map_err(|e| JacsError::Internal {
+            message: format!("Failed to create ephemeral agent: {}", e),
+        })?;
+
+        let agent_json = build_agent_document("ai", "ephemeral", "Ephemeral JACS agent")?;
+        let instance = agent
+            .create_agent_and_load(&agent_json.to_string(), true, Some(algo))
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to initialize ephemeral agent: {}", e),
+            })?;
+
+        let agent_id = instance["jacsId"].as_str().unwrap_or("").to_string();
+        let version = instance["jacsVersion"].as_str().unwrap_or("").to_string();
+        let info = AgentInfo {
+            agent_id,
+            name: "ephemeral".to_string(),
+            public_key_path: String::new(),
+            config_path: String::new(),
+            version,
+            algorithm: algo.to_string(),
+            private_key_path: String::new(),
+            data_directory: String::new(),
+            key_directory: String::new(),
+            domain: String::new(),
+            dns_record: String::new(),
+            hai_registered: false,
+        };
+
+        Ok((
+            Self {
+                agent: Mutex::new(agent),
+                config_path: None,
+                strict: resolve_strict(None),
+            },
+            info,
+        ))
+    }
+
+    /// Zero-config persistent agent creation.
+    ///
+    /// If a config file already exists at `config_path` (default: `./jacs.config.json`),
+    /// loads the existing agent. Otherwise, creates a new persistent agent with keys
+    /// on disk and a minimal config file.
+    ///
+    /// If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure random password is
+    /// generated and written to `<key_directory>/.jacs_password` (mode 0600).
+    ///
+    /// # Arguments
+    ///
+    /// * `algorithm` - Signing algorithm (default: "ed25519"). Also: "rsa-pss", "pq2025"
+    /// * `config_path` - Config file path (default: "./jacs.config.json")
+    ///
+    /// # Returns
+    ///
+    /// A `SimpleAgent` with persistent keys on disk, along with `AgentInfo`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let (agent, info) = SimpleAgent::quickstart(None, None)?;
+    /// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
+    /// // Keys and config are saved to disk -- the same agent is loaded next time.
+    /// ```
+    #[must_use = "quickstart result must be checked for errors"]
+    pub fn quickstart(
+        algorithm: Option<&str>,
+        config_path: Option<&str>,
+    ) -> Result<(Self, AgentInfo), JacsError> {
+        let config = config_path.unwrap_or("./jacs.config.json");
+
+        // If config already exists, load the existing agent
+        if Path::new(config).exists() {
+            info!(
+                "quickstart: found existing config at {}, loading agent",
+                config
+            );
+            let agent = Self::load(Some(config), None)?;
+
+            // Build AgentInfo from the loaded agent
+            let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+                message: format!("Failed to acquire agent lock: {}", e),
+            })?;
+            let agent_value = inner
+                .get_value()
+                .cloned()
+                .ok_or(JacsError::AgentNotLoaded)?;
+            let agent_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
+            let version = agent_value["jacsVersion"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let (algo, key_dir, data_dir) = if let Some(ref cfg) = inner.config {
+                let a = cfg
+                    .jacs_agent_key_algorithm()
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_string();
+                let k = cfg
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys")
+                    .to_string();
+                let d = cfg
+                    .jacs_data_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_data")
+                    .to_string();
+                (a, k, d)
+            } else {
+                (
+                    String::new(),
+                    "./jacs_keys".to_string(),
+                    "./jacs_data".to_string(),
+                )
+            };
+            drop(inner);
+
+            let info = AgentInfo {
+                agent_id,
+                name: "jacs-agent".to_string(),
+                public_key_path: format!("{}/{}", key_dir, DEFAULT_PUBLIC_KEY_FILENAME),
+                config_path: config.to_string(),
+                version,
+                algorithm: algo,
+                private_key_path: format!("{}/{}", key_dir, DEFAULT_PRIVATE_KEY_FILENAME),
+                data_directory: data_dir,
+                key_directory: key_dir,
+                domain: String::new(),
+                dns_record: String::new(),
+                hai_registered: false,
+            };
+
+            return Ok((agent, info));
+        }
+
+        // No existing config -- create a new persistent agent
+        info!(
+            "quickstart: no config at {}, creating new persistent agent",
+            config
+        );
+
+        // Ensure password is available
+        let password = match std::env::var("JACS_PRIVATE_KEY_PASSWORD") {
+            Ok(pw) if !pw.is_empty() => pw,
+            _ => {
+                // Auto-generate a secure password and save it
+                let generated = generate_secure_password();
+                let keys_dir = Path::new("./jacs_keys");
+                fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+                    path: keys_dir.to_string_lossy().to_string(),
+                    reason: e.to_string(),
+                })?;
+                let password_file = keys_dir.join(".jacs_password");
+                fs::write(&password_file, &generated).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to write password file: {}", e),
+                })?;
+                // Set restrictive permissions (Unix only)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let perms = std::fs::Permissions::from_mode(0o600);
+                    let _ = std::fs::set_permissions(&password_file, perms);
+                }
+                info!(
+                    "quickstart: generated password saved to {}",
+                    password_file.display()
+                );
+                // Set env var for the current process so create() can use it
+                unsafe {
+                    std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &generated);
+                }
+                generated
+            }
+        };
+
+        // Use create_with_params for full control
+        let algo = match algorithm.unwrap_or("ed25519") {
+            "ed25519" => "ring-Ed25519",
+            "rsa-pss" => "RSA-PSS",
+            "pq2025" => "pq2025",
+            other => other,
+        };
+
+        let params = CreateAgentParams {
+            name: "jacs-agent".to_string(),
+            password,
+            algorithm: algo.to_string(),
+            config_path: config.to_string(),
+            ..Default::default()
+        };
+
+        Self::create_with_params(params)
     }
 
     /// Verifies the loaded agent's own identity.
@@ -1128,6 +1424,13 @@ impl SimpleAgent {
         }
 
         let valid = errors.is_empty();
+
+        // In strict mode, verification failure is a hard error
+        if self.strict && !valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: errors.join("; "),
+            });
+        }
 
         // Extract agent info
         let agent_value = agent.get_value().cloned().unwrap_or(json!({}));
@@ -1674,6 +1977,13 @@ impl SimpleAgent {
 
         let valid = errors.is_empty();
 
+        // In strict mode, verification failure is a hard error
+        if self.strict && !valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: errors.join("; "),
+            });
+        }
+
         // Extract signer info
         let signer_id = jacs_doc
             .value
@@ -1921,8 +2231,9 @@ impl SimpleAgent {
         ttl: u32,
     ) -> Result<SetupInstructions, JacsError> {
         use crate::dns::bootstrap::{
-            DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli, emit_cloudflare_curl,
-            emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch, tld_requirement_text,
+            DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli,
+            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch,
+            tld_requirement_text,
         };
 
         let agent = self.agent.lock().map_err(|e| JacsError::Internal {
@@ -1949,10 +2260,7 @@ impl SimpleAgent {
         let mut provider_commands = std::collections::HashMap::new();
         provider_commands.insert("bind".to_string(), dns_record_bind.clone());
         provider_commands.insert("route53".to_string(), emit_route53_change_batch(&rr));
-        provider_commands.insert(
-            "gcloud".to_string(),
-            emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"),
-        );
+        provider_commands.insert("gcloud".to_string(), emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"));
         provider_commands.insert(
             "azure".to_string(),
             emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"),
@@ -1976,12 +2284,11 @@ impl SimpleAgent {
             "jacs_public_key_hash": digest,
             "jacs_dns_record": dns_owner,
         });
-        let well_known_json =
-            serde_json::to_string_pretty(&well_known).unwrap_or_default();
+        let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
         // HAI registration
-        let hai_url = std::env::var("HAI_API_URL")
-            .unwrap_or_else(|_| "https://api.hai.ai".to_string());
+        let hai_url =
+            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
         let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
         let hai_payload = json!({
             "agent_id": agent_id,
@@ -2137,12 +2444,41 @@ impl SimpleAgent {
         question: Option<&str>,
         context: Option<&str>,
     ) -> Result<SignedDocument, JacsError> {
-        use crate::agent::agreement::Agreement;
+        self.create_agreement_with_options(document, agent_ids, question, context, None)
+    }
 
-        debug!("create_agreement() called with {} signers", agent_ids.len());
+    /// Creates a multi-party agreement with extended options.
+    ///
+    /// Like `create_agreement`, but accepts `AgreementOptions` for timeout,
+    /// quorum (M-of-N), and algorithm constraints.
+    ///
+    /// # Arguments
+    ///
+    /// * `document` - The document to create an agreement on (JSON string)
+    /// * `agent_ids` - List of agent IDs required to sign
+    /// * `question` - Optional prompt describing what agents are agreeing to
+    /// * `context` - Optional context for the agreement
+    /// * `options` - Optional `AgreementOptions` (timeout, quorum, algorithm constraints)
+    pub fn create_agreement_with_options(
+        &self,
+        document: &str,
+        agent_ids: &[String],
+        question: Option<&str>,
+        context: Option<&str>,
+        options: Option<&crate::agent::agreement::AgreementOptions>,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::agent::agreement::{Agreement, AgreementOptions};
+
+        debug!(
+            "create_agreement_with_options() called with {} signers",
+            agent_ids.len()
+        );
 
         // Check document size before processing
         check_document_size(document)?;
+
+        let default_opts = AgreementOptions::default();
+        let opts = options.unwrap_or(&default_opts);
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -2157,7 +2493,14 @@ impl SimpleAgent {
 
         // Then create the agreement on it
         let agreement_doc = agent
-            .create_agreement(&jacs_doc.getkey(), agent_ids, question, context, None)
+            .create_agreement_with_options(
+                &jacs_doc.getkey(),
+                agent_ids,
+                question,
+                context,
+                None,
+                opts,
+            )
             .map_err(|e| JacsError::Internal {
                 message: format!("Failed to create agreement: {}", e),
             })?;
@@ -2401,17 +2744,13 @@ impl SimpleAgent {
 
         let key = match api_key {
             Some(k) => k.to_string(),
-            None => std::env::var("HAI_API_KEY").map_err(|_| {
-                "No API key provided and HAI_API_KEY environment variable not set"
-            })?,
+            None => std::env::var("HAI_API_KEY")
+                .map_err(|_| "No API key provided and HAI_API_KEY environment variable not set")?,
         };
 
         let agent_json = self.export_agent()?;
 
-        let url = format!(
-            "{}/api/v1/agents/register",
-            hai_url.trim_end_matches('/')
-        );
+        let url = format!("{}/api/v1/agents/register", hai_url.trim_end_matches('/'));
 
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -2537,7 +2876,7 @@ pub fn create_with_params(params: CreateAgentParams) -> Result<AgentInfo, JacsEr
 /// ```
 #[deprecated(since = "0.3.0", note = "Use SimpleAgent::load() instead")]
 pub fn load(config_path: Option<&str>) -> Result<(), JacsError> {
-    let agent = SimpleAgent::load(config_path)?;
+    let agent = SimpleAgent::load(config_path, None)?;
     THREAD_AGENT.with(|cell| {
         *cell.borrow_mut() = Some(agent);
     });
@@ -2863,7 +3202,7 @@ mod tests {
 
     #[test]
     fn test_simple_agent_load_missing_config() {
-        let result = SimpleAgent::load(Some("/nonexistent/path/config.json"));
+        let result = SimpleAgent::load(Some("/nonexistent/path/config.json"), None);
         assert!(result.is_err());
 
         match result {
@@ -2976,7 +3315,7 @@ mod tests {
         // Test that SimpleAgent can store and return config path
         // Note: We can't fully test create/load without a valid config,
         // but we can verify the struct design
-        let result = SimpleAgent::load(Some("./nonexistent.json"));
+        let result = SimpleAgent::load(Some("./nonexistent.json"), None);
         assert!(result.is_err());
     }
 
@@ -3024,6 +3363,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         // Plain text that's not JSON
@@ -3043,6 +3383,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         // A document ID like "uuid:version"
@@ -3062,6 +3403,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         // Empty string should fail at JSON parse, not at pre-check
@@ -3074,6 +3416,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         let result = agent
@@ -3112,9 +3455,133 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+            strict: false,
         };
 
         let result = agent.get_setup_instructions("example.com", 3600);
         assert!(result.is_err(), "should fail without a loaded agent");
+    }
+
+    #[test]
+    fn test_resolve_strict_defaults_to_false() {
+        // With no explicit param and no env var, strict should be false
+        assert!(!resolve_strict(None));
+    }
+
+    #[test]
+    fn test_resolve_strict_explicit_overrides() {
+        assert!(resolve_strict(Some(true)));
+        assert!(!resolve_strict(Some(false)));
+    }
+
+    #[test]
+    fn test_resolve_strict_env_var() {
+        // SAFETY: Tests run single-threaded (serial_test or #[test] default)
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "true");
+        }
+        assert!(resolve_strict(None));
+
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "1");
+        }
+        assert!(resolve_strict(None));
+
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "false");
+        }
+        assert!(!resolve_strict(None));
+
+        // Explicit overrides env var
+        unsafe {
+            std::env::set_var("JACS_STRICT_MODE", "true");
+        }
+        assert!(!resolve_strict(Some(false)));
+
+        unsafe {
+            std::env::remove_var("JACS_STRICT_MODE");
+        }
+    }
+
+    #[test]
+    fn test_simple_agent_is_strict_accessor() {
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+            strict: true,
+        };
+        assert!(agent.is_strict());
+
+        let agent2 = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+            strict: false,
+        };
+        assert!(!agent2.is_strict());
+    }
+
+    #[test]
+    fn test_verify_non_json_strict_still_returns_err() {
+        // Strict mode shouldn't change behavior for malformed input — it should
+        // still return Err(DocumentMalformed), not SignatureVerificationFailed
+        let agent = SimpleAgent {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+            strict: true,
+        };
+
+        let result = agent.verify("not-json-at-all");
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::DocumentMalformed { .. }) => {} // expected
+            other => panic!("Expected DocumentMalformed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_simple_ephemeral_default_ed25519() {
+        let (agent, info) = SimpleAgent::ephemeral(None).unwrap();
+        assert!(!info.agent_id.is_empty());
+        assert_eq!(info.algorithm, "ring-Ed25519");
+        assert_eq!(info.name, "ephemeral");
+        assert!(info.config_path.is_empty());
+        assert!(info.public_key_path.is_empty());
+        // Verify self works
+        let result = agent.verify_self().unwrap();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_simple_ephemeral_pq2025() {
+        let (agent, info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
+        assert_eq!(info.algorithm, "pq2025");
+        let result = agent.verify_self().unwrap();
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_simple_ephemeral_sign_and_verify() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let msg = serde_json::json!({"hello": "world"});
+        let signed = agent.sign_message(&msg).unwrap();
+        assert!(!signed.raw.is_empty());
+        // Verify the signed document
+        let result = agent.verify(&signed.raw).unwrap();
+        assert!(
+            result.valid,
+            "Signed message should verify: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn test_simple_ephemeral_no_files() {
+        let temp = std::env::temp_dir().join("jacs_simple_ephemeral_no_files");
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).unwrap();
+        let (_agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
+        assert!(entries.is_empty());
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

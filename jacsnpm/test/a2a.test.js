@@ -1,5 +1,9 @@
 /**
  * Tests for JACS A2A (Agent-to-Agent) Protocol Integration (v0.4.0)
+ *
+ * Updated for v0.7.0 async-first API:
+ * - Module-level signRequest/verifyResponse are now legacySignRequest/legacyVerifyResponse
+ * - a2a.js still calls jacs.signRequest etc., so we stub the legacy names
  */
 
 const { expect } = require('chai');
@@ -194,7 +198,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         data: { key: 'value' }
       };
 
-      // Mock jacs.signRequest
+      // Mock jacs.legacySignRequest (v0.7.0 renamed from signRequest)
       const signedResult = {
         jacsId: 'wrapped-123',
         jacsVersion: 'v1',
@@ -205,14 +209,14 @@ describe('JACS A2A Integration (v0.4.0)', () => {
           signature: 'mock-signature'
         }
       };
-      sandbox.stub(jacs, 'signRequest').returns(signedResult);
+      sandbox.stub(jacs, 'legacySignRequest').returns(signedResult);
 
       const wrapped = a2aIntegration.wrapArtifactWithProvenance(artifact, 'task');
 
       expect(wrapped.jacsType).to.equal('a2a-task');
       expect(wrapped.a2aArtifact).to.deep.equal(artifact);
       expect(wrapped.jacsSignature).to.exist;
-      expect(jacs.signRequest.calledOnce).to.be.true;
+      expect(jacs.legacySignRequest.calledOnce).to.be.true;
     });
 
     it('should include parent signatures when provided', () => {
@@ -225,7 +229,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         jacsParentSignatures: [parentSig],
         jacsSignature: { agentID: 'test-agent' }
       };
-      sandbox.stub(jacs, 'signRequest').returns(signedResult);
+      sandbox.stub(jacs, 'legacySignRequest').returns(signedResult);
 
       const wrapped = a2aIntegration.wrapArtifactWithProvenance(artifact, 'workflow-step', [parentSig]);
 
@@ -248,7 +252,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         }
       };
 
-      sandbox.stub(jacs, 'verifyResponse').returns(true);
+      sandbox.stub(jacs, 'legacyVerifyResponse').returns(true);
 
       const result = a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 
@@ -258,7 +262,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       expect(result.artifactType).to.equal('a2a-task');
       expect(result.timestamp).to.equal('2024-01-15T10:00:00Z');
       expect(result.originalArtifact).to.deep.equal({ data: 'test' });
-      expect(jacs.verifyResponse.calledWith(wrappedArtifact)).to.be.true;
+      expect(jacs.legacyVerifyResponse.calledWith(wrappedArtifact)).to.be.true;
     });
 
     it('should handle artifacts with parent signatures', () => {
@@ -268,7 +272,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         a2aArtifact: {}
       };
 
-      sandbox.stub(jacs, 'verifyResponse').returns(true);
+      sandbox.stub(jacs, 'legacyVerifyResponse').returns(true);
 
       const result = a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 

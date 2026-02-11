@@ -75,6 +75,9 @@ from .types import (
     NetworkError,
 )
 
+# Make instance-based client API available
+from .client import JacsClient
+
 # Make simplified API available as jacs.simple
 from . import simple
 
@@ -93,9 +96,13 @@ try:
 except ImportError:
     hai = None  # httpx not installed
 
+# Make framework adapters available (optional, no hard deps)
+from . import adapters
+
 __all__ = [
     # Primary API Classes
     "JacsAgent",
+    "JacsClient",
     "SimpleAgent",
     # Stateless utilities
     "hash_string",
@@ -125,7 +132,9 @@ __all__ = [
     # Submodules
     "simple",
     "async_simple",
+    "testing",
     "hai",
+    "adapters",
 ]
 
  
