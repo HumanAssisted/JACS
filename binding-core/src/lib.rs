@@ -1270,24 +1270,59 @@ pub fn verify_document_standalone(
     std::fs::write(&config_path, &config_json)
         .map_err(|e| BindingCoreError::generic(format!("Failed to write temp config: {}", e)))?;
 
-    struct EnvGuard(std::option::Option<std::ffi::OsString>);
+    struct EnvGuard {
+        saved: Vec<(&'static str, std::option::Option<std::ffi::OsString>)>,
+    }
     impl Drop for EnvGuard {
         fn drop(&mut self) {
-            if let Some(ref prev) = self.0 {
-                // SAFETY: single-threaded test/standalone use; restore of previous value
-                unsafe { std::env::set_var("JACS_KEY_RESOLUTION", prev) }
-            } else {
-                unsafe { std::env::remove_var("JACS_KEY_RESOLUTION") }
+            for (key, prev) in &self.saved {
+                if let Some(val) = prev {
+                    // SAFETY: test/standalone path restores process env to prior values.
+                    unsafe { std::env::set_var(key, val) }
+                } else {
+                    // SAFETY: removing a missing key is a no-op.
+                    unsafe { std::env::remove_var(key) }
+                }
             }
         }
     }
-    let _env_guard = if let Some(kr) = key_resolution {
-        let prev = std::env::var_os("JACS_KEY_RESOLUTION");
+
+    // Isolate standalone verification from ambient env var pollution.
+    // Several test suites set JACS_* vars globally; load_config_12factor would
+    // otherwise override our temp config and silently point key lookups elsewhere.
+    let isolated_keys: [&'static str; 16] = [
+        "JACS_USE_SECURITY",
+        "JACS_DATA_DIRECTORY",
+        "JACS_KEY_DIRECTORY",
+        "JACS_AGENT_PRIVATE_KEY_FILENAME",
+        "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        "JACS_AGENT_KEY_ALGORITHM",
+        "JACS_AGENT_ID_AND_VERSION",
+        "JACS_DEFAULT_STORAGE",
+        "JACS_AGENT_DOMAIN",
+        "JACS_DNS_VALIDATE",
+        "JACS_DNS_STRICT",
+        "JACS_DNS_REQUIRED",
+        "JACS_DATABASE_URL",
+        "JACS_DATABASE_MAX_CONNECTIONS",
+        "JACS_DATABASE_MIN_CONNECTIONS",
+        "JACS_DATABASE_CONNECT_TIMEOUT_SECS",
+    ];
+    let mut saved: Vec<(&'static str, std::option::Option<std::ffi::OsString>)> = Vec::new();
+    for key in isolated_keys {
+        saved.push((key, std::env::var_os(key)));
+        // SAFETY: intentionally clearing process env vars for isolated verification.
+        unsafe { std::env::remove_var(key) }
+    }
+    saved.push(("JACS_KEY_RESOLUTION", std::env::var_os("JACS_KEY_RESOLUTION")));
+    if let Some(kr) = key_resolution {
+        // SAFETY: set explicit key resolution only for this call.
         unsafe { std::env::set_var("JACS_KEY_RESOLUTION", kr) }
-        Some(EnvGuard(prev))
     } else {
-        None
-    };
+        // SAFETY: ensure no inherited override leaks in.
+        unsafe { std::env::remove_var("JACS_KEY_RESOLUTION") }
+    }
+    let _env_guard = EnvGuard { saved };
 
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();
@@ -1760,6 +1795,76 @@ mod tests {
         assert!(
             result.valid,
             "key_directory should be usable as standalone storage root when data_directory is omitted"
+        );
+    }
+
+    #[test]
+    fn verify_standalone_ignores_polluting_env_overrides() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+        let fixtures_abs = fixtures_dir
+            .canonicalize()
+            .unwrap_or_else(|_| fixtures_dir.clone());
+        let fixtures_abs_str = fixtures_abs.to_string_lossy().to_string();
+
+        struct EnvRestore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for EnvRestore {
+            fn drop(&mut self) {
+                for (k, v) in &self.0 {
+                    if let Some(val) = v {
+                        // SAFETY: test-only env restoration.
+                        unsafe { std::env::set_var(k, val) }
+                    } else {
+                        // SAFETY: removing missing env vars is safe.
+                        unsafe { std::env::remove_var(k) }
+                    }
+                }
+            }
+        }
+
+        let keys = [
+            "JACS_DATA_DIRECTORY",
+            "JACS_KEY_DIRECTORY",
+            "JACS_DEFAULT_STORAGE",
+            "JACS_KEY_RESOLUTION",
+        ];
+        let mut prev = Vec::new();
+        for k in keys {
+            prev.push((k, std::env::var_os(k)));
+        }
+        let _restore = EnvRestore(prev);
+
+        // Simulate pollution from earlier tests in the same process.
+        // SAFETY: test-only env manipulation.
+        unsafe {
+            std::env::set_var("JACS_DATA_DIRECTORY", "/tmp/does-not-exist");
+            std::env::set_var("JACS_KEY_DIRECTORY", "/tmp/does-not-exist");
+            std::env::set_var("JACS_DEFAULT_STORAGE", "memory");
+            std::env::set_var("JACS_KEY_RESOLUTION", "hai");
+        }
+
+        let result = verify_document_standalone(
+            &signed,
+            Some("local"),
+            Some(&fixtures_abs_str),
+            Some(&fixtures_abs_str),
+        )
+        .expect("standalone verify should not error");
+
+        assert!(
+            result.valid,
+            "verification should ignore ambient JACS_* env pollution"
         );
     }
 

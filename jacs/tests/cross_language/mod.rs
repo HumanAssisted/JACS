@@ -208,17 +208,11 @@ fn generate_pq2025_fixture() {
 #[test]
 #[serial]
 fn verify_ed25519_fixture_standalone() {
-    if should_update_fixtures() {
-        generate_fixture("ed25519", "ed25519");
-    }
     verify_fixture("ed25519");
 }
 
 #[test]
 #[serial]
 fn verify_pq2025_fixture_standalone() {
-    if should_update_fixtures() {
-        generate_fixture("pq2025", "pq2025");
-    }
     verify_fixture("pq2025");
 }

@@ -2,16 +2,16 @@
 
 [package]
 name = "jacs-observability-demo"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.93"
 
 [dependencies]
 jacs = { path = "../../" }
-opentelemetry = "0.30.0"
-opentelemetry_sdk = "0.30.0"
-tracing = "0.1"
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
-reqwest = "0.12.20"
+opentelemetry = "0.31.0"
+opentelemetry_sdk = "0.31.0"
+tracing = "0.1.44"
+serde_json = "1.0.149"
+chrono = { version = "0.4.43", features = ["serde"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "time"] }
+reqwest = "0.13.2"
