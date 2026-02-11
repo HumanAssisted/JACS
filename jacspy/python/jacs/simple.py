@@ -98,6 +98,7 @@ try:
     from .jacs import is_trusted as _is_trusted
     from .jacs import get_trusted_agent as _get_trusted_agent
     from .jacs import verify_document_standalone as _verify_document_standalone
+    from .jacs import verify_agent_dns as _verify_agent_dns
     from .jacs import audit as _audit
 except ImportError:
     # Fallback for when running directly
@@ -105,6 +106,7 @@ except ImportError:
     JacsAgent = _jacs_module.JacsAgent
     _fetch_remote_key = _jacs_module.fetch_remote_key
     _verify_document_standalone = _jacs_module.verify_document_standalone
+    _verify_agent_dns = _jacs_module.verify_agent_dns
     _trust_agent = _jacs_module.trust_agent
     _list_trusted_agents = _jacs_module.list_trusted_agents
     _untrust_agent = _jacs_module.untrust_agent
@@ -1606,6 +1608,34 @@ def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
         raise
 
 
+def verify_dns(
+    agent_document: Union[str, dict],
+    domain: str,
+) -> VerificationResult:
+    """Verify an agent's identity via DNS TXT record lookup.
+
+    Checks that the agent's public key hash published in a DNS TXT record
+    at _v1.agent.jacs.{domain} matches the key in the agent document.
+
+    Args:
+        agent_document: The agent document to verify (JSON string or dict).
+        domain: The domain to look up (e.g. "example.com").
+
+    Returns:
+        VerificationResult with valid=True if DNS record matches.
+    """
+    doc_str = json.dumps(agent_document) if isinstance(agent_document, dict) else agent_document
+    try:
+        d = _verify_agent_dns(doc_str, domain)
+        return VerificationResult(
+            valid=bool(d.get("verified", False)),
+            signer_id=str(d.get("agent_id", "")),
+            errors=[d["message"]] if not d.get("verified") and d.get("message") else [],
+        )
+    except Exception as e:
+        return VerificationResult(valid=False, errors=[str(e)])
+
+
 def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
     """Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
 
@@ -1681,6 +1711,9 @@ __all__ = [
     "create_agreement",
     "sign_agreement",
     "check_agreement",
+    # Standalone verification
+    "verify_standalone",
+    "verify_dns",
     # Utility functions
     "generate_verify_link",
     "MAX_VERIFY_URL_LEN",

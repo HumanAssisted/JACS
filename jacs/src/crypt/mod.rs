@@ -274,6 +274,7 @@ impl KeyManager for Agent {
             data_len = data.len(),
             "Signing data"
         );
+        let sign_start = std::time::Instant::now();
         // Validate algorithm is known (result unused but validates early)
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
             format!(
@@ -327,10 +328,17 @@ impl KeyManager for Agent {
                         e
                     )
                 })?;
+            let sign_duration_ms = sign_start.elapsed().as_millis() as u64;
             debug!(
                 algorithm = %key_algorithm,
                 signature_len = sig_bytes.len(),
                 "Signing completed successfully"
+            );
+            info!(
+                event = "document_signed",
+                algorithm = %key_algorithm,
+                duration_ms = sign_duration_ms,
+                "Document signed"
             );
             Ok(STANDARD.encode(sig_bytes))
         }
@@ -353,6 +361,7 @@ impl KeyManager for Agent {
             )
         })?;
 
+        let batch_start = std::time::Instant::now();
         info!(
             algorithm = %key_algorithm,
             batch_size = messages.len(),
@@ -416,10 +425,18 @@ impl KeyManager for Agent {
             signatures.push(STANDARD.encode(sig_bytes));
         }
 
+        let batch_duration_ms = batch_start.elapsed().as_millis() as u64;
         debug!(
             algorithm = %key_algorithm,
             batch_size = messages.len(),
             "Batch signing completed successfully"
+        );
+        info!(
+            event = "batch_signed",
+            algorithm = %key_algorithm,
+            batch_size = messages.len(),
+            duration_ms = batch_duration_ms,
+            "Batch signing complete"
         );
 
         Ok(signatures)
@@ -439,6 +456,7 @@ impl KeyManager for Agent {
             explicit_algorithm = ?public_key_enc_type,
             "Verifying signature"
         );
+        let verify_start = std::time::Instant::now();
         // Get the signature bytes for analysis
         let signature_bytes = STANDARD.decode(signature_base64)?;
 
@@ -490,7 +508,8 @@ impl KeyManager for Agent {
             }
         };
 
-        match algo {
+        let algo_str = algo.to_string();
+        let result = match algo {
             CryptoSigningAlgorithm::RsaPss => {
                 rsawrapper::verify_string(public_key, data, signature_base64)
             }
@@ -502,27 +521,32 @@ impl KeyManager for Agent {
                 let result = pq::verify_string(public_key.clone(), data, signature_base64);
 
                 if result.is_ok() {
-                    return Ok(());
-                }
-
-                // If we encounter a signature length error and we're using PqDilithiumAlt,
-                // we could implement a special handling here for the alternative format
-                if let Err(e) = &result
+                    result
+                } else if let Err(e) = &result
                     && e.to_string().contains("BadLength")
                     && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
                 {
-                    // Here we would add special handling for the alternative format
-                    // For now, we'll just log it and fail with a more descriptive error
-                    return Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}", 
-                            signature_bytes.len(), e).into());
+                    Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}",
+                            signature_bytes.len(), e).into())
+                } else {
+                    result
                 }
-
-                // Return the original error
-                result
             }
             CryptoSigningAlgorithm::Pq2025 => {
                 pq2025::verify_string(public_key, data, signature_base64)
             }
-        }
+        };
+
+        let verify_duration_ms = verify_start.elapsed().as_millis() as u64;
+        let valid = result.is_ok();
+        info!(
+            event = "signature_verified",
+            algorithm = %algo_str,
+            valid = valid,
+            duration_ms = verify_duration_ms,
+            "Signature verification complete"
+        );
+
+        result
     }
 }

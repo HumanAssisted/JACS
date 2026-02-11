@@ -574,6 +574,34 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             Command::new("init")
                 .about("Initialize JACS by creating both config and agent (with keys)")
         )
+        .subcommand(
+            Command::new("verify")
+                .about("Verify a signed JACS document (no agent required)")
+                .arg(
+                    Arg::new("file")
+                        .help("Path to the signed JACS JSON file")
+                        .required_unless_present("remote")
+                        .value_parser(value_parser!(String)),
+                )
+                .arg(
+                    Arg::new("remote")
+                        .long("remote")
+                        .value_parser(value_parser!(String))
+                        .help("Fetch document from URL before verifying"),
+                )
+                .arg(
+                    Arg::new("json")
+                        .long("json")
+                        .action(ArgAction::SetTrue)
+                        .help("Output result as JSON"),
+                )
+                .arg(
+                    Arg::new("key-dir")
+                        .long("key-dir")
+                        .value_parser(value_parser!(String))
+                        .help("Directory containing public keys for verification"),
+                )
+        )
         .arg_required_else_help(true)
         .get_matches();
 
@@ -1106,6 +1134,104 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!();
                 println!("Sign something:");
                 println!("  echo '{{\"hello\":\"world\"}}' | jacs quickstart --sign");
+            }
+        }
+        Some(("verify", verify_matches)) => {
+            use jacs::simple::SimpleAgent;
+            use serde_json::json;
+
+            let file_path = verify_matches.get_one::<String>("file");
+            let remote_url = verify_matches.get_one::<String>("remote");
+            let json_output = *verify_matches.get_one::<bool>("json").unwrap_or(&false);
+            let key_dir = verify_matches.get_one::<String>("key-dir");
+
+            // Optionally set key directory env var so the agent resolves keys from there
+            if let Some(kd) = key_dir {
+                // SAFETY: CLI is single-threaded at this point
+                unsafe { std::env::set_var("JACS_KEY_DIRECTORY", kd) };
+            }
+
+            // Get the document content
+            let document = if let Some(url) = remote_url {
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .map_err(|e| format!("HTTP client error: {}", e))?;
+                let resp = client.get(url).send().map_err(|e| format!("Fetch failed: {}", e))?;
+                if !resp.status().is_success() {
+                    eprintln!("HTTP error: {}", resp.status());
+                    process::exit(1);
+                }
+                resp.text().map_err(|e| format!("Read body failed: {}", e))?
+            } else if let Some(path) = file_path {
+                std::fs::read_to_string(path).map_err(|e| format!("Read file failed: {}", e))?
+            } else {
+                eprintln!("Provide a file path or --remote <url>");
+                process::exit(1);
+            };
+
+            // Try to load an existing agent (from config in cwd or env vars).
+            // This gives access to the agent's own keys for verifying self-signed docs.
+            // Fall back to an ephemeral agent if no config is available.
+            let agent = if std::path::Path::new("./jacs.config.json").exists() {
+                // If password not set, try reading from quickstart's password file
+                if env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default().is_empty() {
+                    let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
+                    if pw_path.exists() {
+                        if let Ok(pw) = std::fs::read_to_string(pw_path) {
+                            // SAFETY: CLI is single-threaded at this point
+                            unsafe { env::set_var("JACS_PRIVATE_KEY_PASSWORD", pw.trim()) };
+                        }
+                    }
+                }
+                match SimpleAgent::load(None, None) {
+                    Ok(a) => a,
+                    Err(_) => {
+                        let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).map_err(|e| {
+                            format!("Failed to create verifier: {}", e)
+                        })?;
+                        a
+                    }
+                }
+            } else {
+                let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).map_err(|e| {
+                    format!("Failed to create verifier: {}", e)
+                })?;
+                a
+            };
+
+            match agent.verify(&document) {
+                Ok(r) => {
+                    if json_output {
+                        let out = json!({
+                            "valid": r.valid,
+                            "signerId": r.signer_id,
+                            "timestamp": r.timestamp,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+                    } else {
+                        println!("Status:    {}", if r.valid { "VALID" } else { "INVALID" });
+                        println!("Signer:    {}", if r.signer_id.is_empty() { "(unknown)" } else { &r.signer_id });
+                        if !r.timestamp.is_empty() {
+                            println!("Signed at: {}", r.timestamp);
+                        }
+                    }
+                    if !r.valid {
+                        process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    if json_output {
+                        let out = json!({
+                            "valid": false,
+                            "error": e.to_string(),
+                        });
+                        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+                    } else {
+                        eprintln!("Verification error: {}", e);
+                    }
+                    process::exit(1);
+                }
             }
         }
         Some(("init", _init_matches)) => {

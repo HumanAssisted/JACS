@@ -135,6 +135,28 @@ const agent = await jacs.create({
 console.log(`Created: ${agent.agentId}`);
 ```
 
+### Standalone Verification (No Agent Required)
+
+Verify a signed document without loading an agent. Useful for one-off verification, CI/CD pipelines, or services that only need to verify, not sign.
+
+```typescript
+import { verifyStandalone, generateVerifyLink } from '@hai.ai/jacs/simple';
+
+const result = verifyStandalone(signedJson, {
+  keyResolution: 'local',
+  keyDirectory: './trusted-keys/',
+});
+if (result.valid) {
+  console.log(`Signed by: ${result.signerId}`);
+}
+
+// Generate a shareable verification link
+const url = generateVerifyLink(signed.raw);
+// https://hai.ai/jacs/verify?s=<base64url-encoded-document>
+```
+
+Documents signed by Rust or Python agents verify identically in Node.js -- cross-language interop is tested on every commit with Ed25519 and pq2025 (ML-DSA-87). See the full [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) for CLI, DNS, and cross-language examples.
+
 ### Verify by Document ID
 
 ```javascript
@@ -491,6 +513,7 @@ interface RemotePublicKeyInfo {
 
 - [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
 - [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) - CLI, standalone, DNS verification
 - [Source](https://github.com/HumanAssisted/JACS) - GitHub repository
 - [HAI Developer Portal](https://hai.ai/dev)
 - [Examples](./examples/)

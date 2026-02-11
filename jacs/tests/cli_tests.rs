@@ -612,3 +612,188 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+// =============================================================================
+// jacs verify (top-level standalone verification)
+// =============================================================================
+
+#[test]
+fn test_verify_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("verify").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Verify a signed JACS document"))
+        .stdout(predicate::str::contains("--remote"))
+        .stdout(predicate::str::contains("--json"))
+        .stdout(predicate::str::contains("--key-dir"));
+    Ok(())
+}
+
+#[test]
+fn test_verify_missing_file() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("verify").arg("nonexistent.json");
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Read file failed"));
+    Ok(())
+}
+
+#[test]
+fn test_verify_invalid_json() -> Result<(), Box<dyn Error>> {
+    // Create a temp file with invalid JSON
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_invalid");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+    let bad_file = tmp_dir.join("bad.json");
+    fs::write(&bad_file, "not json at all")?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("verify").arg(bad_file.to_string_lossy().as_ref());
+    cmd.assert().failure();
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_verify_unsigned_json() -> Result<(), Box<dyn Error>> {
+    // Create a temp file with valid JSON but no JACS signature
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_unsigned");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+    let unsigned_file = tmp_dir.join("unsigned.json");
+    fs::write(&unsigned_file, r#"{"hello": "world"}"#)?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("verify")
+        .arg(unsigned_file.to_string_lossy().as_ref());
+    cmd.assert().failure();
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
+    // Use quickstart --sign to create a signed document, then verify it
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_roundtrip");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    // Create input JSON file
+    let input_file = tmp_dir.join("input.json");
+    fs::write(&input_file, r#"{"message": "test verification"}"#)?;
+
+    // Sign it with quickstart
+    let sign_output = Command::cargo_bin("jacs")?
+        .current_dir(&tmp_dir)
+        .arg("quickstart")
+        .arg("--algorithm=ed25519")
+        .arg("--sign")
+        .arg("-f")
+        .arg(input_file.to_string_lossy().as_ref())
+        .output()?;
+
+    assert!(
+        sign_output.status.success(),
+        "quickstart --sign failed: {}",
+        String::from_utf8_lossy(&sign_output.stderr)
+    );
+
+    let signed_json = String::from_utf8(sign_output.stdout)?;
+    let signed_file = tmp_dir.join("signed.json");
+    fs::write(&signed_file, &signed_json)?;
+
+    // Now verify with `jacs verify` — it picks up jacs.config.json from cwd
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.current_dir(&tmp_dir)
+        .arg("verify")
+        .arg(signed_file.to_string_lossy().as_ref());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("VALID"))
+        .stdout(predicate::str::contains("Signer:"))
+        .stdout(predicate::str::contains("Signed at:"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_json");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let input_file = tmp_dir.join("input.json");
+    fs::write(&input_file, r#"{"data": "json output test"}"#)?;
+
+    // Sign
+    let sign_output = Command::cargo_bin("jacs")?
+        .current_dir(&tmp_dir)
+        .arg("quickstart")
+        .arg("--algorithm=ed25519")
+        .arg("--sign")
+        .arg("-f")
+        .arg(input_file.to_string_lossy().as_ref())
+        .output()?;
+    assert!(sign_output.status.success());
+
+    let signed_json = String::from_utf8(sign_output.stdout)?;
+    let signed_file = tmp_dir.join("signed.json");
+    fs::write(&signed_file, &signed_json)?;
+
+    // Verify with --json flag
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.current_dir(&tmp_dir)
+        .arg("verify")
+        .arg(signed_file.to_string_lossy().as_ref())
+        .arg("--json");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(r#""valid": true"#))
+        .stdout(predicate::str::contains("signerId"))
+        .stdout(predicate::str::contains("timestamp"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_tampered");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let input_file = tmp_dir.join("input.json");
+    fs::write(&input_file, r#"{"data": "tamper test"}"#)?;
+
+    // Sign
+    let sign_output = Command::cargo_bin("jacs")?
+        .current_dir(&tmp_dir)
+        .arg("quickstart")
+        .arg("--algorithm=ed25519")
+        .arg("--sign")
+        .arg("-f")
+        .arg(input_file.to_string_lossy().as_ref())
+        .output()?;
+    assert!(sign_output.status.success());
+
+    // Tamper with the signed document
+    let signed_json = String::from_utf8(sign_output.stdout)?;
+    let tampered = signed_json.replace("tamper test", "TAMPERED DATA");
+    let tampered_file = tmp_dir.join("tampered.json");
+    fs::write(&tampered_file, &tampered)?;
+
+    // Verify should fail (exit code 1)
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.current_dir(&tmp_dir)
+        .arg("verify")
+        .arg(tampered_file.to_string_lossy().as_ref());
+    cmd.assert().failure();
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}

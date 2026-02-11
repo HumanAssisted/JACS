@@ -1040,12 +1040,16 @@ pub fn legacy_update_agent(new_agent_string: String) -> Result<String> {
     agent.update_agent(&new_agent_string).to_napi()
 }
 
-/// Result of verify_document_standalone. Exposed to JS as { valid, signerId }.
+/// Result of verify_document_standalone. Exposed to JS as { valid, signerId, timestamp, agentVersion }.
 #[napi(object)]
 pub struct VerifyStandaloneResult {
     pub valid: bool,
     /// Signer agent ID; exposed to JS as signerId (camelCase).
     pub signer_id: String,
+    /// Signing timestamp from jacsSignature.date.
+    pub timestamp: String,
+    /// Signer agent version from jacsSignature.agentVersion.
+    pub agent_version: String,
 }
 
 /// Verify a signed JACS document without loading an agent.
@@ -1067,6 +1071,8 @@ pub fn verify_document_standalone(
     Ok(VerifyStandaloneResult {
         valid: r.valid,
         signer_id: r.signer_id,
+        timestamp: r.timestamp,
+        agent_version: r.agent_version,
     })
 }
 

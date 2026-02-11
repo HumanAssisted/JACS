@@ -1,0 +1,359 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Verifying Signed Documents - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../getting-started/decision-tree.html"><strong aria-hidden="true">4.</strong> Which Integration?</a></li><li class="chapter-item expanded "><a href="../getting-started/multi-agent-agreement.html"><strong aria-hidden="true">5.</strong> Multi-Agent Agreements</a></li><li class="chapter-item expanded "><a href="../getting-started/verification.html" class="active"><strong aria-hidden="true">6.</strong> Verifying Signed Documents</a></li><li class="chapter-item expanded "><a href="../usecases.html"><strong aria-hidden="true">7.</strong> Use cases</a></li><li class="chapter-item expanded "><a href="../getting-started/deployment.html"><strong aria-hidden="true">8.</strong> Deployment Compatibility</a></li><li class="chapter-item expanded "><a href="../getting-started/troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">10.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">11.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">12.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">13.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">14.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">15.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">16.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">17.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">18.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/simple-api.html"><strong aria-hidden="true">19.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">20.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/langchain.html"><strong aria-hidden="true">21.</strong> LangChain.js</a></li><li class="chapter-item expanded "><a href="../nodejs/vercel-ai.html"><strong aria-hidden="true">22.</strong> Vercel AI SDK</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">23.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/koa.html"><strong aria-hidden="true">24.</strong> Koa Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">25.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">26.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">27.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">28.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/simple-api.html"><strong aria-hidden="true">29.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">30.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/adapters.html"><strong aria-hidden="true">31.</strong> Framework Adapters</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">32.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">33.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">34.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">35.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">36.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">37.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/agentstate.html"><strong aria-hidden="true">38.</strong> Agent State Schema</a></li><li class="chapter-item expanded "><a href="../schemas/commitment.html"><strong aria-hidden="true">39.</strong> Commitment Schema</a></li><li class="chapter-item expanded "><a href="../schemas/todo.html"><strong aria-hidden="true">40.</strong> Todo List Schema</a></li><li class="chapter-item expanded "><a href="../schemas/conversation.html"><strong aria-hidden="true">41.</strong> Conversation Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">42.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">43.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/key-rotation.html"><strong aria-hidden="true">44.</strong> Key Rotation</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">45.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/algorithm-guide.html"><strong aria-hidden="true">46.</strong> Algorithm Selection Guide</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">47.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">48.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/trust-store.html"><strong aria-hidden="true">49.</strong> Trust Store</a></li><li class="chapter-item expanded "><a href="../advanced/infrastructure.html"><strong aria-hidden="true">50.</strong> Infrastructure vs Tools</a></li><li class="chapter-item expanded "><a href="../advanced/dns-trust.html"><strong aria-hidden="true">51.</strong> DNS Trust Anchoring</a></li><li class="chapter-item expanded "><a href="../advanced/failure-modes.html"><strong aria-hidden="true">52.</strong> Failure Modes</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">53.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">54.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/a2a.html"><strong aria-hidden="true">55.</strong> A2A Interoperability</a></li><li class="chapter-item expanded "><a href="../integrations/hai.html"><strong aria-hidden="true">56.</strong> HAI.ai Platform</a></li><li class="chapter-item expanded "><a href="../integrations/openclaw.html"><strong aria-hidden="true">57.</strong> OpenClaw</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">58.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">59.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../guides/observability.html"><strong aria-hidden="true">60.</strong> Observability & Monitoring</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">61.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">62.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">63.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">64.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">65.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">66.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">67.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">68.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="verifying-signed-documents"><a class="header" href="#verifying-signed-documents">Verifying Signed Documents</a></h1>
+<p>Verify a JACS-signed document in under 2 minutes. Verification confirms two things: the document was signed by the claimed agent, and the content has not been modified since signing.</p>
+<p><strong>Verification does NOT require creating an agent.</strong> You only need the signed document (and optionally access to the signer's public key).</p>
+<h2 id="cli-jacs-verify"><a class="header" href="#cli-jacs-verify">CLI: <code>jacs verify</code></a></h2>
+<p>The fastest way to verify a document from the command line. No config file, no agent setup.</p>
+<pre><code class="language-bash"># Verify a local file
+jacs verify signed-document.json
+
+# Verify with JSON output (for scripting)
+jacs verify signed-document.json --json
+
+# Verify a remote document by URL
+jacs verify --remote https://example.com/signed-doc.json
+
+# Specify a directory containing public keys
+jacs verify signed-document.json --key-dir ./trusted-keys/
+</code></pre>
+<p>Output on success:</p>
+<pre><code>Status:    VALID
+Signer:    550e8400-e29b-41d4-a716-446655440000
+Signed at: 2026-02-10T12:00:00Z
+</code></pre>
+<p>JSON output (<code>--json</code>):</p>
+<pre><code class="language-json">{
+  "valid": true,
+  "signerId": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2026-02-10T12:00:00Z"
+}
+</code></pre>
+<p>The exit code is <code>0</code> for valid, <code>1</code> for invalid or error. Use this in CI/CD pipelines:</p>
+<pre><code class="language-bash">if jacs verify artifact.json --json; then
+  echo "Artifact is authentic"
+else
+  echo "Verification failed" &gt;&amp;2
+  exit 1
+fi
+</code></pre>
+<p>If a <code>jacs.config.json</code> and agent keys exist in the current directory, the CLI uses them automatically. Otherwise, it creates a temporary ephemeral verifier internally.</p>
+<h2 id="python"><a class="header" href="#python">Python</a></h2>
+<h3 id="with-an-agent-loaded"><a class="header" href="#with-an-agent-loaded">With an agent loaded</a></h3>
+<pre><code class="language-python">import jacs.simple as jacs
+
+jacs.load("./jacs.config.json")
+
+result = jacs.verify(signed_json)
+if result.valid:
+    print(f"Signed by: {result.signer_id}")
+else:
+    print(f"Errors: {result.errors}")
+</code></pre>
+<h3 id="without-an-agent-standalone"><a class="header" href="#without-an-agent-standalone">Without an agent (standalone)</a></h3>
+<pre><code class="language-python">import jacs.simple as jacs
+
+result = jacs.verify_standalone(
+    signed_json,
+    key_resolution="local",
+    key_directory="./trusted-keys/"
+)
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
+</code></pre>
+<p><code>verify_standalone</code> does not use a global agent. Pass the key resolution strategy and directories explicitly.</p>
+<h3 id="verify-by-document-id"><a class="header" href="#verify-by-document-id">Verify by document ID</a></h3>
+<p>If the document is in local storage and you know its ID:</p>
+<pre><code class="language-python">result = jacs.verify_by_id("550e8400-e29b-41d4:1")
+</code></pre>
+<h2 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h2>
+<h3 id="with-an-agent-loaded-1"><a class="header" href="#with-an-agent-loaded-1">With an agent loaded</a></h3>
+<pre><code class="language-typescript">import * as jacs from '@hai.ai/jacs/simple';
+
+await jacs.load('./jacs.config.json');
+
+const result = await jacs.verify(signedJson);
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+</code></pre>
+<h3 id="without-an-agent-standalone-1"><a class="header" href="#without-an-agent-standalone-1">Without an agent (standalone)</a></h3>
+<pre><code class="language-typescript">import { verifyStandalone } from '@hai.ai/jacs/simple';
+
+const result = verifyStandalone(signedJson, {
+  keyResolution: 'local',
+  keyDirectory: './trusted-keys/',
+});
+console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+</code></pre>
+<h3 id="verify-by-document-id-1"><a class="header" href="#verify-by-document-id-1">Verify by document ID</a></h3>
+<pre><code class="language-typescript">const result = await jacs.verifyById('550e8400-e29b-41d4:1');
+</code></pre>
+<h2 id="verification-links"><a class="header" href="#verification-links">Verification Links</a></h2>
+<p>Generate a URL that lets anyone verify a signed document through a web verifier (e.g., hai.ai):</p>
+<p><strong>Python:</strong></p>
+<pre><code class="language-python">url = jacs.generate_verify_link(signed_doc.raw_json)
+# https://hai.ai/jacs/verify?s=&lt;base64url-encoded-document&gt;
+</code></pre>
+<p><strong>Node.js:</strong></p>
+<pre><code class="language-typescript">const url = jacs.generateVerifyLink(signed.raw);
+</code></pre>
+<p>The document is base64url-encoded into the URL query parameter. Documents must be under ~1.5 KB to fit within the 2048-character URL limit. For larger documents, share the file directly and verify with the CLI or SDK.</p>
+<h2 id="dns-verification"><a class="header" href="#dns-verification">DNS Verification</a></h2>
+<p>DNS verification checks that an agent's public key hash matches a DNS TXT record published at <code>_v1.agent.jacs.&lt;domain&gt;</code>. This provides a decentralized trust anchor: anyone can look up the agent's expected key fingerprint via DNS without contacting a central server.</p>
+<h3 id="publishing-a-dns-record"><a class="header" href="#publishing-a-dns-record">Publishing a DNS record</a></h3>
+<pre><code class="language-bash">jacs agent dns --domain example.com --provider plain
+</code></pre>
+<p>This outputs the TXT record to add to your DNS zone. Provider options: <code>plain</code>, <code>aws</code>, <code>azure</code>, <code>cloudflare</code>.</p>
+<h3 id="looking-up-an-agent-by-domain"><a class="header" href="#looking-up-an-agent-by-domain">Looking up an agent by domain</a></h3>
+<pre><code class="language-bash">jacs agent lookup example.com
+</code></pre>
+<p>This fetches the agent's public key from <code>https://example.com/.well-known/jacs-pubkey.json</code> and checks the DNS TXT record at <code>_v1.agent.jacs.example.com</code>.</p>
+<h3 id="cli-verification-with-dns"><a class="header" href="#cli-verification-with-dns">CLI verification with DNS</a></h3>
+<pre><code class="language-bash"># Require DNS validation (fail if no DNS record)
+jacs agent verify --require-dns
+
+# Require strict DNSSEC validation
+jacs agent verify --require-strict-dns
+</code></pre>
+<p>For full DNS setup instructions, see <a href="../rust/dns.html">DNS-Based Verification</a> and <a href="../advanced/dns-trust.html">DNS Trust Anchoring</a>.</p>
+<h2 id="cross-language-verification"><a class="header" href="#cross-language-verification">Cross-Language Verification</a></h2>
+<p>JACS signatures are language-agnostic. A document signed by a Rust agent verifies identically in Python and Node.js, and vice versa. This holds for both Ed25519 and post-quantum (ML-DSA-87/pq2025) algorithms.</p>
+<p>This is tested on every commit: Rust generates signed fixtures, then Python calls <code>verify_standalone()</code> and Node.js calls <code>verifyStandalone()</code> to verify them. Each binding also countersigns the fixture with a different algorithm, proving round-trip interoperability.</p>
+<p>Test sources:</p>
+<ul>
+<li>Rust fixture generator: <code>jacs/tests/cross_language/mod.rs</code></li>
+<li>Python consumer: <code>jacspy/tests/test_cross_language.py</code></li>
+<li>Node.js consumer: <code>jacsnpm/test/cross-language.test.js</code></li>
+</ul>
+<h2 id="key-resolution-order"><a class="header" href="#key-resolution-order">Key Resolution Order</a></h2>
+<p>When verifying a document, JACS resolves the signer's public key in a configurable order. Set <code>JACS_KEY_RESOLUTION</code> to control this:</p>
+<div class="table-wrapper"><table><thead><tr><th>Value</th><th>Source</th></tr></thead><tbody>
+<tr><td><code>local</code></td><td>Local trust store (added via <code>trust_agent</code>)</td></tr>
+<tr><td><code>dns</code></td><td>DNS TXT record lookup</td></tr>
+<tr><td><code>hai</code></td><td>HAI key distribution service</td></tr>
+</tbody></table>
+</div>
+<p>Default: <code>local,hai</code>. Example: <code>JACS_KEY_RESOLUTION=local,dns,hai</code>.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../getting-started/multi-agent-agreement.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../usecases.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../getting-started/multi-agent-agreement.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../usecases.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

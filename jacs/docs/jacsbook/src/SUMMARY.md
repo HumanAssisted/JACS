@@ -8,6 +8,7 @@
 - [Quick Start](getting-started/quick-start.md)
 - [Which Integration?](getting-started/decision-tree.md)
 - [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
+- [Verifying Signed Documents](getting-started/verification.md)
 - [Use cases](usecases.md)
 - [Deployment Compatibility](getting-started/deployment.md)
 - [Troubleshooting](getting-started/troubleshooting.md)
@@ -74,6 +75,9 @@
 - [OpenClaw](integrations/openclaw.md)
 - [Web Servers](integrations/web-servers.md)
 - [Databases](integrations/databases.md)
+
+## Guides
+- [Observability & Monitoring](guides/observability.md)
 
 ## Examples
 - [CLI Examples](examples/cli.md)

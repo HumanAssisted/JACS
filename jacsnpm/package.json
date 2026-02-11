@@ -81,7 +81,8 @@
     "test:mcp": "mocha --timeout 15000 'test/mcp.test.js'",
     "test:vercel-ai": "mocha --timeout 15000 'test/vercel-ai.test.js'",
     "test:langchain": "mocha --timeout 15000 'test/langchain.test.js'",
-    "test:adapters": "mocha --timeout 15000 'test/express.test.js' 'test/koa.test.js' 'test/mcp.test.js' 'test/vercel-ai.test.js' 'test/langchain.test.js'"
+    "test:adapters": "mocha --timeout 15000 'test/express.test.js' 'test/koa.test.js' 'test/mcp.test.js' 'test/vercel-ai.test.js' 'test/langchain.test.js'",
+    "test:cross-language": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' mocha --timeout 30000 'test/cross-language.test.js'"
   },
   "dependencies": {
     "@napi-rs/cli": "^2.16.3",

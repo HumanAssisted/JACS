@@ -33,6 +33,51 @@ jacs quickstart --algorithm ring-Ed25519
 - `--sign` - Sign input (from stdin or `--file`) instead of printing info
 - `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)
 
+### `jacs verify`
+Verify a signed JACS document. No agent or config file required -- the CLI creates an ephemeral verifier if needed.
+
+```bash
+# Verify a local file
+jacs verify signed-document.json
+
+# JSON output (for scripting)
+jacs verify signed-document.json --json
+
+# Verify a remote document
+jacs verify --remote https://example.com/signed-doc.json
+
+# Specify a directory of public keys
+jacs verify signed-document.json --key-dir ./trusted-keys/
+```
+
+**Options:**
+- `<file>` - Path to the signed JACS JSON file (positional, required unless `--remote` is used)
+- `--remote <url>` - Fetch document from URL before verifying
+- `--json` - Output result as JSON (`{"valid": true, "signerId": "...", "timestamp": "..."}`)
+- `--key-dir <dir>` - Directory containing public keys for verification
+
+**Exit codes:** `0` for valid, `1` for invalid or error.
+
+**Output (text):**
+```
+Status:    VALID
+Signer:    550e8400-e29b-41d4-a716-446655440000
+Signed at: 2026-02-10T12:00:00Z
+```
+
+**Output (JSON):**
+```json
+{
+  "valid": true,
+  "signerId": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2026-02-10T12:00:00Z"
+}
+```
+
+If `./jacs.config.json` and agent keys exist in the current directory, the CLI uses them automatically. Otherwise it creates a temporary ephemeral verifier internally.
+
+See the [Verification Guide](../getting-started/verification.md) for Python, Node.js, and DNS verification workflows.
+
 ### `jacs init`
 Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.
 

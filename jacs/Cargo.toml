@@ -113,6 +113,7 @@ tokio = { version = "1.0", features = ["rt-multi-thread"], optional = true }
 
 
 [dev-dependencies]
+jacs-binding-core = { path = "../binding-core" }
 color-eyre = "0.6"
 criterion = "0.6.0"
 mdbook = "0.4.48"

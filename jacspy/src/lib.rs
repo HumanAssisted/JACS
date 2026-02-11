@@ -1018,6 +1018,23 @@ fn verify_document_standalone(
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("valid", r.valid)?;
     dict.set_item("signer_id", r.signer_id)?;
+    dict.set_item("timestamp", r.timestamp)?;
+    dict.set_item("agent_version", r.agent_version)?;
+    Ok(dict.into())
+}
+
+/// Verify an agent's DNS TXT record matches its public key hash.
+#[pyfunction]
+#[pyo3(signature = (agent_json, domain))]
+fn verify_agent_dns(py: Python, agent_json: &str, domain: &str) -> PyResult<PyObject> {
+    let r = jacs_binding_core::verify_agent_dns(agent_json, domain).to_py()?;
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("verified", r.verified)?;
+    dict.set_item("agent_id", &r.agent_id)?;
+    dict.set_item("domain", &r.domain)?;
+    dict.set_item("document_hash", &r.document_hash)?;
+    dict.set_item("dns_hash", &r.dns_hash)?;
+    dict.set_item("message", &r.message)?;
     Ok(dict.into())
 }
 
@@ -1619,6 +1636,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
     m.add_function(wrap_pyfunction!(audit, m)?)?;
     m.add_function(wrap_pyfunction!(generate_verify_link, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_agent_dns, m)?)?;
 
     // =============================================================================
     // Remote Key Fetch Functions

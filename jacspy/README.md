@@ -111,6 +111,31 @@ agent = jacs.create(
 print(f"Created agent: {agent.agent_id}")
 ```
 
+### Standalone Verification (No Agent Required)
+
+Verify a signed document without loading an agent. Useful for one-off verification, CI/CD pipelines, or services that only need to verify, not sign.
+
+```python
+import jacs.simple as jacs
+
+result = jacs.verify_standalone(
+    signed_json,
+    key_resolution="local",
+    key_directory="./trusted-keys/"
+)
+if result.valid:
+    print(f"Signed by: {result.signer_id}")
+```
+
+Generate a shareable verification link:
+
+```python
+url = jacs.generate_verify_link(signed_doc.raw_json)
+# https://hai.ai/jacs/verify?s=<base64url-encoded-document>
+```
+
+Documents signed by Rust or Node.js agents verify identically in Python -- cross-language interop is tested on every commit with Ed25519 and pq2025 (ML-DSA-87). See the full [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) for CLI, DNS, and cross-language examples.
+
 ### Verify by Document ID
 
 ```python
@@ -460,6 +485,7 @@ uv run python -m pytest tests/ -v
 
 - [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
 - [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) - CLI, standalone, DNS verification
 - [API Reference](https://humanassisted.github.io/JACS/api/python) - Python API docs
 - [Migration Guide](https://humanassisted.github.io/JACS/migration) - Upgrading from v0.4.x
 - [Source](https://github.com/HumanAssisted/JACS) - GitHub repository

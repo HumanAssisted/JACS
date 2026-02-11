@@ -49,12 +49,16 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.JacsClient = exports.createConfig = exports.hashString = void 0;
+exports.JacsClient = exports.MAX_VERIFY_DOCUMENT_BYTES = exports.MAX_VERIFY_URL_LEN = exports.generateVerifyLink = exports.createConfig = exports.hashString = void 0;
 const index_1 = require("./index");
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const simple_1 = require("./simple");
+Object.defineProperty(exports, "generateVerifyLink", { enumerable: true, get: function () { return simple_1.generateVerifyLink; } });
+Object.defineProperty(exports, "MAX_VERIFY_URL_LEN", { enumerable: true, get: function () { return simple_1.MAX_VERIFY_URL_LEN; } });
+Object.defineProperty(exports, "MAX_VERIFY_DOCUMENT_BYTES", { enumerable: true, get: function () { return simple_1.MAX_VERIFY_DOCUMENT_BYTES; } });
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -544,6 +548,12 @@ class JacsClient {
     auditSync(options) {
         const json = (0, index_1.auditSync)(options?.configPath ?? undefined, options?.recentN ?? undefined);
         return JSON.parse(json);
+    }
+    // ---------------------------------------------------------------------------
+    // Verify Link
+    // ---------------------------------------------------------------------------
+    generateVerifyLink(document, baseUrl) {
+        return (0, simple_1.generateVerifyLink)(document, baseUrl);
     }
 }
 exports.JacsClient = JacsClient;

@@ -176,6 +176,123 @@ describe('JACS Simple API', function() {
       expect(result.valid).to.be.false;
       expect(result.signerId).to.equal('');
     });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should verify a valid signed document without a loaded agent', () => {
+      // Sign with a loaded agent, then verify standalone
+      const freshSimple = loadSimpleInFixtures();
+      const signed = freshSimple.signMessageSync({ standalone: 'test' });
+      freshSimple.reset();
+
+      delete require.cache[require.resolve('../simple.js')];
+      const cleanSimple = require('../simple.js');
+      expect(cleanSimple.isLoaded()).to.be.false;
+
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const result = cleanSimple.verifyStandalone(signed.raw);
+        expect(result.valid).to.be.true;
+        expect(result.signerId).to.be.a('string').and.not.empty;
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should reject a tampered signed document', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const signed = freshSimple.signMessageSync({ original: true });
+      const doc = JSON.parse(signed.raw);
+      doc.content = { tampered: true };
+      freshSimple.reset();
+
+      delete require.cache[require.resolve('../simple.js')];
+      const cleanSimple = require('../simple.js');
+
+      const originalCwd = process.cwd();
+      process.chdir(FIXTURES_DIR);
+      try {
+        const result = cleanSimple.verifyStandalone(JSON.stringify(doc));
+        expect(result.valid).to.be.false;
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('should work with custom keyDirectory option', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const signed = freshSimple.signMessageSync({ customKey: true });
+      const configJson = JSON.parse(fs.readFileSync(TEST_CONFIG, 'utf8'));
+      const keyDir = path.resolve(FIXTURES_DIR, configJson.jacs_key_directory || './jacs_keys');
+      freshSimple.reset();
+
+      delete require.cache[require.resolve('../simple.js')];
+      const cleanSimple = require('../simple.js');
+
+      const result = cleanSimple.verifyStandalone(signed.raw, { keyDirectory: keyDir });
+      expect(result.valid).to.be.true;
+      expect(result.signerId).to.be.a('string').and.not.empty;
+    });
+
+    (simpleExists ? it : it.skip)('should return result shape with all expected fields', () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const result = freshSimple.verifyStandalone('{}');
+      expect(result).to.have.property('valid');
+      expect(result).to.have.property('signerId');
+      expect(result).to.have.property('timestamp');
+      expect(result).to.have.property('attachments');
+      expect(result).to.have.property('errors');
+      expect(result.attachments).to.be.an('array');
+      expect(result.errors).to.be.an('array');
+    });
+  });
+
+  describe('generateVerifyLink', () => {
+    (simpleExists ? it : it.skip)('should produce a valid hai.ai URL with base64url-encoded document', () => {
+      const doc = '{"jacsId":"test","jacsSignature":{}}';
+      const url = simple.generateVerifyLink(doc);
+      expect(url).to.be.a('string');
+      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+      // Should not contain standard base64 chars that are URL-unsafe
+      const param = url.split('?s=')[1];
+      expect(param).to.not.include('+');
+      expect(param).to.not.include('/');
+      expect(param).to.not.include('=');
+    });
+
+    (simpleExists ? it : it.skip)('should allow a custom base URL', () => {
+      const doc = '{"test": true}';
+      const url = simple.generateVerifyLink(doc, 'https://custom.example.com');
+      expect(url).to.match(/^https:\/\/custom\.example\.com\/jacs\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should strip trailing slashes from base URL', () => {
+      const doc = '{"test": true}';
+      const url = simple.generateVerifyLink(doc, 'https://hai.ai///');
+      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should round-trip: decode produces the original document', () => {
+      const doc = '{"jacsId":"abc-123","content":"hello"}';
+      const url = simple.generateVerifyLink(doc);
+      const encoded = url.split('?s=')[1];
+      // Restore standard base64 padding
+      let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4 !== 0) b64 += '=';
+      const decoded = Buffer.from(b64, 'base64').toString('utf8');
+      expect(decoded).to.equal(doc);
+    });
+
+    (simpleExists ? it : it.skip)('should throw for documents exceeding max URL length', () => {
+      // Create a document larger than MAX_VERIFY_DOCUMENT_BYTES
+      const bigDoc = JSON.stringify({ data: 'x'.repeat(2000) });
+      expect(() => simple.generateVerifyLink(bigDoc)).to.throw(/max length/i);
+    });
+
+    (simpleExists ? it : it.skip)('should export MAX_VERIFY_URL_LEN and MAX_VERIFY_DOCUMENT_BYTES constants', () => {
+      expect(simple.MAX_VERIFY_URL_LEN).to.equal(2048);
+      expect(simple.MAX_VERIFY_DOCUMENT_BYTES).to.equal(1515);
+    });
   });
 
   describe('signMessageSync', () => {

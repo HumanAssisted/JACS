@@ -20,7 +20,7 @@ use serde_json::Value;
 use serde_json::json;
 use std::collections::HashSet;
 use std::error::Error;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 /// Options for creating and checking agreements.
 ///
@@ -314,6 +314,16 @@ impl Agreement for Agent {
             .into());
         };
 
+        let quorum_display = options.quorum.map(|q| q.to_string()).unwrap_or_else(|| "all".to_string());
+        info!(
+            event = "agreement_created",
+            document_id = %document_key,
+            agent_count = agentids.len(),
+            quorum = %quorum_display,
+            has_timeout = options.timeout.is_some(),
+            "Agreement created"
+        );
+
         Ok(updated_document)
     }
 
@@ -445,6 +455,12 @@ impl Agreement for Agent {
             if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str()) {
                 if let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str) {
                     if Utc::now() > deadline {
+                        warn!(
+                            event = "agreement_expired",
+                            document_id = %document_key,
+                            deadline = %timeout_str,
+                            "Cannot sign expired agreement"
+                        );
                         return Err(JacsError::DocumentError(format!(
                             "Cannot sign: agreement has expired (deadline was {})",
                             timeout_str
@@ -576,6 +592,50 @@ impl Agreement for Agent {
             .into());
         };
 
+        // Compute signature counts for structured logging
+        let sig_count = updated_document
+            .value
+            .get(&agreement_fieldname_key)
+            .and_then(|a| a.get("signatures"))
+            .and_then(|s| s.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let total_agents = updated_document
+            .value
+            .get(&agreement_fieldname_key)
+            .and_then(|a| a.get("agentIDs"))
+            .and_then(|a| a.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let quorum = updated_document
+            .value
+            .get(&agreement_fieldname_key)
+            .and_then(|a| a.get("quorum"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let required = quorum.unwrap_or(total_agents);
+
+        info!(
+            event = "signature_added",
+            document_id = %document_key,
+            signer_id = %normalized_agent_id,
+            current = sig_count,
+            total = total_agents,
+            required = required,
+            "Agreement signature added"
+        );
+
+        if sig_count >= required {
+            info!(
+                event = "quorum_reached",
+                document_id = %document_key,
+                signatures = sig_count,
+                required = required,
+                total = total_agents,
+                "Agreement quorum reached"
+            );
+        }
+
         Ok(updated_document)
     }
 
@@ -653,6 +713,12 @@ impl Agreement for Agent {
         if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str()) {
             if let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str) {
                 if Utc::now() > deadline {
+                    warn!(
+                        event = "agreement_expired",
+                        document_id = %document_key,
+                        deadline = %timeout_str,
+                        "Agreement has expired"
+                    );
                     return Err(JacsError::DocumentError(format!(
                         "Agreement has expired: deadline was {}",
                         timeout_str

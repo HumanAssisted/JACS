@@ -32,6 +32,12 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 
+import {
+  generateVerifyLink,
+  MAX_VERIFY_URL_LEN,
+  MAX_VERIFY_DOCUMENT_BYTES,
+} from './simple';
+
 import type {
   AgentInfo,
   SignedDocument,
@@ -58,7 +64,7 @@ export type {
   LoadOptions,
 };
 
-export { hashString, createConfig };
+export { hashString, createConfig, generateVerifyLink, MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES };
 
 // =============================================================================
 // Agreement Options
@@ -634,5 +640,13 @@ export class JacsClient {
   auditSync(options?: AuditOptions): Record<string, unknown> {
     const json = nativeAuditSync(options?.configPath ?? undefined, options?.recentN ?? undefined);
     return JSON.parse(json) as Record<string, unknown>;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Verify Link
+  // ---------------------------------------------------------------------------
+
+  generateVerifyLink(document: string, baseUrl?: string): string {
+    return generateVerifyLink(document, baseUrl);
   }
 }

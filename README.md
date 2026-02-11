@@ -40,6 +40,25 @@ jacs quickstart
 jacs document create -f mydata.json
 ```
 
+## Verify a Signed Document
+
+No agent needed. One command or one function call.
+
+```bash
+jacs verify signed-document.json          # CLI -- exit code 0 = valid
+jacs verify --remote https://example.com/doc.json --json   # fetch + verify
+```
+
+```python
+result = jacs.verify_standalone(signed_json, key_directory="./keys")  # Python, no agent
+```
+
+```typescript
+const r = verifyStandalone(signedJson, { keyDirectory: './keys' });   // Node.js, no agent
+```
+
+[Full verification guide](https://humanassisted.github.io/JACS/getting-started/verification.html) -- CLI, Python, Node.js, DNS, verification links.
+
 ## Which Integration Should I Use?
 
 Find the right path in under 2 minutes. [Full decision tree](https://humanassisted.github.io/JACS/getting-started/decision-tree.html)
@@ -91,6 +110,12 @@ JACS provides the missing trust layer: identity (who produced this?), integrity 
 JACS supports ML-DSA-87 (FIPS-204) post-quantum signatures alongside classical algorithms (Ed25519, ECDSA P-256/P-384, RSA-PSS). The `pq2025` algorithm preset gives you quantum-resistant signing today, with zero code changes from the standard API.
 
 [Algorithm Selection Guide](https://humanassisted.github.io/JACS/advanced/algorithm-guide.html)
+
+## Cross-Language Compatibility
+
+A document signed by a Rust agent can be verified by a Python or Node.js agent, and vice versa. The signature format is language-agnostic -- any JACS binding produces and consumes the same signed JSON.
+
+Cross-language interoperability is tested on every commit with both Ed25519 and post-quantum (ML-DSA-87) algorithms. Rust generates signed fixtures, then Python and Node.js verify and countersign them. See the test suites: [`jacs/tests/cross_language/`](jacs/tests/cross_language/mod.rs), [`jacspy/tests/test_cross_language.py`](jacspy/tests/test_cross_language.py), [`jacsnpm/test/cross-language.test.js`](jacsnpm/test/cross-language.test.js).
 
 ## Use Cases
 

@@ -307,6 +307,23 @@ impl Agent {
         }
     }
 
+    /// Replace the internal storage with one rooted at `root`.
+    ///
+    /// This is used by `verify_document_standalone` so that absolute
+    /// data/key directory paths work regardless of the current working
+    /// directory.  `MultiStorage::clean_path` strips leading slashes,
+    /// turning absolute paths into paths relative to the FS store root.
+    /// By rooting at `/` the resolved path is still correct.
+    pub fn set_storage_root(&mut self, root: std::path::PathBuf) -> Result<(), Box<dyn Error>> {
+        let storage_type: String = self
+            .config
+            .as_ref()
+            .and_then(|c| c.jacs_default_storage().clone())
+            .unwrap_or_else(|| "fs".to_string());
+        self.storage = MultiStorage::_new(storage_type, root)?;
+        Ok(())
+    }
+
     /// Returns true if the agent is fully initialized and ready for signing/verification.
     ///
     /// Checks that all required state is present: ID, version, keys, config, and value.
@@ -526,6 +543,11 @@ impl Agent {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(
+        name = "jacs.signature_verification",
+        skip(self, json_value, fields, public_key, signature),
+        fields(signature_key_from, public_key_enc_type)
+    )]
     pub fn signature_verification_procedure(
         &self,
         json_value: &Value,
@@ -707,13 +729,23 @@ impl Agent {
             public_key_enc_type.clone(),
         );
 
-        let _duration_ms = start_time.elapsed().as_millis() as u64;
+        let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
-        let _algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
+        let algorithm = public_key_enc_type.as_deref().unwrap_or("unknown");
         let agent_id = json_value
             .get("jacsId")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown_agent");
+        let signer_id = json_value
+            .get(signature_key_from)
+            .and_then(|sig| sig.get("agentID"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let timestamp = json_value
+            .get(signature_key_from)
+            .and_then(|sig| sig.get("date"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
 
         #[cfg(feature = "observability-convenience")]
         {
@@ -721,9 +753,26 @@ impl Agent {
         }
 
         if success {
-            info!("Signature verification successful for agent: {}", agent_id);
+            info!(
+                event = "verification_complete",
+                document_id = %agent_id,
+                signer_id = %signer_id,
+                algorithm = %algorithm,
+                timestamp = %timestamp,
+                valid = true,
+                duration_ms = duration_ms,
+                "Signature verification successful"
+            );
         } else {
-            error!("Signature verification failed for agent: {}", agent_id);
+            error!(
+                event = "verification_complete",
+                document_id = %agent_id,
+                signer_id = %signer_id,
+                algorithm = %algorithm,
+                valid = false,
+                duration_ms = duration_ms,
+                "Signature verification failed"
+            );
         }
 
         result
@@ -762,6 +811,11 @@ impl Agent {
     /// * If an error occurs while serializing the accepted fields.
     /// * If an error occurs while retrieving the agent's public key.
     /// * If an error occurs while validating the generated signature against the schema.
+    #[tracing::instrument(
+        name = "jacs.signing_procedure",
+        skip(self, json_value, fields),
+        fields(placement_key)
+    )]
     pub fn signing_procedure(
         &mut self,
         json_value: &Value,
@@ -814,6 +868,15 @@ impl Agent {
         // TODO add sha256 of public key
         // validate signature schema
         self.schema.validate_signature(&signature_document)?;
+
+        info!(
+            event = "signing_procedure_complete",
+            agent_id = %agent_id,
+            algorithm = %signing_algorithm,
+            timestamp = %date,
+            placement_key = %placement_key,
+            "Signing procedure completed"
+        );
 
         Ok(signature_document)
     }

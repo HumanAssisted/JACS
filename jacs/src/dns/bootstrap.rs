@@ -489,6 +489,128 @@ pub fn dnssec_guidance(provider: &str) -> &'static str {
     }
 }
 
+/// Result of verifying an agent's identity via DNS TXT record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DnsVerificationResult {
+    /// Whether the DNS record matches the agent's public key hash.
+    pub verified: bool,
+    /// The agent ID extracted from the agent document.
+    pub agent_id: String,
+    /// The domain that was checked.
+    pub domain: String,
+    /// The public key hash from the agent document.
+    pub document_hash: String,
+    /// The public key hash from the DNS TXT record (empty if lookup failed).
+    pub dns_hash: String,
+    /// Human-readable status message.
+    pub message: String,
+}
+
+/// Verify an agent's DNS TXT record matches its public key hash.
+///
+/// Parses the agent JSON to extract `jacsSignature.publicKeyHash` and `jacsSignature.agentID`,
+/// then looks up the DNS TXT record at `_v1.agent.jacs.{domain}` and compares the hashes.
+///
+/// # Arguments
+/// * `agent_json` - Full agent JSON document string
+/// * `domain` - Domain to check (e.g., "example.com")
+///
+/// # Returns
+/// `Ok(DnsVerificationResult)` with match status. Never returns `Err` for DNS failures;
+/// those are reported via `verified: false` in the result.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn verify_agent_dns(agent_json: &str, domain: &str) -> Result<DnsVerificationResult, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(agent_json).map_err(|e| format!("Invalid agent JSON: {}", e))?;
+
+    let sig = parsed.get("jacsSignature").ok_or("Missing jacsSignature in agent document")?;
+    let agent_id = sig
+        .get("agentID")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let doc_hash = sig
+        .get("publicKeyHash")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if doc_hash.is_empty() {
+        return Ok(DnsVerificationResult {
+            verified: false,
+            agent_id,
+            domain: domain.to_string(),
+            document_hash: doc_hash,
+            dns_hash: String::new(),
+            message: "Agent document has no publicKeyHash".to_string(),
+        });
+    }
+
+    let owner = record_owner(domain);
+    let txt = match resolve_txt_insecure(&owner) {
+        Ok(t) => t,
+        Err(e) => {
+            return Ok(DnsVerificationResult {
+                verified: false,
+                agent_id,
+                domain: domain.to_string(),
+                document_hash: doc_hash,
+                dns_hash: String::new(),
+                message: format!("DNS lookup failed for {}: {}", owner, e),
+            });
+        }
+    };
+
+    let fields = match parse_agent_txt(&txt) {
+        Ok(f) => f,
+        Err(e) => {
+            return Ok(DnsVerificationResult {
+                verified: false,
+                agent_id,
+                domain: domain.to_string(),
+                document_hash: doc_hash,
+                dns_hash: String::new(),
+                message: format!("Failed to parse DNS TXT record: {}", e),
+            });
+        }
+    };
+
+    // Compare agent IDs
+    if !agent_id.is_empty() && fields.jacs_agent_id != agent_id {
+        let msg = format!(
+            "Agent ID mismatch: document={}, dns={}",
+            agent_id, fields.jacs_agent_id
+        );
+        return Ok(DnsVerificationResult {
+            verified: false,
+            agent_id,
+            domain: domain.to_string(),
+            document_hash: doc_hash,
+            dns_hash: fields.digest.clone(),
+            message: msg,
+        });
+    }
+
+    // Compare hashes (support both base64 and hex encodings)
+    let matched = match fields.enc {
+        DigestEncoding::Base64 => fields.digest == doc_hash,
+        DigestEncoding::Hex => fields.digest.eq_ignore_ascii_case(&doc_hash),
+    };
+
+    Ok(DnsVerificationResult {
+        verified: matched,
+        agent_id,
+        domain: domain.to_string(),
+        document_hash: doc_hash,
+        dns_hash: fields.digest,
+        message: if matched {
+            "DNS public key hash matches agent document".to_string()
+        } else {
+            "DNS public key hash does NOT match agent document".to_string()
+        },
+    })
+}
+
 pub fn tld_requirement_text() -> &'static str {
     "You must own a registered domain (TLD or subdomain of a TLD you control). Example: example.com or agents.example.com. The JACS TXT record is placed at _v1.agent.jacs.{your-domain}."
 }
@@ -496,6 +618,43 @@ pub fn tld_requirement_text() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_verify_agent_dns_invalid_json() {
+        let result = verify_agent_dns("not json", "example.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid agent JSON"));
+    }
+
+    #[test]
+    fn test_verify_agent_dns_missing_signature() {
+        let result = verify_agent_dns(r#"{"hello":"world"}"#, "example.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Missing jacsSignature"));
+    }
+
+    #[test]
+    fn test_verify_agent_dns_empty_hash() {
+        let agent = r#"{"jacsSignature":{"agentID":"test-id","publicKeyHash":""}}"#;
+        let result = verify_agent_dns(agent, "example.com").unwrap();
+        assert!(!result.verified);
+        assert_eq!(result.agent_id, "test-id");
+        assert!(result.message.contains("no publicKeyHash"));
+    }
+
+    #[test]
+    fn test_verify_agent_dns_no_record() {
+        // example.com won't have a JACS TXT record
+        let agent = r#"{"jacsSignature":{"agentID":"test-id","publicKeyHash":"abc123"}}"#;
+        let result = verify_agent_dns(agent, "example.com").unwrap();
+        assert!(!result.verified);
+        assert_eq!(result.domain, "example.com");
+        assert!(
+            result.message.contains("DNS lookup failed"),
+            "Expected DNS lookup failure, got: {}",
+            result.message
+        );
+    }
 
     #[test]
     fn test_dnssec_guidance_known_providers() {

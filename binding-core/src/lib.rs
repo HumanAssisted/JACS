@@ -260,6 +260,20 @@ impl AgentWrapper {
         Ok("Agent loaded".to_string())
     }
 
+    /// Re-root the internal file storage at `root`.
+    ///
+    /// By default `load_by_config` roots the FS backend at the current
+    /// working directory.  `verify_document_standalone` uses this to
+    /// re-root at `/` so that absolute data/key directory paths work
+    /// regardless of CWD.
+    pub fn set_storage_root(&self, root: std::path::PathBuf) -> BindingResult<()> {
+        let mut agent = self.lock()?;
+        agent
+            .set_storage_root(root)
+            .map_err(|e| BindingCoreError::generic(format!("Failed to set storage root: {}", e)))?;
+        Ok(())
+    }
+
     /// Sign an external agent's document with this agent's registration signature.
     pub fn sign_agent(
         &self,
@@ -1137,6 +1151,10 @@ pub struct VerificationResult {
     pub valid: bool,
     /// The signer's agent ID from the document's jacsSignature.agentID (empty if unparseable).
     pub signer_id: String,
+    /// The signing timestamp from jacsSignature.date (empty if unparseable).
+    pub timestamp: String,
+    /// The signer's agent version from jacsSignature.agentVersion (empty if unparseable).
+    pub agent_version: String,
 }
 
 /// Verify a signed JACS document without loading an agent.
@@ -1163,26 +1181,45 @@ pub fn verify_document_standalone(
     data_directory: Option<&str>,
     key_directory: Option<&str>,
 ) -> BindingResult<VerificationResult> {
-    fn signer_id_from_doc(doc: &str) -> String {
+    fn sig_field(doc: &str, field: &str) -> String {
         serde_json::from_str::<Value>(doc)
             .ok()
             .and_then(|v| {
                 v.get("jacsSignature")
-                    .and_then(|s| s.get("agentID"))
-                    .and_then(|id| id.as_str())
+                    .and_then(|s| s.get(field))
+                    .and_then(|f| f.as_str())
                     .map(String::from)
             })
             .unwrap_or_default()
     }
 
-    let signer_id = signer_id_from_doc(signed_document);
+    let signer_id = sig_field(signed_document, "agentID");
+    let timestamp = sig_field(signed_document, "date");
+    let agent_version = sig_field(signed_document, "agentVersion");
 
-    let data_dir = data_directory
+    // MultiStorage roots at CWD and clean_path() strips leading slashes.
+    // When absolute paths are given, we re-root storage at the data directory
+    // and set config paths to "." so that make_data_directory_path constructs
+    // paths relative to the storage root.
+    let raw_data_dir = data_directory
         .map(String::from)
         .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
-    let key_dir = key_directory
+    let raw_key_dir = key_directory
         .map(String::from)
         .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
+
+    let has_absolute = std::path::Path::new(&raw_data_dir).is_absolute()
+        || std::path::Path::new(&raw_key_dir).is_absolute();
+
+    // When absolute, use empty data/key dir in config (paths are relative
+    // to the storage root which we re-root to the data directory).
+    // make_data_directory_path strips "./" prefix, so "" means filenames
+    // go directly under the storage root.
+    let (data_dir, key_dir) = if has_absolute {
+        (String::new(), String::new())
+    } else {
+        (raw_data_dir.clone(), raw_key_dir.clone())
+    };
 
     let config = Config::new(
         Some("false".to_string()),
@@ -1228,10 +1265,21 @@ pub fn verify_document_standalone(
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();
         wrapper.load(config_path.to_string_lossy().to_string())?;
+        // Re-root storage at the data directory when absolute paths are used.
+        // Config paths are empty so make_data_directory_path produces
+        // "/public_keys/{hash}.pem", clean_path strips the leading slash,
+        // and the storage root resolves it correctly.
+        // If re-rooting fails (e.g. directory doesn't exist), fall through
+        // to return valid=false from the verification step.
+        if has_absolute {
+            let _ = wrapper.set_storage_root(std::path::PathBuf::from(&raw_data_dir));
+        }
         let valid = wrapper.verify_document(signed_document)?;
         Ok(VerificationResult {
             valid,
             signer_id: signer_id.clone(),
+            timestamp: timestamp.clone(),
+            agent_version: agent_version.clone(),
         })
     })();
 
@@ -1248,6 +1296,8 @@ pub fn verify_document_standalone(
                 Ok(VerificationResult {
                     valid: false,
                     signer_id,
+                    timestamp,
+                    agent_version,
                 })
             } else {
                 Err(e)
@@ -1501,6 +1551,23 @@ pub fn fetch_remote_key(agent_id: &str, version: &str) -> BindingResult<RemotePu
         public_key_hash: key_info.hash,
         agent_id: agent_id.to_string(),
         version: version.to_string(),
+    })
+}
+
+// =============================================================================
+// DNS Verification
+// =============================================================================
+
+/// Re-export DNS verification result for bindings.
+pub use jacs::dns::bootstrap::DnsVerificationResult;
+
+/// Verify an agent's DNS TXT record matches its public key hash.
+///
+/// Parses the agent JSON and looks up `_v1.agent.jacs.{domain}` to compare hashes.
+/// Returns a structured result — never errors for DNS failures (those are `verified: false`).
+pub fn verify_agent_dns(agent_json: &str, domain: &str) -> BindingResult<DnsVerificationResult> {
+    jacs::dns::bootstrap::verify_agent_dns(agent_json, domain).map_err(|e| {
+        BindingCoreError::invalid_argument(format!("DNS verification setup failed: {}", e))
     })
 }
 
