@@ -11,15 +11,17 @@ Fixture layout (jacs/tests/fixtures/cross-language/):
     {prefix}_signed.json        -- signed document from Rust
     {prefix}_metadata.json      -- metadata (agent_id, algorithm, etc.)
     {prefix}_public_key.pem     -- raw public key bytes
-    public_keys/{hash}.pem      -- public key indexed by SHA-256 hash
-    public_keys/{hash}.enc_type -- algorithm name for the key
 
-These tests are skipped when the fixture files do not exist yet.
+At runtime, tests build a temporary `public_keys/{hash}.pem` cache from these
+committed fixture files so verification is hermetic in CI.
+
+Tests are skipped when the required fixture files do not exist yet.
 """
 
 import json
 import os
 import pathlib
+import tempfile
 import pytest
 
 pytest.importorskip("jacs")
@@ -42,6 +44,7 @@ FIXTURES_DIR = (
 
 # Algorithms that the Rust fixture generator creates
 ALGORITHMS = ["ed25519", "pq2025"]
+PYTHON_FIXTURES = ["python_ed25519", "python_pq2025"]
 UPDATE_FIXTURES = os.environ.get("UPDATE_CROSS_LANG_FIXTURES", "").lower() in {
     "1",
     "true",
@@ -54,6 +57,7 @@ def _fixture_exists(prefix: str) -> bool:
     return (
         (FIXTURES_DIR / f"{prefix}_signed.json").exists()
         and (FIXTURES_DIR / f"{prefix}_metadata.json").exists()
+        and (FIXTURES_DIR / f"{prefix}_public_key.pem").exists()
     )
 
 
@@ -62,6 +66,35 @@ def _read_fixture(prefix: str) -> tuple:
     signed = (FIXTURES_DIR / f"{prefix}_signed.json").read_text()
     metadata = json.loads((FIXTURES_DIR / f"{prefix}_metadata.json").read_text())
     return signed, metadata
+
+
+def _build_standalone_key_cache(cache_dir: pathlib.Path, prefixes: list[str]) -> None:
+    """Build a deterministic public_keys cache from committed fixture key files."""
+    public_keys_dir = cache_dir / "public_keys"
+    public_keys_dir.mkdir(parents=True, exist_ok=True)
+
+    for prefix in prefixes:
+        if not _fixture_exists(prefix):
+            continue
+        _signed, metadata = _read_fixture(prefix)
+        key_hash = metadata.get("public_key_hash", "")
+        signing_algorithm = metadata.get("signing_algorithm", "")
+        raw_key = FIXTURES_DIR / f"{prefix}_public_key.pem"
+        if not key_hash or not signing_algorithm or not raw_key.exists():
+            continue
+
+        key_bytes = raw_key.read_bytes()
+        (public_keys_dir / f"{key_hash}.pem").write_bytes(key_bytes)
+        (public_keys_dir / f"{key_hash}.enc_type").write_text(signing_algorithm)
+
+
+@pytest.fixture(scope="module")
+def standalone_cache_dir():
+    """Temp key cache for standalone verification (no reliance on ignored fixture caches)."""
+    with tempfile.TemporaryDirectory(prefix="jacs_cross_lang_cache_") as td:
+        cache_dir = pathlib.Path(td)
+        _build_standalone_key_cache(cache_dir, ALGORITHMS + PYTHON_FIXTURES)
+        yield cache_dir
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +106,7 @@ def _read_fixture(prefix: str) -> tuple:
 class TestCrossLanguageVerifyStandalone:
     """Verify Rust-signed fixtures with Python verify_standalone()."""
 
-    def test_verify_fixture_valid(self, algo):
+    def test_verify_fixture_valid(self, algo, standalone_cache_dir):
         """Rust-signed fixture should verify successfully via Python."""
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
@@ -83,8 +116,8 @@ class TestCrossLanguageVerifyStandalone:
         result = simple.verify_standalone(
             signed_json,
             key_resolution="local",
-            data_directory=str(FIXTURES_DIR),
-            key_directory=str(FIXTURES_DIR),
+            data_directory=str(standalone_cache_dir),
+            key_directory=str(standalone_cache_dir),
         )
 
         assert isinstance(result, VerificationResult)
@@ -94,7 +127,7 @@ class TestCrossLanguageVerifyStandalone:
         )
         assert result.signer_id == metadata["agent_id"]
 
-    def test_verify_fixture_extracts_signer_id(self, algo):
+    def test_verify_fixture_extracts_signer_id(self, algo, standalone_cache_dir):
         """verify_standalone() should extract signer_id from the fixture even if verification fails."""
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
@@ -104,8 +137,8 @@ class TestCrossLanguageVerifyStandalone:
         result = simple.verify_standalone(
             signed_json,
             key_resolution="local",
-            data_directory=str(FIXTURES_DIR),
-            key_directory=str(FIXTURES_DIR),
+            data_directory=str(standalone_cache_dir),
+            key_directory=str(standalone_cache_dir),
         )
 
         assert isinstance(result, VerificationResult)
@@ -125,7 +158,7 @@ class TestCrossLanguageVerifyStandalone:
         assert sig.get("publicKeyHash") == metadata["public_key_hash"]
         assert metadata["generated_by"] == "rust"
 
-    def test_tampered_fixture_fails(self, algo):
+    def test_tampered_fixture_fails(self, algo, standalone_cache_dir):
         """A tampered fixture should fail verification."""
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
@@ -139,12 +172,12 @@ class TestCrossLanguageVerifyStandalone:
         result = simple.verify_standalone(
             tampered,
             key_resolution="local",
-            data_directory=str(FIXTURES_DIR),
-            key_directory=str(FIXTURES_DIR),
+            data_directory=str(standalone_cache_dir),
+            key_directory=str(standalone_cache_dir),
         )
         assert result.valid is False
 
-    def test_public_key_file_exists(self, algo):
+    def test_public_key_file_exists(self, algo, standalone_cache_dir):
         """The public key file and hash-indexed copy should exist."""
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
@@ -156,11 +189,11 @@ class TestCrossLanguageVerifyStandalone:
         raw_key = FIXTURES_DIR / f"{algo}_public_key.pem"
         assert raw_key.exists(), f"Missing {raw_key}"
 
-        # Hash-indexed key in public_keys/
-        hash_key = FIXTURES_DIR / "public_keys" / f"{pk_hash}.pem"
+        # Hash-indexed key in deterministic standalone cache
+        hash_key = standalone_cache_dir / "public_keys" / f"{pk_hash}.pem"
         assert hash_key.exists(), f"Missing {hash_key}"
 
-        enc_type = FIXTURES_DIR / "public_keys" / f"{pk_hash}.enc_type"
+        enc_type = standalone_cache_dir / "public_keys" / f"{pk_hash}.enc_type"
         assert enc_type.exists(), f"Missing {enc_type}"
         assert enc_type.read_text().strip() == metadata["signing_algorithm"]
 
@@ -180,7 +213,7 @@ class TestCrossLanguageCountersign:
     """Sign the same payload with a Python agent (different algo) and export."""
 
     @pytest.mark.parametrize("algo", ALGORITHMS)
-    def test_countersign_and_export(self, algo, tmp_path):
+    def test_countersign_and_export(self, algo, tmp_path, standalone_cache_dir):
         """Countersign fixture payload with a Python agent and write to fixtures."""
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
@@ -199,8 +232,8 @@ class TestCrossLanguageCountersign:
             result = simple.verify_standalone(
                 countersigned_json,
                 key_resolution="local",
-                data_directory=str(out_dir),
-                key_directory=str(out_dir),
+                data_directory=str(standalone_cache_dir),
+                key_directory=str(standalone_cache_dir),
             )
             assert isinstance(result, VerificationResult)
             assert result.valid is True

@@ -8,15 +8,19 @@
 
 use jacs::simple::SimpleAgent;
 use jacs_binding_core::verify_document_standalone;
-use serial_test::serial;
 use serde_json::{Value, json};
+use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Root of the cross-language fixtures directory (relative to workspace root).
 fn fixtures_dir() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest.join("tests").join("fixtures").join("cross-language")
+    manifest
+        .join("tests")
+        .join("fixtures")
+        .join("cross-language")
 }
 
 fn should_update_fixtures() -> bool {
@@ -105,18 +109,18 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
         "jacs_version": env!("CARGO_PKG_VERSION"),
     });
     let meta_path = out.join(format!("{}_metadata.json", prefix));
-    fs::write(
-        &meta_path,
-        serde_json::to_string_pretty(&metadata).unwrap(),
-    )
-    .expect("write metadata");
+    fs::write(&meta_path, serde_json::to_string_pretty(&metadata).unwrap())
+        .expect("write metadata");
 
     // 4. Public key in the format standalone verify expects:
     //    {data_dir}/public_keys/{hash}.pem and {hash}.enc_type
     let pk_dir = out.join("public_keys");
     fs::create_dir_all(&pk_dir).expect("create public_keys dir");
-    fs::write(pk_dir.join(format!("{}.pem", public_key_hash)), &pub_key_bytes)
-        .expect("write hash-keyed public key");
+    fs::write(
+        pk_dir.join(format!("{}.pem", public_key_hash)),
+        &pub_key_bytes,
+    )
+    .expect("write hash-keyed public key");
     fs::write(
         pk_dir.join(format!("{}.enc_type", public_key_hash)),
         &signing_algorithm,
@@ -139,25 +143,69 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
 fn verify_fixture(prefix: &str) {
     let out = fixtures_dir();
     let signed_path = out.join(format!("{}_signed.json", prefix));
+    let meta_path = out.join(format!("{}_metadata.json", prefix));
+    let raw_key_path = out.join(format!("{}_public_key.pem", prefix));
 
     assert!(
         signed_path.exists(),
         "Fixture not found: {}. Run generate test first.",
         signed_path.display()
     );
+    assert!(
+        meta_path.exists(),
+        "Fixture metadata not found: {}",
+        meta_path.display()
+    );
+    assert!(
+        raw_key_path.exists(),
+        "Fixture public key not found: {}",
+        raw_key_path.display()
+    );
 
     let signed_doc = fs::read_to_string(&signed_path).expect("read signed fixture");
+    let metadata: Value =
+        serde_json::from_str(&fs::read_to_string(&meta_path).expect("read fixture metadata"))
+            .expect("fixture metadata should be valid JSON");
+    let public_key_hash = metadata
+        .get("public_key_hash")
+        .and_then(|v| v.as_str())
+        .expect("metadata should include public_key_hash");
+    let signing_algorithm = metadata
+        .get("signing_algorithm")
+        .and_then(|v| v.as_str())
+        .expect("metadata should include signing_algorithm");
+    let raw_key_bytes = fs::read(&raw_key_path).expect("read fixture public key bytes");
 
-    // verify_document_standalone re-roots the FS storage at "/" when given
-    // absolute paths, so we can pass the fixtures dir directly.
-    let out_str = out.to_str().unwrap();
-    let result = verify_document_standalone(
-        &signed_doc,
-        Some("local"),
-        Some(out_str),
-        Some(out_str),
+    // Build an isolated local key cache from committed fixture artifacts.
+    // This avoids dependence on ignored/generated fixture caches (public_keys/).
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let cache_root = std::env::temp_dir().join(format!(
+        "jacs_cross_lang_verify_cache_{}_{}_{}",
+        prefix,
+        std::process::id(),
+        nonce
+    ));
+    let cache_pk = cache_root.join("public_keys");
+    fs::create_dir_all(&cache_pk).expect("create temporary key cache");
+    fs::write(
+        cache_pk.join(format!("{}.pem", public_key_hash)),
+        &raw_key_bytes,
     )
-    .expect("standalone verify should not error");
+    .expect("write hash-indexed public key");
+    fs::write(
+        cache_pk.join(format!("{}.enc_type", public_key_hash)),
+        signing_algorithm,
+    )
+    .expect("write hash-indexed enc_type");
+
+    let out_str = cache_root.to_str().unwrap();
+    let result =
+        verify_document_standalone(&signed_doc, Some("local"), Some(out_str), Some(out_str))
+            .expect("standalone verify should not error");
+    let _ = fs::remove_dir_all(&cache_root);
 
     assert!(
         result.valid,

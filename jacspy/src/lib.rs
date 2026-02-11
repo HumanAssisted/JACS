@@ -8,9 +8,9 @@ use jacs_binding_core::hai::{
     BenchmarkResult, ConnectionState, HaiClient, HaiError, RegistrationResult, StatusResult,
 };
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
+use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
-use pyo3::IntoPyObjectExt;
 
 // Declare the module so it's recognized at the crate root
 pub mod conversion_utils;
@@ -471,13 +471,12 @@ impl SimpleAgent {
     #[staticmethod]
     #[pyo3(signature = (algorithm=None))]
     fn ephemeral(py: Python, algorithm: Option<&str>) -> PyResult<(Self, PyObject)> {
-        let (agent, info) = jacs_core::simple::SimpleAgent::ephemeral(algorithm)
-            .map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                    "Failed to create ephemeral agent: {}",
-                    e
-                ))
-            })?;
+        let (agent, info) = jacs_core::simple::SimpleAgent::ephemeral(algorithm).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create ephemeral agent: {}",
+                e
+            ))
+        })?;
 
         let dict = pyo3::types::PyDict::new(py);
         dict.set_item("agent_id", &info.agent_id)?;

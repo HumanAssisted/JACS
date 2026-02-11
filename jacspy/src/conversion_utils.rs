@@ -1,7 +1,7 @@
 use base64::{Engine as _, engine::general_purpose};
+use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyString};
-use pyo3::IntoPyObjectExt;
 use serde_json::{Map as JsonMap, Value};
 
 /// Converts a Bound<'_, PyAny> into a serde_json::Value.

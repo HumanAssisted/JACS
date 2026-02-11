@@ -337,13 +337,19 @@ fn test_create_extension_descriptor() {
     assert!(descriptor["endpoints"]["verify"].is_object());
 
     // Verify signing algorithm is the one passed in
-    assert_eq!(descriptor["capabilities"]["documentSigning"]["signingAlgorithm"], "pq2025");
+    assert_eq!(
+        descriptor["capabilities"]["documentSigning"]["signingAlgorithm"],
+        "pq2025"
+    );
 
     // Verify verification algorithms are real JACS algorithms
     let verification_algs = descriptor["capabilities"]["documentVerification"]["algorithms"]
         .as_array()
         .expect("verification algorithms should be an array");
-    let alg_strings: Vec<&str> = verification_algs.iter().map(|v| v.as_str().unwrap()).collect();
+    let alg_strings: Vec<&str> = verification_algs
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
     assert!(alg_strings.contains(&"ring-Ed25519"));
     assert!(alg_strings.contains(&"RSA-PSS"));
     assert!(alg_strings.contains(&"pq-dilithium"));

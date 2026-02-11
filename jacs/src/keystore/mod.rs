@@ -337,7 +337,10 @@ impl fmt::Debug for InMemoryKeyStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InMemoryKeyStore")
             .field("algorithm", &self.algorithm)
-            .field("has_private_key", &self.private_key.lock().unwrap().is_some())
+            .field(
+                "has_private_key",
+                &self.private_key.lock().unwrap().is_some(),
+            )
             .field("has_public_key", &self.public_key.lock().unwrap().is_some())
             .finish()
     }
@@ -526,7 +529,10 @@ mod tests {
 
         // No files should have been created in the temp dir
         let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
-        assert!(entries.is_empty(), "InMemoryKeyStore should not create files");
+        assert!(
+            entries.is_empty(),
+            "InMemoryKeyStore should not create files"
+        );
         let _ = std::fs::remove_dir_all(&temp);
     }
 
@@ -552,7 +558,10 @@ mod tests {
         };
         let (priv_key, pub_key) = ks.generate(&spec).unwrap();
         // ML-DSA-87 keys are large
-        assert!(priv_key.len() > 1000, "ML-DSA-87 private key should be large");
+        assert!(
+            priv_key.len() > 1000,
+            "ML-DSA-87 private key should be large"
+        );
         assert!(pub_key.len() > 1000, "ML-DSA-87 public key should be large");
     }
 

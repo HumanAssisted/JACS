@@ -56,10 +56,8 @@ fn test_two_simple_agents_different_configs() {
 /// Two agents created with the same algorithm still get unique identities.
 #[test]
 fn test_two_agents_same_algorithm_unique_ids() {
-    let (_, info_a) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
-    let (_, info_b) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent B");
+    let (_, info_a) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
+    let (_, info_b) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent B");
 
     assert_ne!(
         info_a.agent_id, info_b.agent_id,
@@ -70,10 +68,8 @@ fn test_two_agents_same_algorithm_unique_ids() {
 /// Concurrent signing from two Arc<SimpleAgent> instances on separate threads.
 #[test]
 fn test_concurrent_signing_two_instances() {
-    let (agent_a, _) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
-    let (agent_b, _) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent B");
+    let (agent_a, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
+    let (agent_b, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent B");
 
     let agent_a = Arc::new(agent_a);
     let agent_b = Arc::new(agent_b);
@@ -152,7 +148,9 @@ fn test_cross_verification_fails_with_wrong_key() {
 
     // Agent B verifying Agent A's document uses B's public key, so signature
     // verification should fail (valid=false).
-    let result = agent_b.verify(&signed.raw).expect("verify() should not error in non-strict mode");
+    let result = agent_b
+        .verify(&signed.raw)
+        .expect("verify() should not error in non-strict mode");
     assert!(
         !result.valid,
         "Agent B must not successfully verify Agent A's signature (wrong key)"
@@ -164,8 +162,7 @@ fn test_cross_verification_fails_with_wrong_key() {
 #[test]
 fn test_cross_verification_strict_returns_error() {
     // Create agent A (non-strict, just for signing)
-    let (agent_a, _) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
+    let (agent_a, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
 
     // Create agent B as strict (by setting env var temporarily)
     // We can't set strict directly on ephemeral, but we can verify the behavior
@@ -175,7 +172,9 @@ fn test_cross_verification_strict_returns_error() {
         .expect("Agent A should sign");
 
     // Agent A verifies its own document — must succeed
-    let self_result = agent_a.verify(&signed.raw).expect("Self-verify should work");
+    let self_result = agent_a
+        .verify(&signed.raw)
+        .expect("Self-verify should work");
     assert!(self_result.valid);
 }
 
@@ -206,9 +205,13 @@ fn test_concurrent_different_algorithms() {
     let signed_rsa = handle_rsa.join().expect("RSA thread panicked");
 
     // Each verifies its own
-    let v_ed = agent_ed.verify(&signed_ed.raw).expect("ed25519 verify failed");
+    let v_ed = agent_ed
+        .verify(&signed_ed.raw)
+        .expect("ed25519 verify failed");
     assert!(v_ed.valid);
 
-    let v_rsa = agent_rsa.verify(&signed_rsa.raw).expect("RSA verify failed");
+    let v_rsa = agent_rsa
+        .verify(&signed_rsa.raw)
+        .expect("RSA verify failed");
     assert!(v_rsa.valid);
 }

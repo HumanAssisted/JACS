@@ -872,9 +872,7 @@ pub struct CreateAgreementParams {
 
     /// List of agent IDs (UUIDs) that must sign this agreement.
     /// Include your own agent ID if you want to be a required signer.
-    #[schemars(
-        description = "List of agent IDs (UUIDs) that are parties to this agreement"
-    )]
+    #[schemars(description = "List of agent IDs (UUIDs) that are parties to this agreement")]
     pub agent_ids: Vec<String>,
 
     /// A human-readable question summarizing what signers are agreeing to.
@@ -907,9 +905,7 @@ pub struct CreateAgreementParams {
     pub required_algorithms: Option<Vec<String>>,
 
     /// Minimum cryptographic strength: "classical" (any algorithm) or "post-quantum" (pq-dilithium, pq2025 only).
-    #[schemars(
-        description = "Minimum crypto strength: 'classical' or 'post-quantum'"
-    )]
+    #[schemars(description = "Minimum crypto strength: 'classical' or 'post-quantum'")]
     pub minimum_strength: Option<String>,
 }
 
@@ -972,9 +968,7 @@ pub struct SignAgreementResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CheckAgreementParams {
     /// The full signed agreement JSON document to check.
-    #[schemars(
-        description = "The agreement JSON to check status of"
-    )]
+    #[schemars(description = "The agreement JSON to check status of")]
     pub signed_agreement: String,
 
     /// Optional custom agreement field name (default: 'jacsAgreement').
@@ -1023,9 +1017,7 @@ pub struct CheckAgreementResult {
 
 /// Format a SystemTime as an ISO 8601 UTC timestamp string.
 fn format_iso8601(t: std::time::SystemTime) -> String {
-    let d = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    let d = t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
     let secs = d.as_secs();
     // Simple conversion: seconds -> year/month/day/hour/min/sec
     // Using a basic algorithm that handles dates from 1970 onwards
@@ -2791,11 +2783,11 @@ impl HaiMcpServer {
         // Sign the document
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            true,  // no_save
-            None,  // attachments
-            None,  // embed
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            None, // embed
         ) {
             Ok(signed_doc_string) => {
                 let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
@@ -2834,41 +2826,42 @@ impl HaiMcpServer {
         Parameters(params): Parameters<MessageUpdateParams>,
     ) -> String {
         // Load the existing document by ID
-        let existing_doc_string: Option<String> = match self.agent.verify_document_by_id(&params.jacs_id) {
-            Ok(true) => {
-                // Document verified, now retrieve it. We need the stored document.
-                // Use get_agent_json to get agent context, then load via ID.
-                // The verify_document_by_id already loaded it; we need to get it from storage.
-                // Fall through to attempt update_document with the new content.
-                None
-            }
-            Ok(false) => {
-                let result = MessageUpdateResult {
-                    success: false,
-                    jacs_document_id: None,
-                    signed_message: None,
-                    error: Some(format!(
-                        "Existing document '{}' failed signature verification",
-                        params.jacs_id
-                    )),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
-            Err(e) => {
-                let result = MessageUpdateResult {
-                    success: false,
-                    jacs_document_id: None,
-                    signed_message: None,
-                    error: Some(format!(
-                        "Failed to load document '{}': {}",
-                        params.jacs_id, e
-                    )),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
-        };
+        let existing_doc_string: Option<String> =
+            match self.agent.verify_document_by_id(&params.jacs_id) {
+                Ok(true) => {
+                    // Document verified, now retrieve it. We need the stored document.
+                    // Use get_agent_json to get agent context, then load via ID.
+                    // The verify_document_by_id already loaded it; we need to get it from storage.
+                    // Fall through to attempt update_document with the new content.
+                    None
+                }
+                Ok(false) => {
+                    let result = MessageUpdateResult {
+                        success: false,
+                        jacs_document_id: None,
+                        signed_message: None,
+                        error: Some(format!(
+                            "Existing document '{}' failed signature verification",
+                            params.jacs_id
+                        )),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+                Err(e) => {
+                    let result = MessageUpdateResult {
+                        success: false,
+                        jacs_document_id: None,
+                        signed_message: None,
+                        error: Some(format!(
+                            "Failed to load document '{}': {}",
+                            params.jacs_id, e
+                        )),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            };
 
         let content_type = params
             .content_type
@@ -2934,9 +2927,7 @@ impl HaiMcpServer {
                     original_document_id: None,
                     agreement_document_id: None,
                     signed_agreement: None,
-                    error: Some(
-                        "Original message signature verification failed".to_string(),
-                    ),
+                    error: Some("Original message signature verification failed".to_string()),
                 };
                 return serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
@@ -2984,11 +2975,11 @@ impl HaiMcpServer {
         // Sign the agreement document
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            true,  // no_save
-            None,  // attachments
-            None,  // embed
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            None, // embed
         ) {
             Ok(signed_agreement_string) => {
                 let agreement_id =
@@ -3101,7 +3092,10 @@ impl HaiMcpServer {
             timestamp,
             signature_valid,
             error: if !signature_valid {
-                Some("Message signature is INVALID — content may have been tampered with".to_string())
+                Some(
+                    "Message signature is INVALID — content may have been tampered with"
+                        .to_string(),
+                )
             } else {
                 None
             },
@@ -3132,11 +3126,11 @@ impl HaiMcpServer {
         // Create the base document first
         let signed_doc = match self.agent.create_document(
             &params.document,
-            None,  // custom_schema
-            None,  // outputfilename
-            true,  // no_save
-            None,  // attachments
-            None,  // embed
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
+            None, // embed
         ) {
             Ok(doc) => doc,
             Err(e) => {
@@ -3164,11 +3158,10 @@ impl HaiMcpServer {
             params.minimum_strength,
         ) {
             Ok(agreement_string) => {
-                let agreement_id =
-                    serde_json::from_str::<serde_json::Value>(&agreement_string)
-                        .ok()
-                        .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
-                        .unwrap_or_else(|| "unknown".to_string());
+                let agreement_id = serde_json::from_str::<serde_json::Value>(&agreement_string)
+                    .ok()
+                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .unwrap_or_else(|| "unknown".to_string());
 
                 CreateAgreementResult {
                     success: true,
@@ -3201,21 +3194,22 @@ impl HaiMcpServer {
         &self,
         Parameters(params): Parameters<SignAgreementParams>,
     ) -> String {
-        let result = match self.agent.sign_agreement(
-            &params.signed_agreement,
-            params.agreement_fieldname,
-        ) {
+        let result = match self
+            .agent
+            .sign_agreement(&params.signed_agreement, params.agreement_fieldname)
+        {
             Ok(signed_string) => {
                 // Count signatures
-                let sig_count = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&signed_string) {
-                    v.get("jacsAgreement")
-                        .and_then(|a| a.get("signatures"))
-                        .and_then(|s| s.as_array())
-                        .map(|arr| arr.len())
-                        .unwrap_or(0)
-                } else {
-                    0
-                };
+                let sig_count =
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&signed_string) {
+                        v.get("jacsAgreement")
+                            .and_then(|a| a.get("signatures"))
+                            .and_then(|s| s.as_array())
+                            .map(|arr| arr.len())
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
 
                 SignAgreementResult {
                     success: true,
@@ -3299,7 +3293,11 @@ impl HaiMcpServer {
         let agent_ids: Vec<String> = agreement
             .get("agentIDs")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         // Extract signatures
@@ -3311,7 +3309,11 @@ impl HaiMcpServer {
 
         let signed_by: Vec<String> = signatures
             .iter()
-            .filter_map(|sig| sig.get("agentID").and_then(|v| v.as_str()).map(String::from))
+            .filter_map(|sig| {
+                sig.get("agentID")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            })
             .collect();
 
         let signed_set: std::collections::HashSet<&str> =
@@ -3427,8 +3429,7 @@ impl HaiMcpServer {
                     message: "Document signed successfully".to_string(),
                     error: None,
                 };
-                serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e))
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
             Err(e) => {
                 let result = SignDocumentResult {
@@ -3439,8 +3440,7 @@ impl HaiMcpServer {
                     message: "Failed to sign document".to_string(),
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e))
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
         }
     }
@@ -3490,8 +3490,7 @@ impl HaiMcpServer {
                     },
                     error: None,
                 };
-                serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e))
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
             Err(e) => {
                 let result = VerifyDocumentResult {
@@ -3501,8 +3500,7 @@ impl HaiMcpServer {
                     message: format!("Verification failed: {}", e),
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e))
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
         }
     }
@@ -3863,8 +3861,17 @@ mod tests {
         // Verify the 3 new agreement tools are in the tool list
         let tools = HaiMcpServer::tools();
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-        assert!(names.contains(&"jacs_create_agreement"), "Missing jacs_create_agreement");
-        assert!(names.contains(&"jacs_sign_agreement"), "Missing jacs_sign_agreement");
-        assert!(names.contains(&"jacs_check_agreement"), "Missing jacs_check_agreement");
+        assert!(
+            names.contains(&"jacs_create_agreement"),
+            "Missing jacs_create_agreement"
+        );
+        assert!(
+            names.contains(&"jacs_sign_agreement"),
+            "Missing jacs_sign_agreement"
+        );
+        assert!(
+            names.contains(&"jacs_check_agreement"),
+            "Missing jacs_check_agreement"
+        );
     }
 }

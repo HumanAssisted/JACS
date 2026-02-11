@@ -316,7 +316,10 @@ impl KeyManager for Agent {
                                 e
                             )
                         })?;
-                (decrypted.as_slice().to_vec(), Box::new(FsEncryptedStore) as Box<dyn KeyStore>)
+                (
+                    decrypted.as_slice().to_vec(),
+                    Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+                )
             };
 
             let sig_bytes = ks_box
@@ -408,7 +411,10 @@ impl KeyManager for Agent {
                             e
                         )
                     })?;
-            (decrypted.as_slice().to_vec(), Box::new(FsEncryptedStore) as Box<dyn KeyStore>)
+            (
+                decrypted.as_slice().to_vec(),
+                Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+            )
         };
 
         // Sign all messages with the same key
@@ -420,8 +426,7 @@ impl KeyManager for Agent {
                 data_len = data.len(),
                 "Signing batch item"
             );
-            let sig_bytes =
-                ks_box.sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)?;
+            let sig_bytes = ks_box.sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)?;
             signatures.push(STANDARD.encode(sig_bytes));
         }
 

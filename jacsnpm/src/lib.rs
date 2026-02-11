@@ -357,11 +357,7 @@ impl JacsAgent {
 
     /// Get setup instructions (sync, blocks event loop).
     #[napi(js_name = "getSetupInstructionsSync")]
-    pub fn get_setup_instructions_sync(
-        &self,
-        domain: String,
-        ttl: Option<u32>,
-    ) -> Result<String> {
+    pub fn get_setup_instructions_sync(&self, domain: String, ttl: Option<u32>) -> Result<String> {
         self.inner
             .get_setup_instructions(&domain, ttl.unwrap_or(3600))
             .to_napi()
@@ -399,11 +395,7 @@ impl JacsAgent {
 
     /// Re-encrypt the agent's private key (sync, blocks event loop).
     #[napi(js_name = "reencryptKeySync")]
-    pub fn reencrypt_key_sync(
-        &self,
-        old_password: String,
-        new_password: String,
-    ) -> Result<()> {
+    pub fn reencrypt_key_sync(&self, old_password: String, new_password: String) -> Result<()> {
         self.inner
             .reencrypt_key(&old_password, &new_password)
             .to_napi()
@@ -526,10 +518,7 @@ impl JacsAgent {
 
     /// Verify this agent's signature and hash.
     #[napi(js_name = "verifyAgent", ts_return_type = "Promise<boolean>")]
-    pub fn verify_agent_async(
-        &self,
-        agentfile: Option<String>,
-    ) -> AsyncTask<AgentBoolTask> {
+    pub fn verify_agent_async(&self, agentfile: Option<String>) -> AsyncTask<AgentBoolTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentBoolTask {
             agent,
@@ -539,10 +528,7 @@ impl JacsAgent {
 
     /// Update the agent document with new data.
     #[napi(js_name = "updateAgent", ts_return_type = "Promise<string>")]
-    pub fn update_agent_async(
-        &self,
-        new_agent_string: String,
-    ) -> AsyncTask<AgentStringTask> {
+    pub fn update_agent_async(&self, new_agent_string: String) -> AsyncTask<AgentStringTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentStringTask {
             agent,
@@ -552,10 +538,7 @@ impl JacsAgent {
 
     /// Verify a document's signature and hash.
     #[napi(js_name = "verifyDocument", ts_return_type = "Promise<boolean>")]
-    pub fn verify_document_async(
-        &self,
-        document_string: String,
-    ) -> AsyncTask<AgentBoolTask> {
+    pub fn verify_document_async(&self, document_string: String) -> AsyncTask<AgentBoolTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentBoolTask {
             agent,
@@ -623,7 +606,10 @@ impl JacsAgent {
     }
 
     /// Create an agreement with extended options.
-    #[napi(js_name = "createAgreementWithOptions", ts_return_type = "Promise<string>")]
+    #[napi(
+        js_name = "createAgreementWithOptions",
+        ts_return_type = "Promise<string>"
+    )]
     pub fn create_agreement_with_options_async(
         &self,
         document_string: String,
@@ -753,10 +739,7 @@ impl JacsAgent {
 
     /// Verify a document looked up by ID from storage.
     #[napi(js_name = "verifyDocumentById", ts_return_type = "Promise<boolean>")]
-    pub fn verify_document_by_id_async(
-        &self,
-        document_id: String,
-    ) -> AsyncTask<AgentBoolTask> {
+    pub fn verify_document_by_id_async(&self, document_id: String) -> AsyncTask<AgentBoolTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentBoolTask {
             agent,
@@ -1244,10 +1227,7 @@ pub fn legacy_verify_response(env: Env, document_string: String) -> Result<JsObj
 
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
 #[napi(js_name = "legacyVerifyResponseWithAgentId")]
-pub fn legacy_verify_response_with_agent_id(
-    env: Env,
-    document_string: String,
-) -> Result<JsObject> {
+pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -> Result<JsObject> {
     let agent = LEGACY_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,

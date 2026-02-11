@@ -47,6 +47,9 @@ jacs = "jacs.cli_runner:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "asyncio: mark async tests that require an event loop",
+]
 
 [tool.maturin]
 features = ["pyo3/extension-module"] 

@@ -54,6 +54,37 @@ function runInFixturesDir(fn) {
   }
 }
 
+function buildStandaloneKeyCacheFromSigned(signedRaw) {
+  const doc = JSON.parse(signedRaw);
+  const sig = doc.jacsSignature || {};
+  const keyHash = sig.publicKeyHash;
+  const signingAlgorithm = sig.signingAlgorithm;
+  if (!keyHash) {
+    throw new Error('Signed document missing jacsSignature.publicKeyHash');
+  }
+  if (!signingAlgorithm) {
+    throw new Error('Signed document missing jacsSignature.signingAlgorithm');
+  }
+
+  const config = JSON.parse(fs.readFileSync(TEST_CONFIG, 'utf8'));
+  const keyDir = path.resolve(FIXTURES_DIR, config.jacs_key_directory || './jacs_keys');
+  const publicKeyFile = config.jacs_agent_public_key_filename || 'jacs.public.pem';
+  const publicKeyPath = path.join(keyDir, publicKeyFile);
+  const publicKeyBytes = fs.readFileSync(publicKeyPath);
+
+  const varDir = path.resolve(__dirname, '../var');
+  fs.mkdirSync(varDir, { recursive: true });
+  const cacheDir = fs.mkdtempSync(path.join(varDir, 'standalone-key-cache-'));
+  const publicKeysDir = path.join(cacheDir, 'public_keys');
+  fs.mkdirSync(publicKeysDir, { recursive: true });
+
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), publicKeyBytes);
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.enc_type`), signingAlgorithm);
+
+  const rel = path.relative(process.cwd(), cacheDir) || '.';
+  return { cacheDir, relPath: rel };
+}
+
 describe('JACS Simple API', function() {
   this.timeout(10000);
 
@@ -215,20 +246,23 @@ describe('JACS Simple API', function() {
       // Sign with a loaded agent, then verify standalone
       const freshSimple = loadSimpleInFixtures();
       const signed = freshSimple.signMessageSync({ standalone: 'test' });
+      const cache = buildStandaloneKeyCacheFromSigned(signed.raw);
       freshSimple.reset();
 
       delete require.cache[require.resolve('../simple.js')];
       const cleanSimple = require('../simple.js');
       expect(cleanSimple.isLoaded()).to.be.false;
 
-      const originalCwd = process.cwd();
-      process.chdir(FIXTURES_DIR);
       try {
-        const result = cleanSimple.verifyStandalone(signed.raw);
+        const result = cleanSimple.verifyStandalone(signed.raw, {
+          keyResolution: 'local',
+          dataDirectory: cache.relPath,
+          keyDirectory: cache.relPath,
+        });
         expect(result.valid).to.be.true;
         expect(result.signerId).to.be.a('string').and.not.empty;
       } finally {
-        process.chdir(originalCwd);
+        fs.rmSync(cache.cacheDir, { recursive: true, force: true });
       }
     });
 
@@ -255,16 +289,23 @@ describe('JACS Simple API', function() {
     (simpleExists && fixturesExist ? it : it.skip)('should work with custom keyDirectory option', () => {
       const freshSimple = loadSimpleInFixtures();
       const signed = freshSimple.signMessageSync({ customKey: true });
-      const configJson = JSON.parse(fs.readFileSync(TEST_CONFIG, 'utf8'));
-      const keyDir = path.resolve(FIXTURES_DIR, configJson.jacs_key_directory || './jacs_keys');
+      const cache = buildStandaloneKeyCacheFromSigned(signed.raw);
       freshSimple.reset();
 
       delete require.cache[require.resolve('../simple.js')];
       const cleanSimple = require('../simple.js');
 
-      const result = cleanSimple.verifyStandalone(signed.raw, { keyDirectory: keyDir });
-      expect(result.valid).to.be.true;
-      expect(result.signerId).to.be.a('string').and.not.empty;
+      try {
+        const result = cleanSimple.verifyStandalone(signed.raw, {
+          keyResolution: 'local',
+          dataDirectory: cache.relPath,
+          keyDirectory: cache.relPath,
+        });
+        expect(result.valid).to.be.true;
+        expect(result.signerId).to.be.a('string').and.not.empty;
+      } finally {
+        fs.rmSync(cache.cacheDir, { recursive: true, force: true });
+      }
     });
 
     (simpleExists ? it : it.skip)('should return result shape with all expected fields', () => {

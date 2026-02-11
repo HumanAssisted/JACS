@@ -40,10 +40,7 @@ fn setup_fully_signed_agreement(
 
     // Agent 1 signs
     let signed_one = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("agent one sign");
     let signed_one_key = signed_one.getkey();
 
@@ -53,10 +50,7 @@ fn setup_fully_signed_agreement(
 
     // Agent 2 signs
     let signed_both = agent_two
-        .sign_agreement(
-            &signed_one_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&signed_one_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("agent two sign");
     let signed_both_key = signed_both.getkey();
 
@@ -96,18 +90,12 @@ fn test_partial_agreement_reports_incomplete_with_details() {
 
     // Only agent 1 signs — agent 2 "crashes"
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("agent one sign");
     let signed_key = signed_doc.getkey();
 
     // check_agreement should fail with clear message
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(result.is_err(), "Should fail when not all agents signed");
     let err = result.unwrap_err().to_string();
 
@@ -150,17 +138,11 @@ fn test_partial_agreement_with_quorum_reports_count() {
 
     // Only agent 1 signs
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("agent one sign");
     let signed_key = signed_doc.getkey();
 
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(result.is_err(), "Should fail when quorum not met");
     let err = result.unwrap_err().to_string();
 
@@ -201,11 +183,12 @@ fn test_tampered_signature_identified() {
         setup_fully_signed_agreement(&mut agent, &mut agent_two, &AgreementOptions::default());
 
     // Verify agreement is valid before tampering
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
+    assert!(
+        result.is_ok(),
+        "Agreement should be valid before tampering: {:?}",
+        result.err()
     );
-    assert!(result.is_ok(), "Agreement should be valid before tampering: {:?}", result.err());
 
     // Tamper with the first signature via update_document
     let doc = agent.get_document(&signed_key).unwrap();
@@ -239,10 +222,7 @@ fn test_tampered_signature_identified() {
     let tampered_key = tampered_doc.getkey();
 
     // check_agreement should fail on signature verification
-    let result = agent.check_agreement(
-        &tampered_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result = agent.check_agreement(&tampered_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(
         result.is_err(),
         "check_agreement should fail with tampered signature"
@@ -275,11 +255,12 @@ fn test_tampered_body_detected_as_modification() {
         setup_fully_signed_agreement(&mut agent, &mut agent_two, &AgreementOptions::default());
 
     // Verify agreement is valid before tampering
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
+    assert!(
+        result.is_ok(),
+        "Agreement should be valid before tampering: {:?}",
+        result.err()
     );
-    assert!(result.is_ok(), "Agreement should be valid before tampering: {:?}", result.err());
 
     // Tamper with the document body (not the agreement/signature fields)
     let doc = agent.get_document(&signed_key).unwrap();
@@ -298,10 +279,7 @@ fn test_tampered_body_detected_as_modification() {
     let tampered_key = tampered_doc.getkey();
 
     // check_agreement should detect the agreement hash mismatch
-    let result = agent.check_agreement(
-        &tampered_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result = agent.check_agreement(&tampered_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(
         result.is_err(),
         "check_agreement should fail with tampered body"
@@ -352,10 +330,7 @@ fn test_sign_agreement_in_memory_without_save() {
 
     // Sign (this succeeds in memory)
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign_agreement should succeed in memory");
     let signed_key = signed_doc.getkey();
 
@@ -367,10 +342,7 @@ fn test_sign_agreement_in_memory_without_save() {
     );
 
     // Verify the agreement is checkable from memory
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(
         result.is_ok(),
         "check_agreement should pass from in-memory state (quorum=1): {:?}",
@@ -382,10 +354,8 @@ fn test_sign_agreement_in_memory_without_save() {
     let signed_str = serde_json::to_string_pretty(&signed_doc.value).unwrap();
     let mut agent_two_retry = load_test_agent_two();
     let _ = agent_two_retry.load_document(&signed_str).unwrap();
-    let result = agent_two_retry.sign_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result =
+        agent_two_retry.sign_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(
         result.is_ok(),
         "Retry signing by agent two should succeed: {:?}",
@@ -414,11 +384,12 @@ fn test_dns_key_unavailable_error_message() {
         setup_fully_signed_agreement(&mut agent, &mut agent_two, &AgreementOptions::default());
 
     // Verify it works first
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
+    assert!(
+        result.is_ok(),
+        "Should be valid with keys present: {:?}",
+        result.err()
     );
-    assert!(result.is_ok(), "Should be valid with keys present: {:?}", result.err());
 
     // The test confirms that check_agreement returns errors that identify
     // which agent's key is problematic. The actual DNS failure path uses

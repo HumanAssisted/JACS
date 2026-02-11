@@ -22,8 +22,8 @@ fn configure_criterion() -> Criterion {
 fn create_agents(n: usize) -> Vec<(SimpleAgent, String)> {
     (0..n)
         .map(|_| {
-            let (agent, info) = SimpleAgent::ephemeral(Some("ed25519"))
-                .expect("Failed to create ephemeral agent");
+            let (agent, info) =
+                SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create ephemeral agent");
             (agent, info.agent_id)
         })
         .collect()
@@ -43,26 +43,21 @@ fn bench_agreement_n_party(c: &mut Criterion) {
             b.iter(|| {
                 black_box({
                     // Agent 0 creates the agreement
-                    let agreement = agents[0].0
-                        .create_agreement(
-                            &doc_str,
-                            &agent_ids,
-                            Some("Do you agree?"),
-                            None,
-                        )
+                    let agreement = agents[0]
+                        .0
+                        .create_agreement(&doc_str, &agent_ids, Some("Do you agree?"), None)
                         .expect("create_agreement");
 
                     // Each agent signs in sequence
                     let mut current_doc = agreement.raw;
                     for (agent, _) in &agents {
-                        let signed = agent
-                            .sign_agreement(&current_doc)
-                            .expect("sign_agreement");
+                        let signed = agent.sign_agreement(&current_doc).expect("sign_agreement");
                         current_doc = signed.raw;
                     }
 
                     // Verify the final agreement
-                    agents[0].0
+                    agents[0]
+                        .0
                         .check_agreement(&current_doc)
                         .expect("check_agreement");
                 });

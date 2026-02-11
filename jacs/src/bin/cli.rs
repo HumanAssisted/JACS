@@ -1090,16 +1090,19 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         Some(("quickstart", qs_matches)) => {
             use jacs::simple::SimpleAgent;
 
-            let algorithm = qs_matches.get_one::<String>("algorithm").map(|s| s.as_str());
+            let algorithm = qs_matches
+                .get_one::<String>("algorithm")
+                .map(|s| s.as_str());
             let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
             let sign_file = qs_matches.get_one::<String>("file");
 
-            let (agent, info) = SimpleAgent::quickstart(algorithm, None).map_err(|e| -> Box<dyn Error> {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("{}", e),
-                ))
-            })?;
+            let (agent, info) =
+                SimpleAgent::quickstart(algorithm, None).map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("{}", e),
+                    ))
+                })?;
 
             if do_sign {
                 // Sign mode: read JSON, sign it, print signed document
@@ -1112,9 +1115,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     buf
                 };
 
-                let value: serde_json::Value = serde_json::from_str(&input).map_err(|e| {
-                    format!("Invalid JSON input: {}", e)
-                })?;
+                let value: serde_json::Value = serde_json::from_str(&input)
+                    .map_err(|e| format!("Invalid JSON input: {}", e))?;
 
                 let signed = agent.sign_message(&value).map_err(|e| -> Box<dyn Error> {
                     Box::new(std::io::Error::new(
@@ -1157,12 +1159,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .timeout(std::time::Duration::from_secs(30))
                     .build()
                     .map_err(|e| format!("HTTP client error: {}", e))?;
-                let resp = client.get(url).send().map_err(|e| format!("Fetch failed: {}", e))?;
+                let resp = client
+                    .get(url)
+                    .send()
+                    .map_err(|e| format!("Fetch failed: {}", e))?;
                 if !resp.status().is_success() {
                     eprintln!("HTTP error: {}", resp.status());
                     process::exit(1);
                 }
-                resp.text().map_err(|e| format!("Read body failed: {}", e))?
+                resp.text()
+                    .map_err(|e| format!("Read body failed: {}", e))?
             } else if let Some(path) = file_path {
                 std::fs::read_to_string(path).map_err(|e| format!("Read file failed: {}", e))?
             } else {
@@ -1175,7 +1181,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             // Fall back to an ephemeral agent if no config is available.
             let agent = if std::path::Path::new("./jacs.config.json").exists() {
                 // If password not set, try reading from quickstart's password file
-                if env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default().is_empty() {
+                if env::var("JACS_PRIVATE_KEY_PASSWORD")
+                    .unwrap_or_default()
+                    .is_empty()
+                {
                     let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
                     if pw_path.exists() {
                         if let Ok(pw) = std::fs::read_to_string(pw_path) {
@@ -1187,16 +1196,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 match SimpleAgent::load(None, None) {
                     Ok(a) => a,
                     Err(_) => {
-                        let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).map_err(|e| {
-                            format!("Failed to create verifier: {}", e)
-                        })?;
+                        let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                            .map_err(|e| format!("Failed to create verifier: {}", e))?;
                         a
                     }
                 }
             } else {
-                let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).map_err(|e| {
-                    format!("Failed to create verifier: {}", e)
-                })?;
+                let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                    .map_err(|e| format!("Failed to create verifier: {}", e))?;
                 a
             };
 
@@ -1211,7 +1218,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         println!("{}", serde_json::to_string_pretty(&out).unwrap());
                     } else {
                         println!("Status:    {}", if r.valid { "VALID" } else { "INVALID" });
-                        println!("Signer:    {}", if r.signer_id.is_empty() { "(unknown)" } else { &r.signer_id });
+                        println!(
+                            "Signer:    {}",
+                            if r.signer_id.is_empty() {
+                                "(unknown)"
+                            } else {
+                                &r.signer_id
+                            }
+                        );
                         if !r.timestamp.is_empty() {
                             println!("Signed at: {}", r.timestamp);
                         }

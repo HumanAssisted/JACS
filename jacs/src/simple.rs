@@ -114,7 +114,8 @@ const DEFAULT_PUBLIC_KEY_FILENAME: &str = "jacs.public.pem";
 fn generate_secure_password() -> String {
     use rand::Rng;
     let mut rng = rand::rng();
-    let charset: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
+    let charset: &[u8] =
+        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
     // Guarantee complexity: start with one of each required class
     let mut password = String::with_capacity(32);
     password.push(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rng.random_range(0..26)] as char);
@@ -133,19 +134,23 @@ fn build_agent_document(
     name: &str,
     description: &str,
 ) -> Result<Value, JacsError> {
-    let template = create_minimal_blank_agent(agent_type.to_string(), None, None, None).map_err(
-        |e| JacsError::Internal {
-            message: format!("Failed to create minimal agent template: {}", e),
-        },
-    )?;
+    let template =
+        create_minimal_blank_agent(agent_type.to_string(), None, None, None).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to create minimal agent template: {}", e),
+            }
+        })?;
 
-    let mut agent_json: Value = serde_json::from_str(&template).map_err(|e| JacsError::Internal {
-        message: format!("Failed to parse minimal agent template JSON: {}", e),
-    })?;
+    let mut agent_json: Value =
+        serde_json::from_str(&template).map_err(|e| JacsError::Internal {
+            message: format!("Failed to parse minimal agent template JSON: {}", e),
+        })?;
 
-    let obj = agent_json.as_object_mut().ok_or_else(|| JacsError::Internal {
-        message: "Generated minimal agent template is not a JSON object".to_string(),
-    })?;
+    let obj = agent_json
+        .as_object_mut()
+        .ok_or_else(|| JacsError::Internal {
+            message: "Generated minimal agent template is not a JSON object".to_string(),
+        })?;
 
     obj.insert("name".to_string(), json!(name));
     obj.insert("description".to_string(), json!(description));
@@ -847,9 +852,11 @@ impl SimpleAgent {
             path: keys_dir.to_string_lossy().to_string(),
             reason: e.to_string(),
         })?;
-        fs::create_dir_all(data_dir.join("agent")).map_err(|e| JacsError::DirectoryCreateFailed {
-            path: data_dir.join("agent").to_string_lossy().to_string(),
-            reason: e.to_string(),
+        fs::create_dir_all(data_dir.join("agent")).map_err(|e| {
+            JacsError::DirectoryCreateFailed {
+                path: data_dir.join("agent").to_string_lossy().to_string(),
+                reason: e.to_string(),
+            }
         })?;
         fs::create_dir_all(data_dir.join("public_keys")).map_err(|e| {
             JacsError::DirectoryCreateFailed {
@@ -883,8 +890,14 @@ impl SimpleAgent {
             std::env::set_var("JACS_KEY_DIRECTORY", &params.key_directory);
             std::env::set_var("JACS_AGENT_KEY_ALGORITHM", &algorithm);
             std::env::set_var("JACS_DEFAULT_STORAGE", &params.default_storage);
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", DEFAULT_PRIVATE_KEY_FILENAME);
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", DEFAULT_PUBLIC_KEY_FILENAME);
+            std::env::set_var(
+                "JACS_AGENT_PRIVATE_KEY_FILENAME",
+                DEFAULT_PRIVATE_KEY_FILENAME,
+            );
+            std::env::set_var(
+                "JACS_AGENT_PUBLIC_KEY_FILENAME",
+                DEFAULT_PUBLIC_KEY_FILENAME,
+            );
         }
 
         // Create a minimal agent JSON
@@ -919,9 +932,13 @@ impl SimpleAgent {
         // and params so the caller knows. If no config exists, create one fresh.
         let config_path = Path::new(&params.config_path);
         let config_str = if config_path.exists() {
-            let existing_str = fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
-                message: format!("Failed to read existing config '{}': {}", params.config_path, e),
-            })?;
+            let existing_str =
+                fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
+                    message: format!(
+                        "Failed to read existing config '{}': {}",
+                        params.config_path, e
+                    ),
+                })?;
             let mut existing: serde_json::Value =
                 serde_json::from_str(&existing_str).map_err(|e| JacsError::Internal {
                     message: format!("Failed to parse existing config: {}", e),
@@ -950,21 +967,22 @@ impl SimpleAgent {
             );
             check(
                 "jacs_agent_key_algorithm",
-                existing.get("jacs_agent_key_algorithm").and_then(|v| v.as_str()),
+                existing
+                    .get("jacs_agent_key_algorithm")
+                    .and_then(|v| v.as_str()),
                 &algorithm,
             );
             check(
                 "jacs_default_storage",
-                existing.get("jacs_default_storage").and_then(|v| v.as_str()),
+                existing
+                    .get("jacs_default_storage")
+                    .and_then(|v| v.as_str()),
                 &params.default_storage,
             );
 
             // Only update the agent ID (the new agent we just created)
             if let Some(obj) = existing.as_object_mut() {
-                obj.insert(
-                    "jacs_agent_id_and_version".to_string(),
-                    json!(lookup_id),
-                );
+                obj.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
             }
 
             let updated_str =
@@ -982,14 +1000,32 @@ impl SimpleAgent {
         } else {
             // No config exists -- create config with all required fields
             let mut config_map = serde_json::Map::new();
-            config_map.insert("$schema".to_string(), json!("https://hai.ai/schemas/jacs.config.schema.json"));
+            config_map.insert(
+                "$schema".to_string(),
+                json!("https://hai.ai/schemas/jacs.config.schema.json"),
+            );
             config_map.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
             config_map.insert("jacs_agent_key_algorithm".to_string(), json!(algorithm));
-            config_map.insert("jacs_data_directory".to_string(), json!(params.data_directory));
-            config_map.insert("jacs_key_directory".to_string(), json!(params.key_directory));
-            config_map.insert("jacs_default_storage".to_string(), json!(params.default_storage));
-            config_map.insert("jacs_agent_private_key_filename".to_string(), json!(DEFAULT_PRIVATE_KEY_FILENAME));
-            config_map.insert("jacs_agent_public_key_filename".to_string(), json!(DEFAULT_PUBLIC_KEY_FILENAME));
+            config_map.insert(
+                "jacs_data_directory".to_string(),
+                json!(params.data_directory),
+            );
+            config_map.insert(
+                "jacs_key_directory".to_string(),
+                json!(params.key_directory),
+            );
+            config_map.insert(
+                "jacs_default_storage".to_string(),
+                json!(params.default_storage),
+            );
+            config_map.insert(
+                "jacs_agent_private_key_filename".to_string(),
+                json!(DEFAULT_PRIVATE_KEY_FILENAME),
+            );
+            config_map.insert(
+                "jacs_agent_public_key_filename".to_string(),
+                json!(DEFAULT_PUBLIC_KEY_FILENAME),
+            );
             let config_json = Value::Object(config_map);
 
             let new_str =
@@ -1021,11 +1057,11 @@ impl SimpleAgent {
             crate::config::validate_config(&config_str).map_err(|e| JacsError::Internal {
                 message: format!("Failed to validate config: {}", e),
             })?;
-        agent.config = Some(
-            serde_json::from_value(validated_config_value).map_err(|e| JacsError::Internal {
+        agent.config = Some(serde_json::from_value(validated_config_value).map_err(|e| {
+            JacsError::Internal {
                 message: format!("Failed to parse config: {}", e),
-            })?,
-        );
+            }
+        })?);
 
         // Save the agent (uses directories from the resolved config)
         agent.save().map_err(|e| JacsError::Internal {
@@ -1048,8 +1084,7 @@ impl SimpleAgent {
             }
         }
 
-        let private_key_path =
-            format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);
+        let private_key_path = format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);
         let public_key_path = format!("{}/{}", params.key_directory, DEFAULT_PUBLIC_KEY_FILENAME);
 
         info!(
@@ -1230,28 +1265,48 @@ impl SimpleAgent {
 
         // If config already exists, load the existing agent
         if Path::new(config).exists() {
-            info!("quickstart: found existing config at {}, loading agent", config);
+            info!(
+                "quickstart: found existing config at {}, loading agent",
+                config
+            );
             let agent = Self::load(Some(config), None)?;
 
             // Build AgentInfo from the loaded agent
             let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
                 message: format!("Failed to acquire agent lock: {}", e),
             })?;
-            let agent_value = inner.get_value()
+            let agent_value = inner
+                .get_value()
                 .cloned()
                 .ok_or(JacsError::AgentNotLoaded)?;
             let agent_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
-            let version = agent_value["jacsVersion"].as_str().unwrap_or("").to_string();
+            let version = agent_value["jacsVersion"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
             let (algo, key_dir, data_dir) = if let Some(ref cfg) = inner.config {
-                let a = cfg.jacs_agent_key_algorithm()
-                    .as_deref().unwrap_or("").to_string();
-                let k = cfg.jacs_key_directory()
-                    .as_deref().unwrap_or("./jacs_keys").to_string();
-                let d = cfg.jacs_data_directory()
-                    .as_deref().unwrap_or("./jacs_data").to_string();
+                let a = cfg
+                    .jacs_agent_key_algorithm()
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_string();
+                let k = cfg
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys")
+                    .to_string();
+                let d = cfg
+                    .jacs_data_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_data")
+                    .to_string();
                 (a, k, d)
             } else {
-                (String::new(), "./jacs_keys".to_string(), "./jacs_data".to_string())
+                (
+                    String::new(),
+                    "./jacs_keys".to_string(),
+                    "./jacs_data".to_string(),
+                )
             };
             drop(inner);
 
@@ -1274,7 +1329,10 @@ impl SimpleAgent {
         }
 
         // No existing config -- create a new persistent agent
-        info!("quickstart: no config at {}, creating new persistent agent", config);
+        info!(
+            "quickstart: no config at {}, creating new persistent agent",
+            config
+        );
 
         // Ensure password is available
         let password = match std::env::var("JACS_PRIVATE_KEY_PASSWORD") {
@@ -1298,9 +1356,14 @@ impl SimpleAgent {
                     let perms = std::fs::Permissions::from_mode(0o600);
                     let _ = std::fs::set_permissions(&password_file, perms);
                 }
-                info!("quickstart: generated password saved to {}", password_file.display());
+                info!(
+                    "quickstart: generated password saved to {}",
+                    password_file.display()
+                );
                 // Set env var for the current process so create() can use it
-                unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &generated); }
+                unsafe {
+                    std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &generated);
+                }
                 generated
             }
         };
@@ -2168,8 +2231,9 @@ impl SimpleAgent {
         ttl: u32,
     ) -> Result<SetupInstructions, JacsError> {
         use crate::dns::bootstrap::{
-            DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli, emit_cloudflare_curl,
-            emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch, tld_requirement_text,
+            DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli,
+            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch,
+            tld_requirement_text,
         };
 
         let agent = self.agent.lock().map_err(|e| JacsError::Internal {
@@ -2196,10 +2260,7 @@ impl SimpleAgent {
         let mut provider_commands = std::collections::HashMap::new();
         provider_commands.insert("bind".to_string(), dns_record_bind.clone());
         provider_commands.insert("route53".to_string(), emit_route53_change_batch(&rr));
-        provider_commands.insert(
-            "gcloud".to_string(),
-            emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"),
-        );
+        provider_commands.insert("gcloud".to_string(), emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"));
         provider_commands.insert(
             "azure".to_string(),
             emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"),
@@ -2223,12 +2284,11 @@ impl SimpleAgent {
             "jacs_public_key_hash": digest,
             "jacs_dns_record": dns_owner,
         });
-        let well_known_json =
-            serde_json::to_string_pretty(&well_known).unwrap_or_default();
+        let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
         // HAI registration
-        let hai_url = std::env::var("HAI_API_URL")
-            .unwrap_or_else(|_| "https://api.hai.ai".to_string());
+        let hai_url =
+            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
         let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
         let hai_payload = json!({
             "agent_id": agent_id,
@@ -2384,13 +2444,7 @@ impl SimpleAgent {
         question: Option<&str>,
         context: Option<&str>,
     ) -> Result<SignedDocument, JacsError> {
-        self.create_agreement_with_options(
-            document,
-            agent_ids,
-            question,
-            context,
-            None,
-        )
+        self.create_agreement_with_options(document, agent_ids, question, context, None)
     }
 
     /// Creates a multi-party agreement with extended options.
@@ -2415,7 +2469,10 @@ impl SimpleAgent {
     ) -> Result<SignedDocument, JacsError> {
         use crate::agent::agreement::{Agreement, AgreementOptions};
 
-        debug!("create_agreement_with_options() called with {} signers", agent_ids.len());
+        debug!(
+            "create_agreement_with_options() called with {} signers",
+            agent_ids.len()
+        );
 
         // Check document size before processing
         check_document_size(document)?;
@@ -2687,17 +2744,13 @@ impl SimpleAgent {
 
         let key = match api_key {
             Some(k) => k.to_string(),
-            None => std::env::var("HAI_API_KEY").map_err(|_| {
-                "No API key provided and HAI_API_KEY environment variable not set"
-            })?,
+            None => std::env::var("HAI_API_KEY")
+                .map_err(|_| "No API key provided and HAI_API_KEY environment variable not set")?,
         };
 
         let agent_json = self.export_agent()?;
 
-        let url = format!(
-            "{}/api/v1/agents/register",
-            hai_url.trim_end_matches('/')
-        );
+        let url = format!("{}/api/v1/agents/register", hai_url.trim_end_matches('/'));
 
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -3514,7 +3567,11 @@ mod tests {
         assert!(!signed.raw.is_empty());
         // Verify the signed document
         let result = agent.verify(&signed.raw).unwrap();
-        assert!(result.valid, "Signed message should verify: {:?}", result.errors);
+        assert!(
+            result.valid,
+            "Signed message should verify: {:?}",
+            result.errors
+        );
     }
 
     #[test]

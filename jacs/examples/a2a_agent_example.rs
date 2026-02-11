@@ -156,9 +156,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Display the JACS extension descriptor
     println!("\n10. JACS Extension Descriptor:");
-    let descriptor = create_extension_descriptor(
-        agent.get_key_algorithm().unwrap_or(&"pq2025".to_string()),
-    );
+    let descriptor =
+        create_extension_descriptor(agent.get_key_algorithm().unwrap_or(&"pq2025".to_string()));
     println!("{}", serde_json::to_string_pretty(&descriptor)?);
 
     println!("\n=== Example completed successfully! ===");

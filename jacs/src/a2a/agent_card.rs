@@ -315,8 +315,10 @@ mod tests {
         let verification_algs = descriptor["capabilities"]["documentVerification"]["algorithms"]
             .as_array()
             .expect("verification algorithms should be an array");
-        let alg_strings: Vec<&str> =
-            verification_algs.iter().map(|v| v.as_str().unwrap()).collect();
+        let alg_strings: Vec<&str> = verification_algs
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
         assert!(alg_strings.contains(&"ring-Ed25519"));
         assert!(alg_strings.contains(&"RSA-PSS"));
         assert!(alg_strings.contains(&"pq-dilithium"));

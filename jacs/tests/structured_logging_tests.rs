@@ -5,12 +5,12 @@
 //! without relying on file I/O or global subscriber state.
 
 use jacs::simple::SimpleAgent;
-use serial_test::serial;
 use serde_json::json;
+use serial_test::serial;
 use std::sync::{Arc, Mutex};
 use tracing::Level;
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Layer;
+use tracing_subscriber::layer::SubscriberExt;
 
 // ---------------------------------------------------------------------------
 // In-memory log capture layer
@@ -69,23 +69,19 @@ impl tracing::field::Visit for FieldVisitor<'_> {
     }
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.0
-            .push((field.name().to_string(), value.to_string()));
+        self.0.push((field.name().to_string(), value.to_string()));
     }
 
     fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        self.0
-            .push((field.name().to_string(), value.to_string()));
+        self.0.push((field.name().to_string(), value.to_string()));
     }
 
     fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-        self.0
-            .push((field.name().to_string(), value.to_string()));
+        self.0.push((field.name().to_string(), value.to_string()));
     }
 
     fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
-        self.0
-            .push((field.name().to_string(), value.to_string()));
+        self.0.push((field.name().to_string(), value.to_string()));
     }
 }
 
@@ -128,7 +124,11 @@ fn create_test_agent(algorithm: &str) -> SimpleAgent {
 fn events_with_name<'a>(events: &'a [CapturedEvent], event_name: &str) -> Vec<&'a CapturedEvent> {
     events
         .iter()
-        .filter(|e| e.fields.iter().any(|(k, v)| k == "event" && v == event_name))
+        .filter(|e| {
+            e.fields
+                .iter()
+                .any(|(k, v)| k == "event" && v == event_name)
+        })
         .collect()
 }
 
@@ -192,7 +192,10 @@ fn test_sign_emits_signing_procedure_complete() {
     assert!(
         !procedure_events.is_empty(),
         "Should emit 'signing_procedure_complete'. All events: {:?}",
-        events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        events
+            .iter()
+            .map(|e| (&e.message, &e.fields))
+            .collect::<Vec<_>>()
     );
 
     let ev = procedure_events[0];
@@ -217,7 +220,10 @@ fn test_verify_emits_verification_complete_event() {
     assert!(
         !verify_events.is_empty(),
         "Should emit 'verification_complete'. All events: {:?}",
-        events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        events
+            .iter()
+            .map(|e| (&e.message, &e.fields))
+            .collect::<Vec<_>>()
     );
 
     let ev = verify_events[0];
@@ -246,7 +252,10 @@ fn test_verify_emits_signature_verified_event() {
     assert!(
         !sig_events.is_empty(),
         "Should emit 'signature_verified'. All events: {:?}",
-        events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        events
+            .iter()
+            .map(|e| (&e.message, &e.fields))
+            .collect::<Vec<_>>()
     );
 
     let ev = sig_events[0];
@@ -258,10 +267,7 @@ fn test_verify_emits_signature_verified_event() {
 #[test]
 #[serial]
 fn test_agreement_created_event() {
-    let tmp = std::env::temp_dir().join(format!(
-        "jacs_structlog_agreement_{}",
-        std::process::id()
-    ));
+    let tmp = std::env::temp_dir().join(format!("jacs_structlog_agreement_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).expect("create temp dir");
 
@@ -296,7 +302,10 @@ fn test_agreement_created_event() {
     assert!(
         !created_events.is_empty(),
         "Should emit 'agreement_created'. All events: {:?}",
-        events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        events
+            .iter()
+            .map(|e| (&e.message, &e.fields))
+            .collect::<Vec<_>>()
     );
 
     let ev = created_events[0];
@@ -309,10 +318,7 @@ fn test_agreement_created_event() {
 #[test]
 #[serial]
 fn test_signature_added_and_quorum_events() {
-    let tmp = std::env::temp_dir().join(format!(
-        "jacs_structlog_sig_added_{}",
-        std::process::id()
-    ));
+    let tmp = std::env::temp_dir().join(format!("jacs_structlog_sig_added_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).expect("create temp dir");
 
@@ -352,7 +358,10 @@ fn test_signature_added_and_quorum_events() {
     assert!(
         !added_events.is_empty(),
         "Should emit 'signature_added'. All events: {:?}",
-        events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        events
+            .iter()
+            .map(|e| (&e.message, &e.fields))
+            .collect::<Vec<_>>()
     );
 
     let ev = added_events[0];
@@ -367,7 +376,10 @@ fn test_signature_added_and_quorum_events() {
     assert!(
         !quorum_events.is_empty(),
         "Should emit 'quorum_reached' when the sole required signer signs. All events: {:?}",
-        events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        events
+            .iter()
+            .map(|e| (&e.message, &e.fields))
+            .collect::<Vec<_>>()
     );
 
     let qev = quorum_events[0];
@@ -387,7 +399,9 @@ fn test_pq2025_sign_verify_events() {
         let signed = agent
             .sign_message(&payload)
             .expect("pq2025 sign should succeed");
-        let _result = agent.verify(&signed.raw).expect("pq2025 verify should succeed");
+        let _result = agent
+            .verify(&signed.raw)
+            .expect("pq2025 verify should succeed");
     });
 
     // Should have document_signed with pq2025 algorithm
@@ -402,6 +416,9 @@ fn test_pq2025_sign_verify_events() {
 
     // Should have verification_complete with valid=true
     let verify_events = events_with_name(&events, "verification_complete");
-    assert!(!verify_events.is_empty(), "Should emit 'verification_complete'");
+    assert!(
+        !verify_events.is_empty(),
+        "Should emit 'verification_complete'"
+    );
     assert_eq!(get_field(verify_events[0], "valid"), Some("true"));
 }

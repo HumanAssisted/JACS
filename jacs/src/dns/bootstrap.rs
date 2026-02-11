@@ -481,11 +481,21 @@ pub fn verify_hai_registration_sync(
 
 pub fn dnssec_guidance(provider: &str) -> &'static str {
     match provider {
-        "aws" | "route53" => "Enable DNSSEC signing in Route53 hosted zone settings, then publish the DS record at your registrar.",
-        "cloudflare" => "DNSSEC is one-click in the Cloudflare dashboard under DNS > Settings. Copy the DS record to your registrar.",
-        "azure" => "Enable DNSSEC signing on the Azure DNS zone, then publish the DS record at your registrar.",
-        "gcloud" | "google" => "Enable DNSSEC on the Cloud DNS zone (gcloud dns managed-zones update --dnssec-state on), then publish DS at registrar.",
-        _ => "Enable DNSSEC zone signing with your DNS provider, then publish the DS record at your domain registrar.",
+        "aws" | "route53" => {
+            "Enable DNSSEC signing in Route53 hosted zone settings, then publish the DS record at your registrar."
+        }
+        "cloudflare" => {
+            "DNSSEC is one-click in the Cloudflare dashboard under DNS > Settings. Copy the DS record to your registrar."
+        }
+        "azure" => {
+            "Enable DNSSEC signing on the Azure DNS zone, then publish the DS record at your registrar."
+        }
+        "gcloud" | "google" => {
+            "Enable DNSSEC on the Cloud DNS zone (gcloud dns managed-zones update --dnssec-state on), then publish DS at registrar."
+        }
+        _ => {
+            "Enable DNSSEC zone signing with your DNS provider, then publish the DS record at your domain registrar."
+        }
     }
 }
 
@@ -523,7 +533,9 @@ pub fn verify_agent_dns(agent_json: &str, domain: &str) -> Result<DnsVerificatio
     let parsed: serde_json::Value =
         serde_json::from_str(agent_json).map_err(|e| format!("Invalid agent JSON: {}", e))?;
 
-    let sig = parsed.get("jacsSignature").ok_or("Missing jacsSignature in agent document")?;
+    let sig = parsed
+        .get("jacsSignature")
+        .ok_or("Missing jacsSignature in agent document")?;
     let agent_id = sig
         .get("agentID")
         .and_then(|v| v.as_str())
@@ -660,7 +672,11 @@ mod tests {
     fn test_dnssec_guidance_known_providers() {
         for provider in &["aws", "route53", "cloudflare", "azure", "gcloud", "google"] {
             let text = dnssec_guidance(provider);
-            assert!(!text.is_empty(), "guidance for {} should be non-empty", provider);
+            assert!(
+                !text.is_empty(),
+                "guidance for {} should be non-empty",
+                provider
+            );
             assert!(
                 text.contains("DNSSEC"),
                 "guidance for {} should contain 'DNSSEC', got: {}",

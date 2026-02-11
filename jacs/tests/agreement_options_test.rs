@@ -51,10 +51,7 @@ fn test_algorithm_strength_classification() {
 fn test_timeout_future_allows_signing() {
     let mut agent = load_test_agent_one();
     let agent_two = load_test_agent_two();
-    let agentids = vec![
-        agent.get_id().unwrap(),
-        agent_two.get_id().unwrap(),
-    ];
+    let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     // Timeout far in the future
     let options = AgreementOptions {
@@ -65,10 +62,7 @@ fn test_timeout_future_allows_signing() {
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
     // Should be able to sign
-    let signed = agent.sign_agreement(
-        &agreement_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let signed = agent.sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(signed.is_ok(), "Signing should succeed before timeout");
 }
 
@@ -95,13 +89,12 @@ fn test_timeout_expired_blocks_signing() {
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
         &options,
     );
-    assert!(result.is_err(), "Creating agreement with past timeout should fail");
-    let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("past"),
-        "Error should mention 'past': {}",
-        err
+        result.is_err(),
+        "Creating agreement with past timeout should fail"
     );
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("past"), "Error should mention 'past': {}", err);
 }
 
 #[test]
@@ -120,19 +113,16 @@ fn test_timeout_expired_blocks_check() {
 
     // Sign the agreement
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign_agreement");
     let signed_key = signed_doc.getkey();
 
     // Check should succeed since timeout is in the future and we have all signatures
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
+    assert!(
+        result.is_ok(),
+        "check_agreement should succeed before timeout"
     );
-    assert!(result.is_ok(), "check_agreement should succeed before timeout");
 }
 
 #[test]
@@ -167,10 +157,7 @@ fn test_invalid_timeout_format_rejected() {
 fn test_quorum_met_with_partial_signatures() {
     let mut agent = load_test_agent_one();
     let agent_two = load_test_agent_two();
-    let agentids = vec![
-        agent.get_id().unwrap(),
-        agent_two.get_id().unwrap(),
-    ];
+    let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     // Quorum of 1 out of 2
     let options = AgreementOptions {
@@ -182,18 +169,12 @@ fn test_quorum_met_with_partial_signatures() {
 
     // Only agent one signs
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign_agreement");
     let signed_key = signed_doc.getkey();
 
     // Check should pass with quorum=1 even though agent_two hasn't signed
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(
         result.is_ok(),
         "check_agreement should pass with quorum=1 and 1 signature: {:?}",
@@ -207,10 +188,7 @@ fn test_quorum_met_with_partial_signatures() {
 fn test_quorum_not_met() {
     let mut agent = load_test_agent_one();
     let agent_two = load_test_agent_two();
-    let agentids = vec![
-        agent.get_id().unwrap(),
-        agent_two.get_id().unwrap(),
-    ];
+    let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     // Quorum of 2 out of 2 (same as default, but explicit)
     let options = AgreementOptions {
@@ -222,21 +200,22 @@ fn test_quorum_not_met() {
 
     // Only agent one signs
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign_agreement");
     let signed_key = signed_doc.getkey();
 
     // Check should fail: quorum requires 2, only 1 signed
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
+    assert!(
+        result.is_err(),
+        "check_agreement should fail when quorum not met"
     );
-    assert!(result.is_err(), "check_agreement should fail when quorum not met");
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("Quorum not met"), "Error should mention quorum: {}", err);
+    assert!(
+        err.contains("Quorum not met"),
+        "Error should mention quorum: {}",
+        err
+    );
 }
 
 #[test]
@@ -286,7 +265,11 @@ fn test_quorum_exceeds_agents_rejected() {
     );
     assert!(result.is_err(), "Quorum > agent count should be rejected");
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("cannot exceed"), "Error should mention exceed: {}", err);
+    assert!(
+        err.contains("cannot exceed"),
+        "Error should mention exceed: {}",
+        err
+    );
 }
 
 // =========================================================================
@@ -307,10 +290,7 @@ fn test_required_algorithms_allows_matching() {
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign should succeed with matching algorithm");
 
     let result = agent.check_agreement(
@@ -334,10 +314,7 @@ fn test_required_algorithms_blocks_non_matching() {
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
     // sign_agreement should fail because agent's algorithm doesn't match
-    let result = agent.sign_agreement(
-        &agreement_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-    );
+    let result = agent.sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(result.is_err(), "Signing with wrong algorithm should fail");
     let err = result.unwrap_err().to_string();
     assert!(
@@ -361,10 +338,7 @@ fn test_minimum_strength_classical_accepts_all() {
 
     // RSA-PSS is classical, should be accepted
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign should succeed with classical strength");
 
     let result = agent.check_agreement(
@@ -387,11 +361,11 @@ fn test_minimum_strength_post_quantum_blocks_classical() {
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
     // RSA-PSS is classical, post-quantum required → should fail
-    let result = agent.sign_agreement(
-        &agreement_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    let result = agent.sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
+    assert!(
+        result.is_err(),
+        "Signing with classical algo should fail when post-quantum required"
     );
-    assert!(result.is_err(), "Signing with classical algo should fail when post-quantum required");
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("minimumStrength"),
@@ -421,7 +395,10 @@ fn test_invalid_minimum_strength_rejected() {
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
         &options,
     );
-    assert!(result.is_err(), "Invalid minimumStrength value should be rejected");
+    assert!(
+        result.is_err(),
+        "Invalid minimumStrength value should be rejected"
+    );
 }
 
 // =========================================================================
@@ -432,10 +409,7 @@ fn test_invalid_minimum_strength_rejected() {
 fn test_combined_quorum_and_timeout() {
     let mut agent = load_test_agent_one();
     let agent_two = load_test_agent_two();
-    let agentids = vec![
-        agent.get_id().unwrap(),
-        agent_two.get_id().unwrap(),
-    ];
+    let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     let options = AgreementOptions {
         timeout: Some("2099-12-31T23:59:59Z".to_string()),
@@ -446,17 +420,18 @@ fn test_combined_quorum_and_timeout() {
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign_agreement");
 
     let result = agent.check_agreement(
         &signed_doc.getkey(),
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     );
-    assert!(result.is_ok(), "Combined options should work: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Combined options should work: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -464,42 +439,37 @@ fn test_default_options_preserves_original_behavior() {
     // Default AgreementOptions should produce the exact same behavior as the original API
     let mut agent = load_test_agent_one();
     let mut agent_two = load_test_agent_two();
-    let agentids = vec![
-        agent.get_id().unwrap(),
-        agent_two.get_id().unwrap(),
-    ];
+    let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     let options = AgreementOptions::default();
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
     // Only one signs → should fail (no quorum, all must sign)
     let signed_doc = agent
-        .sign_agreement(
-            &agreement_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign_agreement");
     let signed_key = signed_doc.getkey();
 
-    let result = agent.check_agreement(
-        &signed_key,
-        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
+    assert!(
+        result.is_err(),
+        "Default: should fail without all signatures"
     );
-    assert!(result.is_err(), "Default: should fail without all signatures");
 
     // Agent two signs → should pass
     let signed_doc_str = serde_json::to_string_pretty(&signed_doc.value).unwrap();
     let _ = agent_two.load_document(&signed_doc_str).unwrap();
     let both_signed = agent_two
-        .sign_agreement(
-            &signed_key,
-            Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
-        )
+        .sign_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("agent two sign_agreement");
 
     let result = agent_two.check_agreement(
         &both_signed.getkey(),
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     );
-    assert!(result.is_ok(), "Default: should pass with all signatures: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Default: should pass with all signatures: {:?}",
+        result.err()
+    );
 }

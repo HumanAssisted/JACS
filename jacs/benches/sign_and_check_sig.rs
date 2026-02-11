@@ -156,8 +156,8 @@ fn benchmark_pq(c: &mut Criterion) {
 
 fn benchmark_pq2025(c: &mut Criterion) {
     // Use SimpleAgent::ephemeral to create a pq2025 agent with in-memory keys
-    let (agent, _info) = SimpleAgent::ephemeral(Some("pq2025"))
-        .expect("Failed to create ephemeral pq2025 agent");
+    let (agent, _info) =
+        SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create ephemeral pq2025 agent");
     let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
     c.bench_function("pq2025", |b| {
         for document in &documents {

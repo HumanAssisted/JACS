@@ -216,10 +216,9 @@ impl Agreement for Agent {
         // Validate quorum
         if let Some(q) = options.quorum {
             if q == 0 {
-                return Err(JacsError::DocumentError(
-                    "Quorum must be at least 1".to_string(),
-                )
-                .into());
+                return Err(
+                    JacsError::DocumentError("Quorum must be at least 1".to_string()).into(),
+                );
             }
             if q as usize > agentids.len() {
                 return Err(JacsError::DocumentError(format!(
@@ -314,7 +313,10 @@ impl Agreement for Agent {
             .into());
         };
 
-        let quorum_display = options.quorum.map(|q| q.to_string()).unwrap_or_else(|| "all".to_string());
+        let quorum_display = options
+            .quorum
+            .map(|q| q.to_string())
+            .unwrap_or_else(|| "all".to_string());
         info!(
             event = "agreement_created",
             document_id = %document_key,
@@ -472,7 +474,10 @@ impl Agreement for Agent {
 
             // Algorithm constraint checks against this agent's signing algorithm
             if let Some(algo) = &self.key_algorithm {
-                if let Some(required) = jacs_agreement.get("requiredAlgorithms").and_then(|v| v.as_array()) {
+                if let Some(required) = jacs_agreement
+                    .get("requiredAlgorithms")
+                    .and_then(|v| v.as_array())
+                {
                     let required_algos: Vec<String> = required
                         .iter()
                         .filter_map(|v| v.as_str().map(String::from))
@@ -485,7 +490,10 @@ impl Agreement for Agent {
                         .into());
                     }
                 }
-                if let Some(strength) = jacs_agreement.get("minimumStrength").and_then(|v| v.as_str()) {
+                if let Some(strength) = jacs_agreement
+                    .get("minimumStrength")
+                    .and_then(|v| v.as_str())
+                {
                     if !meets_strength_requirement(algo, strength) {
                         return Err(JacsError::DocumentError(format!(
                             "Cannot sign: agent's algorithm '{}' does not meet minimumStrength '{}'",

@@ -33,8 +33,10 @@ fn test_sign_document_and_verify_valid() {
 
     // Parse to confirm it's valid JSON with JACS fields
     let parsed: Value = serde_json::from_str(&signed).expect("signed doc should be valid JSON");
-    assert!(parsed.get("id").is_some() || parsed.get("jacsId").is_some(),
-        "signed doc should have an id field");
+    assert!(
+        parsed.get("id").is_some() || parsed.get("jacsId").is_some(),
+        "signed doc should have an id field"
+    );
 
     // Verify using verify_signature (self-signed ephemeral agent)
     let valid = wrapper
@@ -77,7 +79,10 @@ fn test_verify_document_tampered() {
 
     // Tampered document should fail hash verification
     let result = wrapper.verify_document(&tampered);
-    assert!(result.is_err(), "tampered document should fail verification");
+    assert!(
+        result.is_err(),
+        "tampered document should fail verification"
+    );
 }
 
 #[test]
@@ -117,7 +122,10 @@ fn test_sign_batch_empty_input() {
     let signatures = wrapper
         .sign_batch(vec![])
         .expect("sign_batch with empty input should succeed");
-    assert!(signatures.is_empty(), "empty input should return empty output");
+    assert!(
+        signatures.is_empty(),
+        "empty input should return empty output"
+    );
 }
 
 #[test]

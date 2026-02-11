@@ -173,7 +173,10 @@ fn extract_agreement_payload(value: &Value) -> Value {
     Value::Null
 }
 
-fn create_editable_agreement_document(agent: &mut Agent, payload: Value) -> BindingResult<JACSDocument> {
+fn create_editable_agreement_document(
+    agent: &mut Agent,
+    payload: Value,
+) -> BindingResult<JACSDocument> {
     let wrapped = json!({
         "jacsType": "artifact",
         "jacsLevel": "artifact",
@@ -195,7 +198,11 @@ fn ensure_editable_agreement_document(
 ) -> BindingResult<JACSDocument> {
     match agent.load_document(document_string) {
         Ok(doc) => {
-            let level = doc.value.get("jacsLevel").and_then(|v| v.as_str()).unwrap_or("");
+            let level = doc
+                .value
+                .get("jacsLevel")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if is_editable_level(level) {
                 Ok(doc)
             } else {
@@ -633,10 +640,7 @@ impl AgentWrapper {
         let pending = doc
             .agreement_unsigned_agents(Some(agreement_fieldname_key.clone()))
             .map_err(|e| {
-                BindingCoreError::agreement_failed(format!(
-                    "Failed to read pending signers: {}",
-                    e
-                ))
+                BindingCoreError::agreement_failed(format!("Failed to read pending signers: {}", e))
             })?;
 
         let signatures = doc
@@ -853,19 +857,13 @@ impl AgentWrapper {
         })?;
         if let Some(obj) = agent_json.as_object_mut() {
             obj.insert("name".to_string(), json!("ephemeral"));
-            obj.insert(
-                "description".to_string(),
-                json!("Ephemeral JACS agent"),
-            );
+            obj.insert("description".to_string(), json!("Ephemeral JACS agent"));
         }
 
         let instance = agent
             .create_agent_and_load(&agent_json.to_string(), true, Some(algo))
             .map_err(|e| {
-                BindingCoreError::agent_load(format!(
-                    "Failed to initialize ephemeral agent: {}",
-                    e
-                ))
+                BindingCoreError::agent_load(format!("Failed to initialize ephemeral agent: {}", e))
             })?;
 
         let agent_id = instance["jacsId"].as_str().unwrap_or("").to_string();
@@ -898,8 +896,7 @@ impl AgentWrapper {
             if agent.ready() {
                 info["agent_loaded"] = json!(true);
                 if let Some(value) = agent.get_value() {
-                    info["agent_id"] =
-                        json!(value.get("jacsId").and_then(|v| v.as_str()));
+                    info["agent_id"] = json!(value.get("jacsId").and_then(|v| v.as_str()));
                     info["agent_version"] =
                         json!(value.get("jacsVersion").and_then(|v| v.as_str()));
                 }
@@ -927,16 +924,12 @@ impl AgentWrapper {
     /// and registering with HAI.ai.
     ///
     /// Requires a loaded agent (call `load()` first).
-    pub fn get_setup_instructions(
-        &self,
-        domain: &str,
-        ttl: u32,
-    ) -> BindingResult<String> {
+    pub fn get_setup_instructions(&self, domain: &str, ttl: u32) -> BindingResult<String> {
         use jacs::agent::boilerplate::BoilerPlate;
         use jacs::dns::bootstrap::{
             DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli,
-            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind,
-            emit_route53_change_batch, tld_requirement_text,
+            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch,
+            tld_requirement_text,
         };
 
         let agent = self.lock()?;
@@ -951,9 +944,9 @@ impl AgentWrapper {
             ));
         }
 
-        let pk = agent.get_public_key().map_err(|e| {
-            BindingCoreError::generic(format!("Failed to get public key: {}", e))
-        })?;
+        let pk = agent
+            .get_public_key()
+            .map_err(|e| BindingCoreError::generic(format!("Failed to get public key: {}", e)))?;
         let digest = jacs::dns::bootstrap::pubkey_digest_b64(&pk);
         let rr = build_dns_record(domain, ttl, agent_id, &digest, DigestEncoding::Base64);
 
@@ -965,8 +958,14 @@ impl AgentWrapper {
         provider_commands.insert("bind".to_string(), dns_record_bind.clone());
         provider_commands.insert("route53".to_string(), emit_route53_change_batch(&rr));
         provider_commands.insert("gcloud".to_string(), emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"));
-        provider_commands.insert("azure".to_string(), emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"));
-        provider_commands.insert("cloudflare".to_string(), emit_cloudflare_curl(&rr, "YOUR_ZONE_ID"));
+        provider_commands.insert(
+            "azure".to_string(),
+            emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"),
+        );
+        provider_commands.insert(
+            "cloudflare".to_string(),
+            emit_cloudflare_curl(&rr, "YOUR_ZONE_ID"),
+        );
 
         let mut dnssec_instructions = std::collections::HashMap::new();
         for name in &["aws", "cloudflare", "azure", "gcloud"] {
@@ -982,15 +981,16 @@ impl AgentWrapper {
         });
         let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
-        let hai_url = std::env::var("HAI_API_URL")
-            .unwrap_or_else(|_| "https://api.hai.ai".to_string());
+        let hai_url =
+            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
         let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
         let hai_payload = json!({
             "agent_id": agent_id,
             "public_key_hash": digest,
             "domain": domain,
         });
-        let hai_registration_payload = serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
+        let hai_registration_payload =
+            serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
         let hai_registration_instructions = format!(
             "POST the payload to {} with your HAI API key in the Authorization header.",
             hai_registration_url
@@ -1033,7 +1033,8 @@ impl AgentWrapper {
 
         serde_json::to_string_pretty(&result).map_err(|e| {
             BindingCoreError::serialization_failed(format!(
-                "Failed to serialize setup instructions: {}", e
+                "Failed to serialize setup instructions: {}",
+                e
             ))
         })
     }
@@ -1075,7 +1076,9 @@ impl AgentWrapper {
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e)))?;
+            .map_err(|e| {
+                BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e))
+            })?;
 
         let response = client
             .post(&url)
@@ -1083,7 +1086,9 @@ impl AgentWrapper {
             .header("Content-Type", "application/json")
             .json(&json!({ "agent_json": agent_json }))
             .send()
-            .map_err(|e| BindingCoreError::network_failed(format!("HAI registration request failed: {}", e)))?;
+            .map_err(|e| {
+                BindingCoreError::network_failed(format!("HAI registration request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1314,7 +1319,10 @@ pub fn verify_document_standalone(
         // SAFETY: intentionally clearing process env vars for isolated verification.
         unsafe { std::env::remove_var(key) }
     }
-    saved.push(("JACS_KEY_RESOLUTION", std::env::var_os("JACS_KEY_RESOLUTION")));
+    saved.push((
+        "JACS_KEY_RESOLUTION",
+        std::env::var_os("JACS_KEY_RESOLUTION"),
+    ));
     if let Some(kr) = key_resolution {
         // SAFETY: set explicit key resolution only for this call.
         unsafe { std::env::set_var("JACS_KEY_RESOLUTION", kr) }
@@ -1643,7 +1651,9 @@ mod tests {
     use std::path::PathBuf;
 
     fn cross_language_fixtures_dir() -> Option<PathBuf> {
-        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent()?.to_path_buf();
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()?
+            .to_path_buf();
         let dir = workspace.join("jacs/tests/fixtures/cross-language");
         if dir.exists() { Some(dir) } else { None }
     }
