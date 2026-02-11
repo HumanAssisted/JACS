@@ -42,6 +42,11 @@ FIXTURES_DIR = (
 
 # Algorithms that the Rust fixture generator creates
 ALGORITHMS = ["ed25519", "pq2025"]
+UPDATE_FIXTURES = os.environ.get("UPDATE_CROSS_LANG_FIXTURES", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 def _fixture_exists(prefix: str) -> bool:
@@ -180,6 +185,28 @@ class TestCrossLanguageCountersign:
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
 
+        out_prefix = f"python_{algo}"
+        out_dir = FIXTURES_DIR
+
+        if not UPDATE_FIXTURES:
+            if not _fixture_exists(out_prefix):
+                pytest.skip(
+                    "Python countersigned fixtures missing. "
+                    "Set UPDATE_CROSS_LANG_FIXTURES=1 to regenerate."
+                )
+
+            countersigned_json, cs_metadata = _read_fixture(out_prefix)
+            result = simple.verify_standalone(
+                countersigned_json,
+                key_resolution="local",
+                data_directory=str(out_dir),
+                key_directory=str(out_dir),
+            )
+            assert isinstance(result, VerificationResult)
+            assert result.valid is True
+            assert result.signer_id == cs_metadata["agent_id"]
+            return
+
         signed_json, metadata = _read_fixture(algo)
         original_doc = json.loads(signed_json)
         payload = original_doc.get("content", {})
@@ -217,8 +244,6 @@ class TestCrossLanguageCountersign:
                 os.environ["JACS_PRIVATE_KEY_PASSWORD"] = prev_pw
 
         # Write countersigned doc to fixtures for Node.js
-        out_prefix = f"python_{algo}"
-        out_dir = FIXTURES_DIR
         (out_dir / f"{out_prefix}_signed.json").write_text(countersigned.raw_json)
         (out_dir / f"{out_prefix}_public_key.pem").write_bytes(pub_key_bytes)
 

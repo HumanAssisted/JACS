@@ -8,7 +8,7 @@
 setup:
 	@echo "Setting up development environment with uv..."
 	uv venv
-	uv pip install maturin pytest httpx httpx-sse
+	uv pip install maturin pytest pytest-asyncio httpx httpx-sse
 
 # Build and install the Rust extension for development (fast iteration)
 dev:

@@ -324,7 +324,13 @@ export async function quickstart(options?: QuickstartOptions): Promise<Quickstar
 
   const password = ensurePassword();
   const algo = options?.algorithm || 'pq2025';
-  const result = await create({ name: 'jacs-agent', password, algorithm: algo });
+  const result = await create({
+    name: 'jacs-agent',
+    password,
+    algorithm: algo,
+    configPath,
+  });
+  await load(result.configPath || configPath, { strict: strictMode });
 
   return {
     agentId: result.agentId,
@@ -353,7 +359,13 @@ export function quickstartSync(options?: QuickstartOptions): QuickstartInfo {
 
   const password = ensurePassword();
   const algo = options?.algorithm || 'pq2025';
-  const result = createSync({ name: 'jacs-agent', password, algorithm: algo });
+  const result = createSync({
+    name: 'jacs-agent',
+    password,
+    algorithm: algo,
+    configPath,
+  });
+  loadSync(result.configPath || configPath, { strict: strictMode });
 
   return {
     agentId: result.agentId,

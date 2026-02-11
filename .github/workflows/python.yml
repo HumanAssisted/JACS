@@ -39,7 +39,7 @@ jobs:
               cd /workspace/jacspy && \
               /opt/python/cp311-cp311/bin/python3.11 -m venv .venv && \
               source .venv/bin/activate && \
-              pip install maturin pytest && \
+              pip install maturin pytest pytest-asyncio && \
               pip install fastmcp mcp starlette && \
               make test-python"
 

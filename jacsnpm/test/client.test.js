@@ -95,6 +95,38 @@ describe('JacsClient', function () {
     });
   });
 
+  describe('quickstart factory', () => {
+    (available ? it : it.skip)('should honor custom configPath when creating a persistent agent', async function () {
+      this.timeout(30000);
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-quickstart-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        const client = await clientModule.JacsClient.quickstart({
+          algorithm: 'ring-Ed25519',
+          configPath: 'custom/jacs.config.json',
+        });
+
+        expect(client.agentId).to.be.a('string').and.not.empty;
+        expect(fs.existsSync(path.join(tmpDir, 'custom', 'jacs.config.json'))).to.equal(true);
+
+        const signed = await client.signMessage({ quickstart: true });
+        expect(signed.documentId).to.be.a('string').and.not.empty;
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Signing (ephemeral, sync)
   // ---------------------------------------------------------------------------

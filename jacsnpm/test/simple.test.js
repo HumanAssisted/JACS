@@ -122,6 +122,40 @@ describe('JACS Simple API', function() {
     });
   });
 
+  describe('quickstart', () => {
+    (simpleExists ? it : it.skip)('should create and load an agent at a custom configPath', async function () {
+      this.timeout(30000);
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-quickstart-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        const info = await freshSimple.quickstart({
+          algorithm: 'ring-Ed25519',
+          configPath: 'custom/jacs.config.json',
+        });
+        expect(info).to.have.property('agentId').that.is.a('string').and.not.empty;
+        expect(freshSimple.isLoaded()).to.equal(true);
+        expect(fs.existsSync(path.join(tmpDir, 'custom', 'jacs.config.json'))).to.equal(true);
+
+        const signed = await freshSimple.signMessage({ quickstart: true });
+        expect(signed.documentId).to.be.a('string').and.not.empty;
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('getAgentInfo', () => {
     (simpleExists ? it : it.skip)('should return null when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];

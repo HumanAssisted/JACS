@@ -37,11 +37,15 @@ export declare function legacySignString(data: string): string
 export declare function legacyVerifyAgent(agentfile?: string | undefined | null): boolean
 /** @deprecated Use `new JacsAgent()` and instance methods instead. */
 export declare function legacyUpdateAgent(newAgentString: string): string
-/** Result of verify_document_standalone. Exposed to JS as { valid, signerId }. */
+/** Result of verify_document_standalone. Exposed to JS as { valid, signerId, timestamp, agentVersion }. */
 export interface VerifyStandaloneResult {
   valid: boolean
   /** Signer agent ID; exposed to JS as signerId (camelCase). */
   signerId: string
+  /** Signing timestamp from jacsSignature.date. */
+  timestamp: string
+  /** Signer agent version from jacsSignature.agentVersion. */
+  agentVersion: string
 }
 /**
  * Verify a signed JACS document without loading an agent.

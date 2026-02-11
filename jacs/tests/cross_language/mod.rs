@@ -19,6 +19,16 @@ fn fixtures_dir() -> PathBuf {
     manifest.join("tests").join("fixtures").join("cross-language")
 }
 
+fn should_update_fixtures() -> bool {
+    matches!(
+        std::env::var("UPDATE_CROSS_LANG_FIXTURES")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes"
+    )
+}
+
 /// Helper: create an agent via quickstart in a temp dir, sign a document,
 /// export everything needed for cross-language verification.
 fn generate_fixture(algorithm: &str, prefix: &str) {
@@ -178,27 +188,37 @@ fn verify_fixture(prefix: &str) {
 #[test]
 #[serial]
 fn generate_ed25519_fixture() {
+    if !should_update_fixtures() {
+        eprintln!("Skipping fixture regeneration (set UPDATE_CROSS_LANG_FIXTURES=1 to update)");
+        return;
+    }
     generate_fixture("ed25519", "ed25519");
 }
 
 #[test]
 #[serial]
 fn generate_pq2025_fixture() {
+    if !should_update_fixtures() {
+        eprintln!("Skipping fixture regeneration (set UPDATE_CROSS_LANG_FIXTURES=1 to update)");
+        return;
+    }
     generate_fixture("pq2025", "pq2025");
 }
 
 #[test]
 #[serial]
 fn verify_ed25519_fixture_standalone() {
-    // Generate first to ensure fixture exists
-    generate_fixture("ed25519", "ed25519");
+    if should_update_fixtures() {
+        generate_fixture("ed25519", "ed25519");
+    }
     verify_fixture("ed25519");
 }
 
 #[test]
 #[serial]
 fn verify_pq2025_fixture_standalone() {
-    // Generate first to ensure fixture exists
-    generate_fixture("pq2025", "pq2025");
+    if should_update_fixtures() {
+        generate_fixture("pq2025", "pq2025");
+    }
     verify_fixture("pq2025");
 }

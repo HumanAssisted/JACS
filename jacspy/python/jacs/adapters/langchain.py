@@ -304,8 +304,6 @@ def signed_tool(
     Returns:
         A new ``BaseTool`` (``StructuredTool``) that wraps *tool*.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
-
     try:
         from langchain_core.tools import StructuredTool
     except ImportError:
@@ -313,6 +311,7 @@ def signed_tool(
             "langchain-core is required for signed_tool. "
             "Install it with: pip install langchain-core"
         )
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
 
     original_name = getattr(tool, "name", "jacs_tool")
     original_desc = getattr(tool, "description", "")

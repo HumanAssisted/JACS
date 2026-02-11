@@ -26,10 +26,14 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-jacs.quickstart();
-const signed = jacs.signMessage({ action: 'approve', amount: 100 });
-const result = jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+async function main() {
+  await jacs.quickstart();
+  const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
+  const result = await jacs.verify(signed.raw);
+  console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+}
+
+main().catch(console.error);
 ```
 
 ### Rust / CLI

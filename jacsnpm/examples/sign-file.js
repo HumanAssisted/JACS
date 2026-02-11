@@ -7,8 +7,8 @@
  *   node sign-file.js <file-path> [--embed]
  */
 
-const jacs = require('@hai.ai/jacs/simple');
-const fs = require('fs');
+import * as jacs from '@hai.ai/jacs/simple';
+import fs from 'fs';
 
 async function main() {
   const args = process.argv.slice(2);

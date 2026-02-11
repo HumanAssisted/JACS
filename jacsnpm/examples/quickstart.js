@@ -8,7 +8,7 @@
  *   node quickstart.js --advanced   # Load from config file instead
  */
 
-const jacs = require('../simple');
+import * as jacs from '../simple.js';
 
 async function main() {
   console.log('='.repeat(60));

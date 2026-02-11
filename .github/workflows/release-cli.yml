@@ -136,12 +136,12 @@ jobs:
 
             ```bash
             # macOS (Apple Silicon)
-            curl -LO https://github.com/anthropics/jacs/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-arm64.tar.gz
+            curl -LO https://github.com/HumanAssisted/JACS/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-arm64.tar.gz
             tar xzf jacs-cli-*.tar.gz
             sudo mv jacs-cli /usr/local/bin/
 
             # Linux (x86_64)
-            curl -LO https://github.com/anthropics/jacs/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-linux-x64.tar.gz
+            curl -LO https://github.com/HumanAssisted/JACS/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-linux-x64.tar.gz
             tar xzf jacs-cli-*.tar.gz
             sudo mv jacs-cli /usr/local/bin/
             ```

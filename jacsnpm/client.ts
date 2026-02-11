@@ -207,7 +207,7 @@ export class JacsClient {
 
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    await client.create({ name: 'jacs-agent', password, algorithm: algo });
+    await client.create({ name: 'jacs-agent', password, algorithm: algo, configPath });
     return client;
   }
 
@@ -225,7 +225,7 @@ export class JacsClient {
 
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    client.createSync({ name: 'jacs-agent', password, algorithm: algo });
+    client.createSync({ name: 'jacs-agent', password, algorithm: algo, configPath });
     return client;
   }
 

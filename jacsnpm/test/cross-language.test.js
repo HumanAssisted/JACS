@@ -38,6 +38,7 @@ try {
 // Tests must run from the workspace root for relative path resolution.
 const WORKSPACE_ROOT = path.resolve(__dirname, '../..');
 const FIXTURES_DIR = path.join(WORKSPACE_ROOT, 'jacs', 'tests', 'fixtures', 'cross-language');
+const UPDATE_FIXTURES = /^(1|true|yes)$/i.test(process.env.UPDATE_CROSS_LANG_FIXTURES || '');
 
 // Relative path from CWD to fixtures dir (required by standalone verifier)
 function fixturesRelPath() {
@@ -70,6 +71,17 @@ function readFixture(prefix) {
     signed: fs.readFileSync(signedPath, 'utf8'),
     metadata: JSON.parse(fs.readFileSync(metadataPath, 'utf8')),
   };
+}
+
+function writeFixtureIfEnabled(outputPath, content) {
+  if (!UPDATE_FIXTURES) {
+    return;
+  }
+  try {
+    fs.writeFileSync(outputPath, content);
+  } catch (_) {
+    // Fixture directory may not be writable
+  }
 }
 
 describe('Cross-language verification', function () {
@@ -200,11 +212,7 @@ describe('Cross-language verification', function () {
 
         // Export countersigned doc to fixtures
         const outputPath = path.join(FIXTURES_DIR, 'node_ed25519_countersigned.json');
-        try {
-          fs.writeFileSync(outputPath, countersigned.raw);
-        } catch (_) {
-          // Fixture directory may not be writable
-        }
+        writeFixtureIfEnabled(outputPath, countersigned.raw);
       },
     );
 
@@ -235,11 +243,7 @@ describe('Cross-language verification', function () {
 
         // Export countersigned doc to fixtures
         const outputPath = path.join(FIXTURES_DIR, 'node_pq2025_countersigned.json');
-        try {
-          fs.writeFileSync(outputPath, countersigned.raw);
-        } catch (_) {
-          // Fixture directory may not be writable
-        }
+        writeFixtureIfEnabled(outputPath, countersigned.raw);
       },
     );
   });
@@ -339,9 +343,7 @@ describe('Cross-language verification', function () {
 
         // Export for potential Rust verification
         const outputPath = path.join(FIXTURES_DIR, 'node_chain_countersigned.json');
-        try {
-          fs.writeFileSync(outputPath, countersigned.raw);
-        } catch (_) {}
+        writeFixtureIfEnabled(outputPath, countersigned.raw);
       },
     );
   });

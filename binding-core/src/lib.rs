@@ -1181,6 +1181,19 @@ pub fn verify_document_standalone(
     data_directory: Option<&str>,
     key_directory: Option<&str>,
 ) -> BindingResult<VerificationResult> {
+    fn absolutize_dir(raw: &str) -> String {
+        let p = std::path::PathBuf::from(raw);
+        if p.is_absolute() {
+            p.to_string_lossy().to_string()
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(p)
+                .to_string_lossy()
+                .to_string()
+        }
+    }
+
     fn sig_field(doc: &str, field: &str) -> String {
         serde_json::from_str::<Value>(doc)
             .ok()
@@ -1197,29 +1210,33 @@ pub fn verify_document_standalone(
     let timestamp = sig_field(signed_document, "date");
     let agent_version = sig_field(signed_document, "agentVersion");
 
-    // MultiStorage roots at CWD and clean_path() strips leading slashes.
-    // When absolute paths are given, we re-root storage at the data directory
-    // and set config paths to "." so that make_data_directory_path constructs
-    // paths relative to the storage root.
+    // Always resolve caller-provided directories to absolute paths so relative
+    // inputs like "../fixtures" work regardless of process CWD.
+    let temp_dir = std::env::temp_dir().to_string_lossy().to_string();
     let raw_data_dir = data_directory
         .map(String::from)
-        .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
+        .unwrap_or_else(|| temp_dir.clone());
     let raw_key_dir = key_directory
         .map(String::from)
-        .unwrap_or_else(|| std::env::temp_dir().to_string_lossy().to_string());
+        .unwrap_or_else(|| raw_data_dir.clone());
 
-    let has_absolute = std::path::Path::new(&raw_data_dir).is_absolute()
-        || std::path::Path::new(&raw_key_dir).is_absolute();
+    let absolute_data_dir = absolutize_dir(&raw_data_dir);
+    let absolute_key_dir = absolutize_dir(&raw_key_dir);
 
-    // When absolute, use empty data/key dir in config (paths are relative
-    // to the storage root which we re-root to the data directory).
-    // make_data_directory_path strips "./" prefix, so "" means filenames
-    // go directly under the storage root.
-    let (data_dir, key_dir) = if has_absolute {
-        (String::new(), String::new())
+    // Verification loads public keys from {data_directory}/public_keys.
+    // If only key_directory is supplied, use it as the storage root fallback.
+    let storage_root = if data_directory.is_some() {
+        absolute_data_dir.clone()
+    } else if key_directory.is_some() {
+        absolute_key_dir.clone()
     } else {
-        (raw_data_dir.clone(), raw_key_dir.clone())
+        absolute_data_dir.clone()
     };
+
+    // Re-root storage and keep config dirs empty so path construction remains
+    // relative to storage_root (e.g., "public_keys/<hash>.pem").
+    let data_dir = String::new();
+    let key_dir = String::new();
 
     let config = Config::new(
         Some("false".to_string()),
@@ -1236,9 +1253,19 @@ pub fn verify_document_standalone(
         BindingCoreError::serialization_failed(format!("Failed to serialize config: {}", e))
     })?;
 
+    let thread_id = format!("{:?}", std::thread::current().id())
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect::<String>();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let config_path = std::env::temp_dir().join(format!(
-        "jacs_standalone_verify_config_{:?}.json",
-        std::thread::current().id()
+        "jacs_standalone_verify_config_{}_{}_{}.json",
+        std::process::id(),
+        thread_id,
+        nonce
     ));
     std::fs::write(&config_path, &config_json)
         .map_err(|e| BindingCoreError::generic(format!("Failed to write temp config: {}", e)))?;
@@ -1265,15 +1292,9 @@ pub fn verify_document_standalone(
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();
         wrapper.load(config_path.to_string_lossy().to_string())?;
-        // Re-root storage at the data directory when absolute paths are used.
-        // Config paths are empty so make_data_directory_path produces
-        // "/public_keys/{hash}.pem", clean_path strips the leading slash,
-        // and the storage root resolves it correctly.
-        // If re-rooting fails (e.g. directory doesn't exist), fall through
-        // to return valid=false from the verification step.
-        if has_absolute {
-            let _ = wrapper.set_storage_root(std::path::PathBuf::from(&raw_data_dir));
-        }
+        // If re-rooting fails (e.g. directory doesn't exist), fall through to
+        // return valid=false from the verification step.
+        let _ = wrapper.set_storage_root(std::path::PathBuf::from(&storage_root));
         let valid = wrapper.verify_document(signed_document)?;
         Ok(VerificationResult {
             valid,
@@ -1584,6 +1605,13 @@ pub use jacs;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn cross_language_fixtures_dir() -> Option<PathBuf> {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent()?.to_path_buf();
+        let dir = workspace.join("jacs/tests/fixtures/cross-language");
+        if dir.exists() { Some(dir) } else { None }
+    }
 
     #[test]
     fn verify_standalone_invalid_json_returns_valid_false() {
@@ -1631,6 +1659,108 @@ mod tests {
         .unwrap();
         assert!(!result.valid);
         assert_eq!(result.signer_id, "some-agent");
+    }
+
+    #[test]
+    fn verify_standalone_accepts_relative_parent_paths_from_subdir() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root")
+            .to_path_buf();
+        let jacsnpm_dir = workspace.join("jacsnpm");
+        if !jacsnpm_dir.exists() {
+            eprintln!("Skipping: jacsnpm directory not found");
+            return;
+        }
+
+        struct CwdGuard(PathBuf);
+        impl Drop for CwdGuard {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+
+        let original_cwd = std::env::current_dir().expect("current dir");
+        std::env::set_current_dir(&jacsnpm_dir).expect("chdir to jacsnpm");
+        let _guard = CwdGuard(original_cwd);
+
+        let rel = "../jacs/tests/fixtures/cross-language";
+        let result = verify_document_standalone(&signed, Some("local"), Some(rel), Some(rel))
+            .expect("standalone verify should not error");
+        assert!(result.valid, "relative parent-path fixture should verify");
+    }
+
+    #[test]
+    fn verify_standalone_accepts_absolute_fixture_paths() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+        let fixtures_abs = fixtures_dir
+            .canonicalize()
+            .unwrap_or_else(|_| fixtures_dir.clone());
+        let fixtures_abs_str = fixtures_abs.to_string_lossy().to_string();
+
+        let result = verify_document_standalone(
+            &signed,
+            Some("local"),
+            Some(&fixtures_abs_str),
+            Some(&fixtures_abs_str),
+        )
+        .expect("standalone verify should not error");
+        assert!(result.valid, "absolute-path fixture should verify");
+    }
+
+    #[test]
+    fn verify_standalone_uses_key_directory_when_data_directory_missing() {
+        let Some(fixtures_dir) = cross_language_fixtures_dir() else {
+            eprintln!("Skipping: cross-language fixtures directory not found");
+            return;
+        };
+        let signed_path = fixtures_dir.join("python_ed25519_signed.json");
+        if !signed_path.exists() {
+            eprintln!(
+                "Skipping: fixture '{}' not found",
+                signed_path.to_string_lossy()
+            );
+            return;
+        }
+        let signed = std::fs::read_to_string(&signed_path).expect("read python fixture");
+        let fixtures_abs = fixtures_dir
+            .canonicalize()
+            .unwrap_or_else(|_| fixtures_dir.clone());
+        let fixtures_abs_str = fixtures_abs.to_string_lossy().to_string();
+
+        let result =
+            verify_document_standalone(&signed, Some("local"), None, Some(&fixtures_abs_str))
+                .expect("standalone verify should not error");
+        assert!(
+            result.valid,
+            "key_directory should be usable as standalone storage root when data_directory is omitted"
+        );
     }
 
     #[test]
