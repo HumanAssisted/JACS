@@ -1,66 +1,63 @@
-# Failure Modes and Recovery
+# Failure Modes
 
-This page documents common failure scenarios in JACS, what happens at the code level, how to detect each failure, and how to recover.
+This page documents the error messages you will see when multi-agent agreements fail. Each scenario is validated by the chaos agreement tests in the JACS test suite.
 
-## 1. DNS Resolution Fails During Key Verification
+## Partial Signing (Agent Crash)
 
-**What happens**: `verify_pubkey_via_dns_or_embedded()` in `dns/bootstrap.rs` attempts a TXT lookup. If the lookup fails:
-- With `--no-dns` (required=false): falls back to embedded fingerprint comparison. Verification succeeds if the embedded hash matches.
-- With `--require-dns` (required=true): returns an error -- `"DNS TXT lookup failed for <owner>: record missing or not yet propagated"`.
-- With `--require-strict-dns`: returns `"Strict DNSSEC validation failed for <owner>"`.
+**What happened:** An agreement was created for N agents but one or more agents never signed -- they crashed, timed out, or disconnected before calling `sign_agreement`.
 
-**Detection**: The error propagates as a `Box<dyn Error>` from `verify_self_signature()`. Check for error messages containing "DNS TXT lookup failed" or "DNSSEC validation failed."
+**Error message:**
 
-**Recovery**: Fall back to `--no-dns` if DNS is temporarily unavailable. For persistent issues, verify the TXT record exists with `dig _v1.agent.jacs.<domain> TXT`. If using HAI registration, the agent can fall back to the HAI registry for key resolution.
+```
+not all agents have signed: ["<unsigned-agent-id>"] { ... agreement object ... }
+```
 
-## 2. Storage Backend Unavailable During Document Save
+**What to do:** Identify the unsigned agent from the error, re-establish contact, and have them call `sign_agreement` on the document. The partially-signed document is still valid and can accept additional signatures -- signing is additive.
 
-**What happens**: `save_document()` in `agent/document.rs` calls `fs_document_save()` which writes to the configured storage backend. If the backend (filesystem, database) is unavailable, the operation returns a `StorageError` or `IoError`. The document remains in the in-memory document map (keyed by `id:version`) but is not persisted.
+## Quorum Not Met
 
-**Detection**: The caller receives a `JacsError::StorageError(msg)` or `JacsError::IoError`. The document's signature and hash are already computed and valid in memory.
+**What happened:** An agreement with an explicit quorum (M-of-N via `AgreementOptions`) received fewer than M signatures.
 
-**Recovery**: Retry the save operation -- the document is still in `self.documents` and can be re-saved. The document's cryptographic state (signature, hash) does not change between retries, so the retry is safe and idempotent. If the backend is permanently lost, export the document from memory before the process exits.
+**Error message:**
 
-## 3. Agent Crashes After Partial Agreement Signatures
+```
+Quorum not met: need 2 signatures, have 1 (unsigned: ["<agent-id>"])
+```
 
-**What happens**: Agreements in JACS are documents with a `jacsAgreement` field containing a `signatures` array. Each `sign_agreement()` call appends one signature to this array and updates the document version. If the process crashes after 2 of 3 required signatures:
-- The document with 2 signatures is persisted (if save succeeded before crash).
-- The `agreement_unsigned_agents()` method returns the remaining signer(s).
-- `check_agreement()` reports the agreement as incomplete.
+**What to do:** Either collect more signatures to meet the quorum threshold, or create a new agreement with a lower quorum if appropriate. The unsigned agent IDs in the error tell you exactly who still needs to sign.
 
-**Detection**: Call `check_agreement()` on the document. It iterates `jacsAgreement.signatures`, verifies each, and reports which agents have and have not signed. If quorum is configured (M-of-N via `AgreementOptions`), the check reports whether quorum is met.
+## Tampered Signature
 
-**Recovery**: Restart the missing agent and call `sign_agreement()` on the same document. The signature operation is additive -- it appends to the signatures array without disturbing existing signatures. The quorum check is idempotent: calling `check_agreement()` multiple times produces the same result.
+**What happened:** A signature byte was modified after an agent signed the agreement. The cryptographic verification layer detects that the signature does not match the signed content.
 
-## 4. Signature Verification Fails (Tampered Document)
+**Error message:**
 
-**What happens**: `verify_document_signature()` in `agent/document.rs` recomputes the document hash and compares it against the stored signature. If the document was tampered with:
-- `verify_hash()` returns `HashMismatch { expected, got }` -- the stored `jacsHash` does not match the recomputed hash.
-- If the hash matches but the signature is invalid: `SignatureVerificationFailed { reason }` -- the cryptographic signature check failed.
+The exact message comes from the crypto verification layer and varies by algorithm, but it will always fail on the signature check rather than reporting missing signatures. You will not see "not all agents have signed" for this case -- the error is a cryptographic verification failure.
 
-**Detection**: `verify()` or `verify_by_id()` returns a `VerificationResult` with `valid: false` and a descriptive error. The error distinguishes between hash mismatch (content changed) and signature failure (key mismatch or corruption).
+**What to do:** This indicates data corruption in transit or deliberate tampering. Discard the document and request a fresh copy from the signing agent. Do not attempt to re-sign a document with a corrupted signature.
 
-**Recovery**: The original document content cannot be recovered from the signature alone. The correct version must be retrieved from a backup, the signing agent's storage, or the document's version history (if prior versions were saved). JACS stores documents keyed by `id:version`, so earlier versions may still be available via `get_document("id:previous_version")`.
+## Tampered Document Body
 
-## 5. Key File Corrupted or Missing
+**What happened:** The document content was modified after signatures were applied. JACS stores an integrity hash of the agreement-relevant fields at signing time, and any body modification causes a mismatch.
 
-**What happens**: During agent loading, JACS reads the private key from `<key_dir>/<private_key_filename>`. If the file is missing: `KeyNotFound { path }`. If the file exists but cannot be decrypted (wrong password or corrupted bytes): `KeyDecryptionFailed { reason }`. For Ed25519 keys specifically: `"Ed25519 key parsing failed (invalid PKCS#8 format or corrupted key)"`.
+**Error message:**
 
-**Detection**: Agent construction fails with one of the above errors. The agent cannot sign documents or verify its own identity.
+```
+Agreement verification failed: agreement hashes do not match
+```
 
-**Recovery**:
-- **Wrong password**: Set the correct `JACS_PRIVATE_KEY_PASSWORD` environment variable.
-- **Corrupted file**: Restore from backup. If no backup exists, generate new keys with `jacs agent create --create-keys true`. This creates a new identity (new key hash, new agent ID).
-- **Key rotation**: If the old key was used to sign documents or agreements, those signatures remain valid for verification (the public key is embedded in signed documents). But the agent can no longer produce new signatures with the old key.
+**What to do:** The document body no longer matches what the agents originally signed. Discard the modified document and go back to the last known-good version. If the modification was intentional (e.g., an amendment), create a new agreement on the updated document and collect fresh signatures from all parties.
 
-## Error Type Reference
+## In-Memory Consistency After Signing
 
-| Error | Rust Type | Meaning |
-|---|---|---|
-| Key missing | `JacsError::KeyNotFound` | Key file not at expected path |
-| Key corrupt | `JacsError::KeyDecryptionFailed` | Cannot decrypt or parse key material |
-| Hash tampered | `JacsError::HashMismatch` | Document content changed after signing |
-| Bad signature | `JacsError::SignatureVerificationFailed` | Cryptographic check failed |
-| DNS missing | `Box<dyn Error>` (string) | TXT record not found or not propagated |
-| Storage failure | `JacsError::StorageError` | Backend write/read failed |
-| Agent not loaded | `JacsError::AgentNotLoaded` | No agent initialized; call quickstart/create/load |
+**What happened:** `sign_agreement` succeeded but `save()` was never called -- for example, a storage backend failure or process interruption before persistence.
+
+**Error message:** None. This is not an error. After `sign_agreement` returns successfully, the signed document is immediately retrievable and verifiable from in-memory storage.
+
+**What to do:** Retry the `save()` call to persist to disk. The in-memory state is consistent: you can retrieve the document with `get_document`, verify it with `check_agreement`, serialize it, and transfer it to other agents for additional signatures -- all without saving first.
+
+## See Also
+
+- [Creating and Using Agreements](../rust/agreements.md) - Agreement creation and signing workflow
+- [Security Model](security.md) - Overall security architecture
+- [Cryptographic Algorithms](crypto.md) - Algorithm details and signature verification

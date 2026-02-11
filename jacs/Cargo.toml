@@ -193,6 +193,10 @@ otlp-tracing = [
 name = "sign_and_check_sig"
 harness = false
 
+[[bench]]
+name = "agreement_benchmarks"
+harness = false
+
 [package.metadata.cargo-install]
 bin = ["jacs"]
 

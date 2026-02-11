@@ -1,0 +1,303 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Streaming Signing - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../getting-started/decision-tree.html"><strong aria-hidden="true">4.</strong> Which Integration?</a></li><li class="chapter-item expanded "><a href="../getting-started/multi-agent-agreement.html"><strong aria-hidden="true">5.</strong> Multi-Agent Agreements</a></li><li class="chapter-item expanded "><a href="../getting-started/verification.html"><strong aria-hidden="true">6.</strong> Verifying Signed Documents</a></li><li class="chapter-item expanded "><a href="../usecases.html"><strong aria-hidden="true">7.</strong> Use cases</a></li><li class="chapter-item expanded "><a href="../getting-started/deployment.html"><strong aria-hidden="true">8.</strong> Deployment Compatibility</a></li><li class="chapter-item expanded "><a href="../getting-started/troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">10.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">11.</strong> CLI Usage</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">12.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">13.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">14.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">15.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">16.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">17.</strong> Observability</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">18.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/simple-api.html"><strong aria-hidden="true">19.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">20.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/langchain.html"><strong aria-hidden="true">21.</strong> LangChain.js</a></li><li class="chapter-item expanded "><a href="../nodejs/vercel-ai.html"><strong aria-hidden="true">22.</strong> Vercel AI SDK</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">23.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/koa.html"><strong aria-hidden="true">24.</strong> Koa Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">25.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">26.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">27.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">28.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/simple-api.html"><strong aria-hidden="true">29.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">30.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/adapters.html"><strong aria-hidden="true">31.</strong> Framework Adapters</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">32.</strong> MCP Integration</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">33.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">34.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">35.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">36.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">37.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/agentstate.html"><strong aria-hidden="true">38.</strong> Agent State Schema</a></li><li class="chapter-item expanded "><a href="../schemas/commitment.html"><strong aria-hidden="true">39.</strong> Commitment Schema</a></li><li class="chapter-item expanded "><a href="../schemas/todo.html"><strong aria-hidden="true">40.</strong> Todo List Schema</a></li><li class="chapter-item expanded "><a href="../schemas/conversation.html"><strong aria-hidden="true">41.</strong> Conversation Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">42.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">43.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/key-rotation.html"><strong aria-hidden="true">44.</strong> Key Rotation</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">45.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/algorithm-guide.html"><strong aria-hidden="true">46.</strong> Algorithm Selection Guide</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">47.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">48.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/trust-store.html"><strong aria-hidden="true">49.</strong> Trust Store</a></li><li class="chapter-item expanded "><a href="../advanced/infrastructure.html"><strong aria-hidden="true">50.</strong> Infrastructure vs Tools</a></li><li class="chapter-item expanded "><a href="../advanced/dns-trust.html"><strong aria-hidden="true">51.</strong> DNS Trust Anchoring</a></li><li class="chapter-item expanded "><a href="../advanced/failure-modes.html"><strong aria-hidden="true">52.</strong> Failure Modes</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">53.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">54.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="../integrations/a2a.html"><strong aria-hidden="true">55.</strong> A2A Interoperability</a></li><li class="chapter-item expanded "><a href="../integrations/hai.html"><strong aria-hidden="true">56.</strong> HAI.ai Platform</a></li><li class="chapter-item expanded "><a href="../integrations/openclaw.html"><strong aria-hidden="true">57.</strong> OpenClaw</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">58.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">59.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../guides/observability.html"><strong aria-hidden="true">60.</strong> Observability & Monitoring</a></li><li class="chapter-item expanded "><a href="../guides/streaming.html" class="active"><strong aria-hidden="true">61.</strong> Streaming Signing</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">62.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">63.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">64.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">65.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">66.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">67.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">68.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">69.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="streaming-signing"><a class="header" href="#streaming-signing">Streaming Signing</a></h1>
+<p>JACS uses a <strong>buffer-then-sign</strong> pattern for streaming outputs. Token streams from LLMs are accumulated in memory and signed once the stream completes. This is the correct approach for LLM outputs because:</p>
+<ol>
+<li><strong>LLM responses are small.</strong> A typical response is under 100KB of text. Buffering this costs nothing.</li>
+<li><strong>Signatures cover the complete output.</strong> A partial signature over incomplete text is useless for verification.</li>
+<li><strong>Framework adapters handle this automatically.</strong> If you use a JACS adapter, streaming signing just works.</li>
+</ol>
+<h2 id="how-it-works-by-framework"><a class="header" href="#how-it-works-by-framework">How It Works by Framework</a></h2>
+<h3 id="vercel-ai-sdk-streamtext"><a class="header" href="#vercel-ai-sdk-streamtext">Vercel AI SDK (<code>streamText</code>)</a></h3>
+<p>The <code>wrapStream</code> middleware accumulates <code>text-delta</code> chunks via a <code>TransformStream</code>. When the stream flushes, it signs the complete text and emits a <code>provider-metadata</code> chunk containing the provenance record.</p>
+<pre><code class="language-typescript">import { withProvenance } from '@hai.ai/jacs/vercel-ai';
+import { streamText } from 'ai';
+
+const model = withProvenance(openai('gpt-4o'), { client });
+const result = await streamText({ model, prompt: 'Explain trust.' });
+
+for await (const chunk of result.textStream) {
+  process.stdout.write(chunk); // stream to user in real time
+}
+// provenance is available after stream completes
+</code></pre>
+<h3 id="langchain--langgraph"><a class="header" href="#langchain--langgraph">LangChain / LangGraph</a></h3>
+<p>LangChain tools execute synchronously (or await async results) before returning to the model. JACS signs each tool result individually via <code>wrap_tool_call</code> or <code>signed_tool</code>. No special streaming handling is needed because the signing happens at the tool output boundary, not the token stream.</p>
+<pre><code class="language-python">from jacs.adapters.langchain import jacs_signing_middleware
+
+agent = create_agent(
+    model="openai:gpt-4o",
+    tools=tools,
+    middleware=[jacs_signing_middleware(client=jacs_client)],
+)
+# Tool results are auto-signed before the model sees them
+</code></pre>
+<h3 id="express--koa--fastapi"><a class="header" href="#express--koa--fastapi">Express / Koa / FastAPI</a></h3>
+<p>HTTP middleware signs the response body before it is sent. For streaming HTTP responses (SSE, chunked encoding), sign the complete message content before streaming, or sign each event individually.</p>
+<pre><code class="language-python"># FastAPI: middleware signs JSON responses automatically
+from jacs.adapters.fastapi import JacsMiddleware
+app.add_middleware(JacsMiddleware)
+</code></pre>
+<h3 id="raw-llm-apis-no-framework-adapter"><a class="header" href="#raw-llm-apis-no-framework-adapter">Raw LLM APIs (No Framework Adapter)</a></h3>
+<p>If you're calling an LLM API directly without a framework adapter, accumulate the response yourself and sign it when complete:</p>
+<pre><code class="language-python">import jacs.simple as jacs
+
+jacs.quickstart()
+
+# Accumulate streamed response
+chunks = []
+async for chunk in llm_stream("What is trust?"):
+    chunks.append(chunk)
+    print(chunk, end="")  # stream to user
+
+# Sign the complete response
+complete_text = "".join(chunks)
+signed = jacs.sign_message({"response": complete_text, "model": "gpt-4o"})
+</code></pre>
+<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
+await jacs.quickstart();
+
+const chunks = [];
+for await (const chunk of llmStream('What is trust?')) {
+  chunks.push(chunk);
+  process.stdout.write(chunk);
+}
+
+const signed = await jacs.signMessage({
+  response: chunks.join(''),
+  model: 'gpt-4o',
+});
+</code></pre>
+<h2 id="when-not-to-buffer"><a class="header" href="#when-not-to-buffer">When NOT to Buffer</a></h2>
+<p>The buffer-then-sign pattern assumes the full content fits in memory. This is always true for LLM text responses. If you need to sign very large data (multi-GB files, video streams), use <code>sign_file</code> instead, which hashes the file on disk without loading it into memory.</p>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="../nodejs/vercel-ai.html">Vercel AI SDK Adapter</a></li>
+<li><a href="../python/adapters.html">LangChain Adapters</a></li>
+<li><a href="../nodejs/langchain.html">Framework Adapters (Node.js)</a></li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../guides/observability.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../examples/cli.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../guides/observability.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../examples/cli.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

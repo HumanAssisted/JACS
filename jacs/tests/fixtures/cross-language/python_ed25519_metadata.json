@@ -1,10 +1,10 @@
 {
   "algorithm": "ring-Ed25519",
   "signing_algorithm": "ring-Ed25519",
-  "agent_id": "626d8fcd-095a-4441-9f81-c847cc45a67e",
-  "document_id": "88cb472f-45bb-4165-adb3-91bc757b4f46",
-  "timestamp": "2026-02-11T00:53:06.882481+00:00",
-  "public_key_hash": "69f3bb3586e055fd620ef3c48515a36a7343ee2304f918e6e6e5ceca39f68902",
+  "agent_id": "2261c60a-90ab-40ef-aeba-5664b7a220b2",
+  "document_id": "1f668fb5-04fb-41f1-86b8-c084908a7d42",
+  "timestamp": "2026-02-11T01:05:46.965835+00:00",
+  "public_key_hash": "28b12f3786163b5f9f3dbc1c07921d92fa921cc87700d9ca43a6e94137e86cfe",
   "generated_by": "python",
   "jacs_version": "0.8.0",
   "original_fixture": "ed25519"

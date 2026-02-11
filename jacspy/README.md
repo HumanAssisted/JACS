@@ -36,6 +36,8 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 
 `quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
 
+**Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#agreements-with-timeout-and-quorum) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+
 ### Advanced: Loading an existing agent
 
 If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:

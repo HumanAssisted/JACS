@@ -65,7 +65,11 @@
       "require": "./langchain.js"
     }
   },
+  "bin": {
+    "jacs-cli": "./bin/jacs-cli"
+  },
   "scripts": {
+    "postinstall": "node scripts/install-cli.js || true",
     "build": "napi build --platform --release && npm run build:ts",
     "build:debug": "napi build --platform && npm run build:ts",
     "build:ts": "tsc",
@@ -159,7 +163,9 @@
     "langchain.js",
     "langchain.d.ts",
     "langchain.js.map",
-    "jacs.*.node"
+    "jacs.*.node",
+    "scripts/install-cli.js",
+    "bin/"
   ],
   "keywords": [
     "jacs",

@@ -78,6 +78,7 @@
 
 ## Guides
 - [Observability & Monitoring](guides/observability.md)
+- [Streaming Signing](guides/streaming.md)
 
 ## Examples
 - [CLI Examples](examples/cli.md)

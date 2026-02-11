@@ -35,10 +35,17 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ### Rust / CLI
 
 ```bash
+# Install from source (requires Rust toolchain)
 cargo install jacs --features cli
+
+# Or download a prebuilt binary from GitHub Releases
+# https://github.com/HumanAssisted/JACS/releases
+
 jacs quickstart
 jacs document create -f mydata.json
 ```
+
+**Signed your first document?** Next: [Verify it without an agent](#verify-a-signed-document) | [Pick your framework integration](#which-integration-should-i-use) | [Full quick start guide](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
 ## Verify a Signed Document
 
