@@ -797,3 +797,223 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
     let _ = fs::remove_dir_all(&tmp_dir);
     Ok(())
 }
+
+// =============================================================================
+// jacs a2a (A2A trust and discovery commands)
+// =============================================================================
+
+#[test]
+fn test_a2a_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("A2A"))
+        .stdout(predicate::str::contains("assess"))
+        .stdout(predicate::str::contains("trust"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_jacs");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    // Create an Agent Card with JACS extension
+    let card_json = r#"{
+        "name": "JACS Test Agent",
+        "description": "An agent with JACS provenance",
+        "version": "1.0",
+        "protocolVersions": ["0.4.0"],
+        "supportedInterfaces": [{"url": "https://test.example.com", "protocolBinding": "jsonrpc"}],
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "capabilities": {
+            "extensions": [{
+                "uri": "urn:hai.ai:jacs-provenance-v1",
+                "description": "JACS cryptographic provenance"
+            }]
+        },
+        "skills": [],
+        "metadata": {"jacsId": "test-agent-001", "jacsVersion": "v1"}
+    }"#;
+
+    let card_file = tmp_dir.join("agent-card.json");
+    fs::write(&card_file, card_json)?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("assess")
+        .arg(card_file.to_string_lossy().as_ref())
+        .arg("--policy=verified");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("JACS Test Agent"))
+        .stdout(predicate::str::contains("Allowed:     YES"))
+        .stdout(predicate::str::contains("jacs_verified"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_a2a_assess_non_jacs_agent_rejected() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_nojacs");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    // Create an Agent Card WITHOUT JACS extension
+    let card_json = r#"{
+        "name": "Plain A2A Agent",
+        "description": "An agent without JACS provenance",
+        "version": "1.0",
+        "protocolVersions": ["0.4.0"],
+        "supportedInterfaces": [{"url": "https://test.example.com", "protocolBinding": "jsonrpc"}],
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "capabilities": {},
+        "skills": []
+    }"#;
+
+    let card_file = tmp_dir.join("plain-card.json");
+    fs::write(&card_file, card_json)?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("assess")
+        .arg(card_file.to_string_lossy().as_ref())
+        .arg("--policy=verified");
+
+    // Should fail (exit code 1) because verified policy rejects non-JACS agents
+    cmd.assert()
+        .failure()
+        .stdout(predicate::str::contains("Allowed:     NO"))
+        .stdout(predicate::str::contains("untrusted"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_json");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let card_json = r#"{
+        "name": "JSON Output Agent",
+        "description": "Test JSON output",
+        "version": "1.0",
+        "protocolVersions": ["0.4.0"],
+        "supportedInterfaces": [{"url": "https://test.example.com", "protocolBinding": "jsonrpc"}],
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "capabilities": {
+            "extensions": [{
+                "uri": "urn:hai.ai:jacs-provenance-v1",
+                "description": "JACS"
+            }]
+        },
+        "skills": [],
+        "metadata": {"jacsId": "json-agent", "jacsVersion": "v1"}
+    }"#;
+
+    let card_file = tmp_dir.join("json-card.json");
+    fs::write(&card_file, card_json)?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("assess")
+        .arg(card_file.to_string_lossy().as_ref())
+        .arg("--json");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"allowed\": true"))
+        .stdout(predicate::str::contains("\"trust_level\": \"JacsVerified\""));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+// =========================================================================
+// A2A Discovery CLI tests
+// =========================================================================
+
+#[test]
+fn test_a2a_discover_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("discover").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Discover a remote A2A agent"))
+        .stdout(predicate::str::contains("--json"))
+        .stdout(predicate::str::contains("--policy"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_serve_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("serve").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Serve this agent"))
+        .stdout(predicate::str::contains("--port"))
+        .stdout(predicate::str::contains("--host"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_discover_nonexistent_domain() -> Result<(), Box<dyn Error>> {
+    // Discovery against a URL that won't have an Agent Card
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("discover")
+        .arg("https://example.com");
+
+    // Should fail because there's no .well-known/agent-card.json at example.com
+    cmd.assert().failure();
+    Ok(())
+}
+
+#[test]
+fn test_a2a_help_shows_all_subcommands() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("assess"))
+        .stdout(predicate::str::contains("trust"))
+        .stdout(predicate::str::contains("discover"))
+        .stdout(predicate::str::contains("serve"))
+        .stdout(predicate::str::contains("quickstart"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_quickstart_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("quickstart").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("--port"))
+        .stdout(predicate::str::contains("--host"))
+        .stdout(predicate::str::contains("--algorithm"))
+        .stdout(predicate::str::contains("Create an agent"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_quickstart_invalid_algorithm() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("quickstart")
+        .arg("--algorithm")
+        .arg("invalid-algo");
+    // Should fail because "invalid-algo" is not a valid algorithm choice
+    cmd.assert().failure();
+    Ok(())
+}

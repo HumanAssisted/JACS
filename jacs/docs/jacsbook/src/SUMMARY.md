@@ -15,13 +15,13 @@
 
 ## Rust CLI & Library
 - [Installation](rust/installation.md)
-- [CLI Usage](rust/cli.md)
+- [CLI Tutorial](rust/cli.md)
 - [Creating an Agent](rust/agent.md)
 - [Working with Documents](rust/documents.md)
 - [Creating and Using Agreements](rust/agreements.md)
 - [DNS-Based Verification](rust/dns.md)
 - [Rust Library API](rust/library.md)
-- [Observability](rust/observability.md)
+- [Observability (Rust API)](rust/observability.md)
 
 ## Node.js (@hai.ai/jacs)
 - [Installation](nodejs/installation.md)
@@ -31,7 +31,7 @@
 - [Vercel AI SDK](nodejs/vercel-ai.md)
 - [Express Middleware](nodejs/express.md)
 - [Koa Middleware](nodejs/koa.md)
-- [MCP Integration](nodejs/mcp.md)
+- [MCP Integration (Node.js)](nodejs/mcp.md)
 - [HTTP Server](nodejs/http.md)
 - [API Reference](nodejs/api.md)
 
@@ -40,11 +40,11 @@
 - [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
 - [Framework Adapters](python/adapters.md)
-- [MCP Integration](python/mcp.md)
+- [MCP Integration (Python)](python/mcp.md)
 <!-- - [FastMCP Integration](python/fastmcp.md) -->
 - [API Reference](python/api.md)
 
-## Schemas & Configuration
+## Schemas
 - [JSON Schemas](schemas/overview.md)
 - [Agent Schema](schemas/agent.md)
 - [Document Schema](schemas/document.md)
@@ -53,7 +53,7 @@
 - [Commitment Schema](schemas/commitment.md)
 - [Todo List Schema](schemas/todo.md)
 - [Conversation Schema](schemas/conversation.md)
-- [Configuration](schemas/configuration.md)
+- [Config File Schema](schemas/configuration.md)
 
 ## Advanced Topics
 - [Security Model](advanced/security.md)
@@ -69,7 +69,7 @@
 - [Testing](advanced/testing.md)
 
 ## Integrations
-- [Model Context Protocol (MCP)](integrations/mcp.md)
+- [MCP Overview](integrations/mcp.md)
 - [A2A Interoperability](integrations/a2a.md)
 - [HAI.ai Platform](integrations/hai.md)
 - [OpenClaw](integrations/openclaw.md)
@@ -77,7 +77,11 @@
 - [Databases](integrations/databases.md)
 
 ## Guides
-- [Observability & Monitoring](guides/observability.md)
+- [A2A Quickstart](guides/a2a-quickstart.md)
+  - [Serve Your Agent Card](guides/a2a-serve.md)
+  - [Discover & Trust Remote Agents](guides/a2a-discover.md)
+  - [Exchange Signed Artifacts](guides/a2a-exchange.md)
+- [Observability & Monitoring Guide](guides/observability.md)
 - [Streaming Signing](guides/streaming.md)
 
 ## Examples

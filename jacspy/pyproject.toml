@@ -11,7 +11,7 @@ license = { text = "Apache-2.0 with Common Clause" }
 authors = [
     { name = "HAI.AI", email = "engineering@hai.io" },
 ]
-keywords = ["cryptography", "signing", "verification", "ai", "agents", "mcp", "langgraph", "langchain", "crewai", "fastapi", "data-provenance"]
+keywords = ["cryptography", "signing", "verification", "ai", "agents", "mcp", "langgraph", "langchain", "crewai", "fastapi", "data-provenance", "a2a", "agent-to-agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -37,7 +37,9 @@ langgraph = ["langgraph>=1.0.0,<2.0.0"]
 crewai = ["crewai>=1.9.0,<2.0.0"]
 fastapi = ["fastapi>=0.115.0,<1.0.0", "starlette>=0.37.0"]
 anthropic = ["anthropic>=0.79.0"]
-all = ["jacs[mcp,hai,ws,langchain,crewai,fastapi,anthropic]"]
+a2a = ["httpx>=0.24.0"]
+a2a-server = ["fastapi>=0.115.0,<1.0.0", "uvicorn>=0.30.0"]
+all = ["jacs[mcp,hai,ws,langchain,langgraph,crewai,fastapi,anthropic,a2a,a2a-server]"]
 
 [project.urls] 
 Homepage = "https://github.com/HumanAssisted/JACS" 

@@ -7,9 +7,12 @@ Provides methods for integrating JACS agents with HAI.ai platform:
 - register(): Register an existing agent with HAI.ai
 - status(): Check registration status
 - testconnection(): Test connectivity to HAI.ai
-- benchmark(): Run benchmarks via HAI.ai
-- connect(): Connect to HAI.ai SSE stream
-- disconnect(): Close SSE connection
+- hello_world(): JACS-signed hello world exchange with HAI.ai
+- free_chaotic_run(): Free benchmark with transcript (no score)
+- baseline_run(): $5 benchmark with single aggregate score
+- benchmark(): Run benchmarks via HAI.ai (legacy)
+- connect(): Connect to HAI.ai SSE or WebSocket stream
+- disconnect(): Close SSE/WebSocket connection
 
 Installation:
     # Using uv (recommended)
@@ -202,6 +205,82 @@ class WebSocketError(HaiError):
 # =============================================================================
 # Data Types
 # =============================================================================
+
+@dataclass
+class TranscriptMessage:
+    """A single message in a benchmark transcript.
+
+    Attributes:
+        role: Speaker role ("party_a", "party_b", "mediator", "system")
+        content: Message text content
+        timestamp: ISO 8601 timestamp of the message
+        annotations: Structural annotations (e.g., "Dispute escalated")
+    """
+    role: str
+    content: str
+    timestamp: str = ""
+    annotations: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FreeChaoticResult:
+    """Result of a free chaotic benchmark run.
+
+    Free tier: no score, no breakdown. Transcript + annotations only.
+    Rate limited to 3 runs per keypair per 24 hours (D2).
+
+    Attributes:
+        success: Whether the run completed
+        run_id: Unique ID for this benchmark run
+        transcript: List of transcript messages
+        upsell_message: CTA message for paid tiers
+        raw_response: Full response from the API
+    """
+    success: bool
+    run_id: str = ""
+    transcript: List[TranscriptMessage] = field(default_factory=list)
+    upsell_message: str = ""
+    raw_response: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BaselineRunResult:
+    """Result of a $5 baseline benchmark run.
+
+    Baseline tier: single aggregate score (0-100), no category breakdown,
+    no written explanation (D1). Score is private to owner.
+
+    Attributes:
+        success: Whether the run completed
+        run_id: Unique ID for this benchmark run
+        score: Single aggregate score (0-100)
+        transcript: List of transcript messages
+        payment_id: ID of the Stripe payment used
+        raw_response: Full response from the API
+    """
+    success: bool
+    run_id: str = ""
+    score: float = 0.0
+    transcript: List[TranscriptMessage] = field(default_factory=list)
+    payment_id: str = ""
+    raw_response: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class JobResponseResult:
+    """Result of submitting a benchmark job response.
+
+    Attributes:
+        success: Whether the response was accepted
+        job_id: The job ID that was responded to
+        message: Acknowledgment message from HAI
+        raw_response: Full response from the API
+    """
+    success: bool
+    job_id: str = ""
+    message: str = ""
+    raw_response: Dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class HaiRegistrationResult:
@@ -817,6 +896,543 @@ class HaiClient:
             "Could not cryptographically verify HAI message signature"
         )
         return False
+
+    # =========================================================================
+    # SDK-PY-012: free_chaotic_run() method (Step 88)
+    # =========================================================================
+
+    def _parse_transcript(self, raw_messages: List[Dict[str, Any]]) -> List[TranscriptMessage]:
+        """Parse raw transcript messages from API response.
+
+        Args:
+            raw_messages: List of message dicts from the API
+
+        Returns:
+            List of TranscriptMessage dataclass instances
+        """
+        messages = []
+        for msg in raw_messages:
+            messages.append(TranscriptMessage(
+                role=msg.get("role", "system"),
+                content=msg.get("content", ""),
+                timestamp=msg.get("timestamp", ""),
+                annotations=msg.get("annotations", []),
+            ))
+        return messages
+
+    def free_chaotic_run(
+        self,
+        hai_url: str,
+        api_key: Optional[str] = None,
+        transport: str = "sse",
+    ) -> FreeChaoticResult:
+        """Run a free chaotic benchmark.
+
+        Connects to HAI.ai and runs the canonical baseline scenario with
+        a cheap model (Haiku-class). No judge evaluation, no scoring.
+        Returns the raw conversation transcript with structural annotations.
+
+        Rate limited to 3 runs per JACS keypair per 24 hours (D2).
+
+        Args:
+            hai_url: Base URL of the HAI.ai server
+            api_key: API key for authentication (or HAI_API_KEY env var)
+            transport: Transport protocol: "sse" (default) or "ws"
+
+        Returns:
+            FreeChaoticResult with transcript and annotations
+
+        Raises:
+            HaiConnectionError: If cannot connect to HAI.ai
+            AuthenticationError: If API key or JACS signature is invalid
+            HaiError: On 429 (rate limited) or other errors
+
+        Example:
+            import jacs.simple as jacs
+            from jacs.hai import HaiClient
+
+            jacs.load("./jacs.config.json")
+
+            hai = HaiClient()
+            result = hai.free_chaotic_run("https://hai.ai", api_key="...")
+
+            if result.success:
+                for msg in result.transcript:
+                    print(f"[{msg.role}] {msg.content}")
+                if result.upsell_message:
+                    print(result.upsell_message)
+        """
+        import os
+        httpx = self._get_httpx()
+
+        if api_key is None:
+            api_key = os.environ.get("HAI_API_KEY")
+
+        # Get agent info for JACS auth
+        try:
+            agent_id = self._get_agent_id()
+        except Exception as e:
+            raise HaiError(f"Failed to get agent ID: {e}")
+
+        # Build JACS signature
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        sign_payload = f"{agent_id}:{timestamp}"
+
+        try:
+            from . import simple as jacs_simple
+            signed = jacs_simple.sign_message(sign_payload)
+            signature = signed.signature
+        except Exception as e:
+            raise HaiError(f"Failed to sign request: {e}")
+
+        url = self._make_url(hai_url, "/api/benchmark/run")
+        headers: Dict[str, str] = {
+            "Content-Type": "application/json",
+            "Authorization": f"JACS {agent_id}:{timestamp}:{signature}",
+        }
+        if api_key:
+            headers["X-API-Key"] = api_key
+
+        payload: Dict[str, Any] = {
+            "name": f"Free Chaotic Run - {agent_id[:8]}",
+            "tier": "free_chaotic",
+            "transport": transport,
+        }
+
+        try:
+            logger.info("Starting free chaotic run for agent %s", agent_id)
+
+            response = httpx.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=max(self._timeout, 120.0),
+            )
+
+            if response.status_code == 401:
+                raise AuthenticationError(
+                    "Authentication failed",
+                    status_code=401,
+                    response_data=response.json() if response.text else {},
+                )
+
+            if response.status_code == 429:
+                raise HaiError(
+                    "Rate limited -- maximum 3 free chaotic runs per 24 hours",
+                    status_code=429,
+                )
+
+            if response.status_code == 402:
+                raise HaiError(
+                    "Payment required for this tier",
+                    status_code=402,
+                )
+
+            if response.status_code not in (200, 201):
+                raise HaiError.from_response(
+                    response,
+                    f"Free chaotic run failed with status {response.status_code}",
+                )
+
+            data = response.json()
+
+            # Parse transcript messages
+            raw_transcript = data.get("transcript", [])
+            transcript = self._parse_transcript(raw_transcript)
+
+            logger.info(
+                "Free chaotic run completed: %d messages",
+                len(transcript),
+            )
+
+            return FreeChaoticResult(
+                success=True,
+                run_id=data.get("run_id", data.get("runId", "")),
+                transcript=transcript,
+                upsell_message=data.get(
+                    "upsell_message",
+                    data.get("upsellMessage", ""),
+                ),
+                raw_response=data,
+            )
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            raise HaiConnectionError(f"Connection failed: {e}")
+        except HaiError:
+            raise
+        except Exception as e:
+            raise HaiError(f"Free chaotic run failed: {e}")
+
+    # =========================================================================
+    # SDK-PY-013: baseline_run() method (Step 89)
+    # =========================================================================
+
+    def baseline_run(
+        self,
+        hai_url: str,
+        api_key: Optional[str] = None,
+        transport: str = "sse",
+        open_browser: bool = True,
+        payment_poll_interval: float = 2.0,
+        payment_poll_timeout: float = 300.0,
+    ) -> BaselineRunResult:
+        """Run a $5 baseline benchmark.
+
+        Flow:
+        1. Creates a Stripe Checkout session via the API
+        2. Opens the checkout URL in the user's browser
+        3. Polls for payment confirmation
+        4. Runs the benchmark with quality models and judge evaluation
+        5. Returns the single aggregate score (no category breakdown per D1)
+
+        Args:
+            hai_url: Base URL of the HAI.ai server
+            api_key: API key for authentication (or HAI_API_KEY env var)
+            transport: Transport protocol: "sse" (default) or "ws"
+            open_browser: Whether to open Stripe checkout in browser (default True)
+            payment_poll_interval: Seconds between payment status checks
+            payment_poll_timeout: Max seconds to wait for payment
+
+        Returns:
+            BaselineRunResult with score and transcript
+
+        Raises:
+            HaiConnectionError: If cannot connect to HAI.ai
+            AuthenticationError: If authentication fails
+            BenchmarkError: If payment times out or benchmark fails
+            HaiError: On other errors
+
+        Example:
+            import jacs.simple as jacs
+            from jacs.hai import HaiClient
+
+            jacs.load("./jacs.config.json")
+
+            hai = HaiClient()
+            result = hai.baseline_run("https://hai.ai", api_key="...")
+
+            if result.success:
+                print(f"Score: {result.score}/100")
+                for msg in result.transcript:
+                    print(f"[{msg.role}] {msg.content}")
+        """
+        import os
+        import webbrowser
+        httpx = self._get_httpx()
+
+        if api_key is None:
+            api_key = os.environ.get("HAI_API_KEY")
+
+        # Get agent info
+        try:
+            agent_id = self._get_agent_id()
+        except Exception as e:
+            raise HaiError(f"Failed to get agent ID: {e}")
+
+        # Step 1: Create Stripe Checkout session
+        purchase_url = self._make_url(hai_url, "/api/benchmark/purchase")
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        purchase_payload = {
+            "tier": "baseline",
+            "agent_id": agent_id,
+        }
+
+        try:
+            logger.info("Creating baseline payment for agent %s", agent_id)
+
+            resp = httpx.post(
+                purchase_url,
+                json=purchase_payload,
+                headers=headers,
+                timeout=self._timeout,
+            )
+
+            if resp.status_code == 401:
+                raise AuthenticationError(
+                    "Authentication failed",
+                    status_code=401,
+                )
+
+            if resp.status_code not in (200, 201):
+                raise BenchmarkError.from_response(
+                    resp,
+                    f"Failed to create payment: HTTP {resp.status_code}",
+                )
+
+            purchase_data = resp.json()
+            checkout_url = purchase_data.get("checkout_url", "")
+            payment_id = purchase_data.get("payment_id", "")
+
+            if not checkout_url:
+                raise BenchmarkError("No checkout URL returned from API")
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            raise HaiConnectionError(f"Connection failed: {e}")
+        except HaiError:
+            raise
+        except Exception as e:
+            raise BenchmarkError(f"Failed to create payment: {e}")
+
+        # Step 2: Open browser for payment
+        if open_browser:
+            logger.info("Opening Stripe checkout: %s", checkout_url)
+            webbrowser.open(checkout_url)
+
+        # Step 3: Poll for payment confirmation
+        payment_status_url = self._make_url(
+            hai_url, f"/api/benchmark/payments/{payment_id}/status"
+        )
+        start_time = time.time()
+
+        while (time.time() - start_time) < payment_poll_timeout:
+            try:
+                status_resp = httpx.get(
+                    payment_status_url,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+
+                if status_resp.status_code == 200:
+                    status_data = status_resp.json()
+                    payment_status = status_data.get("status", "")
+
+                    if payment_status == "paid":
+                        logger.info("Payment confirmed: %s", payment_id)
+                        break
+                    elif payment_status in ("failed", "expired", "cancelled"):
+                        raise BenchmarkError(
+                            f"Payment {payment_status}: {status_data.get('message', '')}"
+                        )
+
+            except HaiError:
+                raise
+            except Exception as e:
+                logger.debug("Payment poll error: %s", e)
+
+            time.sleep(payment_poll_interval)
+        else:
+            raise BenchmarkError(
+                f"Payment not confirmed within {payment_poll_timeout}s. "
+                "Complete payment in your browser and retry."
+            )
+
+        # Step 4: Run the benchmark
+        # Build JACS signature for run request
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        sign_payload = f"{agent_id}:{timestamp}"
+
+        try:
+            from . import simple as jacs_simple
+            signed = jacs_simple.sign_message(sign_payload)
+            signature = signed.signature
+        except Exception as e:
+            raise HaiError(f"Failed to sign request: {e}")
+
+        run_url = self._make_url(hai_url, "/api/benchmark/run")
+        run_headers: Dict[str, str] = {
+            "Content-Type": "application/json",
+            "Authorization": f"JACS {agent_id}:{timestamp}:{signature}",
+        }
+        if api_key:
+            run_headers["X-API-Key"] = api_key
+
+        run_payload: Dict[str, Any] = {
+            "name": f"Baseline Run - {agent_id[:8]}",
+            "tier": "baseline",
+            "payment_id": payment_id,
+            "transport": transport,
+        }
+
+        try:
+            logger.info("Starting baseline run for agent %s", agent_id)
+
+            run_resp = httpx.post(
+                run_url,
+                json=run_payload,
+                headers=run_headers,
+                timeout=max(self._timeout, 300.0),
+            )
+
+            if run_resp.status_code not in (200, 201):
+                raise BenchmarkError.from_response(
+                    run_resp,
+                    f"Baseline run failed with status {run_resp.status_code}",
+                )
+
+            data = run_resp.json()
+
+            # Parse transcript
+            raw_transcript = data.get("transcript", [])
+            transcript = self._parse_transcript(raw_transcript)
+
+            score = float(data.get("score", 0.0))
+
+            logger.info(
+                "Baseline run completed: score=%.1f, messages=%d",
+                score, len(transcript),
+            )
+
+            return BaselineRunResult(
+                success=True,
+                run_id=data.get("run_id", data.get("runId", "")),
+                score=score,
+                transcript=transcript,
+                payment_id=payment_id,
+                raw_response=data,
+            )
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            raise HaiConnectionError(f"Connection failed: {e}")
+        except HaiError:
+            raise
+        except Exception as e:
+            raise BenchmarkError(f"Baseline run failed: {e}")
+
+    # =========================================================================
+    # SDK-PY-098: submit_benchmark_response() method
+    # =========================================================================
+
+    def submit_benchmark_response(
+        self,
+        hai_url: str,
+        job_id: str,
+        message: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        processing_time_ms: Optional[int] = None,
+        api_key: Optional[str] = None,
+    ) -> JobResponseResult:
+        """Submit a moderation response for a benchmark job.
+
+        After receiving a benchmark_job event via SSE/WS, agents call this
+        method to submit their moderation response back to HAI.ai.
+
+        Args:
+            hai_url: Base URL of the HAI.ai server
+            job_id: The job ID from the benchmark_job event
+            message: The mediator's response message
+            metadata: Optional metadata dict from the agent
+            processing_time_ms: Optional processing time in milliseconds
+            api_key: API key for authentication (or HAI_API_KEY env var)
+
+        Returns:
+            JobResponseResult with acknowledgment
+
+        Raises:
+            HaiConnectionError: If cannot connect to HAI.ai
+            AuthenticationError: If API key or JACS signature is invalid
+            BenchmarkError: If job not found or response rejected
+
+        Example:
+            import jacs.simple as jacs
+            from jacs.hai import HaiClient
+
+            jacs.load("./jacs.config.json")
+
+            hai = HaiClient()
+            for event in hai.connect("https://hai.ai", api_key="..."):
+                if event.event_type == "benchmark_job":
+                    job = event.data
+                    # Process the job...
+                    result = hai.submit_benchmark_response(
+                        "https://hai.ai",
+                        job_id=job["run_id"],
+                        message="This looks fine.",
+                        processing_time_ms=1500,
+                    )
+                    print(result.message)
+        """
+        import os
+        httpx = self._get_httpx()
+
+        if api_key is None:
+            api_key = os.environ.get("HAI_API_KEY")
+
+        # Get agent info for JACS auth
+        try:
+            agent_id = self._get_agent_id()
+        except Exception as e:
+            raise HaiError(f"Failed to get agent ID: {e}")
+
+        # Build JACS signature
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        sign_payload = f"{agent_id}:{timestamp}"
+
+        try:
+            from . import simple as jacs_simple
+            signed = jacs_simple.sign_message(sign_payload)
+            signature = signed.signature
+        except Exception as e:
+            raise HaiError(f"Failed to sign request: {e}")
+
+        url = self._make_url(
+            hai_url, f"/api/v1/agents/jobs/{job_id}/response"
+        )
+        headers: Dict[str, str] = {
+            "Content-Type": "application/json",
+            "Authorization": f"JACS {agent_id}:{timestamp}:{signature}",
+        }
+        if api_key:
+            headers["X-API-Key"] = api_key
+
+        # Build ModerationResponse payload (matches Rust JobResponseRequest)
+        response_body: Dict[str, Any] = {"message": message}
+        if metadata is not None:
+            response_body["metadata"] = metadata
+        if processing_time_ms is not None:
+            response_body["processing_time_ms"] = processing_time_ms
+
+        payload: Dict[str, Any] = {"response": response_body}
+
+        try:
+            logger.info(
+                "Submitting benchmark response for job %s", job_id
+            )
+
+            resp = httpx.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self._timeout,
+            )
+
+            if resp.status_code == 401:
+                raise AuthenticationError(
+                    "Authentication failed",
+                    status_code=401,
+                    response_data=resp.json() if resp.text else {},
+                )
+
+            if resp.status_code == 404:
+                raise BenchmarkError(
+                    f"Job not found: {job_id}",
+                    status_code=404,
+                )
+
+            if resp.status_code not in (200, 201):
+                raise BenchmarkError(
+                    f"Job response rejected (HTTP {resp.status_code})",
+                    status_code=resp.status_code,
+                )
+
+            data = resp.json()
+            logger.info("Job response accepted for %s", job_id)
+
+            return JobResponseResult(
+                success=data.get("success", True),
+                job_id=data.get("job_id", data.get("jobId", job_id)),
+                message=data.get("message", "Response accepted"),
+                raw_response=data,
+            )
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            raise HaiConnectionError(f"Connection failed: {e}")
+        except HaiError:
+            raise
+        except Exception as e:
+            raise BenchmarkError(f"Submit job response failed: {e}")
 
     # =========================================================================
     # SDK-PY-001: register() method
@@ -1788,6 +2404,85 @@ class HaiClient:
                 raise
             raise HaiError(f"Failed to get attestation: {e}")
 
+    # =========================================================================
+    # SDK-PY-012: sign_benchmark_result() (Step 120)
+    # =========================================================================
+
+    def sign_benchmark_result(
+        self,
+        run_id: str,
+        score: Optional[float] = None,
+        tier: str = "",
+        transcript: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "SignedDocument":
+        """Sign a benchmark result for independent verification.
+
+        Creates a JACS-signed document containing the benchmark result,
+        allowing anyone to verify that this agent achieved this score.
+
+        Args:
+            run_id: The benchmark run ID from HAI.ai
+            score: The benchmark score (0-100), if available
+            tier: Benchmark tier ("free_chaotic", "baseline", "certified")
+            transcript: Optional transcript messages to include
+            metadata: Optional additional metadata
+
+        Returns:
+            SignedDocument that can be shared and independently verified
+
+        Raises:
+            HaiError: If signing fails or no agent is loaded
+
+        Example:
+            hai = HaiClient()
+            result = hai.baseline_run("https://hai.ai", api_key="...")
+
+            signed = hai.sign_benchmark_result(
+                run_id=result.run_id,
+                score=result.score,
+                tier="baseline",
+            )
+
+            # Share the signed result
+            print(signed.raw_json)  # Anyone can verify this
+
+            # Generate a verification link
+            from jacs.simple import generate_verify_link
+            link = generate_verify_link(signed.raw_json)
+        """
+        from . import simple as jacs_simple
+
+        payload: Dict[str, Any] = {
+            "type": "benchmark_result",
+            "run_id": run_id,
+            "tier": tier,
+            "signed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+
+        if score is not None:
+            payload["score"] = score
+        if transcript is not None:
+            payload["transcript"] = transcript
+        if metadata is not None:
+            payload["metadata"] = metadata
+
+        try:
+            agent_id = self._get_agent_id()
+            payload["agent_id"] = agent_id
+        except Exception:
+            pass  # Agent ID is optional in the payload
+
+        try:
+            signed = jacs_simple.sign_message(payload)
+            logger.info(
+                "Benchmark result signed: run_id=%s, document_id=%s",
+                run_id, signed.document_id,
+            )
+            return signed
+        except Exception as e:
+            raise HaiError(f"Failed to sign benchmark result: {e}")
+
 
 # =============================================================================
 # Module-level convenience functions
@@ -1846,6 +2541,64 @@ def benchmark(
     See HaiClient.benchmark() for full documentation.
     """
     return _get_client().benchmark(hai_url, api_key, suite)
+
+
+def free_chaotic_run(
+    hai_url: str,
+    api_key: Optional[str] = None,
+    transport: str = "sse",
+) -> FreeChaoticResult:
+    """Run a free chaotic benchmark.
+
+    See HaiClient.free_chaotic_run() for full documentation.
+    """
+    return _get_client().free_chaotic_run(hai_url, api_key, transport)
+
+
+def baseline_run(
+    hai_url: str,
+    api_key: Optional[str] = None,
+    transport: str = "sse",
+    open_browser: bool = True,
+) -> BaselineRunResult:
+    """Run a $5 baseline benchmark.
+
+    See HaiClient.baseline_run() for full documentation.
+    """
+    return _get_client().baseline_run(hai_url, api_key, transport, open_browser)
+
+
+def submit_benchmark_response(
+    hai_url: str,
+    job_id: str,
+    message: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    processing_time_ms: Optional[int] = None,
+    api_key: Optional[str] = None,
+) -> JobResponseResult:
+    """Submit a moderation response for a benchmark job.
+
+    See HaiClient.submit_benchmark_response() for full documentation.
+    """
+    return _get_client().submit_benchmark_response(
+        hai_url, job_id, message, metadata, processing_time_ms, api_key,
+    )
+
+
+def sign_benchmark_result(
+    run_id: str,
+    score: Optional[float] = None,
+    tier: str = "",
+    transcript: Optional[List[Dict[str, Any]]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> "SignedDocument":
+    """Sign a benchmark result for independent verification.
+
+    See HaiClient.sign_benchmark_result() for full documentation.
+    """
+    return _get_client().sign_benchmark_result(
+        run_id, score, tier, transcript, metadata,
+    )
 
 
 def connect(
@@ -2103,6 +2856,10 @@ __all__ = [
     "BenchmarkResult",
     "AgentVerificationResult",
     "HelloWorldResult",
+    "TranscriptMessage",
+    "FreeChaoticResult",
+    "BaselineRunResult",
+    "JobResponseResult",
     # Convenience functions
     "testconnection",
     "hello_world",
@@ -2111,6 +2868,10 @@ __all__ = [
     "verify_agent",
     "status",
     "benchmark",
+    "free_chaotic_run",
+    "baseline_run",
+    "submit_benchmark_response",
+    "sign_benchmark_result",
     "connect",
     "disconnect",
 ]

@@ -1,6 +1,8 @@
-# Observability
+# Observability (Rust API)
 
-JACS provides comprehensive observability features including logging, metrics, and distributed tracing. This chapter covers configuring and using these features in your applications.
+This page covers the Rust-specific observability API: `ObservabilityConfig`, `LogDestination`, `MetricsConfig`, `TracingConfig`, and related types. For a cross-language guide covering structured events, OTEL collector setup, and monitoring backend integration, see the [Observability & Monitoring Guide](../guides/observability.md).
+
+JACS provides comprehensive observability features including logging, metrics, and distributed tracing. This chapter covers configuring and using these features in your Rust applications.
 
 ## Overview
 

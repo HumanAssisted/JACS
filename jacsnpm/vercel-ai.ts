@@ -52,6 +52,8 @@ export interface ProvenanceOptions {
   strict?: boolean;
   /** Additional metadata to include in provenance records. */
   metadata?: Record<string, unknown>;
+  /** Include A2A agent card in provenance metadata. Default: false. */
+  a2a?: boolean;
 }
 
 export interface ProvenanceRecord {
@@ -117,6 +119,27 @@ function extractTextFromContent(content: any[]): string {
 export function jacsProvenance(options: ProvenanceOptions): LanguageModelV3Middleware {
   const signText = options.signText !== false;
   const signToolResults = options.signToolResults !== false;
+  const includeA2A = options.a2a === true;
+
+  // Lazily build and cache the A2A agent card.
+  let cachedAgentCard: Record<string, unknown> | null = null;
+  function getAgentCard(): Record<string, unknown> | null {
+    if (!includeA2A) return null;
+    if (cachedAgentCard) return cachedAgentCard;
+    try {
+      const { JACSA2AIntegration } = require('./a2a');
+      const a2a = new JACSA2AIntegration(options.client);
+      const card = a2a.exportAgentCard({
+        jacsId: options.client.agentId,
+        jacsName: options.client.name,
+        jacsDescription: `JACS agent ${options.client.name || options.client.agentId}`,
+      });
+      cachedAgentCard = JSON.parse(JSON.stringify(card));
+      return cachedAgentCard;
+    } catch {
+      return null;
+    }
+  }
 
   const middleware: LanguageModelV3Middleware = {
     specificationVersion: 'v3',
@@ -124,7 +147,7 @@ export function jacsProvenance(options: ProvenanceOptions): LanguageModelV3Middl
     wrapGenerate: async ({ doGenerate, params }) => {
       const result = await doGenerate();
 
-      if (!signText && !signToolResults) {
+      if (!signText && !signToolResults && !includeA2A) {
         return result;
       }
 
@@ -157,11 +180,17 @@ export function jacsProvenance(options: ProvenanceOptions): LanguageModelV3Middl
       }
 
       // Attach provenance to provider metadata
+      const jacsMetadata: Record<string, any> = { ...provenance };
+      const agentCard = getAgentCard();
+      if (agentCard) {
+        jacsMetadata.agentCard = agentCard;
+      }
+
       return {
         ...result,
         providerMetadata: {
           ...result.providerMetadata,
-          jacs: provenance as any,
+          jacs: jacsMetadata,
         },
       };
     },
@@ -169,7 +198,7 @@ export function jacsProvenance(options: ProvenanceOptions): LanguageModelV3Middl
     wrapStream: async ({ doStream, params }) => {
       const streamResult = await doStream();
 
-      if (!signText) {
+      if (!signText && !includeA2A) {
         return streamResult;
       }
 
@@ -185,16 +214,26 @@ export function jacsProvenance(options: ProvenanceOptions): LanguageModelV3Middl
           controller.enqueue(chunk);
         },
         async flush(controller: any) {
-          if (accumulatedText) {
-            const provenance = await signContent(
-              options.client,
-              accumulatedText,
-              options,
-            );
+          if (accumulatedText || includeA2A) {
+            const jacsStreamMeta: Record<string, any> = {};
+
+            if (accumulatedText) {
+              jacsStreamMeta.text = await signContent(
+                options.client,
+                accumulatedText,
+                options,
+              );
+            }
+
+            const agentCard = getAgentCard();
+            if (agentCard) {
+              jacsStreamMeta.agentCard = agentCard;
+            }
+
             controller.enqueue({
               type: 'provider-metadata',
               providerMetadata: {
-                jacs: { text: provenance } as any,
+                jacs: jacsStreamMeta as any,
               },
             });
           }

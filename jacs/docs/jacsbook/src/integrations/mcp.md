@@ -1,4 +1,8 @@
-# Model Context Protocol (MCP)
+# MCP Overview
+
+This is the cross-language overview of JACS + MCP integration. For language-specific details, see:
+- [Node.js MCP Integration](../nodejs/mcp.md) -- transport proxy, tool registration, API reference
+- [Python MCP Integration](../python/mcp.md) -- JACSMCPServer, JACSMCPClient, FastMCP middleware
 
 JACS provides comprehensive integration with the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling cryptographically signed and verified communication between AI agents and MCP servers.
 
@@ -516,10 +520,32 @@ All documents are stored within the JACS data directory for security. Use `state
 
 See [Agent State Schema](../schemas/agentstate.md) for full documentation.
 
+### A2A Discovery Tools
+
+| Tool | Description |
+|------|-------------|
+| `jacs_export_agent_card` | Export the local agent's A2A Agent Card |
+| `jacs_generate_well_known` | Generate all `.well-known` documents for A2A discovery |
+| `jacs_export_agent` | Export the full JACS agent JSON document |
+
+### Trust Store Tools
+
+| Tool | Description |
+|------|-------------|
+| `jacs_trust_agent` | Add an agent to the local trust store (self-signature verified) |
+| `jacs_untrust_agent` | Remove an agent from the trust store (requires `JACS_MCP_ALLOW_UNTRUST=true`) |
+| `jacs_list_trusted_agents` | List all trusted agent IDs |
+| `jacs_is_trusted` | Check whether an agent is trusted |
+| `jacs_get_trusted_agent` | Retrieve the full JSON document for a trusted agent |
+
+See the [jacs-mcp README](https://github.com/HumanAssisted/JACS/tree/main/jacs-mcp) for the full 31-tool reference and [A2A Interoperability](a2a.md) for A2A-specific workflows.
+
 ## See Also
 
 - [Node.js MCP Integration](../nodejs/mcp.md) - Node.js specific details
 - [Python MCP Integration](../python/mcp.md) - Python specific details
+- [A2A Interoperability](a2a.md) - A2A protocol integration and trust policies
+- [A2A Quickstart](../guides/a2a-quickstart.md) - Get A2A running in minutes
 - [Security Model](../advanced/security.md) - JACS security architecture
 - [Cryptographic Algorithms](../advanced/crypto.md) - Signing algorithms
 - [Testing](../advanced/testing.md) - Testing MCP integrations

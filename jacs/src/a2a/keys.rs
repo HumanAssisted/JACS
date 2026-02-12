@@ -244,6 +244,111 @@ pub fn sign_jws(
     Ok(format!("{}.{}.{}", header_b64, payload_b64, signature_b64))
 }
 
+/// Verify a JWS compact serialization using a public key.
+///
+/// Parses the JWS compact format (`header.payload.signature`), extracts the
+/// algorithm from the header, and verifies the signature using the appropriate
+/// crypto backend.
+///
+/// # Arguments
+///
+/// * `jws` - JWS compact serialization string
+/// * `public_key` - The public key bytes for verification
+/// * `algorithm` - The key algorithm (e.g., "rsa", "ring-Ed25519")
+///
+/// # Returns
+///
+/// `Ok(payload_bytes)` if the signature is valid, or an error if verification fails.
+pub fn verify_jws(
+    jws: &str,
+    public_key: &[u8],
+    algorithm: &str,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let parts: Vec<&str> = jws.split('.').collect();
+    if parts.len() != 3 {
+        return Err(JacsError::CryptoError(format!(
+            "Invalid JWS format: expected 3 parts, got {}",
+            parts.len()
+        ))
+        .into());
+    }
+
+    let header_b64 = parts[0];
+    let payload_b64 = parts[1];
+    let signature_b64_url = parts[2];
+
+    // Decode and validate header
+    let header_bytes = general_purpose::URL_SAFE_NO_PAD
+        .decode(header_b64)
+        .map_err(|e| JacsError::CryptoError(format!("Invalid JWS header encoding: {}", e)))?;
+    let header: Value = serde_json::from_slice(&header_bytes)
+        .map_err(|e| JacsError::CryptoError(format!("Invalid JWS header JSON: {}", e)))?;
+
+    // Verify algorithm matches
+    let expected_alg = match algorithm {
+        "rsa" => "RS256",
+        "ring-Ed25519" => "EdDSA",
+        _ => {
+            return Err(JacsError::CryptoError(format!(
+                "Unsupported JWS verification algorithm: {}",
+                algorithm
+            ))
+            .into());
+        }
+    };
+    if let Some(header_alg) = header.get("alg").and_then(|v| v.as_str()) {
+        if header_alg != expected_alg {
+            return Err(JacsError::CryptoError(format!(
+                "JWS algorithm mismatch: header says '{}', expected '{}'",
+                header_alg, expected_alg
+            ))
+            .into());
+        }
+    }
+
+    // Reconstruct signing input
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+
+    // Decode the signature from base64url to raw bytes, then re-encode as standard base64
+    // (the crypto verify_string functions expect standard base64)
+    let signature_bytes = general_purpose::URL_SAFE_NO_PAD
+        .decode(signature_b64_url)
+        .map_err(|e| JacsError::CryptoError(format!("Invalid JWS signature encoding: {}", e)))?;
+    let signature_standard_b64 = general_purpose::STANDARD.encode(&signature_bytes);
+
+    // Verify the signature
+    match algorithm {
+        "rsa" => {
+            crate::crypt::rsawrapper::verify_string(
+                public_key.to_vec(),
+                &signing_input,
+                &signature_standard_b64,
+            )?;
+        }
+        "ring-Ed25519" => {
+            crate::crypt::ringwrapper::verify_string(
+                public_key.to_vec(),
+                &signing_input,
+                &signature_standard_b64,
+            )?;
+        }
+        _ => {
+            return Err(JacsError::CryptoError(format!(
+                "Unsupported verification algorithm: {}",
+                algorithm
+            ))
+            .into());
+        }
+    }
+
+    // Decode and return payload
+    let payload = general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .map_err(|e| JacsError::CryptoError(format!("Invalid JWS payload encoding: {}", e)))?;
+
+    Ok(payload)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

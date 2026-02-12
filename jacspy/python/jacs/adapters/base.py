@@ -15,7 +15,7 @@ Example:
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("jacs.adapters")
 
@@ -159,3 +159,108 @@ class BaseJacsAdapter:
                 return json.loads(signed_json)
             except json.JSONDecodeError:
                 return signed_json
+
+    # ------------------------------------------------------------------
+    # A2A helpers
+    # ------------------------------------------------------------------
+
+    def export_agent_card(
+        self,
+        url: Optional[str] = None,
+        skills: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Export this adapter's agent as an A2A Agent Card dict.
+
+        Delegates to :meth:`JACSA2AIntegration.export_agent_card` via
+        the underlying :class:`JacsClient`, then converts to a plain
+        dict for framework-agnostic consumption.
+
+        Args:
+            url: Base URL for the agent's A2A endpoint. Injected as
+                ``jacsAgentDomain`` so the card's
+                ``supportedInterfaces`` contains a real URL.
+            skills: Optional list of JACS service dicts to include
+                as A2A skills.
+
+        Returns:
+            The Agent Card as a JSON-serialisable dict.
+        """
+        from ..a2a import JACSA2AIntegration
+
+        card = self._client.export_agent_card(url=url, skills=skills)
+        integration = JACSA2AIntegration(self._client)
+        return integration.agent_card_to_dict(card)
+
+    def assess_trust(
+        self,
+        agent_card_json: str,
+        policy: str = "verified",
+    ) -> Dict[str, Any]:
+        """Assess trust for a remote agent card.
+
+        Applies a trust policy against a raw Agent Card JSON string.
+
+        Policies:
+            - ``"open"``: Always allowed.
+            - ``"verified"``: Allowed only if the card declares the
+              JACS provenance extension
+              (``urn:hai.ai:jacs-provenance-v1``).
+            - ``"strict"``: Allowed only if the agent is in the
+              local trust store.
+
+        Args:
+            agent_card_json: JSON string of the remote Agent Card.
+            policy: Trust policy to apply (default ``"verified"``).
+
+        Returns:
+            A dict with::
+
+                {
+                    "card": <parsed card dict>,
+                    "jacs_registered": bool,
+                    "trust_level": "untrusted" | "jacs_registered" | "trusted",
+                    "allowed": bool,
+                }
+
+        Raises:
+            ValueError: If *policy* is not a valid value.
+        """
+        from ..a2a_discovery import _has_jacs_extension, _extract_agent_id
+
+        if policy not in ("open", "verified", "strict"):
+            raise ValueError(
+                f"Invalid trust policy: {policy!r}. "
+                "Must be 'open', 'verified', or 'strict'."
+            )
+
+        card = json.loads(agent_card_json)
+        jacs_registered = _has_jacs_extension(card)
+
+        trust_level = "untrusted"
+        if jacs_registered:
+            trust_level = "jacs_registered"
+
+        if policy == "strict":
+            agent_id = _extract_agent_id(card)
+            if agent_id:
+                try:
+                    if self._client.is_trusted(agent_id):
+                        trust_level = "trusted"
+                except Exception:
+                    logger.debug("Trust store lookup failed for %s", agent_id)
+
+        if policy == "open":
+            allowed = True
+        elif policy == "verified":
+            allowed = jacs_registered
+        elif policy == "strict":
+            allowed = trust_level == "trusted"
+        else:
+            allowed = False
+
+        return {
+            "card": card,
+            "jacs_registered": jacs_registered,
+            "trust_level": trust_level,
+            "allowed": allowed,
+        }

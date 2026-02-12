@@ -1,6 +1,6 @@
-# Model Context Protocol (MCP) Integration
+# MCP Integration (Node.js)
 
-JACS provides a transport proxy that wraps any MCP transport with cryptographic signing and verification. Every JSON-RPC message is signed outgoing and verified incoming -- transparently.
+JACS provides a transport proxy that wraps any MCP transport with cryptographic signing and verification. Every JSON-RPC message is signed outgoing and verified incoming -- transparently. For a cross-language overview of the MCP architecture and security model, see the [MCP Overview](../integrations/mcp.md).
 
 ## 5-Minute Quickstart
 

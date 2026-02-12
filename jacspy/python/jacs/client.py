@@ -602,5 +602,104 @@ class JacsClient:
         except Exception as e:
             raise JacsError(f"Audit failed: {e}")
 
+    # ------------------------------------------------------------------
+    # A2A helpers
+    # ------------------------------------------------------------------
+
+    def get_a2a(
+        self,
+        url: Optional[str] = None,
+        skills: Optional[List[dict]] = None,
+    ) -> "JACSA2AIntegration":
+        """Return a :class:`JACSA2AIntegration` wired to this client.
+
+        Args:
+            url: Base URL for the agent's A2A endpoint.  Stored on the
+                returned integration object as ``default_url`` for
+                convenience but not required.
+            skills: Optional pre-built skill dicts to attach when
+                exporting an agent card.
+
+        Returns:
+            A :class:`JACSA2AIntegration` instance backed by this client.
+        """
+        from .a2a import JACSA2AIntegration
+
+        integration = JACSA2AIntegration(self)
+        integration.default_url = url  # type: ignore[attr-defined]
+        integration.default_skills = skills  # type: ignore[attr-defined]
+        return integration
+
+    def export_agent_card(
+        self,
+        url: Optional[str] = None,
+        skills: Optional[List[dict]] = None,
+    ) -> "A2AAgentCard":
+        """Export this client's agent as an A2A Agent Card.
+
+        This is a convenience shorthand for::
+
+            a2a = client.get_a2a()
+            card = a2a.export_agent_card(agent_data)
+
+        It builds ``agent_data`` from the client's own agent JSON and
+        delegates to :meth:`JACSA2AIntegration.export_agent_card`.
+
+        Args:
+            url: Base URL for the agent's A2A endpoint.  If provided it
+                is injected as ``jacsAgentDomain`` so the card's
+                ``supportedInterfaces`` points to a real endpoint instead
+                of the placeholder ``agent-<id>.example.com``.
+            skills: Optional list of raw JACS service dicts.  When
+                supplied they are injected as ``jacsServices`` in the
+                agent data fed to the card builder.
+
+        Returns:
+            An :class:`A2AAgentCard` dataclass.
+        """
+        from .a2a import JACSA2AIntegration
+
+        agent = self._require_agent()
+        try:
+            agent_json_str = agent.get_agent_json()
+            agent_data = json.loads(agent_json_str)
+        except Exception as e:
+            raise JacsError(f"Failed to export agent card: {e}")
+
+        if url:
+            agent_data["jacsAgentDomain"] = url
+        if skills:
+            agent_data["jacsServices"] = skills
+
+        integration = JACSA2AIntegration(self)
+        return integration.export_agent_card(agent_data)
+
+    def sign_artifact(
+        self,
+        artifact: dict,
+        artifact_type: str,
+        parent_signatures: Optional[List[dict]] = None,
+    ) -> dict:
+        """Sign an A2A artifact with JACS provenance.
+
+        Convenience shorthand for::
+
+            a2a = client.get_a2a()
+            a2a.sign_artifact(artifact, artifact_type, parent_signatures)
+
+        Args:
+            artifact: The A2A artifact dict to wrap and sign.
+            artifact_type: Type label (e.g. ``"task"``, ``"message"``).
+            parent_signatures: Optional parent signatures for chain of
+                custody.
+
+        Returns:
+            The signed, JACS-wrapped artifact dict.
+        """
+        from .a2a import JACSA2AIntegration
+
+        integration = JACSA2AIntegration(self)
+        return integration.sign_artifact(artifact, artifact_type, parent_signatures)
+
 
 __all__ = ["JacsClient"]

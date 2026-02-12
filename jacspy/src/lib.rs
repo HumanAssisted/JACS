@@ -374,6 +374,64 @@ impl JacsAgent {
     fn hash_string(data: &str) -> PyResult<String> {
         Ok(jacs_binding_core::hash_string(data))
     }
+
+    // =========================================================================
+    // A2A Protocol Methods
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card (v0.4.0).
+    ///
+    /// Returns the Agent Card as a JSON string.
+    fn export_agent_card(&self) -> PyResult<String> {
+        self.inner.export_agent_card().to_py()
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    ///
+    /// Args:
+    ///     artifact_json: JSON string of the artifact to wrap
+    ///     artifact_type: Type label (e.g., "artifact", "message", "task")
+    ///     parent_signatures_json: Optional JSON array of parent signatures
+    ///
+    /// Returns:
+    ///     JSON string of the wrapped, signed artifact
+    #[pyo3(signature = (artifact_json, artifact_type, parent_signatures_json=None))]
+    fn wrap_a2a_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> PyResult<String> {
+        self.inner
+            .wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json)
+            .to_py()
+    }
+
+    /// Sign an A2A artifact with JACS provenance.
+    ///
+    /// Alias for wrap_a2a_artifact(). This is the recommended primary API name.
+    #[pyo3(signature = (artifact_json, artifact_type, parent_signatures_json=None))]
+    fn sign_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> PyResult<String> {
+        self.inner
+            .sign_artifact(artifact_json, artifact_type, parent_signatures_json)
+            .to_py()
+    }
+
+    /// Verify a JACS-wrapped A2A artifact.
+    ///
+    /// Args:
+    ///     wrapped_json: JSON string of the wrapped artifact to verify
+    ///
+    /// Returns:
+    ///     JSON string containing the verification result
+    fn verify_a2a_artifact(&self, wrapped_json: &str) -> PyResult<String> {
+        self.inner.verify_a2a_artifact(wrapped_json).to_py()
+    }
 }
 
 // =============================================================================

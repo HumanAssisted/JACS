@@ -64,6 +64,12 @@ export interface JacsMiddlewareOptions {
   verify?: boolean;
   /** Allow unsigned/invalid requests to pass through instead of returning 401. Default: false. */
   optional?: boolean;
+  /** Enable A2A discovery endpoints at /.well-known/*. Default: false. */
+  a2a?: boolean;
+  /** A2A skills to advertise in the agent card. */
+  a2aSkills?: Array<{ id: string; name: string; description: string; tags: string[] }>;
+  /** Base URL / domain for the A2A agent card. */
+  a2aUrl?: string;
 }
 
 export interface JacsRequest extends ExpressRequest {
@@ -113,6 +119,7 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
   const shouldVerify = options.verify !== false;
   const shouldSign = options.sign === true;
   const isOptional = options.optional === true;
+  const enableA2A = options.a2a === true;
 
   // Client is resolved once (lazy, on first request) then cached.
   let clientPromise: Promise<JacsClient> | null = null;
@@ -127,6 +134,26 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
   // Pre-resolve immediately if a client is already provided (avoids first-request latency).
   if (options.client) {
     clientPromise = Promise.resolve(options.client);
+  }
+
+  // A2A well-known documents are built once and cached.
+  let a2aDocuments: Record<string, any> | null = null;
+  const A2A_CORS: Record<string, string> = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Accept',
+    'Access-Control-Max-Age': '86400',
+  };
+
+  function getA2ADocuments(client: JacsClient): Record<string, any> {
+    if (!a2aDocuments) {
+      const { buildWellKnownDocuments } = require('./src/a2a-server');
+      a2aDocuments = buildWellKnownDocuments(client, {
+        skills: options.a2aSkills,
+        url: options.a2aUrl,
+      });
+    }
+    return a2aDocuments!;
   }
 
   return async function jacsExpressMiddleware(
@@ -144,6 +171,27 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
 
     // Always expose the client on the request for manual use in route handlers.
     req.jacsClient = client;
+
+    // ----- A2A well-known endpoints -----
+    if (enableA2A && req.path && req.path.startsWith('/.well-known/')) {
+      const documents = getA2ADocuments(client);
+
+      if (req.method === 'OPTIONS' && documents[req.path]) {
+        for (const [key, value] of Object.entries(A2A_CORS)) {
+          res.set(key, value);
+        }
+        res.status(204).send('');
+        return;
+      }
+
+      if (req.method === 'GET' && documents[req.path]) {
+        for (const [key, value] of Object.entries(A2A_CORS)) {
+          res.set(key, value);
+        }
+        res.json(documents[req.path]);
+        return;
+      }
+    }
 
     // ----- Verify incoming body -----
     if (shouldVerify && BODY_METHODS.has(req.method)) {

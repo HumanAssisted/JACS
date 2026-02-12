@@ -84,7 +84,7 @@ Find the right path in under 2 minutes. [Full decision tree](https://humanassist
 | Node.js + LangChain.js | `require('@hai.ai/jacs/langchain')` | [LangChain.js Guide](https://humanassisted.github.io/JACS/nodejs/langchain.html) |
 | MCP Server (Python) | `from jacs.mcp import create_jacs_mcp_server` | [Python MCP Guide](https://humanassisted.github.io/JACS/python/mcp.html) |
 | MCP Server (Node.js) | `require('@hai.ai/jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
-| A2A Protocol | `from jacs.a2a import JACSA2AIntegration` | [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) |
+| A2A Protocol | `client.get_a2a()` / `client.getA2A()` | [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) |
 | Rust / CLI | `cargo install jacs --features cli` | [Rust Guide](https://humanassisted.github.io/JACS/rust/installation.html) |
 | Any language (standalone) | `import jacs.simple as jacs` | [Simple API](https://humanassisted.github.io/JACS/python/simple-api.html) |
 
@@ -121,6 +121,30 @@ JACS provides the missing trust layer: identity (who produced this?), integrity 
 JACS supports ML-DSA-87 (FIPS-204) post-quantum signatures alongside classical algorithms (Ed25519, ECDSA P-256/P-384, RSA-PSS). The `pq2025` algorithm preset gives you quantum-resistant signing today, with zero code changes from the standard API.
 
 [Algorithm Selection Guide](https://humanassisted.github.io/JACS/advanced/algorithm-guide.html)
+
+## A2A Interoperability
+
+Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/google/A2A) protocol with cryptographic trust built in.
+
+Built-in trust policies control how your agent handles foreign signatures: `open` (accept all), `verified` (require key resolution, **default**), or `strict` (require local trust store entry).
+
+```python
+from jacs.client import JacsClient
+
+client = JacsClient.quickstart()
+card = client.export_agent_card("http://localhost:8080")
+signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
+```
+
+```javascript
+const { JacsClient } = require('@hai.ai/jacs/client');
+
+const client = await JacsClient.quickstart();
+const card = client.exportAgentCard();
+const signed = await client.signArtifact({ action: 'classify', input: 'hello' }, 'task');
+```
+
+[A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) | [Python A2A](https://humanassisted.github.io/JACS/python/a2a.html) | [Node.js A2A](https://humanassisted.github.io/JACS/nodejs/a2a.html)
 
 ## Cross-Language Compatibility
 

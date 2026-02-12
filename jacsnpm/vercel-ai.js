@@ -72,11 +72,34 @@ function extractTextFromContent(content) {
 function jacsProvenance(options) {
     const signText = options.signText !== false;
     const signToolResults = options.signToolResults !== false;
+    const includeA2A = options.a2a === true;
+    // Lazily build and cache the A2A agent card.
+    let cachedAgentCard = null;
+    function getAgentCard() {
+        if (!includeA2A)
+            return null;
+        if (cachedAgentCard)
+            return cachedAgentCard;
+        try {
+            const { JACSA2AIntegration } = require('./a2a');
+            const a2a = new JACSA2AIntegration(options.client);
+            const card = a2a.exportAgentCard({
+                jacsId: options.client.agentId,
+                jacsName: options.client.name,
+                jacsDescription: `JACS agent ${options.client.name || options.client.agentId}`,
+            });
+            cachedAgentCard = JSON.parse(JSON.stringify(card));
+            return cachedAgentCard;
+        }
+        catch {
+            return null;
+        }
+    }
     const middleware = {
         specificationVersion: 'v3',
         wrapGenerate: async ({ doGenerate, params }) => {
             const result = await doGenerate();
-            if (!signText && !signToolResults) {
+            if (!signText && !signToolResults && !includeA2A) {
                 return result;
             }
             const provenance = {};
@@ -99,17 +122,22 @@ function jacsProvenance(options) {
                 }
             }
             // Attach provenance to provider metadata
+            const jacsMetadata = { ...provenance };
+            const agentCard = getAgentCard();
+            if (agentCard) {
+                jacsMetadata.agentCard = agentCard;
+            }
             return {
                 ...result,
                 providerMetadata: {
                     ...result.providerMetadata,
-                    jacs: provenance,
+                    jacs: jacsMetadata,
                 },
             };
         },
         wrapStream: async ({ doStream, params }) => {
             const streamResult = await doStream();
-            if (!signText) {
+            if (!signText && !includeA2A) {
                 return streamResult;
             }
             // Accumulate text chunks, sign on stream completion
@@ -123,12 +151,19 @@ function jacsProvenance(options) {
                     controller.enqueue(chunk);
                 },
                 async flush(controller) {
-                    if (accumulatedText) {
-                        const provenance = await signContent(options.client, accumulatedText, options);
+                    if (accumulatedText || includeA2A) {
+                        const jacsStreamMeta = {};
+                        if (accumulatedText) {
+                            jacsStreamMeta.text = await signContent(options.client, accumulatedText, options);
+                        }
+                        const agentCard = getAgentCard();
+                        if (agentCard) {
+                            jacsStreamMeta.agentCard = agentCard;
+                        }
                         controller.enqueue({
                             type: 'provider-metadata',
                             providerMetadata: {
-                                jacs: { text: provenance },
+                                jacs: jacsStreamMeta,
                             },
                         });
                     }

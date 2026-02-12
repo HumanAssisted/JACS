@@ -1,6 +1,6 @@
 # CLI Command Reference
 
-This page provides a comprehensive reference for all JACS command-line interface commands.
+This page provides a comprehensive reference for all JACS command-line interface commands. For a workflow-oriented tutorial, see [CLI Tutorial](../rust/cli.md). For practical scripting examples, see [CLI Examples](../examples/cli.md).
 
 ## Global Commands
 

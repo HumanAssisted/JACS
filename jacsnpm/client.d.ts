@@ -14,7 +14,7 @@
  * console.log(`Valid: ${result.valid}`);
  * ```
  */
-import { hashString, createConfig } from './index';
+import { JacsAgent, hashString, createConfig } from './index';
 import { generateVerifyLink, MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES } from './simple';
 import type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions } from './simple';
 export type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions, };
@@ -64,6 +64,11 @@ export declare class JacsClient {
     get agentId(): string;
     get name(): string;
     get strict(): boolean;
+    /**
+     * Internal access to the native JacsAgent for A2A and other low-level integrations.
+     * @internal
+     */
+    get _agent(): JacsAgent;
     private requireAgent;
     signMessage(data: any): Promise<SignedDocument>;
     signMessageSync(data: any): SignedDocument;
@@ -93,4 +98,49 @@ export declare class JacsClient {
     audit(options?: AuditOptions): Promise<Record<string, unknown>>;
     auditSync(options?: AuditOptions): Record<string, unknown>;
     generateVerifyLink(document: string, baseUrl?: string): string;
+    /**
+     * Get a configured JACSA2AIntegration instance bound to this client.
+     *
+     * @example
+     * ```typescript
+     * const a2a = client.getA2A();
+     * const card = a2a.exportAgentCard({ jacsId: client.agentId, ... });
+     * const signed = await a2a.signArtifact(artifact, 'task');
+     * ```
+     */
+    getA2A(): any;
+    /**
+     * Export this agent as an A2A Agent Card.
+     *
+     * @param agentData - JACS agent data (jacsId, jacsName, jacsServices, etc.).
+     *   If not provided, a minimal card is built from the client's own info.
+     */
+    exportAgentCard(agentData?: Record<string, unknown>): any;
+    /**
+     * Sign an A2A artifact with this agent's JACS provenance.
+     *
+     * @param artifact - The artifact payload to sign.
+     * @param artifactType - Type label (e.g., "task", "message", "result").
+     * @param parentSignatures - Optional parent signatures for chain of custody.
+     */
+    signArtifact(artifact: Record<string, unknown>, artifactType: string, parentSignatures?: Record<string, unknown>[] | null): Promise<Record<string, unknown>>;
+    /**
+     * Verify a JACS-signed A2A artifact.
+     *
+     * Accepts the raw JSON string from signArtifact() or a parsed object.
+     * When a string is given it is passed directly to verifyResponse to
+     * preserve the original serialization and hash.
+     *
+     * @param wrappedArtifact - The signed artifact (string or object).
+     */
+    verifyArtifact(wrappedArtifact: string | Record<string, unknown>): Promise<Record<string, unknown>>;
+    /**
+     * Generate .well-known documents for A2A discovery.
+     *
+     * @param agentCard - The A2A Agent Card (from exportAgentCard).
+     * @param jwsSignature - JWS signature of the Agent Card.
+     * @param publicKeyB64 - Base64-encoded public key.
+     * @param agentData - JACS agent data for metadata.
+     */
+    generateWellKnownDocuments(agentCard: any, jwsSignature: string, publicKeyB64: string, agentData: Record<string, unknown>): Record<string, Record<string, unknown>>;
 }

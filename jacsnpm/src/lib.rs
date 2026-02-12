@@ -762,6 +762,122 @@ impl JacsAgent {
             })),
         })
     }
+
+    // =========================================================================
+    // A2A Protocol Methods (sync)
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card (sync, blocks event loop).
+    #[napi(js_name = "exportAgentCardSync")]
+    pub fn export_agent_card_sync(&self) -> Result<String> {
+        self.inner.export_agent_card().to_napi()
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature (sync).
+    #[napi(js_name = "wrapA2aArtifactSync")]
+    pub fn wrap_a2a_artifact_sync(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .wrap_a2a_artifact(
+                &artifact_json,
+                &artifact_type,
+                parent_signatures_json.as_deref(),
+            )
+            .to_napi()
+    }
+
+    /// Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync.
+    #[napi(js_name = "signArtifactSync")]
+    pub fn sign_artifact_sync(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .sign_artifact(
+                &artifact_json,
+                &artifact_type,
+                parent_signatures_json.as_deref(),
+            )
+            .to_napi()
+    }
+
+    /// Verify a JACS-wrapped A2A artifact (sync).
+    #[napi(js_name = "verifyA2aArtifactSync")]
+    pub fn verify_a2a_artifact_sync(&self, wrapped_json: String) -> Result<String> {
+        self.inner.verify_a2a_artifact(&wrapped_json).to_napi()
+    }
+
+    // =========================================================================
+    // A2A Protocol Methods (async)
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card.
+    #[napi(js_name = "exportAgentCard", ts_return_type = "Promise<string>")]
+    pub fn export_agent_card_async(&self) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.export_agent_card())),
+        })
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    #[napi(js_name = "wrapA2aArtifact", ts_return_type = "Promise<string>")]
+    pub fn wrap_a2a_artifact_async(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.wrap_a2a_artifact(
+                    &artifact_json,
+                    &artifact_type,
+                    parent_signatures_json.as_deref(),
+                )
+            })),
+        })
+    }
+
+    /// Sign an A2A artifact. Alias for wrapA2aArtifact.
+    #[napi(js_name = "signArtifact", ts_return_type = "Promise<string>")]
+    pub fn sign_artifact_async(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.sign_artifact(
+                    &artifact_json,
+                    &artifact_type,
+                    parent_signatures_json.as_deref(),
+                )
+            })),
+        })
+    }
+
+    /// Verify a JACS-wrapped A2A artifact.
+    #[napi(js_name = "verifyA2aArtifact", ts_return_type = "Promise<string>")]
+    pub fn verify_a2a_artifact_async(&self, wrapped_json: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.verify_a2a_artifact(&wrapped_json))),
+        })
+    }
 }
 
 // ============================================================================

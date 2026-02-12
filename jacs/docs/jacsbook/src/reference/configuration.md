@@ -1,5 +1,7 @@
 # Configuration Reference
 
+This is the comprehensive configuration guide covering zero-config quickstart, storage backends, observability, and environment variables. For the raw schema field list, see [Config File Schema](../schemas/configuration.md).
+
 ## Overview
 
 ### Key resolution for verifiers

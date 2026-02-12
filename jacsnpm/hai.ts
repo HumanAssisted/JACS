@@ -5,7 +5,11 @@
  * - hello(): Verify connectivity with JACS-signed hello world exchange
  * - verifyHaiMessage(): Verify any HAI-signed message
  * - register(): Register an existing agent with HAI.ai
- * - connect(): Connect to HAI.ai SSE stream
+ * - freeChaoticRun(): Run a free chaotic benchmark
+ * - baselineRun(): Run a $5 baseline benchmark
+ * - submitResponse(): Submit a mediation response for a benchmark job
+ * - onBenchmarkJob(): Convenience callback for benchmark job events
+ * - connect(): Connect to HAI.ai SSE or WebSocket stream
  *
  * @example
  * ```typescript
@@ -67,6 +71,70 @@ export interface HaiRegistrationResult {
   rawResponse: Record<string, unknown>;
 }
 
+/** A single message in a benchmark transcript. */
+export interface TranscriptMessage {
+  /** Speaker role ("party_a", "party_b", "mediator", "system"). */
+  role: string;
+  /** Message text content. */
+  content: string;
+  /** ISO 8601 timestamp of the message. */
+  timestamp: string;
+  /** Structural annotations (e.g., "Dispute escalated"). */
+  annotations: string[];
+}
+
+/** Result of a free chaotic benchmark run. No score, transcript only. */
+export interface FreeChaoticResult {
+  /** Whether the run completed. */
+  success: boolean;
+  /** Unique ID for this benchmark run. */
+  runId: string;
+  /** List of transcript messages. */
+  transcript: TranscriptMessage[];
+  /** CTA message for paid tiers. */
+  upsellMessage: string;
+  /** Full response from the API. */
+  rawResponse: Record<string, unknown>;
+}
+
+/** Result of a $5 baseline benchmark run. Single score, no breakdown. */
+export interface BaselineRunResult {
+  /** Whether the run completed. */
+  success: boolean;
+  /** Unique ID for this benchmark run. */
+  runId: string;
+  /** Single aggregate score (0-100). */
+  score: number;
+  /** List of transcript messages. */
+  transcript: TranscriptMessage[];
+  /** ID of the Stripe payment used. */
+  paymentId: string;
+  /** Full response from the API. */
+  rawResponse: Record<string, unknown>;
+}
+
+/** Result of submitting a benchmark job response. */
+export interface JobResponseResult {
+  /** Whether the response was accepted. */
+  success: boolean;
+  /** The job ID that was responded to. */
+  jobId: string;
+  /** Acknowledgment message from HAI. */
+  message: string;
+  /** Full response from the API. */
+  rawResponse: Record<string, unknown>;
+}
+
+/** A benchmark job received from HAI.ai via SSE or WebSocket. */
+export interface BenchmarkJob {
+  /** Unique run/job ID. */
+  runId: string;
+  /** Scenario description or prompt for the mediator. */
+  scenario: unknown;
+  /** Full event data. */
+  data: Record<string, unknown>;
+}
+
 /** Options for HaiClient constructor. */
 export interface HaiClientOptions {
   /** Request timeout in milliseconds. Default: 30000. */
@@ -118,6 +186,14 @@ export interface ConnectOptions {
   transport?: 'sse' | 'ws';
   /** Callback function called for each event. */
   onEvent?: (event: HaiEvent) => void;
+}
+
+/** Options for HaiClient.onBenchmarkJob(). */
+export interface OnBenchmarkJobOptions {
+  /** API key for authentication (or HAI_API_KEY env var). */
+  apiKey?: string;
+  /** Transport protocol: "sse" (default) or "ws". */
+  transport?: 'sse' | 'ws';
 }
 
 // =============================================================================
@@ -419,6 +495,486 @@ export class HaiClient {
     }
 
     throw lastError || new HaiError('Registration failed after all retries');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Transcript parsing helper
+  // ---------------------------------------------------------------------------
+
+  private parseTranscript(raw: unknown[]): TranscriptMessage[] {
+    return (raw || []).map((msg: unknown) => {
+      const m = msg as Record<string, unknown>;
+      return {
+        role: (m.role as string) || 'system',
+        content: (m.content as string) || '',
+        timestamp: (m.timestamp as string) || '',
+        annotations: (m.annotations as string[]) || [],
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // freeChaoticRun() -- Step 90
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Run a free chaotic benchmark.
+   *
+   * Connects to HAI.ai and runs the canonical baseline scenario with
+   * a cheap model. No judge evaluation, no scoring. Returns the raw
+   * conversation transcript with structural annotations.
+   *
+   * Rate limited to 3 runs per JACS keypair per 24 hours.
+   *
+   * @param options - Optional: apiKey, transport
+   * @returns FreeChaoticResult with transcript and annotations
+   * @throws AuthenticationError if authentication fails
+   * @throws HaiError on 429 (rate limited) or other errors
+   */
+  async freeChaoticRun(options?: {
+    apiKey?: string;
+    transport?: 'sse' | 'ws';
+  }): Promise<FreeChaoticResult> {
+    const agentId = this.jacsClient.agentId;
+    if (!agentId) {
+      throw new HaiError('No agent loaded. Call quickstart() or load() first.');
+    }
+
+    const apiKey = options?.apiKey || process.env.HAI_API_KEY || '';
+
+    // Build JACS signature auth header
+    const timestamp = new Date().toISOString();
+    const signPayload = `${agentId}:${timestamp}`;
+
+    let signature = '';
+    try {
+      const signed = await this.jacsClient.signMessage(signPayload);
+      const doc = JSON.parse(signed.raw);
+      signature = doc?.jacsSignature?.signature ?? '';
+    } catch (e) {
+      throw new HaiError(`Failed to sign request: ${e}`);
+    }
+
+    const url = this.makeUrl('/api/benchmark/run');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `JACS ${agentId}:${timestamp}:${signature}`,
+    };
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
+
+    const payload = {
+      name: `Free Chaotic Run - ${agentId.slice(0, 8)}`,
+      tier: 'free_chaotic',
+      transport: options?.transport ?? 'sse',
+    };
+
+    let response: Response;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), Math.max(this.timeout, 120000));
+
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        throw new HaiConnectionError('Request timed out');
+      }
+      throw new HaiConnectionError(`Connection failed: ${e}`);
+    }
+
+    if (response.status === 401) {
+      throw new AuthenticationError('Authentication failed', 401);
+    }
+    if (response.status === 429) {
+      throw new HaiError('Rate limited -- maximum 3 free chaotic runs per 24 hours', 429);
+    }
+    if (response.status !== 200 && response.status !== 201) {
+      let msg = `Free chaotic run failed with status ${response.status}`;
+      try {
+        const errBody = await response.json() as Record<string, unknown>;
+        if (errBody.error) msg = String(errBody.error);
+      } catch { /* empty */ }
+      throw new HaiError(msg, response.status);
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+
+    return {
+      success: true,
+      runId: (data.run_id as string) || (data.runId as string) || '',
+      transcript: this.parseTranscript((data.transcript as unknown[]) || []),
+      upsellMessage: (data.upsell_message as string) || (data.upsellMessage as string) || '',
+      rawResponse: data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // baselineRun() -- Step 90
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Run a $5 baseline benchmark.
+   *
+   * Flow:
+   * 1. Creates a Stripe Checkout session via the API
+   * 2. Returns the checkout URL (caller handles browser opening)
+   * 3. Polls for payment confirmation
+   * 4. Runs the benchmark with quality models
+   * 5. Returns single aggregate score (no category breakdown)
+   *
+   * @param options - apiKey, transport, pollInterval, pollTimeout
+   * @returns BaselineRunResult with score and transcript
+   * @throws AuthenticationError if authentication fails
+   * @throws HaiError on payment failure or benchmark errors
+   */
+  async baselineRun(options?: {
+    apiKey?: string;
+    transport?: 'sse' | 'ws';
+    /** Milliseconds between payment status checks. Default: 2000. */
+    pollIntervalMs?: number;
+    /** Max milliseconds to wait for payment. Default: 300000 (5 min). */
+    pollTimeoutMs?: number;
+    /** Callback with checkout URL (e.g., to open in browser). */
+    onCheckoutUrl?: (url: string) => void;
+  }): Promise<BaselineRunResult> {
+    const agentId = this.jacsClient.agentId;
+    if (!agentId) {
+      throw new HaiError('No agent loaded. Call quickstart() or load() first.');
+    }
+
+    const apiKey = options?.apiKey || process.env.HAI_API_KEY || '';
+    const pollIntervalMs = options?.pollIntervalMs ?? 2000;
+    const pollTimeoutMs = options?.pollTimeoutMs ?? 300000;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    // Step 1: Create Stripe Checkout session
+    const purchaseUrl = this.makeUrl('/api/benchmark/purchase');
+    const purchasePayload = { tier: 'baseline', agent_id: agentId };
+
+    let checkoutUrl: string;
+    let paymentId: string;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      const resp = await fetch(purchaseUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(purchasePayload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (resp.status === 401) {
+        throw new AuthenticationError('Authentication failed', 401);
+      }
+      if (resp.status !== 200 && resp.status !== 201) {
+        throw new HaiError(`Failed to create payment: HTTP ${resp.status}`, resp.status);
+      }
+
+      const purchaseData = await resp.json() as Record<string, unknown>;
+      checkoutUrl = (purchaseData.checkout_url as string) || '';
+      paymentId = (purchaseData.payment_id as string) || '';
+
+      if (!checkoutUrl) {
+        throw new HaiError('No checkout URL returned from API');
+      }
+    } catch (e) {
+      if (e instanceof HaiError) throw e;
+      throw new HaiConnectionError(`Failed to create payment: ${e}`);
+    }
+
+    // Step 2: Notify caller of checkout URL
+    if (options?.onCheckoutUrl) {
+      options.onCheckoutUrl(checkoutUrl);
+    }
+
+    // Step 3: Poll for payment confirmation
+    const paymentStatusUrl = this.makeUrl(`/api/benchmark/payments/${paymentId}/status`);
+    const startTime = Date.now();
+
+    while ((Date.now() - startTime) < pollTimeoutMs) {
+      try {
+        const statusResp = await fetch(paymentStatusUrl, { headers });
+
+        if (statusResp.status === 200) {
+          const statusData = await statusResp.json() as Record<string, unknown>;
+          const paymentStatus = (statusData.status as string) || '';
+
+          if (paymentStatus === 'paid') break;
+          if (['failed', 'expired', 'cancelled'].includes(paymentStatus)) {
+            throw new HaiError(`Payment ${paymentStatus}: ${statusData.message || ''}`);
+          }
+        }
+      } catch (e) {
+        if (e instanceof HaiError) throw e;
+        // Ignore transient errors during polling
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    if ((Date.now() - startTime) >= pollTimeoutMs) {
+      throw new HaiError('Payment not confirmed within timeout. Complete payment and retry.');
+    }
+
+    // Step 4: Run the benchmark
+    const runTimestamp = new Date().toISOString();
+    const runSignPayload = `${agentId}:${runTimestamp}`;
+
+    let runSignature = '';
+    try {
+      const signed = await this.jacsClient.signMessage(runSignPayload);
+      const doc = JSON.parse(signed.raw);
+      runSignature = doc?.jacsSignature?.signature ?? '';
+    } catch (e) {
+      throw new HaiError(`Failed to sign run request: ${e}`);
+    }
+
+    const runUrl = this.makeUrl('/api/benchmark/run');
+    const runHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `JACS ${agentId}:${runTimestamp}:${runSignature}`,
+    };
+    if (apiKey) {
+      runHeaders['X-API-Key'] = apiKey;
+    }
+
+    const runPayload = {
+      name: `Baseline Run - ${agentId.slice(0, 8)}`,
+      tier: 'baseline',
+      payment_id: paymentId,
+      transport: options?.transport ?? 'sse',
+    };
+
+    let runResponse: Response;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), Math.max(this.timeout, 300000));
+
+      runResponse = await fetch(runUrl, {
+        method: 'POST',
+        headers: runHeaders,
+        body: JSON.stringify(runPayload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        throw new HaiConnectionError('Benchmark request timed out');
+      }
+      throw new HaiConnectionError(`Connection failed: ${e}`);
+    }
+
+    if (runResponse.status !== 200 && runResponse.status !== 201) {
+      let msg = `Baseline run failed with status ${runResponse.status}`;
+      try {
+        const errBody = await runResponse.json() as Record<string, unknown>;
+        if (errBody.error) msg = String(errBody.error);
+      } catch { /* empty */ }
+      throw new HaiError(msg, runResponse.status);
+    }
+
+    const data = await runResponse.json() as Record<string, unknown>;
+
+    return {
+      success: true,
+      runId: (data.run_id as string) || (data.runId as string) || '',
+      score: Number(data.score) || 0,
+      transcript: this.parseTranscript((data.transcript as unknown[]) || []),
+      paymentId,
+      rawResponse: data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // submitResponse() -- Step 100
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Submit a moderation response for a benchmark job.
+   *
+   * After receiving a benchmark_job event via SSE/WS, agents call this
+   * method to submit their mediation response back to HAI.ai.
+   *
+   * @param jobId - The job/run ID from the benchmark_job event
+   * @param message - The mediator's response message
+   * @param options - Optional: metadata, processingTimeMs, apiKey
+   * @returns JobResponseResult with acknowledgment
+   * @throws AuthenticationError if authentication fails
+   * @throws HaiError if job not found or response rejected
+   *
+   * @example
+   * ```typescript
+   * for await (const event of hai.connect()) {
+   *   if (event.eventType === 'benchmark_job') {
+   *     const job = event.data as Record<string, unknown>;
+   *     const result = await hai.submitResponse(
+   *       job.run_id as string,
+   *       'I understand both perspectives. Let me suggest...',
+   *       { processingTimeMs: 1500 },
+   *     );
+   *     console.log(result.message);
+   *   }
+   * }
+   * ```
+   */
+  async submitResponse(
+    jobId: string,
+    message: string,
+    options?: {
+      metadata?: Record<string, unknown>;
+      processingTimeMs?: number;
+      apiKey?: string;
+    },
+  ): Promise<JobResponseResult> {
+    const agentId = this.jacsClient.agentId;
+    if (!agentId) {
+      throw new HaiError('No agent loaded. Call quickstart() or load() first.');
+    }
+
+    const apiKey = options?.apiKey || process.env.HAI_API_KEY || '';
+
+    // Build JACS signature auth header
+    const timestamp = new Date().toISOString();
+    const signPayload = `${agentId}:${timestamp}`;
+
+    let signature = '';
+    try {
+      const signed = await this.jacsClient.signMessage(signPayload);
+      const doc = JSON.parse(signed.raw);
+      signature = doc?.jacsSignature?.signature ?? '';
+    } catch (e) {
+      throw new HaiError(`Failed to sign request: ${e}`);
+    }
+
+    const url = this.makeUrl(`/api/v1/agents/jobs/${jobId}/response`);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `JACS ${agentId}:${timestamp}:${signature}`,
+    };
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
+
+    // Build ModerationResponse payload (matches Rust JobResponseRequest)
+    const responseBody: Record<string, unknown> = { message };
+    if (options?.metadata !== undefined) {
+      responseBody.metadata = options.metadata;
+    }
+    if (options?.processingTimeMs !== undefined) {
+      responseBody.processing_time_ms = options.processingTimeMs;
+    }
+
+    const payload = { response: responseBody };
+
+    let response: Response;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        throw new HaiConnectionError('Request timed out');
+      }
+      throw new HaiConnectionError(`Connection failed: ${e}`);
+    }
+
+    if (response.status === 401) {
+      throw new AuthenticationError('Authentication failed', 401);
+    }
+    if (response.status === 404) {
+      throw new HaiError(`Job not found: ${jobId}`, 404);
+    }
+    if (response.status !== 200 && response.status !== 201) {
+      let msg = `Job response rejected with status ${response.status}`;
+      try {
+        const errBody = await response.json() as Record<string, unknown>;
+        if (errBody.error) msg = String(errBody.error);
+      } catch { /* empty */ }
+      throw new HaiError(msg, response.status);
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+
+    return {
+      success: (data.success as boolean) ?? true,
+      jobId: (data.job_id as string) || (data.jobId as string) || jobId,
+      message: (data.message as string) || 'Response accepted',
+      rawResponse: data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // onBenchmarkJob() -- Step 100
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Convenience wrapper around connect() that calls a handler for each
+   * benchmark job received from HAI.ai.
+   *
+   * Connects to the event stream and dispatches benchmark_job events to
+   * the provided callback. Non-benchmark events (heartbeats, etc.) are
+   * silently consumed. Runs until disconnect() is called.
+   *
+   * @param handler - Async function called for each benchmark job.
+   *   Receives a BenchmarkJob with runId, scenario, and raw data.
+   * @param options - apiKey and transport options
+   *
+   * @example
+   * ```typescript
+   * await hai.onBenchmarkJob(async (job) => {
+   *   console.log(`Received job ${job.runId}`);
+   *   const response = mediator.respond(job.scenario);
+   *   await hai.submitResponse(job.runId, response);
+   * });
+   * ```
+   */
+  async onBenchmarkJob(
+    handler: (job: BenchmarkJob) => Promise<void>,
+    options?: OnBenchmarkJobOptions,
+  ): Promise<void> {
+    const apiKey = options?.apiKey;
+    const transport = options?.transport;
+
+    for await (const event of this.connect(apiKey, { transport })) {
+      if (event.eventType === 'benchmark_job') {
+        const data = (typeof event.data === 'object' && event.data !== null)
+          ? event.data as Record<string, unknown>
+          : {};
+
+        const job: BenchmarkJob = {
+          runId: (data.run_id as string) || (data.runId as string) || '',
+          scenario: data.scenario ?? data.prompt ?? data,
+          data,
+        };
+
+        await handler(job);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -40,6 +40,8 @@ export interface ProvenanceOptions {
     strict?: boolean;
     /** Additional metadata to include in provenance records. */
     metadata?: Record<string, unknown>;
+    /** Include A2A agent card in provenance metadata. Default: false. */
+    a2a?: boolean;
 }
 export interface ProvenanceRecord {
     signed: boolean;

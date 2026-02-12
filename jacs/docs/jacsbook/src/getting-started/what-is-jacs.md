@@ -10,7 +10,7 @@ As AI systems become more sophisticated, we're moving toward multi-agent archite
 - **Create agreements** and verify their completion
 - **Share data** with guaranteed authenticity
 - **Maintain audit trails** of decisions and actions
-- **Establish trust** without centralized authorities
+- **Establish trust** with flexible key resolution (local trust stores, DNS, optional key services)
 
 Traditional approaches fall short because they lack:
 - Cryptographic integrity for agent communications
@@ -22,7 +22,7 @@ Traditional approaches fall short because they lack:
 
 ### 🎯 **Agent-First Design**
 
-JACS is built specifically for AI agent communication patterns, not as a general-purpose document signing system. It understands concepts like:
+JACS is built specifically for AI agent communication patterns, while still being usable as a general-purpose signed JSON provenance layer. It understands concepts like:
 - **Agents** with identities and capabilities
 - **Tasks** that can be delegated and tracked
 - **Agreements** between multiple parties
@@ -121,12 +121,14 @@ Complex analysis tasks are broken down with clear accountability for each step.
 | Feature | JACS | Traditional APIs | General Signing |
 |---------|------|------------------|-----------------|
 | **Agent Identity** | ✅ Built-in | ❌ Custom implementation | ❌ Not agent-focused |
-| **Task Management** | ✅ Native support | ❌ Application-specific | ❌ Not applicable |
+| **Task Management** | ⚠️ Schema-native (lifecycle via integrations) | ❌ Application-specific | ❌ Not applicable |
 | **Multi-Party Agreements** | ✅ Core feature | ❌ Complex to implement | ⚠️ Possible but difficult |
 | **Audit Trails** | ✅ Automatic | ❌ Manual logging | ⚠️ Basic signing only |
 | **Schema Validation** | ✅ JSON Schema | ❌ Custom validation | ❌ No structure |
 | **Versioning** | ✅ Built-in | ❌ Manual versioning | ❌ Not supported |
 | **Cross-Platform** | ✅ JSON everywhere | ⚠️ Protocol dependent | ⚠️ Format dependent |
+
+> JACS provides signed artifacts, schemas, trust primitives, and auditability. Real-time transport and task orchestration are handled by integrations (e.g., A2A, MCP, HTTP server layers).
 
 ## When to Use JACS
 

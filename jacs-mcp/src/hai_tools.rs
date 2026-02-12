@@ -70,6 +70,15 @@ fn is_unregistration_allowed() -> bool {
         .unwrap_or(false)
 }
 
+/// Check if untrusting agents is allowed via environment variable.
+/// Untrusting requires explicit opt-in to prevent prompt injection attacks
+/// from removing trusted agents without user consent.
+fn is_untrust_allowed() -> bool {
+    std::env::var("JACS_MCP_ALLOW_UNTRUST")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
 // =============================================================================
 // Request/Response Types
 // =============================================================================
@@ -639,6 +648,331 @@ pub struct AdoptStateResult {
 }
 
 // =============================================================================
+// Trust Store Request/Response Types
+// =============================================================================
+
+/// Parameters for adding an agent to the local trust store.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TrustAgentParams {
+    /// The full agent JSON document to trust.
+    #[schemars(description = "The full JACS agent JSON document to add to the trust store")]
+    pub agent_json: String,
+}
+
+/// Result of trusting an agent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TrustAgentResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The trusted agent's ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for removing an agent from the trust store.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UntrustAgentParams {
+    /// The agent ID (UUID) to remove from the trust store.
+    #[schemars(description = "The JACS agent ID (UUID format) to remove from the trust store")]
+    pub agent_id: String,
+}
+
+/// Result of untrusting an agent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UntrustAgentResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The agent ID that was removed.
+    pub agent_id: String,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for listing trusted agents (no parameters required).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListTrustedAgentsParams {}
+
+/// Result of listing trusted agents.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListTrustedAgentsResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// List of trusted agent IDs.
+    pub agent_ids: Vec<String>,
+
+    /// Number of trusted agents.
+    pub count: usize,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for checking if an agent is trusted.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct IsTrustedParams {
+    /// The agent ID (UUID) to check.
+    #[schemars(description = "The JACS agent ID (UUID format) to check trust status for")]
+    pub agent_id: String,
+}
+
+/// Result of checking trust status.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct IsTrustedResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The agent ID that was checked.
+    pub agent_id: String,
+
+    /// Whether the agent is in the trust store.
+    pub trusted: bool,
+
+    /// Human-readable status message.
+    pub message: String,
+}
+
+/// Parameters for getting a trusted agent's details.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetTrustedAgentParams {
+    /// The agent ID (UUID) to retrieve from the trust store.
+    #[schemars(description = "The JACS agent ID (UUID format) to retrieve from the trust store")]
+    pub agent_id: String,
+}
+
+/// Result of getting a trusted agent's details.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetTrustedAgentResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The agent ID.
+    pub agent_id: String,
+
+    /// The full agent JSON document from the trust store.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_json: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
+// A2A Artifact Wrapping/Verification Request/Response Types
+// =============================================================================
+
+/// Parameters for wrapping an A2A artifact with JACS provenance.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WrapA2aArtifactParams {
+    /// The artifact JSON content to wrap and sign.
+    #[schemars(description = "The A2A artifact JSON content to wrap with JACS provenance")]
+    pub artifact_json: String,
+
+    /// The artifact type identifier (e.g., "a2a-artifact", "message", "task-result").
+    #[schemars(
+        description = "Artifact type identifier (e.g., 'a2a-artifact', 'message', 'task-result')"
+    )]
+    pub artifact_type: String,
+
+    /// Optional parent signatures JSON array for chain-of-custody.
+    #[schemars(
+        description = "Optional JSON array of parent signatures for chain-of-custody provenance"
+    )]
+    pub parent_signatures: Option<String>,
+}
+
+/// Result of wrapping an A2A artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WrapA2aArtifactResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The wrapped artifact as a JSON string with JACS provenance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wrapped_artifact: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for verifying a JACS-wrapped A2A artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyA2aArtifactParams {
+    /// The wrapped artifact JSON to verify.
+    #[schemars(description = "The JACS-wrapped A2A artifact JSON to verify")]
+    pub wrapped_artifact: String,
+}
+
+/// Result of verifying a wrapped A2A artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyA2aArtifactResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// Whether the artifact's signature and hash are valid.
+    pub valid: bool,
+
+    /// The verification result details as JSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_details: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if verification failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for assessing trust level of a remote A2A agent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AssessA2aAgentParams {
+    /// The Agent Card JSON of the remote agent to assess.
+    #[schemars(description = "The A2A Agent Card JSON of the remote agent to assess")]
+    pub agent_card_json: String,
+
+    /// Trust policy to apply: "open", "verified", or "strict".
+    #[schemars(description = "Trust policy: 'open' (accept all), 'verified' (require JACS), or 'strict' (require trust store)")]
+    pub policy: Option<String>,
+}
+
+/// Result of assessing an A2A agent's trust level.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AssessA2aAgentResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// Whether the agent is allowed under the specified policy.
+    pub allowed: bool,
+
+    /// The trust level: "Untrusted", "JacsVerified", or "ExplicitlyTrusted".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_level: Option<String>,
+
+    /// The policy that was applied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy: Option<String>,
+
+    /// Reason for the assessment result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the assessment failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
+// Agent Card & Well-Known Request/Response Types
+// =============================================================================
+
+/// Parameters for exporting the local agent's A2A Agent Card (no params needed).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportAgentCardParams {}
+
+/// Result of exporting the Agent Card.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportAgentCardResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The Agent Card as a JSON string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_card: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for generating well-known documents.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GenerateWellKnownParams {
+    /// Optional A2A signing algorithm override (default: ring-Ed25519).
+    #[schemars(description = "A2A signing algorithm override (default: ring-Ed25519)")]
+    pub a2a_algorithm: Option<String>,
+}
+
+/// Result of generating well-known documents.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GenerateWellKnownResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The well-known documents as a JSON array of {path, document} objects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub documents: Option<String>,
+
+    /// Number of documents generated.
+    pub count: usize,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Parameters for exporting the local agent's full JSON document (no params needed).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportAgentParams {}
+
+/// Result of exporting the agent document.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExportAgentResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The full agent JSON document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_json: Option<String>,
+
+    /// The agent's ID (UUID).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// =============================================================================
 // Document Sign/Verify Request/Response Types
 // =============================================================================
 
@@ -1095,6 +1429,8 @@ pub struct HaiMcpServer {
     registration_allowed: bool,
     /// Whether unregistration is allowed (from JACS_MCP_ALLOW_UNREGISTRATION env var).
     unregistration_allowed: bool,
+    /// Whether untrusting agents is allowed (from JACS_MCP_ALLOW_UNTRUST env var).
+    untrust_allowed: bool,
 }
 
 #[allow(dead_code)]
@@ -1111,6 +1447,7 @@ impl HaiMcpServer {
     ///
     /// * `JACS_MCP_ALLOW_REGISTRATION` - Set to "true" to enable the register_agent tool
     /// * `JACS_MCP_ALLOW_UNREGISTRATION` - Set to "true" to enable the unregister_agent tool
+    /// * `JACS_MCP_ALLOW_UNTRUST` - Set to "true" to enable the jacs_untrust_agent tool
     pub fn new(agent: AgentWrapper, hai_endpoint: &str, api_key: Option<&str>) -> Self {
         let mut client = HaiClient::new(hai_endpoint);
         if let Some(key) = api_key {
@@ -1119,6 +1456,7 @@ impl HaiMcpServer {
 
         let registration_allowed = is_registration_allowed();
         let unregistration_allowed = is_unregistration_allowed();
+        let untrust_allowed = is_untrust_allowed();
 
         if registration_allowed {
             tracing::info!("Agent registration is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
@@ -1134,6 +1472,7 @@ impl HaiMcpServer {
             tool_router: Self::tool_router(),
             registration_allowed,
             unregistration_allowed,
+            untrust_allowed,
         }
     }
 
@@ -1291,6 +1630,80 @@ impl HaiMcpServer {
                  document in memory (e.g. from an approval context or message payload) and \
                  need to confirm its integrity and authenticity.",
                 Self::jacs_verify_document_schema(),
+            ),
+            // --- A2A artifact tools ---
+            Tool::new(
+                "jacs_wrap_a2a_artifact",
+                "Wrap an A2A artifact with JACS provenance. Signs the artifact JSON, binding \
+                 this agent's identity to the content. Optionally include parent signatures \
+                 for chain-of-custody provenance.",
+                Self::jacs_wrap_a2a_artifact_schema(),
+            ),
+            Tool::new(
+                "jacs_verify_a2a_artifact",
+                "Verify a JACS-wrapped A2A artifact. Checks the cryptographic signature and \
+                 hash to confirm the artifact was signed by the claimed agent and has not \
+                 been tampered with.",
+                Self::jacs_verify_a2a_artifact_schema(),
+            ),
+            Tool::new(
+                "jacs_assess_a2a_agent",
+                "Assess the trust level of a remote A2A agent given its Agent Card. Applies \
+                 a trust policy (open, verified, or strict) and returns whether the agent is \
+                 allowed and at what trust level.",
+                Self::jacs_assess_a2a_agent_schema(),
+            ),
+            // --- Agent Card & well-known tools ---
+            Tool::new(
+                "jacs_export_agent_card",
+                "Export this agent's A2A Agent Card as JSON. The Agent Card describes the \
+                 agent's capabilities, endpoints, and identity for A2A discovery.",
+                Self::jacs_export_agent_card_schema(),
+            ),
+            Tool::new(
+                "jacs_generate_well_known",
+                "Generate all .well-known documents for A2A discovery. Returns an array of \
+                 {path, document} objects that can be served at each path for agent discovery.",
+                Self::jacs_generate_well_known_schema(),
+            ),
+            Tool::new(
+                "jacs_export_agent",
+                "Export the local agent's full JACS JSON document. This includes the agent's \
+                 identity, public key hash, and signed metadata.",
+                Self::jacs_export_agent_schema(),
+            ),
+            // --- Trust store tools ---
+            Tool::new(
+                "jacs_trust_agent",
+                "Add an agent to the local trust store. The agent's self-signature is \
+                 cryptographically verified before it is trusted. Pass the full agent JSON \
+                 document. Returns the trusted agent ID on success.",
+                Self::jacs_trust_agent_schema(),
+            ),
+            Tool::new(
+                "jacs_untrust_agent",
+                "Remove an agent from the local trust store. \
+                 SECURITY: Requires JACS_MCP_ALLOW_UNTRUST=true environment variable to prevent \
+                 prompt injection attacks from removing trusted agents without user consent.",
+                Self::jacs_untrust_agent_schema(),
+            ),
+            Tool::new(
+                "jacs_list_trusted_agents",
+                "List all agent IDs currently in the local trust store. Returns the count \
+                 and a list of trusted agent IDs.",
+                Self::jacs_list_trusted_agents_schema(),
+            ),
+            Tool::new(
+                "jacs_is_trusted",
+                "Check whether a specific agent is in the local trust store. Returns a boolean \
+                 indicating trust status.",
+                Self::jacs_is_trusted_schema(),
+            ),
+            Tool::new(
+                "jacs_get_trusted_agent",
+                "Retrieve the full agent JSON document for a trusted agent from the local \
+                 trust store. Fails if the agent is not trusted.",
+                Self::jacs_get_trusted_agent_schema(),
             ),
         ]
     }
@@ -1473,6 +1886,94 @@ impl HaiMcpServer {
 
     fn jacs_verify_document_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(VerifyDocumentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_wrap_a2a_artifact_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(WrapA2aArtifactParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_verify_a2a_artifact_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(VerifyA2aArtifactParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_assess_a2a_agent_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(AssessA2aAgentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_export_agent_card_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(ExportAgentCardParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_generate_well_known_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(GenerateWellKnownParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_export_agent_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(ExportAgentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_trust_agent_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(TrustAgentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_untrust_agent_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(UntrustAgentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_list_trusted_agents_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(ListTrustedAgentsParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_is_trusted_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(IsTrustedParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_get_trusted_agent_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(GetTrustedAgentParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -3504,6 +4005,523 @@ impl HaiMcpServer {
             }
         }
     }
+
+    // =========================================================================
+    // A2A Artifact Wrapping/Verification Tools
+    // =========================================================================
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    #[tool(
+        name = "jacs_wrap_a2a_artifact",
+        description = "Wrap an A2A artifact with JACS provenance signature."
+    )]
+    pub async fn jacs_wrap_a2a_artifact(
+        &self,
+        Parameters(params): Parameters<WrapA2aArtifactParams>,
+    ) -> String {
+        if params.artifact_json.is_empty() {
+            let result = WrapA2aArtifactResult {
+                success: false,
+                wrapped_artifact: None,
+                message: "Artifact JSON is empty".to_string(),
+                error: Some("EMPTY_ARTIFACT".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        match self.agent.wrap_a2a_artifact(
+            &params.artifact_json,
+            &params.artifact_type,
+            params.parent_signatures.as_deref(),
+        ) {
+            Ok(wrapped_json) => {
+                let result = WrapA2aArtifactResult {
+                    success: true,
+                    wrapped_artifact: Some(wrapped_json),
+                    message: "Artifact wrapped with JACS provenance".to_string(),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = WrapA2aArtifactResult {
+                    success: false,
+                    wrapped_artifact: None,
+                    message: "Failed to wrap artifact".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Verify a JACS-wrapped A2A artifact.
+    #[tool(
+        name = "jacs_verify_a2a_artifact",
+        description = "Verify a JACS-wrapped A2A artifact's signature and hash."
+    )]
+    pub async fn jacs_verify_a2a_artifact(
+        &self,
+        Parameters(params): Parameters<VerifyA2aArtifactParams>,
+    ) -> String {
+        if params.wrapped_artifact.is_empty() {
+            let result = VerifyA2aArtifactResult {
+                success: false,
+                valid: false,
+                verification_details: None,
+                message: "Wrapped artifact JSON is empty".to_string(),
+                error: Some("EMPTY_ARTIFACT".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        match self.agent.verify_a2a_artifact(&params.wrapped_artifact) {
+            Ok(details_json) => {
+                // Check if the result indicates valid
+                let valid = serde_json::from_str::<serde_json::Value>(&details_json)
+                    .ok()
+                    .and_then(|v| v.get("valid").and_then(|b| b.as_bool()))
+                    .unwrap_or(true); // Default to true if field missing but no error
+                let result = VerifyA2aArtifactResult {
+                    success: true,
+                    valid,
+                    verification_details: Some(details_json),
+                    message: if valid {
+                        "Artifact verified successfully".to_string()
+                    } else {
+                        "Artifact verification found issues".to_string()
+                    },
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = VerifyA2aArtifactResult {
+                    success: false,
+                    valid: false,
+                    verification_details: None,
+                    message: "Artifact verification failed".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Assess the trust level of a remote A2A agent.
+    #[tool(
+        name = "jacs_assess_a2a_agent",
+        description = "Assess trust level of a remote A2A agent given its Agent Card."
+    )]
+    pub async fn jacs_assess_a2a_agent(
+        &self,
+        Parameters(params): Parameters<AssessA2aAgentParams>,
+    ) -> String {
+        if params.agent_card_json.is_empty() {
+            let result = AssessA2aAgentResult {
+                success: false,
+                allowed: false,
+                trust_level: None,
+                policy: None,
+                reason: None,
+                message: "Agent Card JSON is empty".to_string(),
+                error: Some("EMPTY_AGENT_CARD".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        let policy_str = params.policy.as_deref().unwrap_or("verified");
+
+        match self
+            .agent
+            .assess_a2a_agent(&params.agent_card_json, policy_str)
+        {
+            Ok(assessment_json) => {
+                // Parse the assessment to extract fields for our result type
+                let assessment: serde_json::Value =
+                    serde_json::from_str(&assessment_json).unwrap_or_default();
+                let allowed = assessment
+                    .get("allowed")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let trust_level = assessment
+                    .get("trust_level")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let policy = assessment
+                    .get("policy")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let reason = assessment
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+
+                let result = AssessA2aAgentResult {
+                    success: true,
+                    allowed,
+                    trust_level,
+                    policy,
+                    reason: reason.clone(),
+                    message: reason.unwrap_or_else(|| "Assessment complete".to_string()),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = AssessA2aAgentResult {
+                    success: false,
+                    allowed: false,
+                    trust_level: None,
+                    policy: Some(policy_str.to_string()),
+                    reason: None,
+                    message: "Trust assessment failed".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    // =========================================================================
+    // Agent Card & Well-Known Tools
+    // =========================================================================
+
+    /// Export this agent's A2A Agent Card.
+    #[tool(
+        name = "jacs_export_agent_card",
+        description = "Export this agent's A2A Agent Card as JSON for discovery."
+    )]
+    pub async fn jacs_export_agent_card(
+        &self,
+        Parameters(_params): Parameters<ExportAgentCardParams>,
+    ) -> String {
+        match self.agent.export_agent_card() {
+            Ok(card_json) => {
+                let result = ExportAgentCardResult {
+                    success: true,
+                    agent_card: Some(card_json),
+                    message: "Agent Card exported successfully".to_string(),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = ExportAgentCardResult {
+                    success: false,
+                    agent_card: None,
+                    message: "Failed to export Agent Card".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Generate all .well-known documents for A2A discovery.
+    #[tool(
+        name = "jacs_generate_well_known",
+        description = "Generate .well-known documents for A2A agent discovery."
+    )]
+    pub async fn jacs_generate_well_known(
+        &self,
+        Parameters(params): Parameters<GenerateWellKnownParams>,
+    ) -> String {
+        match self
+            .agent
+            .generate_well_known_documents(params.a2a_algorithm.as_deref())
+        {
+            Ok(docs_json) => {
+                // Parse to count documents
+                let count = serde_json::from_str::<Vec<serde_json::Value>>(&docs_json)
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                let result = GenerateWellKnownResult {
+                    success: true,
+                    documents: Some(docs_json),
+                    count,
+                    message: format!("{} well-known document(s) generated", count),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = GenerateWellKnownResult {
+                    success: false,
+                    documents: None,
+                    count: 0,
+                    message: "Failed to generate well-known documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Export the local agent's full JACS JSON document.
+    #[tool(
+        name = "jacs_export_agent",
+        description = "Export the local agent's full JACS JSON document."
+    )]
+    pub async fn jacs_export_agent(
+        &self,
+        Parameters(_params): Parameters<ExportAgentParams>,
+    ) -> String {
+        match self.agent.get_agent_json() {
+            Ok(agent_json) => {
+                // Try to extract the agent ID from the JSON
+                let agent_id = serde_json::from_str::<serde_json::Value>(&agent_json)
+                    .ok()
+                    .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from));
+                let result = ExportAgentResult {
+                    success: true,
+                    agent_json: Some(agent_json),
+                    agent_id,
+                    message: "Agent document exported successfully".to_string(),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = ExportAgentResult {
+                    success: false,
+                    agent_json: None,
+                    agent_id: None,
+                    message: "Failed to export agent document".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    // =========================================================================
+    // Trust Store Tools
+    // =========================================================================
+
+    /// Add an agent to the local trust store.
+    ///
+    /// The agent's self-signature is cryptographically verified before it is
+    /// added. If verification fails, the agent is NOT trusted.
+    #[tool(
+        name = "jacs_trust_agent",
+        description = "Add an agent to the local trust store after verifying its self-signature."
+    )]
+    pub async fn jacs_trust_agent(
+        &self,
+        Parameters(params): Parameters<TrustAgentParams>,
+    ) -> String {
+        if params.agent_json.is_empty() {
+            let result = TrustAgentResult {
+                success: false,
+                agent_id: None,
+                message: "Agent JSON is empty".to_string(),
+                error: Some("EMPTY_AGENT_JSON".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        match jacs_binding_core::trust_agent(&params.agent_json) {
+            Ok(agent_id) => {
+                let result = TrustAgentResult {
+                    success: true,
+                    agent_id: Some(agent_id.clone()),
+                    message: format!("Agent {} added to trust store", agent_id),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = TrustAgentResult {
+                    success: false,
+                    agent_id: None,
+                    message: "Failed to trust agent".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Remove an agent from the local trust store.
+    ///
+    /// # Security
+    ///
+    /// Untrusting requires `JACS_MCP_ALLOW_UNTRUST=true` environment variable.
+    /// This prevents prompt injection attacks from removing trusted agents
+    /// without user consent.
+    #[tool(
+        name = "jacs_untrust_agent",
+        description = "Remove an agent from the local trust store. Requires JACS_MCP_ALLOW_UNTRUST=true."
+    )]
+    pub async fn jacs_untrust_agent(
+        &self,
+        Parameters(params): Parameters<UntrustAgentParams>,
+    ) -> String {
+        // Security check: Untrusting must be explicitly enabled
+        if !self.untrust_allowed {
+            let result = UntrustAgentResult {
+                success: false,
+                agent_id: params.agent_id.clone(),
+                message: "Untrusting is disabled for security. \
+                          To enable, set JACS_MCP_ALLOW_UNTRUST=true environment variable \
+                          when starting the MCP server."
+                    .to_string(),
+                error: Some("UNTRUST_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if params.agent_id.is_empty() {
+            let result = UntrustAgentResult {
+                success: false,
+                agent_id: params.agent_id.clone(),
+                message: "Agent ID is empty".to_string(),
+                error: Some("EMPTY_AGENT_ID".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        match jacs_binding_core::untrust_agent(&params.agent_id) {
+            Ok(()) => {
+                let result = UntrustAgentResult {
+                    success: true,
+                    agent_id: params.agent_id.clone(),
+                    message: format!("Agent {} removed from trust store", params.agent_id),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = UntrustAgentResult {
+                    success: false,
+                    agent_id: params.agent_id.clone(),
+                    message: "Failed to untrust agent".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// List all trusted agent IDs in the local trust store.
+    #[tool(
+        name = "jacs_list_trusted_agents",
+        description = "List all agent IDs in the local trust store."
+    )]
+    pub async fn jacs_list_trusted_agents(
+        &self,
+        Parameters(_params): Parameters<ListTrustedAgentsParams>,
+    ) -> String {
+        match jacs_binding_core::list_trusted_agents() {
+            Ok(agent_ids) => {
+                let count = agent_ids.len();
+                let result = ListTrustedAgentsResult {
+                    success: true,
+                    agent_ids,
+                    count,
+                    message: format!("{} trusted agent(s) found", count),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = ListTrustedAgentsResult {
+                    success: false,
+                    agent_ids: vec![],
+                    count: 0,
+                    message: "Failed to list trusted agents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Check whether a specific agent is in the local trust store.
+    #[tool(
+        name = "jacs_is_trusted",
+        description = "Check whether a specific agent is in the local trust store."
+    )]
+    pub async fn jacs_is_trusted(
+        &self,
+        Parameters(params): Parameters<IsTrustedParams>,
+    ) -> String {
+        if params.agent_id.is_empty() {
+            let result = IsTrustedResult {
+                success: false,
+                agent_id: params.agent_id.clone(),
+                trusted: false,
+                message: "Agent ID is empty".to_string(),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        let trusted = jacs_binding_core::is_trusted(&params.agent_id);
+        let result = IsTrustedResult {
+            success: true,
+            agent_id: params.agent_id.clone(),
+            trusted,
+            message: if trusted {
+                format!("Agent {} is trusted", params.agent_id)
+            } else {
+                format!("Agent {} is NOT trusted", params.agent_id)
+            },
+        };
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Retrieve the full agent JSON document for a trusted agent.
+    #[tool(
+        name = "jacs_get_trusted_agent",
+        description = "Retrieve the full agent JSON for a trusted agent from the local trust store."
+    )]
+    pub async fn jacs_get_trusted_agent(
+        &self,
+        Parameters(params): Parameters<GetTrustedAgentParams>,
+    ) -> String {
+        if params.agent_id.is_empty() {
+            let result = GetTrustedAgentResult {
+                success: false,
+                agent_id: params.agent_id.clone(),
+                agent_json: None,
+                message: "Agent ID is empty".to_string(),
+                error: Some("EMPTY_AGENT_ID".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        match jacs_binding_core::get_trusted_agent(&params.agent_id) {
+            Ok(agent_json) => {
+                let result = GetTrustedAgentResult {
+                    success: true,
+                    agent_id: params.agent_id.clone(),
+                    agent_json: Some(agent_json),
+                    message: format!("Retrieved trusted agent {}", params.agent_id),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = GetTrustedAgentResult {
+                    success: false,
+                    agent_id: params.agent_id.clone(),
+                    agent_json: None,
+                    message: "Failed to get trusted agent".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
 }
 
 // Implement the tool handler for the server
@@ -3542,6 +4560,20 @@ impl ServerHandler for HaiMcpServer {
                  \
                  Agent management: jacs_create_agent (create new agent with keys), \
                  jacs_reencrypt_key (rotate private key password). \
+                 \
+                 A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), \
+                 jacs_verify_a2a_artifact (verify wrapped artifact), \
+                 jacs_assess_a2a_agent (assess remote agent trust level). \
+                 \
+                 A2A discovery: jacs_export_agent_card (export Agent Card), \
+                 jacs_generate_well_known (generate .well-known documents), \
+                 jacs_export_agent (export full agent JSON). \
+                 \
+                 Trust store: jacs_trust_agent (add agent to trust store), \
+                 jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), \
+                 jacs_list_trusted_agents (list all trusted agent IDs), \
+                 jacs_is_trusted (check if agent is trusted), \
+                 jacs_get_trusted_agent (get trusted agent JSON). \
                  \
                  Security: jacs_audit (read-only security audit and health checks). \
                  \
@@ -3642,7 +4674,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = HaiMcpServer::tools();
-        assert_eq!(tools.len(), 23, "HaiMcpServer should expose 23 tools");
+        assert_eq!(tools.len(), 34, "HaiMcpServer should expose 34 tools");
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"fetch_agent_key"));
@@ -3668,6 +4700,20 @@ mod tests {
         assert!(names.contains(&"jacs_check_agreement"));
         assert!(names.contains(&"jacs_sign_document"));
         assert!(names.contains(&"jacs_verify_document"));
+        // A2A artifact tools
+        assert!(names.contains(&"jacs_wrap_a2a_artifact"));
+        assert!(names.contains(&"jacs_verify_a2a_artifact"));
+        assert!(names.contains(&"jacs_assess_a2a_agent"));
+        // Agent Card & well-known tools
+        assert!(names.contains(&"jacs_export_agent_card"));
+        assert!(names.contains(&"jacs_generate_well_known"));
+        assert!(names.contains(&"jacs_export_agent"));
+        // Trust store tools
+        assert!(names.contains(&"jacs_trust_agent"));
+        assert!(names.contains(&"jacs_untrust_agent"));
+        assert!(names.contains(&"jacs_list_trusted_agents"));
+        assert!(names.contains(&"jacs_is_trusted"));
+        assert!(names.contains(&"jacs_get_trusted_agent"));
     }
 
     #[test]

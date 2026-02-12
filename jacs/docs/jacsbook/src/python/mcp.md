@@ -1,6 +1,6 @@
-# MCP Integration
+# MCP Integration (Python)
 
-JACS provides seamless integration with the Model Context Protocol (MCP), enabling cryptographically signed and verified communication between AI agents and MCP servers. This integration ensures that all tool calls, resource requests, and prompt interactions are authenticated and tamper-proof.
+JACS provides seamless integration with the Model Context Protocol (MCP), enabling cryptographically signed and verified communication between AI agents and MCP servers. This integration ensures that all tool calls, resource requests, and prompt interactions are authenticated and tamper-proof. For a cross-language overview of the MCP architecture and security model, see the [MCP Overview](../integrations/mcp.md).
 
 ## 5-Minute Quickstart
 
@@ -432,6 +432,6 @@ These functions are used internally by the MCP integration:
 
 ## Next Steps
 
-- **[FastMCP Integration](mcp.md)** - Advanced FastMCP patterns
+- **[MCP Overview](../integrations/mcp.md)** - Cross-language architecture and security model
 - **[API Reference](api.md)** - Complete API documentation
 - **[Examples](../examples/python.md)** - More complex examples

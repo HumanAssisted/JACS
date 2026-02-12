@@ -9,11 +9,12 @@ pub mod agent_card;
 pub mod extension;
 pub mod keys;
 pub mod provenance;
+pub mod trust;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-// HYGIENE-005: std::error::Error was only used by commented-out A2AError and A2AProtocolError
+use std::error::Error;
 
 /// A2A protocol version constant (v0.4.0)
 pub const A2A_PROTOCOL_VERSION: &str = "0.4.0";
@@ -21,10 +22,6 @@ pub const A2A_PROTOCOL_VERSION: &str = "0.4.0";
 /// JACS extension URI for A2A
 pub const JACS_EXTENSION_URI: &str = "urn:hai.ai:jacs-provenance-v1";
 
-/* HYGIENE-005: Potentially dead code - verify tests pass before removal
- * A2AError is defined but never used anywhere in the codebase.
- * Consider removing after confirming no external consumers.
- *
 /// Common A2A error type
 #[derive(Debug)]
 pub enum A2AError {
@@ -46,7 +43,6 @@ impl std::fmt::Display for A2AError {
 }
 
 impl Error for A2AError {}
-*/
 
 // ---------------------------------------------------------------------------
 // AgentCard and related types (A2A v0.4.0)
@@ -271,11 +267,6 @@ pub struct A2AMessage {
     pub reference_task_ids: Option<Vec<String>>,
 }
 
-/* HYGIENE-005: Potentially dead code - verify tests pass before removal
- * TaskStatus and A2ATask are defined but only used in tests within this module.
- * They are not imported by any submodule or external code.
- * Consider removing after confirming no external consumers.
- *
 /// A2A Task Status (v0.4.0)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -301,7 +292,6 @@ pub struct A2ATask {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
 }
-*/
 
 // ---------------------------------------------------------------------------
 // A2A Protocol Errors
@@ -473,5 +463,101 @@ mod tests {
         let deserialized: A2AMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.message_id, "msg-456");
         assert_eq!(deserialized.role, Role::ROLE_USER);
+    }
+
+    #[test]
+    fn test_a2a_error_display() {
+        let err = A2AError::SerializationError("bad json".to_string());
+        assert_eq!(format!("{}", err), "A2A serialization error: bad json");
+
+        let err = A2AError::SigningError("key missing".to_string());
+        assert_eq!(format!("{}", err), "A2A signing error: key missing");
+
+        let err = A2AError::ValidationError("schema mismatch".to_string());
+        assert_eq!(
+            format!("{}", err),
+            "A2A validation error: schema mismatch"
+        );
+
+        let err = A2AError::KeyGenerationError("entropy".to_string());
+        assert_eq!(format!("{}", err), "A2A key generation error: entropy");
+
+        // Verify A2AError implements std::error::Error
+        let boxed: Box<dyn std::error::Error> = Box::new(err);
+        assert!(boxed.to_string().contains("entropy"));
+    }
+
+    #[test]
+    fn test_task_status_round_trip() {
+        let status = TaskStatus {
+            state: TaskState::TASK_STATE_WORKING,
+            message: Some(A2AMessage {
+                message_id: "msg-1".to_string(),
+                context_id: None,
+                task_id: Some("task-1".to_string()),
+                role: Role::ROLE_AGENT,
+                parts: vec![Part {
+                    text: Some("Processing...".to_string()),
+                    data: None,
+                    url: None,
+                    media_type: None,
+                    filename: None,
+                    metadata: None,
+                }],
+                metadata: None,
+                extensions: None,
+                reference_task_ids: None,
+            }),
+            timestamp: Some("2025-01-01T00:00:00Z".to_string()),
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: TaskStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.state, TaskState::TASK_STATE_WORKING);
+        assert!(deserialized.message.is_some());
+        assert_eq!(
+            deserialized.timestamp.as_deref(),
+            Some("2025-01-01T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn test_a2a_task_round_trip() {
+        let task = A2ATask {
+            id: "task-100".to_string(),
+            context_id: "ctx-200".to_string(),
+            status: TaskStatus {
+                state: TaskState::TASK_STATE_COMPLETED,
+                message: None,
+                timestamp: Some("2025-06-01T12:00:00Z".to_string()),
+            },
+            artifacts: Some(vec![A2AArtifact {
+                artifact_id: "art-1".to_string(),
+                name: Some("result".to_string()),
+                description: None,
+                parts: vec![Part {
+                    text: Some("done".to_string()),
+                    data: None,
+                    url: None,
+                    media_type: None,
+                    filename: None,
+                    metadata: None,
+                }],
+                metadata: None,
+                extensions: None,
+            }]),
+            history: None,
+            metadata: None,
+        };
+
+        let json = serde_json::to_string(&task).unwrap();
+        let deserialized: A2ATask = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, "task-100");
+        assert_eq!(deserialized.context_id, "ctx-200");
+        assert_eq!(
+            deserialized.status.state,
+            TaskState::TASK_STATE_COMPLETED
+        );
+        assert_eq!(deserialized.artifacts.as_ref().unwrap().len(), 1);
     }
 }

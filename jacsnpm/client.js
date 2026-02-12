@@ -302,6 +302,13 @@ class JacsClient {
     get strict() {
         return this._strict;
     }
+    /**
+     * Internal access to the native JacsAgent for A2A and other low-level integrations.
+     * @internal
+     */
+    get _agent() {
+        return this.requireAgent();
+    }
     // ---------------------------------------------------------------------------
     // Signing & Verification
     // ---------------------------------------------------------------------------
@@ -554,6 +561,105 @@ class JacsClient {
     // ---------------------------------------------------------------------------
     generateVerifyLink(document, baseUrl) {
         return (0, simple_1.generateVerifyLink)(document, baseUrl);
+    }
+    // ---------------------------------------------------------------------------
+    // A2A (Agent-to-Agent)
+    // ---------------------------------------------------------------------------
+    /**
+     * Get a configured JACSA2AIntegration instance bound to this client.
+     *
+     * @example
+     * ```typescript
+     * const a2a = client.getA2A();
+     * const card = a2a.exportAgentCard({ jacsId: client.agentId, ... });
+     * const signed = await a2a.signArtifact(artifact, 'task');
+     * ```
+     */
+    getA2A() {
+        const { JACSA2AIntegration } = require('./a2a');
+        return new JACSA2AIntegration(this);
+    }
+    /**
+     * Export this agent as an A2A Agent Card.
+     *
+     * @param agentData - JACS agent data (jacsId, jacsName, jacsServices, etc.).
+     *   If not provided, a minimal card is built from the client's own info.
+     */
+    exportAgentCard(agentData) {
+        const a2a = this.getA2A();
+        const data = agentData || {
+            jacsId: this.agentId,
+            jacsName: this.name,
+            jacsDescription: `JACS agent ${this.name || this.agentId}`,
+        };
+        return a2a.exportAgentCard(data);
+    }
+    /**
+     * Sign an A2A artifact with this agent's JACS provenance.
+     *
+     * @param artifact - The artifact payload to sign.
+     * @param artifactType - Type label (e.g., "task", "message", "result").
+     * @param parentSignatures - Optional parent signatures for chain of custody.
+     */
+    async signArtifact(artifact, artifactType, parentSignatures) {
+        const a2a = this.getA2A();
+        return a2a.signArtifact(artifact, artifactType, parentSignatures ?? null);
+    }
+    /**
+     * Verify a JACS-signed A2A artifact.
+     *
+     * Accepts the raw JSON string from signArtifact() or a parsed object.
+     * When a string is given it is passed directly to verifyResponse to
+     * preserve the original serialization and hash.
+     *
+     * @param wrappedArtifact - The signed artifact (string or object).
+     */
+    async verifyArtifact(wrappedArtifact) {
+        const agent = this.requireAgent();
+        const docString = typeof wrappedArtifact === 'string'
+            ? wrappedArtifact
+            : JSON.stringify(wrappedArtifact);
+        const doc = typeof wrappedArtifact === 'string'
+            ? JSON.parse(wrappedArtifact)
+            : wrappedArtifact;
+        try {
+            const isValid = agent.verifyResponse(docString);
+            const sig = doc.jacsSignature || {};
+            return {
+                valid: isValid,
+                signerId: sig.agentID || 'unknown',
+                signerVersion: sig.agentVersion || 'unknown',
+                artifactType: doc.jacsType || 'unknown',
+                timestamp: doc.jacsVersionDate || '',
+                originalArtifact: doc.a2aArtifact || {},
+            };
+        }
+        catch (e) {
+            if (this._strict)
+                throw new Error(`Artifact verification failed (strict mode): ${e}`);
+            const sig = doc.jacsSignature || {};
+            return {
+                valid: false,
+                signerId: sig.agentID || 'unknown',
+                signerVersion: sig.agentVersion || 'unknown',
+                artifactType: doc.jacsType || 'unknown',
+                timestamp: doc.jacsVersionDate || '',
+                originalArtifact: doc.a2aArtifact || {},
+                error: String(e),
+            };
+        }
+    }
+    /**
+     * Generate .well-known documents for A2A discovery.
+     *
+     * @param agentCard - The A2A Agent Card (from exportAgentCard).
+     * @param jwsSignature - JWS signature of the Agent Card.
+     * @param publicKeyB64 - Base64-encoded public key.
+     * @param agentData - JACS agent data for metadata.
+     */
+    generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData) {
+        const a2a = this.getA2A();
+        return a2a.generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData);
     }
 }
 exports.JacsClient = JacsClient;

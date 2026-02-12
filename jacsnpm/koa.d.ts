@@ -34,6 +34,17 @@ export interface JacsKoaMiddlewareOptions {
     verify?: boolean;
     /** Allow unsigned/invalid requests to pass through instead of returning 401. Default: false. */
     optional?: boolean;
+    /** Enable A2A discovery endpoints at /.well-known/*. Default: false. */
+    a2a?: boolean;
+    /** A2A skills to advertise in the agent card. */
+    a2aSkills?: Array<{
+        id: string;
+        name: string;
+        description: string;
+        tags: string[];
+    }>;
+    /** Base URL / domain for the A2A agent card. */
+    a2aUrl?: string;
 }
 interface KoaContext {
     request: {
@@ -44,7 +55,9 @@ interface KoaContext {
     body: any;
     status: number;
     method: string;
+    path: string;
     type: string;
+    set(field: string, value: string): void;
     [key: string]: any;
 }
 /**

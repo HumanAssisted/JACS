@@ -2791,6 +2791,177 @@ impl SimpleAgent {
                 .to_string(),
         })
     }
+
+    // =========================================================================
+    // A2A Protocol Methods
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card (v0.4.0).
+    ///
+    /// The Agent Card describes the agent's capabilities, skills, and
+    /// cryptographic configuration for zero-config A2A discovery.
+    pub fn export_agent_card(&self) -> Result<crate::a2a::AgentCard, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        crate::a2a::agent_card::export_agent_card(&agent).map_err(|e| JacsError::Internal {
+            message: format!("Failed to export agent card: {}", e),
+        })
+    }
+
+    /// Generate .well-known documents for A2A discovery.
+    ///
+    /// Creates all well-known endpoint documents including the signed Agent Card,
+    /// JWKS, JACS descriptor, public key document, and extension descriptor.
+    ///
+    /// Returns a vector of (path, JSON value) tuples suitable for serving.
+    pub fn generate_well_known_documents(
+        &self,
+        a2a_algorithm: Option<&str>,
+    ) -> Result<Vec<(String, serde_json::Value)>, JacsError> {
+        let agent_card = self.export_agent_card()?;
+
+        let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
+        let dual_keys =
+            crate::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
+                JacsError::Internal {
+                    message: format!("Failed to generate A2A keys: {}", e),
+                }
+            })?;
+
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let agent_id = agent
+            .get_id()
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to get agent ID: {}", e),
+            })?;
+
+        let jws = crate::a2a::extension::sign_agent_card_jws(
+            &agent_card,
+            &dual_keys.a2a_private_key,
+            &dual_keys.a2a_algorithm,
+            &agent_id,
+        )
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to sign Agent Card: {}", e),
+        })?;
+
+        crate::a2a::extension::generate_well_known_documents(
+            &agent,
+            &agent_card,
+            &dual_keys.a2a_public_key,
+            &dual_keys.a2a_algorithm,
+            &jws,
+        )
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to generate well-known documents: {}", e),
+        })
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    ///
+    /// This creates a signed envelope around arbitrary JSON content,
+    /// binding the signer's identity to the artifact.
+    ///
+    /// # Arguments
+    ///
+    /// * `artifact_json` - JSON string of the artifact to wrap
+    /// * `artifact_type` - Type label (e.g., "artifact", "message", "task")
+    /// * `parent_signatures_json` - Optional JSON array of parent signatures for chain-of-custody
+    ///
+    /// # Returns
+    ///
+    /// JSON string of the wrapped, signed artifact.
+    pub fn wrap_a2a_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> Result<String, JacsError> {
+        let artifact: Value =
+            serde_json::from_str(artifact_json).map_err(|e| JacsError::DocumentMalformed {
+                field: "artifact_json".to_string(),
+                reason: format!("Invalid JSON: {}", e),
+            })?;
+
+        let parent_signatures: Option<Vec<Value>> = match parent_signatures_json {
+            Some(json_str) => {
+                let parsed: Vec<Value> = serde_json::from_str(json_str).map_err(|e| {
+                    JacsError::DocumentMalformed {
+                        field: "parent_signatures_json".to_string(),
+                        reason: format!("Invalid JSON array: {}", e),
+                    }
+                })?;
+                Some(parsed)
+            }
+            None => None,
+        };
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let wrapped = crate::a2a::provenance::wrap_artifact_with_provenance(
+            &mut agent,
+            artifact,
+            artifact_type,
+            parent_signatures,
+        )
+        .map_err(|e| JacsError::SigningFailed {
+            reason: format!("Failed to wrap artifact: {}", e),
+        })?;
+
+        serde_json::to_string_pretty(&wrapped).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize wrapped artifact: {}", e),
+        })
+    }
+
+    /// Sign an A2A artifact with JACS provenance.
+    ///
+    /// This is an alias for [`wrap_a2a_artifact`](Self::wrap_a2a_artifact) and is
+    /// the recommended primary API name.
+    pub fn sign_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> Result<String, JacsError> {
+        self.wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json)
+    }
+
+    /// Verify a JACS-wrapped A2A artifact.
+    ///
+    /// Returns a JSON string containing the verification result, including
+    /// the verification status, signer identity, and the original artifact.
+    ///
+    /// # Arguments
+    ///
+    /// * `wrapped_json` - JSON string of the wrapped artifact to verify
+    pub fn verify_a2a_artifact(&self, wrapped_json: &str) -> Result<String, JacsError> {
+        let wrapped: Value =
+            serde_json::from_str(wrapped_json).map_err(|e| JacsError::DocumentMalformed {
+                field: "wrapped_json".to_string(),
+                reason: format!("Invalid JSON: {}", e),
+            })?;
+
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let result = crate::a2a::provenance::verify_wrapped_artifact(&agent, &wrapped).map_err(
+            |e| JacsError::SignatureVerificationFailed {
+                reason: format!("A2A artifact verification error: {}", e),
+            },
+        )?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize verification result: {}", e),
+        })
+    }
 }
 
 // =============================================================================
@@ -3583,5 +3754,133 @@ mod tests {
         let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
         assert!(entries.is_empty());
         let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    // =========================================================================
+    // A2A Protocol Method Tests
+    // =========================================================================
+
+    #[test]
+    fn test_export_agent_card() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let card = agent.export_agent_card().unwrap();
+        assert!(!card.name.is_empty());
+        assert!(!card.protocol_versions.is_empty());
+        assert_eq!(card.protocol_versions[0], "0.4.0");
+        assert!(!card.supported_interfaces.is_empty());
+    }
+
+    #[test]
+    fn test_wrap_and_verify_a2a_artifact() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let artifact = r#"{"text": "hello from A2A"}"#;
+
+        let wrapped = agent
+            .wrap_a2a_artifact(artifact, "message", None)
+            .unwrap();
+
+        // Wrapped should be valid JSON with JACS fields
+        let wrapped_value: Value = serde_json::from_str(&wrapped).unwrap();
+        assert!(wrapped_value.get("jacsId").is_some());
+        assert!(wrapped_value.get("jacsSignature").is_some());
+        assert_eq!(wrapped_value["jacsType"], "a2a-message");
+
+        // Verify the wrapped artifact
+        let result_json = agent.verify_a2a_artifact(&wrapped).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+        assert_eq!(result["status"], "SelfSigned");
+    }
+
+    #[test]
+    fn test_sign_artifact_alias() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let artifact = r#"{"data": "test"}"#;
+
+        // sign_artifact should produce the same structure as wrap_a2a_artifact
+        let signed = agent.sign_artifact(artifact, "artifact", None).unwrap();
+        let value: Value = serde_json::from_str(&signed).unwrap();
+        assert!(value.get("jacsId").is_some());
+        assert_eq!(value["jacsType"], "a2a-artifact");
+
+        // And it should verify
+        let result_json = agent.verify_a2a_artifact(&signed).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+    }
+
+    #[test]
+    fn test_wrap_a2a_artifact_with_parent_signatures() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+
+        // Create a first artifact
+        let first = agent
+            .wrap_a2a_artifact(r#"{"step": 1}"#, "task", None)
+            .unwrap();
+
+        // Use the first as a parent signature for a second
+        let parents = format!("[{}]", first);
+        let second = agent
+            .wrap_a2a_artifact(r#"{"step": 2}"#, "task", Some(&parents))
+            .unwrap();
+
+        let second_value: Value = serde_json::from_str(&second).unwrap();
+        assert!(second_value.get("jacsParentSignatures").is_some());
+        let parent_sigs = second_value["jacsParentSignatures"]
+            .as_array()
+            .unwrap();
+        assert_eq!(parent_sigs.len(), 1);
+    }
+
+    #[test]
+    fn test_wrap_a2a_artifact_invalid_json() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let result = agent.wrap_a2a_artifact("not json", "artifact", None);
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::DocumentMalformed { field, .. }) => {
+                assert_eq!(field, "artifact_json");
+            }
+            other => panic!("Expected DocumentMalformed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_verify_a2a_artifact_invalid_json() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let result = agent.verify_a2a_artifact("not json");
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::DocumentMalformed { field, .. }) => {
+                assert_eq!(field, "wrapped_json");
+            }
+            other => panic!("Expected DocumentMalformed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_wrap_a2a_artifact_pq2025() {
+        let (agent, _info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
+        let artifact = r#"{"quantum": "safe"}"#;
+
+        let wrapped = agent
+            .wrap_a2a_artifact(artifact, "artifact", None)
+            .unwrap();
+        let result_json = agent.verify_a2a_artifact(&wrapped).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+    }
+
+    #[test]
+    fn test_export_agent_card_has_jacs_extension() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let card = agent.export_agent_card().unwrap();
+
+        let extensions = card.capabilities.extensions.unwrap();
+        assert!(!extensions.is_empty());
+        assert_eq!(
+            extensions[0].uri,
+            crate::a2a::JACS_EXTENSION_URI
+        );
     }
 }

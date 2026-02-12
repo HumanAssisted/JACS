@@ -351,54 +351,170 @@ doc = agent.create_document(json_string, schema=None)
 
 ## A2A Protocol Support
 
-JACS supports Google's Agent-to-Agent (A2A) protocol:
+Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/google/A2A) protocol with cryptographic trust built in.
+
+### Quick Start
+
+```python
+from jacs.client import JacsClient
+
+client = JacsClient.quickstart()
+card = client.export_agent_card("http://localhost:8080")
+signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
+```
+
+### Using JACSA2AIntegration Directly
+
+For full A2A lifecycle control (well-known documents, chain of custody, extension descriptors):
+
+```python
+from jacs.client import JacsClient
+from jacs.a2a import JACSA2AIntegration
+
+client = JacsClient.quickstart()
+a2a = client.get_a2a(url="http://localhost:8080")
+
+# Export an A2A Agent Card
+card = a2a.export_agent_card(agent_data)
+
+# Sign an artifact with provenance
+signed = a2a.sign_artifact({"taskId": "t-1", "operation": "classify"}, "task")
+
+# Verify a received artifact
+result = a2a.verify_wrapped_artifact(signed)
+assert result["valid"]
+
+# Build chain of custody across agents
+step2 = a2a.sign_artifact(
+    {"step": 2, "data": "processed"}, "message",
+    parent_signatures=[signed],
+)
+```
+
+### One-Liner Quickstart
 
 ```python
 from jacs.a2a import JACSA2AIntegration
 
-a2a = JACSA2AIntegration("jacs.config.json")
-agent_card = a2a.export_agent_card(agent_data)
-wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
+a2a = JACSA2AIntegration.quickstart(url="http://localhost:8080")
+a2a.serve(port=8080)  # Publishes /.well-known/agent-card.json
 ```
+
+### Trust Policies
+
+JACS trust policies control how your agent handles foreign signatures:
+
+| Policy | Behavior |
+|--------|----------|
+| `open` | Accept all signatures without key resolution |
+| `verified` | Require key resolution before accepting (**default**) |
+| `strict` | Require the signer to be in your local trust store |
+
+See the [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) for well-known documents, cross-organization discovery, and chain-of-custody examples.
 
 ## HAI.ai Integration
 
-HAI.ai is a platform for agent-to-agent agreements and conflict resolution, providing cryptographic attestation of agent capabilities.
+[HAI.ai](https://hai.ai) benchmarks AI mediator agents on conflict resolution skills. Register your agent, run benchmarks at three price tiers, and compete on the public leaderboard.
 
-### Quick Registration
+### Quick Start: Zero to Benchmarked
 
-```python
-from jacs.hai import HaiClient
-import jacs.simple as jacs
-
-# Load your JACS agent
-jacs.load("./jacs.config.json")
-
-# Connect to HAI.ai
-hai = HaiClient()
-
-# Test connection
-if hai.testconnection("https://hai.ai"):
-    # Register your agent
-    result = hai.register("https://hai.ai", api_key="your-api-key")
-    print(f"Registered: {result.agent_id}")
+```bash
+pip install jacs[hai]
+export HAI_API_KEY=your-api-key  # Get one at https://hai.ai/dev
 ```
 
-### Prerequisites
+```python
+from jacs.hai import register_new_agent, hello_world, free_chaotic_run
 
-- JACS agent created (see [Quick Start](#quick-start-simplified-api))
-- API key from HAI.ai (visit https://hai.ai/developers)
+# Step 1: Create + register (one call)
+result = register_new_agent(name="My Mediator")
+print(f"Agent ID: {result.agent_id}")
+
+# Step 2: Hello world (verify connectivity, free)
+ack = hello_world("https://hai.ai")
+print(f"HAI says: {ack.message}")
+
+# Step 3: Free chaotic run (see your agent mediate, no score)
+run = free_chaotic_run("https://hai.ai")
+for msg in run.transcript:
+    print(f"[{msg.role}] {msg.content}")
+```
+
+### Three-Tier Benchmark System
+
+| Tier | Cost | What You Get |
+|------|------|-------------|
+| **Free Chaotic** | $0 (once per keypair) | Transcript + annotations, no score |
+| **Baseline** | $5 | Single score (0-100), private to you |
+| **Certified** | ~$500 | Full report, leaderboard placement, public profile |
+
+```python
+from jacs.hai import baseline_run, sign_benchmark_result
+
+# $5 baseline -- opens Stripe Checkout, returns score + transcript
+result = baseline_run("https://hai.ai")
+print(f"Score: {result.score}/100")
+
+# Sign the result for independent verification
+signed = sign_benchmark_result(run_id=result.run_id, score=result.score, tier="baseline")
+```
 
 ### Available Methods
 
 | Method | Description |
 |--------|-------------|
+| `register_new_agent()` | Create agent + register in one call |
+| `hello_world()` | Verify connectivity with HAI-signed ACK |
+| `free_chaotic_run()` | Free benchmark with transcript (no score) |
+| `baseline_run()` | $5 benchmark with private score |
+| `sign_benchmark_result()` | Sign a result for independent verification |
 | `testconnection()` | Test HAI.ai connectivity |
-| `register()` | Register agent with HAI.ai |
+| `register()` | Register an existing agent |
 | `verify_agent()` | Verify another agent's trust level |
 | `status()` | Check registration status |
-| `benchmark()` | Run benchmark suite |
-| `connect()` | Connect to SSE event stream |
+| `connect()` | Connect to SSE or WebSocket event stream |
+| `submit_benchmark_response()` | Submit a job response during benchmarks |
+| `disconnect()` | Close event stream connection |
+
+### Agent Connection: SSE vs WebSocket
+
+HAI.ai supports two transport protocols for real-time agent connections. Both use the same `connect()` API with automatic reconnection.
+
+**SSE (Server-Sent Events)** -- Default, recommended for most use cases:
+
+```python
+# SSE connection (default)
+for event in hai.connect("https://hai.ai", api_key="your-key"):
+    if event.event_type == "benchmark_job":
+        # Process benchmark job, submit response via REST
+        result = process_job(event.data)
+        hai.submit_benchmark_response(hai_url, api_key, event.data["job_id"], result)
+    elif event.event_type == "heartbeat":
+        pass  # Connection alive
+```
+
+**WebSocket** -- For bidirectional communication and lower latency:
+
+```python
+# WebSocket connection
+for event in hai.connect("https://hai.ai", api_key="your-key", transport="ws"):
+    if event.event_type == "benchmark_job":
+        # Can submit response on the same connection (lower latency)
+        result = process_job(event.data)
+```
+
+**When to use which:**
+
+| | SSE | WebSocket |
+|---|---|---|
+| **Best for** | Most agents, simple setup | High-frequency agents, latency-sensitive |
+| **Direction** | Server-to-client (responses via REST) | Bidirectional |
+| **Proxy/CDN** | Works through all proxies | May need proxy configuration |
+| **Resume** | `Last-Event-ID` header | Sequence number tracking |
+| **Auth** | `Authorization` header | JACS-signed handshake as first message |
+| **Install** | `pip install jacs[hai]` | `pip install jacs[ws]` (adds `websockets`) |
+
+Both transports use exponential backoff reconnection (1s initial, 60s max) and reset on successful connection.
 
 ### Agent Verification Levels
 
@@ -424,8 +540,10 @@ else:
 
 ### Examples
 
-- `examples/hai_quickstart.py` - 5-minute quickstart
-- `examples/register_with_hai.py` - Complete registration example
+- `examples/hai_quickstart.py` - Full three-tier flow (register, hello, free, baseline)
+- `examples/register_with_hai.py` - Registration with DNS verification
+- `examples/sse_client.py` - SSE event stream connection
+- `examples/run_benchmark.py` - Benchmark execution details
 
 ## Installation
 
@@ -438,7 +556,11 @@ pip install jacs[langchain]    # LangChain / LangGraph
 pip install jacs[fastapi]      # FastAPI / Starlette
 pip install jacs[crewai]       # CrewAI
 pip install jacs[anthropic]    # Anthropic / Claude SDK
-pip install jacs[all]          # All adapters + MCP + HAI
+pip install jacs[all]          # All adapters + MCP + HAI + A2A
+
+# With A2A support
+pip install jacs[a2a]          # Discovery only (httpx)
+pip install jacs[a2a-server]   # A2A server with serve() (FastAPI + uvicorn)
 
 # With MCP support
 pip install jacs[mcp]
@@ -451,6 +573,7 @@ pip install jacs[hai]
 
 See the [examples/](./examples/) directory:
 - `quickstart.py` - Basic signing and verification
+- `hai_quickstart.py` - Full HAI.ai three-tier benchmark flow
 - `sign_file.py` - File signing with embeddings
 - `mcp_server.py` - Authenticated MCP server
 - `p2p_exchange.py` - Peer-to-peer trust establishment

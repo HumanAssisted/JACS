@@ -422,6 +422,58 @@ pub fn get_trusted_public_key_hash(agent_id: &str) -> Result<String, JacsError> 
 ///
 /// # Arguments
 ///
+/// Trust an A2A Agent Card by adding it to the local trust store.
+///
+/// Unlike `trust_agent()`, this function does NOT require the agent document
+/// to have a JACS signature. It stores the Agent Card JSON directly in the
+/// trust store, keyed by `jacsId:jacsVersion` from the card's metadata.
+///
+/// # Arguments
+///
+/// * `agent_id` - The agent's trust store key (format: "id:version")
+/// * `card_json` - The serialized Agent Card JSON
+///
+/// # Returns
+///
+/// The agent ID if successfully trusted.
+pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsError> {
+    validate_agent_id_for_path(agent_id)?;
+
+    let trust_dir = trust_store_dir();
+    fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+        path: trust_dir.to_string_lossy().to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Save the agent card file
+    let agent_file = trust_dir.join(format!("{}.json", agent_id));
+    fs::write(&agent_file, card_json).map_err(|e| JacsError::FileWriteFailed {
+        path: agent_file.to_string_lossy().to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Save metadata for quick lookups
+    let trusted_agent = TrustedAgent {
+        agent_id: agent_id.to_string(),
+        name: None,
+        public_key_pem: String::new(),
+        public_key_hash: String::new(),
+        trusted_at: time_utils::now_rfc3339(),
+    };
+
+    let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
+    let metadata_json =
+        serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize metadata: {}", e),
+        })?;
+    fs::write(&metadata_file, metadata_json).map_err(|e| JacsError::Internal {
+        message: format!("Failed to write metadata file: {}", e),
+    })?;
+
+    info!("Trusted A2A agent {} added to trust store", agent_id);
+    Ok(agent_id.to_string())
+}
+
 /// * `agent_id` - The ID of the agent to check
 ///
 /// # Returns

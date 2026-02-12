@@ -6,7 +6,7 @@ JACS (JSON Agent Communication Standard) ensures that every file, memory, or con
 
 ## What can it do?
 
-The server exposes **21 tools** in five categories:
+The server exposes **34 tools** in nine categories:
 
 ### Agent State (Data Provenance)
 
@@ -69,6 +69,49 @@ Create multi-party cryptographic agreements — multiple agents formally commit 
 - Reach consensus on a proposal (e.g., 2-of-3 signers required)
 - Enforce that only post-quantum algorithms are used for signing
 - Set a deadline after which the agreement expires
+
+### A2A Discovery
+
+Export Agent Cards and well-known documents for [A2A protocol](https://github.com/google/A2A) interoperability:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_export_agent_card` | Export the local agent's A2A Agent Card (includes identity, skills, JACS extension) |
+| `jacs_generate_well_known` | Generate all `.well-known` documents for A2A discovery (agent-card.json, jwks.json, jacs-agent.json, jacs-pubkey.json, jacs-extension.json) |
+| `jacs_export_agent` | Export the local agent's full JACS JSON document (identity, public key hash, signed metadata) |
+
+### A2A Artifacts
+
+Sign, verify, and assess trust for A2A artifacts with JACS provenance:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_wrap_a2a_artifact` | Wrap an A2A artifact with JACS provenance signature (supports chain-of-custody via parent signatures) |
+| `jacs_verify_a2a_artifact` | Verify a JACS-wrapped A2A artifact's signature and hash |
+| `jacs_assess_a2a_agent` | Assess the trust level of a remote A2A agent given its Agent Card |
+
+**Use A2A artifact tools to:**
+- Sign task results, messages, or any A2A payload with cryptographic provenance
+- Verify artifacts received from other agents before acting on them
+- Assess whether a remote agent meets your trust policy before exchanging data
+- Build chain-of-custody trails by referencing parent signatures
+
+### Trust Store
+
+Manage the local trust store -- which agents your agent trusts for signature verification:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_trust_agent` | Add an agent to the local trust store (self-signature is verified first) |
+| `jacs_untrust_agent` | Remove an agent from the trust store (requires `JACS_MCP_ALLOW_UNTRUST=true`) |
+| `jacs_list_trusted_agents` | List all agent IDs currently in the local trust store |
+| `jacs_is_trusted` | Check whether a specific agent is in the trust store |
+| `jacs_get_trusted_agent` | Retrieve the full agent JSON document for a trusted agent |
+
+**Use the trust store to:**
+- Build a list of known collaborators before exchanging signed artifacts
+- Gate A2A interactions with `strict` trust policy (only trust-store agents accepted)
+- Inspect a remote agent's full identity document before trusting
 
 ### HAI Integration (Optional)
 
@@ -166,6 +209,7 @@ To enable HAI integration, add `HAI_API_KEY`:
 
 - `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `register_agent` (default: disabled)
 - `JACS_MCP_ALLOW_UNREGISTRATION` - Set to `true` to enable `unregister_agent` (default: disabled)
+- `JACS_MCP_ALLOW_UNTRUST` - Set to `true` to enable `jacs_untrust_agent` (default: disabled). Prevents prompt injection attacks from removing trusted agents without user consent.
 
 ### Example jacs.config.json
 
@@ -295,6 +339,105 @@ Verify a signed JACS document given its full JSON string. Checks both the conten
 
 **Returns:** `success`, `valid`, `signer_id` (optional -- extracted from document if available), `message`
 
+### jacs_export_agent_card
+
+Export the local agent's A2A Agent Card. The Agent Card follows the A2A v0.4.0 format and includes the JACS provenance extension.
+
+**Parameters:** None.
+
+**Returns:** `success`, `agent_card` (JSON string of the A2A Agent Card)
+
+### jacs_generate_well_known
+
+Generate all `.well-known` documents for A2A discovery. Returns an array of `{path, document}` objects that can be served at each path.
+
+**Parameters:**
+- `a2a_algorithm` (optional): A2A signing algorithm override (default: `ring-Ed25519`)
+
+**Returns:** `success`, `documents` (JSON array of `{path, document}` objects), `count`
+
+### jacs_export_agent
+
+Export the local agent's full JACS JSON document, including identity, public key hash, and signed metadata.
+
+**Parameters:** None.
+
+**Returns:** `success`, `agent_json` (full agent JSON document), `agent_id`
+
+### jacs_trust_agent
+
+Add an agent to the local trust store. The agent's self-signature is cryptographically verified before it is added. If verification fails, the agent is NOT trusted.
+
+**Parameters:**
+- `agent_json` (required): The full JACS agent JSON document to add to the trust store
+
+**Returns:** `success`, `agent_id`, `message`
+
+### jacs_untrust_agent
+
+Remove an agent from the local trust store. **Requires `JACS_MCP_ALLOW_UNTRUST=true`.** This security gate prevents prompt injection attacks from removing trusted agents without user consent.
+
+**Parameters:**
+- `agent_id` (required): The JACS agent ID (UUID) to remove from the trust store
+
+**Returns:** `success`, `agent_id`, `message`
+
+### jacs_list_trusted_agents
+
+List all agent IDs currently in the local trust store.
+
+**Parameters:** None.
+
+**Returns:** `success`, `agent_ids` (list of UUIDs), `count`, `message`
+
+### jacs_is_trusted
+
+Check whether a specific agent is in the local trust store.
+
+**Parameters:**
+- `agent_id` (required): The JACS agent ID (UUID) to check trust status for
+
+**Returns:** `success`, `agent_id`, `trusted` (boolean), `message`
+
+### jacs_get_trusted_agent
+
+Retrieve the full agent JSON document for a trusted agent from the local trust store. Fails if the agent is not trusted.
+
+**Parameters:**
+- `agent_id` (required): The JACS agent ID (UUID) to retrieve from the trust store
+
+**Returns:** `success`, `agent_id`, `agent_json` (full agent document), `message`
+
+### jacs_wrap_a2a_artifact
+
+Wrap an A2A artifact with JACS provenance signature. Supports chain-of-custody by optionally referencing parent signatures from previous steps in a multi-agent workflow.
+
+**Parameters:**
+- `artifact_json` (required): The A2A artifact JSON content to wrap with JACS provenance
+- `artifact_type` (required): Artifact type identifier (e.g., `a2a-artifact`, `message`, `task-result`)
+- `parent_signatures` (optional): JSON array of parent signatures for chain-of-custody provenance
+
+**Returns:** `success`, `wrapped_artifact` (JSON string with JACS provenance envelope), `message`
+
+### jacs_verify_a2a_artifact
+
+Verify a JACS-wrapped A2A artifact's signature and content hash. Checks that the artifact has not been tampered with and that the signature is valid.
+
+**Parameters:**
+- `wrapped_artifact` (required): The JACS-wrapped A2A artifact JSON to verify
+
+**Returns:** `success`, `valid` (boolean), `verification_details` (JSON with signer info, hash check, parent chain status), `message`
+
+### jacs_assess_a2a_agent
+
+Assess the trust level of a remote A2A agent given its Agent Card. Applies a trust policy to determine whether your agent should interact with the remote agent.
+
+**Parameters:**
+- `agent_card_json` (required): The A2A Agent Card JSON of the remote agent to assess
+- `policy` (optional): Trust policy to apply: `open` (accept all), `verified` (require JACS extension, **default**), or `strict` (require trust store entry)
+
+**Returns:** `success`, `allowed` (boolean), `trust_level` (`Untrusted`, `JacsVerified`, or `ExplicitlyTrusted`), `policy`, `reason`, `message`
+
 ### fetch_agent_key
 
 Fetch a public key from HAI's key distribution service.
@@ -338,9 +481,27 @@ Unregister the local agent from HAI. **Requires `JACS_MCP_ALLOW_UNREGISTRATION=t
 **Parameters:**
 - `preview` (optional): If true (default), validates without actually unregistering
 
+## A2A Workflow Example
+
+Use the A2A discovery, trust store, and artifact tools together to establish trust and exchange signed artifacts:
+
+```
+1. Agent A: jacs_generate_well_known                    -> Serve .well-known documents
+2. Agent B: jacs_export_agent_card                      -> Get Agent B's card
+3. Agent A: jacs_assess_a2a_agent(agent_b_card)         -> Check trust level before interacting
+4. Agent A: jacs_trust_agent(agent_b_json)              -> Add Agent B to trust store
+5. Agent A: jacs_wrap_a2a_artifact(task, "task")        -> Sign a task artifact for Agent B
+6. Agent B: jacs_verify_a2a_artifact(wrapped_task)      -> Verify Agent A's artifact
+7. Agent B: jacs_wrap_a2a_artifact(result, "task-result",
+              parent_signatures=[step5])                -> Sign result with chain-of-custody
+8. Agent A: jacs_verify_a2a_artifact(wrapped_result)    -> Verify result + parent chain
+```
+
+For the full A2A quickstart guide, see the [A2A Quickstart](https://humanassisted.github.io/JACS/guides/a2a-quickstart.html) in the JACS Book.
+
 ## Security
 
-- **Registration disabled by default**: `register_agent` and `unregister_agent` require explicit opt-in via environment variables, preventing prompt injection attacks.
+- **Destructive actions disabled by default**: `register_agent`, `unregister_agent`, and `jacs_untrust_agent` require explicit opt-in via environment variables, preventing prompt injection attacks.
 - **Preview mode by default**: Even when enabled, registration defaults to preview mode.
 - **Endpoint validation**: `HAI_ENDPOINT` is validated against an allowlist (`*.hai.ai`, localhost).
 - **Password protection**: Private keys are encrypted. Never store passwords in config files.
@@ -365,6 +526,8 @@ cargo run
 
 - [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
 - [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [A2A Quickstart](https://humanassisted.github.io/JACS/guides/a2a-quickstart.html) - A2A interoperability guide
+- [A2A Interoperability](https://humanassisted.github.io/JACS/integrations/a2a.html) - Full A2A reference
 - [Source](https://github.com/HumanAssisted/JACS) - GitHub repository
 
 ## License

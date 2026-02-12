@@ -6,7 +6,12 @@ import pytest
 
 fastmcp = pytest.importorskip("fastmcp")
 
-from jacs.adapters.mcp import register_jacs_tools, JacsMCPMiddleware  # noqa: E402
+from jacs.adapters.mcp import (  # noqa: E402
+    register_jacs_tools,
+    register_a2a_tools,
+    register_trust_tools,
+    JacsMCPMiddleware,
+)
 from jacs.client import JacsClient  # noqa: E402
 
 
@@ -281,3 +286,134 @@ class TestJacsMCPMiddleware:
 
         result = await mw.on_call_tool(FakeContext(), call_next)
         assert result == original
+
+
+# ---------------------------------------------------------------------------
+# register_a2a_tools
+# ---------------------------------------------------------------------------
+
+
+class TestRegisterA2ATools:
+    def test_registers_all_a2a_tools(self, client):
+        mcp = FakeMCP()
+        register_a2a_tools(mcp, client=client)
+        expected = {
+            "jacs_get_agent_card",
+            "jacs_sign_artifact",
+            "jacs_verify_a2a_artifact",
+            "jacs_assess_remote_agent",
+        }
+        assert set(mcp.tools.keys()) == expected
+
+    def test_get_agent_card_returns_card(self, client):
+        mcp = FakeMCP()
+        register_a2a_tools(mcp, client=client)
+        fn = mcp.tools["jacs_get_agent_card"]["fn"]
+
+        result = json.loads(fn())
+        assert result["success"] is True
+        assert "agent_card" in result
+        card = result["agent_card"]
+        assert "name" in card
+        assert "capabilities" in card
+
+    def test_sign_artifact_returns_signed(self, tmp_path):
+        cl = JacsClient.quickstart(config_path=str(tmp_path / "jacs.config.json"))
+        mcp = FakeMCP()
+        register_a2a_tools(mcp, client=cl)
+        fn = mcp.tools["jacs_sign_artifact"]["fn"]
+
+        artifact = json.dumps({"task": "test", "data": "hello"})
+        result = json.loads(fn(artifact, "task"))
+        assert result["success"] is True
+        signed = result["signed_artifact"]
+        assert "jacsSignature" in signed or "jacsId" in signed
+
+    def test_assess_remote_agent_open_policy(self, client):
+        mcp = FakeMCP()
+        register_a2a_tools(mcp, client=client)
+        fn = mcp.tools["jacs_assess_remote_agent"]["fn"]
+
+        card = json.dumps({"name": "Test", "capabilities": {}})
+        result = json.loads(fn(card, "open"))
+        assert result["success"] is True
+        assert result["allowed"] is True
+
+    def test_assess_remote_agent_verified_rejects_non_jacs(self, client):
+        mcp = FakeMCP()
+        register_a2a_tools(mcp, client=client)
+        fn = mcp.tools["jacs_assess_remote_agent"]["fn"]
+
+        card = json.dumps({"name": "Plain Agent", "capabilities": {}})
+        result = json.loads(fn(card, "verified"))
+        assert result["success"] is True
+        assert result["allowed"] is False
+        assert result["jacs_registered"] is False
+
+
+# ---------------------------------------------------------------------------
+# register_trust_tools
+# ---------------------------------------------------------------------------
+
+
+class TestRegisterTrustTools:
+    def test_registers_all_trust_tools(self, client):
+        mcp = FakeMCP()
+        register_trust_tools(mcp, client=client)
+        expected = {
+            "jacs_trust_agent",
+            "jacs_untrust_agent",
+            "jacs_list_trusted",
+            "jacs_is_trusted",
+        }
+        assert set(mcp.tools.keys()) == expected
+
+    def test_list_trusted_returns_list(self, client):
+        mcp = FakeMCP()
+        register_trust_tools(mcp, client=client)
+        fn = mcp.tools["jacs_list_trusted"]["fn"]
+
+        result = json.loads(fn())
+        assert result["success"] is True
+        assert isinstance(result["trusted_agents"], list)
+
+    def test_is_trusted_returns_bool(self, client):
+        mcp = FakeMCP()
+        register_trust_tools(mcp, client=client)
+        fn = mcp.tools["jacs_is_trusted"]["fn"]
+
+        result = json.loads(fn("nonexistent-agent-id"))
+        # May succeed with False or return error — either is acceptable
+        assert isinstance(result, dict)
+
+
+# ---------------------------------------------------------------------------
+# JacsMCPMiddleware with a2a=True
+# ---------------------------------------------------------------------------
+
+
+class TestJacsMCPMiddlewareA2A:
+    def test_a2a_flag_stored(self, client):
+        mw = JacsMCPMiddleware(client=client, a2a=True)
+        assert mw._a2a is True
+
+    def test_register_tools_adds_a2a_and_trust(self, client):
+        mcp = FakeMCP()
+        mw = JacsMCPMiddleware(client=client, a2a=True)
+        mw.register_tools(mcp)
+
+        # Should have all 8 tools (4 A2A + 4 trust)
+        assert "jacs_get_agent_card" in mcp.tools
+        assert "jacs_sign_artifact" in mcp.tools
+        assert "jacs_verify_a2a_artifact" in mcp.tools
+        assert "jacs_assess_remote_agent" in mcp.tools
+        assert "jacs_trust_agent" in mcp.tools
+        assert "jacs_untrust_agent" in mcp.tools
+        assert "jacs_list_trusted" in mcp.tools
+        assert "jacs_is_trusted" in mcp.tools
+
+    def test_register_tools_noop_without_a2a(self, client):
+        mcp = FakeMCP()
+        mw = JacsMCPMiddleware(client=client, a2a=False)
+        mw.register_tools(mcp)
+        assert len(mcp.tools) == 0

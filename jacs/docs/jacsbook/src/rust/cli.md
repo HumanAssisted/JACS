@@ -1,4 +1,6 @@
-# CLI Usage
+# CLI Tutorial
+
+This page walks through common CLI workflows. For a complete command reference, see the [CLI Command Reference](../reference/cli-commands.md). For practical scripting examples, see [CLI Examples](../examples/cli.md).
 
 The JACS CLI provides a command-line interface for managing agents, documents, tasks, and agreements.
 

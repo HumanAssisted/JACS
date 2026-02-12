@@ -10,6 +10,10 @@ Usage — middleware (all routes):
     app = FastAPI()
     app.add_middleware(JacsMiddleware, client=my_client)
 
+Usage — middleware with A2A discovery routes:
+    app.add_middleware(JacsMiddleware, client=my_client, a2a=True)
+    # Now serves /.well-known/agent-card.json and friends
+
 Usage — decorator (single route):
     from jacs.adapters.fastapi import jacs_route
 
@@ -22,7 +26,7 @@ Usage — decorator (single route):
 import json
 import logging
 from functools import wraps
-from typing import Any, Optional
+from typing import Any, List, Dict, Optional
 
 try:
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -52,6 +56,13 @@ class JacsMiddleware(BaseHTTPMiddleware):
         sign_responses: If True (default), outgoing JSON responses are signed.
         verify_requests: If True (default), incoming POST bodies with a
             ``jacsSignature`` field are verified.
+        a2a: If True, serve A2A well-known discovery documents.
+            The middleware intercepts requests to ``/.well-known/*``
+            and responds directly.  Requires a ``client`` with a loaded
+            agent.  Documents are cached at startup (not regenerated
+            per request).
+        a2a_skills: Optional list of JACS service dicts to override
+            the agent's own services in the exported Agent Card.
     """
 
     def __init__(
@@ -62,15 +73,89 @@ class JacsMiddleware(BaseHTTPMiddleware):
         strict: bool = False,
         sign_responses: bool = True,
         verify_requests: bool = True,
+        a2a: bool = False,
+        a2a_skills: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        super().__init__(app)
         self._adapter = BaseJacsAdapter(
             client=client, config_path=config_path, strict=strict
         )
         self.sign_responses = sign_responses
         self.verify_requests = verify_requests
+        self._a2a_docs: Optional[Dict[str, Any]] = None
+
+        if a2a:
+            self._build_a2a_docs(a2a_skills)
+
+        super().__init__(app)
+
+    def _build_a2a_docs(
+        self,
+        skills: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """Pre-build A2A well-known documents for serving."""
+        jacs_client = self._adapter._client
+        if jacs_client is None:
+            logger.warning(
+                "a2a=True but no JacsClient available; "
+                "A2A discovery documents will not be served"
+            )
+            return
+
+        try:
+            from ..a2a import JACSA2AIntegration
+
+            integration = JACSA2AIntegration(jacs_client)
+
+            agent_json_str = jacs_client._agent.get_agent_json()
+            agent_data: Dict[str, Any] = json.loads(agent_json_str)
+
+            if skills:
+                agent_data["jacsServices"] = skills
+
+            card = integration.export_agent_card(agent_data)
+            card_dict = integration.agent_card_to_dict(card)
+            extension_dict = integration.create_extension_descriptor()
+
+            # Build the full set
+            public_key_b64 = agent_data.get("jacsPublicKey", "")
+            well_known = integration.generate_well_known_documents(
+                agent_card=card,
+                jws_signature="",
+                public_key_b64=public_key_b64 or "",
+                agent_data=agent_data,
+            )
+            # Override with our clean versions
+            well_known["/.well-known/agent-card.json"] = card_dict
+            well_known["/.well-known/jacs-extension.json"] = extension_dict
+
+            self._a2a_docs = well_known
+        except Exception as e:
+            logger.warning("Failed to build A2A documents: %s", e)
+
+    _CORS_HEADERS = {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, OPTIONS",
+        "access-control-allow-headers": "Content-Type, Authorization",
+        "cache-control": "public, max-age=3600",
+    }
 
     async def dispatch(self, request: Request, call_next):
+        # --- Serve cached A2A well-known documents ---
+        if self._a2a_docs and request.url.path.startswith("/.well-known/"):
+            doc = self._a2a_docs.get(request.url.path)
+            if doc is not None:
+                content = json.dumps(doc).encode("utf-8")
+                headers = {
+                    **self._CORS_HEADERS,
+                    "content-length": str(len(content)),
+                }
+                return Response(
+                    content=content,
+                    status_code=200,
+                    headers=headers,
+                    media_type="application/json",
+                )
+
         # --- Verify incoming request body ---
         if self.verify_requests and request.method == "POST":
             body = await request.body()

@@ -1,7 +1,6 @@
 //! Provenance wrapping for A2A artifacts (v0.4.0)
 
-use crate::a2a::A2AArtifact;
-// HYGIENE-006: A2AMessage import removed - only used by commented-out wrap_a2a_message_with_provenance
+use crate::a2a::{A2AArtifact, A2AMessage};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::agent::loaders::fetch_public_key_from_hai;
 use crate::agent::{
@@ -264,11 +263,6 @@ pub fn wrap_a2a_artifact_with_provenance(
     wrap_artifact_with_provenance(agent, artifact_value, "artifact", parent_signatures)
 }
 
-/* HYGIENE-006: Potentially dead code - verify tests pass before removal
- * wrap_a2a_message_with_provenance has no callers in the codebase.
- * It is a typed wrapper around wrap_artifact_with_provenance for A2AMessage.
- * Consider removing after confirming no external consumers need it.
- *
 /// Wrap a typed A2A Message (v0.4.0) with JACS provenance signature.
 pub fn wrap_a2a_message_with_provenance(
     agent: &mut Agent,
@@ -278,7 +272,6 @@ pub fn wrap_a2a_message_with_provenance(
     let message_value = serde_json::to_value(message)?;
     wrap_artifact_with_provenance(agent, message_value, "message", parent_signatures)
 }
-*/
 
 /// Verify a JACS-wrapped A2A artifact
 ///
@@ -315,6 +308,8 @@ pub fn verify_wrapped_artifact(
                 .get("a2aArtifact")
                 .cloned()
                 .unwrap_or(Value::Null),
+            trust_level: None,
+            trust_assessment: None,
         });
     }
 
@@ -405,7 +400,83 @@ pub fn verify_wrapped_artifact(
         parent_signatures_valid,
         parent_verification_results,
         original_artifact: original_artifact.clone(),
+        trust_level: None,
+        trust_assessment: None,
     })
+}
+
+/// Verify a JACS-wrapped A2A artifact with trust policy enforcement.
+///
+/// This combines cryptographic signature verification with trust policy
+/// evaluation. The remote agent's Agent Card is assessed against the
+/// specified trust policy, and the trust level is included in the result.
+///
+/// # Arguments
+///
+/// * `agent` - The local agent performing the verification
+/// * `wrapped_artifact` - The JACS-wrapped artifact to verify
+/// * `remote_card` - The remote agent's A2A Agent Card
+/// * `policy` - The trust policy to apply
+///
+/// # Returns
+///
+/// A `VerificationResult` with `trust_level` and `trust_assessment` populated.
+/// If the trust policy rejects the agent, `valid` is set to `false` and
+/// `status` reflects the rejection reason.
+pub fn verify_wrapped_artifact_with_policy(
+    agent: &Agent,
+    wrapped_artifact: &Value,
+    remote_card: &super::AgentCard,
+    policy: super::trust::A2ATrustPolicy,
+) -> Result<VerificationResult, Box<dyn Error>> {
+    use super::trust::assess_a2a_agent;
+
+    // First perform the trust assessment
+    let assessment = assess_a2a_agent(agent, remote_card, policy);
+
+    if !assessment.allowed {
+        // Trust policy rejected the agent — short-circuit without crypto verification
+        info!(
+            policy = %policy,
+            trust_level = %assessment.trust_level,
+            reason = %assessment.reason,
+            "A2A trust policy rejected remote agent"
+        );
+        return Ok(VerificationResult {
+            status: VerificationStatus::Invalid {
+                reason: assessment.reason.clone(),
+            },
+            valid: false,
+            signer_id: assessment.agent_id.clone().unwrap_or_default(),
+            signer_version: String::new(),
+            artifact_type: wrapped_artifact.get_str_or("jacsType", "unknown"),
+            timestamp: wrapped_artifact.get_str_or("jacsVersionDate", ""),
+            parent_signatures_valid: false,
+            parent_verification_results: vec![],
+            original_artifact: wrapped_artifact
+                .get("a2aArtifact")
+                .cloned()
+                .unwrap_or(Value::Null),
+            trust_level: Some(assessment.trust_level),
+            trust_assessment: Some(assessment),
+        });
+    }
+
+    // Trust policy accepted the agent — proceed with cryptographic verification
+    let mut result = verify_wrapped_artifact(agent, wrapped_artifact)?;
+
+    // Enrich result with trust information
+    result.trust_level = Some(assessment.trust_level);
+    result.trust_assessment = Some(assessment);
+
+    info!(
+        policy = %policy,
+        trust_level = ?result.trust_level,
+        crypto_valid = result.valid,
+        "A2A artifact verified with trust policy"
+    );
+
+    Ok(result)
 }
 
 /// Verify parent signatures in a chain of custody
@@ -508,6 +579,12 @@ pub struct VerificationResult {
     pub parent_verification_results: Vec<ParentVerificationResult>,
     /// The original A2A artifact that was wrapped
     pub original_artifact: Value,
+    /// Trust level of the signing agent (set when policy-based verification is used)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_level: Option<super::trust::TrustLevel>,
+    /// Trust policy assessment details (set when policy-based verification is used)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_assessment: Option<super::trust::TrustAssessment>,
 }
 
 /// Create a chain of custody document for multi-agent workflows
@@ -605,6 +682,8 @@ mod tests {
             parent_signatures_valid: true,
             parent_verification_results: vec![],
             original_artifact: json!({"test": "data"}),
+            trust_level: None,
+            trust_assessment: None,
         };
 
         assert!(result.valid);
@@ -632,11 +711,338 @@ mod tests {
             parent_signatures_valid: true,
             parent_verification_results: vec![],
             original_artifact: json!({"message": "hello"}),
+            trust_level: None,
+            trust_assessment: None,
         };
 
         // Should be serializable to JSON
         let json = serde_json::to_string(&result).expect("serialization should succeed");
         assert!(json.contains("Unverified"));
         assert!(json.contains("foreign-agent"));
+    }
+
+    // =========================================================================
+    // verify_wrapped_artifact_with_policy tests
+    // =========================================================================
+
+    use crate::a2a::trust::{A2ATrustPolicy, TrustLevel};
+    use crate::a2a::{
+        AgentCapabilities, AgentCard, AgentExtension, AgentInterface, JACS_EXTENSION_URI,
+        A2A_PROTOCOL_VERSION,
+    };
+
+    /// Create a minimal Agent Card for trust policy tests.
+    fn make_test_card(
+        name: &str,
+        with_jacs_extension: bool,
+        agent_id: Option<&str>,
+        version: Option<&str>,
+    ) -> AgentCard {
+        let extensions = if with_jacs_extension {
+            Some(vec![AgentExtension {
+                uri: JACS_EXTENSION_URI.to_string(),
+                description: Some("JACS provenance".to_string()),
+                required: Some(false),
+            }])
+        } else {
+            None
+        };
+
+        let metadata = match (agent_id, version) {
+            (Some(id), Some(ver)) => Some(json!({
+                "jacsId": id,
+                "jacsVersion": ver,
+            })),
+            (Some(id), None) => Some(json!({ "jacsId": id })),
+            _ => None,
+        };
+
+        AgentCard {
+            name: name.to_string(),
+            description: format!("Test agent: {}", name),
+            version: "1.0".to_string(),
+            protocol_versions: vec![A2A_PROTOCOL_VERSION.to_string()],
+            supported_interfaces: vec![AgentInterface {
+                url: "https://test.example.com".to_string(),
+                protocol_binding: "jsonrpc".to_string(),
+                tenant: None,
+            }],
+            default_input_modes: vec!["text/plain".to_string()],
+            default_output_modes: vec!["text/plain".to_string()],
+            capabilities: AgentCapabilities {
+                streaming: None,
+                push_notifications: None,
+                extended_agent_card: None,
+                extensions,
+            },
+            skills: vec![],
+            provider: None,
+            documentation_url: None,
+            icon_url: None,
+            security_schemes: None,
+            security: None,
+            signatures: None,
+            metadata,
+        }
+    }
+
+    /// Create a dummy wrapped artifact (not cryptographically valid).
+    fn make_dummy_wrapped_artifact(artifact_type: &str, agent_id: &str) -> Value {
+        json!({
+            "jacsId": "artifact-test-001",
+            "jacsVersion": "v1",
+            "jacsType": format!("a2a-{}", artifact_type),
+            "jacsLevel": "artifact",
+            "jacsVersionDate": "2025-01-01T00:00:00Z",
+            "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+            "a2aArtifact": { "test": "data" },
+            "jacsSignature": {
+                "agentID": agent_id,
+                "agentVersion": "v1",
+                "publicKeyHash": "abc123",
+                "signature": "deadbeef",
+            }
+        })
+    }
+
+    #[test]
+    fn test_policy_open_accepts_non_jacs_agent() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card("plain-agent", false, None, None);
+        let artifact = make_dummy_wrapped_artifact("task", "foreign-agent");
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Open,
+        )
+        .unwrap();
+
+        // Open policy always allows — trust level should be Untrusted
+        assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
+        assert!(result.trust_assessment.is_some());
+        assert!(result.trust_assessment.as_ref().unwrap().allowed);
+    }
+
+    #[test]
+    fn test_policy_open_accepts_jacs_agent() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card("jacs-agent", true, Some("agent-1"), Some("v1"));
+        let artifact = make_dummy_wrapped_artifact("message", "agent-1");
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Open,
+        )
+        .unwrap();
+
+        assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
+        assert!(result.trust_assessment.as_ref().unwrap().allowed);
+    }
+
+    #[test]
+    fn test_policy_verified_rejects_non_jacs_agent() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card("plain-agent", false, Some("no-jacs"), Some("v1"));
+        let artifact = make_dummy_wrapped_artifact("task", "no-jacs");
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Verified,
+        )
+        .unwrap();
+
+        // Verified policy should reject non-JACS agent
+        assert!(!result.valid);
+        assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
+        assert!(!result.trust_assessment.as_ref().unwrap().allowed);
+        assert!(result
+            .trust_assessment
+            .as_ref()
+            .unwrap()
+            .reason
+            .contains("does not declare JACS provenance"));
+    }
+
+    #[test]
+    fn test_policy_verified_accepts_jacs_agent() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card("jacs-agent", true, Some("agent-2"), Some("v1"));
+        let artifact = make_dummy_wrapped_artifact("task", "agent-2");
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Verified,
+        )
+        .unwrap();
+
+        // Verified policy accepts JACS agents — trust check passes,
+        // but crypto verification may fail (dummy artifact is not properly signed)
+        assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
+        assert!(result.trust_assessment.as_ref().unwrap().allowed);
+    }
+
+    #[test]
+    fn test_policy_strict_rejects_jacs_not_trusted_agent() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card(
+            "jacs-not-trusted",
+            true,
+            Some("550e8400-e29b-41d4-a716-446655440077"),
+            Some("550e8400-e29b-41d4-a716-446655440078"),
+        );
+        let artifact = make_dummy_wrapped_artifact(
+            "task",
+            "550e8400-e29b-41d4-a716-446655440077",
+        );
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Strict,
+        )
+        .unwrap();
+
+        // Strict policy rejects agents not in trust store
+        assert!(!result.valid);
+        assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
+        assert!(!result.trust_assessment.as_ref().unwrap().allowed);
+        assert!(result
+            .trust_assessment
+            .as_ref()
+            .unwrap()
+            .reason
+            .contains("not in the local trust store"));
+    }
+
+    #[test]
+    fn test_policy_strict_rejects_non_jacs_agent() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card("plain-untrusted", false, None, None);
+        let artifact = make_dummy_wrapped_artifact("task", "unknown");
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Strict,
+        )
+        .unwrap();
+
+        assert!(!result.valid);
+        assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
+        assert!(!result.trust_assessment.as_ref().unwrap().allowed);
+    }
+
+    #[test]
+    fn test_policy_rejection_preserves_artifact_type() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card("rejected-agent", false, Some("rej-1"), Some("v1"));
+        let artifact = make_dummy_wrapped_artifact("message", "rej-1");
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Verified,
+        )
+        .unwrap();
+
+        assert!(!result.valid);
+        assert_eq!(result.artifact_type, "a2a-message");
+        assert_eq!(
+            result.original_artifact,
+            json!({ "test": "data" })
+        );
+    }
+
+    #[test]
+    fn test_policy_open_proceeds_to_crypto_verification() {
+        let agent = crate::get_empty_agent();
+        let card = make_test_card("open-agent", false, Some("agent-open"), Some("v1"));
+        // Dummy artifact with no valid hash — crypto verification will fail
+        let artifact = make_dummy_wrapped_artifact("task", "agent-open");
+
+        let result = verify_wrapped_artifact_with_policy(
+            &agent,
+            &artifact,
+            &card,
+            A2ATrustPolicy::Open,
+        )
+        .unwrap();
+
+        // Trust check passes (Open), but crypto verification should fail
+        // (dummy artifact doesn't have a real hash/signature)
+        assert!(result.trust_assessment.as_ref().unwrap().allowed);
+        assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
+        // Crypto verification fails due to missing/invalid hash
+        assert!(!result.valid);
+    }
+
+    #[test]
+    fn test_verification_result_with_trust_serialization() {
+        use crate::a2a::trust::TrustAssessment;
+
+        let result = VerificationResult {
+            status: VerificationStatus::Verified,
+            valid: true,
+            signer_id: "trusted-agent".to_string(),
+            signer_version: "v1".to_string(),
+            artifact_type: "a2a-task".to_string(),
+            timestamp: "2025-01-01T00:00:00Z".to_string(),
+            parent_signatures_valid: true,
+            parent_verification_results: vec![],
+            original_artifact: json!({"data": "test"}),
+            trust_level: Some(TrustLevel::JacsVerified),
+            trust_assessment: Some(TrustAssessment {
+                allowed: true,
+                trust_level: TrustLevel::JacsVerified,
+                reason: "Verified policy: agent has JACS provenance".to_string(),
+                jacs_registered: true,
+                agent_id: Some("trusted-agent".to_string()),
+                policy: A2ATrustPolicy::Verified,
+            }),
+        };
+
+        let json_str = serde_json::to_string(&result).expect("should serialize");
+        assert!(json_str.contains("trust_level"));
+        assert!(json_str.contains("trust_assessment"));
+        assert!(json_str.contains("JacsVerified"));
+
+        // Deserialize back
+        let deserialized: VerificationResult =
+            serde_json::from_str(&json_str).expect("should deserialize");
+        assert_eq!(deserialized.trust_level, Some(TrustLevel::JacsVerified));
+        assert!(deserialized.trust_assessment.unwrap().allowed);
+    }
+
+    #[test]
+    fn test_verification_result_without_trust_omits_fields() {
+        let result = VerificationResult {
+            status: VerificationStatus::Verified,
+            valid: true,
+            signer_id: "agent".to_string(),
+            signer_version: "v1".to_string(),
+            artifact_type: "a2a-task".to_string(),
+            timestamp: "2025-01-01T00:00:00Z".to_string(),
+            parent_signatures_valid: true,
+            parent_verification_results: vec![],
+            original_artifact: json!({}),
+            trust_level: None,
+            trust_assessment: None,
+        };
+
+        let json_str = serde_json::to_string(&result).expect("should serialize");
+        // When None, these fields should be omitted (skip_serializing_if)
+        assert!(!json_str.contains("trust_level"));
+        assert!(!json_str.contains("trust_assessment"));
     }
 }

@@ -152,38 +152,79 @@ MAX_VERIFY_DOCUMENT_BYTES = 1515
 def generate_verify_link(
     document: str,
     base_url: str = "https://hai.ai",
+    hosted: Optional[bool] = None,
 ) -> str:
-    """Build a verification URL for a signed JACS document (e.g. hai.ai/jacs/verify?s=...).
+    """Build a verification URL for a signed JACS document.
 
-    Encodes `document` as URL-safe base64. Raises ValueError if the resulting URL
-    would exceed MAX_VERIFY_URL_LEN (document must be at most MAX_VERIFY_DOCUMENT_BYTES UTF-8 bytes).
+    Supports two modes:
+    - **Inline** (default for small documents): Encodes the full document
+      in the URL as base64: ``{base_url}/jacs/verify?s={base64url(document)}``
+    - **Hosted** (for large documents like PQ signatures): Uses the document
+      ID to reference a server-stored copy: ``{base_url}/verify/{document_id}``
+
+    When ``hosted`` is None (default), the function automatically selects:
+    inline if the document fits within URL limits, hosted otherwise.
 
     Args:
         document: The full signed JACS document string (JSON).
         base_url: Base URL of the verifier (no trailing slash). Default "https://hai.ai".
+        hosted: Force hosted mode (True), inline mode (False), or auto-detect (None).
 
     Returns:
-        Full URL: {base_url}/jacs/verify?s={base64url(document)}
-    """
-    try:
-        from jacs._jacs import generate_verify_link as _native_generate_verify_link
-        return _native_generate_verify_link(document, base_url)
-    except ImportError:
-        pass
+        Full verification URL.
 
-    # Fallback: pure-Python implementation
+    Raises:
+        ValueError: If inline mode is forced but document exceeds URL limits,
+            or if hosted mode is used but the document has no extractable ID.
+    """
     import base64
 
     base = base_url.rstrip("/")
-    encoded = base64.urlsafe_b64encode(document.encode("utf-8")).rstrip(b"=").decode("ascii")
-    path_and_query = f"/jacs/verify?s={encoded}"
-    full_url = f"{base}{path_and_query}"
-    if len(full_url) > MAX_VERIFY_URL_LEN:
-        raise ValueError(
-            f"Verify URL would exceed max length ({MAX_VERIFY_URL_LEN}). "
-            f"Document must be at most {MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes."
-        )
-    return full_url
+
+    # Auto-detect: try inline first, fall back to hosted
+    if hosted is None:
+        doc_bytes = len(document.encode("utf-8"))
+        hosted = doc_bytes > MAX_VERIFY_DOCUMENT_BYTES
+
+    if not hosted:
+        # Try native Rust implementation first
+        try:
+            from jacs._jacs import generate_verify_link as _native_generate_verify_link
+            return _native_generate_verify_link(document, base_url)
+        except ImportError:
+            pass
+
+        # Pure-Python inline implementation
+        encoded = base64.urlsafe_b64encode(document.encode("utf-8")).rstrip(b"=").decode("ascii")
+        path_and_query = f"/jacs/verify?s={encoded}"
+        full_url = f"{base}{path_and_query}"
+        if len(full_url) > MAX_VERIFY_URL_LEN:
+            raise ValueError(
+                f"Verify URL would exceed max length ({MAX_VERIFY_URL_LEN}). "
+                f"Document must be at most {MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes. "
+                f"Use hosted=True for large documents (e.g. post-quantum signatures)."
+            )
+        return full_url
+    else:
+        # Hosted mode: extract document ID from the JSON
+        try:
+            doc_data = json.loads(document)
+            doc_id = (
+                doc_data.get("jacsDocumentId")
+                or doc_data.get("document_id")
+                or doc_data.get("id")
+                or ""
+            )
+        except (json.JSONDecodeError, TypeError):
+            doc_id = ""
+
+        if not doc_id:
+            raise ValueError(
+                "Cannot generate hosted verify link: no document ID found in document. "
+                "Document must contain 'jacsDocumentId', 'document_id', or 'id' field."
+            )
+
+        return f"{base}/verify/{doc_id}"
 
 
 def _get_agent() -> JacsAgent:

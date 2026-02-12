@@ -57,6 +57,7 @@ function jacsMiddleware(options = {}) {
     const shouldVerify = options.verify !== false;
     const shouldSign = options.sign === true;
     const isOptional = options.optional === true;
+    const enableA2A = options.a2a === true;
     // Client is resolved once (lazy, on first request) then cached.
     let clientPromise = null;
     function getClient() {
@@ -69,6 +70,24 @@ function jacsMiddleware(options = {}) {
     if (options.client) {
         clientPromise = Promise.resolve(options.client);
     }
+    // A2A well-known documents are built once and cached.
+    let a2aDocuments = null;
+    const A2A_CORS = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Accept',
+        'Access-Control-Max-Age': '86400',
+    };
+    function getA2ADocuments(client) {
+        if (!a2aDocuments) {
+            const { buildWellKnownDocuments } = require('./src/a2a-server');
+            a2aDocuments = buildWellKnownDocuments(client, {
+                skills: options.a2aSkills,
+                url: options.a2aUrl,
+            });
+        }
+        return a2aDocuments;
+    }
     return async function jacsExpressMiddleware(req, res, next) {
         let client;
         try {
@@ -80,6 +99,24 @@ function jacsMiddleware(options = {}) {
         }
         // Always expose the client on the request for manual use in route handlers.
         req.jacsClient = client;
+        // ----- A2A well-known endpoints -----
+        if (enableA2A && req.path && req.path.startsWith('/.well-known/')) {
+            const documents = getA2ADocuments(client);
+            if (req.method === 'OPTIONS' && documents[req.path]) {
+                for (const [key, value] of Object.entries(A2A_CORS)) {
+                    res.set(key, value);
+                }
+                res.status(204).send('');
+                return;
+            }
+            if (req.method === 'GET' && documents[req.path]) {
+                for (const [key, value] of Object.entries(A2A_CORS)) {
+                    res.set(key, value);
+                }
+                res.json(documents[req.path]);
+                return;
+            }
+        }
         // ----- Verify incoming body -----
         if (shouldVerify && BODY_METHODS.has(req.method)) {
             const rawBody = typeof req.body === 'string' ? req.body : null;

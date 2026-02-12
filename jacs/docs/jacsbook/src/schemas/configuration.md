@@ -1,6 +1,6 @@
-# Configuration
+# Config File Schema
 
-The JACS configuration file (`jacs.config.json`) defines agent settings, key locations, storage backends, and observability options.
+This page documents the `jacs.config.json` schema fields. For a comprehensive configuration guide including observability setup, storage backends, zero-config quickstart, and production patterns, see the [Configuration Reference](../reference/configuration.md).
 
 ## Schema Location
 
@@ -8,23 +8,19 @@ The JACS configuration file (`jacs.config.json`) defines agent settings, key loc
 https://hai.ai/schemas/jacs.config.schema.json
 ```
 
-## Quick Start
-
-Create a minimal configuration file:
+## Minimal Configuration
 
 ```json
 {
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys",
-  "jacs_agent_private_key_filename": "private.pem",
-  "jacs_agent_public_key_filename": "public.pem",
-  "jacs_agent_key_algorithm": "ring-Ed25519",
-  "jacs_default_storage": "fs"
+  "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
+  "jacs_agent_key_algorithm": "ring-Ed25519"
 }
 ```
 
-## Required Fields
+All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` storage). Override only what you need.
+
+## Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -200,217 +196,9 @@ Enable strict security features:
 
 Values: `"0"`, `"1"`, or `"false"`, `"true"`
 
-## Observability Configuration
+## Observability Fields
 
-JACS supports comprehensive observability through logs, metrics, and tracing.
-
-### Logs Configuration
-
-```json
-{
-  "observability": {
-    "logs": {
-      "enabled": true,
-      "level": "info",
-      "destination": {
-        "type": "stderr"
-      }
-    }
-  }
-}
-```
-
-#### Log Levels
-
-| Level | Description |
-|-------|-------------|
-| `trace` | Most verbose |
-| `debug` | Debug information |
-| `info` | General information |
-| `warn` | Warnings |
-| `error` | Errors only |
-
-#### Log Destinations
-
-**stderr** (default):
-```json
-{
-  "destination": { "type": "stderr" }
-}
-```
-
-**File**:
-```json
-{
-  "destination": {
-    "type": "file",
-    "path": "/var/log/jacs/app.log"
-  }
-}
-```
-
-**OTLP** (OpenTelemetry):
-```json
-{
-  "destination": {
-    "type": "otlp",
-    "endpoint": "http://localhost:4317",
-    "headers": {
-      "Authorization": "Bearer token"
-    }
-  }
-}
-```
-
-**Null** (disabled):
-```json
-{
-  "destination": { "type": "null" }
-}
-```
-
-### Metrics Configuration
-
-```json
-{
-  "observability": {
-    "metrics": {
-      "enabled": true,
-      "destination": {
-        "type": "prometheus",
-        "endpoint": "http://localhost:9090/api/v1/write"
-      },
-      "export_interval_seconds": 60
-    }
-  }
-}
-```
-
-#### Metrics Destinations
-
-**Prometheus**:
-```json
-{
-  "destination": {
-    "type": "prometheus",
-    "endpoint": "http://localhost:9090/api/v1/write"
-  }
-}
-```
-
-**OTLP**:
-```json
-{
-  "destination": {
-    "type": "otlp",
-    "endpoint": "http://localhost:4317"
-  }
-}
-```
-
-**File**:
-```json
-{
-  "destination": {
-    "type": "file",
-    "path": "/var/log/jacs/metrics.json"
-  }
-}
-```
-
-**stdout**:
-```json
-{
-  "destination": { "type": "stdout" }
-}
-```
-
-### Tracing Configuration
-
-```json
-{
-  "observability": {
-    "tracing": {
-      "enabled": true,
-      "sampling": {
-        "ratio": 0.1,
-        "parent_based": true,
-        "rate_limit": 100
-      },
-      "resource": {
-        "service_name": "my-jacs-agent",
-        "service_version": "1.0.0",
-        "environment": "production",
-        "attributes": {
-          "team": "backend"
-        }
-      }
-    }
-  }
-}
-```
-
-#### Sampling Options
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `ratio` | number (0-1) | Percentage of traces to sample |
-| `parent_based` | boolean | Follow parent span's sampling decision |
-| `rate_limit` | integer | Max traces per second |
-
-## Complete Configuration Example
-
-```json
-{
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-
-  "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys",
-  "jacs_agent_private_key_filename": "private.pem",
-  "jacs_agent_public_key_filename": "public.pem",
-  "jacs_agent_key_algorithm": "ring-Ed25519",
-  "jacs_default_storage": "fs",
-
-  "jacs_agent_schema_version": "v1",
-  "jacs_header_schema_version": "v1",
-  "jacs_signature_schema_version": "v1",
-
-  "jacs_agent_domain": "myagent.example.com",
-  "jacs_dns_validate": true,
-  "jacs_dns_strict": false,
-
-  "observability": {
-    "logs": {
-      "enabled": true,
-      "level": "info",
-      "destination": {
-        "type": "file",
-        "path": "/var/log/jacs/agent.log"
-      }
-    },
-    "metrics": {
-      "enabled": true,
-      "destination": {
-        "type": "prometheus",
-        "endpoint": "http://prometheus:9090/api/v1/write"
-      },
-      "export_interval_seconds": 30
-    },
-    "tracing": {
-      "enabled": true,
-      "sampling": {
-        "ratio": 0.1,
-        "parent_based": true
-      },
-      "resource": {
-        "service_name": "jacs-agent",
-        "service_version": "1.0.0",
-        "environment": "production"
-      }
-    }
-  }
-}
-```
+The `observability` object supports `logs`, `metrics`, and `tracing` sub-objects. For full details on all destinations, sampling options, and production patterns, see the [Configuration Reference](../reference/configuration.md#observability-configuration).
 
 ## Environment Variables
 
@@ -422,52 +210,9 @@ Configuration can be overridden with environment variables:
 | `JACS_DATA_DIRECTORY` | `jacs_data_directory` |
 | `JACS_KEY_DIRECTORY` | `jacs_key_directory` |
 
-```bash
-export JACS_PRIVATE_KEY_PASSWORD="secure-password"
-```
-
-## Loading Configuration
-
-### Python
-
-```python
-import jacs
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-```
-
-### Node.js
-
-```javascript
-import { JacsAgent } from '@hai.ai/jacs';
-
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
-```
-
-### CLI
-
-```bash
-jacs --config ./jacs.config.json agent show
-```
-
-## Production Best Practices
-
-1. **Never commit private keys** - Keep keys out of version control
-2. **Use environment variables for secrets** - Don't store passwords in config files
-3. **Enable observability** - Configure logs and metrics for monitoring
-4. **Use DNS validation** - Enable `jacs_dns_validate` for additional security
-5. **Secure key directories** - Restrict file permissions on key directories
-
-```bash
-chmod 700 ./jacs_keys
-chmod 600 ./jacs_keys/private.pem
-```
-
 ## See Also
 
+- [Configuration Reference](../reference/configuration.md) - Full configuration guide with examples
 - [JSON Schemas Overview](overview.md) - Schema architecture
-- [Observability](../rust/observability.md) - Monitoring guide
-- [DNS Verification](../dns.md) - Domain-based verification
-- [Quick Start](../getting-started/quickstart.md) - Getting started guide
+- [Observability (Rust API)](../rust/observability.md) - Rust observability API
+- [Observability & Monitoring Guide](../guides/observability.md) - Structured events, OTEL collector setup

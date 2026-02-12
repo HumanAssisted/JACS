@@ -546,6 +546,106 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 )
         )
         .subcommand(
+            Command::new("a2a")
+                .about("A2A (Agent-to-Agent) trust and discovery commands")
+                .subcommand(
+                    Command::new("assess")
+                        .about("Assess trust level of a remote A2A Agent Card")
+                        .arg(
+                            Arg::new("source")
+                                .required(true)
+                                .help("Path to Agent Card JSON file or URL"),
+                        )
+                        .arg(
+                            Arg::new("policy")
+                                .long("policy")
+                                .short('p')
+                                .value_parser(["open", "verified", "strict"])
+                                .default_value("verified")
+                                .help("Trust policy to apply (default: verified)"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .action(ArgAction::SetTrue)
+                                .help("Output result as JSON"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("trust")
+                        .about("Add a remote A2A agent to the local trust store")
+                        .arg(
+                            Arg::new("source")
+                                .required(true)
+                                .help("Path to Agent Card JSON file or URL"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("discover")
+                        .about("Discover a remote A2A agent via its well-known Agent Card")
+                        .arg(
+                            Arg::new("url")
+                                .required(true)
+                                .help("Base URL of the agent (e.g. https://agent.example.com)"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .action(ArgAction::SetTrue)
+                                .help("Output the full Agent Card as JSON"),
+                        )
+                        .arg(
+                            Arg::new("policy")
+                                .long("policy")
+                                .short('p')
+                                .value_parser(["open", "verified", "strict"])
+                                .default_value("verified")
+                                .help("Trust policy to apply against the discovered card"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("serve")
+                        .about("Serve this agent's .well-known endpoints for A2A discovery")
+                        .arg(
+                            Arg::new("port")
+                                .long("port")
+                                .value_parser(value_parser!(u16))
+                                .default_value("8080")
+                                .help("Port to listen on (default: 8080)"),
+                        )
+                        .arg(
+                            Arg::new("host")
+                                .long("host")
+                                .default_value("127.0.0.1")
+                                .help("Host to bind to (default: 127.0.0.1)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("quickstart")
+                        .about("Create an agent (if needed) and start serving A2A endpoints")
+                        .arg(
+                            Arg::new("port")
+                                .long("port")
+                                .value_parser(value_parser!(u16))
+                                .default_value("8080")
+                                .help("Port to listen on (default: 8080)"),
+                        )
+                        .arg(
+                            Arg::new("host")
+                                .long("host")
+                                .default_value("127.0.0.1")
+                                .help("Host to bind to (default: 127.0.0.1)"),
+                        )
+                        .arg(
+                            Arg::new("algorithm")
+                                .long("algorithm")
+                                .short('a')
+                                .value_parser(["pq2025", "ring-Ed25519", "RSA-PSS"])
+                                .help("Signing algorithm (default: pq2025)"),
+                        ),
+                ),
+        )
+        .subcommand(
             Command::new("quickstart")
                 .about("Create or load a persistent agent for instant sign/verify (zero config)")
                 .arg(
@@ -1086,6 +1186,431 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("Private key re-encrypted successfully.");
             }
             _ => println!("please enter subcommand see jacs key --help"),
+        },
+        Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
+            Some(("assess", assess_matches)) => {
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
+                use jacs::a2a::AgentCard;
+
+                let source = assess_matches.get_one::<String>("source").unwrap();
+                let policy_str = assess_matches
+                    .get_one::<String>("policy")
+                    .map(|s| s.as_str())
+                    .unwrap_or("verified");
+                let json_output = *assess_matches.get_one::<bool>("json").unwrap_or(&false);
+
+                let policy = A2ATrustPolicy::from_str_loose(policy_str).map_err(|e| {
+                    Box::<dyn Error>::from(format!("Invalid policy: {}", e))
+                })?;
+
+                // Load the Agent Card from file or URL
+                let card_json = if source.starts_with("http://") || source.starts_with("https://") {
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .build()
+                        .map_err(|e| format!("HTTP client error: {}", e))?;
+                    client
+                        .get(source.as_str())
+                        .send()
+                        .map_err(|e| format!("Fetch failed: {}", e))?
+                        .text()
+                        .map_err(|e| format!("Read body failed: {}", e))?
+                } else {
+                    std::fs::read_to_string(source)
+                        .map_err(|e| format!("Read file failed: {}", e))?
+                };
+
+                let card: AgentCard = serde_json::from_str(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
+
+                // Create an empty agent for assessment context
+                let agent = jacs::get_empty_agent();
+                let assessment = assess_a2a_agent(&agent, &card, policy);
+
+                if json_output {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&assessment)
+                            .expect("assessment serialization")
+                    );
+                } else {
+                    println!("Agent:       {}", card.name);
+                    println!(
+                        "Agent ID:    {}",
+                        assessment
+                            .agent_id
+                            .as_deref()
+                            .unwrap_or("(not specified)")
+                    );
+                    println!("Policy:      {}", assessment.policy);
+                    println!("Trust Level: {}", assessment.trust_level);
+                    println!(
+                        "Allowed:     {}",
+                        if assessment.allowed { "YES" } else { "NO" }
+                    );
+                    println!("JACS Ext:    {}", assessment.jacs_registered);
+                    println!("Reason:      {}", assessment.reason);
+                    if !assessment.allowed {
+                        process::exit(1);
+                    }
+                }
+            }
+            Some(("trust", trust_matches)) => {
+                use jacs::a2a::AgentCard;
+                use jacs::trust;
+
+                let source = trust_matches.get_one::<String>("source").unwrap();
+
+                // Load the Agent Card from file or URL
+                let card_json = if source.starts_with("http://") || source.starts_with("https://") {
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .build()
+                        .map_err(|e| format!("HTTP client error: {}", e))?;
+                    client
+                        .get(source.as_str())
+                        .send()
+                        .map_err(|e| format!("Fetch failed: {}", e))?
+                        .text()
+                        .map_err(|e| format!("Read body failed: {}", e))?
+                } else {
+                    std::fs::read_to_string(source)
+                        .map_err(|e| format!("Read file failed: {}", e))?
+                };
+
+                let card: AgentCard = serde_json::from_str(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
+
+                // Extract agent ID and version from metadata
+                let agent_id = card
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("jacsId"))
+                    .and_then(|v| v.as_str())
+                    .ok_or("Agent Card has no jacsId in metadata")?;
+                let agent_version = card
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("jacsVersion"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+
+                let key = format!("{}:{}", agent_id, agent_version);
+
+                // Add to trust store with the card JSON as the public key PEM
+                // (the trust store stores agent metadata; public key comes from
+                //  well-known endpoints or DNS in practice)
+                trust::trust_a2a_card(&key, &card_json)?;
+
+                println!("Trusted agent '{}' ({})", card.name, agent_id);
+                println!("  Version: {}", agent_version);
+                println!("  Added to local trust store with key: {}", key);
+            }
+            Some(("discover", discover_matches)) => {
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
+                use jacs::a2a::AgentCard;
+
+                let base_url = discover_matches.get_one::<String>("url").unwrap();
+                let json_output = *discover_matches.get_one::<bool>("json").unwrap_or(&false);
+                let policy_str = discover_matches
+                    .get_one::<String>("policy")
+                    .map(|s| s.as_str())
+                    .unwrap_or("verified");
+
+                let policy = A2ATrustPolicy::from_str_loose(policy_str).map_err(|e| {
+                    Box::<dyn Error>::from(format!("Invalid policy: {}", e))
+                })?;
+
+                // Construct the well-known URL
+                let trimmed = base_url.trim_end_matches('/');
+                let card_url = format!("{}/.well-known/agent-card.json", trimmed);
+
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(|e| format!("HTTP client error: {}", e))?;
+
+                let response = client
+                    .get(&card_url)
+                    .send()
+                    .map_err(|e| format!("Failed to fetch {}: {}", card_url, e))?;
+
+                if !response.status().is_success() {
+                    eprintln!(
+                        "Failed to discover agent at {}: HTTP {}",
+                        card_url,
+                        response.status()
+                    );
+                    process::exit(1);
+                }
+
+                let card_json = response
+                    .text()
+                    .map_err(|e| format!("Read body failed: {}", e))?;
+
+                let card: AgentCard = serde_json::from_str(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON at {}: {}", card_url, e))?;
+
+                if json_output {
+                    // Print the full Agent Card
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&card).expect("card serialization")
+                    );
+                } else {
+                    // Human-readable summary
+                    println!("Discovered A2A Agent: {}", card.name);
+                    println!("  Description: {}", card.description);
+                    println!("  Version:     {}", card.version);
+                    println!(
+                        "  Protocol:    {}",
+                        card.protocol_versions.join(", ")
+                    );
+
+                    // Show interfaces
+                    for iface in &card.supported_interfaces {
+                        println!("  Endpoint:    {} ({})", iface.url, iface.protocol_binding);
+                    }
+
+                    // Show skills
+                    if !card.skills.is_empty() {
+                        println!("  Skills:");
+                        for skill in &card.skills {
+                            println!("    - {} ({})", skill.name, skill.id);
+                        }
+                    }
+
+                    // JACS extension check
+                    let has_jacs = card
+                        .capabilities
+                        .extensions
+                        .as_ref()
+                        .map(|exts| {
+                            exts.iter()
+                                .any(|e| e.uri == jacs::a2a::JACS_EXTENSION_URI)
+                        })
+                        .unwrap_or(false);
+                    println!(
+                        "  JACS:        {}",
+                        if has_jacs { "YES" } else { "NO" }
+                    );
+
+                    // Trust assessment
+                    let agent = jacs::get_empty_agent();
+                    let assessment = assess_a2a_agent(&agent, &card, policy);
+                    println!("  Trust:       {} ({})", assessment.trust_level, assessment.reason);
+                    if !assessment.allowed {
+                        println!("  WARNING:     Agent not allowed under '{}' policy", policy_str);
+                    }
+                }
+            }
+            Some(("serve", serve_matches)) => {
+                use jacs::simple::SimpleAgent;
+
+                let port = *serve_matches.get_one::<u16>("port").unwrap();
+                let host = serve_matches
+                    .get_one::<String>("host")
+                    .map(|s| s.as_str())
+                    .unwrap_or("127.0.0.1");
+
+                // Load or quickstart the agent
+                let (agent, info) = {
+                    // Try loading password from quickstart file
+                    if env::var("JACS_PRIVATE_KEY_PASSWORD")
+                        .unwrap_or_default()
+                        .is_empty()
+                    {
+                        let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
+                        if pw_path.exists() {
+                            if let Ok(pw) = std::fs::read_to_string(pw_path) {
+                                unsafe { env::set_var("JACS_PRIVATE_KEY_PASSWORD", pw.trim()) };
+                            }
+                        }
+                    }
+                    SimpleAgent::quickstart(None, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to load agent: {}", e),
+                        ))
+                    })?
+                };
+
+                // Export the Agent Card for display
+                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to export Agent Card: {}", e),
+                    ))
+                })?;
+
+                // Generate well-known documents via public API
+                let documents = agent.generate_well_known_documents(None)
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to generate well-known documents: {}", e),
+                        ))
+                    })?;
+
+                // Build a lookup map: path -> JSON body
+                let mut routes: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+                for (path, value) in &documents {
+                    routes.insert(
+                        path.clone(),
+                        serde_json::to_string_pretty(value).unwrap_or_default(),
+                    );
+                }
+
+                let addr = format!("{}:{}", host, port);
+                let server = tiny_http::Server::http(&addr).map_err(|e| {
+                    format!("Failed to start server on {}: {}", addr, e)
+                })?;
+
+                println!("Serving A2A well-known endpoints at http://{}", addr);
+                println!("  Agent: {} ({})", agent_card.name, info.agent_id);
+                println!("  Endpoints:");
+                for path in routes.keys() {
+                    println!("    http://{}{}", addr, path);
+                }
+                println!("\nPress Ctrl+C to stop.");
+
+                for request in server.incoming_requests() {
+                    let url = request.url().to_string();
+                    if let Some(body) = routes.get(&url) {
+                        let response = tiny_http::Response::from_string(body.clone())
+                            .with_header(
+                                tiny_http::Header::from_bytes(
+                                    &b"Content-Type"[..],
+                                    &b"application/json"[..],
+                                )
+                                .unwrap(),
+                            );
+                        let _ = request.respond(response);
+                    } else {
+                        let response = tiny_http::Response::from_string("{\"error\": \"not found\"}")
+                            .with_status_code(404)
+                            .with_header(
+                                tiny_http::Header::from_bytes(
+                                    &b"Content-Type"[..],
+                                    &b"application/json"[..],
+                                )
+                                .unwrap(),
+                            );
+                        let _ = request.respond(response);
+                    }
+                }
+            }
+            Some(("quickstart", qs_matches)) => {
+                use jacs::simple::SimpleAgent;
+
+                let port = *qs_matches.get_one::<u16>("port").unwrap();
+                let host = qs_matches
+                    .get_one::<String>("host")
+                    .map(|s| s.as_str())
+                    .unwrap_or("127.0.0.1");
+                let algorithm = qs_matches.get_one::<String>("algorithm").map(|s| s.as_str());
+
+                // Create or load the agent via quickstart
+                if env::var("JACS_PRIVATE_KEY_PASSWORD")
+                    .unwrap_or_default()
+                    .is_empty()
+                {
+                    let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
+                    if pw_path.exists() {
+                        if let Ok(pw) = std::fs::read_to_string(pw_path) {
+                            unsafe { env::set_var("JACS_PRIVATE_KEY_PASSWORD", pw.trim()) };
+                        }
+                    }
+                }
+                let (agent, info) =
+                    SimpleAgent::quickstart(algorithm, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to quickstart agent: {}", e),
+                        ))
+                    })?;
+
+                // Export the Agent Card
+                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to export Agent Card: {}", e),
+                    ))
+                })?;
+
+                // Generate well-known documents
+                let documents =
+                    agent
+                        .generate_well_known_documents(None)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Failed to generate well-known documents: {}", e),
+                            ))
+                        })?;
+
+                // Build route map
+                let mut routes: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+                for (path, value) in &documents {
+                    routes.insert(
+                        path.clone(),
+                        serde_json::to_string_pretty(value).unwrap_or_default(),
+                    );
+                }
+
+                let addr = format!("{}:{}", host, port);
+                let server = tiny_http::Server::http(&addr).map_err(|e| {
+                    format!("Failed to start server on {}: {}", addr, e)
+                })?;
+
+                println!("A2A Quickstart");
+                println!("==============");
+                println!("Agent: {} ({})", agent_card.name, info.agent_id);
+                println!(
+                    "Algorithm: {}",
+                    algorithm.unwrap_or("pq2025")
+                );
+                println!();
+                println!(
+                    "Discovery URL: http://{}/.well-known/agent-card.json",
+                    addr
+                );
+                println!();
+                println!("Endpoints:");
+                for path in routes.keys() {
+                    println!("  http://{}{}", addr, path);
+                }
+                println!();
+                println!("Press Ctrl+C to stop.");
+
+                for request in server.incoming_requests() {
+                    let url = request.url().to_string();
+                    if let Some(body) = routes.get(&url) {
+                        let response = tiny_http::Response::from_string(body.clone()).with_header(
+                            tiny_http::Header::from_bytes(
+                                &b"Content-Type"[..],
+                                &b"application/json"[..],
+                            )
+                            .unwrap(),
+                        );
+                        let _ = request.respond(response);
+                    } else {
+                        let response = tiny_http::Response::from_string("{\"error\": \"not found\"}")
+                            .with_status_code(404)
+                            .with_header(
+                                tiny_http::Header::from_bytes(
+                                    &b"Content-Type"[..],
+                                    &b"application/json"[..],
+                                )
+                                .unwrap(),
+                            );
+                        let _ = request.respond(response);
+                    }
+                }
+            }
+            _ => println!("please enter subcommand see jacs a2a --help"),
         },
         Some(("quickstart", qs_matches)) => {
             use jacs::simple::SimpleAgent;

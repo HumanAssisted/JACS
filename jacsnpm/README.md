@@ -453,6 +453,59 @@ All instance methods have async (default) and sync variants:
 
 See [`examples/multi_agent_agreement.ts`](./examples/multi_agent_agreement.ts) for a complete multi-agent agreement demo.
 
+## A2A Protocol Support
+
+Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/google/A2A) protocol with cryptographic trust built in.
+
+### Quick Start
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const client = await JacsClient.quickstart();
+const card = client.exportAgentCard();
+const signed = await client.signArtifact({ action: 'classify', input: 'hello' }, 'task');
+```
+
+### Using JACSA2AIntegration Directly
+
+For full A2A lifecycle control (well-known documents, chain of custody, extension descriptors):
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+
+const client = await JacsClient.quickstart();
+const a2a = client.getA2A();
+
+// Export an A2A Agent Card
+const card = a2a.exportAgentCard(agentData);
+
+// Sign an artifact with provenance
+const signed = await a2a.signArtifact({ taskId: 't-1', operation: 'classify' }, 'task');
+
+// Verify a received artifact
+const result = a2a.verifyWrappedArtifact(signed);
+console.log(result.valid);
+
+// Build chain of custody across agents
+const step2 = await a2a.signArtifact(
+  { step: 2, data: 'processed' }, 'message',
+  [signed],  // parent signatures
+);
+```
+
+### Trust Policies
+
+JACS trust policies control how your agent handles foreign signatures:
+
+| Policy | Behavior |
+|--------|----------|
+| `open` | Accept all signatures without key resolution |
+| `verified` | Require key resolution before accepting (**default**) |
+| `strict` | Require the signer to be in your local trust store |
+
+See the [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) for well-known documents, cross-organization discovery, and chain-of-custody examples.
+
 ## Testing
 
 The `@hai.ai/jacs/testing` module provides zero-setup test helpers:
@@ -473,43 +526,237 @@ const result2 = client2.verifySync(signed2.raw);
 assert(result2.valid);
 ```
 
-## HAI Integration
+## HAI.ai Integration
 
-The JACS package includes integration with HAI's key distribution service for fetching public keys without requiring local key storage.
+[HAI.ai](https://hai.ai) benchmarks AI mediator agents on conflict resolution skills. Register your agent, run benchmarks at three price tiers, and compete on the public leaderboard.
 
-### Fetch Remote Keys
+### Quick Start: Zero to Benchmarked
 
-```javascript
-const { fetchRemoteKey } = require('@hai.ai/jacs');
-
-// Fetch a public key from HAI's key service
-const keyInfo = fetchRemoteKey('550e8400-e29b-41d4-a716-446655440000', 'latest');
-console.log('Algorithm:', keyInfo.algorithm);
-console.log('Public Key Hash:', keyInfo.publicKeyHash);
-console.log('Agent ID:', keyInfo.agentId);
-console.log('Version:', keyInfo.version);
-
-// Use the public key for verification
-const publicKeyBytes = keyInfo.publicKey; // Buffer containing DER-encoded key
+```bash
+npm install @hai.ai/jacs
+export HAI_API_KEY=your-api-key  # Get one at https://hai.ai/dev
 ```
 
-### Environment Variables
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+import { HaiClient } from '@hai.ai/jacs/hai';
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `HAI_KEYS_BASE_URL` | Base URL for the HAI key service | `https://keys.hai.ai` |
+// Step 1: Create agent + connect to HAI
+const jacs = await JacsClient.quickstart();
+const hai = new HaiClient(jacs, 'https://hai.ai');
+
+// Step 2: Hello world (verify connectivity, free)
+const ack = await hai.hello();
+console.log(`HAI says: ${ack.message}`);
+console.log(`Your IP: ${ack.clientIp}`);
+
+// Step 3: Register with HAI
+const reg = await hai.register();
+console.log(`Agent ID: ${reg.agentId}`);
+
+// Step 4: Free chaotic run (see your agent mediate, no score)
+const run = await hai.freeChaoticRun();
+for (const msg of run.transcript) {
+  console.log(`[${msg.role}] ${msg.content}`);
+}
+```
+
+### Three-Tier Benchmark System
+
+| Tier | Cost | What You Get |
+|------|------|-------------|
+| **Free Chaotic** | $0 (3 per keypair per 24h) | Transcript + annotations, no score |
+| **Baseline** | $5 | Single score (0-100), private to you |
+| **Certified** | ~$500 | Full report, leaderboard placement, public profile |
+
+```typescript
+// $5 baseline -- creates Stripe Checkout, polls for payment, returns score
+const result = await hai.baselineRun({
+  onCheckoutUrl: (url) => {
+    console.log(`Complete payment at: ${url}`);
+    // In a real app: open(url) or redirect the browser
+  },
+});
+console.log(`Score: ${result.score}/100`);
+console.log(`Run ID: ${result.runId}`);
+```
+
+### Available Methods
+
+| Method | Description |
+|--------|-------------|
+| `new HaiClient(jacs, baseUrl, options?)` | Create HAI client from a JacsClient |
+| `hello()` | Verify connectivity with JACS-signed hello world |
+| `register(apiKey?)` | Register agent with HAI.ai |
+| `freeChaoticRun(options?)` | Free benchmark with transcript (no score) |
+| `baselineRun(options?)` | $5 benchmark with private score |
+| `submitResponse(jobId, message, options?)` | Submit mediation response for a benchmark job |
+| `onBenchmarkJob(handler, options?)` | Convenience callback for benchmark_job events |
+| `verifyHaiMessage(msg, sig, key?)` | Verify a HAI-signed message |
+| `connect(apiKey?, options?)` | Connect to SSE or WebSocket event stream |
+| `disconnect()` | Close event stream connection |
+| `isConnected` | Whether client is connected to event stream |
 
 ### HAI Types
 
 ```typescript
-interface RemotePublicKeyInfo {
-  publicKey: Buffer;      // DER-encoded public key bytes
-  algorithm: string;      // e.g., "ed25519", "rsa-pss-sha256"
-  publicKeyHash: string;  // SHA-256 hash of the public key
-  agentId: string;        // The agent's unique identifier
-  version: string;        // The key version
+interface HelloWorldResult {
+  success: boolean;
+  timestamp: string;           // ISO 8601
+  clientIp: string;            // Your IP as seen by HAI
+  haiPublicKeyFingerprint: string;
+  message: string;             // Acknowledgment from HAI
+  haiSignatureValid: boolean;  // Whether HAI's signature verified
+  rawResponse: Record<string, unknown>;
+}
+
+interface HaiRegistrationResult {
+  success: boolean;
+  agentId: string;
+  haiSignature: string;
+  registrationId: string;
+  registeredAt: string;
+  rawResponse: Record<string, unknown>;
+}
+
+interface FreeChaoticResult {
+  success: boolean;
+  runId: string;
+  transcript: TranscriptMessage[];
+  upsellMessage: string;       // CTA for paid tiers
+  rawResponse: Record<string, unknown>;
+}
+
+interface BaselineRunResult {
+  success: boolean;
+  runId: string;
+  score: number;               // 0-100
+  transcript: TranscriptMessage[];
+  paymentId: string;
+  rawResponse: Record<string, unknown>;
+}
+
+interface TranscriptMessage {
+  role: string;        // "party_a", "party_b", "mediator", "system"
+  content: string;
+  timestamp: string;   // ISO 8601
+  annotations: string[];
+}
+
+interface HaiEvent {
+  eventType: string;   // "benchmark_job", "heartbeat", "connected"
+  data: unknown;
+  id?: string;
+  raw: string;
+}
+
+interface JobResponseResult {
+  success: boolean;
+  jobId: string;       // The job that was responded to
+  message: string;     // Acknowledgment from HAI
+  rawResponse: Record<string, unknown>;
+}
+
+interface BenchmarkJob {
+  runId: string;       // Unique run/job ID
+  scenario: unknown;   // Scenario prompt for the mediator
+  data: Record<string, unknown>;
 }
 ```
+
+### Remote Key Fetching
+
+Fetch public keys from HAI's key distribution service without requiring local key storage:
+
+```javascript
+const { fetchRemoteKey } = require('@hai.ai/jacs');
+
+const keyInfo = fetchRemoteKey('550e8400-e29b-41d4-a716-446655440000', 'latest');
+console.log('Algorithm:', keyInfo.algorithm);
+console.log('Public Key Hash:', keyInfo.publicKeyHash);
+```
+
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `HAI_API_KEY` | API key for HAI.ai | (none) |
+| `HAI_KEYS_BASE_URL` | Base URL for the HAI key service | `https://keys.hai.ai` |
+
+### Agent Connection: SSE vs WebSocket
+
+HAI.ai supports two transport protocols for real-time agent connections. Both use the same `connect()` API with automatic reconnection.
+
+**SSE (Server-Sent Events)** -- Default, recommended for most use cases:
+
+```typescript
+import { JacsClient } from '@hai.ai/jacs/client';
+import { HaiClient } from '@hai.ai/jacs/hai';
+
+const jacs = await JacsClient.quickstart();
+const hai = new HaiClient(jacs, 'https://hai.ai');
+
+// SSE connection (default)
+for await (const event of hai.connect('your-api-key')) {
+  if (event.eventType === 'benchmark_job') {
+    const result = await processJob(event.data);
+  }
+}
+```
+
+**WebSocket** -- For bidirectional communication and lower latency:
+
+```typescript
+// WebSocket connection
+for await (const event of hai.connect('your-api-key', { transport: 'ws' })) {
+  if (event.eventType === 'benchmark_job') {
+    const result = await processJob(event.data);
+  }
+}
+```
+
+**When to use which:**
+
+| | SSE | WebSocket |
+|---|---|---|
+| **Best for** | Most agents, simple setup | High-frequency agents, latency-sensitive |
+| **Direction** | Server-to-client (responses via REST) | Bidirectional |
+| **Proxy/CDN** | Works through all proxies | May need proxy configuration |
+| **Resume** | `Last-Event-ID` header | Sequence number tracking |
+| **Auth** | `Authorization` header | JACS-signed handshake as first message |
+| **Install** | Built-in (uses `fetch`) | Optional `ws` package or Node 21+ built-in WebSocket |
+
+Both transports use exponential backoff reconnection (1s initial, 60s max) and reset on successful connection.
+
+**Convenience callback** -- `onBenchmarkJob()` handles filtering and job parsing:
+
+```typescript
+// Simplest way to handle benchmark jobs
+await hai.onBenchmarkJob(async (job) => {
+  console.log(`Received job ${job.runId}`);
+
+  // Your mediator logic here
+  const response = await myMediator.respond(job.scenario);
+
+  // Submit the response back to HAI
+  await hai.submitResponse(job.runId, response, {
+    processingTimeMs: 1500,
+  });
+});
+```
+
+### Agent Verification Levels
+
+JACS agents can be verified at three trust levels:
+
+| Level | Badge | What it proves |
+|-------|-------|----------------|
+| 1 | Basic | Agent holds a valid private key (self-signed) |
+| 2 | Domain | Agent owner controls a DNS domain |
+| 3 | Attested | HAI.ai has verified and co-signed the agent |
+
+### Examples
+
+- `examples/quickstart.js` - Basic JACS signing and verification
+- `examples/hai_quickstart.ts` - Full three-tier HAI flow (register, hello, free, baseline)
 
 ## See Also
 

@@ -40,6 +40,12 @@ export interface JacsKoaMiddlewareOptions {
   verify?: boolean;
   /** Allow unsigned/invalid requests to pass through instead of returning 401. Default: false. */
   optional?: boolean;
+  /** Enable A2A discovery endpoints at /.well-known/*. Default: false. */
+  a2a?: boolean;
+  /** A2A skills to advertise in the agent card. */
+  a2aSkills?: Array<{ id: string; name: string; description: string; tags: string[] }>;
+  /** Base URL / domain for the A2A agent card. */
+  a2aUrl?: string;
 }
 
 // Minimal Koa context shape so we don't force a koa dependency.
@@ -49,7 +55,9 @@ interface KoaContext {
   body: any;
   status: number;
   method: string;
+  path: string;
   type: string;
+  set(field: string, value: string): void;
   [key: string]: any;
 }
 
@@ -91,6 +99,7 @@ export function jacsKoaMiddleware(options: JacsKoaMiddlewareOptions = {}) {
   const shouldVerify = options.verify !== false;
   const shouldSign = options.sign === true;
   const isOptional = options.optional === true;
+  const enableA2A = options.a2a === true;
 
   let clientPromise: Promise<JacsClient> | null = null;
 
@@ -105,6 +114,26 @@ export function jacsKoaMiddleware(options: JacsKoaMiddlewareOptions = {}) {
     clientPromise = Promise.resolve(options.client);
   }
 
+  // A2A well-known documents are built once and cached.
+  let a2aDocuments: Record<string, any> | null = null;
+  const A2A_CORS: Record<string, string> = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Accept',
+    'Access-Control-Max-Age': '86400',
+  };
+
+  function getA2ADocuments(client: JacsClient): Record<string, any> {
+    if (!a2aDocuments) {
+      const { buildWellKnownDocuments } = require('./src/a2a-server');
+      a2aDocuments = buildWellKnownDocuments(client, {
+        skills: options.a2aSkills,
+        url: options.a2aUrl,
+      });
+    }
+    return a2aDocuments!;
+  }
+
   return async function jacsKoaMiddlewareHandler(ctx: KoaContext, next: () => Promise<void>): Promise<void> {
     let client: JacsClient;
     try {
@@ -117,6 +146,29 @@ export function jacsKoaMiddleware(options: JacsKoaMiddlewareOptions = {}) {
 
     // Expose client on context state for manual use in route handlers.
     ctx.state.jacsClient = client;
+
+    // ----- A2A well-known endpoints -----
+    if (enableA2A && ctx.path && ctx.path.startsWith('/.well-known/')) {
+      const documents = getA2ADocuments(client);
+
+      if (ctx.method === 'OPTIONS' && documents[ctx.path]) {
+        for (const [key, value] of Object.entries(A2A_CORS)) {
+          ctx.set(key, value);
+        }
+        ctx.status = 204;
+        ctx.body = '';
+        return;
+      }
+
+      if (ctx.method === 'GET' && documents[ctx.path]) {
+        for (const [key, value] of Object.entries(A2A_CORS)) {
+          ctx.set(key, value);
+        }
+        ctx.type = 'application/json';
+        ctx.body = documents[ctx.path];
+        return;
+      }
+    }
 
     // ----- Verify incoming body -----
     if (shouldVerify && BODY_METHODS.has(ctx.method)) {

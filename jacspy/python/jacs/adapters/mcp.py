@@ -1,22 +1,24 @@
 """JACS MCP adapter — expose JACS operations as MCP tools.
 
-Registers signing, verification, agreement, and audit tools with a
-FastMCP server so an LLM can call them directly. Mirrors the Rust
-``jacs-mcp`` tool surface.
+Registers signing, verification, agreement, audit, A2A, and trust
+tools with a FastMCP server so an LLM can call them directly.
+Mirrors the Rust ``jacs-mcp`` tool surface.
 
 Usage as tools (LLM-callable):
     from fastmcp import FastMCP
-    from jacs.adapters.mcp import register_jacs_tools
+    from jacs.adapters.mcp import register_jacs_tools, register_a2a_tools
 
     mcp = FastMCP("my-server")
-    register_jacs_tools(mcp)  # adds jacs_sign_document, jacs_verify_document, …
+    register_jacs_tools(mcp)       # core signing/verification tools
+    register_a2a_tools(mcp)        # A2A agent card + artifact tools
+    register_trust_tools(mcp)      # trust store tools
     mcp.run()
 
 Usage as middleware (sign all responses):
     from jacs.adapters.mcp import JacsMCPMiddleware
 
     mcp = FastMCP("my-server")
-    mcp.add_middleware(JacsMCPMiddleware(client=client))
+    mcp.add_middleware(JacsMCPMiddleware(client=client, a2a=True))
     mcp.run()
 
 Requires: pip install jacs[mcp]   (fastmcp>=2.9)
@@ -304,6 +306,196 @@ def _make_agent_info(mcp, cl):
 
 
 # ---------------------------------------------------------------------------
+# A2A tool registration
+# ---------------------------------------------------------------------------
+
+
+def register_a2a_tools(
+    mcp_server: Any,
+    client: Optional[Any] = None,
+    config_path: Optional[str] = None,
+    strict: bool = False,
+) -> Any:
+    """Register A2A protocol tools on a FastMCP server.
+
+    Tools registered:
+        - ``jacs_get_agent_card`` — Export this agent's A2A Agent Card.
+        - ``jacs_sign_artifact`` — Wrap an A2A artifact with JACS provenance.
+        - ``jacs_verify_a2a_artifact`` — Verify a JACS-wrapped A2A artifact.
+        - ``jacs_assess_remote_agent`` — Assess trust for a remote Agent Card.
+
+    Args:
+        mcp_server: A FastMCP server instance.
+        client: An existing JacsClient. If None, one is created via quickstart.
+        config_path: Path to jacs.config.json (used if no client).
+        strict: Raise on failures instead of returning error JSON.
+
+    Returns:
+        The mcp_server instance (for chaining).
+    """
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    cl = adapter.client
+
+    @mcp_server.tool(
+        name="jacs_get_agent_card",
+        description="Export this agent's A2A Agent Card for discovery.",
+    )
+    def jacs_get_agent_card(url: str = "", skills_json: str = "[]") -> str:
+        """Export Agent Card. Optional url and skills_json (JSON array of service dicts)."""
+        try:
+            skills = json.loads(skills_json) if skills_json and skills_json != "[]" else None
+            card = adapter.export_agent_card(
+                url=url or None,
+                skills=skills,
+            )
+            return json.dumps({"success": True, "agent_card": card})
+        except Exception as e:
+            logger.warning("jacs_get_agent_card failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_sign_artifact",
+        description="Wrap an A2A artifact with JACS provenance signature.",
+    )
+    def jacs_sign_artifact(artifact_json: str, artifact_type: str = "message") -> str:
+        """Sign an A2A artifact. artifact_json is a JSON string."""
+        try:
+            artifact = json.loads(artifact_json)
+            signed = cl.sign_artifact(artifact, artifact_type)
+            return json.dumps({"success": True, "signed_artifact": signed})
+        except Exception as e:
+            logger.warning("jacs_sign_artifact failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_verify_a2a_artifact",
+        description="Verify a JACS-wrapped A2A artifact's provenance signature.",
+    )
+    def jacs_verify_a2a_artifact(wrapped_artifact_json: str) -> str:
+        """Verify a wrapped A2A artifact. Returns verification result as JSON."""
+        try:
+            from ..a2a import JACSA2AIntegration
+
+            wrapped = json.loads(wrapped_artifact_json)
+            integration = JACSA2AIntegration(cl)
+            result = integration.verify_wrapped_artifact(wrapped)
+            return json.dumps({"success": True, **result})
+        except Exception as e:
+            logger.warning("jacs_verify_a2a_artifact failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_assess_remote_agent",
+        description=(
+            "Assess trust for a remote A2A agent card. "
+            "Policies: 'open' (accept all), 'verified' (require JACS extension), "
+            "'strict' (require trust store entry)."
+        ),
+    )
+    def jacs_assess_remote_agent(agent_card_json: str, policy: str = "verified") -> str:
+        """Assess trust for a remote agent card JSON string."""
+        try:
+            result = adapter.assess_trust(agent_card_json, policy=policy)
+            return json.dumps({
+                "success": True,
+                "jacs_registered": result["jacs_registered"],
+                "trust_level": result["trust_level"],
+                "allowed": result["allowed"],
+            })
+        except Exception as e:
+            logger.warning("jacs_assess_remote_agent failed: %s", e)
+            return _err(str(e))
+
+    return mcp_server
+
+
+# ---------------------------------------------------------------------------
+# Trust store tool registration
+# ---------------------------------------------------------------------------
+
+
+def register_trust_tools(
+    mcp_server: Any,
+    client: Optional[Any] = None,
+    config_path: Optional[str] = None,
+    strict: bool = False,
+) -> Any:
+    """Register trust store tools on a FastMCP server.
+
+    Tools registered:
+        - ``jacs_trust_agent`` — Add an agent to the trust store.
+        - ``jacs_untrust_agent`` — Remove an agent from the trust store.
+        - ``jacs_list_trusted`` — List all trusted agent IDs.
+        - ``jacs_is_trusted`` — Check if a specific agent is trusted.
+
+    Args:
+        mcp_server: A FastMCP server instance.
+        client: An existing JacsClient. If None, one is created via quickstart.
+        config_path: Path to jacs.config.json (used if no client).
+        strict: Raise on failures instead of returning error JSON.
+
+    Returns:
+        The mcp_server instance (for chaining).
+    """
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    cl = adapter.client
+
+    @mcp_server.tool(
+        name="jacs_trust_agent",
+        description="Add an agent to the local trust store by providing its agent JSON document.",
+    )
+    def jacs_trust_agent(agent_json: str) -> str:
+        """Trust an agent. Pass the full agent JSON document."""
+        try:
+            result = cl.trust_agent(agent_json)
+            return json.dumps({"success": True, "result": result})
+        except Exception as e:
+            logger.warning("jacs_trust_agent failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_untrust_agent",
+        description="Remove an agent from the local trust store by agent ID.",
+    )
+    def jacs_untrust_agent(agent_id: str) -> str:
+        """Untrust an agent by ID."""
+        try:
+            cl.untrust_agent(agent_id)
+            return json.dumps({"success": True, "agent_id": agent_id})
+        except Exception as e:
+            logger.warning("jacs_untrust_agent failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_list_trusted",
+        description="List all agent IDs in the local trust store.",
+    )
+    def jacs_list_trusted() -> str:
+        """List trusted agents."""
+        try:
+            agents = cl.list_trusted_agents()
+            return json.dumps({"success": True, "trusted_agents": agents})
+        except Exception as e:
+            logger.warning("jacs_list_trusted failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_is_trusted",
+        description="Check whether a specific agent ID is in the local trust store.",
+    )
+    def jacs_is_trusted(agent_id: str) -> str:
+        """Check trust status for an agent ID."""
+        try:
+            trusted = cl.is_trusted(agent_id)
+            return json.dumps({"success": True, "agent_id": agent_id, "trusted": trusted})
+        except Exception as e:
+            logger.warning("jacs_is_trusted failed: %s", e)
+            return _err(str(e))
+
+    return mcp_server
+
+
+# ---------------------------------------------------------------------------
 # MCP-level middleware (FastMCP 2.9+ Middleware subclass)
 # ---------------------------------------------------------------------------
 
@@ -333,6 +525,7 @@ class JacsMCPMiddleware:
         strict: bool = False,
         sign_tool_results: bool = True,
         verify_tool_inputs: bool = False,
+        a2a: bool = False,
     ) -> None:
         self._adapter = BaseJacsAdapter(
             client=client, config_path=config_path, strict=strict
@@ -340,6 +533,27 @@ class JacsMCPMiddleware:
         self._sign = sign_tool_results
         self._verify = verify_tool_inputs
         self._strict = strict
+        self._a2a = a2a
+
+    def register_tools(self, mcp_server: Any) -> Any:
+        """Register A2A and trust tools on a FastMCP server.
+
+        Only registers tools if ``a2a=True`` was passed at init.
+        Call this after constructing the middleware to add A2A tools
+        to the same server::
+
+            mw = JacsMCPMiddleware(client=client, a2a=True)
+            mw.register_tools(mcp)
+            mcp.add_middleware(mw)
+
+        Returns:
+            The mcp_server instance (for chaining).
+        """
+        if self._a2a:
+            cl = self._adapter.client
+            register_a2a_tools(mcp_server, client=cl, strict=self._strict)
+            register_trust_tools(mcp_server, client=cl, strict=self._strict)
+        return mcp_server
 
     async def on_call_tool(self, context, call_next):
         """Intercept tool calls: optionally verify input, sign output."""
@@ -372,5 +586,7 @@ class JacsMCPMiddleware:
 
 __all__ = [
     "register_jacs_tools",
+    "register_a2a_tools",
+    "register_trust_tools",
     "JacsMCPMiddleware",
 ]

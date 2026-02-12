@@ -16,7 +16,15 @@ from jacs.a2a import (
     A2AAgentCard,
     A2AAgentInterface,
     A2AAgentCardSignature,
+    _sha256_hex,
 )
+
+
+def _make_mock_client():
+    """Return a mock JacsClient with a mock _agent."""
+    client = MagicMock()
+    client._agent = MagicMock()
+    return client
 
 
 class TestJACSA2AIntegration:
@@ -24,8 +32,8 @@ class TestJACSA2AIntegration:
 
     @pytest.fixture
     def a2a_integration(self):
-        """Create A2A integration instance"""
-        return JACSA2AIntegration()
+        """Create A2A integration instance with mock client"""
+        return JACSA2AIntegration(_make_mock_client())
 
     @pytest.fixture
     def sample_agent_data(self):
@@ -181,8 +189,7 @@ class TestJACSA2AIntegration:
         assert "verify" in descriptor["endpoints"]
         assert "publicKey" in descriptor["endpoints"]
 
-    @patch('jacs.sign_request')
-    def test_wrap_artifact_with_provenance(self, mock_sign, a2a_integration):
+    def test_wrap_artifact_with_provenance(self, a2a_integration):
         """Test wrapping A2A artifact with JACS provenance"""
         artifact = {
             "taskId": "task-123",
@@ -190,8 +197,8 @@ class TestJACSA2AIntegration:
             "data": {"key": "value"}
         }
 
-        # Mock the sign_request to return a signed document
-        mock_sign.return_value = {
+        # Mock the sign_request on the client's _agent
+        signed_doc = {
             "jacsId": "wrapped-123",
             "jacsVersion": "v1",
             "jacsType": "a2a-task",
@@ -201,26 +208,26 @@ class TestJACSA2AIntegration:
                 "signature": "mock-signature"
             }
         }
+        a2a_integration.client._agent.sign_request.return_value = json.dumps(signed_doc)
 
         wrapped = a2a_integration.wrap_artifact_with_provenance(artifact, "task")
 
         assert wrapped["jacsType"] == "a2a-task"
         assert wrapped["a2aArtifact"] == artifact
         assert "jacsSignature" in wrapped
-        mock_sign.assert_called_once()
+        a2a_integration.client._agent.sign_request.assert_called_once()
 
-    @patch('jacs.sign_request')
-    def test_wrap_artifact_with_parent_signatures(self, mock_sign, a2a_integration):
+    def test_wrap_artifact_with_parent_signatures(self, a2a_integration):
         """Test wrapping artifact with parent signatures for chain of custody"""
         artifact = {"step": "step2"}
         parent_sig = {"jacsId": "parent-123", "jacsSignature": {"agentID": "parent-agent"}}
 
-        mock_sign.return_value = {
+        a2a_integration.client._agent.sign_request.return_value = json.dumps({
             "jacsId": "wrapped-456",
             "a2aArtifact": artifact,
             "jacsParentSignatures": [parent_sig],
             "jacsSignature": {"agentID": "test-agent"}
-        }
+        })
 
         wrapped = a2a_integration.wrap_artifact_with_provenance(
             artifact, "workflow-step", [parent_sig]
@@ -229,8 +236,7 @@ class TestJACSA2AIntegration:
         assert "jacsParentSignatures" in wrapped
         assert wrapped["jacsParentSignatures"] == [parent_sig]
 
-    @patch('jacs.verify_response')
-    def test_verify_wrapped_artifact(self, mock_verify, a2a_integration):
+    def test_verify_wrapped_artifact(self, a2a_integration):
         """Test verifying JACS-wrapped artifact"""
         wrapped_artifact = {
             "jacsId": "artifact-123",
@@ -244,7 +250,8 @@ class TestJACSA2AIntegration:
             }
         }
 
-        mock_verify.return_value = True
+        # verify_response returns the payload on success
+        a2a_integration.client._agent.verify_response.return_value = {"data": "test"}
 
         result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
 
@@ -254,10 +261,9 @@ class TestJACSA2AIntegration:
         assert result["artifact_type"] == "a2a-task"
         assert result["timestamp"] == "2024-01-15T10:00:00Z"
         assert result["original_artifact"] == {"data": "test"}
-        mock_verify.assert_called_once_with(wrapped_artifact)
+        a2a_integration.client._agent.verify_response.assert_called_once()
 
-    @patch('jacs.verify_response')
-    def test_verify_wrapped_artifact_with_parents(self, mock_verify, a2a_integration):
+    def test_verify_wrapped_artifact_with_parents(self, a2a_integration):
         """Test verifying artifact with parent signatures"""
         wrapped_artifact = {
             "jacsSignature": {"agentID": "agent"},
@@ -265,7 +271,8 @@ class TestJACSA2AIntegration:
             "a2aArtifact": {}
         }
 
-        mock_verify.return_value = True
+        # verify_response returns the payload on success
+        a2a_integration.client._agent.verify_response.return_value = {}
 
         result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
 
@@ -360,11 +367,8 @@ class TestJACSA2AIntegration:
         assert result["capabilities"]["extensions"][0]["uri"] == "test:ext"
         assert result["metadata"]["version"] == "1.0"
 
-    @patch('jacs.hash_string')
-    def test_generate_well_known_documents(self, mock_hash, a2a_integration):
+    def test_generate_well_known_documents(self, a2a_integration):
         """Test generating well-known documents (v0.4.0)"""
-        mock_hash.return_value = "mocked-hash"
-
         agent_card = A2AAgentCard(
             name="Test",
             description="Test",
@@ -412,7 +416,8 @@ class TestJACSA2AIntegration:
         jacs_desc = documents["/.well-known/jacs-agent.json"]
         assert jacs_desc["agentId"] == "agent-123"
         assert jacs_desc["keyAlgorithm"] == "RSA-PSS"
-        assert jacs_desc["publicKeyHash"] == "mocked-hash"
+        expected_hash = _sha256_hex("mock-public-key-b64")
+        assert jacs_desc["publicKeyHash"] == expected_hash
 
         # Verify public key document
         pubkey_doc = documents["/.well-known/jacs-pubkey.json"]

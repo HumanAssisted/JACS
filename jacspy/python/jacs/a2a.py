@@ -7,14 +7,21 @@ enabling JACS agents to participate in the Agent-to-Agent communication protocol
 Implements A2A protocol v0.4.0 (September 2025).
 """
 
+from __future__ import annotations
+
+import hashlib
 import json
-from typing import Dict, List, Optional, Any, Tuple, Set
-from dataclasses import dataclass, field, asdict
+import logging
+from typing import Dict, List, Optional, Any, TYPE_CHECKING, Set
+from dataclasses import dataclass, field
 import base64
 import uuid
 from datetime import datetime
 
-import jacs
+logger = logging.getLogger("jacs.a2a")
+
+if TYPE_CHECKING:
+    from .client import JacsClient
 
 
 # ---------------------------------------------------------------------------
@@ -103,20 +110,135 @@ class A2AAgentCard:
 # Integration Class
 # ---------------------------------------------------------------------------
 
+def _sha256_hex(data: str) -> str:
+    """Return the SHA-256 hex digest of a UTF-8 string."""
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
+
+
 class JACSA2AIntegration:
     """JACS integration with A2A protocol (v0.4.0)"""
 
     A2A_PROTOCOL_VERSION = "0.4.0"
     JACS_EXTENSION_URI = "urn:hai.ai:jacs-provenance-v1"
 
-    def __init__(self, jacs_config_path: Optional[str] = None):
-        """Initialize JACS A2A integration
+    # Algorithms actually supported by the JACS cryptographic stack.
+    SUPPORTED_ALGORITHMS = ["ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"]
+
+    VALID_TRUST_POLICIES = ("open", "verified", "strict")
+
+    def __init__(
+        self,
+        client: "JacsClient",
+        trust_policy: str = "verified",
+    ) -> None:
+        """Initialize JACS A2A integration.
 
         Args:
-            jacs_config_path: Path to JACS configuration file
+            client: A ``JacsClient`` instance that provides signing
+                and verification capabilities.
+            trust_policy: Default trust policy applied when assessing
+                remote agents. One of ``"open"``, ``"verified"``
+                (default), or ``"strict"``.
         """
-        if jacs_config_path:
-            jacs.load(jacs_config_path)
+        if trust_policy not in self.VALID_TRUST_POLICIES:
+            raise ValueError(
+                f"Invalid trust_policy: {trust_policy!r}. "
+                f"Must be one of {self.VALID_TRUST_POLICIES}."
+            )
+        self.client = client
+        self.trust_policy = trust_policy
+
+    @classmethod
+    def from_config(cls, config_path: str) -> "JACSA2AIntegration":
+        """Create an integration instance from a JACS config file.
+
+        This is a convenience factory for callers that do not yet have
+        a ``JacsClient`` instance.
+
+        Args:
+            config_path: Path to the JACS configuration file.
+
+        Returns:
+            A new ``JACSA2AIntegration`` wired to a freshly-created client.
+        """
+        from .client import JacsClient
+
+        client = JacsClient(config_path=config_path)
+        return cls(client)
+
+    @classmethod
+    def quickstart(
+        cls,
+        algorithm: Optional[str] = None,
+        config_path: Optional[str] = None,
+        url: Optional[str] = None,
+    ) -> "JACSA2AIntegration":
+        """One-liner to create a ready-to-use A2A integration.
+
+        Creates (or loads) a persistent JACS agent via
+        ``JacsClient.quickstart()`` and wires it into a new
+        ``JACSA2AIntegration``.
+
+        Example::
+
+            a2a = JACSA2AIntegration.quickstart()
+            card = a2a.export_agent_card(agent_data)
+
+        Args:
+            algorithm: Signing algorithm (default ``"pq2025"``).
+            config_path: Path to the JACS config file.
+                Defaults to ``"./jacs.config.json"``.
+            url: Default base URL stored on the integration.
+        """
+        from .client import JacsClient
+
+        client = JacsClient.quickstart(
+            algorithm=algorithm,
+            config_path=config_path,
+        )
+        integration = cls(client)
+        integration.default_url = url  # type: ignore[attr-defined]
+        return integration
+
+    def serve(self, port: int = 8000, host: str = "0.0.0.0") -> None:
+        """Start a minimal HTTP server that publishes the agent card.
+
+        Serves all five ``/.well-known/`` endpoints required for A2A
+        agent discovery.
+
+        Requires ``uvicorn`` and ``fastapi`` (install with
+        ``pip install jacs[fastapi]``).
+
+        This is a blocking call intended for quick demos and local
+        development.  For production use, use
+        :func:`jacs.a2a_server.jacs_a2a_routes` and mount the router
+        into your own ASGI application.
+
+        Args:
+            port: TCP port to listen on (default 8000).
+            host: Bind address (default ``"0.0.0.0"``).
+        """
+        from .a2a_server import serve_a2a
+
+        url = getattr(self, "default_url", None)
+        if url:
+            # Inject domain into agent data before building routes.
+            try:
+                agent_json_str = self.client._agent.get_agent_json()
+                agent_data = json.loads(agent_json_str)
+                agent_data["jacsAgentDomain"] = url
+                # Temporarily patch the agent's response for route building.
+                _orig = self.client._agent.get_agent_json
+                self.client._agent.get_agent_json = lambda: json.dumps(agent_data)
+                try:
+                    serve_a2a(self.client, port=port, host=host)
+                finally:
+                    self.client._agent.get_agent_json = _orig
+                return
+            except Exception:
+                pass  # Fall through to default
+
+        serve_a2a(self.client, port=port, host=host)
 
     def export_agent_card(self, agent_data: Dict[str, Any]) -> A2AAgentCard:
         """Export a JACS agent as an A2A Agent Card (v0.4.0)
@@ -253,7 +375,7 @@ class JACSA2AIntegration:
             "capabilities": {
                 "documentSigning": {
                     "description": "Sign documents with JACS signatures",
-                    "algorithms": ["dilithium", "falcon", "sphincs+", "rsa", "ecdsa"],
+                    "algorithms": self.SUPPORTED_ALGORITHMS,
                     "formats": ["jacs-v1", "jws-detached"]
                 },
                 "documentVerification": {
@@ -263,7 +385,10 @@ class JACSA2AIntegration:
                 },
                 "postQuantumCrypto": {
                     "description": "Support for quantum-resistant signatures",
-                    "algorithms": ["dilithium", "falcon", "sphincs+"]
+                    "algorithms": [
+                        a for a in self.SUPPORTED_ALGORITHMS
+                        if a.startswith("pq")
+                    ]
                 }
             },
             "endpoints": {
@@ -314,19 +439,177 @@ class JACSA2AIntegration:
         if parent_signatures:
             wrapped["jacsParentSignatures"] = parent_signatures
 
-        signed = jacs.sign_request(wrapped)
-        return signed
+        signed_json = self.client._agent.sign_request(wrapped)
+        return json.loads(signed_json)
 
-    def verify_wrapped_artifact(self, wrapped_artifact: Dict[str, Any]) -> Dict[str, Any]:
-        """Verify a JACS-wrapped A2A artifact
+    # Primary alias — preferred in new code.
+    sign_artifact = wrap_artifact_with_provenance
+
+    # ------------------------------------------------------------------
+    # Trust policy API
+    # ------------------------------------------------------------------
+
+    def assess_remote_agent(
+        self,
+        agent_card_json: str,
+        policy: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Assess trust for a remote A2A agent card.
+
+        Applies a trust policy against a raw Agent Card JSON string.
+        Reuses the same policy logic as
+        :func:`jacs.a2a_discovery.discover_and_assess`.
 
         Args:
-            wrapped_artifact: The wrapped artifact to verify
+            agent_card_json: JSON string of the remote Agent Card.
+            policy: Trust policy to apply. If ``None``, uses the
+                instance's ``trust_policy`` (default ``"verified"``).
 
         Returns:
-            Verification result dictionary
+            A dict with::
+
+                {
+                    "card": <parsed card dict>,
+                    "jacs_registered": bool,
+                    "trust_level": "untrusted" | "jacs_registered" | "trusted",
+                    "allowed": bool,
+                }
+
+        Raises:
+            ValueError: If *policy* is not a valid value.
         """
-        return self._verify_wrapped_artifact_internal(wrapped_artifact, set())
+        from .a2a_discovery import _has_jacs_extension, _extract_agent_id
+
+        effective_policy = policy or self.trust_policy
+        if effective_policy not in self.VALID_TRUST_POLICIES:
+            raise ValueError(
+                f"Invalid trust policy: {effective_policy!r}. "
+                f"Must be one of {self.VALID_TRUST_POLICIES}."
+            )
+
+        card = json.loads(agent_card_json)
+        jacs_registered = _has_jacs_extension(card)
+
+        trust_level = "untrusted"
+        if jacs_registered:
+            trust_level = "jacs_registered"
+
+        if effective_policy == "strict":
+            agent_id = _extract_agent_id(card)
+            if agent_id:
+                try:
+                    if self.client.is_trusted(agent_id):
+                        trust_level = "trusted"
+                except Exception:
+                    logger.debug("Trust store lookup failed for %s", agent_id)
+
+        if effective_policy == "open":
+            allowed = True
+        elif effective_policy == "verified":
+            allowed = jacs_registered
+        elif effective_policy == "strict":
+            allowed = trust_level == "trusted"
+        else:
+            allowed = False
+
+        return {
+            "card": card,
+            "jacs_registered": jacs_registered,
+            "trust_level": trust_level,
+            "allowed": allowed,
+        }
+
+    def trust_a2a_agent(self, agent_card_json: str) -> str:
+        """Add a remote A2A agent to the local trust store.
+
+        Extracts the agent document from the card's metadata and
+        delegates to :meth:`JacsClient.trust_agent`.
+
+        Args:
+            agent_card_json: JSON string of the remote Agent Card.
+
+        Returns:
+            Result string from the trust store operation.
+
+        Raises:
+            ValueError: If the card has no ``jacsId`` in metadata.
+        """
+        from .a2a_discovery import _extract_agent_id
+
+        card = json.loads(agent_card_json)
+        agent_id = _extract_agent_id(card)
+        if not agent_id:
+            raise ValueError(
+                "Cannot trust agent: card has no jacsId in metadata."
+            )
+
+        # Build a minimal agent document for the trust store.
+        # The trust store needs the full agent JSON, but an Agent Card
+        # only carries metadata.  We pass the card as-is — the trust
+        # store will index it by jacsId.
+        return self.client.trust_agent(agent_card_json)
+
+    def verify_wrapped_artifact(
+        self,
+        wrapped_artifact: Dict[str, Any],
+        assess_trust: bool = False,
+        trust_policy: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Verify a JACS-wrapped A2A artifact.
+
+        Args:
+            wrapped_artifact: The wrapped artifact to verify.
+            assess_trust: If ``True``, include a trust assessment of the
+                signer in the result.  Requires that the artifact's
+                signer published an Agent Card with JACS metadata.
+            trust_policy: Policy for the trust assessment.  Defaults to
+                the instance's ``trust_policy``.
+
+        Returns:
+            Verification result dictionary.  When ``assess_trust`` is
+            ``True``, includes an extra ``trust`` key with the
+            assessment result.
+        """
+        result = self._verify_wrapped_artifact_internal(wrapped_artifact, set())
+
+        if assess_trust:
+            sig_info = wrapped_artifact.get("jacsSignature", {})
+            signer_id = sig_info.get("agentID", "")
+            # Build a synthetic card from the artifact's signature info
+            # so the assessment logic can evaluate it.
+            synthetic_card: Dict[str, Any] = {
+                "name": signer_id or "unknown",
+                "capabilities": {},
+                "metadata": {},
+            }
+            if signer_id:
+                synthetic_card["metadata"]["jacsId"] = signer_id
+
+            # Check if the wrapped artifact itself declares JACS provenance
+            if wrapped_artifact.get("jacsType", "").startswith("a2a-"):
+                synthetic_card["capabilities"]["extensions"] = [
+                    {"uri": self.JACS_EXTENSION_URI}
+                ]
+
+            try:
+                trust_result = self.assess_remote_agent(
+                    json.dumps(synthetic_card),
+                    policy=trust_policy,
+                )
+                result["trust"] = {
+                    "jacs_registered": trust_result["jacs_registered"],
+                    "trust_level": trust_result["trust_level"],
+                    "allowed": trust_result["allowed"],
+                }
+            except Exception as e:
+                result["trust"] = {
+                    "jacs_registered": False,
+                    "trust_level": "untrusted",
+                    "allowed": False,
+                    "error": str(e),
+                }
+
+        return result
 
     def create_chain_of_custody(self, artifacts: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Create a chain of custody document for multi-agent workflows
@@ -420,7 +703,7 @@ class JACSA2AIntegration:
             "agentId": agent_data.get("jacsId"),
             "agentVersion": agent_data.get("jacsVersion"),
             "agentType": agent_data.get("jacsAgentType"),
-            "publicKeyHash": jacs.hash_string(public_key_b64),
+            "publicKeyHash": _sha256_hex(public_key_b64),
             "keyAlgorithm": key_algorithm,
             "capabilities": {
                 "signing": True,
@@ -442,7 +725,7 @@ class JACSA2AIntegration:
         # 4. JACS Public Key
         documents["/.well-known/jacs-pubkey.json"] = {
             "publicKey": public_key_b64,
-            "publicKeyHash": jacs.hash_string(public_key_b64),
+            "publicKeyHash": _sha256_hex(public_key_b64),
             "algorithm": key_algorithm,
             "agentId": agent_data.get("jacsId"),
             "agentVersion": agent_data.get("jacsVersion"),
@@ -466,10 +749,15 @@ class JACSA2AIntegration:
             visited.add(artifact_id)
 
         try:
-            is_valid = jacs.verify_response(wrapped_artifact)
+            try:
+                self.client._agent.verify_response(json.dumps(wrapped_artifact))
+                is_valid = True
+            except Exception:
+                is_valid = False
+
             signature_info = wrapped_artifact.get("jacsSignature", {})
 
-            result = {
+            result: Dict[str, Any] = {
                 "valid": is_valid,
                 "signer_id": signature_info.get("agentID", "unknown"),
                 "signer_version": signature_info.get("agentVersion", "unknown"),
@@ -592,9 +880,10 @@ class JACSA2AIntegration:
 # Example usage functions
 def example_basic_usage():
     """Basic example of using JACS A2A integration (v0.4.0)"""
+    from .client import JacsClient
 
-    jacs.load("jacs.config.json")
-    a2a = JACSA2AIntegration()
+    client = JacsClient("jacs.config.json")
+    a2a = JACSA2AIntegration(client)
 
     agent_data = {
         "jacsId": "example-agent-123",
@@ -653,7 +942,7 @@ if __name__ == "__main__":
     agent_card, wrapped_task = example_basic_usage()
 
     print("\n=== Agent Card JSON ===")
-    a2a = JACSA2AIntegration()
+    a2a = JACSA2AIntegration.from_config("jacs.config.json")
     print(json.dumps(a2a.agent_card_to_dict(agent_card), indent=2))
 
     print("\n=== Wrapped Task JSON ===")
