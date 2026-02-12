@@ -1,0 +1,59 @@
+{
+  "name": "Unnamed Agent",
+  "description": "JACS-enabled agent",
+  "version": "81c74b7c-d9be-4929-b031-c66d53a7dd02",
+  "protocolVersions": [
+    "0.4.0"
+  ],
+  "supportedInterfaces": [
+    {
+      "url": "https://agent-208bfeb7-fffd-4b4b-9ca8-db9be7d57adf.jacs.localhost",
+      "protocolBinding": "jsonrpc"
+    }
+  ],
+  "defaultInputModes": [
+    "text/plain",
+    "application/json"
+  ],
+  "defaultOutputModes": [
+    "text/plain",
+    "application/json"
+  ],
+  "capabilities": {
+    "extensions": [
+      {
+        "uri": "urn:hai.ai:jacs-provenance-v1",
+        "description": "JACS cryptographic document signing (sacred, irreversible commitment) and verification. Signing creates permanent, non-repudiable proof.",
+        "required": false
+      }
+    ]
+  },
+  "skills": [
+    {
+      "id": "describe-a-service-the-agent-provides",
+      "name": "Describe a service the agent provides",
+      "description": "Describe a service the agent provides",
+      "tags": [
+        "jacs",
+        "describe-a-service-the-agent-provides"
+      ]
+    }
+  ],
+  "securitySchemes": {
+    "api-key": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "X-API-Key"
+    },
+    "bearer-jwt": {
+      "type": "http",
+      "scheme": "Bearer",
+      "bearer_format": "JWT"
+    }
+  },
+  "metadata": {
+    "jacsAgentType": "ai",
+    "jacsId": "208bfeb7-fffd-4b4b-9ca8-db9be7d57adf",
+    "jacsVersion": "81c74b7c-d9be-4929-b031-c66d53a7dd02"
+  }
+}
