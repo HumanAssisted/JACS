@@ -455,7 +455,8 @@ See [`examples/multi_agent_agreement.ts`](./examples/multi_agent_agreement.ts) f
 
 ## A2A Protocol Support
 
-Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/google/A2A) protocol with cryptographic trust built in.
+Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/a2aproject/A2A) protocol with cryptographic trust built in.
+For A2A security, JACS is an OAuth alternative for service-to-service agent trust (mTLS-like at the payload layer), not a replacement for OAuth/OIDC delegated user authorization.
 
 ### Quick Start
 
@@ -484,7 +485,7 @@ const card = a2a.exportAgentCard(agentData);
 const signed = await a2a.signArtifact({ taskId: 't-1', operation: 'classify' }, 'task');
 
 // Verify a received artifact
-const result = a2a.verifyWrappedArtifact(signed);
+const result = await a2a.verifyWrappedArtifact(signed);
 console.log(result.valid);
 
 // Build chain of custody across agents
@@ -493,6 +494,8 @@ const step2 = await a2a.signArtifact(
   [signed],  // parent signatures
 );
 ```
+
+When using `a2a.listen(0)`, Node picks a free port automatically. Use `server.address().port` if you need to read it programmatically.
 
 ### Trust Policies
 

@@ -232,7 +232,15 @@ export class A2AAgentCard {
 // =============================================================================
 
 export interface ArtifactVerificationResult {
-  valid: boolean | object;
+  valid: boolean;
+  /**
+   * Extracted payload returned by native verifyResponse() when available.
+   */
+  verifiedPayload?: Record<string, unknown>;
+  /**
+   * Backward-compatibility field for one release: raw native verifyResponse() output.
+   */
+  verificationResult?: boolean | Record<string, unknown>;
   signerId: string;
   signerVersion: string;
   artifactType: string;
@@ -335,6 +343,11 @@ export class JACSA2AIntegration {
     return integration;
   }
 
+  /**
+   * Start a minimal Express discovery server for this agent.
+   *
+   * Pass `port = 0` to let the OS pick an available ephemeral port.
+   */
   listen(port: number = 8080): Server {
     let express: any;
     try {
@@ -380,8 +393,11 @@ export class JACSA2AIntegration {
     });
 
     const server = app.listen(port, () => {
+      const address = server.address();
+      const boundPort = typeof address === 'object' && address ? address.port : port;
+      const requested = port === 0 ? ' (requested random port)' : '';
       console.log(
-        `Your agent is discoverable at http://localhost:${port}/.well-known/agent-card.json`,
+        `Your agent is discoverable at http://localhost:${boundPort}/.well-known/agent-card.json${requested}`,
       );
     });
 
@@ -682,6 +698,38 @@ export class JACSA2AIntegration {
     return extensions.some((ext) => ext && ext.uri === JACS_EXTENSION_URI);
   }
 
+  private _normalizeVerifyResponse(
+    rawVerificationResult: unknown,
+  ): {
+    valid: boolean;
+    verifiedPayload?: Record<string, unknown>;
+    verificationResult: boolean | Record<string, unknown>;
+  } {
+    if (typeof rawVerificationResult === 'boolean') {
+      return {
+        valid: rawVerificationResult,
+        verificationResult: rawVerificationResult,
+      };
+    }
+
+    if (rawVerificationResult && typeof rawVerificationResult === 'object') {
+      const rawObj = rawVerificationResult as Record<string, unknown>;
+      const payload = rawObj.payload;
+      return {
+        valid: true,
+        verifiedPayload: payload && typeof payload === 'object'
+          ? payload as Record<string, unknown>
+          : undefined,
+        verificationResult: rawObj,
+      };
+    }
+
+    return {
+      valid: false,
+      verificationResult: false,
+    };
+  }
+
   private _verifyWrappedArtifactInternal(
     wrappedArtifact: Record<string, unknown>,
     visited: Set<string>,
@@ -695,17 +743,31 @@ export class JACSA2AIntegration {
     }
 
     try {
-      const isValid = (this.client as any)._agent.verifyResponse(JSON.stringify(wrappedArtifact));
+      const rawVerificationResult = (this.client as any)._agent.verifyResponse(
+        JSON.stringify(wrappedArtifact),
+      );
+      const normalized = this._normalizeVerifyResponse(rawVerificationResult);
       const signatureInfo = (wrappedArtifact.jacsSignature || {}) as Record<string, unknown>;
+      const payload = wrappedArtifact.jacs_payload && typeof wrappedArtifact.jacs_payload === 'object'
+        ? wrappedArtifact.jacs_payload as Record<string, unknown>
+        : null;
 
       const result: ArtifactVerificationResult = {
-        valid: isValid,
+        valid: normalized.valid,
+        verificationResult: normalized.verificationResult,
         signerId: (signatureInfo.agentID as string) || 'unknown',
         signerVersion: (signatureInfo.agentVersion as string) || 'unknown',
         artifactType: (wrappedArtifact.jacsType as string) || 'unknown',
         timestamp: (wrappedArtifact.jacsVersionDate as string) || '',
-        originalArtifact: (wrappedArtifact.a2aArtifact || {}) as Record<string, unknown>,
+        originalArtifact: (
+          wrappedArtifact.a2aArtifact
+          || payload?.a2aArtifact
+          || {}
+        ) as Record<string, unknown>,
       };
+      if (normalized.verifiedPayload) {
+        result.verifiedPayload = normalized.verifiedPayload;
+      }
 
       const parents = wrappedArtifact.jacsParentSignatures as Record<string, unknown>[] | undefined;
       if (Array.isArray(parents) && parents.length > 0) {

@@ -89,6 +89,29 @@ function normalizeDocumentInput(document) {
     }
     return JSON.stringify(document);
 }
+function normalizeA2AVerificationResult(rawVerificationResult) {
+    if (typeof rawVerificationResult === 'boolean') {
+        return {
+            valid: rawVerificationResult,
+            verificationResult: rawVerificationResult,
+        };
+    }
+    if (rawVerificationResult && typeof rawVerificationResult === 'object') {
+        const rawObj = rawVerificationResult;
+        const payload = rawObj.payload;
+        return {
+            valid: true,
+            verifiedPayload: payload && typeof payload === 'object'
+                ? payload
+                : undefined,
+            verificationResult: rawObj,
+        };
+    }
+    return {
+        valid: false,
+        verificationResult: false,
+    };
+}
 function extractAgentInfo(resolvedConfigPath) {
     const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
     const agentIdVersion = config.jacs_agent_id_and_version || '';
@@ -622,17 +645,26 @@ class JacsClient {
         const doc = typeof wrappedArtifact === 'string'
             ? JSON.parse(wrappedArtifact)
             : wrappedArtifact;
+        const payload = doc.jacs_payload && typeof doc.jacs_payload === 'object'
+            ? doc.jacs_payload
+            : null;
         try {
-            const isValid = agent.verifyResponse(docString);
+            const rawVerificationResult = agent.verifyResponse(docString);
+            const normalized = normalizeA2AVerificationResult(rawVerificationResult);
             const sig = doc.jacsSignature || {};
-            return {
-                valid: isValid,
+            const result = {
+                valid: normalized.valid,
+                verificationResult: normalized.verificationResult,
                 signerId: sig.agentID || 'unknown',
                 signerVersion: sig.agentVersion || 'unknown',
                 artifactType: doc.jacsType || 'unknown',
                 timestamp: doc.jacsVersionDate || '',
-                originalArtifact: doc.a2aArtifact || {},
+                originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
             };
+            if (normalized.verifiedPayload) {
+                result.verifiedPayload = normalized.verifiedPayload;
+            }
+            return result;
         }
         catch (e) {
             if (this._strict)
@@ -640,11 +672,12 @@ class JacsClient {
             const sig = doc.jacsSignature || {};
             return {
                 valid: false,
+                verificationResult: false,
                 signerId: sig.agentID || 'unknown',
                 signerVersion: sig.agentVersion || 'unknown',
                 artifactType: doc.jacsType || 'unknown',
                 timestamp: doc.jacsVersionDate || '',
-                originalArtifact: doc.a2aArtifact || {},
+                originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
                 error: String(e),
             };
         }

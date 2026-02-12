@@ -207,7 +207,7 @@ class JACSA2AIntegration:
         agent discovery.
 
         Requires ``uvicorn`` and ``fastapi`` (install with
-        ``pip install jacs[fastapi]``).
+        ``pip install jacs[a2a-server]``).
 
         This is a blocking call intended for quick demos and local
         development.  For production use, use
@@ -478,45 +478,20 @@ class JACSA2AIntegration:
         Raises:
             ValueError: If *policy* is not a valid value.
         """
-        from .a2a_discovery import _has_jacs_extension, _extract_agent_id
+        from .a2a_discovery import _evaluate_trust_policy, _validate_trust_policy
 
-        effective_policy = policy or self.trust_policy
-        if effective_policy not in self.VALID_TRUST_POLICIES:
-            raise ValueError(
-                f"Invalid trust policy: {effective_policy!r}. "
-                f"Must be one of {self.VALID_TRUST_POLICIES}."
-            )
+        effective_policy = _validate_trust_policy(policy or self.trust_policy)
 
         card = json.loads(agent_card_json)
-        jacs_registered = _has_jacs_extension(card)
-
-        trust_level = "untrusted"
-        if jacs_registered:
-            trust_level = "jacs_registered"
-
-        if effective_policy == "strict":
-            agent_id = _extract_agent_id(card)
-            if agent_id:
-                try:
-                    if self.client.is_trusted(agent_id):
-                        trust_level = "trusted"
-                except Exception:
-                    logger.debug("Trust store lookup failed for %s", agent_id)
-
-        if effective_policy == "open":
-            allowed = True
-        elif effective_policy == "verified":
-            allowed = jacs_registered
-        elif effective_policy == "strict":
-            allowed = trust_level == "trusted"
-        else:
-            allowed = False
+        trust = _evaluate_trust_policy(
+            card,
+            policy=effective_policy,
+            is_trusted=getattr(self.client, "is_trusted", None),
+        )
 
         return {
             "card": card,
-            "jacs_registered": jacs_registered,
-            "trust_level": trust_level,
-            "allowed": allowed,
+            **trust,
         }
 
     def trust_a2a_agent(self, agent_card_json: str) -> str:

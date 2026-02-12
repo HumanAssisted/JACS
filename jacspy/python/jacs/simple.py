@@ -513,6 +513,55 @@ class _EphemeralAgentAdapter:
             result = self._native.sign_message(data)
         return result.get("raw", "")
 
+    @staticmethod
+    def _unwrap_jacs_payload(data):
+        """Extract original request payload from JACS wrapper structures."""
+        if not isinstance(data, dict):
+            return data
+
+        if "jacs_payload" in data:
+            return data.get("jacs_payload")
+
+        jacs_document = data.get("jacsDocument")
+        if isinstance(jacs_document, dict) and "jacs_payload" in jacs_document:
+            return jacs_document.get("jacs_payload")
+
+        payload = data.get("payload")
+        if isinstance(payload, dict) and "jacs_payload" in payload:
+            return payload.get("jacs_payload")
+
+        return data
+
+    def sign_request(self, payload):
+        """JacsAgent-compatible request signing used by A2A integration."""
+        result = self._native.sign_message({"jacs_payload": payload})
+
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            raw = result.get("raw") or result.get("raw_json")
+            if isinstance(raw, str):
+                return raw
+        raise RuntimeError("Ephemeral sign_request returned an unexpected result shape")
+
+    def verify_response(self, document_string):
+        """JacsAgent-compatible response verification used by A2A integration."""
+        result = self._native.verify(document_string)
+        if not isinstance(result, dict):
+            raise RuntimeError("Ephemeral verify_response returned an unexpected result shape")
+
+        if not result.get("valid", False):
+            errors = result.get("errors")
+            if isinstance(errors, list) and errors:
+                message = "; ".join(str(e) for e in errors)
+            elif errors:
+                message = str(errors)
+            else:
+                message = "signature verification failed"
+            raise RuntimeError(message)
+
+        return self._unwrap_jacs_payload(result.get("data"))
+
     def verify_document(self, document_string):
         """Delegate to SimpleAgent.verify()."""
         result = self._native.verify(document_string)

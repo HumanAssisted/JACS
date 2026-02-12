@@ -225,42 +225,18 @@ class BaseJacsAdapter:
         Raises:
             ValueError: If *policy* is not a valid value.
         """
-        from ..a2a_discovery import _has_jacs_extension, _extract_agent_id
+        from ..a2a_discovery import _evaluate_trust_policy, _validate_trust_policy
 
-        if policy not in ("open", "verified", "strict"):
-            raise ValueError(
-                f"Invalid trust policy: {policy!r}. "
-                "Must be 'open', 'verified', or 'strict'."
-            )
+        effective_policy = _validate_trust_policy(policy)
 
         card = json.loads(agent_card_json)
-        jacs_registered = _has_jacs_extension(card)
-
-        trust_level = "untrusted"
-        if jacs_registered:
-            trust_level = "jacs_registered"
-
-        if policy == "strict":
-            agent_id = _extract_agent_id(card)
-            if agent_id:
-                try:
-                    if self._client.is_trusted(agent_id):
-                        trust_level = "trusted"
-                except Exception:
-                    logger.debug("Trust store lookup failed for %s", agent_id)
-
-        if policy == "open":
-            allowed = True
-        elif policy == "verified":
-            allowed = jacs_registered
-        elif policy == "strict":
-            allowed = trust_level == "trusted"
-        else:
-            allowed = False
+        trust = _evaluate_trust_policy(
+            card,
+            policy=effective_policy,
+            is_trusted=getattr(self._client, "is_trusted", None),
+        )
 
         return {
             "card": card,
-            "jacs_registered": jacs_registered,
-            "trust_level": trust_level,
-            "allowed": allowed,
+            **trust,
         }

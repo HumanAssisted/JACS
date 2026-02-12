@@ -273,6 +273,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       const result = await a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 
       expect(result.valid).to.be.true;
+      expect(typeof result.valid).to.equal('boolean');
       expect(result.signerId).to.equal('signer-agent');
       expect(result.signerVersion).to.equal('v1.0');
       expect(result.artifactType).to.equal('a2a-task');
@@ -282,6 +283,29 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       expect(mockClient._agent.verifyResponse.calledOnce).to.be.true;
       const arg = mockClient._agent.verifyResponse.firstCall.args[0];
       expect(typeof arg).to.equal('string');
+    });
+
+    it('should coerce object verifyResponse results to boolean and expose payload', async () => {
+      const wrappedArtifact = {
+        jacsId: 'artifact-obj-verify',
+        jacsType: 'a2a-task',
+        jacsVersionDate: '2024-01-15T10:00:00Z',
+        a2aArtifact: { data: 'test' },
+        jacsSignature: {
+          agentID: 'signer-agent',
+          agentVersion: 'v1.0',
+        },
+      };
+
+      const nativeResult = { payload: { ok: true, source: 'native' } };
+      mockClient._agent.verifyResponse.returns(nativeResult);
+
+      const result = await a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
+
+      expect(result.valid).to.equal(true);
+      expect(typeof result.valid).to.equal('boolean');
+      expect(result.verifiedPayload).to.deep.equal(nativeResult.payload);
+      expect(result.verificationResult).to.deep.equal(nativeResult);
     });
 
     it('should handle artifacts with parent signatures', async () => {

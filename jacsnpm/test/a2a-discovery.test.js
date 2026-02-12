@@ -218,12 +218,16 @@ describe('A2A Discovery Client - [2.3.3]', function () {
   // -------------------------------------------------------------------------
   describe('discoverAndAssess()', () => {
     it('should return jacs_registered for a JACS agent', async () => {
-      const result = await discoverAndAssess(`http://localhost:${jacsServer.port}`);
+      const result = await discoverAndAssess(`http://localhost:${jacsServer.port}`, {
+        policy: 'verified',
+      });
 
       expect(result.card).to.be.an('object');
       expect(result.card.name).to.equal('JACS Agent');
       expect(result.jacsRegistered).to.be.true;
       expect(result.trustLevel).to.equal('jacs_registered');
+      expect(result.allowed).to.equal(true);
+      expect(result.inTrustStore).to.equal(false);
     });
   });
 
@@ -253,16 +257,81 @@ describe('A2A Discovery Client - [2.3.3]', function () {
     });
 
     it('should return untrusted for a non-JACS agent', async () => {
-      const result = await discoverAndAssess(`http://localhost:${nonJacsServer.port}`);
+      const result = await discoverAndAssess(`http://localhost:${nonJacsServer.port}`, {
+        policy: 'verified',
+      });
 
       expect(result.card.name).to.equal('Plain A2A Agent');
       expect(result.jacsRegistered).to.be.false;
       expect(result.trustLevel).to.equal('untrusted');
+      expect(result.allowed).to.equal(false);
+      expect(result.inTrustStore).to.equal(false);
+    });
+
+    it('should allow a non-JACS agent under open policy', async () => {
+      const result = await discoverAndAssess(`http://localhost:${nonJacsServer.port}`, {
+        policy: 'open',
+      });
+
+      expect(result.jacsRegistered).to.equal(false);
+      expect(result.trustLevel).to.equal('untrusted');
+      expect(result.allowed).to.equal(true);
+      expect(result.inTrustStore).to.equal(false);
     });
   });
 
   // -------------------------------------------------------------------------
-  // 9. discoverAndAssess - propagates errors
+  // 9. discoverAndAssess - strict trust policy
+  // -------------------------------------------------------------------------
+  describe('discoverAndAssess() - strict policy', () => {
+    it('should reject a jacs_registered agent when not in trust store', async () => {
+      const client = {
+        isTrusted: sinon.stub().returns(false),
+      };
+
+      const result = await discoverAndAssess(`http://localhost:${jacsServer.port}`, {
+        policy: 'strict',
+        client,
+      });
+
+      expect(client.isTrusted.called).to.equal(true);
+      expect(result.jacsRegistered).to.equal(true);
+      expect(result.inTrustStore).to.equal(false);
+      expect(result.trustLevel).to.equal('jacs_registered');
+      expect(result.allowed).to.equal(false);
+    });
+
+    it('should allow a trusted agent under strict policy', async () => {
+      const client = {
+        isTrusted: sinon.stub().returns(true),
+      };
+
+      const result = await discoverAndAssess(`http://localhost:${jacsServer.port}`, {
+        policy: 'strict',
+        client,
+      });
+
+      expect(client.isTrusted.called).to.equal(true);
+      expect(result.jacsRegistered).to.equal(true);
+      expect(result.inTrustStore).to.equal(true);
+      expect(result.trustLevel).to.equal('trusted');
+      expect(result.allowed).to.equal(true);
+    });
+
+    it('should throw on invalid trust policy', async () => {
+      try {
+        await discoverAndAssess(`http://localhost:${jacsServer.port}`, {
+          policy: 'nope',
+        });
+        expect.fail('Should have thrown');
+      } catch (err) {
+        expect(err.message).to.match(/Invalid trust policy/i);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. discoverAndAssess - propagates errors
   // -------------------------------------------------------------------------
   describe('discoverAndAssess() - error propagation', () => {
     it('should throw when agent is unreachable', async () => {

@@ -12,11 +12,12 @@
  * console.log(card.name, card.skills);
  *
  * const result = await discoverAndAssess('https://agent.example.com');
- * console.log(result.jacsRegistered, result.trustLevel);
+ * console.log(result.allowed, result.trustLevel);
  * ```
  */
 
 const { JACS_EXTENSION_URI } = require('./a2a');
+const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
 
 /**
  * Fetch and parse a remote agent's A2A Agent Card.
@@ -90,29 +91,139 @@ function hasJacsExtension(card) {
 }
 
 /**
+ * Extract jacsId from Agent Card metadata.
+ *
+ * @param {Object} card - Parsed Agent Card
+ * @returns {string|null}
+ */
+function extractAgentId(card) {
+  const metadata = card && card.metadata;
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+  const jacsId = metadata.jacsId;
+  return jacsId ? String(jacsId) : null;
+}
+
+/**
+ * Evaluate trust store membership for an agent ID.
+ *
+ * @param {string|null} agentId
+ * @param {Object} options
+ * @returns {boolean}
+ */
+function evaluateTrustStore(agentId, options = {}) {
+  if (!agentId) return false;
+
+  // Custom hook takes precedence.
+  if (typeof options.trustStoreEvaluator === 'function') {
+    try {
+      return !!options.trustStoreEvaluator(agentId);
+    } catch {
+      return false;
+    }
+  }
+
+  // Lightweight hook for callers that only need trust lookup.
+  if (typeof options.isTrusted === 'function') {
+    try {
+      return !!options.isTrusted(agentId);
+    } catch {
+      return false;
+    }
+  }
+
+  // JacsClient-compatible hook.
+  if (options.client && typeof options.client.isTrusted === 'function') {
+    try {
+      return !!options.client.isTrusted(agentId);
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Resolve trust policy from options and validate it.
+ *
+ * @param {Object} options
+ * @returns {'open'|'verified'|'strict'}
+ */
+function resolveTrustPolicy(options = {}) {
+  const policy = options.policy || options.trustPolicy || 'verified';
+  if (!VALID_TRUST_POLICIES.includes(policy)) {
+    throw new Error(
+      `Invalid trust policy: ${policy}. Must be one of ${VALID_TRUST_POLICIES.join(', ')}`
+    );
+  }
+  return policy;
+}
+
+/**
  * Discover a remote agent and assess its JACS trust level.
  *
  * Trust levels:
- * - `jacs_registered`: Agent Card declares the JACS extension
+ * - `trusted`: Agent Card declares JACS extension and is in local trust store
+ * - `jacs_registered`: Agent Card declares JACS extension
  * - `untrusted`: Valid A2A card but no JACS extension
- *
- * Future: Phase 2.2.4 will add full trust policy assessment
- * (signature verification, trust store lookup, etc.)
  *
  * @param {string} url - Base URL of the agent
  * @param {Object} [options]
  * @param {number} [options.timeoutMs=10000] - Request timeout in milliseconds
- * @returns {Promise<{card: Object, jacsRegistered: boolean, trustLevel: string}>}
+ * @param {'open'|'verified'|'strict'} [options.policy='verified'] - Trust policy
+ * @param {'open'|'verified'|'strict'} [options.trustPolicy='verified'] - Alias for policy
+ * @param {Object} [options.client] - Optional JacsClient-like object with isTrusted(agentId)
+ * @param {(agentId: string) => boolean} [options.trustStoreEvaluator] - Optional trust lookup hook
+ * @param {(agentId: string) => boolean} [options.isTrusted] - Optional shorthand trust lookup hook
+ * @returns {Promise<{
+ *   card: Object,
+ *   jacsRegistered: boolean,
+ *   trustLevel: 'trusted'|'jacs_registered'|'untrusted',
+ *   allowed: boolean,
+ *   inTrustStore: boolean,
+ *   policy: 'open'|'verified'|'strict',
+ *   agentId: string|null,
+ * }>}
  * @throws {Error} If the agent is unreachable or returns invalid data
  */
 async function discoverAndAssess(url, options = {}) {
+  const policy = resolveTrustPolicy(options);
   const card = await discoverAgent(url, options);
   const jacsRegistered = hasJacsExtension(card);
+  const agentId = extractAgentId(card);
+  const inTrustStore = jacsRegistered
+    ? evaluateTrustStore(agentId, options)
+    : false;
+  const trustLevel = inTrustStore
+    ? 'trusted'
+    : (jacsRegistered ? 'jacs_registered' : 'untrusted');
+
+  let allowed = false;
+  switch (policy) {
+    case 'open':
+      allowed = true;
+      break;
+    case 'verified':
+      allowed = jacsRegistered;
+      break;
+    case 'strict':
+      allowed = inTrustStore;
+      break;
+    default:
+      allowed = false;
+      break;
+  }
 
   return {
     card,
     jacsRegistered,
-    trustLevel: jacsRegistered ? 'jacs_registered' : 'untrusted',
+    trustLevel,
+    allowed,
+    inTrustStore,
+    policy,
+    agentId,
   };
 }
 
@@ -120,4 +231,6 @@ module.exports = {
   discoverAgent,
   discoverAndAssess,
   hasJacsExtension,
+  extractAgentId,
+  VALID_TRUST_POLICIES,
 };

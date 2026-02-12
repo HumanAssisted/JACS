@@ -33,6 +33,23 @@ export interface JacsClientOptions {
     algorithm?: string;
     strict?: boolean;
 }
+export interface ClientArtifactVerificationResult {
+    valid: boolean;
+    /**
+     * Extracted payload returned by native verifyResponse() when available.
+     */
+    verifiedPayload?: Record<string, unknown>;
+    /**
+     * Backward-compatibility field for one release: raw native verifyResponse() output.
+     */
+    verificationResult?: boolean | Record<string, unknown>;
+    signerId: string;
+    signerVersion: string;
+    artifactType: string;
+    timestamp: string;
+    originalArtifact: Record<string, unknown>;
+    error?: string;
+}
 export declare class JacsClient {
     private agent;
     private info;
@@ -133,7 +150,7 @@ export declare class JacsClient {
      *
      * @param wrappedArtifact - The signed artifact (string or object).
      */
-    verifyArtifact(wrappedArtifact: string | Record<string, unknown>): Promise<Record<string, unknown>>;
+    verifyArtifact(wrappedArtifact: string | Record<string, unknown>): Promise<ClientArtifactVerificationResult>;
     /**
      * Generate .well-known documents for A2A discovery.
      *

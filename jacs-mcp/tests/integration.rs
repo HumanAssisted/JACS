@@ -76,31 +76,57 @@ fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
     (cfg_path, base)
 }
 
-#[test]
-fn starts_server_with_agent_env() {
+fn run_server_with_fixture(extra_env: &[(&str, &str)]) -> (std::process::Output, PathBuf) {
     let (config, base) = prepare_temp_workspace();
 
-    // The MCP server reads from stdin; an empty stdin causes it to exit cleanly.
     let bin_path = assert_cmd::cargo::cargo_bin("jacs-mcp");
-    let output = std::process::Command::new(&bin_path)
+    let mut command = std::process::Command::new(&bin_path);
+    command
         .current_dir(&base)
         .env("JACS_CONFIG", &config)
         .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .expect("failed to run jacs-mcp");
+        .stderr(std::process::Stdio::piped());
 
+    for (k, v) in extra_env {
+        command.env(k, v);
+    }
+
+    let output = command.output().expect("failed to run jacs-mcp");
+    (output, base)
+}
+
+fn assert_server_reaches_initialized_request(output: &std::process::Output, context: &str) {
     let stderr = String::from_utf8_lossy(&output.stderr);
-    // The server exits non-zero when stdin closes (no MCP client connected).
-    // Success means the agent loaded and the server reached the "ready" state.
+    let reached_initialized_request = stderr.contains("connection closed: initialized request");
     assert!(
-        stderr.contains("Agent loaded successfully"),
-        "Expected agent to load successfully.\nExit code: {:?}\nstderr:\n{}",
+        reached_initialized_request,
+        "Expected server to reach initialized-request state ({context}).\n\
+         Exit code: {:?}\n\
+         stdout:\n{}\n\
+         stderr:\n{}",
         output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
         stderr
     );
+
+    // Ensure startup did not fail due to config / agent boot errors.
+    let had_startup_failure = stderr.contains("JACS_CONFIG environment variable is not set")
+        || stderr.contains("Config file not found")
+        || stderr.contains("Failed to load agent");
+    assert!(
+        !had_startup_failure,
+        "Server reported startup failure ({context}).\nstderr:\n{}",
+        stderr
+    );
+}
+
+#[test]
+fn starts_server_with_agent_env() {
+    let (output, base) = run_server_with_fixture(&[]);
+    assert_server_reaches_initialized_request(&output, "default log environment");
+    let _ = fs::remove_dir_all(&base);
 }
 
 #[test]
@@ -187,30 +213,14 @@ fn trust_agent_rejects_empty() {
     );
 }
 
-/// Verify the MCP server binary includes trust tool names in --help or tool listing.
-/// This test starts the server with stdin closed and checks stderr for the agent load message,
-/// confirming the 5 new trust tools are compiled in.
+/// Smoke-test server startup with trust tools compiled under explicit RUST_LOG settings.
+/// This avoids brittle assertions on info-level log lines while still verifying
+/// the server reaches initialized-request state before stdin closes.
 #[test]
 fn trust_tools_compiled_in_server() {
-    let (config, base) = prepare_temp_workspace();
-    let bin_path = assert_cmd::cargo::cargo_bin("jacs-mcp");
-    let output = std::process::Command::new(&bin_path)
-        .current_dir(&base)
-        .env("JACS_CONFIG", &config)
-        .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .expect("failed to run jacs-mcp");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    // The server should load successfully even with the new trust tools compiled in
-    assert!(
-        stderr.contains("Agent loaded successfully"),
-        "Expected agent to load successfully with trust tools.\nstderr:\n{}",
-        stderr
-    );
+    let (output, base) = run_server_with_fixture(&[("RUST_LOG", "info,rmcp=warn")]);
+    assert_server_reaches_initialized_request(&output, "RUST_LOG=info,rmcp=warn");
+    let _ = fs::remove_dir_all(&base);
 }
 
 // =============================================================================

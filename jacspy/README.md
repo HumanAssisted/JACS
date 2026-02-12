@@ -351,7 +351,8 @@ doc = agent.create_document(json_string, schema=None)
 
 ## A2A Protocol Support
 
-Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/google/A2A) protocol with cryptographic trust built in.
+Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/a2aproject/A2A) protocol with cryptographic trust built in.
+For A2A security, JACS is an OAuth alternative for service-to-service agent trust (mTLS-like at the payload layer), not a replacement for OAuth/OIDC delegated user authorization.
 
 ### Quick Start
 

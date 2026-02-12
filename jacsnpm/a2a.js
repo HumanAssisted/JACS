@@ -151,6 +151,11 @@ class JACSA2AIntegration {
         integration.defaultSkills = skills || null;
         return integration;
     }
+    /**
+     * Start a minimal Express discovery server for this agent.
+     *
+     * Pass `port = 0` to let the OS pick an available ephemeral port.
+     */
     listen(port = 8080) {
         let express;
         try {
@@ -190,7 +195,10 @@ class JACSA2AIntegration {
             res.json(extensionJson);
         });
         const server = app.listen(port, () => {
-            console.log(`Your agent is discoverable at http://localhost:${port}/.well-known/agent-card.json`);
+            const address = server.address();
+            const boundPort = typeof address === 'object' && address ? address.port : port;
+            const requested = port === 0 ? ' (requested random port)' : '';
+            console.log(`Your agent is discoverable at http://localhost:${boundPort}/.well-known/agent-card.json${requested}`);
         });
         return server;
     }
@@ -431,6 +439,29 @@ class JACSA2AIntegration {
             return false;
         return extensions.some((ext) => ext && ext.uri === exports.JACS_EXTENSION_URI);
     }
+    _normalizeVerifyResponse(rawVerificationResult) {
+        if (typeof rawVerificationResult === 'boolean') {
+            return {
+                valid: rawVerificationResult,
+                verificationResult: rawVerificationResult,
+            };
+        }
+        if (rawVerificationResult && typeof rawVerificationResult === 'object') {
+            const rawObj = rawVerificationResult;
+            const payload = rawObj.payload;
+            return {
+                valid: true,
+                verifiedPayload: payload && typeof payload === 'object'
+                    ? payload
+                    : undefined,
+                verificationResult: rawObj,
+            };
+        }
+        return {
+            valid: false,
+            verificationResult: false,
+        };
+    }
     _verifyWrappedArtifactInternal(wrappedArtifact, visited) {
         const artifactId = wrappedArtifact.jacsId;
         if (artifactId && visited.has(artifactId)) {
@@ -440,16 +471,24 @@ class JACSA2AIntegration {
             visited.add(artifactId);
         }
         try {
-            const isValid = this.client._agent.verifyResponse(JSON.stringify(wrappedArtifact));
+            const rawVerificationResult = this.client._agent.verifyResponse(JSON.stringify(wrappedArtifact));
+            const normalized = this._normalizeVerifyResponse(rawVerificationResult);
             const signatureInfo = (wrappedArtifact.jacsSignature || {});
+            const payload = wrappedArtifact.jacs_payload && typeof wrappedArtifact.jacs_payload === 'object'
+                ? wrappedArtifact.jacs_payload
+                : null;
             const result = {
-                valid: isValid,
+                valid: normalized.valid,
+                verificationResult: normalized.verificationResult,
                 signerId: signatureInfo.agentID || 'unknown',
                 signerVersion: signatureInfo.agentVersion || 'unknown',
                 artifactType: wrappedArtifact.jacsType || 'unknown',
                 timestamp: wrappedArtifact.jacsVersionDate || '',
-                originalArtifact: (wrappedArtifact.a2aArtifact || {}),
+                originalArtifact: (wrappedArtifact.a2aArtifact || payload?.a2aArtifact || {}),
             };
+            if (normalized.verifiedPayload) {
+                result.verifiedPayload = normalized.verifiedPayload;
+            }
             const parents = wrappedArtifact.jacsParentSignatures;
             if (Array.isArray(parents) && parents.length > 0) {
                 const parentResults = parents.map((parent, index) => {

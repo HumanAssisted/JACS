@@ -90,6 +90,24 @@ export interface JacsClientOptions {
   strict?: boolean;
 }
 
+export interface ClientArtifactVerificationResult {
+  valid: boolean;
+  /**
+   * Extracted payload returned by native verifyResponse() when available.
+   */
+  verifiedPayload?: Record<string, unknown>;
+  /**
+   * Backward-compatibility field for one release: raw native verifyResponse() output.
+   */
+  verificationResult?: boolean | Record<string, unknown>;
+  signerId: string;
+  signerVersion: string;
+  artifactType: string;
+  timestamp: string;
+  originalArtifact: Record<string, unknown>;
+  error?: string;
+}
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -122,6 +140,38 @@ function normalizeDocumentInput(document: any): string {
     }
   }
   return JSON.stringify(document);
+}
+
+function normalizeA2AVerificationResult(
+  rawVerificationResult: unknown,
+): {
+  valid: boolean;
+  verifiedPayload?: Record<string, unknown>;
+  verificationResult: boolean | Record<string, unknown>;
+} {
+  if (typeof rawVerificationResult === 'boolean') {
+    return {
+      valid: rawVerificationResult,
+      verificationResult: rawVerificationResult,
+    };
+  }
+
+  if (rawVerificationResult && typeof rawVerificationResult === 'object') {
+    const rawObj = rawVerificationResult as Record<string, unknown>;
+    const payload = rawObj.payload;
+    return {
+      valid: true,
+      verifiedPayload: payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : undefined,
+      verificationResult: rawObj,
+    };
+  }
+
+  return {
+    valid: false,
+    verificationResult: false,
+  };
 }
 
 function extractAgentInfo(resolvedConfigPath: string): AgentInfo {
@@ -720,7 +770,7 @@ export class JacsClient {
    */
   async verifyArtifact(
     wrappedArtifact: string | Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ClientArtifactVerificationResult> {
     const agent = this.requireAgent();
     const docString = typeof wrappedArtifact === 'string'
       ? wrappedArtifact
@@ -728,28 +778,38 @@ export class JacsClient {
     const doc = typeof wrappedArtifact === 'string'
       ? JSON.parse(wrappedArtifact)
       : wrappedArtifact;
+    const payload = doc.jacs_payload && typeof doc.jacs_payload === 'object'
+      ? doc.jacs_payload as Record<string, unknown>
+      : null;
 
     try {
-      const isValid = agent.verifyResponse(docString);
+      const rawVerificationResult = agent.verifyResponse(docString);
+      const normalized = normalizeA2AVerificationResult(rawVerificationResult);
       const sig = doc.jacsSignature || {};
-      return {
-        valid: isValid,
+      const result: ClientArtifactVerificationResult = {
+        valid: normalized.valid,
+        verificationResult: normalized.verificationResult,
         signerId: sig.agentID || 'unknown',
         signerVersion: sig.agentVersion || 'unknown',
         artifactType: doc.jacsType || 'unknown',
         timestamp: doc.jacsVersionDate || '',
-        originalArtifact: doc.a2aArtifact || {},
+        originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
       };
+      if (normalized.verifiedPayload) {
+        result.verifiedPayload = normalized.verifiedPayload;
+      }
+      return result;
     } catch (e) {
       if (this._strict) throw new Error(`Artifact verification failed (strict mode): ${e}`);
       const sig = doc.jacsSignature || {};
       return {
         valid: false,
+        verificationResult: false,
         signerId: sig.agentID || 'unknown',
         signerVersion: sig.agentVersion || 'unknown',
         artifactType: doc.jacsType || 'unknown',
         timestamp: doc.jacsVersionDate || '',
-        originalArtifact: doc.a2aArtifact || {},
+        originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
         error: String(e),
       };
     }

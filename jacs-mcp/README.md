@@ -72,7 +72,7 @@ Create multi-party cryptographic agreements — multiple agents formally commit 
 
 ### A2A Discovery
 
-Export Agent Cards and well-known documents for [A2A protocol](https://github.com/google/A2A) interoperability:
+Export Agent Cards and well-known documents for [A2A protocol](https://github.com/a2aproject/A2A) interoperability:
 
 | Tool | Description |
 |------|-------------|

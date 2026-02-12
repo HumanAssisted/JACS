@@ -5,6 +5,7 @@ This is the cross-language overview of JACS + MCP integration. For language-spec
 - [Python MCP Integration](../python/mcp.md) -- JACSMCPServer, JACSMCPClient, FastMCP middleware
 
 JACS provides comprehensive integration with the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling cryptographically signed and verified communication between AI agents and MCP servers.
+MCP and A2A cover different layers: MCP standardizes model-to-tool interactions inside an application boundary, while A2A standardizes agent-to-agent discovery and exchange across boundaries.
 
 ## What is MCP?
 

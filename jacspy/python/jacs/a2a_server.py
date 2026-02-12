@@ -23,7 +23,7 @@ Usage — standalone server::
     client = JacsClient.quickstart()
     serve_a2a(client, port=8080)
 
-Requires ``fastapi`` and ``uvicorn``.  Install with ``pip install jacs[fastapi]``.
+Requires ``fastapi`` and ``uvicorn``. Install with ``pip install jacs[a2a-server]``.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ try:
 except ImportError as _exc:
     raise ImportError(
         "jacs.a2a_server requires fastapi. "
-        "Install it with: pip install jacs[fastapi]"
+        "Install it with: pip install jacs[a2a-server]"
     ) from _exc
 
 if TYPE_CHECKING:
@@ -236,7 +236,7 @@ def serve_a2a(
     except ImportError as exc:
         raise ImportError(
             "serve_a2a() requires uvicorn. "
-            "Install it with: pip install jacs[fastapi]"
+            "Install it with: pip install jacs[a2a-server]"
         ) from exc
 
     app = create_a2a_app(client, skills=skills)

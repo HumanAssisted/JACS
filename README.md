@@ -124,7 +124,9 @@ JACS supports ML-DSA-87 (FIPS-204) post-quantum signatures alongside classical a
 
 ## A2A Interoperability
 
-Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/google/A2A) protocol with cryptographic trust built in.
+Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/a2aproject/A2A) protocol with cryptographic trust built in.
+MCP and A2A cover different layers: MCP standardizes model-to-tool interactions inside an application boundary, while A2A standardizes agent-to-agent discovery and exchange across boundaries.
+For A2A security, JACS is an OAuth alternative for service-to-service agent trust (mTLS-like at the payload layer), not a replacement for OAuth/OIDC delegated user authorization.
 
 Built-in trust policies control how your agent handles foreign signatures: `open` (accept all), `verified` (require key resolution, **default**), or `strict` (require local trust store entry).
 

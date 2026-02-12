@@ -14,7 +14,7 @@ Three focused mini-guides to get your JACS agent working with A2A.
 
 ## JACS for A2A Developers
 
-Already using Google's A2A protocol? Here's what JACS adds -- and what stays the same.
+Already using the A2A protocol? Here's what JACS adds -- and what stays the same.
 
 ### What Stays the Same
 

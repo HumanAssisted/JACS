@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch, PropertyMock
 
 from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration, A2AAgentCard
+from jacs.simple import _EphemeralAgentAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +209,43 @@ class TestClientSignArtifact:
         call_args = client._agent.sign_request.call_args
         wrapped_input = call_args[0][0]
         assert wrapped_input["jacsParentSignatures"] == [{"jacsId": "parent-1"}]
+
+
+class TestEphemeralAdapterA2AParity:
+    def test_sign_request_wraps_payload_and_returns_raw_string(self):
+        native = MagicMock()
+        native.sign_message.return_value = {"raw": '{"signed":true}'}
+
+        adapter = _EphemeralAgentAdapter(native)
+        raw = adapter.sign_request({"hello": "world"})
+
+        native.sign_message.assert_called_once_with({"jacs_payload": {"hello": "world"}})
+        assert raw == '{"signed":true}'
+
+    def test_verify_response_returns_unwrapped_jacs_payload(self):
+        native = MagicMock()
+        native.verify.return_value = {
+            "valid": True,
+            "data": {"jacs_payload": {"hello": "world"}},
+            "errors": [],
+        }
+
+        adapter = _EphemeralAgentAdapter(native)
+        payload = adapter.verify_response('{"signed":true}')
+
+        native.verify.assert_called_once_with('{"signed":true}')
+        assert payload == {"hello": "world"}
+
+    def test_verify_response_raises_on_invalid_signature(self):
+        native = MagicMock()
+        native.verify.return_value = {
+            "valid": False,
+            "errors": ["signature mismatch"],
+        }
+
+        adapter = _EphemeralAgentAdapter(native)
+        with pytest.raises(RuntimeError, match="signature mismatch"):
+            adapter.verify_response('{"signed":true}')
 
 
 if __name__ == "__main__":

@@ -108,7 +108,15 @@ export declare class A2AAgentCard {
     constructor({ name, description, version, protocolVersions, supportedInterfaces, defaultInputModes, defaultOutputModes, capabilities, skills, provider, documentationUrl, iconUrl, securitySchemes, security, signatures, metadata, }: A2AAgentCardOptions);
 }
 export interface ArtifactVerificationResult {
-    valid: boolean | object;
+    valid: boolean;
+    /**
+     * Extracted payload returned by native verifyResponse() when available.
+     */
+    verifiedPayload?: Record<string, unknown>;
+    /**
+     * Backward-compatibility field for one release: raw native verifyResponse() output.
+     */
+    verificationResult?: boolean | Record<string, unknown>;
     signerId: string;
     signerVersion: string;
     artifactType: string;

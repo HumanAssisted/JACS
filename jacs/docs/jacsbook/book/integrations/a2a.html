@@ -199,7 +199,9 @@
 <blockquote>
 <p><strong>New to A2A?</strong> See the <a href="../guides/a2a-quickstart.html">A2A Quickstart Guide</a> for a step-by-step walkthrough from install to serving discovery endpoints.</p>
 </blockquote>
-<p>Every JACS agent is an A2A agent -- zero additional configuration.</p>
+<p>Every JACS agent is an A2A agent -- zero additional configuration.
+MCP and A2A cover different layers: MCP standardizes model-to-tool interactions inside an application boundary, while A2A standardizes agent-to-agent discovery and exchange across boundaries.
+For A2A security, JACS is an OAuth alternative for service-to-service agent trust (mTLS-like at the payload layer), not a replacement for OAuth/OIDC delegated user authorization.</p>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <pre><code class="language-python">from jacs.client import JacsClient
 
@@ -216,7 +218,7 @@ const signed = await client.signArtifact({ action: 'classify', input: 'hello' },
 </code></pre>
 <h3 id="serve-discovery-documents-python"><a class="header" href="#serve-discovery-documents-python">Serve Discovery Documents (Python)</a></h3>
 <blockquote>
-<p><strong>Note:</strong> <code>serve()</code> requires <code>pip install jacs[fastapi]</code> (adds FastAPI + uvicorn).</p>
+<p><strong>Note:</strong> <code>serve()</code> requires <code>pip install jacs[a2a-server]</code> (adds FastAPI + uvicorn).</p>
 </blockquote>
 <pre><code class="language-python">from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration

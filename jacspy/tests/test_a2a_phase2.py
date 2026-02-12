@@ -24,6 +24,7 @@ from jacs.a2a import (
     A2AAgentInterface,
     _sha256_hex,
 )
+from jacs.simple import _EphemeralAgentAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +160,18 @@ class TestB2VerifyResponse:
 
         result = a2a.verify_wrapped_artifact(artifact)
         assert result["valid"] is False
+
+
+# ---------------------------------------------------------------------------
+# Test: Ephemeral adapter parity for A2A low-level hooks
+# ---------------------------------------------------------------------------
+
+class TestEphemeralAdapterParity:
+    def test_ephemeral_adapter_exposes_a2a_methods(self):
+        native = MagicMock()
+        adapter = _EphemeralAgentAdapter(native)
+        assert hasattr(adapter, "sign_request")
+        assert hasattr(adapter, "verify_response")
 
 
 # ---------------------------------------------------------------------------

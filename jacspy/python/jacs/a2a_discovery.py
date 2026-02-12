@@ -24,7 +24,7 @@ Usage::
     from jacs.a2a_discovery import discover_agent_sync, discover_and_assess_sync
     card = discover_agent_sync("https://agent.example.com")
 
-Requires ``httpx`` (install with ``pip install jacs[hai]``).
+Requires ``httpx`` (install with ``pip install jacs[a2a]``).
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ try:
 except ImportError as _exc:
     raise ImportError(
         "jacs.a2a_discovery requires httpx. "
-        "Install it with: pip install jacs[hai]"
+        "Install it with: pip install jacs[a2a]"
     ) from _exc
 
 if TYPE_CHECKING:
@@ -48,6 +48,7 @@ logger = logging.getLogger("jacs.a2a_discovery")
 
 JACS_EXTENSION_URI = "urn:hai.ai:jacs-provenance-v1"
 AGENT_CARD_PATH = "/.well-known/agent-card.json"
+VALID_TRUST_POLICIES = ("open", "verified", "strict")
 
 
 class DiscoveryError(Exception):
@@ -163,47 +164,19 @@ async def discover_and_assess(
         DiscoveryError: If the agent card cannot be fetched.
         ValueError: If *policy* is not one of the three valid values.
     """
-    if policy not in ("open", "verified", "strict"):
-        raise ValueError(
-            f"Invalid trust policy: {policy!r}. "
-            "Must be 'open', 'verified', or 'strict'."
-        )
+    effective_policy = _validate_trust_policy(policy)
 
     card = await discover_agent(url, timeout=timeout)
-
-    # Check for JACS provenance extension in capabilities
-    jacs_registered = _has_jacs_extension(card)
-
-    # Determine trust level
-    trust_level = "untrusted"
-    if jacs_registered:
-        trust_level = "jacs_registered"
-
-    # For strict policy, check the local trust store
-    if policy == "strict" and client is not None:
-        agent_id = _extract_agent_id(card)
-        if agent_id:
-            try:
-                if client.is_trusted(agent_id):
-                    trust_level = "trusted"
-            except Exception:
-                logger.debug("Trust store lookup failed for %s", agent_id)
-
-    # Apply policy
-    if policy == "open":
-        allowed = True
-    elif policy == "verified":
-        allowed = jacs_registered
-    elif policy == "strict":
-        allowed = trust_level == "trusted"
-    else:
-        allowed = False
+    is_trusted = getattr(client, "is_trusted", None) if client is not None else None
+    trust = _evaluate_trust_policy(
+        card,
+        policy=effective_policy,
+        is_trusted=is_trusted,
+    )
 
     return {
         "card": card,
-        "jacs_registered": jacs_registered,
-        "trust_level": trust_level,
-        "allowed": allowed,
+        **trust,
     }
 
 
@@ -262,6 +235,64 @@ def _extract_agent_id(card: Dict[str, Any]) -> Optional[str]:
         if agent_id:
             return str(agent_id)
     return None
+
+
+def _validate_trust_policy(policy: str) -> str:
+    """Validate and normalize trust policy strings."""
+    if policy not in VALID_TRUST_POLICIES:
+        raise ValueError(
+            f"Invalid trust policy: {policy!r}. "
+            "Must be 'open', 'verified', or 'strict'."
+        )
+    return policy
+
+
+def _evaluate_trust_policy(
+    card: Dict[str, Any],
+    policy: str = "verified",
+    is_trusted: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Evaluate trust policy for a parsed Agent Card.
+
+    Returns:
+        {
+            "jacs_registered": bool,
+            "trust_level": "untrusted" | "jacs_registered" | "trusted",
+            "allowed": bool,
+        }
+    """
+    effective_policy = _validate_trust_policy(policy)
+
+    jacs_registered = _has_jacs_extension(card)
+    trust_level = "jacs_registered" if jacs_registered else "untrusted"
+
+    if (
+        effective_policy == "strict"
+        and callable(is_trusted)
+        and jacs_registered
+    ):
+        agent_id = _extract_agent_id(card)
+        if agent_id:
+            try:
+                if is_trusted(agent_id):
+                    trust_level = "trusted"
+            except Exception:
+                logger.debug("Trust store lookup failed for %s", agent_id)
+
+    if effective_policy == "open":
+        allowed = True
+    elif effective_policy == "verified":
+        allowed = jacs_registered
+    elif effective_policy == "strict":
+        allowed = trust_level == "trusted"
+    else:
+        allowed = False
+
+    return {
+        "jacs_registered": jacs_registered,
+        "trust_level": trust_level,
+        "allowed": allowed,
+    }
 
 
 __all__ = [

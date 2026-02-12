@@ -70,10 +70,12 @@
       "require": "./hai.js"
     },
     "./a2a-server": {
+      "types": "./src/a2a-server.d.ts",
       "import": "./src/a2a-server.js",
       "require": "./src/a2a-server.js"
     },
     "./a2a-discovery": {
+      "types": "./src/a2a-discovery.d.ts",
       "import": "./src/a2a-discovery.js",
       "require": "./src/a2a-discovery.js"
     }
@@ -168,7 +170,9 @@
     "a2a.js.map",
     "src/a2a.js",
     "src/a2a-server.js",
+    "src/a2a-server.d.ts",
     "src/a2a-discovery.js",
+    "src/a2a-discovery.d.ts",
     "mcp.js",
     "mcp.d.ts",
     "mcp.js.map",

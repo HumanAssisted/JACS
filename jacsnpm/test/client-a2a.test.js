@@ -147,7 +147,7 @@ describe('JacsClient A2A methods', function () {
       const result = await client.verifyArtifact(signed);
 
       expect(result).to.exist;
-      expect(result.valid).to.exist;
+      expect(typeof result.valid).to.equal('boolean');
       // signRequest wraps in a JACS header; the artifact data
       // lives in jacs_payload, so top-level jacsType is 'header'
       expect(result.artifactType).to.equal('header');
@@ -157,6 +157,34 @@ describe('JacsClient A2A methods', function () {
       const doc = JSON.parse(signed);
       expect(doc.jacs_payload.a2aArtifact).to.deep.equal(artifact);
       expect(doc.jacs_payload.jacsType).to.equal('a2a-message');
+    });
+
+    (available ? it : it.skip)('should coerce object verifyResponse results to boolean and expose payload', async () => {
+      const client = new clientModule.JacsClient();
+      const fakeAgent = {
+        verifyResponse: sinon.stub().returns({ payload: { accepted: true } }),
+      };
+
+      // Accesses private state intentionally for focused unit behavior.
+      client.agent = fakeAgent;
+
+      const wrapped = {
+        jacsType: 'header',
+        jacsVersionDate: '2025-01-01T00:00:00Z',
+        jacsSignature: { agentID: 'agent-x', agentVersion: 'v1' },
+        jacs_payload: {
+          a2aArtifact: { ping: 'pong' },
+          jacsType: 'a2a-message',
+        },
+      };
+
+      const result = await client.verifyArtifact(JSON.stringify(wrapped));
+
+      expect(result.valid).to.equal(true);
+      expect(typeof result.valid).to.equal('boolean');
+      expect(result.verifiedPayload).to.deep.equal({ accepted: true });
+      expect(result.verificationResult).to.deep.equal({ payload: { accepted: true } });
+      expect(fakeAgent.verifyResponse.calledOnce).to.equal(true);
     });
   });
 

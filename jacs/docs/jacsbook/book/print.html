@@ -13460,7 +13460,8 @@ def test_large_document():
 <li><a href="integrations/../nodejs/mcp.html">Node.js MCP Integration</a> -- transport proxy, tool registration, API reference</li>
 <li><a href="integrations/../python/mcp.html">Python MCP Integration</a> -- JACSMCPServer, JACSMCPClient, FastMCP middleware</li>
 </ul>
-<p>JACS provides comprehensive integration with the <a href="https://modelcontextprotocol.io/">Model Context Protocol (MCP)</a>, enabling cryptographically signed and verified communication between AI agents and MCP servers.</p>
+<p>JACS provides comprehensive integration with the <a href="https://modelcontextprotocol.io/">Model Context Protocol (MCP)</a>, enabling cryptographically signed and verified communication between AI agents and MCP servers.
+MCP and A2A cover different layers: MCP standardizes model-to-tool interactions inside an application boundary, while A2A standardizes agent-to-agent discovery and exchange across boundaries.</p>
 <h2 id="what-is-mcp"><a class="header" href="#what-is-mcp">What is MCP?</a></h2>
 <p>Model Context Protocol is an open standard created by Anthropic for AI models to securely access external tools, data, and services. MCP defines:</p>
 <ul>
@@ -13939,7 +13940,9 @@ logging.getLogger("jacs.security").setLevel(logging.WARNING)
 <blockquote>
 <p><strong>New to A2A?</strong> See the <a href="integrations/../guides/a2a-quickstart.html">A2A Quickstart Guide</a> for a step-by-step walkthrough from install to serving discovery endpoints.</p>
 </blockquote>
-<p>Every JACS agent is an A2A agent -- zero additional configuration.</p>
+<p>Every JACS agent is an A2A agent -- zero additional configuration.
+MCP and A2A cover different layers: MCP standardizes model-to-tool interactions inside an application boundary, while A2A standardizes agent-to-agent discovery and exchange across boundaries.
+For A2A security, JACS is an OAuth alternative for service-to-service agent trust (mTLS-like at the payload layer), not a replacement for OAuth/OIDC delegated user authorization.</p>
 <h3 id="python-6"><a class="header" href="#python-6">Python</a></h3>
 <pre><code class="language-python">from jacs.client import JacsClient
 
@@ -13956,7 +13959,7 @@ const signed = await client.signArtifact({ action: 'classify', input: 'hello' },
 </code></pre>
 <h3 id="serve-discovery-documents-python"><a class="header" href="#serve-discovery-documents-python">Serve Discovery Documents (Python)</a></h3>
 <blockquote>
-<p><strong>Note:</strong> <code>serve()</code> requires <code>pip install jacs[fastapi]</code> (adds FastAPI + uvicorn).</p>
+<p><strong>Note:</strong> <code>serve()</code> requires <code>pip install jacs[a2a-server]</code> (adds FastAPI + uvicorn).</p>
 </blockquote>
 <pre><code class="language-python">from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
@@ -15786,7 +15789,7 @@ await pool.query(
 </blockquote>
 <hr />
 <h2 id="jacs-for-a2a-developers"><a class="header" href="#jacs-for-a2a-developers">JACS for A2A Developers</a></h2>
-<p>Already using Google's A2A protocol? Here's what JACS adds -- and what stays the same.</p>
+<p>Already using the A2A protocol? Here's what JACS adds -- and what stays the same.</p>
 <h3 id="what-stays-the-same"><a class="header" href="#what-stays-the-same">What Stays the Same</a></h3>
 <ul>
 <li><strong>Agent Cards</strong> follow the v0.4.0 shape. Your existing Agent Card fields (<code>name</code>, <code>description</code>, <code>skills</code>, <code>url</code>) are preserved.</li>
