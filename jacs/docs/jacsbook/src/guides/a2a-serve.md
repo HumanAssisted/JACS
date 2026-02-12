@@ -60,13 +60,7 @@ Your agent is now discoverable at `http://localhost:8080/.well-known/agent-card.
 
 All five `.well-known` endpoints are served automatically:
 
-| Endpoint | Purpose |
-|----------|---------|
-| `/.well-known/agent-card.json` | A2A Agent Card (v0.4.0 format) |
-| `/.well-known/jwks.json` | JWK set for signature verification |
-| `/.well-known/jacs-agent.json` | JACS agent descriptor |
-| `/.well-known/jacs-pubkey.json` | JACS public key |
-| `/.well-known/jacs-extension.json` | JACS provenance extension descriptor |
+{{#include ../_snippets/a2a-well-known-docs.md}}
 
 The Agent Card includes the `urn:hai.ai:jacs-provenance-v1` extension in `capabilities.extensions`, signaling to other JACS agents that your agent supports cryptographic provenance.
 
@@ -75,14 +69,3 @@ The Agent Card includes the `urn:hai.ai:jacs-provenance-v1` extension in `capabi
 - **[Discover & Trust Remote Agents](a2a-discover.md)** -- Find other agents and assess their trustworthiness
 - **[Exchange Signed Artifacts](a2a-exchange.md)** -- Sign and verify A2A artifacts
 - **[A2A Interoperability Reference](../integrations/a2a.md)** -- Full API reference
-
-<style>
-.tabs { display: flex; flex-wrap: wrap; max-width: 100%; font-family: sans-serif; }
-.tab { order: 1; flex-grow: 1; }
-.tab input[type="radio"] { display: none; }
-.tab label { display: block; padding: 1em; background: #f0f0f0; color: #666; border: 1px solid #ddd; cursor: pointer; margin-bottom: -1px; }
-.tab label:hover { background: #e0e0e0; }
-.tab input:checked + label { background: #007acc; color: white; }
-.tab .content { order: 99; flex-grow: 1; width: 100%; display: none; padding: 1em; background: white; border: 1px solid #ddd; border-top: none; }
-.tab input:checked ~ .content { display: block; }
-</style>

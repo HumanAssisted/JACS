@@ -29,6 +29,7 @@
         <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/tabs.css">
 
     </head>
     <body class="sidebar-visible no-js">
@@ -220,8 +221,8 @@ app.listen(8080);
 <h2 id="what-gets-served"><a class="header" href="#what-gets-served">What Gets Served</a></h2>
 <p>All five <code>.well-known</code> endpoints are served automatically:</p>
 <div class="table-wrapper"><table><thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead><tbody>
-<tr><td><code>/.well-known/agent-card.json</code></td><td>A2A Agent Card (v0.4.0 format)</td></tr>
-<tr><td><code>/.well-known/jwks.json</code></td><td>JWK set for signature verification</td></tr>
+<tr><td><code>/.well-known/agent-card.json</code></td><td>A2A Agent Card with JWS signature</td></tr>
+<tr><td><code>/.well-known/jwks.json</code></td><td>JWK set for A2A verifiers</td></tr>
 <tr><td><code>/.well-known/jacs-agent.json</code></td><td>JACS agent descriptor</td></tr>
 <tr><td><code>/.well-known/jacs-pubkey.json</code></td><td>JACS public key</td></tr>
 <tr><td><code>/.well-known/jacs-extension.json</code></td><td>JACS provenance extension descriptor</td></tr>
@@ -234,16 +235,6 @@ app.listen(8080);
 <li><strong><a href="a2a-exchange.html">Exchange Signed Artifacts</a></strong> -- Sign and verify A2A artifacts</li>
 <li><strong><a href="../integrations/a2a.html">A2A Interoperability Reference</a></strong> -- Full API reference</li>
 </ul>
-<style>
-.tabs { display: flex; flex-wrap: wrap; max-width: 100%; font-family: sans-serif; }
-.tab { order: 1; flex-grow: 1; }
-.tab input[type="radio"] { display: none; }
-.tab label { display: block; padding: 1em; background: #f0f0f0; color: #666; border: 1px solid #ddd; cursor: pointer; margin-bottom: -1px; }
-.tab label:hover { background: #e0e0e0; }
-.tab input:checked + label { background: #007acc; color: white; }
-.tab .content { order: 99; flex-grow: 1; width: 100%; display: none; padding: 1em; background: white; border: 1px solid #ddd; border-top: none; }
-.tab input:checked ~ .content { display: block; }
-</style>
 
                     </main>
 

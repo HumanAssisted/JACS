@@ -29,6 +29,7 @@
         <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/tabs.css">
 
     </head>
     <body class="sidebar-visible no-js">
@@ -176,7 +177,8 @@
                         <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
 <p>Get signing and verifying in under a minute. No manual setup needed.</p>
 <h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
-<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. One call and you're signing.</p>
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.
+One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="tab-python" name="tab-group" checked>
@@ -573,57 +575,6 @@ print(f'Agreement complete: {agreement_valid}')
 <strong>Agreement signing fails</strong>: Verify all agent IDs are correct and agents exist
 <strong>Documents not found</strong>: Check the data directory configuration</p>
 <p>Need help? Check the <a href="https://github.com/HumanAssisted/JACS/issues">GitHub issues</a> or review the detailed implementation guides.</p>
-<style>
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  max-width: 100%;
-  font-family: sans-serif;
-}
-
-.tab {
-  order: 1;
-  flex-grow: 1;
-}
-
-.tab input[type="radio"] {
-  display: none;
-}
-
-.tab label {
-  display: block;
-  padding: 1em;
-  background: #f0f0f0;
-  color: #666;
-  border: 1px solid #ddd;
-  cursor: pointer;
-  margin-bottom: -1px;
-}
-
-.tab label:hover {
-  background: #e0e0e0;
-}
-
-.tab input:checked + label {
-  background: #007acc;
-  color: white;
-}
-
-.tab .content {
-  order: 99;
-  flex-grow: 1;
-  width: 100%;
-  display: none;
-  padding: 1em;
-  background: white;
-  border: 1px solid #ddd;
-  border-top: none;
-}
-
-.tab input:checked ~ .content {
-  display: block;
-}
-</style> 
 
                     </main>
 

@@ -26,7 +26,7 @@ jacs.quickstart();  // No config file needed
 jacs quickstart  # CLI -- no config file needed
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`.
+{{#include ../_snippets/quickstart-persistent-agent.md}}
 
 ## Minimal Configuration
 

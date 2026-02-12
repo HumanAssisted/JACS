@@ -29,6 +29,7 @@
         <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/tabs.css">
 
     </head>
     <body class="sidebar-visible no-js">
@@ -184,7 +185,8 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
-<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.
+Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
 <p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-python">agent = jacs.load("./jacs.config.json")
 signed = jacs.sign_message({"action": "approve", "amount": 100})

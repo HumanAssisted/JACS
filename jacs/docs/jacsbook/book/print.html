@@ -30,6 +30,7 @@
         <link rel="stylesheet" href="ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/tabs.css">
 
     </head>
     <body class="sidebar-visible no-js">
@@ -717,7 +718,8 @@ agent.load("./config.json")
 <div style="break-before: page; page-break-before: always;"></div><h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
 <p>Get signing and verifying in under a minute. No manual setup needed.</p>
 <h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
-<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. One call and you're signing.</p>
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.
+One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="tab-python" name="tab-group" checked>
@@ -1114,57 +1116,6 @@ print(f'Agreement complete: {agreement_valid}')
 <strong>Agreement signing fails</strong>: Verify all agent IDs are correct and agents exist
 <strong>Documents not found</strong>: Check the data directory configuration</p>
 <p>Need help? Check the <a href="https://github.com/HumanAssisted/JACS/issues">GitHub issues</a> or review the detailed implementation guides.</p>
-<style>
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  max-width: 100%;
-  font-family: sans-serif;
-}
-
-.tab {
-  order: 1;
-  flex-grow: 1;
-}
-
-.tab input[type="radio"] {
-  display: none;
-}
-
-.tab label {
-  display: block;
-  padding: 1em;
-  background: #f0f0f0;
-  color: #666;
-  border: 1px solid #ddd;
-  cursor: pointer;
-  margin-bottom: -1px;
-}
-
-.tab label:hover {
-  background: #e0e0e0;
-}
-
-.tab input:checked + label {
-  background: #007acc;
-  color: white;
-}
-
-.tab .content {
-  order: 99;
-  flex-grow: 1;
-  width: 100%;
-  display: none;
-  padding: 1em;
-  background: white;
-  border: 1px solid #ddd;
-  border-top: none;
-}
-
-.tab input:checked ~ .content {
-  display: block;
-}
-</style> 
 <div style="break-before: page; page-break-before: always;"></div><h1 id="which-jacs-integration-should-i-use"><a class="header" href="#which-jacs-integration-should-i-use">Which JACS Integration Should I Use?</a></h1>
 <p>This page helps you find the right integration path in under 2 minutes.</p>
 <h2 id="step-1-do-you-need-jacs"><a class="header" href="#step-1-do-you-need-jacs">Step 1: Do You Need JACS?</a></h2>
@@ -4189,7 +4140,8 @@ const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 </code></pre>
-<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. Pass <code>{ algorithm: 'ring-Ed25519' }</code> to override the default (<code>pq2025</code>).</p>
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.
+Pass <code>{ algorithm: 'ring-Ed25519' }</code> to override the default (<code>pq2025</code>).</p>
 <p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-javascript">const agent = await jacs.load('./jacs.config.json');
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
@@ -6710,7 +6662,8 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
-<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.
+Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
 <p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-python">agent = jacs.load("./jacs.config.json")
 signed = jacs.sign_message({"action": "approve", "amount": 100})
@@ -13928,9 +13881,9 @@ logging.getLogger("jacs.security").setLevel(logging.WARNING)
 <h2 id="interoperability-contract"><a class="header" href="#interoperability-contract">Interoperability Contract</a></h2>
 <p>JACS A2A integration targets the v0.4.0 Agent Card shape, implemented in the Rust, Python, and Node bindings.</p>
 <p>Required well-known documents (all five are generated by every binding):</p>
-<div class="table-wrapper"><table><thead><tr><th>Document</th><th>Purpose</th></tr></thead><tbody>
+<div class="table-wrapper"><table><thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead><tbody>
 <tr><td><code>/.well-known/agent-card.json</code></td><td>A2A Agent Card with JWS signature</td></tr>
-<tr><td><code>/.well-known/jwks.json</code></td><td>JWK Set for A2A verifiers</td></tr>
+<tr><td><code>/.well-known/jwks.json</code></td><td>JWK set for A2A verifiers</td></tr>
 <tr><td><code>/.well-known/jacs-agent.json</code></td><td>JACS agent descriptor</td></tr>
 <tr><td><code>/.well-known/jacs-pubkey.json</code></td><td>JACS public key</td></tr>
 <tr><td><code>/.well-known/jacs-extension.json</code></td><td>JACS provenance extension descriptor</td></tr>
@@ -15908,8 +15861,8 @@ app.listen(8080);
 <h2 id="what-gets-served"><a class="header" href="#what-gets-served">What Gets Served</a></h2>
 <p>All five <code>.well-known</code> endpoints are served automatically:</p>
 <div class="table-wrapper"><table><thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead><tbody>
-<tr><td><code>/.well-known/agent-card.json</code></td><td>A2A Agent Card (v0.4.0 format)</td></tr>
-<tr><td><code>/.well-known/jwks.json</code></td><td>JWK set for signature verification</td></tr>
+<tr><td><code>/.well-known/agent-card.json</code></td><td>A2A Agent Card with JWS signature</td></tr>
+<tr><td><code>/.well-known/jwks.json</code></td><td>JWK set for A2A verifiers</td></tr>
 <tr><td><code>/.well-known/jacs-agent.json</code></td><td>JACS agent descriptor</td></tr>
 <tr><td><code>/.well-known/jacs-pubkey.json</code></td><td>JACS public key</td></tr>
 <tr><td><code>/.well-known/jacs-extension.json</code></td><td>JACS provenance extension descriptor</td></tr>
@@ -15922,16 +15875,6 @@ app.listen(8080);
 <li><strong><a href="guides/a2a-exchange.html">Exchange Signed Artifacts</a></strong> -- Sign and verify A2A artifacts</li>
 <li><strong><a href="guides/../integrations/a2a.html">A2A Interoperability Reference</a></strong> -- Full API reference</li>
 </ul>
-<style>
-.tabs { display: flex; flex-wrap: wrap; max-width: 100%; font-family: sans-serif; }
-.tab { order: 1; flex-grow: 1; }
-.tab input[type="radio"] { display: none; }
-.tab label { display: block; padding: 1em; background: #f0f0f0; color: #666; border: 1px solid #ddd; cursor: pointer; margin-bottom: -1px; }
-.tab label:hover { background: #e0e0e0; }
-.tab input:checked + label { background: #007acc; color: white; }
-.tab .content { order: 99; flex-grow: 1; width: 100%; display: none; padding: 1em; background: white; border: 1px solid #ddd; border-top: none; }
-.tab input:checked ~ .content { display: block; }
-</style>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="discover--trust-remote-agents"><a class="header" href="#discover--trust-remote-agents">Discover &amp; Trust Remote Agents</a></h1>
 <p>Find other A2A agents and decide whether to trust them.</p>
 <div class="tabs">
@@ -15999,10 +15942,10 @@ a2a.trustA2AAgent(remoteAgentId);
 </div>
 </div>
 <h2 id="trust-policies-1"><a class="header" href="#trust-policies-1">Trust Policies</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th><th>Use Case</th></tr></thead><tbody>
-<tr><td><code>open</code></td><td>Accept all agents without verification</td><td>Development, testing</td></tr>
-<tr><td><code>verified</code></td><td>Require the <code>urn:hai.ai:jacs-provenance-v1</code> extension in the agent card</td><td><strong>Default</strong> -- production use</td></tr>
-<tr><td><code>strict</code></td><td>Require the signer to be in the local trust store</td><td>High-security environments</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody>
+<tr><td><code>open</code></td><td>Accept all agents without verification</td></tr>
+<tr><td><code>verified</code></td><td>Require the JACS provenance extension (<code>urn:hai.ai:jacs-provenance-v1</code>) in the agent card (<strong>default</strong>)</td></tr>
+<tr><td><code>strict</code></td><td>Require the signer to be in the local trust store</td></tr>
 </tbody></table>
 </div>
 <h3 id="how-trust-flows"><a class="header" href="#how-trust-flows">How Trust Flows</a></h3>
@@ -16018,16 +15961,6 @@ a2a.trustA2AAgent(remoteAgentId);
 <li><strong><a href="guides/a2a-serve.html">Serve Your Agent Card</a></strong> -- Make your agent discoverable</li>
 <li><strong><a href="guides/../advanced/trust-store.html">Trust Store</a></strong> -- Managing the local trust store</li>
 </ul>
-<style>
-.tabs { display: flex; flex-wrap: wrap; max-width: 100%; font-family: sans-serif; }
-.tab { order: 1; flex-grow: 1; }
-.tab input[type="radio"] { display: none; }
-.tab label { display: block; padding: 1em; background: #f0f0f0; color: #666; border: 1px solid #ddd; cursor: pointer; margin-bottom: -1px; }
-.tab label:hover { background: #e0e0e0; }
-.tab input:checked + label { background: #007acc; color: white; }
-.tab .content { order: 99; flex-grow: 1; width: 100%; display: none; padding: 1em; background: white; border: 1px solid #ddd; border-top: none; }
-.tab input:checked ~ .content { display: block; }
-</style>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="exchange-signed-artifacts"><a class="header" href="#exchange-signed-artifacts">Exchange Signed Artifacts</a></h1>
 <p>Sign artifacts with cryptographic provenance and verify artifacts from other agents.</p>
 <div class="tabs">
@@ -16133,16 +16066,6 @@ console.log(`Parents valid: ${result.parentSignaturesValid}`);
 <li><strong><a href="guides/../integrations/a2a.html">A2A Interoperability Reference</a></strong> -- Full API reference</li>
 <li><strong><a href="https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.py">Hero Demo (Python)</a></strong> -- 3-agent trust verification example</li>
 </ul>
-<style>
-.tabs { display: flex; flex-wrap: wrap; max-width: 100%; font-family: sans-serif; }
-.tab { order: 1; flex-grow: 1; }
-.tab input[type="radio"] { display: none; }
-.tab label { display: block; padding: 1em; background: #f0f0f0; color: #666; border: 1px solid #ddd; cursor: pointer; margin-bottom: -1px; }
-.tab label:hover { background: #e0e0e0; }
-.tab input:checked + label { background: #007acc; color: white; }
-.tab .content { order: 99; flex-grow: 1; width: 100%; display: none; padding: 1em; background: white; border: 1px solid #ddd; border-top: none; }
-.tab input:checked ~ .content { display: block; }
-</style>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="observability--monitoring-guide"><a class="header" href="#observability--monitoring-guide">Observability &amp; Monitoring Guide</a></h1>
 <p>JACS emits structured events at every signing, verification, and agreement lifecycle step. This guide shows you how to capture those events and route them to your monitoring stack.</p>
 <p>For Rust-specific API details (ObservabilityConfig, LogDestination, MetricsConfig, etc.), see the <a href="guides/../rust/observability.html">Observability (Rust API)</a>.</p>
@@ -19612,7 +19535,7 @@ jacs.quickstart();  // No config file needed
 </code></pre>
 <pre><code class="language-bash">jacs quickstart  # CLI -- no config file needed
 </code></pre>
-<p><code>quickstart()</code> creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.</p>
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.</p>
 <h2 id="minimal-configuration-1"><a class="header" href="#minimal-configuration-1">Minimal Configuration</a></h2>
 <p>For persistent agents, a config file needs only two fields (plus <code>$schema</code>):</p>
 <pre><code class="language-json">{

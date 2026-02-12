@@ -29,6 +29,7 @@
         <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/tabs.css">
 
     </head>
     <body class="sidebar-visible no-js">
@@ -240,10 +241,10 @@ a2a.trustA2AAgent(remoteAgentId);
 </div>
 </div>
 <h2 id="trust-policies"><a class="header" href="#trust-policies">Trust Policies</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th><th>Use Case</th></tr></thead><tbody>
-<tr><td><code>open</code></td><td>Accept all agents without verification</td><td>Development, testing</td></tr>
-<tr><td><code>verified</code></td><td>Require the <code>urn:hai.ai:jacs-provenance-v1</code> extension in the agent card</td><td><strong>Default</strong> -- production use</td></tr>
-<tr><td><code>strict</code></td><td>Require the signer to be in the local trust store</td><td>High-security environments</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody>
+<tr><td><code>open</code></td><td>Accept all agents without verification</td></tr>
+<tr><td><code>verified</code></td><td>Require the JACS provenance extension (<code>urn:hai.ai:jacs-provenance-v1</code>) in the agent card (<strong>default</strong>)</td></tr>
+<tr><td><code>strict</code></td><td>Require the signer to be in the local trust store</td></tr>
 </tbody></table>
 </div>
 <h3 id="how-trust-flows"><a class="header" href="#how-trust-flows">How Trust Flows</a></h3>
@@ -259,16 +260,6 @@ a2a.trustA2AAgent(remoteAgentId);
 <li><strong><a href="a2a-serve.html">Serve Your Agent Card</a></strong> -- Make your agent discoverable</li>
 <li><strong><a href="../advanced/trust-store.html">Trust Store</a></strong> -- Managing the local trust store</li>
 </ul>
-<style>
-.tabs { display: flex; flex-wrap: wrap; max-width: 100%; font-family: sans-serif; }
-.tab { order: 1; flex-grow: 1; }
-.tab input[type="radio"] { display: none; }
-.tab label { display: block; padding: 1em; background: #f0f0f0; color: #666; border: 1px solid #ddd; cursor: pointer; margin-bottom: -1px; }
-.tab label:hover { background: #e0e0e0; }
-.tab input:checked + label { background: #007acc; color: white; }
-.tab .content { order: 99; flex-grow: 1; width: 100%; display: none; padding: 1em; background: white; border: 1px solid #ddd; border-top: none; }
-.tab input:checked ~ .content { display: block; }
-</style>
 
                     </main>
 

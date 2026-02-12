@@ -4,7 +4,7 @@ The simplified API (`@hai.ai/jacs/simple`) provides a streamlined, module-level 
 
 ## v0.7.0: Async-First API
 
-All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+{{#include ../_snippets/node-async-first.md}}
 
 ```javascript
 // Async (default, recommended -- does not block the event loop)
@@ -27,7 +27,8 @@ const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+{{#include ../_snippets/quickstart-persistent-agent.md}}
+Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
 
 To load an existing agent explicitly, use `load()` instead:
 
@@ -545,4 +546,3 @@ if (!result.valid) {
 - [Basic Usage](basic-usage.md) - JacsAgent class usage
 - [API Reference](api.md) - Complete JacsAgent API
 - [MCP Integration](mcp.md) - Model Context Protocol
-

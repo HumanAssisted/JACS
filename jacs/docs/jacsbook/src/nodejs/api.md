@@ -10,7 +10,7 @@ npm install @hai.ai/jacs
 
 ## v0.7.0: Async-First API
 
-All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+{{#include ../_snippets/node-async-first.md}}
 
 ```javascript
 // Async (default, recommended)

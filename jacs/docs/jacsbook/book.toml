@@ -4,3 +4,6 @@ language = "en"
 multilingual = false
 src = "src"
 title = "JACS Usage Documentation"
+
+[output.html]
+additional-css = ["theme/tabs.css"]

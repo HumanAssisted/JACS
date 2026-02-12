@@ -4,7 +4,8 @@ Get signing and verifying in under a minute. No manual setup needed.
 
 ## Zero-Config Quick Start
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. One call and you're signing.
+{{#include ../_snippets/quickstart-persistent-agent.md}}
+One call and you're signing.
 
 <div class="tabs">
 <div class="tab">
@@ -493,55 +494,3 @@ Now that you have the basics working:
 **Documents not found**: Check the data directory configuration
 
 Need help? Check the [GitHub issues](https://github.com/HumanAssisted/JACS/issues) or review the detailed implementation guides.
-
-<style>
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  max-width: 100%;
-  font-family: sans-serif;
-}
-
-.tab {
-  order: 1;
-  flex-grow: 1;
-}
-
-.tab input[type="radio"] {
-  display: none;
-}
-
-.tab label {
-  display: block;
-  padding: 1em;
-  background: #f0f0f0;
-  color: #666;
-  border: 1px solid #ddd;
-  cursor: pointer;
-  margin-bottom: -1px;
-}
-
-.tab label:hover {
-  background: #e0e0e0;
-}
-
-.tab input:checked + label {
-  background: #007acc;
-  color: white;
-}
-
-.tab .content {
-  order: 99;
-  flex-grow: 1;
-  width: 100%;
-  display: none;
-  padding: 1em;
-  background: white;
-  border: 1px solid #ddd;
-  border-top: none;
-}
-
-.tab input:checked ~ .content {
-  display: block;
-}
-</style> 
