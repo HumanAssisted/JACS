@@ -79,6 +79,63 @@ fn is_untrust_allowed() -> bool {
         .unwrap_or(false)
 }
 
+/// Build a stable storage lookup key (`jacsId:jacsVersion`) from a signed document.
+fn extract_document_lookup_key(doc: &serde_json::Value) -> Option<String> {
+    let id = doc
+        .get("jacsId")
+        .or_else(|| doc.get("id"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+
+    let version = doc
+        .get("jacsVersion")
+        .or_else(|| doc.get("version"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+
+    match (id, version) {
+        (Some(i), Some(v)) => Some(format!("{}:{}", i, v)),
+        (Some(i), None) => Some(i.to_string()),
+        _ => None,
+    }
+}
+
+/// Pull embedded state content from a signed agent-state document.
+fn extract_embedded_state_content(doc: &serde_json::Value) -> Option<String> {
+    doc.get("jacsAgentStateContent")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or_else(|| {
+            doc.get("jacsFiles")
+                .and_then(|v| v.as_array())
+                .and_then(|files| files.first())
+                .and_then(|file| file.get("contents"))
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
+}
+
+/// Update embedded state content and keep per-file content hashes in sync.
+fn update_embedded_state_content(doc: &mut serde_json::Value, new_content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(new_content.as_bytes());
+    let new_hash = format!("{:x}", hasher.finalize());
+
+    doc["jacsAgentStateContent"] = serde_json::json!(new_content);
+
+    if let Some(files) = doc.get_mut("jacsFiles").and_then(|v| v.as_array_mut()) {
+        for file in files {
+            if let Some(obj) = file.as_object_mut() {
+                obj.insert("embed".to_string(), serde_json::json!(true));
+                obj.insert("contents".to_string(), serde_json::json!(new_content));
+                obj.insert("sha256".to_string(), serde_json::json!(new_hash.clone()));
+            }
+        }
+    }
+
+    new_hash
+}
+
 // =============================================================================
 // Request/Response Types
 // =============================================================================
@@ -429,14 +486,12 @@ pub struct SignStateResult {
 pub struct VerifyStateParams {
     /// Path to the original file to verify against.
     #[schemars(
-        description = "Path to the file to verify (at least one of file_path or jacs_id required)"
+        description = "DEPRECATED for MCP security: direct file-path verification is disabled. Use jacs_id."
     )]
     pub file_path: Option<String>,
 
     /// JACS document ID to verify.
-    #[schemars(
-        description = "JACS document ID to verify (at least one of file_path or jacs_id required)"
-    )]
+    #[schemars(description = "JACS document ID to verify (uuid:version)")]
     pub jacs_id: Option<String>,
 }
 
@@ -469,14 +524,12 @@ pub struct VerifyStateResult {
 pub struct LoadStateParams {
     /// Path to the file to load.
     #[schemars(
-        description = "Path to the file to load (at least one of file_path or jacs_id required)"
+        description = "DEPRECATED for MCP security: direct file-path loading is disabled. Use jacs_id."
     )]
     pub file_path: Option<String>,
 
     /// JACS document ID to load.
-    #[schemars(
-        description = "JACS document ID to load (at least one of file_path or jacs_id required)"
-    )]
+    #[schemars(description = "JACS document ID to load (uuid:version)")]
     pub jacs_id: Option<String>,
 
     /// Whether to require verification before loading (default true).
@@ -513,12 +566,18 @@ pub struct LoadStateResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateStateParams {
     /// Path to the file to update.
-    #[schemars(description = "Path to the file to update (must have been previously signed)")]
+    #[schemars(
+        description = "DEPRECATED for MCP security: direct file-path updates are disabled. Use jacs_id."
+    )]
     pub file_path: String,
+
+    /// JACS document ID to update (uuid:version).
+    #[schemars(description = "JACS document ID to update (uuid:version)")]
+    pub jacs_id: Option<String>,
 
     /// New content to write to the file. If omitted, re-signs current content.
     #[schemars(
-        description = "New content to write to the file. If omitted, re-signs current file content."
+        description = "New embedded content for the JACS state document. If omitted, re-signs current embedded content."
     )]
     pub new_content: Option<String>,
 }
@@ -2390,7 +2449,9 @@ impl HaiMcpServer {
         description = "Sign an agent state file (memory/skill/plan/config/hook) to create a signed JACS document."
     )]
     pub async fn jacs_sign_state(&self, Parameters(params): Parameters<SignStateParams>) -> String {
-        let embed = params.embed.unwrap_or(false);
+        // Always embed state content for MCP-originated state documents so follow-up
+        // reads/updates can operate purely on JACS documents without direct file I/O.
+        let embed = params.embed.unwrap_or(true);
 
         // Create the agent state document with file reference
         let mut doc = match agentstate_crud::create_agentstate_with_file(
@@ -2453,21 +2514,22 @@ impl HaiMcpServer {
         // Set origin as "authored" for directly signed state
         let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
 
-        // Sign the document via create_document (no_save=true to avoid filesystem writes)
+        // Sign and persist through JACS document storage so subsequent MCP calls can
+        // reference only the JACS document ID (no sidecar/path coupling).
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None, // custom_schema
-            None, // outputfilename
-            true, // no_save
-            None, // attachments
+            None,  // custom_schema
+            None,  // outputfilename
+            false, // no_save
+            None,  // attachments
             Some(embed || params.state_type == "hook"),
         ) {
             Ok(signed_doc_string) => {
-                // Extract the JACS document ID from the signed document
+                // Extract a storage lookup key (jacsId:jacsVersion) from the signed document.
                 let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
                     .ok()
-                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .and_then(|v| extract_document_lookup_key(&v))
                     .unwrap_or_else(|| "unknown".to_string());
 
                 SignStateResult {
@@ -2507,68 +2569,44 @@ impl HaiMcpServer {
         &self,
         Parameters(params): Parameters<VerifyStateParams>,
     ) -> String {
-        // At least one of file_path or jacs_id must be provided
-        if params.file_path.is_none() && params.jacs_id.is_none() {
+        // MCP policy: verification must resolve through JACS documents, not direct file paths.
+        if params.jacs_id.is_none() && params.file_path.is_none() {
             let result = VerifyStateResult {
                 success: false,
                 hash_match: false,
                 signature_valid: false,
                 signing_info: None,
-                message: "At least one of file_path or jacs_id must be provided".to_string(),
+                message: "Missing state reference. Provide jacs_id (uuid:version).".to_string(),
                 error: Some("MISSING_PARAMETER".to_string()),
             };
             return serde_json::to_string_pretty(&result)
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        // If jacs_id is provided, verify the document by ID from storage
-        if let Some(jacs_id) = &params.jacs_id {
-            match self.agent.verify_document_by_id(jacs_id) {
-                Ok(valid) => {
-                    let result = VerifyStateResult {
-                        success: true,
-                        hash_match: valid,
-                        signature_valid: valid,
-                        signing_info: None,
-                        message: if valid {
-                            format!("Document '{}' verified successfully", jacs_id)
-                        } else {
-                            format!("Document '{}' signature verification failed", jacs_id)
-                        },
-                        error: None,
-                    };
-                    return serde_json::to_string_pretty(&result)
-                        .unwrap_or_else(|e| format!("Error: {}", e));
-                }
-                Err(e) => {
-                    let result = VerifyStateResult {
-                        success: false,
-                        hash_match: false,
-                        signature_valid: false,
-                        signing_info: None,
-                        message: format!("Failed to verify document '{}': {}", jacs_id, e),
-                        error: Some(e.to_string()),
-                    };
-                    return serde_json::to_string_pretty(&result)
-                        .unwrap_or_else(|e| format!("Error: {}", e));
-                }
-            }
+        if params.jacs_id.is_none() {
+            let result = VerifyStateResult {
+                success: false,
+                hash_match: false,
+                signature_valid: false,
+                signing_info: None,
+                message: "file_path-based verification is disabled in MCP. Use jacs_id."
+                    .to_string(),
+                error: Some("FILESYSTEM_ACCESS_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        // file_path-based verification: read the file and check if a signed
-        // document exists for it by looking at the stored state documents.
-        // Since document index is not yet available, we create a minimal
-        // verification based on file hash.
-        let file_path = params.file_path.as_deref().unwrap();
-        let content = match std::fs::read_to_string(file_path) {
-            Ok(c) => c,
+        let jacs_id = params.jacs_id.as_deref().unwrap_or_default();
+        let doc_string = match self.agent.get_document_by_id(jacs_id) {
+            Ok(s) => s,
             Err(e) => {
                 let result = VerifyStateResult {
                     success: false,
                     hash_match: false,
                     signature_valid: false,
                     signing_info: None,
-                    message: format!("Failed to read file '{}'", file_path),
+                    message: format!("Failed to load document '{}'", jacs_id),
                     error: Some(e.to_string()),
                 };
                 return serde_json::to_string_pretty(&result)
@@ -2576,61 +2614,39 @@ impl HaiMcpServer {
             }
         };
 
-        // Compute current file hash
-        let mut hasher = Sha256::new();
-        hasher.update(content.as_bytes());
-        let current_hash = format!("{:x}", hasher.finalize());
-
-        // Check for a .jacs.json sidecar file that might hold the signed document
-        let sidecar_path = format!("{}.jacs.json", file_path);
-        if let Ok(sidecar_content) = std::fs::read_to_string(&sidecar_path) {
-            // Parse the sidecar document
-            if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&sidecar_content) {
-                // Verify file hash using agentstate_crud
-                let hash_match = match agentstate_crud::verify_agentstate_file_hash(&doc) {
-                    Ok(matches) => matches,
-                    Err(_) => false,
-                };
-
-                // Verify document signature
-                let signature_valid = match self.agent.verify_document(&sidecar_content) {
-                    Ok(valid) => valid,
-                    Err(_) => false,
-                };
-
-                let signing_info = doc.get("jacsSignature").map(|s| s.to_string());
+        match self.agent.verify_document(&doc_string) {
+            Ok(valid) => {
+                let signing_info = serde_json::from_str::<serde_json::Value>(&doc_string)
+                    .ok()
+                    .and_then(|doc| doc.get("jacsSignature").cloned())
+                    .map(|sig| sig.to_string());
 
                 let result = VerifyStateResult {
                     success: true,
-                    hash_match,
-                    signature_valid,
+                    hash_match: valid,
+                    signature_valid: valid,
                     signing_info,
-                    message: format!(
-                        "Verification complete: hash_match={}, signature_valid={}",
-                        hash_match, signature_valid
-                    ),
+                    message: if valid {
+                        format!("Document '{}' verified successfully", jacs_id)
+                    } else {
+                        format!("Document '{}' signature verification failed", jacs_id)
+                    },
                     error: None,
                 };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = VerifyStateResult {
+                    success: false,
+                    hash_match: false,
+                    signature_valid: false,
+                    signing_info: None,
+                    message: format!("Failed to verify document '{}': {}", jacs_id, e),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
         }
-
-        // No sidecar found - report what we can
-        let result = VerifyStateResult {
-            success: true,
-            hash_match: false,
-            signature_valid: false,
-            signing_info: None,
-            message: format!(
-                "No signed document found for '{}'. Current file SHA-256: {}. \
-                 Use jacs_sign_state to create a signed document first.",
-                file_path, current_hash
-            ),
-            error: None,
-        };
-
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
 
     /// Load a signed agent state document and optionally verify it.
@@ -2641,14 +2657,26 @@ impl HaiMcpServer {
         description = "Load a signed agent state document, optionally verifying before returning content."
     )]
     pub async fn jacs_load_state(&self, Parameters(params): Parameters<LoadStateParams>) -> String {
-        // At least one of file_path or jacs_id must be provided
-        if params.file_path.is_none() && params.jacs_id.is_none() {
+        if params.file_path.is_some() && params.jacs_id.is_none() {
             let result = LoadStateResult {
                 success: false,
                 content: None,
                 verified: false,
                 warnings: None,
-                message: "At least one of file_path or jacs_id must be provided".to_string(),
+                message: "file_path-based loading is disabled in MCP. Use jacs_id.".to_string(),
+                error: Some("FILESYSTEM_ACCESS_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if params.jacs_id.is_none() {
+            let result = LoadStateResult {
+                success: false,
+                content: None,
+                verified: false,
+                warnings: None,
+                message: "Missing state reference. Provide jacs_id (uuid:version).".to_string(),
                 error: Some("MISSING_PARAMETER".to_string()),
             };
             return serde_json::to_string_pretty(&result)
@@ -2656,35 +2684,23 @@ impl HaiMcpServer {
         }
 
         let require_verified = params.require_verified.unwrap_or(true);
+        let jacs_id = params.jacs_id.as_deref().unwrap_or_default();
+        let mut warnings = Vec::new();
+        let mut verified = false;
 
-        // Loading by jacs_id is not yet implemented (requires document index)
-        if params.file_path.is_none() {
-            let result = LoadStateResult {
-                success: false,
-                content: None,
-                verified: false,
-                warnings: None,
-                message: "Loading by JACS ID alone is not yet implemented. \
-                         Please provide a file_path."
-                    .to_string(),
-                error: Some("NOT_YET_IMPLEMENTED".to_string()),
-            };
-            return serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|e| format!("Error: {}", e));
-        }
-
-        let file_path = params.file_path.as_deref().unwrap();
-
-        // Read the file content
-        let content = match std::fs::read_to_string(file_path) {
-            Ok(c) => c,
+        let doc_string = match self.agent.get_document_by_id(jacs_id) {
+            Ok(s) => s,
             Err(e) => {
                 let result = LoadStateResult {
                     success: false,
                     content: None,
-                    verified: false,
-                    warnings: None,
-                    message: format!("Failed to read file '{}'", file_path),
+                    verified,
+                    warnings: if warnings.is_empty() {
+                        None
+                    } else {
+                        Some(warnings)
+                    },
+                    message: format!("Failed to load state document '{}'", jacs_id),
                     error: Some(e.to_string()),
                 };
                 return serde_json::to_string_pretty(&result)
@@ -2692,48 +2708,18 @@ impl HaiMcpServer {
             }
         };
 
-        let mut warnings = Vec::new();
-        let mut verified = false;
-
-        // Check for sidecar signed document
-        let sidecar_path = format!("{}.jacs.json", file_path);
-        if let Ok(sidecar_content) = std::fs::read_to_string(&sidecar_path) {
-            if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&sidecar_content) {
-                // Verify hash
-                match agentstate_crud::verify_agentstate_file_hash(&doc) {
-                    Ok(true) => {
-                        verified = true;
-                    }
-                    Ok(false) => {
-                        warnings.push(
-                            "File content hash does not match signed hash. \
-                             File may have been modified since signing."
-                                .to_string(),
-                        );
-                    }
-                    Err(e) => {
-                        warnings.push(format!("Could not verify file hash: {}", e));
-                    }
+        if require_verified {
+            match self.agent.verify_document(&doc_string) {
+                Ok(true) => {
+                    verified = true;
                 }
-
-                // Verify signature
-                match self.agent.verify_document(&sidecar_content) {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        verified = false;
-                        warnings.push("Document signature verification failed.".to_string());
-                    }
-                    Err(e) => {
-                        verified = false;
-                        warnings.push(format!("Could not verify document signature: {}", e));
-                    }
+                Ok(false) => {
+                    warnings.push("Document signature verification failed.".to_string());
+                }
+                Err(e) => {
+                    warnings.push(format!("Could not verify document signature: {}", e));
                 }
             }
-        } else {
-            warnings.push(format!(
-                "No signed document found at '{}'. Content is unverified.",
-                sidecar_path
-            ));
         }
 
         if require_verified && !verified {
@@ -2746,26 +2732,55 @@ impl HaiMcpServer {
                 } else {
                     Some(warnings)
                 },
-                message: "Verification required but content could not be verified.".to_string(),
+                message: "Verification required but the state document could not be verified."
+                    .to_string(),
                 error: Some("VERIFICATION_FAILED".to_string()),
             };
             return serde_json::to_string_pretty(&result)
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
+        let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = LoadStateResult {
+                    success: false,
+                    content: None,
+                    verified,
+                    warnings: if warnings.is_empty() {
+                        None
+                    } else {
+                        Some(warnings)
+                    },
+                    message: format!("State document '{}' is not valid JSON", jacs_id),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let content = extract_embedded_state_content(&doc);
+        if content.is_none() {
+            warnings.push(
+                "State document does not contain embedded content. Re-sign with embed=true."
+                    .to_string(),
+            );
+        }
+
         let result = LoadStateResult {
             success: true,
-            content: Some(content),
+            content,
             verified,
             warnings: if warnings.is_empty() {
                 None
             } else {
                 Some(warnings)
             },
-            message: if verified {
-                format!("Successfully loaded and verified '{}'", file_path)
+            message: if require_verified && verified {
+                format!("Successfully loaded and verified '{}'", jacs_id)
             } else {
-                format!("Loaded '{}' without full verification", file_path)
+                format!("Loaded '{}' from JACS storage", jacs_id)
             },
             error: None,
         };
@@ -2779,36 +2794,36 @@ impl HaiMcpServer {
     /// the SHA-256 hash and creates a new signed version of the document.
     #[tool(
         name = "jacs_update_state",
-        description = "Update a previously signed agent state file with new content and re-sign."
+        description = "Update a previously signed agent state document by jacs_id with new embedded content and re-sign."
     )]
     pub async fn jacs_update_state(
         &self,
         Parameters(params): Parameters<UpdateStateParams>,
     ) -> String {
-        // If new content is provided, write it to the file
-        if let Some(new_content) = &params.new_content {
-            if let Err(e) = std::fs::write(&params.file_path, new_content) {
+        let jacs_id = match params.jacs_id.as_deref() {
+            Some(id) => id,
+            None => {
                 let result = UpdateStateResult {
                     success: false,
                     jacs_document_version_id: None,
                     new_hash: None,
-                    message: format!("Failed to write new content to '{}'", params.file_path),
-                    error: Some(e.to_string()),
+                    message: "file_path-based updates are disabled in MCP. Provide jacs_id."
+                        .to_string(),
+                    error: Some("FILESYSTEM_ACCESS_DISABLED".to_string()),
                 };
                 return serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
             }
-        }
+        };
 
-        // Read the (possibly updated) file content
-        let content = match std::fs::read_to_string(&params.file_path) {
-            Ok(c) => c,
+        let existing_doc_string = match self.agent.get_document_by_id(jacs_id) {
+            Ok(s) => s,
             Err(e) => {
                 let result = UpdateStateResult {
                     success: false,
                     jacs_document_version_id: None,
                     new_hash: None,
-                    message: format!("Failed to read file '{}'", params.file_path),
+                    message: format!("Failed to load state document '{}'", jacs_id),
                     error: Some(e.to_string()),
                 };
                 return serde_json::to_string_pretty(&result)
@@ -2816,177 +2831,59 @@ impl HaiMcpServer {
             }
         };
 
-        // Compute new SHA-256 hash
-        let mut hasher = Sha256::new();
-        hasher.update(content.as_bytes());
-        let new_hash = format!("{:x}", hasher.finalize());
-
-        // Check for existing sidecar document to get metadata for the update
-        let sidecar_path = format!("{}.jacs.json", params.file_path);
-        let existing_doc = std::fs::read_to_string(&sidecar_path)
-            .ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
-
-        // Extract metadata before potentially consuming the document
-        let state_type = existing_doc
-            .as_ref()
-            .and_then(|d| {
-                d.get("jacsAgentStateType")
-                    .and_then(|t| t.as_str())
-                    .map(String::from)
-            })
-            .unwrap_or_else(|| "config".to_string());
-
-        let state_name = existing_doc
-            .as_ref()
-            .and_then(|d| {
-                d.get("jacsAgentStateName")
-                    .and_then(|n| n.as_str())
-                    .map(String::from)
-            })
-            .unwrap_or_else(|| {
-                std::path::Path::new(&params.file_path)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unnamed")
-                    .to_string()
-            });
-
-        if let Some(mut doc) = existing_doc {
-            // Update the file hash in the document
-            if let Some(files) = doc.get_mut("jacsFiles").and_then(|f| f.as_array_mut()) {
-                for file_entry in files.iter_mut() {
-                    if let Some(obj) = file_entry.as_object_mut() {
-                        obj.insert(
-                            "sha256".to_string(),
-                            serde_json::Value::String(new_hash.clone()),
-                        );
-                        // Update embedded content if it was embedded
-                        if obj.get("embed").and_then(|e| e.as_bool()).unwrap_or(false) {
-                            obj.insert(
-                                "contents".to_string(),
-                                serde_json::Value::String(content.clone()),
-                            );
-                        }
-                    }
-                }
-            }
-
-            // If content was embedded at the document level, update it
-            if doc.get("jacsAgentStateContent").is_some() {
-                doc["jacsAgentStateContent"] = serde_json::json!(content);
-            }
-
-            // Extract the document key for update
-            let doc_key = doc
-                .get("id")
-                .and_then(|id| id.as_str())
-                .map(String::from)
-                .unwrap_or_default();
-
-            // Try to update the existing document
-            let doc_string = doc.to_string();
-            match self
-                .agent
-                .update_document(&doc_key, &doc_string, None, None)
-            {
-                Ok(updated_doc_string) => {
-                    let version_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
-                        .ok()
-                        .and_then(|v| {
-                            v.get("jacsVersion")
-                                .and_then(|ver| ver.as_str())
-                                .map(String::from)
-                                .or_else(|| {
-                                    v.get("id").and_then(|id| id.as_str()).map(String::from)
-                                })
-                        })
-                        .unwrap_or_else(|| "unknown".to_string());
-
-                    let result = UpdateStateResult {
-                        success: true,
-                        jacs_document_version_id: Some(version_id),
-                        new_hash: Some(new_hash),
-                        message: format!(
-                            "Successfully updated and re-signed '{}'",
-                            params.file_path
-                        ),
-                        error: None,
-                    };
-                    return serde_json::to_string_pretty(&result)
-                        .unwrap_or_else(|e| format!("Error: {}", e));
-                }
-                Err(e) => {
-                    // Fall through to create a new document if update fails
-                    tracing::warn!(
-                        "Failed to update existing document ({}), creating new signed version",
-                        e
-                    );
-                }
-            }
-        }
-
-        // No existing sidecar or update failed - create a fresh signed document
-
-        // Create fresh document
-        match agentstate_crud::create_agentstate_with_file(
-            &state_type,
-            &state_name,
-            &params.file_path,
-            false,
-        ) {
-            Ok(doc) => {
-                let doc_string = doc.to_string();
-                match self
-                    .agent
-                    .create_document(&doc_string, None, None, true, None, Some(false))
-                {
-                    Ok(signed_doc_string) => {
-                        let version_id =
-                            serde_json::from_str::<serde_json::Value>(&signed_doc_string)
-                                .ok()
-                                .and_then(|v| {
-                                    v.get("id").and_then(|id| id.as_str()).map(String::from)
-                                })
-                                .unwrap_or_else(|| "unknown".to_string());
-
-                        let result = UpdateStateResult {
-                            success: true,
-                            jacs_document_version_id: Some(version_id),
-                            new_hash: Some(new_hash),
-                            message: format!(
-                                "Created new signed version for '{}'",
-                                params.file_path
-                            ),
-                            error: None,
-                        };
-                        serde_json::to_string_pretty(&result)
-                            .unwrap_or_else(|e| format!("Error: {}", e))
-                    }
-                    Err(e) => {
-                        let result = UpdateStateResult {
-                            success: false,
-                            jacs_document_version_id: None,
-                            new_hash: Some(new_hash),
-                            message: "Failed to create new signed document".to_string(),
-                            error: Some(e.to_string()),
-                        };
-                        serde_json::to_string_pretty(&result)
-                            .unwrap_or_else(|e| format!("Error: {}", e))
-                    }
-                }
-            }
+        let mut doc = match serde_json::from_str::<serde_json::Value>(&existing_doc_string) {
+            Ok(v) => v,
             Err(e) => {
                 let result = UpdateStateResult {
                     success: false,
                     jacs_document_version_id: None,
-                    new_hash: Some(new_hash),
-                    message: "Failed to create agent state document for re-signing".to_string(),
-                    error: Some(e),
+                    new_hash: None,
+                    message: format!("State document '{}' is not valid JSON", jacs_id),
+                    error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
             }
-        }
+        };
+
+        let new_hash = params
+            .new_content
+            .as_deref()
+            .map(|content| update_embedded_state_content(&mut doc, content));
+
+        let updated_doc_string =
+            match self
+                .agent
+                .update_document(jacs_id, &doc.to_string(), None, None)
+            {
+                Ok(doc) => doc,
+                Err(e) => {
+                    let result = UpdateStateResult {
+                        success: false,
+                        jacs_document_version_id: None,
+                        new_hash,
+                        message: format!("Failed to update and re-sign '{}'", jacs_id),
+                        error: Some(e.to_string()),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            };
+
+        let version_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
+            .ok()
+            .and_then(|v| extract_document_lookup_key(&v))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let result = UpdateStateResult {
+            success: true,
+            jacs_document_version_id: Some(version_id),
+            new_hash,
+            message: format!("Successfully updated and re-signed '{}'", jacs_id),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
 
     /// List signed agent state documents.
@@ -3008,7 +2905,7 @@ impl HaiMcpServer {
             documents: Vec::new(),
             message: "Agent state document listing is not yet fully implemented. \
                      Documents are signed and stored but a centralized index is pending. \
-                     Use jacs_verify_state with a file_path to check individual files."
+                     Use jacs_verify_state with a jacs_id to check individual documents."
                 .to_string(),
             error: None,
         };
@@ -3033,7 +2930,7 @@ impl HaiMcpServer {
             &params.state_type,
             &params.name,
             &params.file_path,
-            false, // don't embed by default for adopted state
+            true, // embed for MCP document-centric reads/updates
         ) {
             Ok(doc) => doc,
             Err(e) => {
@@ -3077,16 +2974,16 @@ impl HaiMcpServer {
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None, // custom_schema
-            None, // outputfilename
-            true, // no_save
-            None, // attachments
-            Some(false),
+            None,  // custom_schema
+            None,  // outputfilename
+            false, // no_save
+            None,  // attachments
+            Some(true),
         ) {
             Ok(signed_doc_string) => {
                 let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
                     .ok()
-                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                    .and_then(|v| extract_document_lookup_key(&v))
                     .unwrap_or_else(|| "unknown".to_string());
 
                 AdoptStateResult {
@@ -4760,7 +4657,54 @@ mod tests {
         let schema = schemars::schema_for!(UpdateStateParams);
         let json = serde_json::to_string_pretty(&schema).unwrap();
         assert!(json.contains("file_path"));
+        assert!(json.contains("jacs_id"));
         assert!(json.contains("new_content"));
+    }
+
+    fn make_test_server() -> HaiMcpServer {
+        HaiMcpServer::new(
+            AgentWrapper::new(),
+            "https://api.hai.ai",
+            None, // no API key
+        )
+    }
+
+    #[test]
+    fn test_verify_state_rejects_file_path_only() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_verify_state(Parameters(VerifyStateParams {
+            file_path: Some("state.json".to_string()),
+            jacs_id: None,
+        })));
+        assert!(response.contains("FILESYSTEM_ACCESS_DISABLED"));
+        assert!(response.contains("file_path-based verification is disabled"));
+    }
+
+    #[test]
+    fn test_load_state_rejects_file_path_only() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_load_state(Parameters(LoadStateParams {
+            file_path: Some("state.json".to_string()),
+            jacs_id: None,
+            require_verified: Some(true),
+        })));
+        assert!(response.contains("FILESYSTEM_ACCESS_DISABLED"));
+        assert!(response.contains("file_path-based loading is disabled"));
+    }
+
+    #[test]
+    fn test_update_state_requires_jacs_id() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_update_state(Parameters(UpdateStateParams {
+            file_path: "state.json".to_string(),
+            jacs_id: None,
+            new_content: Some("{\"k\":\"v\"}".to_string()),
+        })));
+        assert!(response.contains("FILESYSTEM_ACCESS_DISABLED"));
+        assert!(response.contains("file_path-based updates are disabled"));
     }
 
     #[test]

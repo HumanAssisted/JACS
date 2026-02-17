@@ -781,6 +781,33 @@ impl AgentWrapper {
         self.verify_document(&doc_str)
     }
 
+    /// Load a document by ID from the agent's configured storage.
+    ///
+    /// The document ID should be in "uuid:version" format.
+    pub fn get_document_by_id(&self, document_id: &str) -> BindingResult<String> {
+        if !document_id.contains(':') {
+            return Err(BindingCoreError::invalid_argument(format!(
+                "Document ID must be in 'uuid:version' format, got '{}'.",
+                document_id
+            )));
+        }
+
+        let agent = self.lock()?;
+        let doc = agent.get_document(document_id).map_err(|e| {
+            BindingCoreError::document_failed(format!(
+                "Failed to load document '{}' from storage: {}",
+                document_id, e
+            ))
+        })?;
+
+        serde_json::to_string(&doc.value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize document '{}': {}",
+                document_id, e
+            ))
+        })
+    }
+
     /// Re-encrypt the agent's private key with a new password.
     ///
     /// Reads the encrypted private key file, decrypts with old_password,

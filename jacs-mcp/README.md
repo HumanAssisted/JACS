@@ -15,9 +15,9 @@ Sign, verify, and manage files that represent agent state (memories, skills, pla
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_state` | Sign a file to create a cryptographically signed JACS document |
-| `jacs_verify_state` | Verify file integrity and signature authenticity (by file path or JACS document ID). For one-off verification without loading an agent, use `verify_standalone()` in the language bindings (jacspy, jacsnpm, jacsgo). |
-| `jacs_load_state` | Load a signed state document, optionally verifying before returning content |
-| `jacs_update_state` | Update a previously signed file -- re-hashes and re-signs |
+| `jacs_verify_state` | Verify state document integrity/signature by JACS document ID (`jacs_id`). Path-based verification is deprecated for MCP security. |
+| `jacs_load_state` | Load a signed state document by JACS document ID (`jacs_id`), optionally verifying first |
+| `jacs_update_state` | Update a signed state document by JACS document ID (`jacs_id`) and re-sign |
 | `jacs_list_state` | List signed agent state documents with optional filtering |
 | `jacs_adopt_state` | Adopt an external file as signed state, recording its origin |
 
@@ -231,6 +231,7 @@ To enable HAI integration, add `HAI_API_KEY`:
 ### jacs_sign_state
 
 Sign an agent state file to create a cryptographically signed JACS document.
+The resulting document is persisted in JACS storage for ID-based follow-up operations.
 
 **Parameters:**
 - `file_path` (required): Path to the file to sign
@@ -239,34 +240,35 @@ Sign an agent state file to create a cryptographically signed JACS document.
 - `description` (optional): Description of the state document
 - `framework` (optional): Framework identifier (e.g., `claude-code`, `openclaw`)
 - `tags` (optional): Tags for categorization
-- `embed` (optional): Whether to embed file content inline (always true for hooks)
+- `embed` (optional): Whether to embed file content inline (defaults to true in MCP; always true for hooks)
 
 ### jacs_verify_state
 
 Verify the integrity and authenticity of a signed agent state.
 
 **Parameters:**
-- `file_path` (optional): Path to the file to verify
-- `jacs_id` (optional): JACS document ID to verify
+- `jacs_id` (required in MCP usage): JACS document ID (`uuid:version`) to verify
+- `file_path` (deprecated): Path-based verification is disabled for MCP security policy
 
-At least one of `file_path` or `jacs_id` must be provided.
+Use `jacs_id` from `jacs_sign_state` or `jacs_adopt_state`.
 
 ### jacs_load_state
 
 Load a signed agent state document, optionally verifying before returning content.
 
 **Parameters:**
-- `file_path` (optional): Path to the file to load
-- `jacs_id` (optional): JACS document ID to load
+- `jacs_id` (required in MCP usage): JACS document ID (`uuid:version`) to load
+- `file_path` (deprecated): Path-based loading is disabled for MCP security policy
 - `require_verified` (optional): Whether to require verification before loading (default: true)
 
 ### jacs_update_state
 
-Update a previously signed agent state file with new content and re-sign.
+Update a previously signed agent state document with new embedded content and re-sign.
 
 **Parameters:**
-- `file_path` (required): Path to the file to update
-- `new_content` (optional): New content to write. If omitted, re-signs current content.
+- `jacs_id` (required in MCP usage): JACS document ID (`uuid:version`) to update
+- `file_path` (deprecated): Path-based updates are disabled for MCP security policy
+- `new_content` (optional): New embedded content. If omitted, re-signs current content.
 
 ### jacs_list_state
 
