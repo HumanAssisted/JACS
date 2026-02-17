@@ -191,7 +191,7 @@ pub fn trust_agent_with_key(
     };
 
     // Verify the public key hash matches
-    let computed_hash = hash_public_key(public_key_bytes.clone());
+    let computed_hash = hash_public_key(&public_key_bytes);
     if computed_hash != public_key_hash {
         return Err(JacsError::SignatureVerificationFailed {
             reason: format!(

@@ -830,7 +830,7 @@ impl Agreement for Agent {
                     .expect("REASON public_key_enc_type")
                     .to_string();
                 let agents_public_key = self.fs_load_public_key(&noted_hash)?;
-                let new_hash = hash_public_key(agents_public_key.clone());
+                let new_hash = hash_public_key(&agents_public_key);
                 if new_hash != noted_hash {
                     return Err(JacsError::CryptoError(format!(
                         "wrong public key for {} , {}",

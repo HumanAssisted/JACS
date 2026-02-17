@@ -172,7 +172,7 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> 
     let agent_value = agent.get_value().ok_or("Agent value not loaded")?;
 
     let public_key = agent.get_public_key()?;
-    let public_key_hash = crate::crypt::hash::hash_public_key(public_key.clone());
+    let public_key_hash = crate::crypt::hash::hash_public_key(&public_key);
 
     let agent_id = agent.get_id()?;
     let agent_version = agent.get_version()?;
@@ -210,7 +210,7 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> 
 fn create_jacs_pubkey_document(agent: &Agent) -> Result<Value, Box<dyn Error>> {
     let public_key = agent.get_public_key()?;
     let public_key_b64 = crate::crypt::base64_encode(&public_key);
-    let public_key_hash = crate::crypt::hash::hash_public_key(public_key.clone());
+    let public_key_hash = crate::crypt::hash::hash_public_key(&public_key);
 
     let agent_id = agent.get_id()?;
     let agent_version = agent.get_version()?;
@@ -281,9 +281,7 @@ mod tests {
 
     #[test]
     fn test_embed_signature_in_agent_card() {
-        use crate::a2a::{
-            A2A_PROTOCOL_VERSION, AgentCapabilities, AgentInterface,
-        };
+        use crate::a2a::{A2A_PROTOCOL_VERSION, AgentCapabilities, AgentInterface};
 
         let card = AgentCard {
             name: "Test".to_string(),
@@ -382,8 +380,7 @@ mod tests {
         let card = make_test_card();
 
         // Generate RSA keys
-        let (private_key, public_key) =
-            crate::crypt::rsawrapper::generate_keys().expect("key gen");
+        let (private_key, public_key) = crate::crypt::rsawrapper::generate_keys().expect("key gen");
 
         // Sign the card
         let jws = sign_agent_card_jws(&card, &private_key, "rsa", "rsa-key-1").expect("sign");
@@ -412,10 +409,7 @@ mod tests {
 
         // Verification should fail (payload mismatch)
         let result = verify_agent_card_jws(&signed_card, &public_key, "ring-Ed25519");
-        assert!(
-            result.is_err(),
-            "Tampered card should fail verification"
-        );
+        assert!(result.is_err(), "Tampered card should fail verification");
     }
 
     #[test]
@@ -428,10 +422,7 @@ mod tests {
         let result = verify_agent_card_jws(&card, &public_key, "ring-Ed25519");
         assert!(result.is_err());
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("no signatures"),
+            result.unwrap_err().to_string().contains("no signatures"),
             "Error should mention missing signatures"
         );
     }
@@ -443,8 +434,7 @@ mod tests {
         // Sign with one key
         let (private_key, _public_key) =
             crate::crypt::ringwrapper::generate_keys().expect("key gen");
-        let jws =
-            sign_agent_card_jws(&card, &private_key, "ring-Ed25519", "key-1").expect("sign");
+        let jws = sign_agent_card_jws(&card, &private_key, "ring-Ed25519", "key-1").expect("sign");
         let signed_card = embed_signature_in_agent_card(&card, &jws, Some("key-1"));
 
         // Verify with a different key
@@ -452,9 +442,6 @@ mod tests {
             crate::crypt::ringwrapper::generate_keys().expect("key gen 2");
 
         let result = verify_agent_card_jws(&signed_card, &public_key2, "ring-Ed25519");
-        assert!(
-            result.is_err(),
-            "Verification with wrong key should fail"
-        );
+        assert!(result.is_err(), "Verification with wrong key should fail");
     }
 }

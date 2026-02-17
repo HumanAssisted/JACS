@@ -57,7 +57,7 @@
 
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::DocumentTraits;
+use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::create_minimal_blank_agent;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
@@ -233,6 +233,31 @@ pub struct SignedDocument {
     pub agent_id: String,
     /// ISO 8601 timestamp of when the document was signed.
     pub timestamp: String,
+}
+
+impl SignedDocument {
+    fn from_jacs_document(
+        jacs_doc: JACSDocument,
+        serialized_kind: &str,
+    ) -> Result<Self, JacsError> {
+        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize {}: {}", serialized_kind, e),
+        })?;
+
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+        let agent_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
+
+        Ok(Self {
+            raw,
+            document_id: jacs_doc.id,
+            agent_id,
+            timestamp,
+        })
+    }
 }
 
 /// Result of verifying a signed document.
@@ -1554,23 +1579,7 @@ impl SimpleAgent {
                 message: format!("Failed to update document: {}", e),
             })?;
 
-        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document: {}", e),
-        })?;
-
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-        Ok(SignedDocument {
-            raw,
-            document_id: jacs_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(jacs_doc, "document")
     }
 
     /// Signs arbitrary data as a JACS message.
@@ -1637,25 +1646,9 @@ impl SimpleAgent {
                 ),
             })?;
 
-        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document: {}", e),
-        })?;
-
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
         info!("Message signed: document_id={}", jacs_doc.id);
 
-        Ok(SignedDocument {
-            raw,
-            document_id: jacs_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(jacs_doc, "document")
     }
 
     /// Signs a file with optional content embedding.
@@ -1734,23 +1727,7 @@ impl SimpleAgent {
                 ),
             })?;
 
-        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document: {}", e),
-        })?;
-
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-        Ok(SignedDocument {
-            raw,
-            document_id: jacs_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(jacs_doc, "document")
     }
 
     /// Signs multiple messages in a batch operation.
@@ -1862,23 +1839,7 @@ impl SimpleAgent {
         // Convert to SignedDocument results
         let mut results = Vec::with_capacity(jacs_docs.len());
         for jacs_doc in jacs_docs {
-            let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-                message: format!("Failed to serialize document: {}", e),
-            })?;
-
-            let timestamp = jacs_doc
-                .value
-                .get_path_str_or(&["jacsSignature", "date"], "");
-            let agent_id = jacs_doc
-                .value
-                .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-            results.push(SignedDocument {
-                raw,
-                document_id: jacs_doc.id,
-                agent_id,
-                timestamp,
-            });
+            results.push(SignedDocument::from_jacs_document(jacs_doc, "document")?);
         }
 
         info!(
@@ -2505,25 +2466,9 @@ impl SimpleAgent {
                 message: format!("Failed to create agreement: {}", e),
             })?;
 
-        let raw = serde_json::to_string(&agreement_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize agreement: {}", e),
-        })?;
-
-        let timestamp = agreement_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = agreement_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
         info!("Agreement created: document_id={}", agreement_doc.id);
 
-        Ok(SignedDocument {
-            raw,
-            document_id: agreement_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(agreement_doc, "agreement")
     }
 
     /// Signs an existing multi-party agreement as the current agent.
@@ -2600,23 +2545,7 @@ impl SimpleAgent {
                 reason: format!("Failed to sign agreement: {}", e),
             })?;
 
-        let raw = serde_json::to_string(&signed_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize signed agreement: {}", e),
-        })?;
-
-        let timestamp = signed_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = signed_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-        Ok(SignedDocument {
-            raw,
-            document_id: signed_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(signed_doc, "signed agreement")
     }
 
     /// Checks the status of a multi-party agreement.
@@ -3321,6 +3250,30 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":true"));
         assert!(json.contains("agent-123"));
+    }
+
+    #[test]
+    fn test_signed_document_from_jacs_document_extracts_signature_fields() {
+        let jacs_doc = JACSDocument {
+            id: "doc-123".to_string(),
+            version: "ver-1".to_string(),
+            value: json!({
+                "content": {"k": "v"},
+                "jacsSignature": {
+                    "agentID": "agent-abc",
+                    "date": "2026-02-17T00:00:00Z"
+                }
+            }),
+            jacs_type: "message".to_string(),
+        };
+
+        let signed = SignedDocument::from_jacs_document(jacs_doc, "document")
+            .expect("conversion should succeed");
+
+        assert_eq!(signed.document_id, "doc-123");
+        assert_eq!(signed.agent_id, "agent-abc");
+        assert_eq!(signed.timestamp, "2026-02-17T00:00:00Z");
+        assert!(signed.raw.contains("\"content\""));
     }
 
     #[test]

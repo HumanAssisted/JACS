@@ -389,22 +389,27 @@ impl MultiStorage {
     }
 
     pub fn rename_file(&self, from: &str, to: &str) -> Result<(), ObjectStoreError> {
-        // First get the contents of the original file
-        let contents = self.get_file(from, None)?;
+        let from_path = ObjectPath::parse(Self::clean_path(from))?;
+        let to_path = ObjectPath::parse(Self::clean_path(to))?;
+        let mut errors = Vec::new();
 
-        // Save contents to new location
-        self.save_file(to, &contents)?;
-
-        // Delete the original file
         for storage in &self.storages {
-            let from_path = ObjectPath::parse(Self::clean_path(from))?;
-            if let Err(e) = block_on(storage.delete(&from_path)) {
-                // Log error but continue if file doesn't exist or other errors
-                debug!("Error deleting original file during rename: {:?}", e);
+            if let Err(e) = block_on(storage.rename(&from_path, &to_path)) {
+                errors.push(e);
             }
         }
 
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(format!(
+                    "Failed to rename in some storages: {:?}",
+                    errors
+                ))),
+            })
+        }
     }
 
     fn get_read_storage(&self, preference: Option<StorageType>) -> Arc<dyn ObjectStore> {
@@ -781,5 +786,56 @@ impl StorageDocumentTraits for CachedMultiStorage {
 
     fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
         self.storage.get_documents(keys)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MultiStorage;
+
+    #[test]
+    fn rename_file_moves_content_and_removes_source() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        storage
+            .save_file("source/path.txt", b"hello world")
+            .expect("write source");
+
+        storage
+            .rename_file("source/path.txt", "dest/path.txt")
+            .expect("rename should succeed");
+
+        let moved = storage
+            .get_file("dest/path.txt", None)
+            .expect("destination file should exist");
+        assert_eq!(moved, b"hello world");
+
+        let source_exists = storage
+            .file_exists("source/path.txt", None)
+            .expect("source exists check");
+        assert!(!source_exists, "source file should not exist after rename");
+    }
+
+    #[test]
+    fn rename_file_accepts_paths_with_leading_slashes() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        storage
+            .save_file("/source/leading.txt", b"slash-test")
+            .expect("write source with leading slash");
+
+        storage
+            .rename_file("/source/leading.txt", "/dest/leading.txt")
+            .expect("rename should succeed");
+
+        let moved = storage
+            .get_file("dest/leading.txt", None)
+            .expect("destination file should exist");
+        assert_eq!(moved, b"slash-test");
+    }
+
+    #[test]
+    fn rename_file_missing_source_returns_error() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let result = storage.rename_file("missing/source.txt", "dest/path.txt");
+        assert!(result.is_err(), "renaming a missing source should fail");
     }
 }

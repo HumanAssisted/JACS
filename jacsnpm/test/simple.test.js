@@ -696,6 +696,26 @@ describe('JACS Simple API', function() {
     });
   });
 
+  describe('verifyById / verifyByIdSync', () => {
+    (simpleExists && fixturesExist ? it : it.skip)('verifyByIdSync should return invalid format error payload', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const result = freshSimple.verifyByIdSync('not-a-versioned-id');
+
+      expect(result.valid).to.be.false;
+      expect(result.errors).to.be.an('array').that.is.not.empty;
+      expect(result.errors[0]).to.match(/Document ID must be in 'uuid:version' format/);
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('verifyById should return invalid format error payload', async () => {
+      const freshSimple = loadSimpleInFixtures();
+      const result = await freshSimple.verifyById('not-a-versioned-id');
+
+      expect(result.valid).to.be.false;
+      expect(result.errors).to.be.an('array').that.is.not.empty;
+      expect(result.errors[0]).to.match(/Document ID must be in 'uuid:version' format/);
+    });
+  });
+
   describe('signFileSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];

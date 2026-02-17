@@ -188,7 +188,7 @@ fn verify_with_resolved_key(
         .get_str("publicKeyHash")
         .ok_or_else(|| "No publicKeyHash found in jacsSignature".to_string())?;
 
-    let computed_hash = hash_public_key(public_key.clone());
+    let computed_hash = hash_public_key(&public_key);
     if computed_hash != signature_hash {
         return Err(format!(
             "Resolved public key hash mismatch: expected {}..., got {}...",
@@ -727,8 +727,8 @@ mod tests {
 
     use crate::a2a::trust::{A2ATrustPolicy, TrustLevel};
     use crate::a2a::{
-        AgentCapabilities, AgentCard, AgentExtension, AgentInterface, JACS_EXTENSION_URI,
-        A2A_PROTOCOL_VERSION,
+        A2A_PROTOCOL_VERSION, AgentCapabilities, AgentCard, AgentExtension, AgentInterface,
+        JACS_EXTENSION_URI,
     };
 
     /// Create a minimal Agent Card for trust policy tests.
@@ -811,13 +811,9 @@ mod tests {
         let card = make_test_card("plain-agent", false, None, None);
         let artifact = make_dummy_wrapped_artifact("task", "foreign-agent");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Open,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Open)
+                .unwrap();
 
         // Open policy always allows — trust level should be Untrusted
         assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
@@ -831,13 +827,9 @@ mod tests {
         let card = make_test_card("jacs-agent", true, Some("agent-1"), Some("v1"));
         let artifact = make_dummy_wrapped_artifact("message", "agent-1");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Open,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Open)
+                .unwrap();
 
         assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
         assert!(result.trust_assessment.as_ref().unwrap().allowed);
@@ -849,24 +841,22 @@ mod tests {
         let card = make_test_card("plain-agent", false, Some("no-jacs"), Some("v1"));
         let artifact = make_dummy_wrapped_artifact("task", "no-jacs");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Verified,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Verified)
+                .unwrap();
 
         // Verified policy should reject non-JACS agent
         assert!(!result.valid);
         assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
         assert!(!result.trust_assessment.as_ref().unwrap().allowed);
-        assert!(result
-            .trust_assessment
-            .as_ref()
-            .unwrap()
-            .reason
-            .contains("does not declare JACS provenance"));
+        assert!(
+            result
+                .trust_assessment
+                .as_ref()
+                .unwrap()
+                .reason
+                .contains("does not declare JACS provenance")
+        );
     }
 
     #[test]
@@ -875,13 +865,9 @@ mod tests {
         let card = make_test_card("jacs-agent", true, Some("agent-2"), Some("v1"));
         let artifact = make_dummy_wrapped_artifact("task", "agent-2");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Verified,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Verified)
+                .unwrap();
 
         // Verified policy accepts JACS agents — trust check passes,
         // but crypto verification may fail (dummy artifact is not properly signed)
@@ -898,29 +884,24 @@ mod tests {
             Some("550e8400-e29b-41d4-a716-446655440077"),
             Some("550e8400-e29b-41d4-a716-446655440078"),
         );
-        let artifact = make_dummy_wrapped_artifact(
-            "task",
-            "550e8400-e29b-41d4-a716-446655440077",
-        );
+        let artifact = make_dummy_wrapped_artifact("task", "550e8400-e29b-41d4-a716-446655440077");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Strict,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Strict)
+                .unwrap();
 
         // Strict policy rejects agents not in trust store
         assert!(!result.valid);
         assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
         assert!(!result.trust_assessment.as_ref().unwrap().allowed);
-        assert!(result
-            .trust_assessment
-            .as_ref()
-            .unwrap()
-            .reason
-            .contains("not in the local trust store"));
+        assert!(
+            result
+                .trust_assessment
+                .as_ref()
+                .unwrap()
+                .reason
+                .contains("not in the local trust store")
+        );
     }
 
     #[test]
@@ -929,13 +910,9 @@ mod tests {
         let card = make_test_card("plain-untrusted", false, None, None);
         let artifact = make_dummy_wrapped_artifact("task", "unknown");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Strict,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Strict)
+                .unwrap();
 
         assert!(!result.valid);
         assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
@@ -948,20 +925,13 @@ mod tests {
         let card = make_test_card("rejected-agent", false, Some("rej-1"), Some("v1"));
         let artifact = make_dummy_wrapped_artifact("message", "rej-1");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Verified,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Verified)
+                .unwrap();
 
         assert!(!result.valid);
         assert_eq!(result.artifact_type, "a2a-message");
-        assert_eq!(
-            result.original_artifact,
-            json!({ "test": "data" })
-        );
+        assert_eq!(result.original_artifact, json!({ "test": "data" }));
     }
 
     #[test]
@@ -971,13 +941,9 @@ mod tests {
         // Dummy artifact with no valid hash — crypto verification will fail
         let artifact = make_dummy_wrapped_artifact("task", "agent-open");
 
-        let result = verify_wrapped_artifact_with_policy(
-            &agent,
-            &artifact,
-            &card,
-            A2ATrustPolicy::Open,
-        )
-        .unwrap();
+        let result =
+            verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Open)
+                .unwrap();
 
         // Trust check passes (Open), but crypto verification should fail
         // (dummy artifact doesn't have a real hash/signature)

@@ -484,7 +484,9 @@ class JACSA2AIntegration {
                 signerVersion: signatureInfo.agentVersion || 'unknown',
                 artifactType: wrappedArtifact.jacsType || 'unknown',
                 timestamp: wrappedArtifact.jacsVersionDate || '',
-                originalArtifact: (wrappedArtifact.a2aArtifact || payload?.a2aArtifact || {}),
+                originalArtifact: (wrappedArtifact.a2aArtifact
+                    || payload?.a2aArtifact
+                    || {}),
             };
             if (normalized.verifiedPayload) {
                 result.verifiedPayload = normalized.verifiedPayload;

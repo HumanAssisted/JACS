@@ -3,9 +3,10 @@ use crate::storage::MultiStorage;
 use jsonschema::Retrieve;
 use phf::phf_map;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use tracing::{debug, warn};
 
 /// Whether to accept invalid TLS certificates when fetching remote schemas.
@@ -622,28 +623,33 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
     let path = rawpath.strip_prefix('/').unwrap_or(rawpath);
+    let cache_key = schema_cache_key(path);
 
-    // Check embedded schemas first (always allowed, no security concerns)
-    if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
-        let schema_value: Value = serde_json::from_str(schema_json)?;
-        return Ok(Arc::new(schema_value));
+    if let Some(cached) = get_cached_schema(&cache_key) {
+        return Ok(cached);
     }
 
-    if path.starts_with("http://") || path.starts_with("https://") {
+    // Check embedded schemas first (always allowed, no security concerns)
+    let resolved = if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+        let schema_value: Value = serde_json::from_str(schema_json)?;
+        Arc::new(schema_value)
+    } else if path.starts_with("http://") || path.starts_with("https://") {
         debug!("Attempting to fetch schema from URL: {}", path);
         if path.starts_with("https://hai.ai") {
             let relative_path = path.trim_start_matches("https://hai.ai/");
             if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(relative_path) {
                 let schema_value: Value = serde_json::from_str(schema_json)?;
-                return Ok(Arc::new(schema_value));
+                Arc::new(schema_value)
+            } else {
+                return Err(JacsError::SchemaError(format!(
+                    "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
+                    path, relative_path, DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
+                ))
+                .into());
             }
-            Err(JacsError::SchemaError(format!(
-                "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
-                path, relative_path, DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
-            )).into())
         } else {
             // get_remote_schema already checks the domain allowlist
-            get_remote_schema(path)
+            get_remote_schema(path)?
         }
     } else {
         // Filesystem path - check security restrictions
@@ -653,12 +659,70 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
         if storage.file_exists(path, None)? {
             let schema_json = String::from_utf8(storage.get_file(path, None)?)?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;
-            Ok(Arc::new(schema_value))
+            Arc::new(schema_value)
         } else {
-            Err(JacsError::FileNotFound {
+            return Err(JacsError::FileNotFound {
                 path: path.to_string(),
             }
-            .into())
+            .into());
         }
+    };
+
+    Ok(cache_schema(cache_key, resolved))
+}
+
+fn schema_cache_key(path: &str) -> String {
+    path.strip_prefix("https://hai.ai/")
+        .or_else(|| path.strip_prefix("http://hai.ai/"))
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn schema_cache() -> &'static RwLock<HashMap<String, Arc<Value>>> {
+    static SCHEMA_CACHE: OnceLock<RwLock<HashMap<String, Arc<Value>>>> = OnceLock::new();
+    SCHEMA_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn get_cached_schema(key: &str) -> Option<Arc<Value>> {
+    schema_cache().read().ok()?.get(key).cloned()
+}
+
+fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
+    if let Ok(mut cache) = schema_cache().write() {
+        if let Some(existing) = cache.get(&key) {
+            return existing.clone();
+        }
+        cache.insert(key, schema.clone());
+    }
+    schema
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_schema;
+    use std::sync::Arc;
+
+    #[test]
+    fn resolve_schema_embedded_path_is_cached() {
+        let first = resolve_schema("schemas/agent/v1/agent.schema.json").expect("first resolve");
+        let second = resolve_schema("schemas/agent/v1/agent.schema.json").expect("second resolve");
+
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "embedded schema should be returned from cache"
+        );
+    }
+
+    #[test]
+    fn resolve_schema_hai_url_and_relative_path_share_cache_entry() {
+        let relative = resolve_schema("schemas/header/v1/header.schema.json")
+            .expect("relative path resolve should succeed");
+        let via_url = resolve_schema("https://hai.ai/schemas/header/v1/header.schema.json")
+            .expect("hai url resolve should succeed");
+
+        assert!(
+            Arc::ptr_eq(&relative, &via_url),
+            "relative and hai URL lookups should share cached schema"
+        );
     }
 }

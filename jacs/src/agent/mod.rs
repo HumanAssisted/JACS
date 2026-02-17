@@ -428,7 +428,7 @@ impl Agent {
             }
         }
 
-        let agent_id_for_errors = self.id.clone().unwrap_or_else(|| "<unknown>".to_string());
+        let agent_id_for_errors = self.id.as_deref().unwrap_or("<unknown>").to_string();
 
         if self.id.is_some() {
             // check if keys are already loaded
@@ -464,7 +464,7 @@ impl Agent {
 
     #[must_use = "signature verification result must be checked"]
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
-        let agent_id = self.id.clone().unwrap_or_else(|| "<unknown>".to_string());
+        let agent_id = self.id.as_deref().unwrap_or("<unknown>");
         let public_key = self.get_public_key().map_err(|e| {
             format!(
                 "verify_self_signature failed for agent '{}': Could not retrieve public key: {}",
@@ -472,8 +472,8 @@ impl Agent {
             )
         })?;
         // validate header
-        let signature_key_from = &AGENT_SIGNATURE_FIELDNAME.to_string();
-        match &self.value.clone() {
+        let signature_key_from = AGENT_SIGNATURE_FIELDNAME;
+        match self.value.as_ref() {
             Some(embedded_value) => self.signature_verification_procedure(
                 embedded_value,
                 None,
@@ -513,11 +513,8 @@ impl Agent {
     ) -> Result<String, Box<dyn Error>> {
         let document = self.get_document(&document_key)?;
         let document_value = document.getvalue();
-        let binding = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
-        let signature_key_from_final = match signature_key_from {
-            Some(signature_key_from) => signature_key_from,
-            None => binding,
-        };
+        let signature_key_from_final =
+            signature_key_from.unwrap_or(DOCUMENT_AGENT_SIGNATURE_FIELDNAME);
         self.get_signature_agent_id_and_version(document_value, signature_key_from_final)
     }
 
@@ -529,13 +526,11 @@ impl Agent {
         let agentid = json_value[signature_key_from]["agentID"]
             .as_str()
             .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+            .trim_matches('"');
         let agentversion = json_value[signature_key_from]["agentVersion"]
             .as_str()
             .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+            .trim_matches('"');
         Ok(format!("{}:{}", agentid, agentversion))
     }
 
@@ -594,18 +589,16 @@ impl Agent {
             .value
             .as_ref()
             .and_then(|v| v.get("jacsAgentDomain").and_then(|x| x.as_str()))
-            .map(|s| s.to_string())
             .or_else(|| {
                 self.config
                     .as_ref()
-                    .and_then(|c| c.jacs_agent_domain().clone())
+                    .and_then(|c| c.jacs_agent_domain().as_deref())
             });
 
         let maybe_agent_id = json_value
             .get(signature_key_from)
             .and_then(|sig| sig.get("agentID"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .and_then(|v| v.as_str());
 
         // Claim-based policy enforcement
         // "If you claim it, you must prove it"
@@ -634,9 +627,7 @@ impl Agent {
         };
 
         if validate && domain_present {
-            if let (Some(domain), Some(agent_id_for_dns)) =
-                (maybe_domain.clone(), maybe_agent_id.clone())
-            {
+            if let (Some(domain), Some(agent_id_for_dns)) = (maybe_domain, maybe_agent_id) {
                 // Allow embedded fallback only if not required
                 let embedded = if required {
                     None
@@ -646,7 +637,7 @@ impl Agent {
                 if let Err(e) = verify_pubkey_via_dns_or_embedded(
                     &public_key,
                     &agent_id_for_dns,
-                    Some(&domain),
+                    Some(domain),
                     embedded.map(|s| s.as_str()),
                     strict,
                 ) {
@@ -658,7 +649,7 @@ impl Agent {
             }
         } else {
             // DNS not validated -> rely on embedded fingerprint
-            let public_key_rehash = hash_public_key(public_key.clone());
+            let public_key_rehash = hash_public_key(&public_key);
             if public_key_rehash != public_key_hash {
                 let error_message = format!(
                     "Incorrect public key used to verify signature public_key_rehash {} public_key_hash {} ",
@@ -681,9 +672,7 @@ impl Agent {
         // This MUST succeed for agents claiming verified-hai.ai status
         #[cfg(not(target_arch = "wasm32"))]
         if verification_claim.as_deref() == Some("verified-hai.ai") {
-            let agent_id_for_hai = maybe_agent_id
-                .clone()
-                .unwrap_or_else(|| self.id.clone().unwrap_or_default());
+            let agent_id_for_hai = maybe_agent_id.or(self.id.as_deref()).unwrap_or_default();
             let pk_hash = pubkey_digest_hex(&public_key);
 
             match verify_hai_registration_sync(&agent_id_for_hai, &pk_hash) {
@@ -707,8 +696,9 @@ impl Agent {
             }
         }
 
-        let signature_base64 = match signature.clone() {
-            Some(sig) => sig,
+        let provided_signature = signature.as_deref();
+        let signature_base64 = match provided_signature {
+            Some(sig) => sig.to_string(),
             _ => json_value[signature_key_from]["signature"]
                 .as_str()
                 .unwrap_or("")
@@ -716,15 +706,14 @@ impl Agent {
                 .to_string(),
         };
 
+        let standard_signature = json_value[signature_key_from]["signature"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"');
+
         debug!(
             "\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n",
-            json_value[signature_key_from]["signature"]
-                .as_str()
-                .unwrap_or("")
-                .trim_matches('"')
-                .to_string(),
-            signature,
-            signature_base64
+            standard_signature, provided_signature, signature_base64
         );
 
         let result = self.verify_string(
@@ -856,7 +845,7 @@ impl Agent {
             Err(err) => return Err(Box::new(err)),
         };
         let public_key = self.get_public_key()?;
-        let public_key_hash = hash_public_key(public_key);
+        let public_key_hash = hash_public_key(&public_key);
         debug!("hash {:?} ", public_key_hash);
         //TODO fields must never include sha256 at top level
         // error
@@ -1155,7 +1144,7 @@ impl Agent {
         if !self.ephemeral {
             if let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm)
             {
-                let public_key_hash = hash_public_key(public_key.clone());
+                let public_key_hash = hash_public_key(public_key);
                 let _ = self.fs_save_remote_public_key(
                     &public_key_hash,
                     public_key,

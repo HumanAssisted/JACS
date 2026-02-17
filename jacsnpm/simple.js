@@ -150,6 +150,72 @@ function normalizeDocumentInput(document) {
     }
     return JSON.stringify(document);
 }
+function normalizeJsonInput(value) {
+    return typeof value === 'string' ? value : JSON.stringify(value);
+}
+function resolveLoadPath(configPath, options) {
+    strictMode = resolveStrict(options?.strict);
+    const requestedPath = configPath || './jacs.config.json';
+    const resolvedConfigPath = path.resolve(requestedPath);
+    if (!fs.existsSync(resolvedConfigPath)) {
+        throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
+    }
+    return resolvedConfigPath;
+}
+function setLoadedAgentInfo(resolvedConfigPath) {
+    agentInfo = extractAgentInfo(resolvedConfigPath);
+    return agentInfo;
+}
+function createRawDocumentPayload(jacsType, extra) {
+    return JSON.stringify({
+        jacsType,
+        jacsLevel: 'raw',
+        ...extra,
+    });
+}
+function ensureFileExists(filePath) {
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found: ${filePath}`);
+    }
+}
+function createDocumentImpl(agent, docContent, filePath, embed, isSync) {
+    if (isSync) {
+        return agent.createDocumentSync(docContent, null, null, true, filePath, embed);
+    }
+    return agent.createDocument(docContent, null, null, true, filePath, embed);
+}
+function makeVerificationSuccess(signerId = '') {
+    return {
+        valid: true,
+        signerId,
+        timestamp: '',
+        attachments: [],
+        errors: [],
+    };
+}
+function makeVerificationFailure(e, strictPrefix, signerId = '') {
+    if (strictMode) {
+        throw new Error(`${strictPrefix} (strict mode): ${e}`);
+    }
+    return {
+        valid: false,
+        signerId,
+        timestamp: '',
+        attachments: [],
+        errors: [String(e)],
+    };
+}
+function invalidDocumentIdResult(documentId) {
+    return {
+        valid: false,
+        signerId: '',
+        timestamp: '',
+        attachments: [],
+        errors: [
+            `Document ID must be in 'uuid:version' format, got '${documentId}'. Use verify() with the full JSON string instead.`
+        ],
+    };
+}
 function extractAgentInfo(resolvedConfigPath) {
     const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
     const agentIdVersion = config.jacs_agent_id_and_version || '';
@@ -385,31 +451,19 @@ function createSync(options) {
  * Loads an existing agent from a configuration file.
  */
 async function load(configPath, options) {
-    strictMode = resolveStrict(options?.strict);
-    const requestedPath = configPath || './jacs.config.json';
-    const resolvedConfigPath = path.resolve(requestedPath);
-    if (!fs.existsSync(resolvedConfigPath)) {
-        throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
-    }
+    const resolvedConfigPath = resolveLoadPath(configPath, options);
     globalAgent = new index_1.JacsAgent();
     await globalAgent.load(resolvedConfigPath);
-    agentInfo = extractAgentInfo(resolvedConfigPath);
-    return agentInfo;
+    return setLoadedAgentInfo(resolvedConfigPath);
 }
 /**
  * Loads an existing agent (sync, blocks event loop).
  */
 function loadSync(configPath, options) {
-    strictMode = resolveStrict(options?.strict);
-    const requestedPath = configPath || './jacs.config.json';
-    const resolvedConfigPath = path.resolve(requestedPath);
-    if (!fs.existsSync(resolvedConfigPath)) {
-        throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
-    }
+    const resolvedConfigPath = resolveLoadPath(configPath, options);
     globalAgent = new index_1.JacsAgent();
     globalAgent.loadSync(resolvedConfigPath);
-    agentInfo = extractAgentInfo(resolvedConfigPath);
-    return agentInfo;
+    return setLoadedAgentInfo(resolvedConfigPath);
 }
 /**
  * Verifies the currently loaded agent's integrity.
@@ -418,25 +472,10 @@ async function verifySelf() {
     const agent = requireAgent();
     try {
         await agent.verifyAgent();
-        return {
-            valid: true,
-            signerId: agentInfo?.agentId || '',
-            timestamp: '',
-            attachments: [],
-            errors: [],
-        };
+        return makeVerificationSuccess(agentInfo?.agentId || '');
     }
     catch (e) {
-        if (strictMode) {
-            throw new Error(`Self-verification failed (strict mode): ${e}`);
-        }
-        return {
-            valid: false,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [String(e)],
-        };
+        return makeVerificationFailure(e, 'Self-verification failed');
     }
 }
 /**
@@ -446,25 +485,10 @@ function verifySelfSync() {
     const agent = requireAgent();
     try {
         agent.verifyAgentSync();
-        return {
-            valid: true,
-            signerId: agentInfo?.agentId || '',
-            timestamp: '',
-            attachments: [],
-            errors: [],
-        };
+        return makeVerificationSuccess(agentInfo?.agentId || '');
     }
     catch (e) {
-        if (strictMode) {
-            throw new Error(`Self-verification failed (strict mode): ${e}`);
-        }
-        return {
-            valid: false,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [String(e)],
-        };
+        return makeVerificationFailure(e, 'Self-verification failed');
     }
 }
 /**
@@ -472,12 +496,8 @@ function verifySelfSync() {
  */
 async function signMessage(data) {
     const agent = requireAgent();
-    const docContent = {
-        jacsType: 'message',
-        jacsLevel: 'raw',
-        content: data,
-    };
-    const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, null, null);
+    const docContent = createRawDocumentPayload('message', { content: data });
+    const result = await createDocumentImpl(agent, docContent, null, null, false);
     return parseSignedResult(result);
 }
 /**
@@ -485,12 +505,8 @@ async function signMessage(data) {
  */
 function signMessageSync(data) {
     const agent = requireAgent();
-    const docContent = {
-        jacsType: 'message',
-        jacsLevel: 'raw',
-        content: data,
-    };
-    const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, null, null);
+    const docContent = createRawDocumentPayload('message', { content: data });
+    const result = createDocumentImpl(agent, docContent, null, null, true);
     return parseSignedResult(result);
 }
 /**
@@ -498,23 +514,21 @@ function signMessageSync(data) {
  */
 async function updateAgent(newAgentData) {
     const agent = requireAgent();
-    const dataString = typeof newAgentData === 'string' ? newAgentData : JSON.stringify(newAgentData);
-    return agent.updateAgent(dataString);
+    return agent.updateAgent(normalizeJsonInput(newAgentData));
 }
 /**
  * Updates the agent document (sync, blocks event loop).
  */
 function updateAgentSync(newAgentData) {
     const agent = requireAgent();
-    const dataString = typeof newAgentData === 'string' ? newAgentData : JSON.stringify(newAgentData);
-    return agent.updateAgentSync(dataString);
+    return agent.updateAgentSync(normalizeJsonInput(newAgentData));
 }
 /**
  * Updates an existing document with new data and re-signs it.
  */
 async function updateDocument(documentId, newDocumentData, attachments, embed) {
     const agent = requireAgent();
-    const dataString = typeof newDocumentData === 'string' ? newDocumentData : JSON.stringify(newDocumentData);
+    const dataString = normalizeJsonInput(newDocumentData);
     const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
     return parseSignedResult(result);
 }
@@ -523,7 +537,7 @@ async function updateDocument(documentId, newDocumentData, attachments, embed) {
  */
 function updateDocumentSync(documentId, newDocumentData, attachments, embed) {
     const agent = requireAgent();
-    const dataString = typeof newDocumentData === 'string' ? newDocumentData : JSON.stringify(newDocumentData);
+    const dataString = normalizeJsonInput(newDocumentData);
     const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
     return parseSignedResult(result);
 }
@@ -532,15 +546,11 @@ function updateDocumentSync(documentId, newDocumentData, attachments, embed) {
  */
 async function signFile(filePath, embed = false) {
     const agent = requireAgent();
-    if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
-    }
-    const docContent = {
-        jacsType: 'file',
-        jacsLevel: 'raw',
+    ensureFileExists(filePath);
+    const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
-    };
-    const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, filePath, embed);
+    });
+    const result = await createDocumentImpl(agent, docContent, filePath, embed, false);
     return parseSignedResult(result);
 }
 /**
@@ -548,15 +558,11 @@ async function signFile(filePath, embed = false) {
  */
 function signFileSync(filePath, embed = false) {
     const agent = requireAgent();
-    if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
-    }
-    const docContent = {
-        jacsType: 'file',
-        jacsLevel: 'raw',
+    ensureFileExists(filePath);
+    const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
-    };
-    const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, filePath, embed);
+    });
+    const result = createDocumentImpl(agent, docContent, filePath, embed, true);
     return parseSignedResult(result);
 }
 /**
@@ -593,37 +599,14 @@ function verifyStandalone(signedDocument, options) {
 async function verifyById(documentId) {
     const agent = requireAgent();
     if (!documentId.includes(':')) {
-        return {
-            valid: false,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [
-                `Document ID must be in 'uuid:version' format, got '${documentId}'. Use verify() with the full JSON string instead.`
-            ],
-        };
+        return invalidDocumentIdResult(documentId);
     }
     try {
         await agent.verifyDocumentById(documentId);
-        return {
-            valid: true,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [],
-        };
+        return makeVerificationSuccess();
     }
     catch (e) {
-        if (strictMode) {
-            throw new Error(`Verification failed (strict mode): ${e}`);
-        }
-        return {
-            valid: false,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [String(e)],
-        };
+        return makeVerificationFailure(e, 'Verification failed');
     }
 }
 /**
@@ -632,37 +615,14 @@ async function verifyById(documentId) {
 function verifyByIdSync(documentId) {
     const agent = requireAgent();
     if (!documentId.includes(':')) {
-        return {
-            valid: false,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [
-                `Document ID must be in 'uuid:version' format, got '${documentId}'. Use verify() with the full JSON string instead.`
-            ],
-        };
+        return invalidDocumentIdResult(documentId);
     }
     try {
         agent.verifyDocumentByIdSync(documentId);
-        return {
-            valid: true,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [],
-        };
+        return makeVerificationSuccess();
     }
     catch (e) {
-        if (strictMode) {
-            throw new Error(`Verification failed (strict mode): ${e}`);
-        }
-        return {
-            valid: false,
-            signerId: '',
-            timestamp: '',
-            attachments: [],
-            errors: [String(e)],
-        };
+        return makeVerificationFailure(e, 'Verification failed');
     }
 }
 /**

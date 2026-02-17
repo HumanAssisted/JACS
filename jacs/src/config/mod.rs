@@ -566,60 +566,109 @@ impl Config {
             .map_err(|e| Box::new(e) as Box<dyn Error>) // Map EnvError to Box<dyn Error>
     }
 
+    fn replace_if_some<T>(target: &mut Option<T>, incoming: Option<T>) {
+        if incoming.is_some() {
+            *target = incoming;
+        }
+    }
+
+    fn env_opt(key: &str) -> Option<String> {
+        match get_env_var(key, false) {
+            Ok(Some(val)) if !val.is_empty() => Some(val),
+            _ => None,
+        }
+    }
+
+    fn env_opt_bool(key: &str) -> Option<bool> {
+        match Self::env_opt(key) {
+            Some(val) => Some(val.to_lowercase() == "true" || val == "1"),
+            None => None,
+        }
+    }
+
+    fn apply_string_override(target: &mut Option<String>, key: &str) {
+        if let Some(val) = Self::env_opt(key) {
+            *target = Some(val);
+        }
+    }
+
+    fn apply_bool_override(target: &mut Option<bool>, key: &str) {
+        if let Some(val) = Self::env_opt_bool(key) {
+            *target = Some(val);
+        }
+    }
+
+    fn apply_parsed_override<T>(target: &mut Option<T>, key: &str)
+    where
+        T: std::str::FromStr,
+    {
+        if let Some(val) = Self::env_opt(key)
+            && let Ok(parsed) = val.parse::<T>()
+        {
+            *target = Some(parsed);
+        }
+    }
+
     /// Merge another config into this one.
     /// Values from `other` will override values in `self` if they are Some.
     pub fn merge(&mut self, other: Config) {
-        if other.jacs_use_security.is_some() {
-            self.jacs_use_security = other.jacs_use_security;
-        }
-        if other.jacs_data_directory.is_some() {
-            self.jacs_data_directory = other.jacs_data_directory;
-        }
-        if other.jacs_key_directory.is_some() {
-            self.jacs_key_directory = other.jacs_key_directory;
-        }
-        if other.jacs_agent_private_key_filename.is_some() {
-            self.jacs_agent_private_key_filename = other.jacs_agent_private_key_filename;
-        }
-        if other.jacs_agent_public_key_filename.is_some() {
-            self.jacs_agent_public_key_filename = other.jacs_agent_public_key_filename;
-        }
-        if other.jacs_agent_key_algorithm.is_some() {
-            self.jacs_agent_key_algorithm = other.jacs_agent_key_algorithm;
-        }
-        if other.jacs_agent_id_and_version.is_some() {
-            self.jacs_agent_id_and_version = other.jacs_agent_id_and_version;
-        }
-        if other.jacs_default_storage.is_some() {
-            self.jacs_default_storage = other.jacs_default_storage;
-        }
-        if other.jacs_agent_domain.is_some() {
-            self.jacs_agent_domain = other.jacs_agent_domain;
-        }
-        if other.jacs_dns_validate.is_some() {
-            self.jacs_dns_validate = other.jacs_dns_validate;
-        }
-        if other.jacs_dns_strict.is_some() {
-            self.jacs_dns_strict = other.jacs_dns_strict;
-        }
-        if other.jacs_dns_required.is_some() {
-            self.jacs_dns_required = other.jacs_dns_required;
-        }
-        if other.observability.is_some() {
-            self.observability = other.observability;
-        }
-        if other.jacs_database_url.is_some() {
-            self.jacs_database_url = other.jacs_database_url;
-        }
-        if other.jacs_database_max_connections.is_some() {
-            self.jacs_database_max_connections = other.jacs_database_max_connections;
-        }
-        if other.jacs_database_min_connections.is_some() {
-            self.jacs_database_min_connections = other.jacs_database_min_connections;
-        }
-        if other.jacs_database_connect_timeout_secs.is_some() {
-            self.jacs_database_connect_timeout_secs = other.jacs_database_connect_timeout_secs;
-        }
+        let Config {
+            schema: _,
+            jacs_use_security,
+            jacs_data_directory,
+            jacs_key_directory,
+            jacs_agent_private_key_filename,
+            jacs_agent_public_key_filename,
+            jacs_agent_key_algorithm,
+            jacs_private_key_password: _,
+            jacs_agent_id_and_version,
+            jacs_default_storage,
+            jacs_agent_domain,
+            jacs_dns_validate,
+            jacs_dns_strict,
+            jacs_dns_required,
+            observability,
+            jacs_database_url,
+            jacs_database_max_connections,
+            jacs_database_min_connections,
+            jacs_database_connect_timeout_secs,
+        } = other;
+
+        Self::replace_if_some(&mut self.jacs_use_security, jacs_use_security);
+        Self::replace_if_some(&mut self.jacs_data_directory, jacs_data_directory);
+        Self::replace_if_some(&mut self.jacs_key_directory, jacs_key_directory);
+        Self::replace_if_some(
+            &mut self.jacs_agent_private_key_filename,
+            jacs_agent_private_key_filename,
+        );
+        Self::replace_if_some(
+            &mut self.jacs_agent_public_key_filename,
+            jacs_agent_public_key_filename,
+        );
+        Self::replace_if_some(&mut self.jacs_agent_key_algorithm, jacs_agent_key_algorithm);
+        Self::replace_if_some(
+            &mut self.jacs_agent_id_and_version,
+            jacs_agent_id_and_version,
+        );
+        Self::replace_if_some(&mut self.jacs_default_storage, jacs_default_storage);
+        Self::replace_if_some(&mut self.jacs_agent_domain, jacs_agent_domain);
+        Self::replace_if_some(&mut self.jacs_dns_validate, jacs_dns_validate);
+        Self::replace_if_some(&mut self.jacs_dns_strict, jacs_dns_strict);
+        Self::replace_if_some(&mut self.jacs_dns_required, jacs_dns_required);
+        Self::replace_if_some(&mut self.observability, observability);
+        Self::replace_if_some(&mut self.jacs_database_url, jacs_database_url);
+        Self::replace_if_some(
+            &mut self.jacs_database_max_connections,
+            jacs_database_max_connections,
+        );
+        Self::replace_if_some(
+            &mut self.jacs_database_min_connections,
+            jacs_database_min_connections,
+        );
+        Self::replace_if_some(
+            &mut self.jacs_database_connect_timeout_secs,
+            jacs_database_connect_timeout_secs,
+        );
     }
 
     /// Apply environment variable overrides to this config.
@@ -642,83 +691,45 @@ impl Config {
     /// Note: JACS_PRIVATE_KEY_PASSWORD is intentionally NOT loaded into config.
     /// It should be read directly from environment when needed for security.
     pub fn apply_env_overrides(&mut self) {
-        // Helper to get env var as Option<String>
-        fn env_opt(key: &str) -> Option<String> {
-            match get_env_var(key, false) {
-                Ok(Some(val)) if !val.is_empty() => Some(val),
-                _ => None,
-            }
-        }
+        Self::apply_string_override(&mut self.jacs_use_security, "JACS_USE_SECURITY");
+        Self::apply_string_override(&mut self.jacs_data_directory, "JACS_DATA_DIRECTORY");
+        Self::apply_string_override(&mut self.jacs_key_directory, "JACS_KEY_DIRECTORY");
+        Self::apply_string_override(
+            &mut self.jacs_agent_private_key_filename,
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+        );
+        Self::apply_string_override(
+            &mut self.jacs_agent_public_key_filename,
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        );
+        Self::apply_string_override(
+            &mut self.jacs_agent_key_algorithm,
+            "JACS_AGENT_KEY_ALGORITHM",
+        );
+        Self::apply_string_override(
+            &mut self.jacs_agent_id_and_version,
+            "JACS_AGENT_ID_AND_VERSION",
+        );
+        Self::apply_string_override(&mut self.jacs_default_storage, "JACS_DEFAULT_STORAGE");
+        Self::apply_string_override(&mut self.jacs_agent_domain, "JACS_AGENT_DOMAIN");
 
-        // Helper to get env var as Option<bool>
-        fn env_opt_bool(key: &str) -> Option<bool> {
-            match get_env_var(key, false) {
-                Ok(Some(val)) if !val.is_empty() => {
-                    Some(val.to_lowercase() == "true" || val == "1")
-                }
-                _ => None,
-            }
-        }
+        Self::apply_bool_override(&mut self.jacs_dns_validate, "JACS_DNS_VALIDATE");
+        Self::apply_bool_override(&mut self.jacs_dns_strict, "JACS_DNS_STRICT");
+        Self::apply_bool_override(&mut self.jacs_dns_required, "JACS_DNS_REQUIRED");
 
-        // Apply string overrides
-        if let Some(val) = env_opt("JACS_USE_SECURITY") {
-            self.jacs_use_security = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_DATA_DIRECTORY") {
-            self.jacs_data_directory = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_KEY_DIRECTORY") {
-            self.jacs_key_directory = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_PRIVATE_KEY_FILENAME") {
-            self.jacs_agent_private_key_filename = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_PUBLIC_KEY_FILENAME") {
-            self.jacs_agent_public_key_filename = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_KEY_ALGORITHM") {
-            self.jacs_agent_key_algorithm = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_ID_AND_VERSION") {
-            self.jacs_agent_id_and_version = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_DEFAULT_STORAGE") {
-            self.jacs_default_storage = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_DOMAIN") {
-            self.jacs_agent_domain = Some(val);
-        }
-
-        // Apply boolean overrides
-        if let Some(val) = env_opt_bool("JACS_DNS_VALIDATE") {
-            self.jacs_dns_validate = Some(val);
-        }
-        if let Some(val) = env_opt_bool("JACS_DNS_STRICT") {
-            self.jacs_dns_strict = Some(val);
-        }
-        if let Some(val) = env_opt_bool("JACS_DNS_REQUIRED") {
-            self.jacs_dns_required = Some(val);
-        }
-
-        // Database configuration
-        if let Some(val) = env_opt("JACS_DATABASE_URL") {
-            self.jacs_database_url = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_DATABASE_MAX_CONNECTIONS") {
-            if let Ok(n) = val.parse::<u32>() {
-                self.jacs_database_max_connections = Some(n);
-            }
-        }
-        if let Some(val) = env_opt("JACS_DATABASE_MIN_CONNECTIONS") {
-            if let Ok(n) = val.parse::<u32>() {
-                self.jacs_database_min_connections = Some(n);
-            }
-        }
-        if let Some(val) = env_opt("JACS_DATABASE_CONNECT_TIMEOUT_SECS") {
-            if let Ok(n) = val.parse::<u64>() {
-                self.jacs_database_connect_timeout_secs = Some(n);
-            }
-        }
+        Self::apply_string_override(&mut self.jacs_database_url, "JACS_DATABASE_URL");
+        Self::apply_parsed_override(
+            &mut self.jacs_database_max_connections,
+            "JACS_DATABASE_MAX_CONNECTIONS",
+        );
+        Self::apply_parsed_override(
+            &mut self.jacs_database_min_connections,
+            "JACS_DATABASE_MIN_CONNECTIONS",
+        );
+        Self::apply_parsed_override(
+            &mut self.jacs_database_connect_timeout_secs,
+            "JACS_DATABASE_CONNECT_TIMEOUT_SECS",
+        );
 
         // Note: Password is intentionally NOT loaded from env into config
         // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
@@ -1723,6 +1734,44 @@ mod tests {
         set_env_var("JACS_DNS_VALIDATE", "0").unwrap();
         config.apply_env_overrides();
         assert_eq!(config.jacs_dns_validate, Some(false));
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_apply_env_overrides_ignores_empty_string_values() {
+        clear_jacs_env_vars();
+
+        let mut config = Config::with_defaults();
+        let original_data_dir = config.jacs_data_directory.clone();
+
+        set_env_var("JACS_DATA_DIRECTORY", "").unwrap();
+        config.apply_env_overrides();
+
+        assert_eq!(config.jacs_data_directory, original_data_dir);
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_apply_env_overrides_ignores_invalid_database_numbers() {
+        clear_jacs_env_vars();
+
+        let mut config = Config::with_defaults();
+        config.jacs_database_max_connections = Some(10);
+        config.jacs_database_min_connections = Some(2);
+        config.jacs_database_connect_timeout_secs = Some(30);
+
+        set_env_var("JACS_DATABASE_MAX_CONNECTIONS", "not-a-number").unwrap();
+        set_env_var("JACS_DATABASE_MIN_CONNECTIONS", "bad").unwrap();
+        set_env_var("JACS_DATABASE_CONNECT_TIMEOUT_SECS", "oops").unwrap();
+        config.apply_env_overrides();
+
+        assert_eq!(config.jacs_database_max_connections, Some(10));
+        assert_eq!(config.jacs_database_min_connections, Some(2));
+        assert_eq!(config.jacs_database_connect_timeout_secs, Some(30));
 
         clear_jacs_env_vars();
     }

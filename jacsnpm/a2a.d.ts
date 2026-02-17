@@ -189,6 +189,11 @@ export declare class JACSA2AIntegration {
     }> | null;
     constructor(client: JacsClient, trustPolicy?: TrustPolicy);
     static quickstart(options?: A2AQuickstartOptions): Promise<JACSA2AIntegration>;
+    /**
+     * Start a minimal Express discovery server for this agent.
+     *
+     * Pass `port = 0` to let the OS pick an available ephemeral port.
+     */
     listen(port?: number): Server;
     exportAgentCard(agentData: AgentData): A2AAgentCard;
     createExtensionDescriptor(): Record<string, unknown>;
@@ -212,6 +217,7 @@ export declare class JACSA2AIntegration {
     createChainOfCustody(artifacts: Record<string, unknown>[]): Record<string, unknown>;
     generateWellKnownDocuments(agentCard: A2AAgentCard, jwsSignature: string, publicKeyB64: string, agentData: AgentData): Record<string, Record<string, unknown>>;
     private _hasJacsExtension;
+    private _normalizeVerifyResponse;
     private _verifyWrappedArtifactInternal;
     private _buildJwks;
     private _inferJwsAlg;

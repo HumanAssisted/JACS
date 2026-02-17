@@ -262,7 +262,7 @@ pub fn verify_pubkey_via_dns_or_embedded(
                 // Fallback to embedded if provided
                 if let Some(embed) = embedded_fingerprint {
                     // Accept either the new byte-based digest or the legacy normalized-string hex
-                    let legacy_hex = hash_public_key(agent_public_key.to_vec());
+                    let legacy_hex = hash_public_key(agent_public_key);
                     if embed == local_b64
                         || embed.eq_ignore_ascii_case(&local_hex)
                         || embed.eq_ignore_ascii_case(&legacy_hex)
@@ -291,7 +291,7 @@ pub fn verify_pubkey_via_dns_or_embedded(
     }
 
     if let Some(embed) = embedded_fingerprint {
-        let legacy_hex = hash_public_key(agent_public_key.to_vec());
+        let legacy_hex = hash_public_key(agent_public_key);
         if embed == local_b64
             || embed.eq_ignore_ascii_case(&local_hex)
             || embed.eq_ignore_ascii_case(&legacy_hex)
