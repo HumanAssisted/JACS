@@ -23,6 +23,7 @@
  * ```
  */
 import type { JacsClient } from './client.js';
+import { type AuthReplayOptions } from './auth-replay.js';
 export interface JacsKoaMiddlewareOptions {
     /** Pre-initialized JacsClient instance (preferred). */
     client?: JacsClient;
@@ -45,6 +46,11 @@ export interface JacsKoaMiddlewareOptions {
     }>;
     /** Base URL / domain for the A2A agent card. */
     a2aUrl?: string;
+    /**
+     * Enable replay protection when using JACS documents as auth artifacts.
+     * Default: disabled (backward compatible).
+     */
+    authReplay?: boolean | AuthReplayOptions;
 }
 interface KoaContext {
     request: {

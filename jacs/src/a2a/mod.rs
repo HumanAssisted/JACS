@@ -474,10 +474,7 @@ mod tests {
         assert_eq!(format!("{}", err), "A2A signing error: key missing");
 
         let err = A2AError::ValidationError("schema mismatch".to_string());
-        assert_eq!(
-            format!("{}", err),
-            "A2A validation error: schema mismatch"
-        );
+        assert_eq!(format!("{}", err), "A2A validation error: schema mismatch");
 
         let err = A2AError::KeyGenerationError("entropy".to_string());
         assert_eq!(format!("{}", err), "A2A key generation error: entropy");
@@ -554,10 +551,7 @@ mod tests {
         let deserialized: A2ATask = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.id, "task-100");
         assert_eq!(deserialized.context_id, "ctx-200");
-        assert_eq!(
-            deserialized.status.state,
-            TaskState::TASK_STATE_COMPLETED
-        );
+        assert_eq!(deserialized.status.state, TaskState::TASK_STATE_COMPLETED);
         assert_eq!(deserialized.artifacts.as_ref().unwrap().len(), 1);
     }
 }

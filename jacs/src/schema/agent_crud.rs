@@ -267,8 +267,7 @@ mod tests {
             json!("one+updated@example.com")
         );
 
-        remove_contact_from_agent(&mut agent, json!({"email": "two@example.com"}))
-            .expect("remove");
+        remove_contact_from_agent(&mut agent, json!({"email": "two@example.com"})).expect("remove");
         assert_eq!(agent["jacsContacts"].as_array().map(|a| a.len()), Some(1));
     }
 }

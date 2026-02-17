@@ -858,7 +858,9 @@ pub struct AssessA2aAgentParams {
     pub agent_card_json: String,
 
     /// Trust policy to apply: "open", "verified", or "strict".
-    #[schemars(description = "Trust policy: 'open' (accept all), 'verified' (require JACS), or 'strict' (require trust store)")]
+    #[schemars(
+        description = "Trust policy: 'open' (accept all), 'verified' (require JACS), or 'strict' (require trust store)"
+    )]
     pub policy: Option<String>,
 }
 
@@ -4449,10 +4451,7 @@ impl HaiMcpServer {
         name = "jacs_is_trusted",
         description = "Check whether a specific agent is in the local trust store."
     )]
-    pub async fn jacs_is_trusted(
-        &self,
-        Parameters(params): Parameters<IsTrustedParams>,
-    ) -> String {
+    pub async fn jacs_is_trusted(&self, Parameters(params): Parameters<IsTrustedParams>) -> String {
         if params.agent_id.is_empty() {
             let result = IsTrustedResult {
                 success: false,

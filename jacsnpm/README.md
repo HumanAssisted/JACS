@@ -285,6 +285,18 @@ app.post('/api/data', (req, res) => {
 
 Options: `client`, `configPath`, `sign` (auto-sign, default false), `verify` (default true), `optional` (allow unsigned, default false). Supports Express v4 + v5.
 
+For auth-style endpoints, enable replay protection:
+
+```typescript
+app.use(
+  jacsMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  }),
+);
+```
+
 **Peer dep**: `npm install express`
 
 ### Koa Middleware (`@hai.ai/jacs/koa`)
@@ -299,6 +311,18 @@ app.use(async (ctx) => {
   console.log(ctx.state.jacsPayload); // verified
   ctx.body = { status: 'ok' };        // auto-signed when sign: true
 });
+```
+
+For auth-style endpoints, enable replay protection:
+
+```typescript
+app.use(
+  jacsKoaMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  }),
+);
 ```
 
 **Peer dep**: `npm install koa`

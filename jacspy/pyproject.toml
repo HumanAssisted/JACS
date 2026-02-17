@@ -55,7 +55,7 @@ markers = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module"] 
+features = ["extension-module"] 
 module-name = "jacs"  
 python-source = "python" 
 binding = "pyo3"  

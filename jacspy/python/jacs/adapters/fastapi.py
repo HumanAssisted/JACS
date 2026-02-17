@@ -39,6 +39,11 @@ except ImportError as _exc:
     ) from _exc
 
 from .base import BaseJacsAdapter
+from .._replay import (
+    InMemoryReplayCache,
+    build_auth_replay_options,
+    check_auth_replay,
+)
 
 logger = logging.getLogger("jacs.adapters.fastapi")
 
@@ -56,6 +61,12 @@ class JacsMiddleware(BaseHTTPMiddleware):
         sign_responses: If True (default), outgoing JSON responses are signed.
         verify_requests: If True (default), incoming POST bodies with a
             ``jacsSignature`` field are verified.
+        auth_replay_protection: If True, enforce timestamp freshness and
+            single-use signature replay protection for verified requests.
+        auth_max_age_seconds: Maximum accepted signature age in seconds
+            for auth replay protection mode.
+        auth_clock_skew_seconds: Allowed future clock skew in seconds
+            for auth replay protection mode.
         a2a: If True, serve A2A well-known discovery documents.
             The middleware intercepts requests to ``/.well-known/*``
             and responds directly.  Requires a ``client`` with a loaded
@@ -73,6 +84,9 @@ class JacsMiddleware(BaseHTTPMiddleware):
         strict: bool = False,
         sign_responses: bool = True,
         verify_requests: bool = True,
+        auth_replay_protection: bool = False,
+        auth_max_age_seconds: int = 30,
+        auth_clock_skew_seconds: int = 5,
         a2a: bool = False,
         a2a_skills: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
@@ -81,6 +95,12 @@ class JacsMiddleware(BaseHTTPMiddleware):
         )
         self.sign_responses = sign_responses
         self.verify_requests = verify_requests
+        self._auth_replay = build_auth_replay_options(
+            enabled=auth_replay_protection,
+            max_age_seconds=auth_max_age_seconds,
+            clock_skew_seconds=auth_clock_skew_seconds,
+        )
+        self._replay_cache = InMemoryReplayCache()
         self._a2a_docs: Optional[Dict[str, Any]] = None
 
         if a2a:
@@ -160,26 +180,81 @@ class JacsMiddleware(BaseHTTPMiddleware):
         if self.verify_requests and request.method == "POST":
             body = await request.body()
             if body:
+                raw_body = ""
+                data = None
                 try:
-                    data = json.loads(body)
+                    raw_body = body.decode("utf-8")
+                except UnicodeDecodeError:
+                    raw_body = ""
+
+                if raw_body:
+                    try:
+                        data = json.loads(raw_body)
+                    except json.JSONDecodeError:
+                        data = None
+
+                if isinstance(data, dict):
                     if "jacsSignature" in data:
-                        if self._adapter.strict:
-                            # Strict: raise on failure (will be caught below)
-                            self._adapter.verify_input(json.dumps(data))
-                        else:
-                            self._adapter.verify_input_or_passthrough(
-                                json.dumps(data)
+                        try:
+                            verify_result = self._adapter.client.verify(raw_body)
+                            is_valid = (
+                                verify_result.get("valid", False)
+                                if isinstance(verify_result, dict)
+                                else bool(getattr(verify_result, "valid", False))
                             )
-                except json.JSONDecodeError:
-                    pass
-                except Exception:
-                    if self._adapter.strict:
-                        return Response(
-                            content=json.dumps({"error": "JACS signature verification failed"}),
-                            status_code=401,
-                            media_type="application/json",
-                        )
-                    # Permissive mode: already logged by adapter, continue
+                            errors = (
+                                verify_result.get("errors", [])
+                                if isinstance(verify_result, dict)
+                                else getattr(verify_result, "errors", [])
+                            )
+
+                            if is_valid:
+                                if self._auth_replay.enabled:
+                                    replay_error = check_auth_replay(
+                                        raw_body,
+                                        verify_result,
+                                        self._replay_cache,
+                                        self._auth_replay,
+                                    )
+                                    if replay_error:
+                                        return Response(
+                                            content=json.dumps(
+                                                {
+                                                    "error": "JACS signature verification failed",
+                                                    "details": [replay_error],
+                                                }
+                                            ),
+                                            status_code=401,
+                                            media_type="application/json",
+                                        )
+                            elif self._adapter.strict:
+                                return Response(
+                                    content=json.dumps(
+                                        {
+                                            "error": "JACS signature verification failed",
+                                            "details": errors,
+                                        }
+                                    ),
+                                    status_code=401,
+                                    media_type="application/json",
+                                )
+                            else:
+                                logger.warning(
+                                    "JACS verification failed (passthrough): %s",
+                                    errors,
+                                )
+                        except Exception as exc:
+                            if self._adapter.strict:
+                                return Response(
+                                    content=json.dumps(
+                                        {"error": "JACS signature verification failed"}
+                                    ),
+                                    status_code=401,
+                                    media_type="application/json",
+                                )
+                            logger.warning(
+                                "JACS verification failed (passthrough): %s", exc
+                            )
 
         response = await call_next(request)
 

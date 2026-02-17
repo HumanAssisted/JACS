@@ -24,6 +24,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.jacsMiddleware = jacsMiddleware;
+const auth_replay_js_1 = require("./auth-replay.js");
 // =============================================================================
 // Internal helpers
 // =============================================================================
@@ -58,6 +59,8 @@ function jacsMiddleware(options = {}) {
     const shouldSign = options.sign === true;
     const isOptional = options.optional === true;
     const enableA2A = options.a2a === true;
+    const authReplay = (0, auth_replay_js_1.normalizeAuthReplayOptions)(options.authReplay);
+    const replayCache = new auth_replay_js_1.InMemoryReplayCache();
     // Client is resolved once (lazy, on first request) then cached.
     let clientPromise = null;
     function getClient() {
@@ -125,6 +128,16 @@ function jacsMiddleware(options = {}) {
                     const result = await client.verify(rawBody);
                     if (result.valid) {
                         req.jacsPayload = result.data;
+                        if (authReplay.enabled) {
+                            const replayError = (0, auth_replay_js_1.checkAuthReplay)(rawBody, result, replayCache, authReplay);
+                            if (replayError) {
+                                res.status(401).json({
+                                    error: 'JACS verification failed',
+                                    details: [replayError],
+                                });
+                                return;
+                            }
+                        }
                     }
                     else if (!isOptional) {
                         res.status(401).json({ error: 'JACS verification failed', details: result.errors });

@@ -245,6 +245,18 @@ class TestGenerateVerifyLink:
         with pytest.raises(ValueError, match="max length"):
             simple.generate_verify_link(big_doc)
 
+    def test_hosted_mode_uses_document_id(self):
+        """hosted=True should build /verify/{document_id} links when ID exists."""
+        doc = json.dumps({"id": "doc-123", "payload": {"ok": True}})
+        url = simple.generate_verify_link(doc, hosted=True)
+        assert url == "https://hai.ai/verify/doc-123"
+
+    def test_hosted_mode_requires_document_id(self):
+        """hosted=True should fail clearly when no document ID is present."""
+        doc = json.dumps({"payload": {"ok": True}})
+        with pytest.raises(ValueError, match="document ID"):
+            simple.generate_verify_link(doc, hosted=True)
+
     def test_roundtrip_with_signed_document(self, loaded_agent):
         """generate_verify_link() should work with a small signed document."""
         # Sign a small message

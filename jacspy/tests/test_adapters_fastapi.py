@@ -1,6 +1,7 @@
 """Tests for jacs.adapters.fastapi — JacsMiddleware and @jacs_route."""
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -156,6 +157,89 @@ class TestMiddlewareVerifyDisabled:
             headers={"Content-Type": "application/json"},
         )
         assert resp.status_code == 200
+
+
+class TestMiddlewareAuthReplayProtection:
+    """Replay protection for auth-style signed request flows."""
+
+    def test_replay_rejected_when_enabled(self, ephemeral_client):
+        app = _make_app(
+            ephemeral_client,
+            strict=True,
+            auth_replay_protection=True,
+            auth_max_age_seconds=60,
+            auth_clock_skew_seconds=5,
+        )
+        client = TestClient(app)
+
+        signed_doc = ephemeral_client.sign_message({"action": "replay-test"})
+        headers = {"Content-Type": "application/json"}
+
+        first = client.post("/echo", content=signed_doc.raw_json, headers=headers)
+        assert first.status_code == 200
+
+        second = client.post("/echo", content=signed_doc.raw_json, headers=headers)
+        assert second.status_code == 401
+        assert "replay" in second.text.lower()
+
+    def test_replay_allowed_when_disabled(self, ephemeral_client):
+        app = _make_app(
+            ephemeral_client,
+            strict=True,
+            auth_replay_protection=False,
+        )
+        client = TestClient(app)
+
+        signed_doc = ephemeral_client.sign_message({"action": "duplicate-ok"})
+        headers = {"Content-Type": "application/json"}
+
+        first = client.post("/echo", content=signed_doc.raw_json, headers=headers)
+        second = client.post("/echo", content=signed_doc.raw_json, headers=headers)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+
+    def test_future_timestamp_rejected_when_enabled(self, ephemeral_client):
+        future_iso = (
+            datetime.now(timezone.utc) + timedelta(seconds=60)
+        ).isoformat().replace("+00:00", "Z")
+
+        # Keep this as a middleware-path test by stubbing verify() to return
+        # a successful cryptographic result with a future signature timestamp.
+        ephemeral_client.verify = lambda _raw: {
+            "valid": True,
+            "data": {"action": "future"},
+            "signerId": "agent-future",
+            "timestamp": future_iso,
+            "attachments": [],
+            "errors": [],
+        }
+
+        app = _make_app(
+            ephemeral_client,
+            strict=True,
+            auth_replay_protection=True,
+            auth_max_age_seconds=60,
+            auth_clock_skew_seconds=0,
+        )
+        client = TestClient(app)
+
+        body = json.dumps(
+            {
+                "jacsId": "doc-future:1",
+                "jacsSignature": {
+                    "agentID": "agent-future",
+                    "date": future_iso,
+                    "signature": "future-signature",
+                },
+                "jacsDocument": {"action": "future"},
+            }
+        )
+        headers = {"Content-Type": "application/json"}
+
+        response = client.post("/echo", content=body, headers=headers)
+        assert response.status_code == 401
+        assert "future" in response.text.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -54,9 +54,11 @@ impl<T> ToPyResult<T> for BindingResult<T> {
 /// concurrently. This is the recommended API for all code.
 ///
 /// Example:
-///     agent = jacs.JacsAgent()
-///     agent.load("/path/to/config.json")
-///     signed = agent.sign_string("hello")
+/// ```python
+/// agent = jacs.JacsAgent()
+/// agent.load("/path/to/config.json")
+/// signed = agent.sign_string("hello")
+/// ```
 #[pyclass]
 pub struct JacsAgent {
     inner: AgentWrapper,
@@ -448,18 +450,20 @@ impl JacsAgent {
 /// agents to operate concurrently.
 ///
 /// Example:
-///     # Create a new agent
-///     agent, info = jacs.SimpleAgent.create("my-agent")
-///     print(f"Created agent: {info['agent_id']}")
+/// ```python
+/// # Create a new agent
+/// agent, info = jacs.SimpleAgent.create("my-agent")
+/// print(f"Created agent: {info['agent_id']}")
 ///
-///     # Sign a message
-///     signed = agent.sign_message({"action": "approve"})
-///     print(f"Document ID: {signed['document_id']}")
+/// # Sign a message
+/// signed = agent.sign_message({"action": "approve"})
+/// print(f"Document ID: {signed['document_id']}")
 ///
-///     # Load an existing agent
-///     agent = jacs.SimpleAgent.load("./jacs.config.json")
-///     result = agent.verify_self()
-///     assert result['valid']
+/// # Load an existing agent
+/// agent = jacs.SimpleAgent.load("./jacs.config.json")
+/// result = agent.verify_self()
+/// assert result["valid"]
+/// ```
 #[pyclass]
 pub struct SimpleAgent {
     inner: jacs_core::simple::SimpleAgent,
@@ -811,11 +815,13 @@ fn hai_err_to_py(e: HaiError) -> PyErr {
 /// Client for interacting with HAI.ai services.
 ///
 /// Example:
-///     client = jacs.HaiClient("https://api.hai.ai")
-///     client = client.with_api_key("your-key")
-///     if client.testconnection():
-///         result = client.register(agent)
-///         print(result["agent_id"])
+/// ```python
+/// client = jacs.HaiClient("https://api.hai.ai")
+/// client = client.with_api_key("your-key")
+/// if client.testconnection():
+///     result = client.register(agent)
+///     print(result["agent_id"])
+/// ```
 #[pyclass(name = "HaiClient")]
 pub struct PyHaiClient {
     inner: HaiClient,
@@ -1276,9 +1282,11 @@ fn generate_verify_link(document: &str, base_url: &str) -> PyResult<String> {
 ///         - "hai-first": Try HAI first, fall back to local trust store
 ///
 /// Example:
-///     key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
-///     print(f"Algorithm: {key_info['algorithm']}")
-///     print(f"Hash: {key_info['public_key_hash']}")
+/// ```python
+/// key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
+/// print(f"Algorithm: {key_info['algorithm']}")
+/// print(f"Hash: {key_info['public_key_hash']}")
+/// ```
 #[pyfunction]
 #[pyo3(signature = (agent_id, version = "latest"))]
 fn fetch_remote_key(py: Python, agent_id: &str, version: &str) -> PyResult<PyObject> {

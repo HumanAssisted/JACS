@@ -330,6 +330,33 @@ class TestWSConnect:
 
         assert len(callback_events) == 2
 
+    def test_ws_on_event_callback_includes_connected_first(self, hai_client, mock_agent_loaded):
+        """Callback should receive the handshake connected event before stream events."""
+        mock_ws = MagicMock()
+        mock_ws.recv.side_effect = [
+            json.dumps({"type": "connected"}),
+            json.dumps({"type": "job", "id": "evt-1"}),
+            TimeoutError(),
+        ]
+
+        mock_ws_mod = MagicMock()
+        mock_ws_mod.sync.client.connect.return_value = mock_ws
+        hai_client._websockets = mock_ws_mod
+
+        callback_types = []
+
+        def on_event(event):
+            callback_types.append(event.event_type)
+
+        count = 0
+        for _event in hai_client._ws_connect("https://hai.ai", "key", on_event=on_event):
+            count += 1
+            if count >= 2:
+                hai_client._should_disconnect = True
+                break
+
+        assert callback_types[:2] == ["connected", "job"]
+
 
 # =============================================================================
 # Tests: Reconnection with exponential backoff (Step 60)

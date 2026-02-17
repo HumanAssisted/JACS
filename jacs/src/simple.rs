@@ -2752,22 +2752,19 @@ impl SimpleAgent {
         let agent_card = self.export_agent_card()?;
 
         let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
-        let dual_keys =
-            crate::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
-                JacsError::Internal {
-                    message: format!("Failed to generate A2A keys: {}", e),
-                }
-            })?;
+        let dual_keys = crate::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to generate A2A keys: {}", e),
+            }
+        })?;
 
         let agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
-        let agent_id = agent
-            .get_id()
-            .map_err(|e| JacsError::Internal {
-                message: format!("Failed to get agent ID: {}", e),
-            })?;
+        let agent_id = agent.get_id().map_err(|e| JacsError::Internal {
+            message: format!("Failed to get agent ID: {}", e),
+        })?;
 
         let jws = crate::a2a::extension::sign_agent_card_jws(
             &agent_card,
@@ -2819,12 +2816,11 @@ impl SimpleAgent {
 
         let parent_signatures: Option<Vec<Value>> = match parent_signatures_json {
             Some(json_str) => {
-                let parsed: Vec<Value> = serde_json::from_str(json_str).map_err(|e| {
-                    JacsError::DocumentMalformed {
+                let parsed: Vec<Value> =
+                    serde_json::from_str(json_str).map_err(|e| JacsError::DocumentMalformed {
                         field: "parent_signatures_json".to_string(),
                         reason: format!("Invalid JSON array: {}", e),
-                    }
-                })?;
+                    })?;
                 Some(parsed)
             }
             None => None,
@@ -2881,11 +2877,12 @@ impl SimpleAgent {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
-        let result = crate::a2a::provenance::verify_wrapped_artifact(&agent, &wrapped).map_err(
-            |e| JacsError::SignatureVerificationFailed {
-                reason: format!("A2A artifact verification error: {}", e),
-            },
-        )?;
+        let result =
+            crate::a2a::provenance::verify_wrapped_artifact(&agent, &wrapped).map_err(|e| {
+                JacsError::SignatureVerificationFailed {
+                    reason: format!("A2A artifact verification error: {}", e),
+                }
+            })?;
 
         serde_json::to_string_pretty(&result).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize verification result: {}", e),
@@ -3728,9 +3725,7 @@ mod tests {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
         let artifact = r#"{"text": "hello from A2A"}"#;
 
-        let wrapped = agent
-            .wrap_a2a_artifact(artifact, "message", None)
-            .unwrap();
+        let wrapped = agent.wrap_a2a_artifact(artifact, "message", None).unwrap();
 
         // Wrapped should be valid JSON with JACS fields
         let wrapped_value: Value = serde_json::from_str(&wrapped).unwrap();
@@ -3779,9 +3774,7 @@ mod tests {
 
         let second_value: Value = serde_json::from_str(&second).unwrap();
         assert!(second_value.get("jacsParentSignatures").is_some());
-        let parent_sigs = second_value["jacsParentSignatures"]
-            .as_array()
-            .unwrap();
+        let parent_sigs = second_value["jacsParentSignatures"].as_array().unwrap();
         assert_eq!(parent_sigs.len(), 1);
     }
 
@@ -3816,9 +3809,7 @@ mod tests {
         let (agent, _info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
         let artifact = r#"{"quantum": "safe"}"#;
 
-        let wrapped = agent
-            .wrap_a2a_artifact(artifact, "artifact", None)
-            .unwrap();
+        let wrapped = agent.wrap_a2a_artifact(artifact, "artifact", None).unwrap();
         let result_json = agent.verify_a2a_artifact(&wrapped).unwrap();
         let result: Value = serde_json::from_str(&result_json).unwrap();
         assert_eq!(result["valid"], true);
@@ -3831,9 +3822,6 @@ mod tests {
 
         let extensions = card.capabilities.extensions.unwrap();
         assert!(!extensions.is_empty());
-        assert_eq!(
-            extensions[0].uri,
-            crate::a2a::JACS_EXTENSION_URI
-        );
+        assert_eq!(extensions[0].uri, crate::a2a::JACS_EXTENSION_URI);
     }
 }

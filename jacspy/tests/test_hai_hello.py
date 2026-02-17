@@ -8,6 +8,7 @@ Uses mock HTTP server since the backend endpoint doesn't exist yet.
 
 import json
 import time
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -135,6 +136,17 @@ class TestHelloWorld:
         parts = headers["Authorization"][len("JACS "):].split(":")
         assert len(parts) >= 3
         assert parts[0] == "test-agent-uuid-1234"
+
+        auth_value = headers["Authorization"][len("JACS "):]
+        assert auth_value.startswith("test-agent-uuid-1234:")
+        assert auth_value.endswith(":base64-test-signature")
+
+        prefix = "test-agent-uuid-1234:"
+        suffix = ":base64-test-signature"
+        timestamp = auth_value[len(prefix):-len(suffix)]
+        assert timestamp
+        parsed_ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        assert isinstance(parsed_ts, datetime)
 
     def test_hello_world_correct_url(self, hai_client, mock_agent_loaded, mock_hello_response):
         """hello_world() POSTs to /api/v1/agents/hello."""

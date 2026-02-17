@@ -22,6 +22,7 @@
  * ```
  */
 import type { JacsClient } from './client.js';
+import { type AuthReplayOptions } from './auth-replay.js';
 /** Minimal Express-like request shape. */
 export interface ExpressRequest {
     method: string;
@@ -62,6 +63,11 @@ export interface JacsMiddlewareOptions {
     }>;
     /** Base URL / domain for the A2A agent card. */
     a2aUrl?: string;
+    /**
+     * Enable replay protection when using JACS documents as auth artifacts.
+     * Default: disabled (backward compatible).
+     */
+    authReplay?: boolean | AuthReplayOptions;
 }
 export interface JacsRequest extends ExpressRequest {
     /** Verified JACS payload content (set when verify succeeds). */

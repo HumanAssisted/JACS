@@ -932,7 +932,9 @@ fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("\"allowed\": true"))
-        .stdout(predicate::str::contains("\"trust_level\": \"JacsVerified\""));
+        .stdout(predicate::str::contains(
+            "\"trust_level\": \"JacsVerified\"",
+        ));
 
     let _ = fs::remove_dir_all(&tmp_dir);
     Ok(())
@@ -970,9 +972,7 @@ fn test_a2a_serve_help() -> Result<(), Box<dyn Error>> {
 fn test_a2a_discover_nonexistent_domain() -> Result<(), Box<dyn Error>> {
     // Discovery against a URL that won't have an Agent Card
     let mut cmd = Command::cargo_bin("jacs")?;
-    cmd.arg("a2a")
-        .arg("discover")
-        .arg("https://example.com");
+    cmd.arg("a2a").arg("discover").arg("https://example.com");
 
     // Should fail because there's no .well-known/agent-card.json at example.com
     cmd.assert().failure();

@@ -190,7 +190,7 @@ def discover_agent_sync(
     timeout: float = 10.0,
 ) -> Dict[str, Any]:
     """Synchronous wrapper for :func:`discover_agent`."""
-    return asyncio.run(discover_agent(url, timeout=timeout))
+    return _run_sync(discover_agent(url, timeout=timeout))
 
 
 def discover_and_assess_sync(
@@ -200,9 +200,31 @@ def discover_and_assess_sync(
     timeout: float = 10.0,
 ) -> Dict[str, Any]:
     """Synchronous wrapper for :func:`discover_and_assess`."""
-    return asyncio.run(
+    return _run_sync(
         discover_and_assess(url, policy=policy, client=client, timeout=timeout)
     )
+
+
+def _run_sync(coro: Any) -> Any:
+    """Run a coroutine from sync code without dropping the thread's loop.
+
+    Python 3.11's ``asyncio.run()`` clears the thread-local current loop
+    after completion, which breaks older call sites that still rely on
+    ``asyncio.get_event_loop()`` in the same thread.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if loop.is_running():
+        raise RuntimeError(
+            "discover_*_sync cannot run inside an active event loop. "
+            "Use the async discover_* APIs instead."
+        )
+
+    return loop.run_until_complete(coro)
 
 
 # ---------------------------------------------------------------------------

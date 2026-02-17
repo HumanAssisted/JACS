@@ -775,10 +775,10 @@ class HaiClient:
                 raw_response=data,
             )
 
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            raise HaiConnectionError(f"Connection failed: {e}")
         except HaiError:
             raise
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            raise HaiConnectionError(f"Connection failed: {e}")
         except Exception as e:
             raise HaiError(f"Hello world failed: {e}")
 
@@ -2028,12 +2028,15 @@ class HaiClient:
 
                     logger.info("WebSocket connection established")
 
-                    # Yield the connected event
-                    yield HaiEvent(
+                    # Emit a connected event and invoke callback symmetry with SSE.
+                    connected_event = HaiEvent(
                         event_type="connected",
                         data=ack_data,
                         raw=str(ack_raw),
                     )
+                    if on_event:
+                        on_event(connected_event)
+                    yield connected_event
 
                     # Receive loop
                     while not self._should_disconnect:

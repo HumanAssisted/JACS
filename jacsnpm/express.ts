@@ -23,6 +23,12 @@
  */
 
 import type { JacsClient } from './client.js';
+import {
+  checkAuthReplay,
+  InMemoryReplayCache,
+  normalizeAuthReplayOptions,
+  type AuthReplayOptions,
+} from './auth-replay.js';
 
 // =============================================================================
 // Express-compatible types (avoids requiring @types/express as a dependency)
@@ -70,6 +76,11 @@ export interface JacsMiddlewareOptions {
   a2aSkills?: Array<{ id: string; name: string; description: string; tags: string[] }>;
   /** Base URL / domain for the A2A agent card. */
   a2aUrl?: string;
+  /**
+   * Enable replay protection when using JACS documents as auth artifacts.
+   * Default: disabled (backward compatible).
+   */
+  authReplay?: boolean | AuthReplayOptions;
 }
 
 export interface JacsRequest extends ExpressRequest {
@@ -120,6 +131,8 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
   const shouldSign = options.sign === true;
   const isOptional = options.optional === true;
   const enableA2A = options.a2a === true;
+  const authReplay = normalizeAuthReplayOptions(options.authReplay);
+  const replayCache = new InMemoryReplayCache();
 
   // Client is resolved once (lazy, on first request) then cached.
   let clientPromise: Promise<JacsClient> | null = null;
@@ -202,6 +215,16 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
           const result = await client.verify(rawBody);
           if (result.valid) {
             req.jacsPayload = result.data;
+            if (authReplay.enabled) {
+              const replayError = checkAuthReplay(rawBody, result, replayCache, authReplay);
+              if (replayError) {
+                res.status(401).json({
+                  error: 'JACS verification failed',
+                  details: [replayError],
+                });
+                return;
+              }
+            }
           } else if (!isOptional) {
             res.status(401).json({ error: 'JACS verification failed', details: result.errors });
             return;

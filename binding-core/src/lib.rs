@@ -1148,10 +1148,7 @@ impl AgentWrapper {
             BindingCoreError::generic(format!("Failed to export agent card: {}", e))
         })?;
         serde_json::to_string_pretty(&card).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize agent card: {}",
-                e
-            ))
+            BindingCoreError::serialization_failed(format!("Failed to serialize agent card: {}", e))
         })
     }
 
@@ -1168,14 +1165,13 @@ impl AgentWrapper {
         })?;
 
         let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
-        let dual_keys =
-            jacs::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
-                BindingCoreError::generic(format!("Failed to generate A2A keys: {}", e))
-            })?;
-
-        let agent_id = agent.get_id().map_err(|e| {
-            BindingCoreError::generic(format!("Failed to get agent ID: {}", e))
+        let dual_keys = jacs::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
+            BindingCoreError::generic(format!("Failed to generate A2A keys: {}", e))
         })?;
+
+        let agent_id = agent
+            .get_id()
+            .map_err(|e| BindingCoreError::generic(format!("Failed to get agent ID: {}", e)))?;
 
         let jws = jacs::a2a::extension::sign_agent_card_jws(
             &card,
@@ -1183,9 +1179,7 @@ impl AgentWrapper {
             &dual_keys.a2a_algorithm,
             &agent_id,
         )
-        .map_err(|e| {
-            BindingCoreError::generic(format!("Failed to sign Agent Card: {}", e))
-        })?;
+        .map_err(|e| BindingCoreError::generic(format!("Failed to sign Agent Card: {}", e)))?;
 
         let documents = jacs::a2a::extension::generate_well_known_documents(
             &agent,
@@ -1195,10 +1189,7 @@ impl AgentWrapper {
             &jws,
         )
         .map_err(|e| {
-            BindingCoreError::generic(format!(
-                "Failed to generate well-known documents: {}",
-                e
-            ))
+            BindingCoreError::generic(format!("Failed to generate well-known documents: {}", e))
         })?;
 
         // Serialize as JSON array of [path, document] pairs
@@ -1247,9 +1238,7 @@ impl AgentWrapper {
             artifact_type,
             parent_signatures,
         )
-        .map_err(|e| {
-            BindingCoreError::signing_failed(format!("Failed to wrap artifact: {}", e))
-        })?;
+        .map_err(|e| BindingCoreError::signing_failed(format!("Failed to wrap artifact: {}", e)))?;
 
         serde_json::to_string_pretty(&wrapped).map_err(|e| {
             BindingCoreError::serialization_failed(format!(
@@ -1298,13 +1287,9 @@ impl AgentWrapper {
     /// Assess trust level of a remote A2A agent given its Agent Card JSON.
     ///
     /// Returns the trust assessment as a JSON string.
-    pub fn assess_a2a_agent(
-        &self,
-        agent_card_json: &str,
-        policy: &str,
-    ) -> BindingResult<String> {
-        use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
+    pub fn assess_a2a_agent(&self, agent_card_json: &str, policy: &str) -> BindingResult<String> {
         use jacs::a2a::AgentCard;
+        use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
         let card: AgentCard = serde_json::from_str(agent_card_json).map_err(|e| {
             BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
@@ -1377,13 +1362,17 @@ pub fn verify_document_standalone(
     data_directory: Option<&str>,
     key_directory: Option<&str>,
 ) -> BindingResult<VerificationResult> {
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+
     fn absolutize_dir(raw: &str) -> String {
-        let p = std::path::PathBuf::from(raw);
+        let p = PathBuf::from(raw);
         if p.is_absolute() {
             p.to_string_lossy().to_string()
         } else {
             std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .unwrap_or_else(|_| PathBuf::from("."))
                 .join(p)
                 .to_string_lossy()
                 .to_string()
@@ -1402,9 +1391,108 @@ pub fn verify_document_standalone(
             .unwrap_or_default()
     }
 
+    fn has_local_key_cache(root: &Path, key_hash: &str) -> bool {
+        if key_hash.is_empty() {
+            return false;
+        }
+        root.join("public_keys")
+            .join(format!("{}.pem", key_hash))
+            .exists()
+            && root
+                .join("public_keys")
+                .join(format!("{}.enc_type", key_hash))
+                .exists()
+    }
+
+    fn build_fixture_key_cache(cache_root: &Path, source_dirs: &[PathBuf]) -> usize {
+        let public_keys_dir = cache_root.join("public_keys");
+        if std::fs::create_dir_all(&public_keys_dir).is_err() {
+            return 0;
+        }
+
+        let mut written: HashSet<String> = HashSet::new();
+        for dir in source_dirs {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                let Some(prefix) = name.strip_suffix("_metadata.json") else {
+                    continue;
+                };
+
+                let metadata = match std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let key_hash = metadata
+                    .get("public_key_hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                let signing_algorithm = metadata
+                    .get("signing_algorithm")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if key_hash.is_empty() || signing_algorithm.is_empty() {
+                    continue;
+                }
+                if written.contains(key_hash) {
+                    continue;
+                }
+
+                let key_path = dir.join(format!("{}_public_key.pem", prefix));
+                let key_bytes = match std::fs::read(&key_path) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                if std::fs::write(public_keys_dir.join(format!("{}.pem", key_hash)), key_bytes)
+                    .is_err()
+                {
+                    continue;
+                }
+                if std::fs::write(
+                    public_keys_dir.join(format!("{}.enc_type", key_hash)),
+                    signing_algorithm.as_bytes(),
+                )
+                .is_err()
+                {
+                    continue;
+                }
+
+                written.insert(key_hash.to_string());
+            }
+        }
+
+        written.len()
+    }
+
+    fn standalone_verify_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    let _lock = standalone_verify_lock()
+        .lock()
+        .map_err(|e| BindingCoreError::generic(format!("Failed to lock standalone verify: {e}")))?;
+
     let signer_id = sig_field(signed_document, "agentID");
     let timestamp = sig_field(signed_document, "date");
     let agent_version = sig_field(signed_document, "agentVersion");
+    let signer_public_key_hash = sig_field(signed_document, "publicKeyHash");
 
     // Always resolve caller-provided directories to absolute paths so relative
     // inputs like "../fixtures" work regardless of process CWD.
@@ -1421,16 +1509,65 @@ pub fn verify_document_standalone(
 
     // Verification loads public keys from {data_directory}/public_keys.
     // If only key_directory is supplied, use it as the storage root fallback.
-    let storage_root = if data_directory.is_some() {
+    let mut effective_storage_root = if data_directory.is_some() {
         absolute_data_dir.clone()
     } else if key_directory.is_some() {
         absolute_key_dir.clone()
     } else {
         absolute_data_dir.clone()
     };
+    let mut temp_cache_root: Option<PathBuf> = None;
 
-    // Re-root storage and keep config dirs empty so path construction remains
-    // relative to storage_root (e.g., "public_keys/<hash>.pem").
+    // Many cross-language fixture directories store keys as:
+    //   <prefix>_metadata.json + <prefix>_public_key.pem
+    // rather than public_keys/{hash}.pem.
+    // Build a deterministic temp cache when local key files are missing.
+    let local_requested = key_resolution.map_or(true, |kr| {
+        kr.split(',')
+            .any(|part| part.trim().eq_ignore_ascii_case("local"))
+    });
+    if local_requested && !signer_public_key_hash.is_empty() {
+        let current_root = PathBuf::from(&effective_storage_root);
+        if !has_local_key_cache(&current_root, &signer_public_key_hash) {
+            let mut source_dirs = Vec::new();
+            let data_path = PathBuf::from(&absolute_data_dir);
+            let key_path = PathBuf::from(&absolute_key_dir);
+            if data_path.exists() {
+                source_dirs.push(data_path);
+            }
+            if key_path.exists() && !source_dirs.iter().any(|p| p == &key_path) {
+                source_dirs.push(key_path);
+            }
+
+            if !source_dirs.is_empty() {
+                let nonce = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                let cache_root = std::env::temp_dir().join(format!(
+                    "jacs_standalone_keycache_{}_{}",
+                    std::process::id(),
+                    nonce
+                ));
+                let _ = build_fixture_key_cache(&cache_root, &source_dirs);
+                if has_local_key_cache(&cache_root, &signer_public_key_hash) {
+                    effective_storage_root = cache_root.to_string_lossy().to_string();
+                    temp_cache_root = Some(cache_root);
+                } else {
+                    let _ = std::fs::remove_dir_all(&cache_root);
+                }
+            }
+        }
+    }
+    let explicit_local_key_available = local_requested
+        && !signer_public_key_hash.is_empty()
+        && has_local_key_cache(
+            &PathBuf::from(&effective_storage_root),
+            &signer_public_key_hash,
+        );
+
+    // Re-root storage and keep config dirs empty so path construction stays
+    // relative to storage root (e.g. "public_keys/<hash>.pem").
     let data_dir = String::new();
     let key_dir = String::new();
 
@@ -1526,9 +1663,63 @@ pub fn verify_document_standalone(
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();
         wrapper.load(config_path.to_string_lossy().to_string())?;
-        // If re-rooting fails (e.g. directory doesn't exist), fall through to
-        // return valid=false from the verification step.
-        let _ = wrapper.set_storage_root(std::path::PathBuf::from(&storage_root));
+        let _ = wrapper.set_storage_root(PathBuf::from(&effective_storage_root));
+
+        if explicit_local_key_available {
+            let key_base = PathBuf::from(&effective_storage_root)
+                .join("public_keys")
+                .join(&signer_public_key_hash);
+            let public_key = std::fs::read(key_base.with_extension("pem")).map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Failed to load local public key for hash '{}': {}",
+                    signer_public_key_hash, e
+                ))
+            })?;
+            let enc_type = std::fs::read_to_string(key_base.with_extension("enc_type"))
+                .map_err(|e| {
+                    BindingCoreError::verification_failed(format!(
+                        "Failed to load local public key type for hash '{}': {}",
+                        signer_public_key_hash, e
+                    ))
+                })?
+                .trim()
+                .to_string();
+
+            let mut agent = wrapper.lock()?;
+            let doc = agent.load_document(signed_document).map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to load document: {}", e))
+            })?;
+            let document_key = doc.getkey();
+            let value = doc.getvalue();
+            agent.verify_hash(value).map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Failed to verify document hash: {}",
+                    e
+                ))
+            })?;
+            agent
+                .verify_document_signature(
+                    &document_key,
+                    None,
+                    None,
+                    Some(public_key),
+                    Some(enc_type),
+                )
+                .map_err(|e| {
+                    BindingCoreError::verification_failed(format!(
+                        "Failed to verify document signature: {}",
+                        e
+                    ))
+                })?;
+
+            return Ok(VerificationResult {
+                valid: true,
+                signer_id: signer_id.clone(),
+                timestamp: timestamp.clone(),
+                agent_version: agent_version.clone(),
+            });
+        }
+
         let valid = wrapper.verify_document(signed_document)?;
         Ok(VerificationResult {
             valid,
@@ -1540,6 +1731,9 @@ pub fn verify_document_standalone(
 
     // Clean up temp config file
     let _ = std::fs::remove_file(&config_path);
+    if let Some(cache_root) = temp_cache_root {
+        let _ = std::fs::remove_dir_all(cache_root);
+    }
 
     match result {
         Ok(r) => Ok(r),
@@ -2146,9 +2340,7 @@ mod tests {
             .unwrap();
 
         let second_value: Value = serde_json::from_str(&second).unwrap();
-        let parent_sigs = second_value["jacsParentSignatures"]
-            .as_array()
-            .unwrap();
+        let parent_sigs = second_value["jacsParentSignatures"].as_array().unwrap();
         assert_eq!(parent_sigs.len(), 1);
     }
 

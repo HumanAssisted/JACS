@@ -11,8 +11,8 @@
 
 use jacs::a2a::{AgentCard, JACS_EXTENSION_URI};
 use jacs::simple::SimpleAgent;
-use serial_test::serial;
 use serde_json::{Value, json};
+use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
 
@@ -49,8 +49,7 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
 
     // 1. Export Agent Card
     let agent_card = agent.export_agent_card().expect("export agent card");
-    let agent_card_json =
-        serde_json::to_string_pretty(&agent_card).expect("serialize agent card");
+    let agent_card_json = serde_json::to_string_pretty(&agent_card).expect("serialize agent card");
 
     // 2. Wrap an artifact with provenance
     let test_artifact = json!({
@@ -189,11 +188,7 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
     // Clean up temp dir
     let _ = fs::remove_dir_all(&tmp);
 
-    println!(
-        "Generated A2A {} fixtures in {}",
-        prefix,
-        out.display()
-    );
+    println!("Generated A2A {} fixtures in {}", prefix, out.display());
 }
 
 // ===========================================================================
@@ -293,10 +288,7 @@ fn verify_ed25519_wrapped_artifact_fixture() {
     let artifact_value: Value = serde_json::from_str(&artifact_json).expect("parse artifact");
 
     // Verify structure
-    assert!(
-        artifact_value.get("jacsId").is_some(),
-        "should have jacsId"
-    );
+    assert!(artifact_value.get("jacsId").is_some(), "should have jacsId");
     assert!(
         artifact_value.get("jacsSignature").is_some(),
         "should have jacsSignature"
@@ -313,9 +305,7 @@ fn verify_ed25519_wrapped_artifact_fixture() {
     // Verify the embedded artifact content
     let a2a_artifact = artifact_value.get("a2aArtifact").unwrap();
     assert_eq!(
-        a2a_artifact
-            .get("artifactId")
-            .and_then(|v| v.as_str()),
+        a2a_artifact.get("artifactId").and_then(|v| v.as_str()),
         Some("test-artifact-001")
     );
 }
@@ -359,7 +349,10 @@ fn verify_ed25519_child_artifact_has_parent_chain() {
         .get("jacsParentSignatures")
         .and_then(|v| v.as_array())
         .expect("child should have jacsParentSignatures");
-    assert!(!parent_sigs.is_empty(), "parent signatures should not be empty");
+    assert!(
+        !parent_sigs.is_empty(),
+        "parent signatures should not be empty"
+    );
 
     // Parent signature should have a publicKeyHash
     let parent_sig = &parent_sigs[0];
@@ -455,8 +448,7 @@ fn verify_ed25519_artifact_signature_structure() {
     let artifact_json = fs::read_to_string(&artifact_path).expect("read wrapped artifact");
     let artifact: Value = serde_json::from_str(&artifact_json).expect("parse artifact");
 
-    let metadata: Value =
-        serde_json::from_str(&fs::read_to_string(&meta_path).unwrap()).unwrap();
+    let metadata: Value = serde_json::from_str(&fs::read_to_string(&meta_path).unwrap()).unwrap();
     let expected_hash = metadata
         .get("public_key_hash")
         .and_then(|v| v.as_str())
@@ -519,8 +511,7 @@ fn verify_pq2025_artifact_signature_structure() {
     let artifact_json = fs::read_to_string(&artifact_path).expect("read wrapped artifact");
     let artifact: Value = serde_json::from_str(&artifact_json).expect("parse artifact");
 
-    let metadata: Value =
-        serde_json::from_str(&fs::read_to_string(&meta_path).unwrap()).unwrap();
+    let metadata: Value = serde_json::from_str(&fs::read_to_string(&meta_path).unwrap()).unwrap();
     let expected_hash = metadata
         .get("public_key_hash")
         .and_then(|v| v.as_str())
@@ -531,10 +522,7 @@ fn verify_pq2025_artifact_signature_structure() {
     assert!(sig.get("date").is_some());
     assert!(sig.get("agentID").is_some());
 
-    let sig_hash = sig
-        .get("publicKeyHash")
-        .and_then(|v| v.as_str())
-        .unwrap();
+    let sig_hash = sig.get("publicKeyHash").and_then(|v| v.as_str()).unwrap();
     assert_eq!(sig_hash, expected_hash);
 
     let sig_alg = sig

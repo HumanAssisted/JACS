@@ -200,10 +200,7 @@ pub fn assess_a2a_agent(
     let (allowed, reason) = match policy {
         A2ATrustPolicy::Open => (
             true,
-            format!(
-                "Open policy: agent accepted (trust level: {})",
-                trust_level
-            ),
+            format!("Open policy: agent accepted (trust level: {})", trust_level),
         ),
         A2ATrustPolicy::Verified => match trust_level {
             TrustLevel::ExplicitlyTrusted => (
@@ -253,7 +250,7 @@ pub fn assess_a2a_agent(
 mod tests {
     use super::*;
     use crate::a2a::{
-        AgentCapabilities, AgentCard, AgentExtension, AgentInterface, A2A_PROTOCOL_VERSION,
+        A2A_PROTOCOL_VERSION, AgentCapabilities, AgentCard, AgentExtension, AgentInterface,
     };
     use serde_json::json;
 

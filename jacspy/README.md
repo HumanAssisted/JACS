@@ -277,6 +277,19 @@ from jacs.adapters.fastapi import JacsMiddleware
 app.add_middleware(JacsMiddleware)
 ```
 
+For auth-style endpoints, enable replay protection:
+
+```python
+from jacs.adapters.fastapi import JacsMiddleware
+
+app.add_middleware(
+    JacsMiddleware,
+    auth_replay_protection=True,
+    auth_max_age_seconds=30,
+    auth_clock_skew_seconds=5,
+)
+```
+
 **CrewAI** -- sign task outputs via guardrail:
 ```python
 from jacs.adapters.crewai import jacs_guardrail

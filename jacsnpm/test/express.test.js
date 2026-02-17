@@ -338,6 +338,169 @@ describe('JACS Express Middleware', function () {
     });
   });
 
+  // ---- Auth replay protection (opt-in) ----
+
+  describe('authReplay', () => {
+    (available ? it : it.skip)('should reject replayed signed requests when enabled', async () => {
+      const nowIso = new Date().toISOString();
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'pay', amount: 100 },
+          signerId: 'agent-replay',
+          timestamp: nowIso,
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = expressModule.jacsMiddleware({
+        client,
+        authReplay: { enabled: true, maxAgeSeconds: 360000, clockSkewSeconds: 5 },
+      });
+
+      const replayBody = JSON.stringify({
+        jacsId: 'doc-replay:1',
+        jacsSignature: {
+          agentID: 'agent-replay',
+          date: nowIso,
+          signature: 'same-signature',
+        },
+        content: { action: 'pay', amount: 100 },
+      });
+
+      const req1 = mockReq({ method: 'POST', body: replayBody });
+      const res1 = mockRes();
+      const next1 = mockNext();
+
+      await mw(req1, res1, next1);
+      expect(res1.statusCode).to.equal(200);
+      expect(next1.calledOnce).to.be.true;
+
+      const req2 = mockReq({ method: 'POST', body: replayBody });
+      const res2 = mockRes();
+      const next2 = mockNext();
+
+      await mw(req2, res2, next2);
+      expect(res2.statusCode).to.equal(401);
+      expect(res2._jsonBody).to.have.property('error', 'JACS verification failed');
+      expect(String(res2._jsonBody.details?.[0] || '')).to.include('replay');
+      expect(next2.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should reject expired timestamps when enabled', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'expired' },
+          signerId: 'agent-expired',
+          timestamp: '2020-01-01T00:00:00Z',
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = expressModule.jacsMiddleware({
+        client,
+        authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 0 },
+      });
+
+      const expiredBody = JSON.stringify({
+        jacsId: 'doc-expired:1',
+        jacsSignature: {
+          agentID: 'agent-expired',
+          date: '2020-01-01T00:00:00Z',
+          signature: 'expired-signature',
+        },
+        content: { action: 'expired' },
+      });
+
+      const req = mockReq({ method: 'POST', body: expiredBody });
+      const res = mockRes();
+      const next = mockNext();
+
+      await mw(req, res, next);
+      expect(res.statusCode).to.equal(401);
+      expect(String(res._jsonBody?.details?.[0] || '')).to.include('expired');
+      expect(next.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should reject future timestamps beyond skew when enabled', async () => {
+      const futureIso = new Date(Date.now() + 60_000).toISOString();
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'future' },
+          signerId: 'agent-future',
+          timestamp: futureIso,
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = expressModule.jacsMiddleware({
+        client,
+        authReplay: { enabled: true, maxAgeSeconds: 60, clockSkewSeconds: 0 },
+      });
+
+      const body = JSON.stringify({
+        jacsId: 'doc-future:1',
+        jacsSignature: {
+          agentID: 'agent-future',
+          date: futureIso,
+          signature: 'future-signature',
+        },
+        content: { action: 'future' },
+      });
+
+      const req = mockReq({ method: 'POST', body });
+      const res = mockRes();
+      const next = mockNext();
+
+      await mw(req, res, next);
+
+      expect(res.statusCode).to.equal(401);
+      expect(String(res._jsonBody?.details?.[0] || '')).to.include('future');
+      expect(next.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should allow duplicate signed requests when disabled', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'duplicate-ok' },
+          signerId: 'agent-dup',
+          timestamp: '2025-06-01T00:00:00Z',
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = expressModule.jacsMiddleware({ client, authReplay: false });
+
+      const body = JSON.stringify({
+        jacsId: 'doc-dup:1',
+        jacsSignature: {
+          agentID: 'agent-dup',
+          date: '2025-06-01T00:00:00Z',
+          signature: 'dup-signature',
+        },
+        content: { action: 'duplicate-ok' },
+      });
+
+      const req1 = mockReq({ method: 'POST', body });
+      const res1 = mockRes();
+      const next1 = mockNext();
+      await mw(req1, res1, next1);
+
+      const req2 = mockReq({ method: 'POST', body });
+      const res2 = mockRes();
+      const next2 = mockNext();
+      await mw(req2, res2, next2);
+
+      expect(res1.statusCode).to.equal(200);
+      expect(res2.statusCode).to.equal(200);
+      expect(next1.calledOnce).to.be.true;
+      expect(next2.calledOnce).to.be.true;
+    });
+  });
+
   // ---- 6. verify: false skips verification ----
 
   describe('verify: false', () => {

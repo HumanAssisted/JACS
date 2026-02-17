@@ -44,6 +44,8 @@
 
 ### Security
 
+- **Middleware auth replay protection (Node + Python adapters)**: Added opt-in replay defenses for auth-style signed requests in Express/Koa (`authReplay`) and FastAPI (`auth_replay_protection`, `auth_max_age_seconds`, `auth_clock_skew_seconds`). Enforcement includes signature timestamp freshness checks plus single-use `(signerId, signature)` dedupe via in-memory TTL cache.
+- **Replay hardening test coverage**: Added lower-level replay tests for middleware future-timestamp rejection paths (Express, Koa, FastAPI) and explicit cache-instance isolation semantics in shared replay helpers (Node + Python), documenting current per-process cache behavior.
 - **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).
 - **Schema directory boundary hardening**: Filesystem schema loading now validates normalized/canonical path containment instead of string-prefix checks, preventing directory-prefix overlap bypasses (e.g. `allowed_evil` no longer matches `allowed`).
 - **Cross-platform path hardening**: `require_relative_path_safe()` now also rejects Windows drive-prefixed paths (e.g. `C:\...`, `D:/...`, `E:`) while still allowing UUID:UUID filenames used by JACS.

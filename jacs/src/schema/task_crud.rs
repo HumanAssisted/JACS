@@ -367,7 +367,10 @@ mod tests {
         add_copy_task_to_task(&mut task, "copy-1").expect("add copy");
         add_merged_task_to_task(&mut task, "merge-1").expect("add merged");
 
-        assert_eq!(task["jacsTaskSubTaskOf"].as_array().map(|a| a.len()), Some(1));
+        assert_eq!(
+            task["jacsTaskSubTaskOf"].as_array().map(|a| a.len()),
+            Some(1)
+        );
         assert_eq!(task["jacsTaskCopyOf"].as_array().map(|a| a.len()), Some(1));
         assert_eq!(
             task["jacsTaskMergedTasks"].as_array().map(|a| a.len()),
@@ -378,7 +381,10 @@ mod tests {
         remove_copy_task_from_task(&mut task, "copy-1").expect("remove copy");
         remove_merged_task_from_task(&mut task, "merge-1").expect("remove merged");
 
-        assert_eq!(task["jacsTaskSubTaskOf"].as_array().map(|a| a.len()), Some(0));
+        assert_eq!(
+            task["jacsTaskSubTaskOf"].as_array().map(|a| a.len()),
+            Some(0)
+        );
         assert_eq!(task["jacsTaskCopyOf"].as_array().map(|a| a.len()), Some(0));
         assert_eq!(
             task["jacsTaskMergedTasks"].as_array().map(|a| a.len()),

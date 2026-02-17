@@ -1189,8 +1189,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         },
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
             Some(("assess", assess_matches)) => {
-                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
                 use jacs::a2a::AgentCard;
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
                 let source = assess_matches.get_one::<String>("source").unwrap();
                 let policy_str = assess_matches
@@ -1199,9 +1199,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .unwrap_or("verified");
                 let json_output = *assess_matches.get_one::<bool>("json").unwrap_or(&false);
 
-                let policy = A2ATrustPolicy::from_str_loose(policy_str).map_err(|e| {
-                    Box::<dyn Error>::from(format!("Invalid policy: {}", e))
-                })?;
+                let policy = A2ATrustPolicy::from_str_loose(policy_str)
+                    .map_err(|e| Box::<dyn Error>::from(format!("Invalid policy: {}", e)))?;
 
                 // Load the Agent Card from file or URL
                 let card_json = if source.starts_with("http://") || source.starts_with("https://") {
@@ -1237,10 +1236,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     println!("Agent:       {}", card.name);
                     println!(
                         "Agent ID:    {}",
-                        assessment
-                            .agent_id
-                            .as_deref()
-                            .unwrap_or("(not specified)")
+                        assessment.agent_id.as_deref().unwrap_or("(not specified)")
                     );
                     println!("Policy:      {}", assessment.policy);
                     println!("Trust Level: {}", assessment.trust_level);
@@ -1307,8 +1303,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("  Added to local trust store with key: {}", key);
             }
             Some(("discover", discover_matches)) => {
-                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
                 use jacs::a2a::AgentCard;
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
                 let base_url = discover_matches.get_one::<String>("url").unwrap();
                 let json_output = *discover_matches.get_one::<bool>("json").unwrap_or(&false);
@@ -1317,9 +1313,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str())
                     .unwrap_or("verified");
 
-                let policy = A2ATrustPolicy::from_str_loose(policy_str).map_err(|e| {
-                    Box::<dyn Error>::from(format!("Invalid policy: {}", e))
-                })?;
+                let policy = A2ATrustPolicy::from_str_loose(policy_str)
+                    .map_err(|e| Box::<dyn Error>::from(format!("Invalid policy: {}", e)))?;
 
                 // Construct the well-known URL
                 let trimmed = base_url.trim_end_matches('/');
@@ -1362,10 +1357,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     println!("Discovered A2A Agent: {}", card.name);
                     println!("  Description: {}", card.description);
                     println!("  Version:     {}", card.version);
-                    println!(
-                        "  Protocol:    {}",
-                        card.protocol_versions.join(", ")
-                    );
+                    println!("  Protocol:    {}", card.protocol_versions.join(", "));
 
                     // Show interfaces
                     for iface in &card.supported_interfaces {
@@ -1385,22 +1377,22 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .capabilities
                         .extensions
                         .as_ref()
-                        .map(|exts| {
-                            exts.iter()
-                                .any(|e| e.uri == jacs::a2a::JACS_EXTENSION_URI)
-                        })
+                        .map(|exts| exts.iter().any(|e| e.uri == jacs::a2a::JACS_EXTENSION_URI))
                         .unwrap_or(false);
-                    println!(
-                        "  JACS:        {}",
-                        if has_jacs { "YES" } else { "NO" }
-                    );
+                    println!("  JACS:        {}", if has_jacs { "YES" } else { "NO" });
 
                     // Trust assessment
                     let agent = jacs::get_empty_agent();
                     let assessment = assess_a2a_agent(&agent, &card, policy);
-                    println!("  Trust:       {} ({})", assessment.trust_level, assessment.reason);
+                    println!(
+                        "  Trust:       {} ({})",
+                        assessment.trust_level, assessment.reason
+                    );
                     if !assessment.allowed {
-                        println!("  WARNING:     Agent not allowed under '{}' policy", policy_str);
+                        println!(
+                            "  WARNING:     Agent not allowed under '{}' policy",
+                            policy_str
+                        );
                     }
                 }
             }
@@ -1444,13 +1436,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 })?;
 
                 // Generate well-known documents via public API
-                let documents = agent.generate_well_known_documents(None)
-                    .map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to generate well-known documents: {}", e),
-                        ))
-                    })?;
+                let documents =
+                    agent
+                        .generate_well_known_documents(None)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Failed to generate well-known documents: {}", e),
+                            ))
+                        })?;
 
                 // Build a lookup map: path -> JSON body
                 let mut routes: std::collections::HashMap<String, String> =
@@ -1463,9 +1457,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 let addr = format!("{}:{}", host, port);
-                let server = tiny_http::Server::http(&addr).map_err(|e| {
-                    format!("Failed to start server on {}: {}", addr, e)
-                })?;
+                let server = tiny_http::Server::http(&addr)
+                    .map_err(|e| format!("Failed to start server on {}: {}", addr, e))?;
 
                 println!("Serving A2A well-known endpoints at http://{}", addr);
                 println!("  Agent: {} ({})", agent_card.name, info.agent_id);
@@ -1478,25 +1471,25 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 for request in server.incoming_requests() {
                     let url = request.url().to_string();
                     if let Some(body) = routes.get(&url) {
-                        let response = tiny_http::Response::from_string(body.clone())
-                            .with_header(
-                                tiny_http::Header::from_bytes(
-                                    &b"Content-Type"[..],
-                                    &b"application/json"[..],
-                                )
-                                .unwrap(),
-                            );
+                        let response = tiny_http::Response::from_string(body.clone()).with_header(
+                            tiny_http::Header::from_bytes(
+                                &b"Content-Type"[..],
+                                &b"application/json"[..],
+                            )
+                            .unwrap(),
+                        );
                         let _ = request.respond(response);
                     } else {
-                        let response = tiny_http::Response::from_string("{\"error\": \"not found\"}")
-                            .with_status_code(404)
-                            .with_header(
-                                tiny_http::Header::from_bytes(
-                                    &b"Content-Type"[..],
-                                    &b"application/json"[..],
-                                )
-                                .unwrap(),
-                            );
+                        let response =
+                            tiny_http::Response::from_string("{\"error\": \"not found\"}")
+                                .with_status_code(404)
+                                .with_header(
+                                    tiny_http::Header::from_bytes(
+                                        &b"Content-Type"[..],
+                                        &b"application/json"[..],
+                                    )
+                                    .unwrap(),
+                                );
                         let _ = request.respond(response);
                     }
                 }
@@ -1509,7 +1502,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .get_one::<String>("host")
                     .map(|s| s.as_str())
                     .unwrap_or("127.0.0.1");
-                let algorithm = qs_matches.get_one::<String>("algorithm").map(|s| s.as_str());
+                let algorithm = qs_matches
+                    .get_one::<String>("algorithm")
+                    .map(|s| s.as_str());
 
                 // Create or load the agent via quickstart
                 if env::var("JACS_PRIVATE_KEY_PASSWORD")
@@ -1561,22 +1556,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 let addr = format!("{}:{}", host, port);
-                let server = tiny_http::Server::http(&addr).map_err(|e| {
-                    format!("Failed to start server on {}: {}", addr, e)
-                })?;
+                let server = tiny_http::Server::http(&addr)
+                    .map_err(|e| format!("Failed to start server on {}: {}", addr, e))?;
 
                 println!("A2A Quickstart");
                 println!("==============");
                 println!("Agent: {} ({})", agent_card.name, info.agent_id);
-                println!(
-                    "Algorithm: {}",
-                    algorithm.unwrap_or("pq2025")
-                );
+                println!("Algorithm: {}", algorithm.unwrap_or("pq2025"));
                 println!();
-                println!(
-                    "Discovery URL: http://{}/.well-known/agent-card.json",
-                    addr
-                );
+                println!("Discovery URL: http://{}/.well-known/agent-card.json", addr);
                 println!();
                 println!("Endpoints:");
                 for path in routes.keys() {
@@ -1597,15 +1585,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         );
                         let _ = request.respond(response);
                     } else {
-                        let response = tiny_http::Response::from_string("{\"error\": \"not found\"}")
-                            .with_status_code(404)
-                            .with_header(
-                                tiny_http::Header::from_bytes(
-                                    &b"Content-Type"[..],
-                                    &b"application/json"[..],
-                                )
-                                .unwrap(),
-                            );
+                        let response =
+                            tiny_http::Response::from_string("{\"error\": \"not found\"}")
+                                .with_status_code(404)
+                                .with_header(
+                                    tiny_http::Header::from_bytes(
+                                        &b"Content-Type"[..],
+                                        &b"application/json"[..],
+                                    )
+                                    .unwrap(),
+                                );
                         let _ = request.respond(response);
                     }
                 }

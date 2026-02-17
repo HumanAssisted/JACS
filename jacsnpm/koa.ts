@@ -24,6 +24,12 @@
  */
 
 import type { JacsClient } from './client.js';
+import {
+  checkAuthReplay,
+  InMemoryReplayCache,
+  normalizeAuthReplayOptions,
+  type AuthReplayOptions,
+} from './auth-replay.js';
 
 // =============================================================================
 // Types
@@ -46,6 +52,11 @@ export interface JacsKoaMiddlewareOptions {
   a2aSkills?: Array<{ id: string; name: string; description: string; tags: string[] }>;
   /** Base URL / domain for the A2A agent card. */
   a2aUrl?: string;
+  /**
+   * Enable replay protection when using JACS documents as auth artifacts.
+   * Default: disabled (backward compatible).
+   */
+  authReplay?: boolean | AuthReplayOptions;
 }
 
 // Minimal Koa context shape so we don't force a koa dependency.
@@ -100,6 +111,8 @@ export function jacsKoaMiddleware(options: JacsKoaMiddlewareOptions = {}) {
   const shouldSign = options.sign === true;
   const isOptional = options.optional === true;
   const enableA2A = options.a2a === true;
+  const authReplay = normalizeAuthReplayOptions(options.authReplay);
+  const replayCache = new InMemoryReplayCache();
 
   let clientPromise: Promise<JacsClient> | null = null;
 
@@ -185,6 +198,17 @@ export function jacsKoaMiddleware(options: JacsKoaMiddlewareOptions = {}) {
           const result = await client.verify(rawBody);
           if (result.valid) {
             ctx.state.jacsPayload = result.data;
+            if (authReplay.enabled) {
+              const replayError = checkAuthReplay(rawBody, result, replayCache, authReplay);
+              if (replayError) {
+                ctx.status = 401;
+                ctx.body = {
+                  error: 'JACS verification failed',
+                  details: [replayError],
+                };
+                return;
+              }
+            }
           } else if (!isOptional) {
             ctx.status = 401;
             ctx.body = { error: 'JACS verification failed', details: result.errors };

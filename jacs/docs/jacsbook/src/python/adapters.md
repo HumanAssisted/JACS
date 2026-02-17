@@ -154,6 +154,28 @@ app.add_middleware(JacsMiddleware)
 
 Options: `sign_responses=True`, `verify_requests=True`, `strict=False`.
 
+For auth-style endpoints, enable replay protection:
+
+```python
+app.add_middleware(
+    JacsMiddleware,
+    strict=True,
+    auth_replay_protection=True,
+    auth_max_age_seconds=30,
+    auth_clock_skew_seconds=5,
+)
+```
+
+When enabled, middleware enforces:
+
+- signature timestamp freshness (`auth_max_age_seconds` + `auth_clock_skew_seconds`)
+- single-use `(signerId, signature)` dedupe in an in-memory TTL cache
+
+Notes:
+
+- Use replay protection only where JACS is acting as authentication.
+- Cache scope is per process; use a shared cache layer in multi-instance deployments.
+
 ### Per-Route Decorator
 
 Sign a single endpoint:

@@ -155,11 +155,18 @@ fn second_client_send_signed_jacs_document() {
 fn trust_list_returns_result() {
     // list_trusted_agents should succeed even with an empty trust store
     let result = jacs_binding_core::list_trusted_agents();
-    assert!(result.is_ok(), "list_trusted_agents should not error: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "list_trusted_agents should not error: {:?}",
+        result.err()
+    );
     let ids = result.unwrap();
     // The trust store may or may not have agents from other tests, but the
     // list should be a valid Vec.
-    assert!(ids.len() < 10000, "sanity check: trust store shouldn't have 10k entries");
+    assert!(
+        ids.len() < 10000,
+        "sanity check: trust store shouldn't have 10k entries"
+    );
 }
 
 /// Test that is_trusted returns false for a nonexistent agent.
@@ -236,14 +243,23 @@ fn agent_card_export_via_binding_core() {
     let _orig = std::env::current_dir().unwrap();
     std::env::set_current_dir(&base).expect("chdir to workspace");
     unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD) };
-    agent.load(config.to_string_lossy().to_string()).expect("load agent");
+    agent
+        .load(config.to_string_lossy().to_string())
+        .expect("load agent");
 
-    let card_json = agent.export_agent_card().expect("export_agent_card should succeed");
-    let card: serde_json::Value = serde_json::from_str(&card_json)
-        .expect("Agent Card should be valid JSON");
-    assert!(card.get("name").is_some(), "Agent Card should have 'name' field");
-    assert!(card.get("url").is_some() || card.get("capabilities").is_some(),
-        "Agent Card should have standard A2A fields");
+    let card_json = agent
+        .export_agent_card()
+        .expect("export_agent_card should succeed");
+    let card: serde_json::Value =
+        serde_json::from_str(&card_json).expect("Agent Card should be valid JSON");
+    assert!(
+        card.get("name").is_some(),
+        "Agent Card should have 'name' field"
+    );
+    assert!(
+        card.get("url").is_some() || card.get("capabilities").is_some(),
+        "Agent Card should have standard A2A fields"
+    );
 
     std::env::set_current_dir(&_orig).ok();
     let _ = fs::remove_dir_all(&base);
@@ -257,23 +273,40 @@ fn well_known_documents_generated() {
     let _orig = std::env::current_dir().unwrap();
     std::env::set_current_dir(&base).expect("chdir to workspace");
     unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD) };
-    agent.load(config.to_string_lossy().to_string()).expect("load agent");
+    agent
+        .load(config.to_string_lossy().to_string())
+        .expect("load agent");
 
-    let docs_json = agent.generate_well_known_documents(None)
+    let docs_json = agent
+        .generate_well_known_documents(None)
         .expect("generate_well_known_documents should succeed");
-    let docs: Vec<serde_json::Value> = serde_json::from_str(&docs_json)
-        .expect("Well-known documents should be valid JSON array");
-    assert!(docs.len() >= 3, "Should generate at least 3 well-known documents, got {}", docs.len());
+    let docs: Vec<serde_json::Value> =
+        serde_json::from_str(&docs_json).expect("Well-known documents should be valid JSON array");
+    assert!(
+        docs.len() >= 3,
+        "Should generate at least 3 well-known documents, got {}",
+        docs.len()
+    );
 
     // Each document should have path and document fields
     for doc in &docs {
-        assert!(doc.get("path").is_some(), "Each entry should have a 'path' field");
-        assert!(doc.get("document").is_some(), "Each entry should have a 'document' field");
+        assert!(
+            doc.get("path").is_some(),
+            "Each entry should have a 'path' field"
+        );
+        assert!(
+            doc.get("document").is_some(),
+            "Each entry should have a 'document' field"
+        );
     }
 
     // The first document should be the agent card at /.well-known/agent-card.json
     let first_path = docs[0].get("path").and_then(|p| p.as_str()).unwrap_or("");
-    assert!(first_path.contains("agent-card"), "First document should be agent-card, got: {}", first_path);
+    assert!(
+        first_path.contains("agent-card"),
+        "First document should be agent-card, got: {}",
+        first_path
+    );
 
     std::env::set_current_dir(&_orig).ok();
     let _ = fs::remove_dir_all(&base);
@@ -287,13 +320,23 @@ fn export_agent_json_valid() {
     let _orig = std::env::current_dir().unwrap();
     std::env::set_current_dir(&base).expect("chdir to workspace");
     unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD) };
-    agent.load(config.to_string_lossy().to_string()).expect("load agent");
+    agent
+        .load(config.to_string_lossy().to_string())
+        .expect("load agent");
 
-    let agent_json = agent.get_agent_json().expect("get_agent_json should succeed");
-    let value: serde_json::Value = serde_json::from_str(&agent_json)
-        .expect("Agent JSON should be valid");
-    assert!(value.get("jacsId").is_some(), "Agent JSON should contain jacsId");
-    assert!(value.get("jacsSignature").is_some(), "Agent JSON should contain jacsSignature");
+    let agent_json = agent
+        .get_agent_json()
+        .expect("get_agent_json should succeed");
+    let value: serde_json::Value =
+        serde_json::from_str(&agent_json).expect("Agent JSON should be valid");
+    assert!(
+        value.get("jacsId").is_some(),
+        "Agent JSON should contain jacsId"
+    );
+    assert!(
+        value.get("jacsSignature").is_some(),
+        "Agent JSON should contain jacsSignature"
+    );
 
     std::env::set_current_dir(&_orig).ok();
     let _ = fs::remove_dir_all(&base);

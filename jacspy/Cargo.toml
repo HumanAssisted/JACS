@@ -8,11 +8,15 @@ exclude = ["examples/**"]
 
 [lib]
 name = "jacspy"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
 
 [dependencies]
 lazy_static = "1.5.0"
-pyo3 = { version = "0.24.2", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "0.24.2", features = ["abi3-py310", "auto-initialize"] }
 jacs = { path = "../jacs" }
 jacs-binding-core = { path = "../binding-core", features = ["hai"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }

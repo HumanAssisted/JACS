@@ -70,6 +70,12 @@ jacsMiddleware({
   sign?: boolean;            // Auto-sign res.json() responses (default: false)
   verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
   optional?: boolean;        // Allow unsigned requests through (default: false)
+  authReplay?: boolean | {   // Replay protection for auth-style endpoints (default: false)
+    enabled?: boolean;
+    maxAgeSeconds?: number;    // default: 30
+    clockSkewSeconds?: number; // default: 5
+    cacheTtlSeconds?: number;  // default: maxAge + skew
+  };
 })
 ```
 
@@ -114,6 +120,30 @@ app.post('/api/mixed', (req, res) => {
   }
 });
 ```
+
+## Auth Replay Protection (Auth Endpoints)
+
+Enable replay protection when signed JACS bodies are used as authentication artifacts:
+
+```typescript
+app.use(
+  jacsMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  })
+);
+```
+
+When enabled, middleware enforces:
+
+- signature timestamp freshness (`maxAgeSeconds` + `clockSkewSeconds`)
+- single-use `(signerId, signature)` dedupe inside a TTL cache
+
+Notes:
+
+- Keep this mode scoped to auth-style endpoints.
+- Cache is in-memory per process; use a shared cache for multi-instance deployments.
 
 ## Auto-Sign Responses
 

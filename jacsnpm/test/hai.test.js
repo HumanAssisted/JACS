@@ -157,6 +157,46 @@ describe('HaiClient (hai.ts)', function () {
       }
     });
 
+    it('should format Authorization header as JACS <agentId>:<timestamp>:<signature>', async function () {
+      if (!available) this.skip();
+
+      const originalFetch = global.fetch;
+      let capturedHeaders = {};
+      global.fetch = sinon.stub().callsFake(async (url, opts) => {
+        capturedHeaders = opts.headers || {};
+        return { status: 200, json: async () => ({ timestamp: '', client_ip: '', message: '' }) };
+      });
+
+      const mockSigned = {
+        raw: JSON.stringify({ jacsSignature: { signature: 'sig123' } }),
+      };
+      const mockJacs = {
+        agentId: 'my-agent-id',
+        signMessage: sinon.stub().resolves(mockSigned),
+      };
+
+      const hai = new haiModule.HaiClient(mockJacs, 'https://hai.ai');
+
+      try {
+        await hai.hello();
+        const header = capturedHeaders['Authorization'];
+        expect(header).to.be.a('string');
+        expect(header.startsWith('JACS ')).to.equal(true);
+
+        const value = header.slice('JACS '.length);
+        expect(value.startsWith('my-agent-id:')).to.equal(true);
+        expect(value.endsWith(':sig123')).to.equal(true);
+
+        const prefix = 'my-agent-id:';
+        const suffix = ':sig123';
+        const timestamp = value.slice(prefix.length, value.length - suffix.length);
+        expect(timestamp.length).to.be.greaterThan(0);
+        expect(Number.isNaN(Date.parse(timestamp))).to.equal(false);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
     it('should POST to /api/v1/agents/hello', async function () {
       if (!available) this.skip();
 

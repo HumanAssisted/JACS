@@ -157,18 +157,16 @@ def generate_verify_link(
     """Build a verification URL for a signed JACS document.
 
     Supports two modes:
-    - **Inline** (default for small documents): Encodes the full document
-      in the URL as base64: ``{base_url}/jacs/verify?s={base64url(document)}``
-    - **Hosted** (for large documents like PQ signatures): Uses the document
-      ID to reference a server-stored copy: ``{base_url}/verify/{document_id}``
-
-    When ``hosted`` is None (default), the function automatically selects:
-    inline if the document fits within URL limits, hosted otherwise.
+    - **Inline** (default): Encodes the full document in the URL as base64:
+      ``{base_url}/jacs/verify?s={base64url(document)}``
+    - **Hosted** (opt-in): Uses the document ID to reference a server-stored
+      copy: ``{base_url}/verify/{document_id}``
 
     Args:
         document: The full signed JACS document string (JSON).
         base_url: Base URL of the verifier (no trailing slash). Default "https://hai.ai".
-        hosted: Force hosted mode (True), inline mode (False), or auto-detect (None).
+        hosted: Force hosted mode (True) or inline mode (False).
+            ``None`` preserves legacy behavior and defaults to inline mode.
 
     Returns:
         Full verification URL.
@@ -181,10 +179,9 @@ def generate_verify_link(
 
     base = base_url.rstrip("/")
 
-    # Auto-detect: try inline first, fall back to hosted
+    # Backward-compatible default: inline mode unless explicitly hosted.
     if hosted is None:
-        doc_bytes = len(document.encode("utf-8"))
-        hosted = doc_bytes > MAX_VERIFY_DOCUMENT_BYTES
+        hosted = False
 
     if not hosted:
         # Try native Rust implementation first

@@ -9,6 +9,7 @@ Verifies:
 - Sync wrappers
 """
 
+import asyncio
 import json
 
 import pytest
@@ -311,6 +312,17 @@ class TestSyncWrappers:
 
         assert result["allowed"] is True
         assert result["jacs_registered"] is True
+
+    def test_sync_wrapper_leaves_event_loop_available(self):
+        """Calling sync wrappers should not clear current-thread event loop."""
+        with patch("jacs.a2a_discovery.discover_agent", new_callable=AsyncMock) as mock_disc:
+            mock_disc.return_value = SAMPLE_CARD
+            card = discover_agent_sync("https://agent.example.com")
+
+        assert card["name"] == "Remote Bot"
+        # Regression guard: previous asyncio.run() wrapper left no loop.
+        loop = asyncio.get_event_loop()
+        assert loop is not None
 
 
 if __name__ == "__main__":
