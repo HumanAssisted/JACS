@@ -256,7 +256,7 @@
 <tr><td><code>date</code></td><td>string (date-time)</td><td>Yes</td><td>Signing timestamp</td></tr>
 <tr><td><code>signature</code></td><td>string</td><td>Yes</td><td>Base64-encoded signature</td></tr>
 <tr><td><code>publicKeyHash</code></td><td>string</td><td>Yes</td><td>Hash of public key used</td></tr>
-<tr><td><code>signingAlgorithm</code></td><td>string</td><td>No</td><td>Algorithm used (ring-Ed25519, RSA-PSS, pq-dilithium)</td></tr>
+<tr><td><code>signingAlgorithm</code></td><td>string</td><td>Yes</td><td>Algorithm used (<code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code>; <code>pq-dilithium</code> is legacy/deprecated)</td></tr>
 <tr><td><code>fields</code></td><td>array</td><td>Yes</td><td>Fields included in signature</td></tr>
 <tr><td><code>response</code></td><td>string</td><td>No</td><td>Text response with signature</td></tr>
 <tr><td><code>responseType</code></td><td>string</td><td>No</td><td>agree, disagree, or reject</td></tr>

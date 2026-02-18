@@ -450,46 +450,17 @@ payload = result.get('payload')
 ## MCP Module
 
 ```python
-from jacs.mcp import JACSMCPServer, JACSMCPClient
+from jacs.mcp import JACSMCPServer, JACSMCPClient, create_jacs_mcp_server, jacs_call
 ```
 
-### JACSMCPServer(mcp_server)
+Canonical MCP documentation lives at [Python MCP Integration](mcp.md). This API section lists the MCP entry points only:
 
-Wraps a FastMCP server with JACS authentication middleware.
+- `JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False)` - Wrap a FastMCP server with JACS request verification and response signing.
+- `JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)` - Create a FastMCP client with JACS signing/verification interceptors.
+- `create_jacs_mcp_server(name, config_path=None)` - One-line server factory.
+- `jacs_call(server_url, method, **params)` - One-shot authenticated MCP call.
 
-**Parameters:**
-- `mcp_server`: A FastMCP server instance
-
-**Returns:** The wrapped server with JACS middleware
-
-**Example:**
-```python
-from jacs.mcp import JACSMCPServer
-from fastmcp import FastMCP
-
-server = FastMCP("My Server")
-authenticated = JACSMCPServer(server)
-app = authenticated.sse_app()
-```
-
-### JACSMCPClient(url, **kwargs)
-
-Creates a FastMCP client with JACS authentication interceptors.
-
-**Parameters:**
-- `url`: The MCP server SSE endpoint URL
-- `**kwargs`: Additional arguments passed to the FastMCP Client
-
-**Returns:** A FastMCP Client with JACS interceptors
-
-**Example:**
-```python
-from jacs.mcp import JACSMCPClient
-
-client = JACSMCPClient("http://localhost:8000/sse")
-async with client:
-    result = await client.call_tool("my_tool", {"arg": "value"})
-```
+For examples, strict-mode behavior, and security guidance, see [Python MCP Integration](mcp.md).
 
 ---
 

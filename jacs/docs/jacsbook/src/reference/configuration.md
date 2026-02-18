@@ -6,24 +6,24 @@ This is the comprehensive configuration guide covering zero-config quickstart, s
 
 ### Key resolution for verifiers
 
-When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set **`JACS_KEY_RESOLUTION`** (environment variable or in config) to a comma-separated list of sources: `local` (trust store), `dns` (DNS TXT record), `hai` (HAI key service). Example: `JACS_KEY_RESOLUTION=local,hai` or `local,dns,hai`. The first source that returns a key for the signer’s ID is used. Use `verify_standalone()` with explicit `keyResolution` for one-off verification without loading a full config.
+When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set **`JACS_KEY_RESOLUTION`** (environment variable or in config) to a comma-separated list of sources: `local` (local key cache by `publicKeyHash`), `dns` (DNS TXT fingerprint validation), `hai` (HAI key service). Example: `JACS_KEY_RESOLUTION=local,hai` or `local,dns,hai`. The first source that yields verifiable key material is used. Use `verify_standalone()` with explicit `keyResolution` for one-off verification without loading a full config.
 
 ## Zero-Config Path
 
-If you just want to sign and verify without any configuration, use `quickstart()`:
+If you just want to sign and verify without manual config setup, use `quickstart()`:
 
 ```python
 import jacs.simple as jacs
-jacs.quickstart()  # No config file needed
+jacs.quickstart()  # Creates or loads ./jacs.config.json automatically
 ```
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
-jacs.quickstart();  // No config file needed
+jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
 ```
 
 ```bash
-jacs quickstart  # CLI -- no config file needed
+jacs quickstart  # CLI -- creates or loads ./jacs.config.json
 ```
 
 {{#include ../_snippets/quickstart-persistent-agent.md}}

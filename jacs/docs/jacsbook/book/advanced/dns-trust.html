@@ -196,7 +196,7 @@
 <ol>
 <li><strong>Domain ownership implies identity</strong>: The entity controlling DNS for a domain is authorized to speak for agents on that domain.</li>
 <li><strong>TXT records are tamper-evident with DNSSEC</strong>: When <code>--require-strict-dns</code> is used, the full DNSSEC chain of trust (root -&gt; TLD -&gt; domain -&gt; record) provides cryptographic integrity.</li>
-<li><strong>Embedded fingerprints are a weaker fallback</strong>: Without DNS, JACS trusts the <code>jacsPublicKeyHash</code> field embedded in the agent document. This proves key consistency but not domain ownership.</li>
+<li><strong>Embedded fingerprints are a weaker fallback</strong>: Without DNS, JACS falls back to the signature fingerprint (<code>jacsSignature.publicKeyHash</code>) in the signed artifact/agent material. This proves key consistency but not domain ownership.</li>
 </ol>
 <h2 id="known-attack-vectors"><a class="header" href="#known-attack-vectors">Known Attack Vectors</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Attack</th><th>Risk Level</th><th>Mitigated By</th></tr></thead><tbody>

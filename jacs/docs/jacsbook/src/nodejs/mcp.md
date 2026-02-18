@@ -231,7 +231,7 @@ export JACS_MCP_DEBUG=true   # Enable debug logging (not recommended for STDIO)
 
 ### Message Signing
 
-All JACS-signed messages include `jacsId`, `jacsVersion`, `jacsSignature`, and `jacsHash` for integrity and identity verification.
+All JACS-signed messages include `jacsId`, `jacsVersion`, `jacsSignature`, and `jacsSha256` for integrity and identity verification.
 
 ### Passthrough Mode
 

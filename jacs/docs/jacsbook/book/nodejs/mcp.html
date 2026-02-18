@@ -350,7 +350,7 @@ const secureTransport = createJACSTransportProxy(baseTransport, client, "server"
 </code></pre>
 <h2 id="security"><a class="header" href="#security">Security</a></h2>
 <h3 id="message-signing"><a class="header" href="#message-signing">Message Signing</a></h3>
-<p>All JACS-signed messages include <code>jacsId</code>, <code>jacsVersion</code>, <code>jacsSignature</code>, and <code>jacsHash</code> for integrity and identity verification.</p>
+<p>All JACS-signed messages include <code>jacsId</code>, <code>jacsVersion</code>, <code>jacsSignature</code>, and <code>jacsSha256</code> for integrity and identity verification.</p>
 <h3 id="passthrough-mode"><a class="header" href="#passthrough-mode">Passthrough Mode</a></h3>
 <p>If JACS cannot verify an incoming message, it falls back to plain JSON parsing. This allows gradual migration and interoperability with non-JACS MCP clients/servers.</p>
 <h3 id="key-management"><a class="header" href="#key-management">Key Management</a></h3>

@@ -1575,7 +1575,7 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 <h3 id="webassembly-notes"><a class="header" href="#webassembly-notes">WebAssembly Notes</a></h3>
 <p>When targeting WebAssembly, some features are unavailable:</p>
 <ul>
-<li>Post-quantum cryptographic algorithms (pq-dilithium)</li>
+<li>Post-quantum cryptographic algorithms (<code>pq2025</code>, legacy <code>pq-dilithium</code>)</li>
 <li>File system storage backend</li>
 <li>HTTP-based remote operations</li>
 </ul>
@@ -1586,7 +1586,7 @@ jacs init
 </code></pre>
 <p>This creates:</p>
 <ul>
-<li><code>~/.jacs/jacs.config.json</code> - Configuration file</li>
+<li><code>./jacs.config.json</code> - Configuration file</li>
 <li>Cryptographic keys for your agent</li>
 <li>Initial agent document</li>
 </ul>
@@ -1606,7 +1606,7 @@ jacs agent create --create-keys true
 <tr><td><code>JACS_DATA_DIRECTORY</code></td><td>Directory for document storage</td><td><code>./jacs_data</code></td></tr>
 <tr><td><code>JACS_KEY_DIRECTORY</code></td><td>Directory for cryptographic keys</td><td><code>./jacs_keys</code></td></tr>
 <tr><td><code>JACS_DEFAULT_STORAGE</code></td><td>Storage backend (<code>fs</code>, <code>memory</code>)</td><td><code>fs</code></td></tr>
-<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq-dilithium</code>)</td><td><code>ring-Ed25519</code></td></tr>
+<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code>, legacy <code>pq-dilithium</code>)</td><td><code>ring-Ed25519</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="troubleshooting-2"><a class="header" href="#troubleshooting-2">Troubleshooting</a></h2>
@@ -1962,10 +1962,10 @@ jacs agent create --create-keys true
   "description": "AI agent specialized in content creation",
   "jacsServices": [
     {
-      "jacsServiceName": "content-generation",
-      "jacsServiceDescription": "Generate high-quality content",
-      "jacsServiceSuccess": "Engaging, accurate content delivered",
-      "jacsServiceFailure": "Unable to generate requested content"
+      "name": "content-generation",
+      "serviceDescription": "Generate high-quality content",
+      "successDescription": "Engaging, accurate content delivered",
+      "failureDescription": "Unable to generate requested content"
     }
   ]
 }
@@ -1990,8 +1990,10 @@ jacs agent create --create-keys true
   "description": "Data processing agent",
   "jacsServices": [
     {
-      "jacsServiceName": "data-processing",
-      "jacsServiceDescription": "Process and transform data"
+      "name": "data-processing",
+      "serviceDescription": "Process and transform data",
+      "successDescription": "Data transformed successfully",
+      "failureDescription": "Input data could not be processed"
     }
   ]
 }
@@ -2004,14 +2006,18 @@ jacs agent create --create-keys true
   "description": "Software engineer",
   "jacsContacts": [
     {
-      "jacsContactType": "email",
-      "jacsContactValue": "john@example.com"
+      "firstName": "John",
+      "lastName": "Smith",
+      "email": "john@example.com",
+      "isPrimary": true
     }
   ],
   "jacsServices": [
     {
-      "jacsServiceName": "code-review",
-      "jacsServiceDescription": "Review code for quality and security"
+      "name": "code-review",
+      "serviceDescription": "Review code for quality and security",
+      "successDescription": "Actionable review delivered",
+      "failureDescription": "Could not complete review"
     }
   ]
 }
@@ -2019,36 +2025,21 @@ jacs agent create --create-keys true
 <h2 id="agent-services"><a class="header" href="#agent-services">Agent Services</a></h2>
 <p>Services define what an agent can do. Each service has:</p>
 <pre><code class="language-json">{
-  "jacsServiceName": "service-identifier",
-  "jacsServiceDescription": "What the service does",
-  "jacsServiceSuccess": "Definition of successful completion",
-  "jacsServiceFailure": "What constitutes failure",
-  "jacsServiceActions": [
-    {
-      "jacsActionName": "action-1",
-      "jacsActionDescription": "First action in this service"
-    }
-  ]
+  "name": "service-identifier",
+  "serviceDescription": "What the service does",
+  "successDescription": "Definition of successful completion",
+  "failureDescription": "What constitutes failure"
 }
 </code></pre>
-<h3 id="service-with-actions"><a class="header" href="#service-with-actions">Service with Actions</a></h3>
+<h3 id="detailed-service-example"><a class="header" href="#detailed-service-example">Detailed Service Example</a></h3>
 <pre><code class="language-json">{
-  "jacsServiceName": "document-processing",
-  "jacsServiceDescription": "Process and analyze documents",
-  "jacsServiceActions": [
-    {
-      "jacsActionName": "extract-text",
-      "jacsActionDescription": "Extract text from PDF documents"
-    },
-    {
-      "jacsActionName": "summarize",
-      "jacsActionDescription": "Generate document summaries"
-    },
-    {
-      "jacsActionName": "translate",
-      "jacsActionDescription": "Translate documents between languages"
-    }
-  ]
+  "name": "document-processing",
+  "serviceDescription": "Process and analyze documents",
+  "successDescription": "Documents processed accurately",
+  "failureDescription": "Unable to process one or more documents",
+  "costDescription": "Usage-based pricing",
+  "privacyPolicy": "https://example.com/privacy",
+  "termsOfService": "https://example.com/terms"
 }
 </code></pre>
 <h2 id="agent-contacts"><a class="header" href="#agent-contacts">Agent Contacts</a></h2>
@@ -2056,16 +2047,11 @@ jacs agent create --create-keys true
 <pre><code class="language-json">{
   "jacsContacts": [
     {
-      "jacsContactType": "email",
-      "jacsContactValue": "agent@example.com"
-    },
-    {
-      "jacsContactType": "website",
-      "jacsContactValue": "https://example.com"
-    },
-    {
-      "jacsContactType": "phone",
-      "jacsContactValue": "+1-555-0123"
+      "firstName": "Example",
+      "lastName": "Agent",
+      "email": "agent@example.com",
+      "phone": "+1-555-0123",
+      "isPrimary": true
     }
   ]
 }
@@ -2076,7 +2062,8 @@ jacs agent create --create-keys true
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Description</th><th>Recommended For</th></tr></thead><tbody>
 <tr><td><code>ring-Ed25519</code></td><td>Fast elliptic curve signatures</td><td>General use (default)</td></tr>
 <tr><td><code>RSA-PSS</code></td><td>Traditional RSA signatures</td><td>Legacy compatibility</td></tr>
-<tr><td><code>pq-dilithium</code></td><td>Post-quantum signatures</td><td>Future-proof security</td></tr>
+<tr><td><code>pq2025</code></td><td>Post-quantum ML-DSA-87 signatures</td><td>Future-proof security</td></tr>
+<tr><td><code>pq-dilithium</code></td><td>Legacy post-quantum signatures</td><td>Backward compatibility only (deprecated)</td></tr>
 </tbody></table>
 </div>
 <h3 id="configure-key-algorithm"><a class="header" href="#configure-key-algorithm">Configure Key Algorithm</a></h3>
@@ -2134,8 +2121,10 @@ jacs agent verify --require-strict-dns
 
   "jacsServices": [
     {
-      "jacsServiceName": "content-generation",
-      "jacsServiceDescription": "Generate high-quality content"
+      "name": "content-generation",
+      "serviceDescription": "Generate high-quality content",
+      "successDescription": "High-quality content generated",
+      "failureDescription": "Unable to generate requested content"
     }
   ],
 
@@ -5136,6 +5125,12 @@ app.listen(3000);
   sign?: boolean;            // Auto-sign res.json() responses (default: false)
   verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
   optional?: boolean;        // Allow unsigned requests through (default: false)
+  authReplay?: boolean | {   // Replay protection for auth-style endpoints (default: false)
+    enabled?: boolean;
+    maxAgeSeconds?: number;    // default: 30
+    clockSkewSeconds?: number; // default: 5
+    cacheTtlSeconds?: number;  // default: maxAge + skew
+  };
 })
 </code></pre>
 <p>If neither <code>client</code> nor <code>configPath</code> is provided, the middleware calls <code>JacsClient.quickstart()</code> on first request.</p>
@@ -5169,6 +5164,26 @@ app.post('/api/mixed', (req, res) =&gt; {
   }
 });
 </code></pre>
+<h2 id="auth-replay-protection-auth-endpoints"><a class="header" href="#auth-replay-protection-auth-endpoints">Auth Replay Protection (Auth Endpoints)</a></h2>
+<p>Enable replay protection when signed JACS bodies are used as authentication artifacts:</p>
+<pre><code class="language-typescript">app.use(
+  jacsMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  })
+);
+</code></pre>
+<p>When enabled, middleware enforces:</p>
+<ul>
+<li>signature timestamp freshness (<code>maxAgeSeconds</code> + <code>clockSkewSeconds</code>)</li>
+<li>single-use <code>(signerId, signature)</code> dedupe inside a TTL cache</li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li>Keep this mode scoped to auth-style endpoints.</li>
+<li>Cache is in-memory per process; use a shared cache for multi-instance deployments.</li>
+</ul>
 <h2 id="auto-sign-responses"><a class="header" href="#auto-sign-responses">Auto-Sign Responses</a></h2>
 <p>Enable <code>sign: true</code> to intercept <code>res.json()</code> calls:</p>
 <pre><code class="language-typescript">app.use(jacsMiddleware({ client, sign: true }));
@@ -5262,12 +5277,38 @@ app.listen(3000);
   sign?: boolean;            // Auto-sign ctx.body after next() (default: false)
   verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
   optional?: boolean;        // Allow unsigned requests through (default: false)
+  authReplay?: boolean | {   // Replay protection for auth-style endpoints (default: false)
+    enabled?: boolean;
+    maxAgeSeconds?: number;    // default: 30
+    clockSkewSeconds?: number; // default: 5
+    cacheTtlSeconds?: number;  // default: maxAge + skew
+  };
 })
 </code></pre>
 <h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
 <p><strong>Every request</strong> gets <code>ctx.state.jacsClient</code> for manual use.</p>
 <p><strong>POST/PUT/PATCH with <code>verify: true</code></strong>: The string body is verified. On success, <code>ctx.state.jacsPayload</code> is set. On failure, 401 is returned (unless <code>optional: true</code>).</p>
 <p><strong>With <code>sign: true</code></strong>: After downstream middleware runs, if <code>ctx.body</code> is a non-Buffer object, it is signed before the response is sent.</p>
+<h2 id="auth-replay-protection-auth-endpoints-1"><a class="header" href="#auth-replay-protection-auth-endpoints-1">Auth Replay Protection (Auth Endpoints)</a></h2>
+<p>Enable replay protection when signed JACS bodies are used as authentication artifacts:</p>
+<pre><code class="language-typescript">app.use(
+  jacsKoaMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  })
+);
+</code></pre>
+<p>When enabled, middleware enforces:</p>
+<ul>
+<li>signature timestamp freshness (<code>maxAgeSeconds</code> + <code>clockSkewSeconds</code>)</li>
+<li>single-use <code>(signerId, signature)</code> dedupe inside a TTL cache</li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li>Keep this mode scoped to auth-style endpoints.</li>
+<li>Cache is in-memory per process; use a shared cache for multi-instance deployments.</li>
+</ul>
 <h2 id="auto-sign-responses-1"><a class="header" href="#auto-sign-responses-1">Auto-Sign Responses</a></h2>
 <pre><code class="language-typescript">app.use(jacsKoaMiddleware({ client, sign: true }));
 
@@ -5476,7 +5517,7 @@ const secureTransport = createJACSTransportProxy(baseTransport, client, "server"
 </code></pre>
 <h2 id="security-2"><a class="header" href="#security-2">Security</a></h2>
 <h3 id="message-signing"><a class="header" href="#message-signing">Message Signing</a></h3>
-<p>All JACS-signed messages include <code>jacsId</code>, <code>jacsVersion</code>, <code>jacsSignature</code>, and <code>jacsHash</code> for integrity and identity verification.</p>
+<p>All JACS-signed messages include <code>jacsId</code>, <code>jacsVersion</code>, <code>jacsSignature</code>, and <code>jacsSha256</code> for integrity and identity verification.</p>
 <h3 id="passthrough-mode"><a class="header" href="#passthrough-mode">Passthrough Mode</a></h3>
 <p>If JACS cannot verify an incoming message, it falls back to plain JSON parsing. This allows gradual migration and interoperability with non-JACS MCP clients/servers.</p>
 <h3 id="key-management-1"><a class="header" href="#key-management-1">Key Management</a></h3>
@@ -7516,6 +7557,25 @@ app = FastAPI()
 app.add_middleware(JacsMiddleware)
 </code></pre>
 <p>Options: <code>sign_responses=True</code>, <code>verify_requests=True</code>, <code>strict=False</code>.</p>
+<p>For auth-style endpoints, enable replay protection:</p>
+<pre><code class="language-python">app.add_middleware(
+    JacsMiddleware,
+    strict=True,
+    auth_replay_protection=True,
+    auth_max_age_seconds=30,
+    auth_clock_skew_seconds=5,
+)
+</code></pre>
+<p>When enabled, middleware enforces:</p>
+<ul>
+<li>signature timestamp freshness (<code>auth_max_age_seconds</code> + <code>auth_clock_skew_seconds</code>)</li>
+<li>single-use <code>(signerId, signature)</code> dedupe in an in-memory TTL cache</li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li>Use replay protection only where JACS is acting as authentication.</li>
+<li>Cache scope is per process; use a shared cache layer in multi-instance deployments.</li>
+</ul>
 <h3 id="per-route-decorator"><a class="header" href="#per-route-decorator">Per-Route Decorator</a></h3>
 <p>Sign a single endpoint:</p>
 <pre><code class="language-python">from jacs.adapters.fastapi import jacs_route
@@ -8312,38 +8372,16 @@ payload = result.get('payload')
 </code></pre>
 <hr />
 <h2 id="mcp-module-1"><a class="header" href="#mcp-module-1">MCP Module</a></h2>
-<pre><code class="language-python">from jacs.mcp import JACSMCPServer, JACSMCPClient
+<pre><code class="language-python">from jacs.mcp import JACSMCPServer, JACSMCPClient, create_jacs_mcp_server, jacs_call
 </code></pre>
-<h3 id="jacsmcpservermcp_server-1"><a class="header" href="#jacsmcpservermcp_server-1">JACSMCPServer(mcp_server)</a></h3>
-<p>Wraps a FastMCP server with JACS authentication middleware.</p>
-<p><strong>Parameters:</strong></p>
+<p>Canonical MCP documentation lives at <a href="python/mcp.html">Python MCP Integration</a>. This API section lists the MCP entry points only:</p>
 <ul>
-<li><code>mcp_server</code>: A FastMCP server instance</li>
+<li><code>JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False)</code> - Wrap a FastMCP server with JACS request verification and response signing.</li>
+<li><code>JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)</code> - Create a FastMCP client with JACS signing/verification interceptors.</li>
+<li><code>create_jacs_mcp_server(name, config_path=None)</code> - One-line server factory.</li>
+<li><code>jacs_call(server_url, method, **params)</code> - One-shot authenticated MCP call.</li>
 </ul>
-<p><strong>Returns:</strong> The wrapped server with JACS middleware</p>
-<p><strong>Example:</strong></p>
-<pre><code class="language-python">from jacs.mcp import JACSMCPServer
-from fastmcp import FastMCP
-
-server = FastMCP("My Server")
-authenticated = JACSMCPServer(server)
-app = authenticated.sse_app()
-</code></pre>
-<h3 id="jacsmcpclienturl-kwargs-1"><a class="header" href="#jacsmcpclienturl-kwargs-1">JACSMCPClient(url, **kwargs)</a></h3>
-<p>Creates a FastMCP client with JACS authentication interceptors.</p>
-<p><strong>Parameters:</strong></p>
-<ul>
-<li><code>url</code>: The MCP server SSE endpoint URL</li>
-<li><code>**kwargs</code>: Additional arguments passed to the FastMCP Client</li>
-</ul>
-<p><strong>Returns:</strong> A FastMCP Client with JACS interceptors</p>
-<p><strong>Example:</strong></p>
-<pre><code class="language-python">from jacs.mcp import JACSMCPClient
-
-client = JACSMCPClient("http://localhost:8000/sse")
-async with client:
-    result = await client.call_tool("my_tool", {"arg": "value"})
-</code></pre>
+<p>For examples, strict-mode behavior, and security guidance, see <a href="python/mcp.html">Python MCP Integration</a>.</p>
 <hr />
 <h2 id="configuration-6"><a class="header" href="#configuration-6">Configuration</a></h2>
 <h3 id="configuration-file-format"><a class="header" href="#configuration-file-format">Configuration File Format</a></h3>
@@ -9098,7 +9136,7 @@ const isOtherValid = agent.verifyAgent('./other-agent.json');
 <tr><td><code>date</code></td><td>string (date-time)</td><td>Yes</td><td>Signing timestamp</td></tr>
 <tr><td><code>signature</code></td><td>string</td><td>Yes</td><td>Base64-encoded signature</td></tr>
 <tr><td><code>publicKeyHash</code></td><td>string</td><td>Yes</td><td>Hash of public key used</td></tr>
-<tr><td><code>signingAlgorithm</code></td><td>string</td><td>No</td><td>Algorithm used (ring-Ed25519, RSA-PSS, pq-dilithium)</td></tr>
+<tr><td><code>signingAlgorithm</code></td><td>string</td><td>Yes</td><td>Algorithm used (<code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code>; <code>pq-dilithium</code> is legacy/deprecated)</td></tr>
 <tr><td><code>fields</code></td><td>array</td><td>Yes</td><td>Fields included in signature</td></tr>
 <tr><td><code>response</code></td><td>string</td><td>No</td><td>Text response with signature</td></tr>
 <tr><td><code>responseType</code></td><td>string</td><td>No</td><td>agree, disagree, or reject</td></tr>
@@ -9810,9 +9848,9 @@ let hash_valid = verify_agentstate_file_hash(&amp;doc)?;
 <p>Six MCP tools are available for agent state operations:</p>
 <div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>jacs_sign_state</code></td><td>Create and sign a new agent state document</td></tr>
-<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document's signature</td></tr>
-<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by key</td></tr>
-<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document</td></tr>
+<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
 <tr><td><code>jacs_list_state</code></td><td>List all agent state documents</td></tr>
 <tr><td><code>jacs_adopt_state</code></td><td>Adopt an external file as a signed agent state</td></tr>
 </tbody></table>
@@ -9844,6 +9882,7 @@ let hash_valid = verify_agentstate_file_hash(&amp;doc)?;
 <h2 id="security-notes"><a class="header" href="#security-notes">Security Notes</a></h2>
 <ul>
 <li>All agent state documents are stored within the JACS data directory for security</li>
+<li>MCP verify/load/update flows are <code>jacs_id</code>-based; direct path-only access is disabled</li>
 <li>Hook-type documents always embed content to prevent TOCTOU attacks</li>
 <li>File hashes (SHA-256) are verified on load to detect tampering</li>
 <li>Origin tracking provides provenance auditing</li>
@@ -12583,7 +12622,7 @@ app.use(jacsMiddleware({ client }));
 <ol>
 <li><strong>Domain ownership implies identity</strong>: The entity controlling DNS for a domain is authorized to speak for agents on that domain.</li>
 <li><strong>TXT records are tamper-evident with DNSSEC</strong>: When <code>--require-strict-dns</code> is used, the full DNSSEC chain of trust (root -&gt; TLD -&gt; domain -&gt; record) provides cryptographic integrity.</li>
-<li><strong>Embedded fingerprints are a weaker fallback</strong>: Without DNS, JACS trusts the <code>jacsPublicKeyHash</code> field embedded in the agent document. This proves key consistency but not domain ownership.</li>
+<li><strong>Embedded fingerprints are a weaker fallback</strong>: Without DNS, JACS falls back to the signature fingerprint (<code>jacsSignature.publicKeyHash</code>) in the signed artifact/agent material. This proves key consistency but not domain ownership.</li>
 </ol>
 <h2 id="known-attack-vectors"><a class="header" href="#known-attack-vectors">Known Attack Vectors</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Attack</th><th>Risk Level</th><th>Mitigated By</th></tr></thead><tbody>
@@ -13831,14 +13870,15 @@ logging.getLogger("jacs.security").setLevel(logging.WARNING)
 <p>These tools allow agents to sign, verify, and manage state documents (memory files, skills, plans, configs, hooks, or any document):</p>
 <div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>jacs_sign_state</code></td><td>Create and sign a new agent state document</td></tr>
-<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document's signature</td></tr>
-<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by key</td></tr>
-<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document</td></tr>
+<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
 <tr><td><code>jacs_list_state</code></td><td>List all agent state documents</td></tr>
 <tr><td><code>jacs_adopt_state</code></td><td>Adopt an external file as a signed agent state</td></tr>
 </tbody></table>
 </div>
-<p>All documents are stored within the JACS data directory for security. Use <code>state_type: "other"</code> for general-purpose signing of any document.</p>
+<p>For MCP security, verification/load/update flows use JACS document references (<code>jacs_id</code>) instead of direct path access. Path-only verify/load/update calls are rejected.</p>
+<p>All state documents are persisted in JACS storage. Use <code>state_type: "other"</code> for general-purpose signing of any document.</p>
 <p>See <a href="integrations/../schemas/agentstate.html">Agent State Schema</a> for full documentation.</p>
 <h3 id="a2a-discovery-tools"><a class="header" href="#a2a-discovery-tools">A2A Discovery Tools</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
@@ -19524,16 +19564,16 @@ jacs document verify -f document.json -s schema.json
 <p>This is the comprehensive configuration guide covering zero-config quickstart, storage backends, observability, and environment variables. For the raw schema field list, see <a href="reference/../schemas/configuration.html">Config File Schema</a>.</p>
 <h2 id="overview-16"><a class="header" href="#overview-16">Overview</a></h2>
 <h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
-<p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (trust store), <code>dns</code> (DNS TXT record), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that returns a key for the signer’s ID is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
+<p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (local key cache by <code>publicKeyHash</code>), <code>dns</code> (DNS TXT fingerprint validation), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that yields verifiable key material is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
 <h2 id="zero-config-path"><a class="header" href="#zero-config-path">Zero-Config Path</a></h2>
-<p>If you just want to sign and verify without any configuration, use <code>quickstart()</code>:</p>
+<p>If you just want to sign and verify without manual config setup, use <code>quickstart()</code>:</p>
 <pre><code class="language-python">import jacs.simple as jacs
-jacs.quickstart()  # No config file needed
+jacs.quickstart()  # Creates or loads ./jacs.config.json automatically
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-jacs.quickstart();  // No config file needed
+jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
 </code></pre>
-<pre><code class="language-bash">jacs quickstart  # CLI -- no config file needed
+<pre><code class="language-bash">jacs quickstart  # CLI -- creates or loads ./jacs.config.json
 </code></pre>
 <p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.</p>
 <h2 id="minimal-configuration-1"><a class="header" href="#minimal-configuration-1">Minimal Configuration</a></h2>

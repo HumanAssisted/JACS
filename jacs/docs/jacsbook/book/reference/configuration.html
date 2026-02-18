@@ -178,16 +178,16 @@
 <p>This is the comprehensive configuration guide covering zero-config quickstart, storage backends, observability, and environment variables. For the raw schema field list, see <a href="../schemas/configuration.html">Config File Schema</a>.</p>
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
 <h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
-<p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (trust store), <code>dns</code> (DNS TXT record), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that returns a key for the signer’s ID is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
+<p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (local key cache by <code>publicKeyHash</code>), <code>dns</code> (DNS TXT fingerprint validation), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that yields verifiable key material is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
 <h2 id="zero-config-path"><a class="header" href="#zero-config-path">Zero-Config Path</a></h2>
-<p>If you just want to sign and verify without any configuration, use <code>quickstart()</code>:</p>
+<p>If you just want to sign and verify without manual config setup, use <code>quickstart()</code>:</p>
 <pre><code class="language-python">import jacs.simple as jacs
-jacs.quickstart()  # No config file needed
+jacs.quickstart()  # Creates or loads ./jacs.config.json automatically
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-jacs.quickstart();  // No config file needed
+jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
 </code></pre>
-<pre><code class="language-bash">jacs quickstart  # CLI -- no config file needed
+<pre><code class="language-bash">jacs quickstart  # CLI -- creates or loads ./jacs.config.json
 </code></pre>
 <p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.</p>
 <h2 id="minimal-configuration"><a class="header" href="#minimal-configuration">Minimal Configuration</a></h2>

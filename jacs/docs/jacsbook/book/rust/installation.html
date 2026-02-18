@@ -245,7 +245,7 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 <h3 id="webassembly-notes"><a class="header" href="#webassembly-notes">WebAssembly Notes</a></h3>
 <p>When targeting WebAssembly, some features are unavailable:</p>
 <ul>
-<li>Post-quantum cryptographic algorithms (pq-dilithium)</li>
+<li>Post-quantum cryptographic algorithms (<code>pq2025</code>, legacy <code>pq-dilithium</code>)</li>
 <li>File system storage backend</li>
 <li>HTTP-based remote operations</li>
 </ul>
@@ -256,7 +256,7 @@ jacs init
 </code></pre>
 <p>This creates:</p>
 <ul>
-<li><code>~/.jacs/jacs.config.json</code> - Configuration file</li>
+<li><code>./jacs.config.json</code> - Configuration file</li>
 <li>Cryptographic keys for your agent</li>
 <li>Initial agent document</li>
 </ul>
@@ -276,7 +276,7 @@ jacs agent create --create-keys true
 <tr><td><code>JACS_DATA_DIRECTORY</code></td><td>Directory for document storage</td><td><code>./jacs_data</code></td></tr>
 <tr><td><code>JACS_KEY_DIRECTORY</code></td><td>Directory for cryptographic keys</td><td><code>./jacs_keys</code></td></tr>
 <tr><td><code>JACS_DEFAULT_STORAGE</code></td><td>Storage backend (<code>fs</code>, <code>memory</code>)</td><td><code>fs</code></td></tr>
-<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq-dilithium</code>)</td><td><code>ring-Ed25519</code></td></tr>
+<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code>, legacy <code>pq-dilithium</code>)</td><td><code>ring-Ed25519</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>

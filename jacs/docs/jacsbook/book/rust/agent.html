@@ -212,10 +212,10 @@ jacs agent create --create-keys true
   "description": "AI agent specialized in content creation",
   "jacsServices": [
     {
-      "jacsServiceName": "content-generation",
-      "jacsServiceDescription": "Generate high-quality content",
-      "jacsServiceSuccess": "Engaging, accurate content delivered",
-      "jacsServiceFailure": "Unable to generate requested content"
+      "name": "content-generation",
+      "serviceDescription": "Generate high-quality content",
+      "successDescription": "Engaging, accurate content delivered",
+      "failureDescription": "Unable to generate requested content"
     }
   ]
 }
@@ -240,8 +240,10 @@ jacs agent create --create-keys true
   "description": "Data processing agent",
   "jacsServices": [
     {
-      "jacsServiceName": "data-processing",
-      "jacsServiceDescription": "Process and transform data"
+      "name": "data-processing",
+      "serviceDescription": "Process and transform data",
+      "successDescription": "Data transformed successfully",
+      "failureDescription": "Input data could not be processed"
     }
   ]
 }
@@ -254,14 +256,18 @@ jacs agent create --create-keys true
   "description": "Software engineer",
   "jacsContacts": [
     {
-      "jacsContactType": "email",
-      "jacsContactValue": "john@example.com"
+      "firstName": "John",
+      "lastName": "Smith",
+      "email": "john@example.com",
+      "isPrimary": true
     }
   ],
   "jacsServices": [
     {
-      "jacsServiceName": "code-review",
-      "jacsServiceDescription": "Review code for quality and security"
+      "name": "code-review",
+      "serviceDescription": "Review code for quality and security",
+      "successDescription": "Actionable review delivered",
+      "failureDescription": "Could not complete review"
     }
   ]
 }
@@ -269,36 +275,21 @@ jacs agent create --create-keys true
 <h2 id="agent-services"><a class="header" href="#agent-services">Agent Services</a></h2>
 <p>Services define what an agent can do. Each service has:</p>
 <pre><code class="language-json">{
-  "jacsServiceName": "service-identifier",
-  "jacsServiceDescription": "What the service does",
-  "jacsServiceSuccess": "Definition of successful completion",
-  "jacsServiceFailure": "What constitutes failure",
-  "jacsServiceActions": [
-    {
-      "jacsActionName": "action-1",
-      "jacsActionDescription": "First action in this service"
-    }
-  ]
+  "name": "service-identifier",
+  "serviceDescription": "What the service does",
+  "successDescription": "Definition of successful completion",
+  "failureDescription": "What constitutes failure"
 }
 </code></pre>
-<h3 id="service-with-actions"><a class="header" href="#service-with-actions">Service with Actions</a></h3>
+<h3 id="detailed-service-example"><a class="header" href="#detailed-service-example">Detailed Service Example</a></h3>
 <pre><code class="language-json">{
-  "jacsServiceName": "document-processing",
-  "jacsServiceDescription": "Process and analyze documents",
-  "jacsServiceActions": [
-    {
-      "jacsActionName": "extract-text",
-      "jacsActionDescription": "Extract text from PDF documents"
-    },
-    {
-      "jacsActionName": "summarize",
-      "jacsActionDescription": "Generate document summaries"
-    },
-    {
-      "jacsActionName": "translate",
-      "jacsActionDescription": "Translate documents between languages"
-    }
-  ]
+  "name": "document-processing",
+  "serviceDescription": "Process and analyze documents",
+  "successDescription": "Documents processed accurately",
+  "failureDescription": "Unable to process one or more documents",
+  "costDescription": "Usage-based pricing",
+  "privacyPolicy": "https://example.com/privacy",
+  "termsOfService": "https://example.com/terms"
 }
 </code></pre>
 <h2 id="agent-contacts"><a class="header" href="#agent-contacts">Agent Contacts</a></h2>
@@ -306,16 +297,11 @@ jacs agent create --create-keys true
 <pre><code class="language-json">{
   "jacsContacts": [
     {
-      "jacsContactType": "email",
-      "jacsContactValue": "agent@example.com"
-    },
-    {
-      "jacsContactType": "website",
-      "jacsContactValue": "https://example.com"
-    },
-    {
-      "jacsContactType": "phone",
-      "jacsContactValue": "+1-555-0123"
+      "firstName": "Example",
+      "lastName": "Agent",
+      "email": "agent@example.com",
+      "phone": "+1-555-0123",
+      "isPrimary": true
     }
   ]
 }
@@ -326,7 +312,8 @@ jacs agent create --create-keys true
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Description</th><th>Recommended For</th></tr></thead><tbody>
 <tr><td><code>ring-Ed25519</code></td><td>Fast elliptic curve signatures</td><td>General use (default)</td></tr>
 <tr><td><code>RSA-PSS</code></td><td>Traditional RSA signatures</td><td>Legacy compatibility</td></tr>
-<tr><td><code>pq-dilithium</code></td><td>Post-quantum signatures</td><td>Future-proof security</td></tr>
+<tr><td><code>pq2025</code></td><td>Post-quantum ML-DSA-87 signatures</td><td>Future-proof security</td></tr>
+<tr><td><code>pq-dilithium</code></td><td>Legacy post-quantum signatures</td><td>Backward compatibility only (deprecated)</td></tr>
 </tbody></table>
 </div>
 <h3 id="configure-key-algorithm"><a class="header" href="#configure-key-algorithm">Configure Key Algorithm</a></h3>
@@ -384,8 +371,10 @@ jacs agent verify --require-strict-dns
 
   "jacsServices": [
     {
-      "jacsServiceName": "content-generation",
-      "jacsServiceDescription": "Generate high-quality content"
+      "name": "content-generation",
+      "serviceDescription": "Generate high-quality content",
+      "successDescription": "High-quality content generated",
+      "failureDescription": "Unable to generate requested content"
     }
   ],
 

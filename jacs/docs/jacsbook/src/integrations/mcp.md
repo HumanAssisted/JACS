@@ -511,13 +511,15 @@ These tools allow agents to sign, verify, and manage state documents (memory fil
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_state` | Create and sign a new agent state document |
-| `jacs_verify_state` | Verify an existing agent state document's signature |
-| `jacs_load_state` | Load an agent state document by key |
-| `jacs_update_state` | Update and re-sign an agent state document |
+| `jacs_verify_state` | Verify an existing agent state document by JACS document ID (`jacs_id`) |
+| `jacs_load_state` | Load an agent state document by JACS document ID (`jacs_id`) |
+| `jacs_update_state` | Update and re-sign an agent state document by JACS document ID (`jacs_id`) |
 | `jacs_list_state` | List all agent state documents |
 | `jacs_adopt_state` | Adopt an external file as a signed agent state |
 
-All documents are stored within the JACS data directory for security. Use `state_type: "other"` for general-purpose signing of any document.
+For MCP security, verification/load/update flows use JACS document references (`jacs_id`) instead of direct path access. Path-only verify/load/update calls are rejected.
+
+All state documents are persisted in JACS storage. Use `state_type: "other"` for general-purpose signing of any document.
 
 See [Agent State Schema](../schemas/agentstate.md) for full documentation.
 

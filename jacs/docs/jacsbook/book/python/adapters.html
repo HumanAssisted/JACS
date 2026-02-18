@@ -287,6 +287,25 @@ app = FastAPI()
 app.add_middleware(JacsMiddleware)
 </code></pre>
 <p>Options: <code>sign_responses=True</code>, <code>verify_requests=True</code>, <code>strict=False</code>.</p>
+<p>For auth-style endpoints, enable replay protection:</p>
+<pre><code class="language-python">app.add_middleware(
+    JacsMiddleware,
+    strict=True,
+    auth_replay_protection=True,
+    auth_max_age_seconds=30,
+    auth_clock_skew_seconds=5,
+)
+</code></pre>
+<p>When enabled, middleware enforces:</p>
+<ul>
+<li>signature timestamp freshness (<code>auth_max_age_seconds</code> + <code>auth_clock_skew_seconds</code>)</li>
+<li>single-use <code>(signerId, signature)</code> dedupe in an in-memory TTL cache</li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li>Use replay protection only where JACS is acting as authentication.</li>
+<li>Cache scope is per process; use a shared cache layer in multi-instance deployments.</li>
+</ul>
 <h3 id="per-route-decorator"><a class="header" href="#per-route-decorator">Per-Route Decorator</a></h3>
 <p>Sign a single endpoint:</p>
 <pre><code class="language-python">from jacs.adapters.fastapi import jacs_route

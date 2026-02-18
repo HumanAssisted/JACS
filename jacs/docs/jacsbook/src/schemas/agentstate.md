@@ -225,9 +225,9 @@ Six MCP tools are available for agent state operations:
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_state` | Create and sign a new agent state document |
-| `jacs_verify_state` | Verify an existing agent state document's signature |
-| `jacs_load_state` | Load an agent state document by key |
-| `jacs_update_state` | Update and re-sign an agent state document |
+| `jacs_verify_state` | Verify an existing agent state document by JACS document ID (`jacs_id`) |
+| `jacs_load_state` | Load an agent state document by JACS document ID (`jacs_id`) |
+| `jacs_update_state` | Update and re-sign an agent state document by JACS document ID (`jacs_id`) |
 | `jacs_list_state` | List all agent state documents |
 | `jacs_adopt_state` | Adopt an external file as a signed agent state |
 
@@ -264,6 +264,7 @@ Six MCP tools are available for agent state operations:
 ## Security Notes
 
 - All agent state documents are stored within the JACS data directory for security
+- MCP verify/load/update flows are `jacs_id`-based; direct path-only access is disabled
 - Hook-type documents always embed content to prevent TOCTOU attacks
 - File hashes (SHA-256) are verified on load to detect tampering
 - Origin tracking provides provenance auditing

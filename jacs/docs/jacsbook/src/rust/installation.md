@@ -93,7 +93,7 @@ JACS supports the following platforms:
 ### WebAssembly Notes
 
 When targeting WebAssembly, some features are unavailable:
-- Post-quantum cryptographic algorithms (pq-dilithium)
+- Post-quantum cryptographic algorithms (`pq2025`, legacy `pq-dilithium`)
 - File system storage backend
 - HTTP-based remote operations
 
@@ -107,7 +107,7 @@ jacs init
 ```
 
 This creates:
-- `~/.jacs/jacs.config.json` - Configuration file
+- `./jacs.config.json` - Configuration file
 - Cryptographic keys for your agent
 - Initial agent document
 
@@ -134,7 +134,7 @@ JACS respects the following environment variables:
 | `JACS_DATA_DIRECTORY` | Directory for document storage | `./jacs_data` |
 | `JACS_KEY_DIRECTORY` | Directory for cryptographic keys | `./jacs_keys` |
 | `JACS_DEFAULT_STORAGE` | Storage backend (`fs`, `memory`) | `fs` |
-| `JACS_AGENT_KEY_ALGORITHM` | Key algorithm (`ring-Ed25519`, `RSA-PSS`, `pq-dilithium`) | `ring-Ed25519` |
+| `JACS_AGENT_KEY_ALGORITHM` | Key algorithm (`ring-Ed25519`, `RSA-PSS`, `pq2025`, legacy `pq-dilithium`) | `ring-Ed25519` |
 
 ## Troubleshooting
 

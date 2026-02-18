@@ -203,12 +203,38 @@ app.listen(3000);
   sign?: boolean;            // Auto-sign ctx.body after next() (default: false)
   verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
   optional?: boolean;        // Allow unsigned requests through (default: false)
+  authReplay?: boolean | {   // Replay protection for auth-style endpoints (default: false)
+    enabled?: boolean;
+    maxAgeSeconds?: number;    // default: 30
+    clockSkewSeconds?: number; // default: 5
+    cacheTtlSeconds?: number;  // default: maxAge + skew
+  };
 })
 </code></pre>
 <h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
 <p><strong>Every request</strong> gets <code>ctx.state.jacsClient</code> for manual use.</p>
 <p><strong>POST/PUT/PATCH with <code>verify: true</code></strong>: The string body is verified. On success, <code>ctx.state.jacsPayload</code> is set. On failure, 401 is returned (unless <code>optional: true</code>).</p>
 <p><strong>With <code>sign: true</code></strong>: After downstream middleware runs, if <code>ctx.body</code> is a non-Buffer object, it is signed before the response is sent.</p>
+<h2 id="auth-replay-protection-auth-endpoints"><a class="header" href="#auth-replay-protection-auth-endpoints">Auth Replay Protection (Auth Endpoints)</a></h2>
+<p>Enable replay protection when signed JACS bodies are used as authentication artifacts:</p>
+<pre><code class="language-typescript">app.use(
+  jacsKoaMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  })
+);
+</code></pre>
+<p>When enabled, middleware enforces:</p>
+<ul>
+<li>signature timestamp freshness (<code>maxAgeSeconds</code> + <code>clockSkewSeconds</code>)</li>
+<li>single-use <code>(signerId, signature)</code> dedupe inside a TTL cache</li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li>Keep this mode scoped to auth-style endpoints.</li>
+<li>Cache is in-memory per process; use a shared cache for multi-instance deployments.</li>
+</ul>
 <h2 id="auto-sign-responses"><a class="header" href="#auto-sign-responses">Auto-Sign Responses</a></h2>
 <pre><code class="language-typescript">app.use(jacsKoaMiddleware({ client, sign: true }));
 

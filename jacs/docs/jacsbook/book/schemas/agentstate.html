@@ -360,9 +360,9 @@ let hash_valid = verify_agentstate_file_hash(&amp;doc)?;
 <p>Six MCP tools are available for agent state operations:</p>
 <div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>jacs_sign_state</code></td><td>Create and sign a new agent state document</td></tr>
-<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document's signature</td></tr>
-<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by key</td></tr>
-<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document</td></tr>
+<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
 <tr><td><code>jacs_list_state</code></td><td>List all agent state documents</td></tr>
 <tr><td><code>jacs_adopt_state</code></td><td>Adopt an external file as a signed agent state</td></tr>
 </tbody></table>
@@ -394,6 +394,7 @@ let hash_valid = verify_agentstate_file_hash(&amp;doc)?;
 <h2 id="security-notes"><a class="header" href="#security-notes">Security Notes</a></h2>
 <ul>
 <li>All agent state documents are stored within the JACS data directory for security</li>
+<li>MCP verify/load/update flows are <code>jacs_id</code>-based; direct path-only access is disabled</li>
 <li>Hook-type documents always embed content to prevent TOCTOU attacks</li>
 <li>File hashes (SHA-256) are verified on load to detect tampering</li>
 <li>Origin tracking provides provenance auditing</li>

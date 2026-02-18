@@ -598,14 +598,15 @@ logging.getLogger("jacs.security").setLevel(logging.WARNING)
 <p>These tools allow agents to sign, verify, and manage state documents (memory files, skills, plans, configs, hooks, or any document):</p>
 <div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>jacs_sign_state</code></td><td>Create and sign a new agent state document</td></tr>
-<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document's signature</td></tr>
-<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by key</td></tr>
-<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document</td></tr>
+<tr><td><code>jacs_verify_state</code></td><td>Verify an existing agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_load_state</code></td><td>Load an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
+<tr><td><code>jacs_update_state</code></td><td>Update and re-sign an agent state document by JACS document ID (<code>jacs_id</code>)</td></tr>
 <tr><td><code>jacs_list_state</code></td><td>List all agent state documents</td></tr>
 <tr><td><code>jacs_adopt_state</code></td><td>Adopt an external file as a signed agent state</td></tr>
 </tbody></table>
 </div>
-<p>All documents are stored within the JACS data directory for security. Use <code>state_type: "other"</code> for general-purpose signing of any document.</p>
+<p>For MCP security, verification/load/update flows use JACS document references (<code>jacs_id</code>) instead of direct path access. Path-only verify/load/update calls are rejected.</p>
+<p>All state documents are persisted in JACS storage. Use <code>state_type: "other"</code> for general-purpose signing of any document.</p>
 <p>See <a href="../schemas/agentstate.html">Agent State Schema</a> for full documentation.</p>
 <h3 id="a2a-discovery-tools"><a class="header" href="#a2a-discovery-tools">A2A Discovery Tools</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Description</th></tr></thead><tbody>
