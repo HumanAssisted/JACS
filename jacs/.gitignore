@@ -20,3 +20,4 @@ Cargo.lock
 tests/fixtures/documents/*
 tests/scratch/*
 opentelemetry-rust
+jacs/tests/fixtures/keys/lifecycle-test.private.pem.enc
