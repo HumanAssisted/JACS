@@ -52,7 +52,7 @@ pub fn build_agent_dns_txt(agent_id: &str, digest: &str, enc: DigestEncoding) ->
         DigestEncoding::Hex => "hex",
     };
     format!(
-        "v=hai.ai; jacs_agent_id={}; alg=SHA-256; enc={}; jac_public_key_hash={}",
+        "v=jacs; jacs_agent_id={}; alg=SHA-256; enc={}; jac_public_key_hash={}",
         agent_id, enc_str, digest
     )
 }
@@ -239,7 +239,8 @@ pub fn verify_pubkey_via_dns_or_embedded(
         match lookup {
             Ok(txt) => {
                 let f = parse_agent_txt(&txt)?;
-                if f.v != "hai.ai" {
+                // Accept both "jacs" (current) and "hai.ai" (legacy) for backward compat
+                if f.v != "jacs" && f.v != "hai.ai" {
                     return Err(format!("Unexpected v field: {}", f.v));
                 }
                 if f.jacs_agent_id != agent_id {
@@ -308,27 +309,27 @@ pub fn verify_pubkey_via_dns_or_embedded(
 }
 
 // =============================================================================
-// HAI.ai Registration Verification
+// Registry Registration Verification
 // =============================================================================
 
-/// Information about an agent's HAI.ai registration.
+/// Information about an agent's registry registration.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HaiRegistration {
-    /// Whether the agent is verified by HAI.ai
+pub struct RegistryRegistration {
+    /// Whether the agent is verified by the registry
     pub verified: bool,
     /// ISO 8601 timestamp of when the agent was verified
     pub verified_at: Option<String>,
     /// Type of registration (e.g., "agent", "organization")
     pub registration_type: String,
-    /// The agent ID as registered with HAI.ai
+    /// The agent ID as registered with the registry
     pub agent_id: String,
-    /// The public key hash registered with HAI.ai
+    /// The public key hash registered with the registry
     pub public_key_hash: String,
 }
 
-/// Response from HAI.ai API for agent lookup
+/// Response from registry API for agent lookup
 #[derive(Clone, Debug, Deserialize)]
-struct HaiApiResponse {
+struct RegistryApiResponse {
     #[serde(default)]
     verified: bool,
     #[serde(default)]
@@ -341,10 +342,10 @@ struct HaiApiResponse {
     public_key_hash: Option<String>,
 }
 
-/// Check if an agent is registered with HAI.ai.
+/// Check if an agent is registered with a registry.
 ///
-/// This function queries the HAI.ai API to verify that an agent claiming
-/// "verified-hai.ai" status is actually registered.
+/// This function queries the registry API to verify that an agent claiming
+/// "verified-registry" status is actually registered.
 ///
 /// # Arguments
 ///
@@ -353,22 +354,28 @@ struct HaiApiResponse {
 ///
 /// # Returns
 ///
-/// * `Ok(HaiRegistration)` - Agent is registered and public key matches
+/// * `Ok(RegistryRegistration)` - Agent is registered and public key matches
 /// * `Err(String)` - Verification failed with reason
+///
+/// # Environment Variables
+///
+/// * `JACS_REGISTRY_URL` - Registry API URL. Falls back to `HAI_API_URL` for
+///   backward compatibility. No default -- returns an error if not configured.
 ///
 /// # Errors
 ///
 /// This function returns an error if:
-/// - HAI.ai API is unreachable (network error)
-/// - Agent is not registered with HAI.ai
+/// - No registry URL is configured
+/// - Registry API is unreachable (network error)
+/// - Agent is not registered with the registry
 /// - Public key hash doesn't match the registered key
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use jacs::dns::bootstrap::verify_hai_registration_sync;
+/// use jacs::dns::bootstrap::verify_registry_registration_sync;
 ///
-/// let result = verify_hai_registration_sync(
+/// let result = verify_registry_registration_sync(
 ///     "550e8400-e29b-41d4-a716-446655440000",
 ///     "sha256-hash-of-public-key"
 /// );
@@ -379,28 +386,34 @@ struct HaiApiResponse {
 /// }
 /// ```
 #[cfg(not(target_arch = "wasm32"))]
-pub fn verify_hai_registration_sync(
+pub fn verify_registry_registration_sync(
     agent_id: &str,
     public_key_hash: &str,
-) -> Result<HaiRegistration, String> {
+) -> Result<RegistryRegistration, String> {
     // Validate agent_id is a valid UUID to prevent URL path traversal
     uuid::Uuid::parse_str(agent_id).map_err(|e| {
         format!(
-            "Invalid agent_id '{}' for HAI registration: must be a valid UUID. {}",
+            "Invalid agent_id '{}' for registry registration: must be a valid UUID. {}",
             agent_id, e
         )
     })?;
 
-    // HAI.ai API endpoint for agent verification
-    let api_url = std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
+    // Registry API endpoint for agent verification
+    // JACS_REGISTRY_URL preferred; HAI_API_URL kept for backward compat
+    let api_url = std::env::var("JACS_REGISTRY_URL")
+        .or_else(|_| std::env::var("HAI_API_URL"))
+        .map_err(|_| {
+            "No registry URL configured. Set JACS_REGISTRY_URL to enable registry verification."
+                .to_string()
+        })?;
     let parsed = url::Url::parse(&api_url)
-        .map_err(|e| format!("Invalid HAI_API_URL '{}': {}", api_url, e))?;
+        .map_err(|e| format!("Invalid JACS_REGISTRY_URL '{}': {}", api_url, e))?;
     let host = parsed.host_str().unwrap_or_default();
     let http_localhost = parsed.scheme() == "http"
         && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1");
     if parsed.scheme() != "https" && !http_localhost {
         return Err(format!(
-            "HAI_API_URL must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
+            "JACS_REGISTRY_URL must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
             api_url
         ));
     }
@@ -412,14 +425,14 @@ pub fn verify_hai_registration_sync(
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    // Make request to HAI.ai API
+    // Make request to registry API
     let response = client
         .get(&url)
         .header("Accept", "application/json")
         .send()
         .map_err(|e| {
             format!(
-                "HAI.ai verification failed: unable to reach API at {}: {}",
+                "Registry verification failed: unable to reach API at {}: {}",
                 url, e
             )
         })?;
@@ -427,29 +440,29 @@ pub fn verify_hai_registration_sync(
     // Check response status
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(format!(
-            "Agent '{}' is not registered with HAI.ai. \
-            Agents claiming 'verified-hai.ai' must be registered at https://hai.ai",
+            "Agent '{}' is not registered with the registry. \
+            Agents claiming 'verified-registry' must be registered with a JACS registry.",
             agent_id
         ));
     }
 
     if !response.status().is_success() {
         return Err(format!(
-            "HAI.ai API returned error status {}: agent verification failed",
+            "Registry API returned error status {}: agent verification failed",
             response.status()
         ));
     }
 
     // Parse response
-    let api_response: HaiApiResponse = response
+    let api_response: RegistryApiResponse = response
         .json()
-        .map_err(|e| format!("Failed to parse HAI.ai API response: {}", e))?;
+        .map_err(|e| format!("Failed to parse registry API response: {}", e))?;
 
     // Verify the agent is actually verified
     if !api_response.verified {
         return Err(format!(
-            "Agent '{}' is registered with HAI.ai but not yet verified. \
-            Complete the verification process at https://hai.ai",
+            "Agent '{}' is registered with the registry but not yet verified. \
+            Complete the verification process with your registry provider.",
             agent_id
         ));
     }
@@ -458,7 +471,7 @@ pub fn verify_hai_registration_sync(
     let registered_hash = api_response.public_key_hash.as_deref().unwrap_or("");
     if !registered_hash.eq_ignore_ascii_case(public_key_hash) {
         return Err(format!(
-            "Public key mismatch: agent '{}' is registered with HAI.ai \
+            "Public key mismatch: agent '{}' is registered with the registry \
             but with a different public key. Expected hash '{}', got '{}'",
             agent_id,
             &public_key_hash[..public_key_hash.len().min(16)],
@@ -466,7 +479,7 @@ pub fn verify_hai_registration_sync(
         ));
     }
 
-    Ok(HaiRegistration {
+    Ok(RegistryRegistration {
         verified: true,
         verified_at: api_response.verified_at,
         registration_type: api_response

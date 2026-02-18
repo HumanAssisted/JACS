@@ -119,7 +119,7 @@ class TestServe:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["uri"] == "urn:hai.ai:jacs-provenance-v1"
+        assert body["uri"] == "urn:jacs:provenance-v1"
         assert body["capabilities"]["documentSigning"]["algorithms"] == [
             "ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"
         ]

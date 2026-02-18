@@ -106,7 +106,7 @@ class TestJACSA2AIntegration:
         assert agent_card.capabilities.extensions is not None
         assert len(agent_card.capabilities.extensions) == 1
         extension = agent_card.capabilities.extensions[0]
-        assert extension.uri == "urn:hai.ai:jacs-provenance-v1"
+        assert extension.uri == "urn:jacs:provenance-v1"
         assert extension.required is False
 
         # Verify metadata
@@ -174,7 +174,7 @@ class TestJACSA2AIntegration:
         """Test creating JACS extension descriptor"""
         descriptor = a2a_integration.create_extension_descriptor()
 
-        assert descriptor["uri"] == "urn:hai.ai:jacs-provenance-v1"
+        assert descriptor["uri"] == "urn:jacs:provenance-v1"
         assert descriptor["name"] == "JACS Document Provenance"
         assert descriptor["version"] == "1.0"
         assert descriptor["a2aProtocolVersion"] == "0.4.0"

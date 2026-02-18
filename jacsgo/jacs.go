@@ -49,7 +49,6 @@ char* jacs_verify_response(const char* document_string);
 char* jacs_verify_response_with_agent_id(const char* document_string, char** agent_id_out);
 int jacs_verify_signature(const char* document_string, const char* signature_field);
 char* jacs_verify_document_standalone(const char* signed_document, const char* key_resolution, const char* data_directory, const char* key_directory);
-char* jacs_generate_verify_link(const char* document, const char* base_url);
 */
 import "C"
 import (

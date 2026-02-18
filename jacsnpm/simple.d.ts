@@ -53,17 +53,6 @@ export interface Attachment {
     hash: string;
     embedded: boolean;
 }
-export interface HaiRegistrationOptions {
-    apiKey?: string;
-    haiUrl?: string;
-    preview?: boolean;
-}
-export interface HaiRegistrationResult {
-    agentId: string;
-    jacsId: string;
-    dnsVerified: boolean;
-    signatures: string[];
-}
 export interface LoadOptions {
     strict?: boolean;
 }
@@ -203,7 +192,6 @@ export declare function getWellKnownJson(): {
 };
 export declare function getSetupInstructions(domain: string, ttl?: number): Promise<Record<string, unknown>>;
 export declare function getSetupInstructionsSync(domain: string, ttl?: number): Record<string, unknown>;
-export declare function registerWithHai(options?: HaiRegistrationOptions): Promise<HaiRegistrationResult>;
 export interface AgreementStatus {
     complete: boolean;
     signers: Array<{
@@ -230,6 +218,3 @@ export interface AuditOptions {
 }
 export declare function audit(options?: AuditOptions): Promise<Record<string, unknown>>;
 export declare function auditSync(options?: AuditOptions): Record<string, unknown>;
-export declare const MAX_VERIFY_URL_LEN = 2048;
-export declare const MAX_VERIFY_DOCUMENT_BYTES = 1515;
-export declare function generateVerifyLink(document: string, baseUrl?: string): string;

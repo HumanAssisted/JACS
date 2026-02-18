@@ -6,7 +6,7 @@
  *
  * @example
  * ```js
- * const { discoverAgent, discoverAndAssess } = require('@hai.ai/jacs/a2a-discovery');
+ * const { discoverAgent, discoverAndAssess } = require('jacs/a2a-discovery');
  *
  * const card = await discoverAgent('https://agent.example.com');
  * console.log(card.name, card.skills);
@@ -76,7 +76,7 @@ async function discoverAgent(url, options = {}) {
 /**
  * Check whether an Agent Card declares the JACS extension.
  *
- * Looks for `urn:hai.ai:jacs-provenance-v1` in:
+ * Looks for `urn:jacs:provenance-v1` in:
  * - capabilities.extensions[].uri
  *
  * @param {Object} card - Parsed Agent Card

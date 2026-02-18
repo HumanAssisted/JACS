@@ -201,7 +201,7 @@ pub fn create_extension_descriptor(signing_algorithm: &str) -> Value {
         "version": "1.0",
         "a2aProtocolVersion": A2A_PROTOCOL_VERSION,
         "description": "Provides cryptographic document signing and verification with post-quantum support",
-        "specification": "https://hai.ai/jacs/specs/a2a-extension",
+        "specification": "https://jacs.sh/specs/a2a-extension",
         "signingGuidance": {
             "importance": "CRITICAL",
             "message": "Signing a document is a sacred, irreversible act. A signature creates permanent cryptographic proof that binds the signer to the document content. Once signed, the commitment cannot be undone. The signer is accountable forever for what they sign. Only sign after careful review and full understanding of the document contents.",

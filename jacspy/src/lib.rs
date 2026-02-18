@@ -4,9 +4,6 @@
 //! shared `jacs-binding-core` crate for common functionality.
 
 use ::jacs as jacs_core;
-use jacs_binding_core::hai::{
-    BenchmarkResult, ConnectionState, HaiClient, HaiError, RegistrationResult, StatusResult,
-};
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
@@ -330,7 +327,7 @@ impl JacsAgent {
         self.inner.get_agent_json().to_py()
     }
 
-    /// Get setup instructions for publishing DNS records, DNSSEC, and HAI registration.
+    /// Get setup instructions for publishing DNS records and DNSSEC.
     ///
     /// Args:
     ///     domain: The domain to publish DNS TXT records under
@@ -342,27 +339,6 @@ impl JacsAgent {
     fn get_setup_instructions(&self, domain: &str, ttl: Option<u32>) -> PyResult<String> {
         self.inner
             .get_setup_instructions(domain, ttl.unwrap_or(3600))
-            .to_py()
-    }
-
-    /// Register this agent with HAI.ai.
-    ///
-    /// Args:
-    ///     api_key: HAI API key (or reads HAI_API_KEY env var if None)
-    ///     hai_url: Base URL for HAI (default: "https://hai.ai")
-    ///     preview: If True, validate without registering (default: False)
-    ///
-    /// Returns:
-    ///     JSON string with hai_registered, hai_error, dns_record, dns_route53
-    #[pyo3(signature = (api_key=None, hai_url="https://hai.ai", preview=false))]
-    fn register_with_hai(
-        &self,
-        api_key: Option<&str>,
-        hai_url: &str,
-        preview: bool,
-    ) -> PyResult<String> {
-        self.inner
-            .register_with_hai(api_key, hai_url, preview)
             .to_py()
     }
 
@@ -728,8 +704,6 @@ impl SimpleAgent {
             description: description.unwrap_or("").to_string(),
             domain: domain.unwrap_or("").to_string(),
             default_storage: default_storage.unwrap_or("fs").to_string(),
-            hai_api_key: String::new(),
-            hai_endpoint: String::new(),
         };
 
         let (agent, info) =
@@ -752,7 +726,6 @@ impl SimpleAgent {
         dict.set_item("key_directory", &info.key_directory)?;
         dict.set_item("domain", &info.domain)?;
         dict.set_item("dns_record", &info.dns_record)?;
-        dict.set_item("hai_registered", info.hai_registered)?;
 
         Ok((SimpleAgent { inner: agent }, dict.into()))
     }
@@ -797,255 +770,6 @@ impl SimpleAgent {
                     e
                 ))
             })
-    }
-}
-
-// =============================================================================
-// HaiClient Class - HAI.ai Integration
-// =============================================================================
-// This class wraps the HaiClient from binding-core for Python usage.
-// Async methods are executed using a blocking tokio runtime.
-// =============================================================================
-
-/// Convert a HaiError to a PyErr.
-fn hai_err_to_py(e: HaiError) -> PyErr {
-    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
-}
-
-/// Client for interacting with HAI.ai services.
-///
-/// Example:
-/// ```python
-/// client = jacs.HaiClient("https://api.hai.ai")
-/// client = client.with_api_key("your-key")
-/// if client.testconnection():
-///     result = client.register(agent)
-///     print(result["agent_id"])
-/// ```
-#[pyclass(name = "HaiClient")]
-pub struct PyHaiClient {
-    inner: HaiClient,
-}
-
-#[pymethods]
-impl PyHaiClient {
-    /// Create a new HAI client targeting the specified endpoint.
-    ///
-    /// Args:
-    ///     endpoint: Base URL of the HAI API (e.g., "https://api.hai.ai")
-    #[new]
-    fn new(endpoint: &str) -> Self {
-        PyHaiClient {
-            inner: HaiClient::new(endpoint),
-        }
-    }
-
-    /// Set the API key for authentication.
-    ///
-    /// Args:
-    ///     api_key: Your HAI API key
-    ///
-    /// Returns:
-    ///     A new HaiClient with the API key configured
-    fn with_api_key(&self, api_key: &str) -> Self {
-        // Clone the endpoint and rebuild with API key
-        // Note: HaiClient uses builder pattern with ownership, so we reconstruct
-        let endpoint = self.inner.endpoint();
-        PyHaiClient {
-            inner: HaiClient::new(endpoint).with_api_key(api_key),
-        }
-    }
-
-    /// Test connectivity to the HAI server.
-    ///
-    /// Returns:
-    ///     True if the server is reachable and healthy
-    ///
-    /// Raises:
-    ///     RuntimeError: If the connection fails
-    fn testconnection(&self) -> PyResult<bool> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        rt.block_on(self.inner.testconnection())
-            .map_err(hai_err_to_py)
-    }
-
-    /// Register a JACS agent with HAI.
-    ///
-    /// Args:
-    ///     agent: A loaded JacsAgent instance
-    ///
-    /// Returns:
-    ///     dict with agent_id, jacs_id, dns_verified, signatures
-    ///
-    /// Raises:
-    ///     RuntimeError: If registration fails or no API key is set
-    fn register(&self, py: Python, agent: &JacsAgent) -> PyResult<PyObject> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        let result: RegistrationResult = rt
-            .block_on(self.inner.register(&agent.inner))
-            .map_err(hai_err_to_py)?;
-
-        // Convert RegistrationResult to Python dict
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("agent_id", &result.agent_id)?;
-        dict.set_item("jacs_id", &result.jacs_id)?;
-        dict.set_item("dns_verified", result.dns_verified)?;
-
-        // Convert signatures to list of dicts
-        let signatures_list = pyo3::types::PyList::empty(py);
-        for sig in &result.signatures {
-            let sig_dict = pyo3::types::PyDict::new(py);
-            sig_dict.set_item("key_id", &sig.key_id)?;
-            sig_dict.set_item("algorithm", &sig.algorithm)?;
-            sig_dict.set_item("signature", &sig.signature)?;
-            sig_dict.set_item("signed_at", &sig.signed_at)?;
-            signatures_list.append(sig_dict)?;
-        }
-        dict.set_item("signatures", signatures_list)?;
-
-        Ok(dict.into())
-    }
-
-    /// Check registration status of an agent with HAI.
-    ///
-    /// Args:
-    ///     agent: A loaded JacsAgent instance
-    ///
-    /// Returns:
-    ///     dict with registered, agent_id, registration_id, registered_at, hai_signatures
-    ///
-    /// Raises:
-    ///     RuntimeError: If status check fails or no API key is set
-    fn status(&self, py: Python, agent: &JacsAgent) -> PyResult<PyObject> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        let result: StatusResult = rt
-            .block_on(self.inner.status(&agent.inner))
-            .map_err(hai_err_to_py)?;
-
-        // Convert StatusResult to Python dict
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("registered", result.registered)?;
-        dict.set_item("agent_id", &result.agent_id)?;
-        dict.set_item("registration_id", &result.registration_id)?;
-        dict.set_item("registered_at", &result.registered_at)?;
-        dict.set_item("hai_signatures", &result.hai_signatures)?;
-
-        Ok(dict.into())
-    }
-
-    /// Run a benchmark suite for an agent.
-    ///
-    /// Args:
-    ///     agent: A loaded JacsAgent instance
-    ///     suite: The benchmark suite name (e.g., "latency", "accuracy", "safety")
-    ///
-    /// Returns:
-    ///     dict with run_id, suite, score, results, completed_at
-    ///
-    /// Raises:
-    ///     RuntimeError: If benchmark fails or no API key is set
-    fn benchmark(&self, py: Python, agent: &JacsAgent, suite: &str) -> PyResult<PyObject> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        let result: BenchmarkResult = rt
-            .block_on(self.inner.benchmark(&agent.inner, suite))
-            .map_err(hai_err_to_py)?;
-
-        // Convert BenchmarkResult to Python dict
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("run_id", &result.run_id)?;
-        dict.set_item("suite", &result.suite)?;
-        dict.set_item("score", result.score)?;
-        dict.set_item("completed_at", &result.completed_at)?;
-
-        // Convert individual test results to list of dicts
-        let results_list = pyo3::types::PyList::empty(py);
-        for test_result in &result.results {
-            let test_dict = pyo3::types::PyDict::new(py);
-            test_dict.set_item("name", &test_result.name)?;
-            test_dict.set_item("passed", test_result.passed)?;
-            test_dict.set_item("score", test_result.score)?;
-            test_dict.set_item("message", &test_result.message)?;
-            results_list.append(test_dict)?;
-        }
-        dict.set_item("results", results_list)?;
-
-        Ok(dict.into())
-    }
-
-    /// Get the current SSE connection state.
-    ///
-    /// Returns:
-    ///     str: One of "disconnected", "connecting", "connected", "reconnecting"
-    fn connection_state(&self) -> PyResult<String> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        let state = rt.block_on(self.inner.connection_state());
-
-        Ok(match state {
-            ConnectionState::Disconnected => "disconnected".to_string(),
-            ConnectionState::Connecting => "connecting".to_string(),
-            ConnectionState::Connected => "connected".to_string(),
-            ConnectionState::Reconnecting => "reconnecting".to_string(),
-        })
-    }
-
-    /// Check if currently connected to the SSE stream.
-    ///
-    /// Returns:
-    ///     bool: True if connected or reconnecting
-    fn is_connected(&self) -> PyResult<bool> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        Ok(rt.block_on(self.inner.is_connected()))
-    }
-
-    /// Disconnect from the SSE event stream.
-    ///
-    /// This is a no-op if not connected.
-    fn disconnect(&self) -> PyResult<()> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        rt.block_on(self.inner.disconnect());
-        Ok(())
     }
 }
 
@@ -1221,87 +945,6 @@ fn get_trusted_agent(agent_id: &str) -> PyResult<String> {
 #[pyo3(signature = (config_path=None, recent_n=None))]
 fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<String> {
     jacs_binding_core::audit(config_path, recent_n).to_py()
-}
-
-// =============================================================================
-// Verify Link Generation
-// =============================================================================
-
-/// Build a verification URL for a signed JACS document.
-///
-/// Encodes `document` as URL-safe base64 (no padding) and returns a full URL
-/// like `https://hai.ai/jacs/verify?s=...`.
-///
-/// Args:
-///     document: The signed JACS document JSON string.
-///     base_url: Base URL for the verifier (default "https://hai.ai").
-///
-/// Returns:
-///     The full verification URL string.
-///
-/// Raises:
-///     ValueError: If the resulting URL would exceed 2048 characters.
-#[pyfunction]
-#[pyo3(signature = (document, base_url="https://hai.ai"))]
-fn generate_verify_link(document: &str, base_url: &str) -> PyResult<String> {
-    jacs_binding_core::hai::generate_verify_link(document, base_url)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
-}
-
-// =============================================================================
-// Remote Key Fetch Functions
-// =============================================================================
-
-/// Fetch a public key from HAI's key distribution service.
-///
-/// This function retrieves the public key for a specific agent and version
-/// from the HAI key distribution service. It is used to obtain trusted public
-/// keys for verifying agent signatures without requiring local key storage.
-///
-/// Args:
-///     agent_id: The unique identifier of the agent whose key to fetch.
-///     version: The version of the agent's key to fetch. Use "latest" for
-///              the most recent version. Defaults to "latest".
-///
-/// Returns:
-///     dict with:
-///         - public_key: bytes - The raw public key (DER encoded)
-///         - algorithm: str - The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
-///         - public_key_hash: str - SHA-256 hash of the public key
-///         - agent_id: str - The agent ID the key belongs to
-///         - version: str - The version of the key
-///
-/// Raises:
-///     RuntimeError: If the key is not found or network error occurs
-///
-/// Environment Variables:
-///     HAI_KEYS_BASE_URL: Base URL for the key service. Defaults to "https://keys.hai.ai".
-///     JACS_KEY_RESOLUTION: Controls key resolution order:
-///         - "hai-only": Only use HAI key service (default)
-///         - "local-first": Try local trust store, fall back to HAI
-///         - "hai-first": Try HAI first, fall back to local trust store
-///
-/// Example:
-/// ```python
-/// key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
-/// print(f"Algorithm: {key_info['algorithm']}")
-/// print(f"Hash: {key_info['public_key_hash']}")
-/// ```
-#[pyfunction]
-#[pyo3(signature = (agent_id, version = "latest"))]
-fn fetch_remote_key(py: Python, agent_id: &str, version: &str) -> PyResult<PyObject> {
-    let key_info = jacs_binding_core::fetch_remote_key(agent_id, version).to_py()?;
-
-    let dict = pyo3::types::PyDict::new(py);
-    // Convert Vec<u8> to Python bytes
-    let public_key_bytes = pyo3::types::PyBytes::new(py, &key_info.public_key);
-    dict.set_item("public_key", public_key_bytes)?;
-    dict.set_item("algorithm", &key_info.algorithm)?;
-    dict.set_item("public_key_hash", &key_info.public_key_hash)?;
-    dict.set_item("agent_id", &key_info.agent_id)?;
-    dict.set_item("version", &key_info.version)?;
-
-    Ok(dict.into())
 }
 
 // =============================================================================
@@ -1680,7 +1323,6 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // =============================================================================
     m.add_class::<JacsAgent>()?;
     m.add_class::<SimpleAgent>()?;
-    m.add_class::<PyHaiClient>()?;
 
     // =============================================================================
     // Stateless Utility Functions
@@ -1700,13 +1342,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_trusted, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
     m.add_function(wrap_pyfunction!(audit, m)?)?;
-    m.add_function(wrap_pyfunction!(generate_verify_link, m)?)?;
     m.add_function(wrap_pyfunction!(verify_agent_dns, m)?)?;
-
-    // =============================================================================
-    // Remote Key Fetch Functions
-    // =============================================================================
-    m.add_function(wrap_pyfunction!(fetch_remote_key, m)?)?;
 
     // =============================================================================
     // Legacy Functions (Deprecated - for backward compatibility)

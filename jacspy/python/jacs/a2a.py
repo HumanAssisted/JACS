@@ -119,7 +119,7 @@ class JACSA2AIntegration:
     """JACS integration with A2A protocol (v0.4.0)"""
 
     A2A_PROTOCOL_VERSION = "0.4.0"
-    JACS_EXTENSION_URI = "urn:hai.ai:jacs-provenance-v1"
+    JACS_EXTENSION_URI = "urn:jacs:provenance-v1"
 
     # Algorithms actually supported by the JACS cryptographic stack.
     SUPPORTED_ALGORITHMS = ["ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"]
@@ -371,7 +371,7 @@ class JACSA2AIntegration:
             "version": "1.0",
             "a2aProtocolVersion": self.A2A_PROTOCOL_VERSION,
             "description": "Provides cryptographic document signing and verification with post-quantum support",
-            "specification": "https://hai.ai/jacs/specs/a2a-extension",
+            "specification": "https://jacs.ai/specs/a2a-extension",
             "capabilities": {
                 "documentSigning": {
                     "description": "Sign documents with JACS signatures",
@@ -432,7 +432,7 @@ class JACSA2AIntegration:
             "jacsType": f"a2a-{artifact_type}",
             "jacsLevel": "artifact",
             "jacsVersionDate": datetime.utcnow().isoformat() + "Z",
-            "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+            "$schema": "https://jacs.ai/schemas/header/v1/header.schema.json",
             "a2aArtifact": artifact
         }
 
@@ -686,9 +686,9 @@ class JACSA2AIntegration:
                 "postQuantum": post_quantum
             },
             "schemas": {
-                "agent": "https://hai.ai/schemas/agent/v1/agent.schema.json",
-                "header": "https://hai.ai/schemas/header/v1/header.schema.json",
-                "signature": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+                "agent": "https://jacs.ai/schemas/agent/v1/agent.schema.json",
+                "header": "https://jacs.ai/schemas/header/v1/header.schema.json",
+                "signature": "https://jacs.ai/schemas/components/signature/v1/signature.schema.json"
             },
             "endpoints": {
                 "verify": "/jacs/verify",

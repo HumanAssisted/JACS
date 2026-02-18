@@ -5,54 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
-
-// === GenerateVerifyLink tests (no agent required) ===
-
-func TestGenerateVerifyLink_ValidDocument(t *testing.T) {
-	doc := `{"signed":"test"}`
-	url, err := GenerateVerifyLink(doc, "https://hai.ai")
-	if err != nil {
-		t.Fatalf("GenerateVerifyLink failed: %v", err)
-	}
-	if !strings.HasPrefix(url, "https://hai.ai/jacs/verify?s=") {
-		t.Errorf("URL should start with base + path, got: %s", url)
-	}
-}
-
-func TestGenerateVerifyLink_DefaultBaseUrl(t *testing.T) {
-	doc := `{"signed":"test"}`
-	url, err := GenerateVerifyLink(doc, "")
-	if err != nil {
-		t.Fatalf("GenerateVerifyLink failed: %v", err)
-	}
-	if !strings.HasPrefix(url, "https://hai.ai/jacs/verify?s=") {
-		t.Errorf("Default base URL should be https://hai.ai, got: %s", url)
-	}
-}
-
-func TestGenerateVerifyLink_ExceedsMaxLength(t *testing.T) {
-	// Create a document that's too large for the URL
-	doc := strings.Repeat("x", MaxVerifyDocumentBytes+100)
-	_, err := GenerateVerifyLink(doc, "https://hai.ai")
-	if err == nil {
-		t.Error("GenerateVerifyLink should fail for oversized document")
-	}
-	if !strings.Contains(err.Error(), "max length") {
-		t.Errorf("Error should mention max length, got: %v", err)
-	}
-}
-
-func TestGenerateVerifyLink_Constants(t *testing.T) {
-	if MaxVerifyURLLen != 2048 {
-		t.Errorf("MaxVerifyURLLen should be 2048, got %d", MaxVerifyURLLen)
-	}
-	if MaxVerifyDocumentBytes != 1515 {
-		t.Errorf("MaxVerifyDocumentBytes should be 1515, got %d", MaxVerifyDocumentBytes)
-	}
-}
 
 // TestLoadNonexistent tests that Load fails for nonexistent config.
 func TestLoadNonexistent(t *testing.T) {
@@ -166,34 +120,6 @@ func TestVerifyInvalidJSON(t *testing.T) {
 	if len(result.Errors) == 0 {
 		t.Error("Should have error message for invalid JSON")
 	}
-}
-
-// TestRegisterWithHai tests RegisterWithHai with a mock HAI server.
-func TestRegisterWithHai(t *testing.T) {
-	// No agent loaded: should fail
-	_, err := RegisterWithHai(&HaiRegistrationOptions{ApiKey: "key", HaiUrl: "http://localhost"})
-	if err == nil {
-		t.Fatal("RegisterWithHai without loaded agent should fail")
-	}
-	if !errors.Is(err, ErrAgentNotLoaded) {
-		t.Logf("expected ErrAgentNotLoaded, got: %v", err)
-	}
-
-	// No API key and no env (without loaded agent we get ErrAgentNotLoaded first; with loaded agent would get API key error)
-	origEnv := os.Getenv("HAI_API_KEY")
-	os.Unsetenv("HAI_API_KEY")
-	defer func() { os.Setenv("HAI_API_KEY", origEnv) }()
-	_, err = RegisterWithHai(&HaiRegistrationOptions{HaiUrl: "http://localhost"})
-	if err == nil {
-		t.Fatal("RegisterWithHai without API key and without agent should fail")
-	}
-	// Without agent we get ErrAgentNotLoaded; with agent we would get API key required
-	if err != nil && !errors.Is(err, ErrAgentNotLoaded) && !strings.Contains(err.Error(), "API key") && !strings.Contains(err.Error(), "HAI_API_KEY") {
-		t.Logf("expected agent not loaded or API key error, got: %v", err)
-	}
-
-	// With mock server and loaded agent: test request shape and response
-	// (actual load requires fixtures; without fixtures we only test the error paths above)
 }
 
 // TestGetDnsRecord tests GetDnsRecord (requires loaded agent for success path).

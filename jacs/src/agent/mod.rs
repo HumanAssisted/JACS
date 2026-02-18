@@ -23,7 +23,7 @@ use crate::crypt::KeyManager;
 use crate::keystore::{KeySpec, KeyStore};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::dns::bootstrap::verify_hai_registration_sync;
+use crate::dns::bootstrap::verify_registry_registration_sync;
 use crate::dns::bootstrap::{pubkey_digest_hex, verify_pubkey_via_dns_or_embedded};
 #[cfg(feature = "observability-convenience")]
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
@@ -344,7 +344,7 @@ impl Agent {
     /// Get the verification claim from the agent's value.
     ///
     /// Returns the claim as a string, or None if not set.
-    /// Valid claims are: "unverified", "verified", "verified-hai.ai"
+    /// Valid claims are: "unverified", "verified", "verified-registry" (legacy: "verified-hai.ai")
     fn get_verification_claim(&self) -> Option<String> {
         self.value
             .as_ref()?
@@ -605,7 +605,7 @@ impl Agent {
         let verification_claim = self.get_verification_claim();
         let domain_present = maybe_domain.is_some();
         let (validate, strict, required) = match verification_claim.as_deref() {
-            Some("verified") | Some("verified-hai.ai") => {
+            Some("verified") | Some("verified-registry") | Some("verified-hai.ai") => {
                 // Verified claims MUST use strict settings
                 if !domain_present {
                     return Err(JacsError::VerificationClaimFailed {
@@ -668,27 +668,31 @@ impl Agent {
             }
         }
 
-        // HAI.ai verification for verified-hai.ai claims
-        // This MUST succeed for agents claiming verified-hai.ai status
+        // Registry verification for verified-registry (and legacy verified-hai.ai) claims
+        // This MUST succeed for agents claiming registry-verified status
         #[cfg(not(target_arch = "wasm32"))]
-        if verification_claim.as_deref() == Some("verified-hai.ai") {
-            let agent_id_for_hai = maybe_agent_id.or(self.id.as_deref()).unwrap_or_default();
+        if matches!(
+            verification_claim.as_deref(),
+            Some("verified-registry") | Some("verified-hai.ai")
+        ) {
+            let agent_id_for_registry =
+                maybe_agent_id.or(self.id.as_deref()).unwrap_or_default();
             let pk_hash = pubkey_digest_hex(&public_key);
 
-            match verify_hai_registration_sync(&agent_id_for_hai, &pk_hash) {
+            match verify_registry_registration_sync(&agent_id_for_registry, &pk_hash) {
                 Ok(registration) => {
                     info!(
-                        "HAI.ai verification successful for agent '{}': verified at {:?}",
-                        agent_id_for_hai, registration.verified_at
+                        "Registry verification successful for agent '{}': verified at {:?}",
+                        agent_id_for_registry, registration.verified_at
                     );
                 }
                 Err(e) => {
                     error!(
-                        "HAI.ai verification failed for agent '{}': {}",
-                        agent_id_for_hai, e
+                        "Registry verification failed for agent '{}': {}",
+                        agent_id_for_registry, e
                     );
                     return Err(JacsError::VerificationClaimFailed {
-                        claim: "verified-hai.ai".to_string(),
+                        claim: verification_claim.unwrap_or_default(),
                         reason: e,
                     }
                     .into());
@@ -1003,7 +1007,7 @@ impl Agent {
         // Security: Once an agent claims verified status, it cannot be downgraded
         fn claim_level(claim: &str) -> u8 {
             match claim {
-                "verified-hai.ai" => 2,
+                "verified-registry" | "verified-hai.ai" => 2,
                 "verified" => 1,
                 _ => 0, // "unverified" or missing
             }

@@ -420,30 +420,6 @@ describe('Cross-language verification', function () {
   });
 
   // ---------------------------------------------------------------------------
-  // generateVerifyLink on cross-language fixtures
-  // ---------------------------------------------------------------------------
-
-  describe('generateVerifyLink with cross-language fixtures', () => {
-    const ed25519Exists = fixturesDirExists && fixtureExists('ed25519');
-
-    (available && ed25519Exists ? it : it.skip)(
-      'should generate a verify link for a Rust-signed Ed25519 document',
-      () => {
-        const { signed } = readFixture('ed25519');
-        // The full signed document may exceed URL length limits
-        try {
-          const url = simple.generateVerifyLink(signed);
-          expect(url).to.be.a('string');
-          expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-        } catch (e) {
-          // Expected if document is too large for URL encoding
-          expect(String(e)).to.match(/max length/i);
-        }
-      },
-    );
-  });
-
-  // ---------------------------------------------------------------------------
   // Fixture completeness check
   // ---------------------------------------------------------------------------
 

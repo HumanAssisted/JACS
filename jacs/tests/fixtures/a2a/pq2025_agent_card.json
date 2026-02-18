@@ -22,7 +22,7 @@
   "capabilities": {
     "extensions": [
       {
-        "uri": "urn:hai.ai:jacs-provenance-v1",
+        "uri": "urn:jacs:provenance-v1",
         "description": "JACS cryptographic document signing (sacred, irreversible commitment) and verification with post-quantum support. Signing creates permanent, non-repudiable proof.",
         "required": false
       }

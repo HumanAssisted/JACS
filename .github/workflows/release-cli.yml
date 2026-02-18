@@ -146,7 +146,7 @@ jobs:
             sudo mv jacs-cli /usr/local/bin/
             ```
 
-            Or install via npm/pip (ships with `@hai.ai/jacs` and `jacs`).
+            Or install via npm/pip (ships with `jacs`).
 
             ### Verify checksums
             ```bash

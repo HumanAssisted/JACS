@@ -62,7 +62,6 @@ use crate::create_minimal_blank_agent;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
 use crate::schema::utils::{ValueExt, check_document_size};
-use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs;
@@ -92,19 +91,6 @@ pub fn diagnostics() -> serde_json::Value {
         "agent_id": serde_json::Value::Null,
     })
 }
-
-// =============================================================================
-// Verify link constants (HAI / public verification URLs)
-// =============================================================================
-
-/// Maximum length for a full verify URL (scheme + host + path + ?s=...) to stay within
-/// typical HTTP GET URL limits (e.g. 2048 chars in many clients/servers).
-pub const MAX_VERIFY_URL_LEN: usize = 2048;
-
-/// Maximum UTF-8 byte length of a JACS document that can be encoded into a verify link
-/// while staying under MAX_VERIFY_URL_LEN (base64 expands by ~4/3; with typical base URL
-/// the `s` parameter is limited to 2020 chars).
-pub const MAX_VERIFY_DOCUMENT_BYTES: usize = 1515;
 
 const DEFAULT_PRIVATE_KEY_FILENAME: &str = "jacs.private.pem.enc";
 const DEFAULT_PUBLIC_KEY_FILENAME: &str = "jacs.public.pem";
@@ -157,30 +143,6 @@ fn build_agent_document(
     Ok(agent_json)
 }
 
-/// Build a verification URL for a signed JACS document (e.g. for hai.ai or custom verifier).
-///
-/// Encodes `document` as URL-safe base64 and appends it as the `s` query parameter.
-/// Returns an error if the resulting URL would exceed [`MAX_VERIFY_URL_LEN`].
-///
-/// # Example
-/// ```ignore
-/// let url = jacs::simple::generate_verify_link(r#"{"signed":...}"#, "https://hai.ai")?;
-/// // => "https://hai.ai/jacs/verify?s=eyJzaWduZWQi..."
-/// ```
-pub fn generate_verify_link(document: &str, base_url: &str) -> Result<String, JacsError> {
-    let base = base_url.trim_end_matches('/');
-    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(document.as_bytes());
-    let path_and_query = format!("/jacs/verify?s={}", encoded);
-    let full_url = format!("{}{}", base, path_and_query);
-    if full_url.len() > MAX_VERIFY_URL_LEN {
-        return Err(JacsError::ValidationError(format!(
-            "Verify URL would exceed max length ({}). Document size must be at most {} UTF-8 bytes.",
-            MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES
-        )));
-    }
-    Ok(full_url)
-}
-
 // =============================================================================
 // Types
 // =============================================================================
@@ -217,9 +179,6 @@ pub struct AgentInfo {
     /// DNS TXT record to publish (if domain was configured).
     #[serde(default)]
     pub dns_record: String,
-    /// Whether the agent was registered with HAI.
-    #[serde(default)]
-    pub hai_registered: bool,
 }
 
 /// A signed JACS document.
@@ -367,8 +326,7 @@ mod base64_bytes {
     }
 }
 
-/// Setup instructions for publishing a JACS agent's DNS record, enabling DNSSEC,
-/// and registering with HAI.ai.
+/// Setup instructions for publishing a JACS agent's DNS record and enabling DNSSEC.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupInstructions {
     /// BIND-format DNS record line (e.g. `_v1.agent.jacs.example.com. 3600 IN TXT "..."`)
@@ -385,12 +343,6 @@ pub struct SetupInstructions {
     pub tld_requirement: String,
     /// JSON payload for `/.well-known/jacs-agent.json`.
     pub well_known_json: String,
-    /// HAI.ai registration URL.
-    pub hai_registration_url: String,
-    /// JSON payload to POST to HAI.ai for registration.
-    pub hai_registration_payload: String,
-    /// Human-readable instructions for HAI.ai registration.
-    pub hai_registration_instructions: String,
     /// Human-readable summary of all setup steps.
     pub summary: String,
 }
@@ -449,12 +401,6 @@ pub struct CreateAgentParams {
     /// Default storage backend. Default: "fs".
     #[serde(default = "default_storage")]
     pub default_storage: String,
-    /// HAI API key for registration (optional).
-    #[serde(default)]
-    pub hai_api_key: String,
-    /// HAI endpoint URL (optional).
-    #[serde(default)]
-    pub hai_endpoint: String,
 }
 
 fn default_algorithm() -> String {
@@ -499,8 +445,6 @@ impl Default for CreateAgentParams {
             description: String::new(),
             domain: String::new(),
             default_storage: default_storage(),
-            hai_api_key: String::new(),
-            hai_endpoint: String::new(),
         }
     }
 }
@@ -559,36 +503,10 @@ impl CreateAgentParamsBuilder {
         self.params.default_storage = storage.to_string();
         self
     }
-    pub fn hai_api_key(mut self, key: &str) -> Self {
-        self.params.hai_api_key = key.to_string();
-        self
-    }
-    pub fn hai_endpoint(mut self, endpoint: &str) -> Self {
-        self.params.hai_endpoint = endpoint.to_string();
-        self
-    }
-
     /// Build the `CreateAgentParams`. Name is required.
     pub fn build(self) -> CreateAgentParams {
         self.params
     }
-}
-
-/// Information returned from HAI registration during agent creation.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RegistrationInfo {
-    /// DNS TXT record to publish (if domain was provided).
-    #[serde(default)]
-    pub dns_record: String,
-    /// Route53-specific DNS record (if applicable).
-    #[serde(default)]
-    pub dns_route53: String,
-    /// Whether HAI registration succeeded.
-    #[serde(default)]
-    pub hai_registered: bool,
-    /// Error from HAI registration (if any).
-    #[serde(default)]
-    pub hai_error: String,
 }
 
 /// Mutex to prevent concurrent environment variable stomping during creation.
@@ -776,7 +694,6 @@ impl SimpleAgent {
             key_directory: "./jacs_keys".to_string(),
             domain: String::new(),
             dns_record: String::new(),
-            hai_registered: false,
         };
 
         Ok((
@@ -1129,7 +1046,6 @@ impl SimpleAgent {
             key_directory: params.key_directory.clone(),
             domain: params.domain.clone(),
             dns_record,
-            hai_registered: false,
         };
 
         Ok((
@@ -1241,7 +1157,6 @@ impl SimpleAgent {
             key_directory: String::new(),
             domain: String::new(),
             dns_record: String::new(),
-            hai_registered: false,
         };
 
         Ok((
@@ -1347,7 +1262,6 @@ impl SimpleAgent {
                 key_directory: key_dir,
                 domain: String::new(),
                 dns_record: String::new(),
-                hai_registered: false,
             };
 
             return Ok((agent, info));
@@ -2179,8 +2093,8 @@ impl SimpleAgent {
         self.config_path.as_deref()
     }
 
-    /// Returns setup instructions for publishing the agent's DNS record,
-    /// enabling DNSSEC, and registering with HAI.ai.
+    /// Returns setup instructions for publishing the agent's DNS record
+    /// and enabling DNSSEC.
     ///
     /// # Arguments
     ///
@@ -2247,22 +2161,6 @@ impl SimpleAgent {
         });
         let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
-        // HAI registration
-        let hai_url =
-            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
-        let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
-        let hai_payload = json!({
-            "agent_id": agent_id,
-            "public_key_hash": digest,
-            "domain": domain,
-        });
-        let hai_registration_payload =
-            serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
-        let hai_registration_instructions = format!(
-            "POST the payload to {} with your HAI API key in the Authorization header.",
-            hai_registration_url
-        );
-
         // Build summary
         let summary = format!(
             "Setup instructions for agent {agent_id} on domain {domain}:\n\
@@ -2274,15 +2172,12 @@ impl SimpleAgent {
              \n\
              3. Domain requirement: {tld}\n\
              \n\
-             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json\n\
-             \n\
-             5. HAI registration: {hai_instr}",
+             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json",
             agent_id = agent_id,
             domain = domain,
             bind = dns_record_bind,
             dnssec = dnssec_guidance("aws"),
             tld = tld_requirement,
-            hai_instr = hai_registration_instructions,
         );
 
         Ok(SetupInstructions {
@@ -2293,9 +2188,6 @@ impl SimpleAgent {
             dnssec_instructions,
             tld_requirement,
             well_known_json,
-            hai_registration_url,
-            hai_registration_payload,
-            hai_registration_instructions,
             summary,
         })
     }
@@ -2643,81 +2535,6 @@ impl SimpleAgent {
             complete: unsigned.is_empty(),
             signers,
             pending: unsigned,
-        })
-    }
-
-    /// Register the loaded agent with HAI.ai.
-    ///
-    /// POSTs the exported agent JSON to the HAI registration endpoint.
-    /// If `preview` is true, returns a preview result without actually registering.
-    ///
-    /// # Arguments
-    /// * `api_key` - HAI API key (or reads `HAI_API_KEY` env var if `None`)
-    /// * `hai_url` - Base URL for HAI (e.g. `"https://hai.ai"`)
-    /// * `preview` - If true, validate without registering
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn register_with_hai(
-        &self,
-        api_key: Option<&str>,
-        hai_url: &str,
-        preview: bool,
-    ) -> Result<RegistrationInfo, Box<dyn std::error::Error>> {
-        if preview {
-            return Ok(RegistrationInfo {
-                hai_registered: false,
-                hai_error: "preview mode".to_string(),
-                dns_record: String::new(),
-                dns_route53: String::new(),
-            });
-        }
-
-        let key = match api_key {
-            Some(k) => k.to_string(),
-            None => std::env::var("HAI_API_KEY")
-                .map_err(|_| "No API key provided and HAI_API_KEY environment variable not set")?,
-        };
-
-        let agent_json = self.export_agent()?;
-
-        let url = format!("{}/api/v1/agents/register", hai_url.trim_end_matches('/'));
-
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()?;
-
-        let response = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", key))
-            .header("Content-Type", "application/json")
-            .json(&serde_json::json!({ "agent_json": agent_json }))
-            .send()?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Ok(RegistrationInfo {
-                hai_registered: false,
-                hai_error: format!("HTTP {}: {}", status, body),
-                dns_record: String::new(),
-                dns_route53: String::new(),
-            });
-        }
-
-        let body: Value = response.json()?;
-
-        Ok(RegistrationInfo {
-            hai_registered: true,
-            hai_error: String::new(),
-            dns_record: body
-                .get("dns_record")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string(),
-            dns_route53: body
-                .get("dns_route53")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string(),
         })
     }
 
@@ -3195,7 +3012,6 @@ mod tests {
             key_directory: "./keys".to_string(),
             domain: String::new(),
             dns_record: String::new(),
-            hai_registered: false,
         };
 
         let json = serde_json::to_string(&info).unwrap();
@@ -3533,23 +3349,6 @@ mod tests {
     }
 
     #[test]
-    fn test_register_with_hai_preview() {
-        let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
-            config_path: None,
-            strict: false,
-        };
-
-        let result = agent
-            .register_with_hai(None, "https://hai.ai", true)
-            .expect("preview should succeed");
-        assert!(!result.hai_registered);
-        assert_eq!(result.hai_error, "preview mode");
-        assert!(result.dns_record.is_empty());
-        assert!(result.dns_route53.is_empty());
-    }
-
-    #[test]
     fn test_setup_instructions_serialization() {
         let instr = SetupInstructions {
             dns_record_bind: "example.com. 3600 IN TXT \"test\"".to_string(),
@@ -3559,16 +3358,12 @@ mod tests {
             dnssec_instructions: std::collections::HashMap::new(),
             tld_requirement: "You must own a domain".to_string(),
             well_known_json: "{}".to_string(),
-            hai_registration_url: "https://api.hai.ai/v1/agents".to_string(),
-            hai_registration_payload: "{}".to_string(),
-            hai_registration_instructions: "POST to the URL".to_string(),
             summary: "Setup summary".to_string(),
         };
 
         let json = serde_json::to_string(&instr).unwrap();
         assert!(json.contains("dns_record_bind"));
         assert!(json.contains("_v1.agent.jacs.example.com."));
-        assert!(json.contains("hai_registration_url"));
     }
 
     #[test]

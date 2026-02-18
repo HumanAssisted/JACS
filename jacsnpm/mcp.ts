@@ -10,7 +10,7 @@
 //
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { JacsAgent, fetchRemoteKey } from './index.js';
+import { JacsAgent } from './index.js';
 import { JacsClient } from './client.js';
 
 // ---------------------------------------------------------------------------
@@ -347,29 +347,6 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
       inputSchema: { type: 'object', properties: {} },
     },
     {
-      name: 'fetch_agent_key',
-      description: "Fetch an agent's public key from HAI's key distribution service.",
-      inputSchema: {
-        type: 'object',
-        properties: {
-          agent_id: { type: 'string', description: 'Agent ID (UUID format)' },
-          version: { type: 'string', description: "Key version or 'latest'" },
-        },
-        required: ['agent_id'],
-      },
-    },
-    {
-      name: 'jacs_register',
-      description: 'Register this agent with HAI.ai for cross-organization key discovery.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          api_key: { type: 'string', description: 'HAI API key (optional, uses env if not set)' },
-          preview: { type: 'boolean', description: 'Preview mode (default true)' },
-        },
-      },
-    },
-    {
       name: 'jacs_setup_instructions',
       description: 'Get DNS and well-known setup instructions for a domain.',
       inputSchema: {
@@ -520,23 +497,6 @@ export async function handleJacsMcpToolCall(
           agentId: client.agentId, name: client.name,
           strict: client.strict, diagnostics,
         }));
-      }
-
-      case 'fetch_agent_key': {
-        const keyInfo = fetchRemoteKey(args.agent_id, args.version || null);
-        return text(JSON.stringify({
-          success: true, agentId: keyInfo.agentId,
-          version: keyInfo.version, algorithm: keyInfo.algorithm,
-          publicKeyHash: keyInfo.publicKeyHash,
-        }));
-      }
-
-      case 'jacs_register': {
-        const nativeAgent = extractNativeAgent(client);
-        const result = await nativeAgent.registerWithHai(
-          args.api_key || null, null, args.preview !== false,
-        );
-        return text(result);
       }
 
       case 'jacs_setup_instructions': {

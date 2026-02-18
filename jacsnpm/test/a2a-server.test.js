@@ -197,7 +197,7 @@ describe('A2A Express Middleware - [2.3.2]', function () {
       const { status, body } = await httpGet(testServer.port, '/.well-known/jacs-extension.json');
 
       expect(status).to.equal(200);
-      expect(body.uri).to.equal('urn:hai.ai:jacs-provenance-v1');
+      expect(body.uri).to.equal('urn:jacs:provenance-v1');
       expect(body.capabilities).to.have.property('documentSigning');
       expect(body.capabilities).to.have.property('postQuantumCrypto');
     });

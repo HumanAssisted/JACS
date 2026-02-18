@@ -4,7 +4,7 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::loaders::{FileLoader, fetch_public_key_from_hai};
+use crate::agent::loaders::{FileLoader, fetch_remote_public_key};
 use crate::agent::security::SecurityTraits;
 use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::error::JacsError;
@@ -852,7 +852,7 @@ impl DocumentTraits for Agent {
                     continue;
                 }
 
-                KeyResolutionSource::Hai => {
+                KeyResolutionSource::Registry => {
                     if agent_id.is_empty() {
                         debug!("Cannot fetch from HAI: agent_id is empty");
                         continue;
@@ -865,7 +865,7 @@ impl DocumentTraits for Agent {
                         agent_version.clone()
                     };
 
-                    match fetch_public_key_from_hai(&agent_id, &version) {
+                    match fetch_remote_public_key(&agent_id, &version) {
                         Ok(key_info) => {
                             info!(
                                 "Found public key from HAI for agent {} version {}: algorithm={}",

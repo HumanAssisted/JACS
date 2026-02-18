@@ -194,9 +194,9 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> 
                 .unwrap_or(false),
         },
         "schemas": {
-            "agent": "https://hai.ai/schemas/agent/v1/agent.schema.json",
-            "header": "https://hai.ai/schemas/header/v1/header.schema.json",
-            "signature": "https://hai.ai/schemas/components/signature/v1/signature.schema.json",
+            "agent": "https://jacs.sh/schemas/agent/v1/agent.schema.json",
+            "header": "https://jacs.sh/schemas/header/v1/header.schema.json",
+            "signature": "https://jacs.sh/schemas/components/signature/v1/signature.schema.json",
         },
         "endpoints": {
             "verify": "/jacs/verify",

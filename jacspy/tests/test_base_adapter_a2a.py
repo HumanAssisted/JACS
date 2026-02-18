@@ -8,7 +8,7 @@ import pytest
 from jacs.adapters.base import BaseJacsAdapter
 from jacs.a2a import A2AAgentCard, A2AAgentInterface, A2AAgentCapabilities, A2AAgentExtension, A2AAgentSkill
 
-JACS_EXTENSION_URI = "urn:hai.ai:jacs-provenance-v1"
+JACS_EXTENSION_URI = "urn:jacs:provenance-v1"
 
 SAMPLE_AGENT_DATA = {
     "jacsId": "agent-abc-123",

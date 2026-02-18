@@ -72,23 +72,6 @@ export declare function legacySignRequest(params: any): string
 export declare function legacyVerifyResponse(documentString: string): object
 /** @deprecated Use `new JacsAgent()` and instance methods instead. */
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
-/** Information about a public key fetched from HAI key service. */
-export interface RemotePublicKeyInfo {
-  /** The raw public key bytes (DER encoded). */
-  publicKey: Buffer
-  /** The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256"). */
-  algorithm: string
-  /** The hash of the public key (SHA-256). */
-  publicKeyHash: string
-  /** The agent ID the key belongs to. */
-  agentId: string
-  /** The version of the key. */
-  version: string
-}
-/** Fetch a public key from HAI's key distribution service. */
-export declare function fetchRemoteKey(agentId: string, version?: string | undefined | null): RemotePublicKeyInfo
-/** Build a verification URL for a signed JACS document. */
-export declare function generateVerifyLink(document: string, baseUrl: string): string
 /**
  * JacsAgent is a handle to a JACS agent instance.
  * Each instance maintains its own state and can be used independently.
@@ -132,8 +115,6 @@ export declare class JacsAgent {
   checkAgreementSync(documentString: string, agreementFieldname?: string | undefined | null): string
   /** Get setup instructions (sync, blocks event loop). */
   getSetupInstructionsSync(domain: string, ttl?: number | undefined | null): string
-  /** Register with HAI.ai (sync, blocks event loop). */
-  registerWithHaiSync(apiKey?: string | undefined | null, haiUrl?: string | undefined | null, preview?: boolean | undefined | null): string
   /**
    * Returns diagnostic information as a JSON string.
    * Lightweight — no async variant needed.
@@ -188,10 +169,8 @@ export declare class JacsAgent {
   createDocument(documentString: string, customSchema?: string | undefined | null, outputfilename?: string | undefined | null, noSave?: boolean | undefined | null, attachments?: string | undefined | null, embed?: boolean | undefined | null): Promise<string>
   /** Check an agreement on a document. */
   checkAgreement(documentString: string, agreementFieldname?: string | undefined | null): Promise<string>
-  /** Get setup instructions for DNS records, DNSSEC, and HAI registration. */
+  /** Get setup instructions for DNS records and DNSSEC. */
   getSetupInstructions(domain: string, ttl?: number | undefined | null): Promise<string>
-  /** Register this agent with HAI.ai. */
-  registerWithHai(apiKey?: string | undefined | null, haiUrl?: string | undefined | null, preview?: boolean | undefined | null): Promise<string>
   /** Verify a document looked up by ID from storage. */
   verifyDocumentById(documentId: string): Promise<boolean>
   /** Re-encrypt the agent's private key with a new password. */

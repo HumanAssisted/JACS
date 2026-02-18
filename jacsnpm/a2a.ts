@@ -18,7 +18,7 @@ import type { Server } from 'http';
 
 export const A2A_PROTOCOL_VERSION = '0.4.0';
 
-export const JACS_EXTENSION_URI = 'urn:hai.ai:jacs-provenance-v1';
+export const JACS_EXTENSION_URI = 'urn:jacs:provenance-v1';
 
 export const JACS_ALGORITHMS: readonly string[] = [
   'ring-Ed25519',
@@ -461,7 +461,7 @@ export class JACSA2AIntegration {
       a2aProtocolVersion: A2A_PROTOCOL_VERSION,
       description:
         'Provides cryptographic document signing and verification with post-quantum support',
-      specification: 'https://hai.ai/jacs/specs/a2a-extension',
+      specification: 'https://jacs.ai/specs/a2a-extension',
       capabilities: {
         documentSigning: {
           description: 'Sign documents with JACS signatures',
@@ -563,7 +563,7 @@ export class JACSA2AIntegration {
       jacsType: `a2a-${artifactType}`,
       jacsLevel: 'artifact',
       jacsVersionDate: new Date().toISOString(),
-      $schema: 'https://hai.ai/schemas/header/v1/header.schema.json',
+      $schema: 'https://jacs.ai/schemas/header/v1/header.schema.json',
       a2aArtifact: artifact,
     };
 
@@ -666,9 +666,9 @@ export class JACSA2AIntegration {
       keyAlgorithm,
       capabilities: { signing: true, verification: true, postQuantum },
       schemas: {
-        agent: 'https://hai.ai/schemas/agent/v1/agent.schema.json',
-        header: 'https://hai.ai/schemas/header/v1/header.schema.json',
-        signature: 'https://hai.ai/schemas/components/signature/v1/signature.schema.json',
+        agent: 'https://jacs.ai/schemas/agent/v1/agent.schema.json',
+        header: 'https://jacs.ai/schemas/header/v1/header.schema.json',
+        signature: 'https://jacs.ai/schemas/components/signature/v1/signature.schema.json',
       },
       endpoints: { verify: '/jacs/verify', sign: '/jacs/sign', agent: '/jacs/agent' },
     };

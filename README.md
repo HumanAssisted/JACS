@@ -4,7 +4,7 @@
 
 Cryptographic signatures for AI agent outputs so anyone can verify who said what, whether it was changed, and hold agents accountable. No server. No account. Three lines of code.
 
-`pip install jacs` | `npm install @hai.ai/jacs` | `cargo install jacs`
+`pip install jacs` | `npm install jacs` | `cargo install jacs`
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ### Node.js
 
 ```javascript
-const jacs = require('@hai.ai/jacs/simple');
+const jacs = require('jacs/simple');
 
 async function main() {
   await jacs.quickstart();
@@ -79,11 +79,11 @@ Find the right path in under 2 minutes. [Full decision tree](https://humanassist
 | Python + LangChain/LangGraph | `from jacs.adapters.langchain import jacs_signing_middleware` | [LangChain Guide](https://humanassisted.github.io/JACS/python/adapters.html) |
 | Python + CrewAI | `from jacs.adapters.crewai import jacs_guardrail` | [CrewAI Guide](https://humanassisted.github.io/JACS/python/adapters.html) |
 | Python + FastAPI | `from jacs.adapters.fastapi import JacsMiddleware` | [FastAPI Guide](https://humanassisted.github.io/JACS/python/adapters.html) |
-| Node.js + Express | `require('@hai.ai/jacs/express')` | [Express Guide](https://humanassisted.github.io/JACS/nodejs/express.html) |
-| Node.js + Vercel AI SDK | `require('@hai.ai/jacs/vercel-ai')` | [Vercel AI Guide](https://humanassisted.github.io/JACS/nodejs/vercel-ai.html) |
-| Node.js + LangChain.js | `require('@hai.ai/jacs/langchain')` | [LangChain.js Guide](https://humanassisted.github.io/JACS/nodejs/langchain.html) |
+| Node.js + Express | `require('jacs/express')` | [Express Guide](https://humanassisted.github.io/JACS/nodejs/express.html) |
+| Node.js + Vercel AI SDK | `require('jacs/vercel-ai')` | [Vercel AI Guide](https://humanassisted.github.io/JACS/nodejs/vercel-ai.html) |
+| Node.js + LangChain.js | `require('jacs/langchain')` | [LangChain.js Guide](https://humanassisted.github.io/JACS/nodejs/langchain.html) |
 | MCP Server (Python) | `from jacs.mcp import create_jacs_mcp_server` | [Python MCP Guide](https://humanassisted.github.io/JACS/python/mcp.html) |
-| MCP Server (Node.js) | `require('@hai.ai/jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
+| MCP Server (Node.js) | `require('jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
 | A2A Protocol | `client.get_a2a()` / `client.getA2A()` | [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) |
 | Rust / CLI | `cargo install jacs --features cli` | [Rust Guide](https://humanassisted.github.io/JACS/rust/installation.html) |
 | Any language (standalone) | `import jacs.simple as jacs` | [Simple API](https://humanassisted.github.io/JACS/python/simple-api.html) |
@@ -139,7 +139,7 @@ signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 ```
 
 ```javascript
-const { JacsClient } = require('@hai.ai/jacs/client');
+const { JacsClient } = require('jacs/client');
 
 const client = await JacsClient.quickstart();
 const card = client.exportAgentCard();
@@ -158,7 +158,7 @@ Cross-language interoperability is tested on every commit with both Ed25519 and 
 
 **Prove that pipeline outputs are authentic.** A build service signs every JSON artifact it emits. Downstream teams and auditors verify with a single call; tampering or forgery is caught immediately. [Full scenario](USECASES.md#1-verifying-that-json-files-came-from-a-specific-program)
 
-**Run a public agent without exposing the operator.** An AI agent signs every message but only publishes the public key via DNS or HAI. Recipients verify origin and integrity cryptographically; the operator's identity never touches the internet. [Full scenario](USECASES.md#2-protecting-your-agents-identity-on-the-internet)
+**Run a public agent without exposing the operator.** An AI agent signs every message but only publishes the public key via DNS. Recipients verify origin and integrity cryptographically; the operator's identity never touches the internet. [Full scenario](USECASES.md#2-protecting-your-agents-identity-on-the-internet)
 
 **Add cryptographic provenance in any language.** Finance, healthcare, or any regulated environment: sign every output with `sign_message()`, verify with `verify()`. The same three-line pattern works identically in Python, Node.js, Rust, and Go. [Full scenario](USECASES.md#4-a-go-node-or-python-agent-with-strong-data-provenance)
 
@@ -171,4 +171,4 @@ Cross-language interoperability is tested on every commit with both Ed25519 and 
 
 ---
 
-v0.8.0 | [Apache 2.0 with Common Clause](./LICENSE) | [hai.ai](https://hai.ai)
+v0.8.0 | [Apache 2.0 with Common Clause](./LICENSE)

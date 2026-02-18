@@ -11,7 +11,7 @@ import pytest
 
 from jacs.a2a import JACSA2AIntegration
 
-JACS_EXTENSION_URI = "urn:hai.ai:jacs-provenance-v1"
+JACS_EXTENSION_URI = "urn:jacs:provenance-v1"
 
 
 def _make_mock_client():

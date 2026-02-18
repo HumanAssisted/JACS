@@ -159,7 +159,7 @@ describe('A2A Quickstart - [2.4.2] Node.js quickstart one-liner', () => {
         res.on('end', () => {
           expect(res.statusCode).to.equal(200);
           const ext = JSON.parse(body);
-          expect(ext.uri).to.equal('urn:hai.ai:jacs-provenance-v1');
+          expect(ext.uri).to.equal('urn:jacs:provenance-v1');
           expect(ext.capabilities).to.have.property('documentSigning');
           done();
         });

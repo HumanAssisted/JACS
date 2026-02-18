@@ -91,7 +91,6 @@ jobs:
           /tmp/jacs-wheel-smoke/bin/python - <<'PY'
           import jacs
           import jacs.simple
-          import jacs.hai
           print("wheel smoke imports ok")
           PY
 

@@ -6,20 +6,14 @@ rust-version = "1.93"
 resolver = "3"
 description = "Shared core logic for JACS language bindings (Python, Node.js, etc.)"
 readme = "../README.md"
-authors = ["HAI.AI <engineering@hai.io>"]
+authors = ["JACS Contributors"]
 license-file = "../LICENSE"
 
 [features]
-default = ["hai"]
-hai = ["dep:reqwest", "dep:tokio", "dep:serde", "dep:futures-util"]
+default = []
 
 [dependencies]
 jacs = { path = "../jacs" }
 serde_json = "1.0"
 base64 = "0.22.1"
-
-# HAI client dependencies (optional)
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"], optional = true }
-tokio = { version = "1.0", features = ["rt", "sync", "time"], optional = true }
-serde = { version = "1.0", features = ["derive"], optional = true }
-futures-util = { version = "0.3", optional = true }
+serde = { version = "1.0", features = ["derive"] }

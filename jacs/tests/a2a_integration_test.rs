@@ -50,7 +50,7 @@ fn test_export_agent_to_a2a_agent_card() {
     assert!(
         extensions
             .iter()
-            .any(|ext| ext.uri == "urn:hai.ai:jacs-provenance-v1")
+            .any(|ext| ext.uri == "urn:jacs:provenance-v1")
     );
 }
 
@@ -328,7 +328,7 @@ fn test_create_extension_descriptor() {
     let descriptor = create_extension_descriptor("pq2025");
 
     // Verify descriptor structure
-    assert_eq!(descriptor["uri"], "urn:hai.ai:jacs-provenance-v1");
+    assert_eq!(descriptor["uri"], "urn:jacs:provenance-v1");
     assert_eq!(descriptor["name"], "JACS Document Provenance");
     assert_eq!(descriptor["a2aProtocolVersion"], "0.4.0");
     assert!(descriptor["capabilities"]["documentSigning"].is_object());

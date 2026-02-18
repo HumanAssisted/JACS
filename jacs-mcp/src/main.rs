@@ -1,82 +1,11 @@
-mod hai_tools;
+mod jacs_tools;
 
 #[cfg(feature = "mcp")]
-use hai_tools::HaiMcpServer;
+use jacs_tools::JacsMcpServer;
 #[cfg(feature = "mcp")]
 use jacs_binding_core::AgentWrapper;
 #[cfg(feature = "mcp")]
 use rmcp::{ServiceExt, transport::stdio};
-
-/// Allowed HAI endpoint hostnames for security.
-/// This prevents request redirection attacks via malicious HAI_ENDPOINT values.
-#[cfg(feature = "mcp")]
-const ALLOWED_HAI_HOSTS: &[&str] = &[
-    "api.hai.ai",
-    "dev.api.hai.ai",
-    "staging.api.hai.ai",
-    "localhost",
-    "127.0.0.1",
-];
-
-/// Validate that the HAI endpoint is an allowed hostname.
-/// Returns the validated endpoint URL or an error.
-#[cfg(feature = "mcp")]
-fn validate_hai_endpoint(endpoint: &str) -> anyhow::Result<String> {
-    use url::Url;
-
-    // Parse the URL
-    let url = Url::parse(endpoint).map_err(|e| {
-        anyhow::anyhow!(
-            "Invalid HAI_ENDPOINT URL '{}': {}. Expected format: https://api.hai.ai",
-            endpoint,
-            e
-        )
-    })?;
-
-    // Check the scheme
-    let scheme = url.scheme();
-    if scheme != "https" && scheme != "http" {
-        return Err(anyhow::anyhow!(
-            "Invalid HAI_ENDPOINT scheme '{}'. Only 'http' and 'https' are allowed.",
-            scheme
-        ));
-    }
-
-    // Warn about http in production
-    if scheme == "http" {
-        let host = url.host_str().unwrap_or("");
-        if host != "localhost" && host != "127.0.0.1" {
-            tracing::warn!(
-                "Using insecure HTTP for HAI endpoint '{}'. Consider using HTTPS for production.",
-                endpoint
-            );
-        }
-    }
-
-    // Check the host against allowlist
-    let host = url
-        .host_str()
-        .ok_or_else(|| anyhow::anyhow!("HAI_ENDPOINT '{}' has no host component.", endpoint))?;
-
-    // Check if host is in allowlist
-    let is_allowed = ALLOWED_HAI_HOSTS.iter().any(|allowed| *allowed == host);
-
-    // Also allow any subdomain of hai.ai
-    let is_hai_subdomain = host.ends_with(".hai.ai");
-
-    if !is_allowed && !is_hai_subdomain {
-        return Err(anyhow::anyhow!(
-            "HAI_ENDPOINT host '{}' is not in the allowed list. \
-             Allowed hosts: {:?}, or any subdomain of hai.ai. \
-             If this is a legitimate HAI endpoint, please report this issue.",
-            host,
-            ALLOWED_HAI_HOSTS
-        ));
-    }
-
-    tracing::debug!("HAI endpoint '{}' validated successfully", endpoint);
-    Ok(endpoint.to_string())
-}
 
 #[cfg(feature = "mcp")]
 #[tokio::main]
@@ -92,26 +21,10 @@ async fn main() -> anyhow::Result<()> {
     // Load the agent identity from config
     let agent = load_agent_from_config()?;
 
-    // Get HAI endpoint from environment or use default
-    let hai_endpoint_raw =
-        std::env::var("HAI_ENDPOINT").unwrap_or_else(|_| "https://api.hai.ai".to_string());
+    // Create the MCP server
+    let server = JacsMcpServer::new(agent);
 
-    // Validate the endpoint against allowlist
-    let hai_endpoint = validate_hai_endpoint(&hai_endpoint_raw)?;
-
-    // Get optional API key
-    let api_key = std::env::var("HAI_API_KEY").ok();
-
-    tracing::info!(
-        hai_endpoint = %hai_endpoint,
-        has_api_key = api_key.is_some(),
-        "HAI configuration"
-    );
-
-    // Create the MCP server with HAI tools
-    let server = HaiMcpServer::new(agent, &hai_endpoint, api_key.as_deref());
-
-    tracing::info!("HAI MCP server ready, waiting for client connection on stdio");
+    tracing::info!("JACS MCP server ready, waiting for client connection on stdio");
 
     // Serve over stdin/stdout
     let (stdin, stdout) = stdio();

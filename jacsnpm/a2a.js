@@ -16,7 +16,7 @@ const crypto_1 = require("crypto");
 // Constants
 // =============================================================================
 exports.A2A_PROTOCOL_VERSION = '0.4.0';
-exports.JACS_EXTENSION_URI = 'urn:hai.ai:jacs-provenance-v1';
+exports.JACS_EXTENSION_URI = 'urn:jacs:provenance-v1';
 exports.JACS_ALGORITHMS = [
     'ring-Ed25519',
     'RSA-PSS',
@@ -245,7 +245,7 @@ class JACSA2AIntegration {
             version: '1.0',
             a2aProtocolVersion: exports.A2A_PROTOCOL_VERSION,
             description: 'Provides cryptographic document signing and verification with post-quantum support',
-            specification: 'https://hai.ai/jacs/specs/a2a-extension',
+            specification: 'https://jacs.ai/specs/a2a-extension',
             capabilities: {
                 documentSigning: {
                     description: 'Sign documents with JACS signatures',
@@ -334,7 +334,7 @@ class JACSA2AIntegration {
             jacsType: `a2a-${artifactType}`,
             jacsLevel: 'artifact',
             jacsVersionDate: new Date().toISOString(),
-            $schema: 'https://hai.ai/schemas/header/v1/header.schema.json',
+            $schema: 'https://jacs.ai/schemas/header/v1/header.schema.json',
             a2aArtifact: artifact,
         };
         if (parentSignatures) {
@@ -412,9 +412,9 @@ class JACSA2AIntegration {
             keyAlgorithm,
             capabilities: { signing: true, verification: true, postQuantum },
             schemas: {
-                agent: 'https://hai.ai/schemas/agent/v1/agent.schema.json',
-                header: 'https://hai.ai/schemas/header/v1/header.schema.json',
-                signature: 'https://hai.ai/schemas/components/signature/v1/signature.schema.json',
+                agent: 'https://jacs.ai/schemas/agent/v1/agent.schema.json',
+                header: 'https://jacs.ai/schemas/header/v1/header.schema.json',
+                signature: 'https://jacs.ai/schemas/components/signature/v1/signature.schema.json',
             },
             endpoints: { verify: '/jacs/verify', sign: '/jacs/sign', agent: '/jacs/agent' },
         };

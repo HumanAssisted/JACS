@@ -1,12 +1,12 @@
 # JACS MCP Server
 
-A Model Context Protocol (MCP) server for **data provenance and cryptographic signing** of agent state, plus optional [HAI.ai](https://hai.ai) integration for cross-organization key discovery and attestation.
+A Model Context Protocol (MCP) server for **data provenance and cryptographic signing** of agent state, messaging, agreements, and A2A interoperability.
 
 JACS (JSON Agent Communication Standard) ensures that every file, memory, or configuration an AI agent touches can be signed, verified, and traced back to its origin -- no server required.
 
 ## What can it do?
 
-The server exposes **34 tools** in nine categories:
+The server exposes **29 tools** in eight categories:
 
 ### Agent State (Data Provenance)
 
@@ -113,18 +113,6 @@ Manage the local trust store -- which agents your agent trusts for signature ver
 - Gate A2A interactions with `strict` trust policy (only trust-store agents accepted)
 - Inspect a remote agent's full identity document before trusting
 
-### HAI Integration (Optional)
-
-Register with [HAI.ai](https://hai.ai) for cross-organization trust and key distribution:
-
-| Tool | Description |
-|------|-------------|
-| `fetch_agent_key` | Fetch a public key from HAI's key distribution service |
-| `register_agent` | Register the local agent with HAI (disabled by default) |
-| `verify_agent` | Verify another agent's attestation level (0-3) |
-| `check_agent_status` | Check registration status with HAI |
-| `unregister_agent` | Unregister from HAI (disabled by default, not yet implemented) |
-
 ## Quick Start
 
 ### Step 1: Install JACS CLI
@@ -175,23 +163,6 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 }
 ```
 
-To enable HAI integration, add `HAI_API_KEY`:
-
-```json
-{
-  "mcpServers": {
-    "jacs": {
-      "command": "/path/to/jacs-mcp",
-      "env": {
-        "JACS_CONFIG": "/path/to/jacs.config.json",
-        "JACS_PRIVATE_KEY_PASSWORD": "your-secure-password",
-        "HAI_API_KEY": "your-hai-api-key"
-      }
-    }
-  }
-}
-```
-
 ## Configuration
 
 ### Required Environment Variables
@@ -201,21 +172,17 @@ To enable HAI integration, add `HAI_API_KEY`:
 
 ### Optional Environment Variables
 
-- `HAI_ENDPOINT` - HAI API endpoint (default: `https://api.hai.ai`). Validated against an allowlist.
-- `HAI_API_KEY` - API key for HAI authentication
 - `RUST_LOG` - Logging level (default: `info,rmcp=warn`)
 
 ### Security Options
 
-- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `register_agent` (default: disabled)
-- `JACS_MCP_ALLOW_UNREGISTRATION` - Set to `true` to enable `unregister_agent` (default: disabled)
+- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `jacs_create_agent` (default: disabled)
 - `JACS_MCP_ALLOW_UNTRUST` - Set to `true` to enable `jacs_untrust_agent` (default: disabled). Prevents prompt injection attacks from removing trusted agents without user consent.
 
 ### Example jacs.config.json
 
 ```json
 {
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_data_directory": "./jacs_data",
   "jacs_key_directory": "./jacs_keys",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
@@ -440,49 +407,6 @@ Assess the trust level of a remote A2A agent given its Agent Card. Applies a tru
 
 **Returns:** `success`, `allowed` (boolean), `trust_level` (`Untrusted`, `JacsVerified`, or `ExplicitlyTrusted`), `policy`, `reason`, `message`
 
-### fetch_agent_key
-
-Fetch a public key from HAI's key distribution service.
-
-**Parameters:**
-- `agent_id` (required): The JACS agent ID (UUID format)
-- `version` (optional): Key version to fetch, or `latest`
-
-### register_agent
-
-Register the local agent with HAI. **Requires `JACS_MCP_ALLOW_REGISTRATION=true`.**
-
-**Parameters:**
-- `preview` (optional): If true (default), validates without actually registering
-
-### verify_agent
-
-Verify another agent's attestation level with HAI.
-
-**Parameters:**
-- `agent_id` (required): The JACS agent ID to verify
-- `version` (optional): Agent version to verify, or `latest`
-
-**Attestation levels:**
-- Level 0: No attestation
-- Level 1: Key registered with HAI
-- Level 2: DNS verified
-- Level 3: Full HAI signature attestation
-
-### check_agent_status
-
-Check registration status of an agent with HAI.
-
-**Parameters:**
-- `agent_id` (optional): Agent ID to check. If omitted, checks the local agent.
-
-### unregister_agent
-
-Unregister the local agent from HAI. **Requires `JACS_MCP_ALLOW_UNREGISTRATION=true`.**
-
-**Parameters:**
-- `preview` (optional): If true (default), validates without actually unregistering
-
 ## A2A Workflow Example
 
 Use the A2A discovery, trust store, and artifact tools together to establish trust and exchange signed artifacts:
@@ -503,9 +427,7 @@ For the full A2A quickstart guide, see the [A2A Quickstart](https://humanassiste
 
 ## Security
 
-- **Destructive actions disabled by default**: `register_agent`, `unregister_agent`, and `jacs_untrust_agent` require explicit opt-in via environment variables, preventing prompt injection attacks.
-- **Preview mode by default**: Even when enabled, registration defaults to preview mode.
-- **Endpoint validation**: `HAI_ENDPOINT` is validated against an allowlist (`*.hai.ai`, localhost).
+- **Destructive actions disabled by default**: `jacs_create_agent` and `jacs_untrust_agent` require explicit opt-in via environment variables, preventing prompt injection attacks.
 - **Password protection**: Private keys are encrypted. Never store passwords in config files.
 - **Stdio transport**: No network exposure -- communicates over stdin/stdout.
 

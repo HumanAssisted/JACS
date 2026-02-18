@@ -322,54 +322,6 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('generateVerifyLink', () => {
-    (simpleExists ? it : it.skip)('should produce a valid hai.ai URL with base64url-encoded document', () => {
-      const doc = '{"jacsId":"test","jacsSignature":{}}';
-      const url = simple.generateVerifyLink(doc);
-      expect(url).to.be.a('string');
-      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-      // Should not contain standard base64 chars that are URL-unsafe
-      const param = url.split('?s=')[1];
-      expect(param).to.not.include('+');
-      expect(param).to.not.include('/');
-      expect(param).to.not.include('=');
-    });
-
-    (simpleExists ? it : it.skip)('should allow a custom base URL', () => {
-      const doc = '{"test": true}';
-      const url = simple.generateVerifyLink(doc, 'https://custom.example.com');
-      expect(url).to.match(/^https:\/\/custom\.example\.com\/jacs\/verify\?s=/);
-    });
-
-    (simpleExists ? it : it.skip)('should strip trailing slashes from base URL', () => {
-      const doc = '{"test": true}';
-      const url = simple.generateVerifyLink(doc, 'https://hai.ai///');
-      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-    });
-
-    (simpleExists ? it : it.skip)('should round-trip: decode produces the original document', () => {
-      const doc = '{"jacsId":"abc-123","content":"hello"}';
-      const url = simple.generateVerifyLink(doc);
-      const encoded = url.split('?s=')[1];
-      // Restore standard base64 padding
-      let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-      while (b64.length % 4 !== 0) b64 += '=';
-      const decoded = Buffer.from(b64, 'base64').toString('utf8');
-      expect(decoded).to.equal(doc);
-    });
-
-    (simpleExists ? it : it.skip)('should throw for documents exceeding max URL length', () => {
-      // Create a document larger than MAX_VERIFY_DOCUMENT_BYTES
-      const bigDoc = JSON.stringify({ data: 'x'.repeat(2000) });
-      expect(() => simple.generateVerifyLink(bigDoc)).to.throw(/max length/i);
-    });
-
-    (simpleExists ? it : it.skip)('should export MAX_VERIFY_URL_LEN and MAX_VERIFY_DOCUMENT_BYTES constants', () => {
-      expect(simple.MAX_VERIFY_URL_LEN).to.equal(2048);
-      expect(simple.MAX_VERIFY_DOCUMENT_BYTES).to.equal(1515);
-    });
-  });
-
   describe('signMessageSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
@@ -771,72 +723,13 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('registerWithHai', () => {
-    (simpleExists ? it : it.skip)('should throw when no apiKey and no HAI_API_KEY', async () => {
-      delete require.cache[require.resolve('../simple.js')];
-      const freshSimple = require('../simple.js');
-      const orig = process.env.HAI_API_KEY;
-      delete process.env.HAI_API_KEY;
-      try {
-        if (fixturesExist) {
-          const loadedSimple = loadSimpleInFixtures();
-          let caught = null;
-          try {
-            await loadedSimple.registerWithHai({ haiUrl: 'https://hai.ai' });
-          } catch (e) {
-            caught = e;
-          }
-          expect(caught).to.not.equal(null);
-          expect(String(caught)).to.match(/api key|HAI_API_KEY|required/i);
-        }
-      } finally {
-        if (orig !== undefined) process.env.HAI_API_KEY = orig;
-      }
-    });
-
-    (simpleExists && fixturesExist ? it : it.skip)('should POST to /api/v1/agents/register with Bearer and agent JSON', async () => {
-      const freshSimple = loadSimpleInFixtures();
-      const baseUrl = 'http://mock-hai.test';
-      let capturedRequest = null;
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = (url, opts) => {
-        capturedRequest = { url, method: opts?.method, headers: opts?.headers, body: opts?.body };
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            agent_id: 'mock-agent-id',
-            jacs_id: 'mock-jacs-id',
-            dns_verified: true,
-            signatures: [{ key_id: 'k1', signature: 'sig1', algorithm: 'Ed25519', signed_at: '2025-01-01T00:00:00Z' }],
-          }),
-        });
-      };
-      try {
-        const result = await freshSimple.registerWithHai({ apiKey: 'test-key', haiUrl: baseUrl });
-        expect(capturedRequest).to.not.be.null;
-        expect(capturedRequest.url).to.equal(`${baseUrl}/api/v1/agents/register`);
-        expect(capturedRequest.method).to.equal('POST');
-        expect(capturedRequest.headers?.Authorization).to.equal('Bearer test-key');
-        const body = typeof capturedRequest.body === 'string' ? JSON.parse(capturedRequest.body) : capturedRequest.body;
-        expect(body).to.have.property('agent_json');
-        expect(result).to.have.property('agentId', 'mock-agent-id');
-        expect(result).to.have.property('jacsId', 'mock-jacs-id');
-        expect(result).to.have.property('dnsVerified', true);
-        expect(result.signatures).to.be.an('array');
-        expect(result.signatures).to.include('sig1');
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    });
-  });
-
   describe('DNS helpers', () => {
     (simpleExists && fixturesExist ? it : it.skip)('getDnsRecord returns TXT line in expected format', () => {
       const freshSimple = loadSimpleInFixtures();
       const record = freshSimple.getDnsRecord('example.com', 3600);
       expect(record).to.be.a('string');
       expect(record).to.match(/^_v1\.agent\.jacs\.example\.com\.\s+3600\s+IN\s+TXT\s+"/);
-      expect(record).to.include('v=hai.ai');
+      expect(record).to.include('v=jacs');
       expect(record).to.include('jacs_agent_id=');
       expect(record).to.include('alg=SHA-256');
       expect(record).to.include('enc=base64');

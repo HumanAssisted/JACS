@@ -90,12 +90,6 @@ try:
 except ImportError:
     mcp = None  # fastmcp not installed
 
-# Make HAI.ai integration available (optional, may fail if httpx not installed)
-try:
-    from . import hai
-except ImportError:
-    hai = None  # httpx not installed
-
 # Make framework adapters available (optional, no hard deps)
 from . import adapters
 
@@ -107,7 +101,6 @@ __all__ = [
     # Stateless utilities
     "hash_string",
     "verify_string",
-    "fetch_remote_key",
     # Trust store
     "trust_agent",
     "list_trusted_agents",
@@ -133,7 +126,6 @@ __all__ = [
     "simple",
     "async_simple",
     "testing",
-    "hai",
     "adapters",
 ]
 

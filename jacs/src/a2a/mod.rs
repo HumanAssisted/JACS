@@ -20,7 +20,7 @@ use std::error::Error;
 pub const A2A_PROTOCOL_VERSION: &str = "0.4.0";
 
 /// JACS extension URI for A2A
-pub const JACS_EXTENSION_URI: &str = "urn:hai.ai:jacs-provenance-v1";
+pub const JACS_EXTENSION_URI: &str = "urn:jacs:provenance-v1";
 
 /// Common A2A error type
 #[derive(Debug)]

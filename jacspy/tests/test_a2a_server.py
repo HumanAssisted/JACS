@@ -105,7 +105,7 @@ class TestJacsA2ARoutes:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["uri"] == "urn:hai.ai:jacs-provenance-v1"
+        assert body["uri"] == "urn:jacs:provenance-v1"
         assert "documentSigning" in body["capabilities"]
         assert body["capabilities"]["documentSigning"]["algorithms"] == [
             "ring-Ed25519",

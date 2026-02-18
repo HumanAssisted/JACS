@@ -201,76 +201,6 @@ class TestVerifyStandalone:
         assert result.valid is False
 
 
-# Test generate_verify_link()
-
-
-class TestGenerateVerifyLink:
-    """Tests for generate_verify_link()."""
-
-    def test_returns_url_string(self):
-        """generate_verify_link() should return a URL string."""
-        doc = '{"test": true}'
-        url = simple.generate_verify_link(doc)
-        assert isinstance(url, str)
-        assert url.startswith("https://hai.ai/jacs/verify?s=")
-
-    def test_url_contains_base64_encoded_document(self):
-        """URL should contain base64url-encoded document data."""
-        import base64
-        doc = '{"hello": "world"}'
-        url = simple.generate_verify_link(doc)
-        # Extract the s= parameter
-        s_param = url.split("?s=")[1]
-        # Pad and decode
-        padded = s_param + "=" * (-len(s_param) % 4)
-        decoded = base64.urlsafe_b64decode(padded).decode("utf-8")
-        assert decoded == doc
-
-    def test_custom_base_url(self):
-        """generate_verify_link() should use a custom base URL."""
-        doc = '{"custom": true}'
-        url = simple.generate_verify_link(doc, base_url="https://example.com")
-        assert url.startswith("https://example.com/jacs/verify?s=")
-
-    def test_strips_trailing_slash_from_base_url(self):
-        """Trailing slash on base URL should be stripped."""
-        doc = '{"slash": true}'
-        url = simple.generate_verify_link(doc, base_url="https://hai.ai/")
-        assert "//" not in url.replace("https://", "", 1)
-
-    def test_raises_for_oversized_document(self):
-        """generate_verify_link() should raise ValueError for documents exceeding size limit."""
-        # Create a document larger than MAX_VERIFY_DOCUMENT_BYTES
-        big_doc = json.dumps({"data": "x" * (simple.MAX_VERIFY_DOCUMENT_BYTES + 500)})
-        with pytest.raises(ValueError, match="max length"):
-            simple.generate_verify_link(big_doc)
-
-    def test_hosted_mode_uses_document_id(self):
-        """hosted=True should build /verify/{document_id} links when ID exists."""
-        doc = json.dumps({"id": "doc-123", "payload": {"ok": True}})
-        url = simple.generate_verify_link(doc, hosted=True)
-        assert url == "https://hai.ai/verify/doc-123"
-
-    def test_hosted_mode_requires_document_id(self):
-        """hosted=True should fail clearly when no document ID is present."""
-        doc = json.dumps({"payload": {"ok": True}})
-        with pytest.raises(ValueError, match="document ID"):
-            simple.generate_verify_link(doc, hosted=True)
-
-    def test_roundtrip_with_signed_document(self, loaded_agent):
-        """generate_verify_link() should work with a small signed document."""
-        # Sign a small message
-        signed = simple.sign_message("hi")
-        # Only test if the raw_json is small enough
-        if len(signed.raw_json.encode("utf-8")) <= simple.MAX_VERIFY_DOCUMENT_BYTES:
-            url = simple.generate_verify_link(signed.raw_json)
-            assert "?s=" in url
-        else:
-            # Document too large for URL encoding - that's expected for most real docs
-            with pytest.raises(ValueError):
-                simple.generate_verify_link(signed.raw_json)
-
-
 # Test verify_dns()
 
 
@@ -326,7 +256,7 @@ class TestDnsHelpers:
         assert "_v1.agent.jacs.example.com." in record
         assert "3600" in record
         assert "IN TXT" in record
-        assert "v=hai.ai" in record
+        assert "v=jacs" in record
         assert "jacs_agent_id=" in record
         assert "alg=SHA-256" in record
         assert "enc=base64" in record

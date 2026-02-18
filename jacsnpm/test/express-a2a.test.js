@@ -137,7 +137,7 @@ describe('Express Middleware A2A Route Injection - [2.9.1]', function () {
       const { status, body } = await httpGet(testServer.port, '/.well-known/jacs-extension.json');
 
       expect(status).to.equal(200);
-      expect(body.uri).to.equal('urn:hai.ai:jacs-provenance-v1');
+      expect(body.uri).to.equal('urn:jacs:provenance-v1');
     });
 
     it('should serve /.well-known/jacs-agent.json', async () => {

@@ -23,9 +23,6 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
 
-#[cfg(feature = "hai")]
-pub mod hai;
-
 /// Error type for binding core operations.
 ///
 /// This is the internal error type that binding implementations convert
@@ -948,8 +945,7 @@ impl AgentWrapper {
         serde_json::to_string_pretty(&info).unwrap_or_default()
     }
 
-    /// Returns setup instructions for publishing DNS records, enabling DNSSEC,
-    /// and registering with HAI.ai.
+    /// Returns setup instructions for publishing DNS records and enabling DNSSEC.
     ///
     /// Requires a loaded agent (call `load()` first).
     pub fn get_setup_instructions(&self, domain: &str, ttl: u32) -> BindingResult<String> {
@@ -1009,21 +1005,6 @@ impl AgentWrapper {
         });
         let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
-        let hai_url =
-            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
-        let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
-        let hai_payload = json!({
-            "agent_id": agent_id,
-            "public_key_hash": digest,
-            "domain": domain,
-        });
-        let hai_registration_payload =
-            serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
-        let hai_registration_instructions = format!(
-            "POST the payload to {} with your HAI API key in the Authorization header.",
-            hai_registration_url
-        );
-
         let summary = format!(
             "Setup instructions for agent {agent_id} on domain {domain}:\n\
              \n\
@@ -1034,15 +1015,12 @@ impl AgentWrapper {
              \n\
              3. Domain requirement: {tld}\n\
              \n\
-             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json\n\
-             \n\
-             5. HAI registration: {hai_instr}",
+             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json",
             agent_id = agent_id,
             domain = domain,
             bind = dns_record_bind,
             dnssec = dnssec_guidance("aws"),
             tld = tld_requirement,
-            hai_instr = hai_registration_instructions,
         );
 
         let result = json!({
@@ -1053,9 +1031,6 @@ impl AgentWrapper {
             "dnssec_instructions": dnssec_instructions,
             "tld_requirement": tld_requirement,
             "well_known_json": well_known_json,
-            "hai_registration_url": hai_registration_url,
-            "hai_registration_payload": hai_registration_payload,
-            "hai_registration_instructions": hai_registration_instructions,
             "summary": summary,
         });
 
@@ -1067,91 +1042,9 @@ impl AgentWrapper {
         })
     }
 
-    /// Register this agent with HAI.ai.
-    ///
-    /// If `preview` is true, returns a preview without actually registering.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn register_with_hai(
-        &self,
-        api_key: Option<&str>,
-        hai_url: &str,
-        preview: bool,
-    ) -> BindingResult<String> {
-        if preview {
-            let result = json!({
-                "hai_registered": false,
-                "hai_error": "preview mode",
-                "dns_record": "",
-                "dns_route53": "",
-            });
-            return serde_json::to_string_pretty(&result).map_err(|e| {
-                BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
-            });
-        }
-
-        let key = match api_key {
-            Some(k) => k.to_string(),
-            None => std::env::var("HAI_API_KEY").map_err(|_| {
-                BindingCoreError::invalid_argument(
-                    "No API key provided and HAI_API_KEY environment variable not set",
-                )
-            })?,
-        };
-
-        let agent_json = self.get_agent_json()?;
-        let url = format!("{}/api/v1/agents/register", hai_url.trim_end_matches('/'));
-
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| {
-                BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e))
-            })?;
-
-        let response = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", key))
-            .header("Content-Type", "application/json")
-            .json(&json!({ "agent_json": agent_json }))
-            .send()
-            .map_err(|e| {
-                BindingCoreError::network_failed(format!("HAI registration request failed: {}", e))
-            })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            let result = json!({
-                "hai_registered": false,
-                "hai_error": format!("HTTP {}: {}", status, body),
-                "dns_record": "",
-                "dns_route53": "",
-            });
-            return serde_json::to_string_pretty(&result).map_err(|e| {
-                BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
-            });
-        }
-
-        let body: Value = response.json().map_err(|e| {
-            BindingCoreError::network_failed(format!("Failed to parse HAI response: {}", e))
-        })?;
-
-        let result = json!({
-            "hai_registered": true,
-            "hai_error": "",
-            "dns_record": body.get("dns_record").and_then(|v| v.as_str()).unwrap_or_default(),
-            "dns_route53": body.get("dns_route53").and_then(|v| v.as_str()).unwrap_or_default(),
-        });
-
-        serde_json::to_string_pretty(&result).map_err(|e| {
-            BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
-        })
-    }
-
     /// Get the agent's JSON representation as a string.
     ///
-    /// Returns the agent's full JSON document, suitable for registration
-    /// with external services like HAI.
+    /// Returns the agent's full JSON document.
     pub fn get_agent_json(&self) -> BindingResult<String> {
         let agent = self.lock()?;
         match agent.get_value() {
@@ -1374,7 +1267,7 @@ pub struct VerificationResult {
 /// # Arguments
 ///
 /// * `signed_document` - Full signed JACS document JSON string.
-/// * `key_resolution` - Optional key resolution order, e.g. "local" or "local,hai" (default "local").
+/// * `key_resolution` - Optional key resolution order, e.g. "local" or "local,remote" (default "local").
 /// * `data_directory` - Optional path for data/trust store (defaults to temp/cwd).
 /// * `key_directory` - Optional path for public keys (defaults to temp/cwd).
 ///
@@ -1909,8 +1802,6 @@ pub fn create_agent_programmatic(
         description: description.unwrap_or("").to_string(),
         domain: domain.unwrap_or("").to_string(),
         default_storage: default_storage.unwrap_or("fs").to_string(),
-        hai_api_key: String::new(),
-        hai_endpoint: String::new(),
     };
 
     let (_agent, info) = SimpleAgent::create_with_params(params)
@@ -1931,103 +1822,6 @@ pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Bind
 pub fn handle_config_create() -> BindingResult<()> {
     jacs::cli_utils::create::handle_config_create()
         .map_err(|e| BindingCoreError::generic(e.to_string()))
-}
-
-// =============================================================================
-// Remote Key Fetch Functions
-// =============================================================================
-
-/// Information about a public key fetched from HAI key service.
-///
-/// This struct contains the public key data and metadata returned by
-/// the HAI key distribution service.
-#[derive(Debug, Clone)]
-pub struct RemotePublicKeyInfo {
-    /// The raw public key bytes (DER encoded).
-    pub public_key: Vec<u8>,
-    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
-    pub algorithm: String,
-    /// The hash of the public key (SHA-256).
-    pub public_key_hash: String,
-    /// The agent ID the key belongs to.
-    pub agent_id: String,
-    /// The version of the key.
-    pub version: String,
-}
-
-/// Fetch a public key from HAI's key distribution service.
-///
-/// This function retrieves the public key for a specific agent and version
-/// from the HAI key distribution service. It is used to obtain trusted public
-/// keys for verifying agent signatures without requiring local key storage.
-///
-/// # Arguments
-///
-/// * `agent_id` - The unique identifier of the agent whose key to fetch.
-/// * `version` - The version of the agent's key to fetch. Use "latest" for
-///   the most recent version.
-///
-/// # Returns
-///
-/// Returns `Ok(RemotePublicKeyInfo)` containing the public key, algorithm, and hash
-/// on success.
-///
-/// # Errors
-///
-/// * `ErrorKind::KeyNotFound` - The agent or key version was not found (404).
-/// * `ErrorKind::NetworkFailed` - Connection, timeout, or other HTTP errors.
-/// * `ErrorKind::Generic` - The returned key has invalid encoding.
-///
-/// # Environment Variables
-///
-/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
-/// * `JACS_KEY_RESOLUTION` - Controls key resolution order. Options:
-///   - "hai-only" - Only use HAI key service (default when set)
-///   - "local-first" - Try local trust store, fall back to HAI
-///   - "hai-first" - Try HAI first, fall back to local trust store
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use jacs_binding_core::fetch_remote_key;
-///
-/// let key_info = fetch_remote_key(
-///     "550e8400-e29b-41d4-a716-446655440000",
-///     "latest"
-/// )?;
-///
-/// println!("Algorithm: {}", key_info.algorithm);
-/// println!("Hash: {}", key_info.public_key_hash);
-/// ```
-#[cfg(not(target_arch = "wasm32"))]
-pub fn fetch_remote_key(agent_id: &str, version: &str) -> BindingResult<RemotePublicKeyInfo> {
-    use jacs::agent::loaders::fetch_public_key_from_hai;
-
-    let key_info = fetch_public_key_from_hai(agent_id, version).map_err(|e| {
-        // Map JacsError to appropriate BindingCoreError
-        let error_str = e.to_string();
-        if error_str.contains("not found") || error_str.contains("404") {
-            BindingCoreError::key_not_found(format!(
-                "Public key not found for agent '{}' version '{}': {}",
-                agent_id, version, e
-            ))
-        } else if error_str.contains("network")
-            || error_str.contains("connect")
-            || error_str.contains("timeout")
-        {
-            BindingCoreError::network_failed(format!("Failed to fetch public key from HAI: {}", e))
-        } else {
-            BindingCoreError::generic(format!("Failed to fetch public key: {}", e))
-        }
-    })?;
-
-    Ok(RemotePublicKeyInfo {
-        public_key: key_info.public_key,
-        algorithm: key_info.algorithm,
-        public_key_hash: key_info.hash,
-        agent_id: agent_id.to_string(),
-        version: version.to_string(),
-    })
 }
 
 // =============================================================================
@@ -2273,7 +2067,7 @@ mod tests {
             std::env::set_var("JACS_DATA_DIRECTORY", "/tmp/does-not-exist");
             std::env::set_var("JACS_KEY_DIRECTORY", "/tmp/does-not-exist");
             std::env::set_var("JACS_DEFAULT_STORAGE", "memory");
-            std::env::set_var("JACS_KEY_RESOLUTION", "hai");
+            std::env::set_var("JACS_KEY_RESOLUTION", "remote");
         }
 
         let result = verify_document_standalone(

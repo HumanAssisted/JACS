@@ -25,7 +25,7 @@ pub const ACCEPT_INVALID_CERTS_DEFAULT: bool = false;
 ///
 /// Only URLs from these domains will be fetched when resolving remote schemas.
 /// Additional domains can be added via the `JACS_SCHEMA_ALLOWED_DOMAINS` environment variable.
-pub const DEFAULT_ALLOWED_SCHEMA_DOMAINS: &[&str] = &["hai.ai", "schema.hai.ai"];
+pub const DEFAULT_ALLOWED_SCHEMA_DOMAINS: &[&str] = &["hai.ai", "schema.hai.ai", "jacs.sh"];
 
 /// Check if a URL is allowed for schema fetching.
 ///
@@ -173,7 +173,7 @@ fn should_accept_invalid_certs() -> bool {
 
 /// Check TLS strictness considering verification claim.
 ///
-/// Verified claims (`verified` or `verified-hai.ai`) ALWAYS require strict TLS.
+/// Verified claims (`verified`, `verified-registry`, or legacy `verified-hai.ai`) ALWAYS require strict TLS.
 /// This enforces the principle: "If you claim it, you must prove it."
 ///
 /// # Arguments
@@ -194,7 +194,7 @@ fn should_accept_invalid_certs() -> bool {
 ///
 /// // Verified agents always require strict TLS
 /// assert!(!should_accept_invalid_certs_for_claim(Some("verified")));
-/// assert!(!should_accept_invalid_certs_for_claim(Some("verified-hai.ai")));
+/// assert!(!should_accept_invalid_certs_for_claim(Some("verified-registry")));
 ///
 /// // Unverified agents use env-var based logic
 /// let result = should_accept_invalid_certs_for_claim(None);
@@ -204,7 +204,7 @@ fn should_accept_invalid_certs() -> bool {
 pub fn should_accept_invalid_certs_for_claim(claim: Option<&str>) -> bool {
     // Verified claims ALWAYS require strict TLS
     match claim {
-        Some("verified") | Some("verified-hai.ai") => false,
+        Some("verified") | Some("verified-registry") | Some("verified-hai.ai") => false,
         _ => should_accept_invalid_certs(), // existing env-var check
     }
 }

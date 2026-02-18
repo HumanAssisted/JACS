@@ -62,7 +62,7 @@ All five `.well-known` endpoints are served automatically:
 
 {{#include ../_snippets/a2a-well-known-docs.md}}
 
-The Agent Card includes the `urn:hai.ai:jacs-provenance-v1` extension in `capabilities.extensions`, signaling to other JACS agents that your agent supports cryptographic provenance.
+The Agent Card includes the `urn:jacs:provenance-v1` extension in `capabilities.extensions`, signaling to other JACS agents that your agent supports cryptographic provenance.
 
 ## Next Steps
 

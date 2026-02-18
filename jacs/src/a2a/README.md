@@ -138,7 +138,7 @@ The JACS extension declaration in Agent Cards (v0.4.0):
 {
   "capabilities": {
     "extensions": [{
-      "uri": "urn:hai.ai:jacs-provenance-v1",
+      "uri": "urn:jacs:provenance-v1",
       "description": "JACS cryptographic document signing and verification",
       "required": false
     }]

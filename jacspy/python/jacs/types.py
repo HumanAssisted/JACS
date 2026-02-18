@@ -248,21 +248,21 @@ class TrustError(JacsError):
 
 
 class KeyNotFoundError(JacsError):
-    """Public key not found in HAI key service."""
+    """Public key not found for the specified agent."""
     pass
 
 
 class NetworkError(JacsError):
-    """Network error when communicating with HAI key service."""
+    """Network error when fetching remote keys."""
     pass
 
 
 @dataclass
 class PublicKeyInfo:
-    """Information about a public key fetched from HAI's key service.
+    """Information about a fetched public key.
 
     This type represents the result of fetching a public key from
-    the HAI key distribution service.
+    a remote key service or DNS.
 
     Attributes:
         public_key: Raw public key bytes (DER encoded)

@@ -589,37 +589,6 @@ async def get_trusted_agent(agent_id: str) -> str:
     return await asyncio.to_thread(simple.get_trusted_agent, agent_id)
 
 
-async def fetch_remote_key(agent_id: str, version: str = "latest"):
-    """Fetch a public key from HAI's key distribution service.
-
-    Args:
-        agent_id: The unique identifier of the agent
-        version: The key version ("latest" for most recent)
-
-    Returns:
-        PublicKeyInfo with key details
-    """
-    return await asyncio.to_thread(simple.fetch_remote_key, agent_id, version)
-
-
-def generate_verify_link(
-    document: str,
-    base_url: str = "https://hai.ai",
-) -> str:
-    """Build a verification URL for a signed JACS document.
-
-    Note: This is synchronous as it is a pure computation (no I/O).
-
-    Args:
-        document: The full signed JACS document string (JSON).
-        base_url: Base URL of the verifier (default "https://hai.ai").
-
-    Returns:
-        Full URL: {base_url}/jacs/verify?s={base64url(document)}
-    """
-    return simple.generate_verify_link(document, base_url)
-
-
 async def verify_standalone(
     document,
     key_resolution: str = "local",
@@ -662,7 +631,7 @@ async def verify_dns(
 
 
 async def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
-    """Get setup instructions for DNS, DNSSEC, and HAI registration.
+    """Get setup instructions for DNS and DNSSEC.
 
     Args:
         domain: The domain to publish the DNS TXT record under.
@@ -672,24 +641,6 @@ async def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
         Dict with dns_record_bind, provider_commands, dnssec_instructions, etc.
     """
     return await asyncio.to_thread(simple.get_setup_instructions, domain, ttl)
-
-
-async def register_with_hai(
-    api_key: Optional[str] = None,
-    hai_url: str = "https://hai.ai",
-    preview: bool = False,
-) -> dict:
-    """Register this agent with HAI.ai.
-
-    Args:
-        api_key: HAI API key (reads HAI_API_KEY env var if None).
-        hai_url: Base URL for HAI (default: "https://hai.ai").
-        preview: If True, validate without actually registering.
-
-    Returns:
-        Dict with hai_registered, hai_error, dns_record, dns_route53.
-    """
-    return await asyncio.to_thread(simple.register_with_hai, api_key, hai_url, preview)
 
 
 def get_agent_info() -> Optional[AgentInfo]:
@@ -738,7 +689,6 @@ __all__ = [
     "verify_by_id",
     "verify_standalone",
     "verify_dns",
-    "generate_verify_link",
     # Key management
     "reencrypt_key",
     # Agreements
@@ -758,11 +708,8 @@ __all__ = [
     "get_trusted_agent",
     # Test utilities
     "reset",
-    # Remote key fetch
-    "fetch_remote_key",
-    # Setup and registration
+    # Setup
     "get_setup_instructions",
-    "register_with_hai",
     # Types (re-exported for convenience)
     "AgentInfo",
     "SignedDocument",

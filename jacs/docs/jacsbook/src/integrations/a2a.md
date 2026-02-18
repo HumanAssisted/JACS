@@ -212,7 +212,7 @@ a2a = JACSA2AIntegration.from_config("jacs.config.json")
 
 ### Export an A2A Agent Card
 
-Export your JACS agent as a v0.4.0 A2A Agent Card. JACS services are automatically converted to A2A skills, and a `urn:hai.ai:jacs-provenance-v1` extension is declared in capabilities.
+Export your JACS agent as a v0.4.0 A2A Agent Card. JACS services are automatically converted to A2A skills, and a `urn:jacs:provenance-v1` extension is declared in capabilities.
 
 ```python
 # Via JacsClient (preferred)
@@ -291,7 +291,7 @@ To discover and verify a remote agent from another organization:
 
 1. Fetch their `/.well-known/agent-card.json` (use `discover_agent()` from `jacs.a2a_discovery`)
 2. Assess trust with `a2a.assess_remote_agent(card_json)` or `discover_and_assess()`
-3. Check the `urn:hai.ai:jacs-provenance-v1` extension for JACS compatibility
+3. Check the `urn:jacs:provenance-v1` extension for JACS compatibility
 4. Use `JACS_KEY_RESOLUTION` to resolve their public key and verify artifacts
 5. Optionally add them to your trust store with `a2a.trust_a2a_agent(card_json)`
 

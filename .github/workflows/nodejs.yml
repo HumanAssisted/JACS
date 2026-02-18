@@ -60,7 +60,7 @@ jobs:
           JACS_DATA_DIRECTORY: /tmp/does-not-exist
           JACS_KEY_DIRECTORY: /tmp/does-not-exist
           JACS_DEFAULT_STORAGE: memory
-          JACS_KEY_RESOLUTION: hai
+          JACS_KEY_RESOLUTION: local
         run: npm run test:cross-language
 
       - name: Run tests
@@ -76,4 +76,4 @@ jobs:
           cd /tmp/jacs-npm-smoke
           npm init -y >/dev/null
           npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
-          node -e "require('@hai.ai/jacs'); require('@hai.ai/jacs/simple'); require('@hai.ai/jacs/mcp'); require('@hai.ai/jacs/a2a'); console.log('smoke imports ok')"
+          node -e "require('jacs'); require('jacs/simple'); require('jacs/mcp'); require('jacs/a2a'); console.log('smoke imports ok')"

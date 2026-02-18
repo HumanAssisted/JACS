@@ -9,7 +9,7 @@
 import type { JacsClient } from './client.js';
 import type { Server } from 'http';
 export declare const A2A_PROTOCOL_VERSION = "0.4.0";
-export declare const JACS_EXTENSION_URI = "urn:hai.ai:jacs-provenance-v1";
+export declare const JACS_EXTENSION_URI = "urn:jacs:provenance-v1";
 export declare const JACS_ALGORITHMS: readonly string[];
 export declare const TRUST_POLICIES: {
     OPEN: "open";

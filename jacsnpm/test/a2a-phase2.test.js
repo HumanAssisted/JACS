@@ -117,7 +117,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       expect(arg.jacsType).to.equal('a2a-task');
       expect(arg.jacsLevel).to.equal('artifact');
       expect(arg.a2aArtifact).to.deep.equal(artifact);
-      expect(arg.$schema).to.equal('https://hai.ai/schemas/header/v1/header.schema.json');
+      expect(arg.$schema).to.equal('https://jacs.ai/schemas/header/v1/header.schema.json');
     });
 
     it('should include parent signatures when provided', async () => {

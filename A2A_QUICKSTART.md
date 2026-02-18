@@ -130,13 +130,13 @@ JACS serves five endpoints for A2A discovery:
 
 ## JACS Extension in Agent Cards
 
-JACS agents declare the `urn:hai.ai:jacs-provenance-v1` extension in their Agent Card so other JACS agents can identify them:
+JACS agents declare the `urn:jacs:provenance-v1` extension in their Agent Card so other JACS agents can identify them:
 
 ```json
 {
   "capabilities": {
     "extensions": [{
-      "uri": "urn:hai.ai:jacs-provenance-v1",
+      "uri": "urn:jacs:provenance-v1",
       "description": "JACS cryptographic document signing",
       "required": false
     }]

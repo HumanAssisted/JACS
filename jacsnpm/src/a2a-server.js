@@ -8,8 +8,8 @@
  * @example
  * ```js
  * const express = require('express');
- * const { JacsClient } = require('@hai.ai/jacs/client');
- * const { jacsA2AMiddleware } = require('@hai.ai/jacs/a2a-server');
+ * const { JacsClient } = require('jacs/client');
+ * const { jacsA2AMiddleware } = require('jacs/a2a-server');
  *
  * const client = await JacsClient.quickstart();
  * const app = express();
@@ -98,10 +98,10 @@ function buildWellKnownDocuments(client, options = {}) {
       postQuantum,
     },
     schemas: {
-      agent: 'https://hai.ai/schemas/agent/v1/agent.schema.json',
-      header: 'https://hai.ai/schemas/header/v1/header.schema.json',
+      agent: 'https://jacs.ai/schemas/agent/v1/agent.schema.json',
+      header: 'https://jacs.ai/schemas/header/v1/header.schema.json',
       signature:
-        'https://hai.ai/schemas/components/signature/v1/signature.schema.json',
+        'https://jacs.ai/schemas/components/signature/v1/signature.schema.json',
     },
     endpoints: {
       verify: '/jacs/verify',

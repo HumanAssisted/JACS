@@ -2,7 +2,7 @@
 
 use crate::a2a::{A2AArtifact, A2AMessage};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::agent::loaders::fetch_public_key_from_hai;
+use crate::agent::loaders::fetch_remote_public_key;
 use crate::agent::{
     AGENT_SIGNATURE_FIELDNAME, Agent, JACS_IGNORE_FIELDS, boilerplate::BoilerPlate,
     document::DocumentTraits, loaders::FileLoader,
@@ -129,20 +129,20 @@ fn resolve_foreign_public_key(
                 // DNS can validate identity but does not return key material.
                 last_error = "DNS source does not provide public key bytes".to_string();
             }
-            KeyResolutionSource::Hai => {
+            KeyResolutionSource::Registry => {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     if signer_id.is_empty() || signer_version.is_empty() {
                         last_error =
-                            "HAI lookup requires signer agent ID and version UUID".to_string();
+                            "Registry lookup requires signer agent ID and version UUID".to_string();
                         continue;
                     }
 
-                    match fetch_public_key_from_hai(signer_id, signer_version) {
+                    match fetch_remote_public_key(signer_id, signer_version) {
                         Ok(key_info) => {
                             if !key_info.hash.is_empty() && key_info.hash != public_key_hash {
                                 last_error = format!(
-                                    "HAI key hash mismatch: expected {}..., got {}...",
+                                    "Registry key hash mismatch: expected {}..., got {}...",
                                     &public_key_hash[..public_key_hash.len().min(16)],
                                     &key_info.hash[..key_info.hash.len().min(16)]
                                 );
@@ -151,7 +151,7 @@ fn resolve_foreign_public_key(
                             return Ok((key_info.public_key, key_info.algorithm));
                         }
                         Err(e) => {
-                            last_error = format!("HAI key lookup failed: {}", e);
+                            last_error = format!("Registry key lookup failed: {}", e);
                         }
                     }
                 }
@@ -160,7 +160,8 @@ fn resolve_foreign_public_key(
                     let _ = signer_id;
                     let _ = signer_version;
                     last_error =
-                        "HAI lookup is not available on wasm32 targets in this build".to_string();
+                        "Registry lookup is not available on wasm32 targets in this build"
+                            .to_string();
                 }
             }
         }
@@ -232,7 +233,7 @@ pub fn wrap_artifact_with_provenance(
         "jacsLevel": "artifact",
         "jacsPreviousVersion": null,
         "jacsVersionDate": time_utils::now_rfc3339(),
-        "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+        "$schema": "https://jacs.sh/schemas/header/v1/header.schema.json",
         "a2aArtifact": artifact,
     });
 
@@ -284,9 +285,9 @@ pub fn wrap_a2a_message_with_provenance(
 /// - `Invalid`: The signature was checked and found to be invalid
 ///
 /// For foreign agents (agents other than the current agent), the public key
-/// is resolved via configured key resolution order (`local`, `dns`, `hai`).
+/// is resolved via configured key resolution order (`local`, `dns`, `registry`).
 /// DNS can validate identity but does not provide key bytes; practical signature
-/// verification requires local key material or HAI key retrieval.
+/// verification requires local key material or remote registry key retrieval.
 pub fn verify_wrapped_artifact(
     agent: &Agent,
     wrapped_artifact: &Value,
@@ -794,7 +795,7 @@ mod tests {
             "jacsType": format!("a2a-{}", artifact_type),
             "jacsLevel": "artifact",
             "jacsVersionDate": "2025-01-01T00:00:00Z",
-            "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+            "$schema": "https://jacs.sh/schemas/header/v1/header.schema.json",
             "a2aArtifact": { "test": "data" },
             "jacsSignature": {
                 "agentID": agent_id,

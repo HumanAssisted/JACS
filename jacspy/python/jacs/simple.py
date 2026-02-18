@@ -19,16 +19,12 @@ A streamlined interface for the most common JACS operations:
 - is_trusted(): Check if an agent is trusted
 - get_trusted_agent(): Get a trusted agent's JSON
 - audit(): Run a read-only security audit and health checks
-- fetch_remote_key(): Fetch a public key from HAI's key service
 
 Environment Variables:
-    HAI_KEYS_BASE_URL: Base URL for HAI's key distribution service.
-                       Defaults to "https://keys.hai.ai".
-
     JACS_KEY_RESOLUTION: Comma-separated order of key resolution when
-                         verifying signatures (e.g. "local,hai" or "local,dns,hai").
-                         Sources: local (trust store), dns (DNS TXT), hai (HAI key service).
-                         Default is "local,hai".
+                         verifying signatures (e.g. "local,dns").
+                         Sources: local (trust store), dns (DNS TXT).
+                         Default is "local".
 
 Example:
     import jacs.simple as jacs
@@ -55,9 +51,6 @@ Example:
     status = jacs.check_agreement(agreement)
     print(f"Complete: {status.complete}, Pending: {status.pending}")
 
-    # Fetch a remote public key (no agent required)
-    key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
-    print(f"Algorithm: {key_info.algorithm}")
 """
 
 import json
@@ -91,7 +84,6 @@ from .types import (
 # Import the Rust bindings
 try:
     from . import JacsAgent
-    from .jacs import fetch_remote_key as _fetch_remote_key
     from .jacs import trust_agent as _trust_agent
     from .jacs import list_trusted_agents as _list_trusted_agents
     from .jacs import untrust_agent as _untrust_agent
@@ -104,7 +96,6 @@ except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
     JacsAgent = _jacs_module.JacsAgent
-    _fetch_remote_key = _jacs_module.fetch_remote_key
     _verify_document_standalone = _jacs_module.verify_document_standalone
     _verify_agent_dns = _jacs_module.verify_agent_dns
     _trust_agent = _jacs_module.trust_agent
@@ -144,84 +135,6 @@ def reset():
     _strict = False
 
 
-# Verify link constants (HAI / public verification URLs)
-MAX_VERIFY_URL_LEN = 2048
-MAX_VERIFY_DOCUMENT_BYTES = 1515
-
-
-def generate_verify_link(
-    document: str,
-    base_url: str = "https://hai.ai",
-    hosted: Optional[bool] = None,
-) -> str:
-    """Build a verification URL for a signed JACS document.
-
-    Supports two modes:
-    - **Inline** (default): Encodes the full document in the URL as base64:
-      ``{base_url}/jacs/verify?s={base64url(document)}``
-    - **Hosted** (opt-in): Uses the document ID to reference a server-stored
-      copy: ``{base_url}/verify/{document_id}``
-
-    Args:
-        document: The full signed JACS document string (JSON).
-        base_url: Base URL of the verifier (no trailing slash). Default "https://hai.ai".
-        hosted: Force hosted mode (True) or inline mode (False).
-            ``None`` preserves legacy behavior and defaults to inline mode.
-
-    Returns:
-        Full verification URL.
-
-    Raises:
-        ValueError: If inline mode is forced but document exceeds URL limits,
-            or if hosted mode is used but the document has no extractable ID.
-    """
-    import base64
-
-    base = base_url.rstrip("/")
-
-    # Backward-compatible default: inline mode unless explicitly hosted.
-    if hosted is None:
-        hosted = False
-
-    if not hosted:
-        # Try native Rust implementation first
-        try:
-            from jacs._jacs import generate_verify_link as _native_generate_verify_link
-            return _native_generate_verify_link(document, base_url)
-        except ImportError:
-            pass
-
-        # Pure-Python inline implementation
-        encoded = base64.urlsafe_b64encode(document.encode("utf-8")).rstrip(b"=").decode("ascii")
-        path_and_query = f"/jacs/verify?s={encoded}"
-        full_url = f"{base}{path_and_query}"
-        if len(full_url) > MAX_VERIFY_URL_LEN:
-            raise ValueError(
-                f"Verify URL would exceed max length ({MAX_VERIFY_URL_LEN}). "
-                f"Document must be at most {MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes. "
-                f"Use hosted=True for large documents (e.g. post-quantum signatures)."
-            )
-        return full_url
-    else:
-        # Hosted mode: extract document ID from the JSON
-        try:
-            doc_data = json.loads(document)
-            doc_id = (
-                doc_data.get("jacsDocumentId")
-                or doc_data.get("document_id")
-                or doc_data.get("id")
-                or ""
-            )
-        except (json.JSONDecodeError, TypeError):
-            doc_id = ""
-
-        if not doc_id:
-            raise ValueError(
-                "Cannot generate hosted verify link: no document ID found in document. "
-                "Document must contain 'jacsDocumentId', 'document_id', or 'id' field."
-            )
-
-        return f"{base}/verify/{doc_id}"
 
 
 def _get_agent() -> JacsAgent:
@@ -315,7 +228,7 @@ def create(
         agent_type: Type of agent ("ai", "human", "hybrid")
         description: Optional description of the agent's purpose
         domain: Optional domain for DNSSEC fingerprint
-        default_storage: Storage backend ("fs", "aws", "hai")
+        default_storage: Storage backend ("fs")
 
     Returns:
         AgentInfo with the new agent's details
@@ -616,12 +529,6 @@ class _EphemeralAgentAdapter:
             "Use jacs.create() or jacs.load() for a persistent agent."
         )
 
-    def register_with_hai(self, api_key=None, hai_url="https://hai.ai",
-                          preview=False):
-        raise JacsError(
-            "register_with_hai() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
 
 
 def quickstart(algorithm=None, strict=None, config_path=None):
@@ -1398,7 +1305,7 @@ def export_agent() -> str:
 def get_dns_record(domain: str, ttl: int = 3600) -> str:
     """Return the DNS TXT record line for the loaded agent (for DNS-based discovery).
 
-    Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; ..."
+    Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=jacs; jacs_agent_id=...; ..."
 
     Args:
         domain: The domain (e.g. "example.com")
@@ -1414,7 +1321,7 @@ def get_dns_record(domain: str, ttl: int = 3600) -> str:
     public_key_hash = sig.get("publicKeyHash") or ""
     d = domain.rstrip(".")
     owner = f"_v1.agent.jacs.{d}."
-    txt = f"v=hai.ai; jacs_agent_id={jacs_id}; alg=SHA-256; enc=base64; jac_public_key_hash={public_key_hash}"
+    txt = f"v=jacs; jacs_agent_id={jacs_id}; alg=SHA-256; enc=base64; jac_public_key_hash={public_key_hash}"
     return f'{owner} {ttl} IN TXT "{txt}"'
 
 
@@ -1598,103 +1505,6 @@ def audit(
         raise JacsError(f"Audit failed: {e}") from e
 
 
-def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
-    """Fetch a public key from HAI's key distribution service.
-
-    This function retrieves the public key for a specific agent and version
-    from the HAI key distribution service. It is used to obtain trusted public
-    keys for verifying agent signatures without requiring local key storage.
-
-    This is a stateless operation that does not require an agent to be loaded.
-
-    Args:
-        agent_id: The unique identifier of the agent whose key to fetch.
-        version: The version of the agent's key to fetch. Use "latest" for
-                 the most recent version. Defaults to "latest".
-
-    Returns:
-        PublicKeyInfo containing:
-            - public_key: Raw public key bytes (DER encoded)
-            - algorithm: Cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
-            - public_key_hash: SHA-256 hash of the public key
-            - agent_id: The agent ID this key belongs to
-            - version: The version of the key
-
-    Raises:
-        KeyNotFoundError: If the agent or key version was not found (404)
-        NetworkError: If there was a connection, timeout, or other HTTP error
-        JacsError: For other errors (e.g., invalid key encoding)
-
-    Environment Variables:
-        HAI_KEYS_BASE_URL: Base URL for the key service.
-                          Defaults to "https://keys.hai.ai".
-        JACS_KEY_RESOLUTION: Comma-separated order of key resolution when
-                             verifying signatures (e.g. "local,hai" or "local,dns,hai").
-                             Sources: local (trust store), dns (DNS TXT), hai (HAI key service).
-                             Default is "local,hai".
-
-    Example:
-        # Fetch the latest key for an agent
-        key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
-        print(f"Algorithm: {key_info.algorithm}")
-        print(f"Hash: {key_info.public_key_hash}")
-
-        # Fetch a specific version
-        key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000", "1")
-
-        # Use with a custom key service
-        import os
-        os.environ["HAI_KEYS_BASE_URL"] = "https://keys.example.com"
-        key_info = jacs.fetch_remote_key("my-agent-id")
-    """
-    logger.debug("fetch_remote_key() called: agent_id=%s, version=%s", agent_id, version)
-
-    try:
-        result = _fetch_remote_key(agent_id, version)
-
-        key_info = PublicKeyInfo(
-            public_key=result["public_key"],
-            algorithm=result["algorithm"],
-            public_key_hash=result["public_key_hash"],
-            agent_id=result["agent_id"],
-            version=result["version"],
-        )
-
-        logger.info(
-            "Fetched remote key: agent_id=%s, version=%s, algorithm=%s",
-            agent_id,
-            version,
-            key_info.algorithm,
-        )
-        return key_info
-
-    except RuntimeError as e:
-        error_str = str(e)
-        logger.error("Failed to fetch remote key: %s", error_str)
-
-        # Map error messages to appropriate exception types
-        if "not found" in error_str.lower() or "404" in error_str:
-            raise KeyNotFoundError(
-                f"Public key not found for agent '{agent_id}' version '{version}'"
-            ) from e
-        elif "network" in error_str.lower() or "connect" in error_str.lower() or "timeout" in error_str.lower():
-            raise NetworkError(
-                f"Network error fetching key for agent '{agent_id}': {error_str}"
-            ) from e
-        else:
-            raise JacsError(f"Failed to fetch remote key: {error_str}") from e
-    except BaseException as e:
-        # PyO3 panic exceptions are not RuntimeError subclasses. Treat fetch panics
-        # as network failures for callers to preserve a consistent SDK contract.
-        if e.__class__.__name__ == "PanicException":
-            error_str = str(e)
-            logger.error("Panic while fetching remote key: %s", error_str)
-            raise NetworkError(
-                f"Network error fetching key for agent '{agent_id}': {error_str}"
-            ) from e
-        raise
-
-
 def verify_dns(
     agent_document: Union[str, dict],
     domain: str,
@@ -1724,12 +1534,11 @@ def verify_dns(
 
 
 def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
-    """Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
+    """Get comprehensive setup instructions for DNS and DNSSEC.
 
     Returns structured data with provider-specific commands for AWS Route53,
     Cloudflare, Azure DNS, Google Cloud DNS, and plain BIND format. Also includes
-    DNSSEC guidance, well-known JSON payload, HAI registration details, and a
-    human-readable summary.
+    DNSSEC guidance, well-known JSON payload, and a human-readable summary.
 
     Args:
         domain: The domain to publish the DNS TXT record under.
@@ -1738,47 +1547,19 @@ def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
     Returns:
         Dict with keys: dns_record_bind, dns_record_value, dns_owner,
         provider_commands, dnssec_instructions, tld_requirement, well_known_json,
-        hai_registration_url, hai_registration_payload,
-        hai_registration_instructions, summary.
+        summary.
 
     Example:
         instructions = jacs.get_setup_instructions("example.com")
         print(instructions["summary"])
         print(instructions["provider_commands"]["route53"])
     """
-    agent = _require_agent()
+    agent = _get_agent()
     try:
         json_str = agent.get_setup_instructions(domain, ttl)
         return json.loads(json_str)
     except Exception as e:
         raise JacsError(f"Failed to get setup instructions: {e}") from e
-
-
-def register_with_hai(
-    api_key: Optional[str] = None,
-    hai_url: str = "https://hai.ai",
-    preview: bool = False,
-) -> dict:
-    """Register this agent with HAI.ai.
-
-    Args:
-        api_key: HAI API key (reads HAI_API_KEY env var if None).
-        hai_url: Base URL for HAI (default: "https://hai.ai").
-        preview: If True, validate without actually registering.
-
-    Returns:
-        Dict with hai_registered, hai_error, dns_record, dns_route53.
-
-    Example:
-        result = jacs.register_with_hai(preview=True)
-        print(f"Registered: {result['hai_registered']}")
-    """
-    agent = _require_agent()
-    try:
-        json_str = agent.register_with_hai(api_key, hai_url, preview)
-        return json.loads(json_str)
-    except Exception as e:
-        raise JacsError(f"HAI registration failed: {e}") from e
 
 
 __all__ = [
@@ -1802,9 +1583,6 @@ __all__ = [
     "verify_standalone",
     "verify_dns",
     # Utility functions
-    "generate_verify_link",
-    "MAX_VERIFY_URL_LEN",
-    "MAX_VERIFY_DOCUMENT_BYTES",
     "get_public_key",
     "export_agent",
     "get_dns_record",
@@ -1823,11 +1601,8 @@ __all__ = [
     "is_strict",
     # Test utilities
     "reset",
-    # Remote key fetch
-    "fetch_remote_key",
-    # Setup and registration
+    # Setup
     "get_setup_instructions",
-    "register_with_hai",
     # Types (re-exported for convenience)
     "AgentInfo",
     "Attachment",

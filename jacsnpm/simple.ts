@@ -84,19 +84,6 @@ export interface Attachment {
   embedded: boolean;
 }
 
-export interface HaiRegistrationOptions {
-  apiKey?: string;
-  haiUrl?: string;
-  preview?: boolean;
-}
-
-export interface HaiRegistrationResult {
-  agentId: string;
-  jacsId: string;
-  dnsVerified: boolean;
-  signatures: string[];
-}
-
 // =============================================================================
 // Global State
 // =============================================================================
@@ -827,7 +814,7 @@ export function getDnsRecord(domain: string, ttl: number = 3600): string {
     '';
   const d = domain.replace(/\.$/, '');
   const owner = `_v1.agent.jacs.${d}.`;
-  const txt = `v=hai.ai; jacs_agent_id=${jacsId}; alg=SHA-256; enc=base64; jac_public_key_hash=${publicKeyHash}`;
+  const txt = `v=jacs; jacs_agent_id=${jacsId}; alg=SHA-256; enc=base64; jac_public_key_hash=${publicKeyHash}`;
   return `${owner} ${ttl} IN TXT "${txt}"`;
 }
 
@@ -880,60 +867,6 @@ export function getSetupInstructionsSync(
   const agent = requireAgent();
   const json = agent.getSetupInstructionsSync(domain, ttl);
   return JSON.parse(json) as Record<string, unknown>;
-}
-
-// =============================================================================
-// HAI Registration
-// =============================================================================
-
-export async function registerWithHai(
-  options?: HaiRegistrationOptions
-): Promise<HaiRegistrationResult> {
-  if (!agentInfo) {
-    throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
-  }
-  const apiKey = options?.apiKey ?? process.env.HAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('HAI registration requires an API key. Set apiKey in options or HAI_API_KEY env.');
-  }
-  if (options?.preview) {
-    return {
-      agentId: agentInfo.agentId,
-      jacsId: '',
-      dnsVerified: false,
-      signatures: [],
-    };
-  }
-  const baseUrl = (options?.haiUrl ?? 'https://hai.ai').replace(/\/$/, '');
-  const agentJson = exportAgent();
-  const url = `${baseUrl}/api/v1/agents/register`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ agent_json: agentJson }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HAI registration failed: ${res.status} ${text}`);
-  }
-  const data = (await res.json()) as {
-    agent_id?: string;
-    jacs_id?: string;
-    dns_verified?: boolean;
-    signatures?: Array<{ key_id?: string; signature?: string }>;
-  };
-  const signatures = (data.signatures ?? []).map(
-    (s) => (typeof s === 'string' ? s : s.signature ?? s.key_id ?? '')
-  );
-  return {
-    agentId: data.agent_id ?? '',
-    jacsId: data.jacs_id ?? '',
-    dnsVerified: data.dns_verified ?? false,
-    signatures,
-  };
 }
 
 // =============================================================================
@@ -1059,28 +992,3 @@ export function auditSync(options?: AuditOptions): Record<string, unknown> {
   return JSON.parse(json) as Record<string, unknown>;
 }
 
-// =============================================================================
-// Verify link
-// =============================================================================
-
-export const MAX_VERIFY_URL_LEN = 2048;
-export const MAX_VERIFY_DOCUMENT_BYTES = 1515;
-
-export function generateVerifyLink(
-  document: string,
-  baseUrl: string = 'https://hai.ai',
-): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  const encoded = Buffer.from(document, 'utf8')
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
-  const fullUrl = `${base}/jacs/verify?s=${encoded}`;
-  if (fullUrl.length > MAX_VERIFY_URL_LEN) {
-    throw new Error(
-      `Verify URL would exceed max length (${MAX_VERIFY_URL_LEN}). Document size must be at most ${MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes.`,
-    );
-  }
-  return fullUrl;
-}

@@ -1,19 +1,12 @@
 package jacs
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
-)
-
-// Constants for verify link generation (must match jacs::simple values).
-const (
-	MaxVerifyURLLen        = 2048
-	MaxVerifyDocumentBytes = 1515
 )
 
 // Global agent instance for simplified API
@@ -418,21 +411,6 @@ type VerifyOptions struct {
 	KeyDirectory  string
 }
 
-// HaiRegistrationOptions configures HAI registration.
-type HaiRegistrationOptions struct {
-	ApiKey  string // or HAI_API_KEY env
-	HaiUrl  string // default "https://hai.ai"
-	Preview bool
-}
-
-// HaiRegistrationResult is the result of registering with HAI.
-type HaiRegistrationResult struct {
-	AgentId     string
-	JacsId      string
-	DnsVerified bool
-	Signatures  []string
-}
-
 // VerifyStandalone verifies a signed document without loading an agent.
 // Does not use globalAgent. Call with opts nil to use defaults.
 func VerifyStandalone(signedDocument string, opts *VerifyOptions) (*VerificationResult, error) {
@@ -443,58 +421,8 @@ func VerifyStandalone(signedDocument string, opts *VerifyOptions) (*Verification
 	return VerifyDocumentStandalone(signedDocument, kr, dd, kd)
 }
 
-// RegisterWithHai registers the loaded agent with HAI.
-// Requires a loaded agent (uses ExportAgent()). Calls POST {haiUrl}/api/v1/agents/register with Bearer and agent JSON.
-func RegisterWithHai(opts *HaiRegistrationOptions) (*HaiRegistrationResult, error) {
-	globalMutex.Lock()
-	defer globalMutex.Unlock()
-	if globalAgent == nil {
-		return nil, ErrAgentNotLoaded
-	}
-	apiKey := ""
-	haiUrl := "https://hai.ai"
-	if opts != nil {
-		apiKey = opts.ApiKey
-		if opts.HaiUrl != "" {
-			haiUrl = opts.HaiUrl
-		}
-		if opts.Preview {
-			return &HaiRegistrationResult{AgentId: agentInfo.AgentID}, nil
-		}
-	}
-	if apiKey == "" {
-		apiKey = os.Getenv("HAI_API_KEY")
-	}
-	if apiKey == "" {
-		return nil, errors.New("HAI registration requires an API key: set ApiKey in options or HAI_API_KEY env")
-	}
-	agentJSON, err := globalAgent.GetJSON()
-	if err != nil {
-		return nil, err
-	}
-	client := NewHaiClient(haiUrl, WithAPIKey(apiKey))
-	res, err := client.RegisterWithJSON(agentJSON)
-	if err != nil {
-		return nil, err
-	}
-	sigs := make([]string, 0, len(res.Signatures))
-	for _, s := range res.Signatures {
-		if s.Signature != "" {
-			sigs = append(sigs, s.Signature)
-		} else {
-			sigs = append(sigs, s.KeyID)
-		}
-	}
-	return &HaiRegistrationResult{
-		AgentId:     res.AgentID,
-		JacsId:      res.JacsID,
-		DnsVerified: res.DNSVerified,
-		Signatures:  sigs,
-	}, nil
-}
-
 // GetDnsRecord returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
-// Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
+// Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=jacs; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
 func GetDnsRecord(domain string, ttl uint32) (string, error) {
 	globalMutex.Lock()
 	defer globalMutex.Unlock()
@@ -524,7 +452,7 @@ func GetDnsRecord(domain string, ttl uint32) (string, error) {
 	}
 	d := strings.TrimSuffix(domain, ".")
 	owner := "_v1.agent.jacs." + d + "."
-	txt := "v=hai.ai; jacs_agent_id=" + jacsID + "; alg=SHA-256; enc=base64; jac_public_key_hash=" + publicKeyHash
+	txt := "v=jacs; jacs_agent_id=" + jacsID + "; alg=SHA-256; enc=base64; jac_public_key_hash=" + publicKeyHash
 	if ttl == 0 {
 		ttl = 3600
 	}
@@ -706,30 +634,6 @@ func Audit(opts *AuditOptions) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("parse audit result: %w", err)
 	}
 	return out, nil
-}
-
-// GenerateVerifyLink builds a verification URL for a signed JACS document.
-//
-// The document is encoded as URL-safe base64 (no padding) and appended as
-// the `s` query parameter. Returns an error if the URL exceeds MaxVerifyURLLen.
-//
-// Parameters:
-//   - document: The signed JACS document JSON string
-//   - baseUrl: Base URL for the verification endpoint (e.g. "https://hai.ai"). Empty defaults to "https://hai.ai".
-func GenerateVerifyLink(document string, baseUrl string) (string, error) {
-	if baseUrl == "" {
-		baseUrl = "https://hai.ai"
-	}
-	base := strings.TrimRight(baseUrl, "/")
-	encoded := base64.RawURLEncoding.EncodeToString([]byte(document))
-	fullUrl := base + "/jacs/verify?s=" + encoded
-	if len(fullUrl) > MaxVerifyURLLen {
-		return "", fmt.Errorf(
-			"verify URL would exceed max length (%d). Document must be at most %d UTF-8 bytes",
-			MaxVerifyURLLen, MaxVerifyDocumentBytes,
-		)
-	}
-	return fullUrl, nil
 }
 
 func getNestedStringField(m map[string]interface{}, keys ...string) string {

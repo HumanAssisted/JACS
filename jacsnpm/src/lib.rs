@@ -363,23 +363,6 @@ impl JacsAgent {
             .to_napi()
     }
 
-    /// Register with HAI.ai (sync, blocks event loop).
-    #[napi(js_name = "registerWithHaiSync")]
-    pub fn register_with_hai_sync(
-        &self,
-        api_key: Option<String>,
-        hai_url: Option<String>,
-        preview: Option<bool>,
-    ) -> Result<String> {
-        self.inner
-            .register_with_hai(
-                api_key.as_deref(),
-                hai_url.as_deref().unwrap_or("https://hai.ai"),
-                preview.unwrap_or(false),
-            )
-            .to_napi()
-    }
-
     /// Returns diagnostic information as a JSON string.
     /// Lightweight — no async variant needed.
     #[napi]
@@ -700,7 +683,7 @@ impl JacsAgent {
         })
     }
 
-    /// Get setup instructions for DNS records, DNSSEC, and HAI registration.
+    /// Get setup instructions for DNS records and DNSSEC.
     #[napi(js_name = "getSetupInstructions", ts_return_type = "Promise<string>")]
     pub fn get_setup_instructions_async(
         &self,
@@ -712,27 +695,6 @@ impl JacsAgent {
             agent,
             func: Some(Box::new(move |a| {
                 a.get_setup_instructions(&domain, ttl.unwrap_or(3600))
-            })),
-        })
-    }
-
-    /// Register this agent with HAI.ai.
-    #[napi(js_name = "registerWithHai", ts_return_type = "Promise<string>")]
-    pub fn register_with_hai_async(
-        &self,
-        api_key: Option<String>,
-        hai_url: Option<String>,
-        preview: Option<bool>,
-    ) -> AsyncTask<AgentStringTask> {
-        let agent = self.inner.clone();
-        AsyncTask::new(AgentStringTask {
-            agent,
-            func: Some(Box::new(move |a| {
-                a.register_with_hai(
-                    api_key.as_deref(),
-                    hai_url.as_deref().unwrap_or("https://hai.ai"),
-                    preview.unwrap_or(false),
-                )
             })),
         })
     }
@@ -1362,45 +1324,4 @@ pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -
     Ok(result_obj)
 }
 
-// ============================================================================
-// HAI Functions (using binding-core HAI module)
-// ============================================================================
 
-/// Information about a public key fetched from HAI key service.
-#[napi(object)]
-pub struct RemotePublicKeyInfo {
-    /// The raw public key bytes (DER encoded).
-    pub public_key: Buffer,
-    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
-    pub algorithm: String,
-    /// The hash of the public key (SHA-256).
-    pub public_key_hash: String,
-    /// The agent ID the key belongs to.
-    pub agent_id: String,
-    /// The version of the key.
-    pub version: String,
-}
-
-/// Fetch a public key from HAI's key distribution service.
-#[napi]
-pub fn fetch_remote_key(agent_id: String, version: Option<String>) -> Result<RemotePublicKeyInfo> {
-    let version_str = version.as_deref().unwrap_or("latest");
-
-    let key_info = jacs_binding_core::fetch_remote_key(&agent_id, version_str)
-        .map_err(|e| Error::new(Status::GenericFailure, e.message))?;
-
-    Ok(RemotePublicKeyInfo {
-        public_key: Buffer::from(key_info.public_key),
-        algorithm: key_info.algorithm,
-        public_key_hash: key_info.public_key_hash,
-        agent_id: key_info.agent_id,
-        version: key_info.version,
-    })
-}
-
-/// Build a verification URL for a signed JACS document.
-#[napi]
-pub fn generate_verify_link(document: String, base_url: String) -> Result<String> {
-    jacs_binding_core::hai::generate_verify_link(&document, &base_url)
-        .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
-}

@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("jacs.a2a_discovery")
 
-JACS_EXTENSION_URI = "urn:hai.ai:jacs-provenance-v1"
+JACS_EXTENSION_URI = "urn:jacs:provenance-v1"
 AGENT_CARD_PATH = "/.well-known/agent-card.json"
 VALID_TRUST_POLICIES = ("open", "verified", "strict")
 

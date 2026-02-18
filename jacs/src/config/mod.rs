@@ -30,9 +30,9 @@ pub enum KeyResolutionSource {
     /// DNS TXT record verification. Requires the agent to have a domain
     /// configured and the public key hash published in DNS.
     Dns,
-    /// HAI key service (https://keys.hai.ai). Fetches public keys from
-    /// the centralized HAI key distribution service.
-    Hai,
+    /// Remote registry key service. Fetches public keys from a configured
+    /// remote key distribution service (JACS_KEYS_BASE_URL).
+    Registry,
 }
 
 impl fmt::Display for KeyResolutionSource {
@@ -40,7 +40,7 @@ impl fmt::Display for KeyResolutionSource {
         match self {
             KeyResolutionSource::Local => write!(f, "local"),
             KeyResolutionSource::Dns => write!(f, "dns"),
-            KeyResolutionSource::Hai => write!(f, "hai"),
+            KeyResolutionSource::Registry => write!(f, "registry"),
         }
     }
 }
@@ -52,9 +52,11 @@ impl FromStr for KeyResolutionSource {
         match s.trim().to_lowercase().as_str() {
             "local" => Ok(KeyResolutionSource::Local),
             "dns" => Ok(KeyResolutionSource::Dns),
-            "hai" => Ok(KeyResolutionSource::Hai),
+            "registry" => Ok(KeyResolutionSource::Registry),
+            // Backward compat: "hai" maps to Registry
+            "hai" => Ok(KeyResolutionSource::Registry),
             other => Err(format!(
-                "Unknown key resolution source '{}'. Valid options are: local, dns, hai",
+                "Unknown key resolution source '{}'. Valid options are: local, dns, registry",
                 other
             )),
         }
@@ -74,27 +76,28 @@ impl FromStr for KeyResolutionSource {
 ///
 /// - `local` - Local filesystem (keys in `public_keys/` directory)
 /// - `dns` - DNS TXT record verification
-/// - `hai` - HAI key service (https://keys.hai.ai)
+/// - `registry` - Remote registry key service (JACS_KEYS_BASE_URL)
+/// - `hai` - Backward-compatible alias for `registry`
 ///
 /// # Examples
 ///
 /// ```bash
-/// # Default: try local first, then HAI
-/// JACS_KEY_RESOLUTION=local,hai
+/// # Default: try local first, then registry
+/// JACS_KEY_RESOLUTION=local,registry
 ///
 /// # Include DNS verification
-/// JACS_KEY_RESOLUTION=local,dns,hai
+/// JACS_KEY_RESOLUTION=local,dns,registry
 ///
 /// # Air-gapped mode (local only)
 /// JACS_KEY_RESOLUTION=local
 ///
-/// # HAI only (for testing or cloud-native deployments)
-/// JACS_KEY_RESOLUTION=hai
+/// # Registry only (for testing or cloud-native deployments)
+/// JACS_KEY_RESOLUTION=registry
 /// ```
 ///
 /// # Default
 ///
-/// If the environment variable is not set or empty, returns `[Local, Hai]`.
+/// If the environment variable is not set or empty, returns `[Local, Registry]`.
 ///
 /// # Behavior
 ///
@@ -102,7 +105,7 @@ impl FromStr for KeyResolutionSource {
 /// - Duplicate sources are preserved (first occurrence is used)
 /// - If parsing results in an empty list, falls back to the default
 pub fn get_key_resolution_order() -> Vec<KeyResolutionSource> {
-    let default_order = vec![KeyResolutionSource::Local, KeyResolutionSource::Hai];
+    let default_order = vec![KeyResolutionSource::Local, KeyResolutionSource::Registry];
 
     let order_str = match get_env_var("JACS_KEY_RESOLUTION", false) {
         Ok(Some(val)) if !val.is_empty() => val,
@@ -121,7 +124,7 @@ pub fn get_key_resolution_order() -> Vec<KeyResolutionSource> {
 
     if sources.is_empty() {
         warn!(
-            "JACS_KEY_RESOLUTION resulted in empty list after parsing '{}', using default (local,hai)",
+            "JACS_KEY_RESOLUTION resulted in empty list after parsing '{}', using default (local,registry)",
             order_str
         );
         return default_order;
@@ -165,7 +168,7 @@ Environment Variables Supported:
 - JACS_DNS_VALIDATE
 - JACS_DNS_STRICT
 - JACS_DNS_REQUIRED
-- JACS_KEY_RESOLUTION (comma-separated: local,dns,hai - controls key lookup order)
+- JACS_KEY_RESOLUTION (comma-separated: local,dns,registry - controls key lookup order)
 
 Usage:
 ```rust
@@ -961,7 +964,7 @@ const CONFIG_FIELD_HELP: &[(&str, &str)] = &[
         "jacs_agent_key_algorithm",
         "Expected one of: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025",
     ),
-    ("jacs_default_storage", "Expected one of: fs, aws, hai"),
+    ("jacs_default_storage", "Expected one of: fs, aws"),
     (
         "jacs_use_security",
         "Expected 'true' or 'false' as a string",
@@ -1061,7 +1064,7 @@ fn format_validation_error(error: &jsonschema::ValidationError, instance: &Value
         if field_name.contains("jacs_agent_key_algorithm") {
             msg.push_str(". Valid algorithms: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025");
         } else if field_name.contains("jacs_default_storage") {
-            msg.push_str(". Valid storage options: fs, aws, hai");
+            msg.push_str(". Valid storage options: fs, aws");
         }
     }
 
@@ -2069,16 +2072,25 @@ mod tests {
             KeyResolutionSource::Dns
         );
         assert_eq!(
+            KeyResolutionSource::from_str("registry").unwrap(),
+            KeyResolutionSource::Registry
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("REGISTRY").unwrap(),
+            KeyResolutionSource::Registry
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str(" registry ").unwrap(),
+            KeyResolutionSource::Registry
+        );
+        // Backward compat: "hai" maps to Registry
+        assert_eq!(
             KeyResolutionSource::from_str("hai").unwrap(),
-            KeyResolutionSource::Hai
+            KeyResolutionSource::Registry
         );
         assert_eq!(
             KeyResolutionSource::from_str("HAI").unwrap(),
-            KeyResolutionSource::Hai
-        );
-        assert_eq!(
-            KeyResolutionSource::from_str(" hai ").unwrap(),
-            KeyResolutionSource::Hai
+            KeyResolutionSource::Registry
         );
 
         // Invalid sources
@@ -2090,7 +2102,7 @@ mod tests {
     fn test_key_resolution_source_display() {
         assert_eq!(format!("{}", KeyResolutionSource::Local), "local");
         assert_eq!(format!("{}", KeyResolutionSource::Dns), "dns");
-        assert_eq!(format!("{}", KeyResolutionSource::Hai), "hai");
+        assert_eq!(format!("{}", KeyResolutionSource::Registry), "registry");
     }
 
     #[test]
@@ -2102,7 +2114,7 @@ mod tests {
         let order = get_key_resolution_order();
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
     }
 
@@ -2120,12 +2132,24 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_get_key_resolution_order_hai_only() {
+    fn test_get_key_resolution_order_registry_only() {
+        clear_jacs_env_vars();
+        set_env_var("JACS_KEY_RESOLUTION", "registry").unwrap();
+
+        let order = get_key_resolution_order();
+        assert_eq!(order, vec![KeyResolutionSource::Registry]);
+
+        let _ = clear_env_var("JACS_KEY_RESOLUTION");
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_key_resolution_order_hai_backward_compat() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "hai").unwrap();
 
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![KeyResolutionSource::Hai]);
+        assert_eq!(order, vec![KeyResolutionSource::Registry]);
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }
@@ -2134,7 +2158,7 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_with_dns() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", "local,dns,hai").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", "local,dns,registry").unwrap();
 
         let order = get_key_resolution_order();
         assert_eq!(
@@ -2142,7 +2166,7 @@ mod tests {
             vec![
                 KeyResolutionSource::Local,
                 KeyResolutionSource::Dns,
-                KeyResolutionSource::Hai,
+                KeyResolutionSource::Registry,
             ]
         );
 
@@ -2153,7 +2177,7 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_case_insensitive() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", "LOCAL,DNS,HAI").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", "LOCAL,DNS,REGISTRY").unwrap();
 
         let order = get_key_resolution_order();
         assert_eq!(
@@ -2161,7 +2185,7 @@ mod tests {
             vec![
                 KeyResolutionSource::Local,
                 KeyResolutionSource::Dns,
-                KeyResolutionSource::Hai,
+                KeyResolutionSource::Registry,
             ]
         );
 
@@ -2172,13 +2196,13 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_skips_invalid() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", "local,invalid,hai").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", "local,invalid,registry").unwrap();
 
         let order = get_key_resolution_order();
         // Should skip "invalid" but include valid sources
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2194,7 +2218,7 @@ mod tests {
         // Should fall back to default when all sources are invalid
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2210,7 +2234,7 @@ mod tests {
         // Should fall back to default for empty string
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2220,12 +2244,12 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_whitespace_handling() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", " local , hai ").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", " local , registry ").unwrap();
 
         let order = get_key_resolution_order();
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");

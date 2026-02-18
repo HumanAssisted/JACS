@@ -831,7 +831,7 @@ fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
         "defaultOutputModes": ["text/plain"],
         "capabilities": {
             "extensions": [{
-                "uri": "urn:hai.ai:jacs-provenance-v1",
+                "uri": "urn:jacs:provenance-v1",
                 "description": "JACS cryptographic provenance"
             }]
         },
@@ -912,7 +912,7 @@ fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
         "defaultOutputModes": ["text/plain"],
         "capabilities": {
             "extensions": [{
-                "uri": "urn:hai.ai:jacs-provenance-v1",
+                "uri": "urn:jacs:provenance-v1",
                 "description": "JACS"
             }]
         },

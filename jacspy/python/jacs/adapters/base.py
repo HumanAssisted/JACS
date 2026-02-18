@@ -204,7 +204,7 @@ class BaseJacsAdapter:
             - ``"open"``: Always allowed.
             - ``"verified"``: Allowed only if the card declares the
               JACS provenance extension
-              (``urn:hai.ai:jacs-provenance-v1``).
+              (``urn:jacs:provenance-v1``).
             - ``"strict"``: Allowed only if the agent is in the
               local trust store.
 

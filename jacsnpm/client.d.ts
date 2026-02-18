@@ -15,10 +15,9 @@
  * ```
  */
 import { JacsAgent, hashString, createConfig } from './index';
-import { generateVerifyLink, MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES } from './simple';
 import type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions } from './simple';
 export type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions, };
-export { hashString, createConfig, generateVerifyLink, MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES };
+export { hashString, createConfig };
 export interface AgreementOptions {
     question?: string;
     context?: string;
@@ -114,7 +113,6 @@ export declare class JacsClient {
     getTrustedAgent(agentId: string): string;
     audit(options?: AuditOptions): Promise<Record<string, unknown>>;
     auditSync(options?: AuditOptions): Record<string, unknown>;
-    generateVerifyLink(document: string, baseUrl?: string): string;
     /**
      * Get a configured JACSA2AIntegration instance bound to this client.
      *
