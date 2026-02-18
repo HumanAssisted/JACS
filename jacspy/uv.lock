@@ -1359,7 +1359,6 @@ all = [
     { name = "fastapi" },
     { name = "fastmcp" },
     { name = "httpx" },
-    { name = "httpx-sse" },
     { name = "langchain" },
     { name = "langgraph" },
     { name = "starlette" },
@@ -1375,10 +1374,6 @@ crewai = [
 fastapi = [
     { name = "fastapi" },
     { name = "starlette" },
-]
-hai = [
-    { name = "httpx" },
-    { name = "httpx-sse" },
 ]
 langchain = [
     { name = "langchain" },
@@ -1401,16 +1396,14 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.115.0,<1.0.0" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=0.1.0" },
     { name = "httpx", marker = "extra == 'a2a'", specifier = ">=0.24.0" },
-    { name = "httpx", marker = "extra == 'hai'", specifier = ">=0.24.0" },
-    { name = "httpx-sse", marker = "extra == 'hai'", specifier = ">=0.4.0" },
-    { name = "jacs", extras = ["mcp", "hai", "ws", "langchain", "langgraph", "crewai", "fastapi", "anthropic", "a2a", "a2a-server"], marker = "extra == 'all'" },
+    { name = "jacs", extras = ["mcp", "ws", "langchain", "langgraph", "crewai", "fastapi", "anthropic", "a2a", "a2a-server"], marker = "extra == 'all'" },
     { name = "langchain", marker = "extra == 'langchain'", specifier = ">=1.0.0,<2.0.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.37.0" },
     { name = "uvicorn", marker = "extra == 'a2a-server'", specifier = ">=0.30.0" },
     { name = "websockets", marker = "extra == 'ws'", specifier = ">=13.0" },
 ]
-provides-extras = ["mcp", "hai", "ws", "langchain", "langgraph", "crewai", "fastapi", "anthropic", "a2a", "a2a-server", "all"]
+provides-extras = ["mcp", "ws", "langchain", "langgraph", "crewai", "fastapi", "anthropic", "a2a", "a2a-server", "all"]
 
 [[package]]
 name = "jaraco-classes"

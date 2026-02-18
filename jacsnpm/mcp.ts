@@ -22,8 +22,51 @@ const isStdioTransport = (transport: any): boolean => {
          transport.constructor.name === 'StdioClientTransport';
 };
 
+const DEFAULT_KEYS_BASE_URL = 'https://hai.ai';
+
 function debugLog(proxyId: string, enabled: boolean, ...args: any[]): void {
   if (enabled) console.error(`[${proxyId}]`, ...args);
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, '');
+}
+
+function resolveKeysBaseUrl(override?: unknown): string {
+  if (typeof override === 'string' && override.trim()) {
+    return normalizeBaseUrl(override);
+  }
+  if (process.env.JACS_KEYS_BASE_URL && process.env.JACS_KEYS_BASE_URL.trim()) {
+    return normalizeBaseUrl(process.env.JACS_KEYS_BASE_URL);
+  }
+  if (process.env.HAI_KEYS_BASE_URL && process.env.HAI_KEYS_BASE_URL.trim()) {
+    return normalizeBaseUrl(process.env.HAI_KEYS_BASE_URL);
+  }
+  return DEFAULT_KEYS_BASE_URL;
+}
+
+function normalizePublicKeyHash(publicKeyHash: string): string {
+  const trimmed = publicKeyHash.trim();
+  if (!trimmed) {
+    throw new Error('public_key_hash cannot be empty');
+  }
+  return trimmed.startsWith('sha256:') ? trimmed : `sha256:${trimmed}`;
+}
+
+async function fetchJson(url: string): Promise<any> {
+  if (typeof fetch !== 'function') {
+    throw new Error('Global fetch() is unavailable in this runtime');
+  }
+  const response = await fetch(url, { headers: { accept: 'application/json' } });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} from key lookup endpoint: ${body || response.statusText}`);
+  }
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error(`Key lookup endpoint returned non-JSON response: ${url}`);
+  }
 }
 
 /**
@@ -347,6 +390,31 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
       inputSchema: { type: 'object', properties: {} },
     },
     {
+      name: 'fetch_agent_key',
+      description: 'Fetch an agent public key from the registry when it is not available locally.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          jacs_id: { type: 'string', description: 'Agent JACS ID (UUID) for /agents/{id}/keys/{version} lookups' },
+          version: { type: 'string', description: 'Key version (default: latest)' },
+          public_key_hash: { type: 'string', description: 'Optional sha256:<hex> hash for /keys/by-hash lookups' },
+          base_url: { type: 'string', description: 'Optional registry base URL (default: https://hai.ai)' },
+        },
+      },
+    },
+    {
+      name: 'jacs_register',
+      description: 'Register the local agent with a remote registry (reserved for compatibility).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          preview: { type: 'boolean', description: 'Validate registration payload without committing changes' },
+          base_url: { type: 'string', description: 'Optional registry base URL' },
+          api_key: { type: 'string', description: 'Optional API key (if required by registry)' },
+        },
+      },
+    },
+    {
       name: 'jacs_setup_instructions',
       description: 'Get DNS and well-known setup instructions for a domain.',
       inputSchema: {
@@ -496,6 +564,45 @@ export async function handleJacsMcpToolCall(
         return text(JSON.stringify({
           agentId: client.agentId, name: client.name,
           strict: client.strict, diagnostics,
+        }));
+      }
+
+      case 'fetch_agent_key': {
+        const baseUrl = resolveKeysBaseUrl(args.base_url);
+        const byHash = typeof args.public_key_hash === 'string' ? args.public_key_hash.trim() : '';
+        let lookupUrl: string;
+
+        if (byHash) {
+          const normalizedHash = normalizePublicKeyHash(byHash);
+          lookupUrl = `${baseUrl}/jacs/v1/keys/by-hash/${encodeURIComponent(normalizedHash)}`;
+        } else {
+          const jacsId = typeof args.jacs_id === 'string' ? args.jacs_id.trim() : '';
+          if (!jacsId) {
+            throw new Error('fetch_agent_key requires jacs_id or public_key_hash');
+          }
+          const version =
+            typeof args.version === 'string' && args.version.trim()
+              ? args.version.trim()
+              : 'latest';
+          lookupUrl = `${baseUrl}/jacs/v1/agents/${encodeURIComponent(jacsId)}/keys/${encodeURIComponent(version)}`;
+        }
+
+        const lookup = await fetchJson(lookupUrl);
+        return text(JSON.stringify({
+          success: true,
+          ...lookup,
+        }));
+      }
+
+      case 'jacs_register': {
+        const dynamicRegister = (client as any).register;
+        if (typeof dynamicRegister === 'function') {
+          const result = await dynamicRegister.call(client, args);
+          return text(typeof result === 'string' ? result : JSON.stringify({ success: true, result }));
+        }
+        return text(JSON.stringify({
+          success: false,
+          error: 'jacs_register is not implemented in jacsnpm. Use the HAI SDK for registration workflows.',
         }));
       }
 

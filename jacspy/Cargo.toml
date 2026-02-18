@@ -13,10 +13,11 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 extension-module = ["pyo3/extension-module"]
+auto-initialize = ["pyo3/auto-initialize"]
 
 [dependencies]
 lazy_static = "1.5.0"
-pyo3 = { version = "0.24.2", features = ["abi3-py310", "auto-initialize"] }
+pyo3 = { version = "0.24.2", features = ["abi3-py310"] }
 jacs = { path = "../jacs" }
 jacs-binding-core = { path = "../binding-core" }
 tokio = { version = "1", features = ["rt-multi-thread"] }

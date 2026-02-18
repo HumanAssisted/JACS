@@ -566,6 +566,75 @@ describe('JACSTransportProxy', function () {
       expect(parsed).to.have.property('status', 'ok');
     });
 
+    (available ? it : it.skip)('fetch_agent_key should resolve uncached keys via default HAI endpoint', async () => {
+      const client = createMockJacsClient();
+      const originalFetch = globalThis.fetch;
+      const fetchStub = sinon.stub().resolves({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({
+          jacs_id: 'agent-123',
+          version: 'latest',
+          public_key: '-----BEGIN PUBLIC KEY-----...',
+        }),
+      });
+      globalThis.fetch = fetchStub;
+
+      try {
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client,
+          'fetch_agent_key',
+          { jacs_id: 'agent-123' },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(fetchStub.calledOnce).to.be.true;
+        expect(fetchStub.firstCall.args[0]).to.equal('https://hai.ai/jacs/v1/agents/agent-123/keys/latest');
+        expect(parsed).to.have.property('success', true);
+        expect(parsed).to.have.property('jacs_id', 'agent-123');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    (available ? it : it.skip)('fetch_agent_key should use by-hash endpoint and sha256 normalization', async () => {
+      const client = createMockJacsClient();
+      const originalFetch = globalThis.fetch;
+      const oldBaseUrl = process.env.JACS_KEYS_BASE_URL;
+      process.env.JACS_KEYS_BASE_URL = 'https://hai.ai/';
+
+      const fetchStub = sinon.stub().resolves({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({
+          jacs_id: 'agent-xyz',
+          public_key_hash: 'sha256:abcd',
+        }),
+      });
+      globalThis.fetch = fetchStub;
+
+      try {
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client,
+          'fetch_agent_key',
+          { public_key_hash: 'abcd' },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(fetchStub.calledOnce).to.be.true;
+        expect(fetchStub.firstCall.args[0]).to.equal('https://hai.ai/jacs/v1/keys/by-hash/sha256%3Aabcd');
+        expect(parsed).to.have.property('success', true);
+        expect(parsed).to.have.property('public_key_hash', 'sha256:abcd');
+      } finally {
+        if (oldBaseUrl === undefined) {
+          delete process.env.JACS_KEYS_BASE_URL;
+        } else {
+          process.env.JACS_KEYS_BASE_URL = oldBaseUrl;
+        }
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     (available ? it : it.skip)('jacs_trust_agent should add to trust store', async () => {
       const client = createMockJacsClient();
       const result = await mcpModule.handleJacsMcpToolCall(
