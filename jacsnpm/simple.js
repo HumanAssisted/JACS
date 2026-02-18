@@ -214,6 +214,33 @@ function invalidDocumentIdResult(documentId) {
         ],
     };
 }
+function extractAttachmentsFromDocument(doc) {
+    return (doc.jacsFiles || []).map((f) => ({
+        filename: f.path || f.filename || '',
+        mimeType: f.mimetype || f.mimeType || 'application/octet-stream',
+        hash: f.sha256 || '',
+        embedded: f.embed || false,
+        content: (f.contents || f.content) ? Buffer.from(f.contents || f.content, 'base64') : undefined,
+    }));
+}
+function readStoredDocumentById(documentId) {
+    if (!agentInfo) {
+        return null;
+    }
+    try {
+        const configPath = path.resolve(agentInfo.configPath);
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory || './jacs_data');
+        const docPath = path.join(dataDir, 'documents', `${documentId}.json`);
+        if (!fs.existsSync(docPath)) {
+            return null;
+        }
+        return JSON.parse(fs.readFileSync(docPath, 'utf8'));
+    }
+    catch {
+        return null;
+    }
+}
 function extractAgentInfo(resolvedConfigPath) {
     const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
     const agentIdVersion = config.jacs_agent_id_and_version || '';
@@ -278,13 +305,7 @@ function verifyImpl(signedDocument, agent, isSync) {
         };
         return isSync ? result : Promise.resolve(result);
     }
-    const extractAttachments = () => (doc.jacsFiles || []).map((f) => ({
-        filename: f.path || '',
-        mimeType: f.mimetype || 'application/octet-stream',
-        hash: f.sha256 || '',
-        embedded: f.embed || false,
-        content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
-    }));
+    const extractAttachments = () => extractAttachmentsFromDocument(doc);
     const makeSuccess = () => ({
         valid: true,
         data: doc.content,
@@ -337,10 +358,14 @@ function ensurePassword() {
         for (let i = 4; i < 32; i++) {
             password += all[crypto.randomInt(all.length)];
         }
-        const keysDir = './jacs_keys';
-        fs.mkdirSync(keysDir, { recursive: true });
-        const pwPath = path.join(keysDir, '.jacs_password');
-        fs.writeFileSync(pwPath, password, { mode: 0o600 });
+        const persistPassword = process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
+            process.env.JACS_SAVE_PASSWORD_FILE === 'true';
+        if (persistPassword) {
+            const keysDir = './jacs_keys';
+            fs.mkdirSync(keysDir, { recursive: true });
+            const pwPath = path.join(keysDir, '.jacs_password');
+            fs.writeFileSync(pwPath, password, { mode: 0o600 });
+        }
         process.env.JACS_PRIVATE_KEY_PASSWORD = password;
     }
     return password;
@@ -586,7 +611,7 @@ function verifyStandalone(signedDocument, options) {
     return {
         valid: r.valid,
         signerId: r.signerId,
-        timestamp: '',
+        timestamp: r.timestamp || '',
         attachments: [],
         errors: [],
     };
@@ -601,7 +626,12 @@ async function verifyById(documentId) {
     }
     try {
         await agent.verifyDocumentById(documentId);
-        return makeVerificationSuccess();
+        const stored = readStoredDocumentById(documentId);
+        return {
+            ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
+            timestamp: stored?.jacsSignature?.date || '',
+            attachments: extractAttachmentsFromDocument(stored || {}),
+        };
     }
     catch (e) {
         return makeVerificationFailure(e, 'Verification failed');
@@ -617,7 +647,12 @@ function verifyByIdSync(documentId) {
     }
     try {
         agent.verifyDocumentByIdSync(documentId);
-        return makeVerificationSuccess();
+        const stored = readStoredDocumentById(documentId);
+        return {
+            ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
+            timestamp: stored?.jacsSignature?.date || '',
+            attachments: extractAttachmentsFromDocument(stored || {}),
+        };
     }
     catch (e) {
         return makeVerificationFailure(e, 'Verification failed');

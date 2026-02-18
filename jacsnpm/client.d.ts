@@ -80,6 +80,7 @@ export declare class JacsClient {
     get agentId(): string;
     get name(): string;
     get strict(): boolean;
+    private readStoredDocumentById;
     /**
      * Internal access to the native JacsAgent for A2A and other low-level integrations.
      * @internal

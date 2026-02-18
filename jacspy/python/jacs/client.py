@@ -65,6 +65,41 @@ def _resolve_strict(explicit: Optional[bool]) -> bool:
     return os.environ.get("JACS_STRICT_MODE", "").lower() in ("true", "1")
 
 
+def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
+    if os.path.isabs(candidate):
+        return candidate
+    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
+
+
+def _read_document_by_id(document_id: str, agent_info: Optional[AgentInfo]) -> Optional[dict]:
+    if agent_info is None or not agent_info.config_path:
+        return None
+    try:
+        config_path = os.path.abspath(agent_info.config_path)
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        data_dir = _resolve_config_relative_path(
+            config_path, config.get("jacs_data_directory", "./jacs_data")
+        )
+        doc_path = os.path.join(data_dir, "documents", f"{document_id}.json")
+        if not os.path.exists(doc_path):
+            return None
+        with open(doc_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
+    sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
+    return (
+        sig_info.get("agentId", sig_info.get("agentID", "")),
+        sig_info.get("publicKeyHash", ""),
+        sig_info.get("date", ""),
+    )
+
+
 def _parse_signed_document(json_str: str) -> SignedDocument:
     """Parse a raw JSON string returned by Rust into a SignedDocument."""
     try:
@@ -81,11 +116,11 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
     for f in data.get("jacsFiles", []):
         attachments.append(
             Attachment(
-                filename=f.get("filename", ""),
-                mime_type=f.get("mimeType", "application/octet-stream"),
+                filename=f.get("filename", f.get("path", "")),
+                mime_type=f.get("mimeType", f.get("mimetype", "application/octet-stream")),
                 content_hash=f.get("sha256", ""),
-                content=f.get("content"),
-                size_bytes=f.get("size", 0),
+                content=f.get("content", f.get("contents")),
+                size_bytes=f.get("size", f.get("sizeBytes", 0)),
             )
         )
 
@@ -171,12 +206,14 @@ class JacsClient:
                 + secrets.choice("!@#$%^&*()-_=+")
                 + "".join(secrets.choice(chars) for _ in range(28))
             )
-            keys_dir = "./jacs_keys"
-            os.makedirs(keys_dir, exist_ok=True)
-            pw_path = os.path.join(keys_dir, ".jacs_password")
-            with open(pw_path, "w") as f:
-                f.write(password)
-            os.chmod(pw_path, 0o600)
+            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
+            if persist_password:
+                keys_dir = "./jacs_keys"
+                os.makedirs(keys_dir, exist_ok=True)
+                pw_path = os.path.join(keys_dir, ".jacs_password")
+                with open(pw_path, "w", encoding="utf-8") as f:
+                    f.write(password)
+                os.chmod(pw_path, 0o600)
             os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
 
         algo = algorithm or "pq2025"
@@ -372,8 +409,8 @@ class JacsClient:
                 valid=is_valid,
                 signer_id=sig_info.get("agentId", sig_info.get("agentID", "")),
                 signer_public_key_hash=sig_info.get("publicKeyHash", ""),
-                content_hash_valid=True,
-                signature_valid=True,
+                content_hash_valid=is_valid,
+                signature_valid=is_valid,
                 timestamp=sig_info.get("date", ""),
             )
         except Exception as e:
@@ -406,11 +443,15 @@ class JacsClient:
             )
         try:
             is_valid = agent.verify_document_by_id(doc_id)
+            doc_data = _read_document_by_id(doc_id, self._agent_info)
+            signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
             return VerificationResult(
                 valid=is_valid,
-                signer_id=self._agent_info.agent_id if self._agent_info else "",
+                signer_id=signer_id,
+                signer_public_key_hash=signer_public_key_hash,
                 content_hash_valid=is_valid,
                 signature_valid=is_valid,
+                timestamp=timestamp,
             )
         except Exception as e:
             if self._strict:

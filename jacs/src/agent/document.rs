@@ -596,7 +596,6 @@ impl DocumentTraits for Agent {
     /// pass in modified doc
     /// the original document needs to be marked as obsolete
     /// but this means not a deletion, but a move of the file
-    /// TODO validate that the new document is owned by editor
     fn update_document(
         &mut self,
         document_key: &str,
@@ -608,6 +607,25 @@ impl DocumentTraits for Agent {
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let original_document = self.get_document(document_key)?;
         let value = original_document.value.clone();
+        let original_signer_id = value
+            .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
+            .and_then(|sig| sig.get("agentID"))
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| JacsError::DocumentMalformed {
+                field: "jacsSignature.agentID".to_string(),
+                reason: format!(
+                    "Cannot update '{}': original document is missing signer identity",
+                    document_key
+                ),
+            })?;
+        let editor_id = self.id.as_deref().ok_or(JacsError::AgentNotLoaded)?;
+        if editor_id != original_signer_id {
+            return Err(JacsError::DocumentError(format!(
+                "Document '{}' is owned by '{}' and cannot be updated by '{}'",
+                document_key, original_signer_id, editor_id
+            ))
+            .into());
+        }
         let jacs_level = new_document
             .get_str("jacsLevel")
             .unwrap_or(DEFAULT_JACS_DOC_LEVEL.to_string());

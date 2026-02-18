@@ -188,6 +188,32 @@ describe('JACS Express Middleware', function () {
       expect(next.calledOnce).to.be.true;
     });
 
+    (available ? it : it.skip)('should verify parsed JSON object bodies', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { from: 'parsed-body' },
+          signerId: 'agent-abc',
+          timestamp: '2025-06-01T00:00:00Z',
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = expressModule.jacsMiddleware({ client, verify: true });
+
+      const parsedBody = { jacsId: 'x', jacsSignature: {}, content: { ok: true } };
+      const req = mockReq({ method: 'POST', body: parsedBody });
+      const res = mockRes();
+      const next = mockNext();
+
+      await mw(req, res, next);
+
+      expect(client.verify.calledOnce).to.be.true;
+      expect(client.verify.firstCall.args[0]).to.equal(JSON.stringify(parsedBody));
+      expect(req.jacsPayload).to.deep.equal({ from: 'parsed-body' });
+      expect(next.calledOnce).to.be.true;
+    });
+
     (available ? it : it.skip)('should verify PUT requests too', async () => {
       const client = createMockClient();
       const mw = expressModule.jacsMiddleware({ client });
@@ -255,6 +281,32 @@ describe('JACS Express Middleware', function () {
       expect(res.statusCode).to.equal(401);
       expect(res._jsonBody).to.have.property('error', 'JACS verification failed');
       expect(res._jsonBody.details).to.include('Signature mismatch');
+      expect(next.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should return 401 for invalid parsed object body when optional is false', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: false,
+          signerId: '',
+          timestamp: '',
+          attachments: [],
+          errors: ['Signature mismatch'],
+        },
+      });
+      const mw = expressModule.jacsMiddleware({ client, optional: false });
+
+      const parsedBody = { bad: 'data' };
+      const req = mockReq({ method: 'POST', body: parsedBody });
+      const res = mockRes();
+      const next = mockNext();
+
+      await mw(req, res, next);
+
+      expect(client.verify.calledOnce).to.be.true;
+      expect(client.verify.firstCall.args[0]).to.equal(JSON.stringify(parsedBody));
+      expect(res.statusCode).to.equal(401);
+      expect(res._jsonBody).to.have.property('error', 'JACS verification failed');
       expect(next.called).to.be.false;
     });
 
@@ -627,18 +679,19 @@ describe('JACS Express Middleware', function () {
   // ---- 10. Non-string body on POST ----
 
   describe('non-string body', () => {
-    (available ? it : it.skip)('should call next when POST body is an object (not string)', async () => {
+    (available ? it : it.skip)('should verify parsed object bodies on POST', async () => {
       const client = createMockClient();
       const mw = expressModule.jacsMiddleware({ client, optional: false });
 
-      const req = mockReq({ method: 'POST', body: { parsed: true } });
+      const parsedBody = { parsed: true };
+      const req = mockReq({ method: 'POST', body: parsedBody });
       const res = mockRes();
       const next = mockNext();
 
       await mw(req, res, next);
 
-      // Body is not a string, so verify is not called but next is still called
-      expect(client.verify.called).to.be.false;
+      expect(client.verify.calledOnce).to.be.true;
+      expect(client.verify.firstCall.args[0]).to.equal(JSON.stringify(parsedBody));
       expect(next.calledOnce).to.be.true;
     });
 

@@ -218,6 +218,37 @@ function invalidDocumentIdResult(documentId: string): VerificationResult {
   };
 }
 
+function extractAttachmentsFromDocument(doc: any): Attachment[] {
+  return (doc.jacsFiles || []).map((f: any) => ({
+    filename: f.path || f.filename || '',
+    mimeType: f.mimetype || f.mimeType || 'application/octet-stream',
+    hash: f.sha256 || '',
+    embedded: f.embed || false,
+    content: (f.contents || f.content) ? Buffer.from(f.contents || f.content, 'base64') : undefined,
+  }));
+}
+
+function readStoredDocumentById(documentId: string): any | null {
+  if (!agentInfo) {
+    return null;
+  }
+  try {
+    const configPath = path.resolve(agentInfo.configPath);
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const dataDir = resolveConfigRelativePath(
+      configPath,
+      config.jacs_data_directory || './jacs_data',
+    );
+    const docPath = path.join(dataDir, 'documents', `${documentId}.json`);
+    if (!fs.existsSync(docPath)) {
+      return null;
+    }
+    return JSON.parse(fs.readFileSync(docPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function extractAgentInfo(resolvedConfigPath: string): AgentInfo {
   const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
   const agentIdVersion = config.jacs_agent_id_and_version || '';
@@ -291,13 +322,7 @@ function verifyImpl(signedDocument: string, agent: JacsAgent, isSync: boolean): 
     return isSync ? result : Promise.resolve(result);
   }
 
-  const extractAttachments = () => (doc.jacsFiles || []).map((f: any) => ({
-    filename: f.path || '',
-    mimeType: f.mimetype || 'application/octet-stream',
-    hash: f.sha256 || '',
-    embedded: f.embed || false,
-    content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
-  }));
+  const extractAttachments = () => extractAttachmentsFromDocument(doc);
 
   const makeSuccess = (): VerificationResult => ({
     valid: true,
@@ -370,10 +395,15 @@ function ensurePassword(): string {
       password += all[crypto.randomInt(all.length)];
     }
 
-    const keysDir = './jacs_keys';
-    fs.mkdirSync(keysDir, { recursive: true });
-    const pwPath = path.join(keysDir, '.jacs_password');
-    fs.writeFileSync(pwPath, password, { mode: 0o600 });
+    const persistPassword =
+      process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
+      process.env.JACS_SAVE_PASSWORD_FILE === 'true';
+    if (persistPassword) {
+      const keysDir = './jacs_keys';
+      fs.mkdirSync(keysDir, { recursive: true });
+      const pwPath = path.join(keysDir, '.jacs_password');
+      fs.writeFileSync(pwPath, password, { mode: 0o600 });
+    }
     process.env.JACS_PRIVATE_KEY_PASSWORD = password;
   }
   return password;
@@ -687,7 +717,7 @@ export function verifyStandalone(
   return {
     valid: r.valid,
     signerId: r.signerId,
-    timestamp: '',
+    timestamp: r.timestamp || '',
     attachments: [],
     errors: [],
   };
@@ -705,7 +735,12 @@ export async function verifyById(documentId: string): Promise<VerificationResult
 
   try {
     await agent.verifyDocumentById(documentId);
-    return makeVerificationSuccess();
+    const stored = readStoredDocumentById(documentId);
+    return {
+      ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
+      timestamp: stored?.jacsSignature?.date || '',
+      attachments: extractAttachmentsFromDocument(stored || {}),
+    };
   } catch (e) {
     return makeVerificationFailure(e, 'Verification failed');
   }
@@ -723,7 +758,12 @@ export function verifyByIdSync(documentId: string): VerificationResult {
 
   try {
     agent.verifyDocumentByIdSync(documentId);
-    return makeVerificationSuccess();
+    const stored = readStoredDocumentById(documentId);
+    return {
+      ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
+      timestamp: stored?.jacsSignature?.date || '',
+      attachments: extractAttachmentsFromDocument(stored || {}),
+    };
   } catch (e) {
     return makeVerificationFailure(e, 'Verification failed');
   }
@@ -991,4 +1031,3 @@ export function auditSync(options?: AuditOptions): Record<string, unknown> {
   const json = nativeAuditSync(options?.configPath ?? undefined, options?.recentN ?? undefined);
   return JSON.parse(json) as Record<string, unknown>;
 }
-

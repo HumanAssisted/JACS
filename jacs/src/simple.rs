@@ -2036,9 +2036,27 @@ impl SimpleAgent {
     /// Returns the agent's public key in PEM format.
     #[must_use = "public key data must be used"]
     pub fn get_public_key_pem(&self) -> Result<String, JacsError> {
-        // Read from the standard key file location
-        let key_path = "./jacs_keys/jacs.public.pem";
-        fs::read_to_string(key_path).map_err(|e| {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let (key_dir, key_file) = if let Some(config) = &agent.config {
+            (
+                config
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys"),
+                config
+                    .jacs_agent_public_key_filename()
+                    .as_deref()
+                    .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME),
+            )
+        } else {
+            ("./jacs_keys", DEFAULT_PUBLIC_KEY_FILENAME)
+        };
+        let key_path = Path::new(key_dir).join(key_file);
+        let key_path_string = key_path.to_string_lossy().to_string();
+
+        fs::read_to_string(&key_path).map_err(|e| {
             let reason = match e.kind() {
                 std::io::ErrorKind::NotFound => {
                     "file does not exist. Run agent creation to generate keys first.".to_string()
@@ -2049,7 +2067,7 @@ impl SimpleAgent {
                 _ => e.to_string(),
             };
             JacsError::FileReadFailed {
-                path: key_path.to_string(),
+                path: key_path_string,
                 reason,
             }
         })

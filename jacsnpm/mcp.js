@@ -528,7 +528,7 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 }
                 return text(JSON.stringify({
                     success: false,
-                    error: 'jacs_register is not implemented in jacsnpm. Use the HAI SDK for registration workflows.',
+                    error: 'jacs_register is not implemented in jacsnpm. Use the JACS SDK for registration workflows.',
                 }));
             }
             case 'jacs_setup_instructions': {

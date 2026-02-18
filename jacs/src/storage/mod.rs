@@ -626,11 +626,32 @@ impl StorageDocumentTraits for MultiStorage {
             .into());
         }
 
-        // For now, return the last one in the list
-        // TODO: In the future, implement proper version tree traversal
-        // by checking jacsPreviousVersion field
-        let latest_key = versions.last().unwrap();
-        self.get_document(latest_key)
+        // Select deterministically by latest `jacsVersionDate` (RFC3339), falling back to key.
+        let mut latest_doc: Option<JACSDocument> = None;
+        let mut latest_date = String::new();
+        let mut latest_key = String::new();
+
+        for key in versions {
+            let doc = self.get_document(&key)?;
+            let date = doc
+                .value
+                .get("jacsVersionDate")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            if latest_doc.is_none()
+                || date > latest_date
+                || (date == latest_date && key > latest_key)
+            {
+                latest_date = date;
+                latest_key = key;
+                latest_doc = Some(doc);
+            }
+        }
+
+        latest_doc.ok_or_else(|| {
+            JacsError::DocumentError(format!("No documents found with ID: {}", document_id)).into()
+        })
     }
 
     fn merge_documents(

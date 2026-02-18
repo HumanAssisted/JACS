@@ -146,6 +146,43 @@ def _get_agent() -> JacsAgent:
     return _global_agent
 
 
+def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
+    if os.path.isabs(candidate):
+        return candidate
+    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
+
+
+def _read_document_by_id(document_id: str) -> Optional[dict]:
+    """Best-effort read of a stored document for metadata extraction."""
+    if _agent_info is None or not _agent_info.config_path:
+        return None
+
+    try:
+        config_path = os.path.abspath(_agent_info.config_path)
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        data_dir = _resolve_config_relative_path(
+            config_path, config.get("jacs_data_directory", "./jacs_data")
+        )
+        doc_path = os.path.join(data_dir, "documents", f"{document_id}.json")
+        if not os.path.exists(doc_path):
+            return None
+        with open(doc_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
+    sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
+    return (
+        sig_info.get("agentId", sig_info.get("agentID", "")),
+        sig_info.get("publicKeyHash", ""),
+        sig_info.get("date", ""),
+    )
+
+
 def _parse_signed_document(json_str: str) -> SignedDocument:
     """Parse a JSON string into a SignedDocument."""
     try:
@@ -173,11 +210,11 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
         files_data = data.get("jacsFiles", [])
         for f in files_data:
             attachments.append(Attachment(
-                filename=f.get("filename", ""),
-                mime_type=f.get("mimeType", "application/octet-stream"),
+                filename=f.get("filename", f.get("path", "")),
+                mime_type=f.get("mimeType", f.get("mimetype", "application/octet-stream")),
                 content_hash=f.get("sha256", ""),
-                content=f.get("content"),
-                size_bytes=f.get("size", 0),
+                content=f.get("content", f.get("contents")),
+                size_bytes=f.get("size", f.get("sizeBytes", 0)),
             ))
 
         return SignedDocument(
@@ -537,8 +574,8 @@ def quickstart(algorithm=None, strict=None, config_path=None):
     If a config file already exists, loads the existing agent. Otherwise,
     creates a new agent with keys on disk and a minimal config file.
 
-    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated
-    and saved to ./jacs_keys/.jacs_password.
+    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated.
+    Set JACS_SAVE_PASSWORD_FILE=true to also persist it to ./jacs_keys/.jacs_password.
 
     Example:
         import jacs.simple as jacs
@@ -581,14 +618,15 @@ def quickstart(algorithm=None, strict=None, config_path=None):
                 + secrets.choice("!@#$%^&*()-_=+")
                 + ''.join(secrets.choice(chars) for _ in range(28))
             )
-            # Save password to file
-            keys_dir = "./jacs_keys"
-            os.makedirs(keys_dir, exist_ok=True)
-            pw_path = os.path.join(keys_dir, ".jacs_password")
-            with open(pw_path, "w") as f:
-                f.write(password)
-            os.chmod(pw_path, 0o600)
-            logger.info("quickstart: generated password saved to %s", pw_path)
+            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
+            if persist_password:
+                keys_dir = "./jacs_keys"
+                os.makedirs(keys_dir, exist_ok=True)
+                pw_path = os.path.join(keys_dir, ".jacs_password")
+                with open(pw_path, "w", encoding="utf-8") as f:
+                    f.write(password)
+                os.chmod(pw_path, 0o600)
+                logger.info("quickstart: generated password saved to %s", pw_path)
             os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
 
         algo = algorithm or "pq2025"
@@ -1136,8 +1174,8 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
             valid=is_valid,
             signer_id=signer_id,
             signer_public_key_hash=sig_info.get("publicKeyHash", ""),
-            content_hash_valid=True,
-            signature_valid=True,
+            content_hash_valid=is_valid,
+            signature_valid=is_valid,
             timestamp=sig_info.get("date", ""),
         )
 
@@ -1184,12 +1222,16 @@ def verify_by_id(document_id: str) -> VerificationResult:
 
     try:
         is_valid = agent.verify_document_by_id(document_id)
+        doc_data = _read_document_by_id(document_id)
+        signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
 
         return VerificationResult(
             valid=is_valid,
-            signer_id=_agent_info.agent_id if _agent_info else "",
+            signer_id=signer_id,
+            signer_public_key_hash=signer_public_key_hash,
             content_hash_valid=is_valid,
             signature_valid=is_valid,
+            timestamp=timestamp,
         )
     except Exception as e:
         logger.warning("verify_by_id failed: %s", e)
@@ -1250,29 +1292,27 @@ def get_public_key() -> str:
     if _agent_info is None or _global_agent is None:
         raise AgentNotLoadedError("No agent loaded")
 
-    # Try to read from default public key location
+    # Try loaded agent metadata first, then config-derived fallbacks.
     try:
-        # Read config to find key location
-        config_paths = [
-            "./jacs.config.json",
-            os.path.expanduser("~/.jacs/config.json"),
-        ]
+        key_candidates: List[str] = []
+        if _agent_info.public_key_path:
+            key_candidates.append(_agent_info.public_key_path)
+        if _agent_info.config_path and os.path.exists(_agent_info.config_path):
+            with open(_agent_info.config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            config_path = os.path.abspath(_agent_info.config_path)
+            key_dir = _resolve_config_relative_path(
+                config_path, config.get("jacs_key_directory", "./jacs_keys")
+            )
+            key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
+            key_candidates.append(os.path.join(key_dir, key_file))
 
-        for config_path in config_paths:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
+        for candidate in key_candidates:
+            if os.path.exists(candidate):
+                with open(candidate, "r", encoding="utf-8") as f:
+                    return f.read()
 
-                key_dir = config.get("jacs_key_directory", "./jacs_keys")
-                pub_key_file = config.get("jacs_agent_public_key_filename", "")
-
-                if pub_key_file:
-                    pub_key_path = os.path.join(key_dir, pub_key_file)
-                    if os.path.exists(pub_key_path):
-                        with open(pub_key_path, 'r') as f:
-                            return f.read()
-
-        raise JacsError("Could not find public key file")
+        raise JacsError(f"Could not find public key file in: {key_candidates}")
 
     except Exception as e:
         raise JacsError(f"Failed to read public key: {e}")

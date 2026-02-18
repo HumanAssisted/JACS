@@ -123,11 +123,25 @@ function jacsKoaMiddleware(options = {}) {
         // ----- Verify incoming body -----
         if (shouldVerify && BODY_METHODS.has(ctx.method)) {
             // koa-bodyparser puts parsed body on ctx.request.body
-            const rawBody = typeof ctx.request.body === 'string'
+            const verificationInput = ctx.request.body !== undefined
                 ? ctx.request.body
-                : typeof ctx.body === 'string' && ctx.method !== 'GET'
+                : typeof ctx.body !== 'undefined' && ctx.method !== 'GET'
                     ? ctx.body
-                    : null;
+                    : undefined;
+            const rawBody = typeof verificationInput === 'string'
+                ? verificationInput
+                : Buffer.isBuffer(verificationInput)
+                    ? verificationInput.toString('utf8')
+                    : verificationInput && typeof verificationInput === 'object'
+                        ? (() => {
+                            try {
+                                return JSON.stringify(verificationInput);
+                            }
+                            catch {
+                                return null;
+                            }
+                        })()
+                        : null;
             if (rawBody) {
                 try {
                     const result = await client.verify(rawBody);
@@ -158,6 +172,14 @@ function jacsKoaMiddleware(options = {}) {
                         return;
                     }
                 }
+            }
+            else if (!isOptional && verificationInput !== undefined && verificationInput !== null) {
+                ctx.status = 401;
+                ctx.body = {
+                    error: 'JACS verification failed',
+                    details: ['Request body could not be serialized for verification'],
+                };
+                return;
             }
         }
         await next();

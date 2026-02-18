@@ -129,6 +129,15 @@ function parseSignedResult(result) {
         timestamp: doc.jacsSignature?.date || '',
     };
 }
+function extractAttachmentsFromDocument(doc) {
+    return (doc.jacsFiles || []).map((f) => ({
+        filename: f.path || f.filename || '',
+        mimeType: f.mimetype || f.mimeType || 'application/octet-stream',
+        hash: f.sha256 || '',
+        embedded: f.embed || false,
+        content: (f.contents || f.content) ? Buffer.from(f.contents || f.content, 'base64') : undefined,
+    }));
+}
 function ensurePassword() {
     let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
     if (!password) {
@@ -146,10 +155,14 @@ function ensurePassword() {
         for (let i = 4; i < 32; i++) {
             password += all[crypto.randomInt(all.length)];
         }
-        const keysDir = './jacs_keys';
-        fs.mkdirSync(keysDir, { recursive: true });
-        const pwPath = path.join(keysDir, '.jacs_password');
-        fs.writeFileSync(pwPath, password, { mode: 0o600 });
+        const persistPassword = process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
+            process.env.JACS_SAVE_PASSWORD_FILE === 'true';
+        if (persistPassword) {
+            const keysDir = './jacs_keys';
+            fs.mkdirSync(keysDir, { recursive: true });
+            const pwPath = path.join(keysDir, '.jacs_password');
+            fs.writeFileSync(pwPath, password, { mode: 0o600 });
+        }
         process.env.JACS_PRIVATE_KEY_PASSWORD = password;
     }
     return password;
@@ -321,6 +334,24 @@ class JacsClient {
     get strict() {
         return this._strict;
     }
+    readStoredDocumentById(documentId) {
+        if (!this.info) {
+            return null;
+        }
+        try {
+            const configPath = path.resolve(this.info.configPath);
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory || './jacs_data');
+            const docPath = path.join(dataDir, 'documents', `${documentId}.json`);
+            if (!fs.existsSync(docPath)) {
+                return null;
+            }
+            return JSON.parse(fs.readFileSync(docPath, 'utf8'));
+        }
+        catch {
+            return null;
+        }
+    }
     /**
      * Internal access to the native JacsAgent for A2A and other low-level integrations.
      * @internal
@@ -364,11 +395,7 @@ class JacsClient {
         }
         try {
             await agent.verifyDocument(signedDocument);
-            const attachments = (doc.jacsFiles || []).map((f) => ({
-                filename: f.path || '', mimeType: f.mimetype || 'application/octet-stream',
-                hash: f.sha256 || '', embedded: f.embed || false,
-                content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
-            }));
+            const attachments = extractAttachmentsFromDocument(doc);
             return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
         }
         catch (e) {
@@ -392,11 +419,7 @@ class JacsClient {
         }
         try {
             agent.verifyDocumentSync(signedDocument);
-            const attachments = (doc.jacsFiles || []).map((f) => ({
-                filename: f.path || '', mimeType: f.mimetype || 'application/octet-stream',
-                hash: f.sha256 || '', embedded: f.embed || false,
-                content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
-            }));
+            const attachments = extractAttachmentsFromDocument(doc);
             return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
         }
         catch (e) {
@@ -436,7 +459,14 @@ class JacsClient {
         }
         try {
             await agent.verifyDocumentById(documentId);
-            return { valid: true, signerId: '', timestamp: '', attachments: [], errors: [] };
+            const stored = this.readStoredDocumentById(documentId);
+            return {
+                valid: true,
+                signerId: stored?.jacsSignature?.agentID || '',
+                timestamp: stored?.jacsSignature?.date || '',
+                attachments: extractAttachmentsFromDocument(stored || {}),
+                errors: [],
+            };
         }
         catch (e) {
             if (this._strict)
@@ -451,7 +481,14 @@ class JacsClient {
         }
         try {
             agent.verifyDocumentByIdSync(documentId);
-            return { valid: true, signerId: '', timestamp: '', attachments: [], errors: [] };
+            const stored = this.readStoredDocumentById(documentId);
+            return {
+                valid: true,
+                signerId: stored?.jacsSignature?.agentID || '',
+                timestamp: stored?.jacsSignature?.date || '',
+                attachments: extractAttachmentsFromDocument(stored || {}),
+                errors: [],
+            };
         }
         catch (e) {
             if (this._strict)
