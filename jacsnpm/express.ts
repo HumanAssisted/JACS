@@ -208,7 +208,20 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
 
     // ----- Verify incoming body -----
     if (shouldVerify && BODY_METHODS.has(req.method)) {
-      const rawBody = typeof req.body === 'string' ? req.body : null;
+      const rawBody =
+        typeof req.body === 'string'
+          ? req.body
+          : Buffer.isBuffer(req.body)
+            ? req.body.toString('utf8')
+            : req.body && typeof req.body === 'object'
+              ? (() => {
+                  try {
+                    return JSON.stringify(req.body);
+                  } catch {
+                    return null;
+                  }
+                })()
+              : null;
 
       if (rawBody) {
         try {
@@ -236,9 +249,12 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
             return;
           }
         }
-      } else if (!isOptional && req.body !== undefined) {
-        // Body exists but is not a string — cannot verify.
-        // Only reject if body is present; missing body on POST may be handled by route.
+      } else if (!isOptional && req.body !== undefined && req.body !== null) {
+        res.status(401).json({
+          error: 'JACS verification failed',
+          details: ['Request body could not be serialized for verification'],
+        });
+        return;
       }
     }
 
