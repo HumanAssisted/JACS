@@ -55,6 +55,15 @@
 - **Example config**: `jacs.config.example.json` no longer contains `jacs_private_key_password`; use `JACS_PRIVATE_KEY_PASSWORD` environment variable only.
 - **Password redaction in diagnostics**: `check_env_vars()` now prints `REDACTED` instead of the actual `JACS_PRIVATE_KEY_PASSWORD` value, consistent with `Config::Display`.
 
+### MCP State Access Management
+
+- **MCP state verify/load/update now JACS-document-first**: `jacs_verify_state`, `jacs_load_state`, and `jacs_update_state` now route through JACS document IDs (`jacs_id`, `uuid:version`) and JACS storage/document APIs rather than MCP-level direct filesystem reads/writes.
+- **Path-based state access disabled at MCP layer**: File-path-only calls for verify/load/update now return `FILESYSTEM_ACCESS_DISABLED` in MCP handlers, reducing exposed filesystem attack surface while preserving JACS-internal filesystem behavior.
+- **State lifecycle now persisted for MCP follow-up ops**: `jacs_sign_state` and `jacs_adopt_state` now persist signed state documents in JACS storage (instead of no-save flow) and default to embedded content for MCP document-centric lifecycle operations.
+- **binding-core support added**: New `AgentWrapper::get_document_by_id()` API loads documents by `jacs_id` via agent/storage abstractions for MCP and wrapper reuse.
+- **MCP state schema/docs updated**: `UpdateStateParams` now includes `jacs_id`; README/state tool docs updated to describe `jacs_id`-centric usage and file-path deprecation for verify/load/update.
+- **Coverage added**: MCP tests now assert rejection of file-path-only verify/load/update calls and validate new `jacs_id` update parameter schema.
+
 ### Documentation
 
 - **SECURITY.md**: Added short "Security model" subsection (password via env only, keys encrypted at rest, path validation, no secrets in config).
