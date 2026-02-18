@@ -169,7 +169,7 @@ When verifying foreign-agent A2A artifacts, JACS resolves keys using `JACS_KEY_R
 
 - `local`: trusted local key cache
 - `dns`: identity validation only (does not return key bytes)
-- `hai`: remote key retrieval from HAI key service
+- `registry` (or legacy alias `hai`): remote key retrieval from HAI registry endpoints
 
 If a key is found, JACS performs full signature verification and returns a verified status.
 If no key is found, verification is explicitly marked unverified (not silently accepted).
@@ -180,8 +180,8 @@ Use environment variables for deploy-time behavior:
 
 ```bash
 export JACS_PRIVATE_KEY_PASSWORD="your-strong-password"
-export JACS_KEY_RESOLUTION="local,hai"
-export HAI_KEYS_BASE_URL="https://keys.hai.ai"
+export JACS_KEY_RESOLUTION="local,registry"
+export JACS_KEYS_BASE_URL="https://hai.ai"
 ```
 
 For offline/air-gapped operation:

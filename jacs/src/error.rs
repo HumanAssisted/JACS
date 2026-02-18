@@ -196,7 +196,7 @@ pub enum JacsError {
     AgentNotTrusted { agent_id: String },
 
     // === Registration Errors ===
-    /// Registration with a registry (e.g., HAI.ai) failed.
+    /// Registration with a remote registry failed.
     RegistrationFailed { reason: String },
 
     // === Storage Errors ===

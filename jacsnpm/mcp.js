@@ -466,7 +466,7 @@ async function handleJacsMcpToolCall(client, toolName, args) {
  * Register all JACS tools on an MCP Server instance.
  *
  * Call this once during server setup to add JACS signing, verification,
- * agreements, trust, audit, and HAI integration tools.
+ * agreements, trust, audit, and registry integration tools.
  *
  * @example
  * ```typescript

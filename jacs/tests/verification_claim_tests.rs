@@ -4,13 +4,16 @@
 //! verification levels that determine security requirements:
 //! - `unverified` (default): Relaxed settings allowed
 //! - `verified`: Requires domain, strict DNS, strict TLS
-//! - `verified-hai.ai`: Above + HAI.ai registration
+//! - `verified-registry`: Above + registry verification
+//! - `verified-hai.ai`: Legacy alias for `verified-registry`
 //!
 //! The principle is: "If you claim it, you must prove it."
 
 use jacs::dns::bootstrap as dns;
 use jacs::error::JacsError;
+use jacs::schema::Schema;
 use jacs::schema::should_accept_invalid_certs_for_claim;
+use serde_json::json;
 
 // =============================================================================
 // Helper functions
@@ -18,6 +21,15 @@ use jacs::schema::should_accept_invalid_certs_for_claim;
 
 fn sample_pubkey() -> Vec<u8> {
     b"verification-claim-test-public-key".to_vec()
+}
+
+fn fixture_agent_with_claim(claim: &str) -> serde_json::Value {
+    let mut agent: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/raw/modified-agent-for-updating.json"
+    ))
+        .expect("fixture should parse");
+    agent["jacsVerificationClaim"] = json!(claim);
+    agent
 }
 
 // =============================================================================
@@ -136,7 +148,7 @@ fn test_update_cannot_downgrade_claim() {
     // Test the claim_level ordering logic
     fn claim_level(claim: &str) -> u8 {
         match claim {
-            "verified-hai.ai" => 2,
+            "verified-registry" | "verified-hai.ai" => 2,
             "verified" => 1,
             _ => 0, // "unverified" or missing
         }
@@ -144,8 +156,13 @@ fn test_update_cannot_downgrade_claim() {
 
     // Verify the hierarchy
     assert!(
-        claim_level("verified-hai.ai") > claim_level("verified"),
-        "verified-hai.ai should be higher than verified"
+        claim_level("verified-registry") > claim_level("verified"),
+        "verified-registry should be higher than verified"
+    );
+    assert_eq!(
+        claim_level("verified-registry"),
+        claim_level("verified-hai.ai"),
+        "legacy alias should map to the same level"
     );
     assert!(
         claim_level("verified") > claim_level("unverified"),
@@ -167,11 +184,11 @@ fn test_update_cannot_downgrade_claim() {
 
     // Test upgrade detection (allowed)
     let original2 = "verified";
-    let new_claim2 = "verified-hai.ai";
+    let new_claim2 = "verified-registry";
     let is_upgrade = claim_level(new_claim2) > claim_level(original2);
     assert!(
         is_upgrade,
-        "verified -> verified-hai.ai should be detected as upgrade"
+        "verified -> verified-registry should be detected as upgrade"
     );
 
     // Test same level (allowed)
@@ -206,13 +223,18 @@ fn test_downgrade_error_is_actionable() {
 // =============================================================================
 
 /// Test that verified agents enforce strict TLS.
-/// Agents with "verified" or "verified-hai.ai" claims should never accept invalid certs.
+/// Agents with "verified", "verified-registry", or legacy "verified-hai.ai"
+/// claims should never accept invalid certs.
 #[test]
 fn test_verified_enforces_strict_tls() {
     // Test the claim-aware TLS function
     assert!(
         !should_accept_invalid_certs_for_claim(Some("verified")),
         "verified claim should never accept invalid certs"
+    );
+    assert!(
+        !should_accept_invalid_certs_for_claim(Some("verified-registry")),
+        "verified-registry claim should never accept invalid certs"
     );
     assert!(
         !should_accept_invalid_certs_for_claim(Some("verified-hai.ai")),
@@ -296,7 +318,7 @@ fn test_hai_verification_error_is_clear() {
 fn test_claim_hierarchy() {
     fn claim_level(claim: &str) -> u8 {
         match claim {
-            "verified-hai.ai" => 2,
+            "verified-registry" | "verified-hai.ai" => 2,
             "verified" => 1,
             _ => 0,
         }
@@ -306,6 +328,7 @@ fn test_claim_hierarchy() {
     assert_eq!(claim_level("unverified"), 0);
     assert_eq!(claim_level(""), 0);
     assert_eq!(claim_level("verified"), 1);
+    assert_eq!(claim_level("verified-registry"), 2);
     assert_eq!(claim_level("verified-hai.ai"), 2);
 
     // Unknown claims should be treated as unverified
@@ -318,7 +341,7 @@ fn test_claim_hierarchy() {
 fn test_allowed_claim_transitions() {
     fn claim_level(claim: &str) -> u8 {
         match claim {
-            "verified-hai.ai" => 2,
+            "verified-registry" | "verified-hai.ai" => 2,
             "verified" => 1,
             _ => 0,
         }
@@ -331,13 +354,47 @@ fn test_allowed_claim_transitions() {
     // Allowed transitions
     assert!(is_allowed_transition("unverified", "unverified"));
     assert!(is_allowed_transition("unverified", "verified"));
+    assert!(is_allowed_transition("unverified", "verified-registry"));
     assert!(is_allowed_transition("unverified", "verified-hai.ai"));
     assert!(is_allowed_transition("verified", "verified"));
+    assert!(is_allowed_transition("verified", "verified-registry"));
     assert!(is_allowed_transition("verified", "verified-hai.ai"));
+    assert!(is_allowed_transition("verified-registry", "verified-registry"));
+    assert!(is_allowed_transition("verified-registry", "verified-hai.ai"));
     assert!(is_allowed_transition("verified-hai.ai", "verified-hai.ai"));
 
     // Disallowed transitions (downgrades)
     assert!(!is_allowed_transition("verified", "unverified"));
+    assert!(!is_allowed_transition("verified-registry", "verified"));
+    assert!(!is_allowed_transition("verified-registry", "unverified"));
     assert!(!is_allowed_transition("verified-hai.ai", "verified"));
     assert!(!is_allowed_transition("verified-hai.ai", "unverified"));
+}
+
+/// Regression: ensure schema validation accepts the canonical registry claim.
+#[test]
+fn test_schema_accepts_verified_registry_claim() {
+    let schema = Schema::new("v1", "v1", "v1").expect("schema should initialize");
+    let agent = fixture_agent_with_claim("verified-registry");
+
+    let result = schema.validate_agent(&agent.to_string());
+    assert!(
+        result.is_ok(),
+        "verified-registry must validate as a supported claim: {:?}",
+        result.err()
+    );
+}
+
+/// Regression: legacy alias remains accepted for backwards compatibility.
+#[test]
+fn test_schema_accepts_legacy_verified_hai_claim_alias() {
+    let schema = Schema::new("v1", "v1", "v1").expect("schema should initialize");
+    let agent = fixture_agent_with_claim("verified-hai.ai");
+
+    let result = schema.validate_agent(&agent.to_string());
+    assert!(
+        result.is_ok(),
+        "verified-hai.ai alias must remain schema-valid for backwards compatibility: {:?}",
+        result.err()
+    );
 }

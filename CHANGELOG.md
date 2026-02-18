@@ -50,6 +50,9 @@
 - **Schema directory boundary hardening**: Filesystem schema loading now validates normalized/canonical path containment instead of string-prefix checks, preventing directory-prefix overlap bypasses (e.g. `allowed_evil` no longer matches `allowed`).
 - **Cross-platform path hardening**: `require_relative_path_safe()` now also rejects Windows drive-prefixed paths (e.g. `C:\...`, `D:/...`, `E:`) while still allowing UUID:UUID filenames used by JACS.
 - **HAI verification transport hardening**: `verify_hai_registration_sync()` now enforces HTTPS for `HAI_API_URL` (with `http://localhost` and `http://127.0.0.1` allowed for local testing), preventing insecure remote transport configuration.
+- **Verification-claim schema alignment**: Agent schema now accepts canonical `verified-registry` and keeps legacy `verified-hai.ai` alias for backward compatibility; added regression coverage to ensure both claims validate.
+- **DNS TXT version regression coverage**: DNS tests now assert canonical `v=jacs` emission while preserving legacy `v=hai.ai` parsing support with explicit regression tests.
+- **HAI key lookup endpoint default**: Remote key fetch now defaults to `https://hai.ai` (instead of `https://keys.hai.ai`) and normalizes trailing slashes before building `/jacs/v1/agents/{jacs_id}/keys/{version}` URLs; added regression tests for env precedence and URL construction.
 - **Trust-store canonical ID handling**: `trust_agent()` now accepts canonical agent documents that provide `jacsId` and `jacsVersion` as separate fields, canonicalizes to `UUID:VERSION_UUID`, and keeps strict path-safe validation.
 - **Config and keystore logging**: Removed config debug log in loaders; keystore key generation no longer prints to stderr by default (uses `tracing::debug`).
 - **Example config**: `jacs.config.example.json` no longer contains `jacs_private_key_password`; use `JACS_PRIVATE_KEY_PASSWORD` environment variable only.

@@ -9,7 +9,7 @@ JACS implements a comprehensive security model designed to ensure authenticity, 
 - **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, `.`, `..`, null bytes, and Windows drive-prefixed paths.
 - **Trust ID canonicalization**: Trust-store operations normalize canonical agent docs (`jacsId` + `jacsVersion`) into a safe `UUID:VERSION_UUID` identifier before filesystem use, preserving path-safety checks while supporting standard agent document layout.
 - **Filesystem schema policy**: Local schema loading is disabled by default and requires `JACS_ALLOW_FILESYSTEM_SCHEMAS=true`. When enabled, schema paths must remain within configured roots (`JACS_DATA_DIRECTORY` and/or `JACS_SCHEMA_DIRECTORY`) after normalized/canonical path checks.
-- **Network endpoint policy**: HAI registration verification requires HTTPS for `HAI_API_URL` (localhost HTTP is allowed for local testing only).
+- **Network endpoint policy**: Registry verification requires HTTPS for `JACS_REGISTRY_URL` (legacy alias: `HAI_API_URL`). Localhost HTTP is allowed for local testing only.
 - **No secrets in config**: Config files must not contain passwords or other secrets. The example config (`jacs.config.example.json`) does not include `jacs_private_key_password`.
 - **Dependency auditing**: Run `cargo audit` (Rust), `npm audit` (Node.js), or `pip audit` (Python) to check for known vulnerabilities.
 
@@ -238,7 +238,7 @@ When enabled, JACS will:
 | Default (dev) | Warn on invalid certs, allow connection | Local development, testing |
 | Strict (`JACS_STRICT_TLS=true`) | Reject invalid certs | Production, staging |
 
-For HAI registration verification endpoints, `HAI_API_URL` must use HTTPS. HTTP is only allowed for localhost test endpoints.
+For registry verification endpoints, `JACS_REGISTRY_URL` (legacy `HAI_API_URL`) must use HTTPS. HTTP is only allowed for localhost test endpoints.
 
 ## Signature Timestamp Validation
 
@@ -297,7 +297,8 @@ Agents can claim a verification level that determines security requirements. Thi
 |-------|---------------------|----------|
 | `unverified` (default) | None | Relaxed DNS/TLS settings allowed; self-asserted identity |
 | `verified` | Domain with DNSSEC | Strict TLS, strict DNS with DNSSEC validation required |
-| `verified-hai.ai` | Above + HAI.ai registration | Must be registered and verified with HAI.ai |
+| `verified-registry` | Above + registry verification | Must be registered and verified by a JACS registry |
+| `verified-hai.ai` (legacy alias) | Same as `verified-registry` | Backward-compatible alias |
 
 ### Setting a Verification Claim
 
@@ -314,18 +315,18 @@ Add the `jacsVerificationClaim` field to your agent definition:
 
 ### Claim Enforcement
 
-When an agent claims `verified` or `verified-hai.ai`:
+When an agent claims `verified`, `verified-registry`, or legacy `verified-hai.ai`:
 
 1. **Domain Required**: The `jacsAgentDomain` field must be set
 2. **Strict DNS**: DNS lookup uses DNSSEC validation (no insecure fallback)
 3. **DNS Required**: Public key fingerprint must match DNS TXT record
 4. **Strict TLS**: TLS certificate validation is mandatory (no self-signed certs)
 
-For `verified-hai.ai` claims, additional enforcement:
+For `verified-registry` (or legacy `verified-hai.ai`) claims, additional enforcement:
 
-5. **HAI.ai Registration**: Agent must be registered at [hai.ai](https://hai.ai)
+5. **Registry Registration**: Agent must be registered with the configured registry (for HAI-hosted registry, [hai.ai](https://hai.ai))
 6. **Public Key Match**: Registered public key must match the agent's key
-7. **Network Required**: Verification fails if HAI.ai API is unreachable
+7. **Network Required**: Verification fails if the registry API is unreachable
 
 ### Backward Compatibility
 
@@ -343,15 +344,15 @@ Agents claiming 'verified' must meet the required security conditions.
 ```
 
 ```
-Verification claim 'verified-hai.ai' failed: Agent 'uuid' is not registered with HAI.ai.
-Agents claiming 'verified-hai.ai' must be registered at https://hai.ai
+Verification claim 'verified-registry' failed: Agent 'uuid' is not registered with the configured registry.
+Agents claiming 'verified-registry' must be registered with a reachable registry endpoint.
 ```
 
 ### Security Considerations
 
 1. **No Downgrade**: Once an agent claims `verified`, it cannot be verified with relaxed settings
 2. **Claim Changes**: Changing the claim requires creating a new agent version
-3. **Network Dependency**: `verified-hai.ai` requires network access to HAI.ai
+3. **Network Dependency**: `verified-registry` requires network access to the registry endpoint
 4. **Audit Trail**: Verification claim and enforcement results are logged
 
 ## DNS-Based Verification
@@ -638,12 +639,12 @@ Enable observability for security auditing:
 }
 ```
 
-#### "Agent is not registered with HAI.ai"
+#### "Agent is not registered with the registry"
 
-**Problem**: You're using `verified-hai.ai` but the agent isn't registered.
+**Problem**: You're using `verified-registry` (or legacy `verified-hai.ai`) but the agent isn't registered.
 
 **Solution**:
-1. Register your agent at [hai.ai](https://hai.ai)
+1. Register your agent with your configured registry (for HAI-hosted registry, [hai.ai](https://hai.ai))
 2. Or use `verified` for DNS-only verification:
 
 ```json
@@ -694,11 +695,12 @@ jacs create --type ai --claim unverified
 |-------|----------------|--------------|
 | `unverified` | 0 (lowest) | None - self-asserted identity |
 | `verified` | 1 | Domain + DNS TXT record + DNSSEC |
-| `verified-hai.ai` | 2 (highest) | Above + HAI.ai registration |
+| `verified-registry` | 2 (highest) | Above + registry registration |
+| `verified-hai.ai` (legacy alias) | 2 (highest) | Alias of `verified-registry` |
 
 ### Upgrade vs Downgrade Rules
 
-- **Upgrades allowed**: `unverified` → `verified` → `verified-hai.ai`
+- **Upgrades allowed**: `unverified` → `verified` → `verified-registry` (legacy alias `verified-hai.ai` is same level)
 - **Downgrades blocked**: Cannot go from higher to lower claim
 - **Same level allowed**: Can update agent while keeping same claim
 

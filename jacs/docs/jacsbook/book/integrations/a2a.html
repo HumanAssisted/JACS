@@ -245,7 +245,7 @@ app = create_a2a_app(client, title="My A2A Agent")
 <p>JACS trust policies control how your agent handles foreign A2A signatures:</p>
 <div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody>
 <tr><td><code>open</code></td><td>Accept all agents without verification</td></tr>
-<tr><td><code>verified</code></td><td>Require the JACS provenance extension (<code>urn:hai.ai:jacs-provenance-v1</code>) in the agent card (<strong>default</strong>)</td></tr>
+<tr><td><code>verified</code></td><td>Require the JACS provenance extension (<code>urn:jacs:provenance-v1</code>) in the agent card (<strong>default</strong>)</td></tr>
 <tr><td><code>strict</code></td><td>Require the signer to be in the local trust store</td></tr>
 </tbody></table>
 </div>
@@ -315,15 +315,15 @@ card = discover_agent_sync("https://agent.example.com")
 <ul>
 <li><code>local</code>: trusted local key cache</li>
 <li><code>dns</code>: identity validation only (does not return key bytes)</li>
-<li><code>hai</code>: remote key retrieval from HAI key service</li>
+<li><code>registry</code> (or legacy alias <code>hai</code>): remote key retrieval from HAI registry endpoints</li>
 </ul>
 <p>If a key is found, JACS performs full signature verification and returns a verified status.
 If no key is found, verification is explicitly marked unverified (not silently accepted).</p>
 <h2 id="12-factor-runtime-configuration"><a class="header" href="#12-factor-runtime-configuration">12-Factor Runtime Configuration</a></h2>
 <p>Use environment variables for deploy-time behavior:</p>
 <pre><code class="language-bash">export JACS_PRIVATE_KEY_PASSWORD="your-strong-password"
-export JACS_KEY_RESOLUTION="local,hai"
-export HAI_KEYS_BASE_URL="https://keys.hai.ai"
+export JACS_KEY_RESOLUTION="local,registry"
+export JACS_KEYS_BASE_URL="https://hai.ai"
 </code></pre>
 <p>For offline/air-gapped operation:</p>
 <pre><code class="language-bash">export JACS_KEY_RESOLUTION="local"
@@ -341,7 +341,7 @@ a2a = client.get_a2a(url="http://localhost:8080")
 <pre><code class="language-python">a2a = JACSA2AIntegration.from_config("jacs.config.json")
 </code></pre>
 <h3 id="export-an-a2a-agent-card"><a class="header" href="#export-an-a2a-agent-card">Export an A2A Agent Card</a></h3>
-<p>Export your JACS agent as a v0.4.0 A2A Agent Card. JACS services are automatically converted to A2A skills, and a <code>urn:hai.ai:jacs-provenance-v1</code> extension is declared in capabilities.</p>
+<p>Export your JACS agent as a v0.4.0 A2A Agent Card. JACS services are automatically converted to A2A skills, and a <code>urn:jacs:provenance-v1</code> extension is declared in capabilities.</p>
 <pre><code class="language-python"># Via JacsClient (preferred)
 card = client.export_agent_card(url="agents.example.com")
 
@@ -406,7 +406,7 @@ chain = a2a_agent_b.create_chain_of_custody([step1, step2])
 <ol>
 <li>Fetch their <code>/.well-known/agent-card.json</code> (use <code>discover_agent()</code> from <code>jacs.a2a_discovery</code>)</li>
 <li>Assess trust with <code>a2a.assess_remote_agent(card_json)</code> or <code>discover_and_assess()</code></li>
-<li>Check the <code>urn:hai.ai:jacs-provenance-v1</code> extension for JACS compatibility</li>
+<li>Check the <code>urn:jacs:provenance-v1</code> extension for JACS compatibility</li>
 <li>Use <code>JACS_KEY_RESOLUTION</code> to resolve their public key and verify artifacts</li>
 <li>Optionally add them to your trust store with <code>a2a.trust_a2a_agent(card_json)</code></li>
 </ol>

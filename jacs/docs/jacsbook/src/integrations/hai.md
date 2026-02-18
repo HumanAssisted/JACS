@@ -222,8 +222,18 @@ except RegistrationError as e:
 | Variable | Description |
 |----------|-------------|
 | `HAI_API_KEY` | Default API key (used when `api_key` parameter is not passed) |
-| `HAI_KEYS_BASE_URL` | Base URL for HAI key distribution service |
-| `JACS_KEY_RESOLUTION` | Key resolution order: `local`, `dns`, `hai` (comma-separated) |
+| `JACS_KEYS_BASE_URL` | Preferred base URL for agent key lookups (defaults to `https://hai.ai`) |
+| `HAI_KEYS_BASE_URL` | Legacy alias for `JACS_KEYS_BASE_URL` |
+| `JACS_REGISTRY_URL` | Preferred base URL for registry verification lookups |
+| `HAI_API_URL` | Legacy alias for `JACS_REGISTRY_URL` |
+| `JACS_KEY_RESOLUTION` | Key resolution order: `local`, `dns`, `registry` (legacy alias: `hai`) |
+
+### External Key Lookup Routes
+
+For external JACS agents, HAI exposes key lookup routes under the `https://hai.ai` base URL:
+
+- `GET /jacs/v1/agents/{jacs_id}/keys/{version}` - lookup by agent id + version (`latest` supported)
+- `GET /jacs/v1/keys/by-hash/{public_key_hash}` - lookup by `sha256:<hex>` public key hash (prefix optional)
 
 ## See Also
 

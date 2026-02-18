@@ -813,7 +813,7 @@ fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
 /// # Environment Variables
 ///
 /// * `JACS_KEYS_BASE_URL` - Base URL for the key service. Falls back to
-///   `HAI_KEYS_BASE_URL` for backward compatibility. Defaults to `https://keys.hai.ai`.
+///   `HAI_KEYS_BASE_URL` for backward compatibility. Defaults to `https://hai.ai`.
 /// * `JACS_KEY_FETCH_RETRIES` - Number of retry attempts for network errors.
 ///   Falls back to `HAI_KEY_FETCH_RETRIES`. Defaults to 3.
 ///   Set to 0 to disable retries.
@@ -831,6 +831,25 @@ fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
 /// println!("Algorithm: {}", key_info.algorithm);
 /// println!("Hash: {}", key_info.hash);
 /// ```
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_keys_base_url() -> String {
+    // JACS_KEYS_BASE_URL is preferred; HAI_KEYS_BASE_URL kept for backward compat.
+    // Default uses the HAI root host where key lookup routes are served.
+    std::env::var("JACS_KEYS_BASE_URL")
+        .or_else(|_| std::env::var("HAI_KEYS_BASE_URL"))
+        .unwrap_or_else(|_| "https://hai.ai".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn build_remote_key_lookup_url(base_url: &str, agent_id: &str, version: &str) -> String {
+    format!(
+        "{}/jacs/v1/agents/{}/keys/{}",
+        base_url.trim_end_matches('/'),
+        agent_id,
+        version
+    )
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fetch_remote_public_key(
     agent_id: &str,
@@ -858,11 +877,8 @@ pub fn fetch_remote_public_key(
         .and_then(|v| v.parse().ok())
         .unwrap_or(3);
 
-    // Get base URL from environment or use default
-    // JACS_KEYS_BASE_URL is preferred; HAI_KEYS_BASE_URL kept for backward compat
-    let base_url = std::env::var("JACS_KEYS_BASE_URL")
-        .or_else(|_| std::env::var("HAI_KEYS_BASE_URL"))
-        .unwrap_or_else(|_| "https://keys.hai.ai".to_string());
+    // Get base URL from environment or use default.
+    let base_url = resolve_keys_base_url();
 
     // Enforce HTTPS for security (prevent MITM on key fetch)
     if !base_url.starts_with("https://")
@@ -876,7 +892,7 @@ pub fn fetch_remote_public_key(
         )));
     }
 
-    let url = format!("{}/jacs/v1/agents/{}/keys/{}", base_url, agent_id, version);
+    let url = build_remote_key_lookup_url(&base_url, agent_id, version);
 
     info!(
         "Fetching public key from remote service: agent_id={}, version={}",
@@ -1191,6 +1207,50 @@ CDEF
     #[cfg(not(target_arch = "wasm32"))]
     mod http_tests {
         use super::*;
+
+        #[test]
+        fn test_resolve_keys_base_url_defaults_to_hai_root() {
+            // SAFETY: This test is isolated and restores environment afterwards.
+            unsafe {
+                std::env::remove_var("JACS_KEYS_BASE_URL");
+                std::env::remove_var("HAI_KEYS_BASE_URL");
+            }
+
+            let resolved = resolve_keys_base_url();
+            assert_eq!(resolved, "https://hai.ai");
+        }
+
+        #[test]
+        fn test_resolve_keys_base_url_prefers_jacs_over_hai_alias() {
+            // SAFETY: This test is isolated and restores environment afterwards.
+            unsafe {
+                std::env::set_var("HAI_KEYS_BASE_URL", "https://legacy.example");
+                std::env::set_var("JACS_KEYS_BASE_URL", "https://preferred.example");
+            }
+
+            let resolved = resolve_keys_base_url();
+
+            // SAFETY: Restore env vars for other tests.
+            unsafe {
+                std::env::remove_var("JACS_KEYS_BASE_URL");
+                std::env::remove_var("HAI_KEYS_BASE_URL");
+            }
+
+            assert_eq!(resolved, "https://preferred.example");
+        }
+
+        #[test]
+        fn test_build_remote_key_lookup_url_trims_trailing_slash() {
+            let url = build_remote_key_lookup_url(
+                "https://hai.ai/",
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001",
+            );
+            assert_eq!(
+                url,
+                "https://hai.ai/jacs/v1/agents/550e8400-e29b-41d4-a716-446655440000/keys/550e8400-e29b-41d4-a716-446655440001"
+            );
+        }
 
         #[test]
         fn test_fetch_public_key_invalid_url() {

@@ -347,10 +347,19 @@ except RegistrationError as e:
 <h2 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>HAI_API_KEY</code></td><td>Default API key (used when <code>api_key</code> parameter is not passed)</td></tr>
-<tr><td><code>HAI_KEYS_BASE_URL</code></td><td>Base URL for HAI key distribution service</td></tr>
-<tr><td><code>JACS_KEY_RESOLUTION</code></td><td>Key resolution order: <code>local</code>, <code>dns</code>, <code>hai</code> (comma-separated)</td></tr>
+<tr><td><code>JACS_KEYS_BASE_URL</code></td><td>Preferred base URL for agent key lookups (defaults to <code>https://hai.ai</code>)</td></tr>
+<tr><td><code>HAI_KEYS_BASE_URL</code></td><td>Legacy alias for <code>JACS_KEYS_BASE_URL</code></td></tr>
+<tr><td><code>JACS_REGISTRY_URL</code></td><td>Preferred base URL for registry verification lookups</td></tr>
+<tr><td><code>HAI_API_URL</code></td><td>Legacy alias for <code>JACS_REGISTRY_URL</code></td></tr>
+<tr><td><code>JACS_KEY_RESOLUTION</code></td><td>Key resolution order: <code>local</code>, <code>dns</code>, <code>registry</code> (legacy alias: <code>hai</code>)</td></tr>
 </tbody></table>
 </div>
+<h3 id="external-key-lookup-routes"><a class="header" href="#external-key-lookup-routes">External Key Lookup Routes</a></h3>
+<p>For external JACS agents, HAI exposes key lookup routes under the <code>https://hai.ai</code> base URL:</p>
+<ul>
+<li><code>GET /jacs/v1/agents/{jacs_id}/keys/{version}</code> - lookup by agent id + version (<code>latest</code> supported)</li>
+<li><code>GET /jacs/v1/keys/by-hash/{public_key_hash}</code> - lookup by <code>sha256:&lt;hex&gt;</code> public key hash (prefix optional)</li>
+</ul>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="a2a.html">A2A Interoperability</a> -- agent discovery and artifact signing</li>

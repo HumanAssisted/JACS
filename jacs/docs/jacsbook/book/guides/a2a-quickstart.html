@@ -209,7 +209,7 @@
 <pre><code class="language-json">{
   "capabilities": {
     "extensions": [{
-      "uri": "urn:hai.ai:jacs-provenance-v1",
+      "uri": "urn:jacs:provenance-v1",
       "description": "JACS cryptographic document signing",
       "required": false
     }]
@@ -237,7 +237,7 @@ signed = client.sign_artifact(your_existing_artifact, "task")
 <p><strong>Q: <code>pip install jacs[a2a-server]</code> fails.</strong>
 A: The <code>a2a-server</code> extra requires Python 3.10+ and adds FastAPI + uvicorn. If you only need signing (not serving), use <code>pip install jacs</code> with no extras.</p>
 <p><strong>Q: <code>discover_and_assess</code> returns <code>jacs_registered: false</code>.</strong>
-A: The remote agent's Agent Card does not include the <code>urn:hai.ai:jacs-provenance-v1</code> extension. This is normal for non-JACS A2A agents. With the <code>open</code> trust policy, they are still allowed; with <code>verified</code>, they are rejected.</p>
+A: The remote agent's Agent Card does not include the <code>urn:jacs:provenance-v1</code> extension. This is normal for non-JACS A2A agents. With the <code>open</code> trust policy, they are still allowed; with <code>verified</code>, they are rejected.</p>
 <p><strong>Q: Verification returns <code>valid: true</code> but <code>trust.allowed: false</code>.</strong>
 A: The signature is cryptographically correct, but the trust policy rejected the signer. With <code>strict</code> policy, the signer must be in your local trust store. Add them with <code>a2a.trust_a2a_agent(card_json)</code>.</p>
 <p><strong>Q: <code>sign_artifact</code> raises "no agent loaded".</strong>

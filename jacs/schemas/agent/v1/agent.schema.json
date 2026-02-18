@@ -28,9 +28,9 @@
         },
         "jacsVerificationClaim": {
           "type": "string",
-          "enum": ["unverified", "verified", "verified-hai.ai"],
+          "enum": ["unverified", "verified", "verified-registry", "verified-hai.ai"],
           "default": "unverified",
-          "description": "Agent's claim about verification status. 'unverified' (default) allows relaxed DNS/TLS settings. 'verified' requires strict DNS with DNSSEC and domain must be set. 'verified-hai.ai' additionally requires HAI.ai registration.",
+          "description": "Agent's claim about verification status. 'unverified' (default) allows relaxed DNS/TLS settings. 'verified' requires strict DNS with DNSSEC and domain must be set. 'verified-registry' requires registry verification. 'verified-hai.ai' is a legacy alias for registry verification and remains supported for backward compatibility.",
           "hai": "meta"
         }
       },
