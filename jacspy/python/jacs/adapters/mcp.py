@@ -26,11 +26,67 @@ Requires: pip install jacs[mcp]   (fastmcp>=2.9)
 
 import json
 import logging
+import os
 from typing import Any, List, Optional, Union
 
 from .base import BaseJacsAdapter
 
 logger = logging.getLogger("jacs.adapters.mcp")
+
+
+def _is_untrust_allowed() -> bool:
+    """Check if untrusting agents is allowed via environment variable.
+
+    Mirrors the Rust MCP server's ``is_untrust_allowed()`` check.
+    Untrusting requires explicit opt-in to prevent prompt injection
+    attacks from removing trusted agents without user consent.
+    """
+    return os.environ.get("JACS_MCP_ALLOW_UNTRUST", "").lower() in ("true", "1")
+
+
+def _validate_mcp_file_path(file_path: str) -> None:
+    """Validate that a file path is safe for MCP tool use.
+
+    Rejects absolute paths, parent-directory traversal, null bytes,
+    and Windows drive-prefixed paths to prevent path traversal attacks
+    via prompt injection.
+
+    Raises:
+        ValueError: If the path is unsafe.
+    """
+    if not file_path:
+        raise ValueError("file_path cannot be empty")
+
+    # Reject null bytes
+    if "\0" in file_path:
+        raise ValueError(f"file_path contains null byte: {file_path!r}")
+
+    # Reject absolute paths (Unix and Windows)
+    if file_path.startswith("/") or file_path.startswith("\\"):
+        raise ValueError(
+            f"Absolute paths are not allowed in MCP tools: {file_path!r}"
+        )
+
+    # Reject Windows drive-prefixed paths (e.g., C:\foo, D:/bar)
+    if (
+        len(file_path) >= 2
+        and file_path[0].isalpha()
+        and file_path[1] == ":"
+    ):
+        raise ValueError(
+            f"Windows drive-prefixed paths are not allowed in MCP tools: {file_path!r}"
+        )
+
+    # Check each path segment for traversal
+    for segment in file_path.replace("\\", "/").split("/"):
+        if segment == "..":
+            raise ValueError(
+                f"Path traversal ('..') is not allowed in MCP tools: {file_path!r}"
+            )
+        if segment == ".":
+            raise ValueError(
+                f"Current-directory segment ('.') is not allowed in MCP tools: {file_path!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +208,7 @@ def _make_sign_file(mcp, cl):
     def jacs_sign_file(file_path: str, embed: bool = False) -> str:
         """Sign a file. Returns signed JACS document."""
         try:
+            _validate_mcp_file_path(file_path)
             signed = cl.sign_file(file_path, embed=embed)
             return signed.raw
         except Exception as e:
@@ -455,10 +512,21 @@ def register_trust_tools(
 
     @mcp_server.tool(
         name="jacs_untrust_agent",
-        description="Remove an agent from the local trust store by agent ID.",
+        description="Remove an agent from the local trust store by agent ID. Requires JACS_MCP_ALLOW_UNTRUST=true.",
     )
     def jacs_untrust_agent(agent_id: str) -> str:
         """Untrust an agent by ID."""
+        if not _is_untrust_allowed():
+            return json.dumps({
+                "success": False,
+                "agent_id": agent_id,
+                "error": "UNTRUST_DISABLED",
+                "message": (
+                    "Untrusting is disabled for security. "
+                    "To enable, set JACS_MCP_ALLOW_UNTRUST=true environment variable "
+                    "when starting the MCP server."
+                ),
+            })
         try:
             cl.untrust_agent(agent_id)
             return json.dumps({"success": True, "agent_id": agent_id})

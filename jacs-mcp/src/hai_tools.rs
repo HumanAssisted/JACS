@@ -18,6 +18,7 @@
 //!   unless `preview=false` is explicitly set.
 
 use jacs::schema::agentstate_crud;
+use jacs::validation::require_relative_path_safe;
 use jacs_binding_core::hai::HaiClient;
 use jacs_binding_core::{AgentWrapper, fetch_remote_key};
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -2449,6 +2450,20 @@ impl HaiMcpServer {
         description = "Sign an agent state file (memory/skill/plan/config/hook) to create a signed JACS document."
     )]
     pub async fn jacs_sign_state(&self, Parameters(params): Parameters<SignStateParams>) -> String {
+        // Security: Validate file_path to prevent path traversal attacks via prompt injection.
+        if let Err(e) = require_relative_path_safe(&params.file_path) {
+            let result = SignStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "Path validation failed".to_string(),
+                error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         // Always embed state content for MCP-originated state documents so follow-up
         // reads/updates can operate purely on JACS documents without direct file I/O.
         let embed = params.embed.unwrap_or(true);
@@ -2925,6 +2940,20 @@ impl HaiMcpServer {
         &self,
         Parameters(params): Parameters<AdoptStateParams>,
     ) -> String {
+        // Security: Validate file_path to prevent path traversal attacks via prompt injection.
+        if let Err(e) = require_relative_path_safe(&params.file_path) {
+            let result = AdoptStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "Path validation failed".to_string(),
+                error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         // Create the agent state document with file reference
         let mut doc = match agentstate_crud::create_agentstate_with_file(
             &params.state_type,
@@ -4862,5 +4891,105 @@ mod tests {
             names.contains(&"jacs_check_agreement"),
             "Missing jacs_check_agreement"
         );
+    }
+
+    // =========================================================================
+    // Security: Path traversal prevention in sign_state / adopt_state
+    // =========================================================================
+
+    #[test]
+    fn test_sign_state_rejects_absolute_path() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
+            file_path: "/etc/passwd".to_string(),
+            state_type: "memory".to_string(),
+            name: "traversal-test".to_string(),
+            description: None,
+            framework: None,
+            tags: None,
+            embed: None,
+        })));
+        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+        assert!(response.contains("\"success\": false"), "Expected success: false in: {}", response);
+    }
+
+    #[test]
+    fn test_sign_state_rejects_parent_traversal() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
+            file_path: "data/../../../etc/shadow".to_string(),
+            state_type: "hook".to_string(),
+            name: "traversal-test".to_string(),
+            description: None,
+            framework: None,
+            tags: None,
+            embed: Some(true),
+        })));
+        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+    }
+
+    #[test]
+    fn test_sign_state_rejects_windows_drive_path() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
+            file_path: "C:\\Windows\\System32\\drivers\\etc\\hosts".to_string(),
+            state_type: "config".to_string(),
+            name: "traversal-test".to_string(),
+            description: None,
+            framework: None,
+            tags: None,
+            embed: None,
+        })));
+        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+    }
+
+    #[test]
+    fn test_adopt_state_rejects_absolute_path() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_adopt_state(Parameters(AdoptStateParams {
+            file_path: "/etc/shadow".to_string(),
+            state_type: "skill".to_string(),
+            name: "traversal-test".to_string(),
+            source_url: None,
+            description: None,
+        })));
+        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+        assert!(response.contains("\"success\": false"), "Expected success: false in: {}", response);
+    }
+
+    #[test]
+    fn test_adopt_state_rejects_parent_traversal() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_adopt_state(Parameters(AdoptStateParams {
+            file_path: "skills/../../etc/passwd".to_string(),
+            state_type: "skill".to_string(),
+            name: "traversal-test".to_string(),
+            source_url: Some("https://example.com".to_string()),
+            description: None,
+        })));
+        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+    }
+
+    #[test]
+    fn test_sign_state_allows_safe_relative_path() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // This should NOT be blocked by path validation (it will fail later
+        // because the file doesn't exist, but NOT with PATH_TRAVERSAL_BLOCKED)
+        let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
+            file_path: "data/my-state.json".to_string(),
+            state_type: "memory".to_string(),
+            name: "safe-path-test".to_string(),
+            description: None,
+            framework: None,
+            tags: None,
+            embed: None,
+        })));
+        assert!(!response.contains("PATH_TRAVERSAL_BLOCKED"), "Safe relative path should not be blocked: {}", response);
     }
 }
