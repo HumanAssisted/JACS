@@ -40,7 +40,6 @@
       "enum": [
         "RSA-PSS",
         "ring-Ed25519",
-        "pq-dilithium",
         "pq2025"
       ]
     },

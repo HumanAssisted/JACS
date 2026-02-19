@@ -95,26 +95,6 @@ pub fn diagnostics() -> serde_json::Value {
 const DEFAULT_PRIVATE_KEY_FILENAME: &str = "jacs.private.pem.enc";
 const DEFAULT_PUBLIC_KEY_FILENAME: &str = "jacs.public.pem";
 
-/// Generate a cryptographically secure random password that meets JACS requirements.
-/// (8+ chars, uppercase, lowercase, digit, special character.)
-fn generate_secure_password() -> String {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    let charset: &[u8] =
-        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
-    // Guarantee complexity: start with one of each required class
-    let mut password = String::with_capacity(32);
-    password.push(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rng.random_range(0..26)] as char);
-    password.push(b"abcdefghijklmnopqrstuvwxyz"[rng.random_range(0..26)] as char);
-    password.push(b"0123456789"[rng.random_range(0..10)] as char);
-    password.push(b"!@#$%^&*()-_=+"[rng.random_range(0..14)] as char);
-    // Fill rest with random charset
-    for _ in 4..32 {
-        password.push(charset[rng.random_range(0..charset.len())] as char);
-    }
-    password
-}
-
 fn build_agent_document(
     agent_type: &str,
     name: &str,
@@ -1175,8 +1155,8 @@ impl SimpleAgent {
     /// loads the existing agent. Otherwise, creates a new persistent agent with keys
     /// on disk and a minimal config file.
     ///
-    /// If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure random password is
-    /// generated and written to `<key_directory>/.jacs_password` (mode 0600).
+    /// `JACS_PRIVATE_KEY_PASSWORD` must be set (or provided by caller wrappers).
+    /// Quickstart fails hard if no password is available.
     ///
     /// # Arguments
     ///
@@ -1273,39 +1253,17 @@ impl SimpleAgent {
             config
         );
 
-        // Ensure password is available
-        let password = match std::env::var("JACS_PRIVATE_KEY_PASSWORD") {
-            Ok(pw) if !pw.is_empty() => pw,
-            _ => {
-                // Auto-generate a secure password and save it
-                let generated = generate_secure_password();
-                let keys_dir = Path::new("./jacs_keys");
-                fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-                    path: keys_dir.to_string_lossy().to_string(),
-                    reason: e.to_string(),
-                })?;
-                let password_file = keys_dir.join(".jacs_password");
-                fs::write(&password_file, &generated).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to write password file: {}", e),
-                })?;
-                // Set restrictive permissions (Unix only)
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let perms = std::fs::Permissions::from_mode(0o600);
-                    let _ = std::fs::set_permissions(&password_file, perms);
-                }
-                info!(
-                    "quickstart: generated password saved to {}",
-                    password_file.display()
-                );
-                // Set env var for the current process so create() can use it
-                unsafe {
-                    std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &generated);
-                }
-                generated
-            }
-        };
+        // Fail hard if no password is available.
+        let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD")
+            .ok()
+            .filter(|pw| !pw.trim().is_empty())
+            .ok_or_else(|| {
+                JacsError::ConfigError(
+                    "Missing private key password. Set JACS_PRIVATE_KEY_PASSWORD \
+                    from your environment or secret manager before calling quickstart()."
+                        .to_string(),
+                )
+            })?;
 
         // Use create_with_params for full control
         let algo = match algorithm.unwrap_or("ed25519") {

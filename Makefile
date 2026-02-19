@@ -1,4 +1,4 @@
-.PHONY: build-jacs build-jacsbook test test-jacs test-jacs-cli test-jacs-observability test-jacspy \
+.PHONY: build-jacs build-jacsbook test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy \
         publish-jacs publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-all \
         retry-jacspy retry-jacsnpm \
@@ -44,6 +44,10 @@ build-jacsbook:
 
 test-jacs:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features cli -- --nocapture
+
+audit-jacs:
+	@command -v cargo-audit >/dev/null 2>&1 || (echo "cargo-audit is required. Install with: cargo install cargo-audit --locked --version 0.22.1"; exit 1)
+	cargo audit --ignore RUSTSEC-2023-0071
 
 test-jacs-cli:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features cli --test cli_tests -- --nocapture
@@ -236,6 +240,7 @@ help:
 	@echo "TEST:"
 	@echo "  make test            Run all tests (alias for test-jacs)"
 	@echo "  make test-jacs       Run Rust library tests"
+	@echo "  make audit-jacs      Run cargo-audit (required security gate)"
 	@echo "  make test-jacs-cli   Run CLI integration tests"
 	@echo "  make test-jacspy     Run Python binding tests"
 	@echo "  make test-jacsnpm    Run Node.js binding tests"

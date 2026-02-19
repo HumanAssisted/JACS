@@ -962,7 +962,7 @@ pub fn split_id(input: &str) -> Option<(&str, &str)> {
 const CONFIG_FIELD_HELP: &[(&str, &str)] = &[
     (
         "jacs_agent_key_algorithm",
-        "Expected one of: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025",
+        "Expected one of: RSA-PSS, ring-Ed25519, pq2025",
     ),
     ("jacs_default_storage", "Expected one of: fs, aws"),
     (
@@ -1062,7 +1062,7 @@ fn format_validation_error(error: &jsonschema::ValidationError, instance: &Value
     // Special handling for enum violations
     if error_str.contains("is not one of") {
         if field_name.contains("jacs_agent_key_algorithm") {
-            msg.push_str(". Valid algorithms: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025");
+            msg.push_str(". Valid algorithms: RSA-PSS, ring-Ed25519, pq2025");
         } else if field_name.contains("jacs_default_storage") {
             msg.push_str(". Valid storage options: fs, aws");
         }

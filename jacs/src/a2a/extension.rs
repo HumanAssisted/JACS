@@ -190,7 +190,7 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> 
             "verification": true,
             "verificationAlgorithms": supported_verification_algorithms(),
             "postQuantum": key_algorithm
-                .map(|alg| alg.contains("dilithium") || alg.contains("pq2025"))
+                .map(|alg| alg.contains("pq2025"))
                 .unwrap_or(false),
         },
         "schemas": {

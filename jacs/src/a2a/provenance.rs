@@ -4,8 +4,9 @@ use crate::a2a::{A2AArtifact, A2AMessage};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::agent::loaders::fetch_remote_public_key;
 use crate::agent::{
-    AGENT_SIGNATURE_FIELDNAME, Agent, JACS_IGNORE_FIELDS, boilerplate::BoilerPlate,
-    document::DocumentTraits, loaders::FileLoader,
+    AGENT_SIGNATURE_FIELDNAME, Agent, SignatureContentMode, boilerplate::BoilerPlate,
+    build_signature_content, document::DocumentTraits, extract_signature_fields,
+    loaders::FileLoader,
 };
 use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::crypt::{KeyManager, hash::hash_public_key};
@@ -49,52 +50,6 @@ impl VerificationStatus {
     pub fn is_invalid(&self) -> bool {
         matches!(self, VerificationStatus::Invalid { .. })
     }
-}
-
-fn signature_fields(wrapped_artifact: &Value, signature_info: &Value) -> Vec<String> {
-    if let Some(fields) = signature_info.get("fields").and_then(|v| v.as_array()) {
-        return fields
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect();
-    }
-
-    wrapped_artifact
-        .as_object()
-        .map(|obj| {
-            obj.keys()
-                .filter(|key| {
-                    *key != AGENT_SIGNATURE_FIELDNAME && !JACS_IGNORE_FIELDS.contains(&key.as_str())
-                })
-                .cloned()
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn build_signable_string(
-    wrapped_artifact: &Value,
-    fields: &[String],
-    signature_key_from: &str,
-) -> Result<String, String> {
-    let mut result = String::new();
-
-    for key in fields {
-        if let Some(value) = wrapped_artifact.get(key)
-            && let Some(str_value) = value.as_str()
-        {
-            if str_value == signature_key_from || JACS_IGNORE_FIELDS.contains(&str_value) {
-                return Err(format!(
-                    "Invalid signature field value '{}': reserved by JACS",
-                    str_value
-                ));
-            }
-            result.push_str(str_value);
-            result.push(' ');
-        }
-    }
-
-    Ok(result.trim().to_string())
 }
 
 fn resolve_foreign_public_key(
@@ -198,9 +153,14 @@ fn verify_with_resolved_key(
         ));
     }
 
-    let fields = signature_fields(wrapped_artifact, signature_info);
-    let signable_data = build_signable_string(wrapped_artifact, &fields, AGENT_SIGNATURE_FIELDNAME)
-        .map_err(|e| format!("Could not build signable payload: {}", e))?;
+    let signature_fields = extract_signature_fields(wrapped_artifact, AGENT_SIGNATURE_FIELDNAME);
+    let (signable_data, _) = build_signature_content(
+        wrapped_artifact,
+        signature_fields,
+        AGENT_SIGNATURE_FIELDNAME,
+        SignatureContentMode::CanonicalV2,
+    )
+    .map_err(|e| format!("Could not build signable payload: {}", e))?;
 
     let explicit_alg = if public_key_enc_type.is_empty() {
         signature_info

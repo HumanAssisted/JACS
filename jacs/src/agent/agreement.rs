@@ -5,8 +5,8 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::agent::loaders::FileLoader;
 use crate::agent::{
-    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME,
-    SHA256_FIELDNAME,
+    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME,
+    DOCUMENT_AGENT_SIGNATURE_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME, SHA256_FIELDNAME,
 };
 
 use crate::crypt::hash::hash_public_key;
@@ -41,11 +41,11 @@ pub struct AgreementOptions {
 }
 
 /// Returns the strength tier for a signing algorithm.
-/// "post-quantum" algorithms: pq-dilithium, pq-dilithium-alt, pq2025
+/// "post-quantum" algorithms: pq2025
 /// Everything else is "classical".
 pub fn algorithm_strength(algo: &str) -> &'static str {
     match algo {
-        "pq-dilithium" | "pq-dilithium-alt" | "pq2025" => "post-quantum",
+        "pq2025" => "post-quantum",
         _ => "classical",
     }
 }
@@ -175,6 +175,13 @@ impl Agreement for Agent {
             obj.remove(JACS_VERSION_FIELDNAME);
             obj.remove(JACS_VERSION_DATE_FIELDNAME)
         });
+        // update_document materializes jacsFiles as [] for documents without attachments.
+        // Normalize missing and empty attachment lists so agreement hashes are stable.
+        if new_obj.get("jacsFiles").is_none()
+            && let Some(obj) = new_obj.as_object_mut()
+        {
+            obj.insert("jacsFiles".to_string(), json!([]));
+        }
 
         let (values_as_string, fields) =
             Agent::get_values_as_string(&new_obj, None, agreement_fieldname)?;
@@ -537,20 +544,26 @@ impl Agreement for Agent {
             }
         }
 
-        // Only add the agent ID if it's not already in the agreement
-        let agent_complete_document = if !agent_already_in_agreement {
-            self.add_agents_to_agreement(
-                document_key,
-                std::slice::from_ref(&normalized_agent_id),
-                agreement_fieldname.clone(),
-            )?
-        } else {
-            // Get a fresh copy of the document instead of using the moved one
-            self.get_document(document_key)?
-        };
+        // Keep agent list normalized without requiring an ownership-changing update.
+        if !agent_already_in_agreement {
+            if let Some(jacs_agreement) = value.get_mut(&agreement_fieldname_key) {
+                if let Some(agent_ids) = jacs_agreement.get_mut("agentIDs") {
+                    if let Some(agent_ids_array) = agent_ids.as_array_mut() {
+                        agent_ids_array.push(json!(normalized_agent_id.clone()));
+                    } else {
+                        *agent_ids = json!([normalized_agent_id.clone()]);
+                    }
+                } else {
+                    jacs_agreement["agentIDs"] = json!([normalized_agent_id.clone()]);
+                }
+            } else {
+                value[agreement_fieldname_key.clone()] = json!({
+                    "agentIDs": [normalized_agent_id.clone()],
+                    "signatures": []
+                });
+            }
+        }
 
-        value = agent_complete_document.getvalue().clone();
-        let agent_complete_key = agent_complete_document.getkey();
         debug!(
             "agents_signature {}",
             serde_json::to_string_pretty(&agents_signature).expect("agents_signature print")
@@ -572,13 +585,23 @@ impl Agreement for Agent {
                 "signatures": [agents_signature]
             });
         }
-        // add to doc
-        let updated_document = self.update_document(
-            &agent_complete_key,
-            &serde_json::to_string(&value)?,
-            None,
-            None,
-        )?;
+
+        let pre_update_hash = value[SHA256_FIELDNAME].clone();
+
+        // Agreement signatures are collaborative: any listed signer may append a signature.
+        // We version and re-sign here instead of calling update_document(), which enforces
+        // single-owner edits for generic document updates.
+        let new_version = uuid::Uuid::new_v4().to_string();
+        let last_version = value[JACS_VERSION_FIELDNAME].clone();
+        value[JACS_PREVIOUS_VERSION_FIELDNAME] = last_version;
+        value[JACS_VERSION_FIELDNAME] = json!(new_version);
+        value[JACS_VERSION_DATE_FIELDNAME] = json!(crate::time_utils::now_rfc3339());
+        value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&value, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
+        let document_hash = self.hash_doc(&value)?;
+        value[SHA256_FIELDNAME] = json!(document_hash);
+
+        let updated_document = self.store_jacs_document(&value)?;
 
         let agreement_hash_value_after =
             self.agreement_hash(updated_document.value.clone(), &agreement_fieldname_key)?;
@@ -587,12 +610,12 @@ impl Agreement for Agent {
         if original_agreement_hash_value != Some(&agreement_hash_value_after) {
             return Err(JacsError::DocumentError(format!(
                 "aborting signature on agreement. field hashes don't match for document_key {} \n {} {}",
-                agent_complete_key, original_agreement_hash_value.expect("original_agreement_hash_value"), agreement_hash_value_after
+                document_key, original_agreement_hash_value.expect("original_agreement_hash_value"), agreement_hash_value_after
             ))
             .into());
         }
 
-        if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
+        if pre_update_hash == updated_document.value[SHA256_FIELDNAME] {
             return Err(JacsError::DocumentError(format!(
                 "document hashes should have changed {}",
                 document_key

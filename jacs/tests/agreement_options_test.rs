@@ -37,8 +37,6 @@ fn setup_agreement_doc(
 fn test_algorithm_strength_classification() {
     assert_eq!(algorithm_strength("ring-Ed25519"), "classical");
     assert_eq!(algorithm_strength("RSA-PSS"), "classical");
-    assert_eq!(algorithm_strength("pq-dilithium"), "post-quantum");
-    assert_eq!(algorithm_strength("pq-dilithium-alt"), "post-quantum");
     assert_eq!(algorithm_strength("pq2025"), "post-quantum");
     assert_eq!(algorithm_strength("unknown-algo"), "classical");
 }

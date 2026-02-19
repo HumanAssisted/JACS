@@ -1,12 +1,22 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
+use jacs::config::Config;
 use jacs::crypt::KeyManager;
-use std::env;
+use std::sync::{Mutex, OnceLock};
 mod utils;
-use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD_ALT, create_agent_v1, create_pq2025_test_agent};
+use utils::{PASSWORD_ENV_VAR, create_agent_v1, create_pq2025_test_agent, setup_pq2025_env};
+
+fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("test environment lock poisoned")
+}
 
 #[test]
 fn test_pq2025_keygen() {
+    let _env_guard = env_guard();
     let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
 
     let result = agent.generate_keys();
@@ -30,6 +40,7 @@ fn test_pq2025_keygen() {
 
 #[test]
 fn test_pq2025_sign_verify() {
+    let _env_guard = env_guard();
     let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
 
     agent.generate_keys().expect("Key generation failed");
@@ -53,6 +64,7 @@ fn test_pq2025_sign_verify() {
 
 #[test]
 fn test_pq2025_sign_verify_wrong_message() {
+    let _env_guard = env_guard();
     let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
 
     agent.generate_keys().expect("Key generation failed");
@@ -78,6 +90,7 @@ fn test_pq2025_sign_verify_wrong_message() {
 
 #[test]
 fn test_pq2025_kem_seal_open() {
+    let _env_guard = env_guard();
     use jacs::crypt::kem::{generate_kem_keys, open, seal};
 
     let result = generate_kem_keys();
@@ -114,6 +127,7 @@ fn test_pq2025_kem_seal_open() {
 
 #[test]
 fn test_pq2025_kem_wrong_key() {
+    let _env_guard = env_guard();
     use jacs::crypt::kem::{generate_kem_keys, open, seal};
 
     let (_sk1, pk1) = generate_kem_keys().expect("KEM keygen 1 failed");
@@ -134,6 +148,7 @@ fn test_pq2025_kem_wrong_key() {
 
 #[test]
 fn test_pq2025_kem_wrong_aad() {
+    let _env_guard = env_guard();
     use jacs::crypt::kem::{generate_kem_keys, open, seal};
 
     let (sk, pk) = generate_kem_keys().expect("KEM keygen failed");
@@ -149,64 +164,119 @@ fn test_pq2025_kem_wrong_aad() {
     assert!(result.is_err(), "Decryption should fail with wrong AAD");
 }
 
-// Interop test: verify old signatures still work
 #[test]
-fn test_legacy_pq_dilithium_still_works() {
-    use jacs::config::Config;
+fn test_supported_algorithms_exclude_legacy_dilithium() {
+    let _env_guard = env_guard();
+    let supported = jacs::crypt::supported_verification_algorithms();
+    let pq_supported = jacs::crypt::supported_pq_algorithms();
 
-    unsafe {
-        env::set_var("JACS_USE_SECURITY", "false");
-        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch/dilithium_data");
-        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/dilithium_keys");
-        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "dilithium_private.bin");
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "dilithium_public.bin");
-        env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium");
-        env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_ALT);
-    }
+    assert!(
+        supported.contains(&"pq2025"),
+        "Expected pq2025 in supported verification algorithms"
+    );
+    assert!(
+        !supported.contains(&"pq-dilithium"),
+        "Legacy pq-dilithium should not be supported"
+    );
+    assert_eq!(
+        pq_supported,
+        vec!["pq2025"],
+        "Expected only pq2025 in supported post-quantum algorithms"
+    );
+}
+
+#[test]
+fn test_pq_dilithium_key_generation_is_rejected() {
+    let _env_guard = env_guard();
+    setup_pq2025_env();
 
     let mut agent = create_agent_v1().expect("Agent schema should have instantiated");
-
-    // Override config with dilithium-specific env vars
     let config = Config::new(
         Some("false".to_string()),
         Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
         Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
         Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
         Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
-        Some("pq-dilithium".to_string()), // Explicit
+        Some("pq-dilithium".to_string()),
         Some(std::env::var(PASSWORD_ENV_VAR).unwrap_or_default()),
         None,
         Some("fs".to_string()),
     );
     agent.config = Some(config);
-    let gen_result = agent.generate_keys();
-    assert!(
-        gen_result.is_ok(),
-        "Legacy key generation failed: {:?}",
-        gen_result.err()
-    );
 
-    let data = "Backward compatibility test".to_string();
-    let sig_result = agent.sign_string(&data);
+    let err = agent
+        .generate_keys()
+        .expect_err("pq-dilithium key generation should be rejected");
+    let msg = err.to_string();
     assert!(
-        sig_result.is_ok(),
-        "Legacy signing failed: {:?}",
-        sig_result.err()
-    );
-
-    let sig = sig_result.unwrap();
-    let pk = agent.get_public_key().unwrap();
-    let verify_result = agent.verify_string(&data, &sig, pk, Some("pq-dilithium".to_string()));
-
-    assert!(
-        verify_result.is_ok(),
-        "Legacy verification failed: {:?}",
-        verify_result.err()
+        msg.contains("Unsupported key algorithm"),
+        "Unexpected error for rejected legacy algorithm: {}",
+        msg
     );
 }
 
 #[test]
+fn test_verify_rejects_legacy_dilithium_algorithm_hint() {
+    let _env_guard = env_guard();
+    let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
+    agent.generate_keys().expect("Key generation failed");
+
+    let data = "pq2025-only verification test".to_string();
+    let signature = agent.sign_string(&data).expect("Signing failed");
+    let public_key = agent.get_public_key().expect("public key should exist");
+
+    let result = agent.verify_string(&data, &signature, public_key, Some("pq-dilithium".into()));
+    assert!(
+        result.is_err(),
+        "Verification with legacy pq-dilithium algorithm hint should fail"
+    );
+}
+
+#[test]
+fn test_pq2025_key_generation_requires_password_env() {
+    let _env_guard = env_guard();
+    setup_pq2025_env();
+
+    let previous_password = std::env::var(PASSWORD_ENV_VAR).ok();
+    unsafe {
+        std::env::remove_var(PASSWORD_ENV_VAR);
+    }
+
+    let mut agent = create_agent_v1().expect("Agent schema should have instantiated");
+    let config = Config::new(
+        Some("false".to_string()),
+        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
+        Some("pq2025".to_string()),
+        None,
+        None,
+        Some("fs".to_string()),
+    );
+    agent.config = Some(config);
+
+    let err = agent
+        .generate_keys()
+        .expect_err("key generation should fail when password is missing");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(PASSWORD_ENV_VAR),
+        "Expected missing password error to mention {}. Got: {}",
+        PASSWORD_ENV_VAR,
+        msg
+    );
+
+    unsafe {
+        if let Some(password) = previous_password {
+            std::env::set_var(PASSWORD_ENV_VAR, password);
+        }
+    }
+}
+
+#[test]
 fn test_pq2025_with_agent_save_load() {
+    let _env_guard = env_guard();
     let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
 
     agent.generate_keys().expect("Key generation failed");

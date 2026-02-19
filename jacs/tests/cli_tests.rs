@@ -689,6 +689,7 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Sign it with quickstart
     let sign_output = Command::cargo_bin("jacs")?
         .current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
         .arg("--algorithm=ed25519")
         .arg("--sign")
@@ -709,6 +710,7 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Now verify with `jacs verify` — it picks up jacs.config.json from cwd
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
         .arg(signed_file.to_string_lossy().as_ref());
     cmd.assert()
@@ -733,6 +735,7 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
     // Sign
     let sign_output = Command::cargo_bin("jacs")?
         .current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
         .arg("--algorithm=ed25519")
         .arg("--sign")
@@ -748,6 +751,7 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
     // Verify with --json flag
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
         .arg(signed_file.to_string_lossy().as_ref())
         .arg("--json");
@@ -773,6 +777,7 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
     // Sign
     let sign_output = Command::cargo_bin("jacs")?
         .current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
         .arg("--algorithm=ed25519")
         .arg("--sign")
@@ -790,6 +795,7 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
     // Verify should fail (exit code 1)
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
         .arg(tampered_file.to_string_lossy().as_ref());
     cmd.assert().failure();

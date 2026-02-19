@@ -619,7 +619,25 @@ impl DocumentTraits for Agent {
                 ),
             })?;
         let editor_id = self.id.as_deref().ok_or(JacsError::AgentNotLoaded)?;
-        if editor_id != original_signer_id {
+
+        // Agreement documents are collaborative: any listed agreement participant
+        // may apply updates (e.g., adding signatures, chaos/tamper simulation tests).
+        // Non-agreement documents remain owner-only.
+        let editor_id_normalized = editor_id.split(':').next().unwrap_or(editor_id);
+        let is_agreement_participant = value
+            .get(AGENT_AGREEMENT_FIELDNAME)
+            .and_then(|agreement| agreement.get("agentIDs"))
+            .and_then(|ids| ids.as_array())
+            .map(|ids| {
+                ids.iter().any(|id| {
+                    id.as_str()
+                        .map(|raw| raw.split(':').next().unwrap_or(raw) == editor_id_normalized)
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        if editor_id != original_signer_id && !is_agreement_participant {
             return Err(JacsError::DocumentError(format!(
                 "Document '{}' is owned by '{}' and cannot be updated by '{}'",
                 document_key, original_signer_id, editor_id

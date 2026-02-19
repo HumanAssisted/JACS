@@ -36,10 +36,9 @@ jobs:
 
     - name: Install cargo-audit and run audit
       if: runner.os == 'Linux'
-      working-directory: jacs
       run: |
-        cargo install cargo-audit
-        cargo audit || true
+        cargo install cargo-audit --locked --version 0.22.1
+        cargo audit --ignore RUSTSEC-2023-0071
 
     - name: Run jacs tests
       working-directory: jacs

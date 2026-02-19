@@ -44,7 +44,7 @@ pub fn create_jwk_keys(
     a2a_algorithm: Option<&str>,
 ) -> Result<DualKeyPair, Box<dyn Error>> {
     // Default algorithms
-    let jacs_alg = jacs_algorithm.unwrap_or("dilithium");
+    let jacs_alg = jacs_algorithm.unwrap_or("pq2025");
     let a2a_alg = a2a_algorithm.unwrap_or("rsa");
 
     info!(
@@ -54,7 +54,7 @@ pub fn create_jwk_keys(
 
     // Generate keys directly in memory without file persistence
     let (jacs_private, jacs_public) = match jacs_alg {
-        "dilithium" | "pq-dilithium" => crate::crypt::pq::generate_keys()?,
+        "pq2025" => crate::crypt::pq2025::generate_keys()?,
         "rsa" => crate::crypt::rsawrapper::generate_keys()?,
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
         "ecdsa" | "es256" => {

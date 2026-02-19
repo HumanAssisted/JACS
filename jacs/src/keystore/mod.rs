@@ -2,7 +2,6 @@ use crate::error::JacsError;
 use std::error::Error;
 use std::fmt;
 use std::sync::Mutex;
-use tracing::warn;
 use zeroize::Zeroize;
 
 #[cfg(unix)]
@@ -47,7 +46,7 @@ pub enum KeyBackend {
 
 #[derive(Debug, Clone, Default)]
 pub struct KeySpec {
-    pub algorithm: String,      // "RSA-PSS", "ring-Ed25519", "pq-dilithium"
+    pub algorithm: String,      // "RSA-PSS", "ring-Ed25519", "pq2025"
     pub key_id: Option<String>, // Remote key identifier / ARN / URL
 }
 
@@ -69,7 +68,7 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
 use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
-use crate::storage::jenv::{get_env_var, get_required_env_var};
+use crate::storage::jenv::get_required_env_var;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tracing::debug;
 
@@ -84,16 +83,9 @@ impl KeyStore for FsEncryptedStore {
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
-            "pq-dilithium" => {
-                warn!(
-                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated and will be removed in a future release. \
-                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
-                );
-                CryptoSigningAlgorithm::PqDilithium
-            }
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => return Err(JacsError::CryptoError(format!(
-                "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'RSA-PSS', 'pq-dilithium', 'pq2025'. \
+                "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'RSA-PSS', 'pq2025'. \
                 Check your JACS_AGENT_KEY_ALGORITHM environment variable or config file.",
                 other
             )).into()),
@@ -101,9 +93,6 @@ impl KeyStore for FsEncryptedStore {
         let (priv_key, pub_key) = match algo {
             CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::generate_keys()?,
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                crypt::pq::generate_keys()?
-            }
             CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
         debug!(
@@ -125,35 +114,24 @@ impl KeyStore for FsEncryptedStore {
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
 
-        let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)?.unwrap_or_default();
-        let final_priv_path = if !password.is_empty() {
-            let enc = encrypt_private_key(&priv_key).map_err(|e| {
-                format!(
-                    "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
-                    e
-                )
-            })?;
-            let final_priv = if !priv_path.ends_with(".enc") {
-                format!("{}.enc", priv_path)
-            } else {
-                priv_path.clone()
-            };
-            storage.save_file(&final_priv, &enc).map_err(|e| {
-                format!(
-                    "Failed to save encrypted private key to '{}': {}. Check that the key directory '{}' exists and is writable.",
-                    final_priv, e, key_dir
-                )
-            })?;
-            final_priv
+        let _password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
+        let enc = encrypt_private_key(&priv_key).map_err(|e| {
+            format!(
+                "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
+                e
+            )
+        })?;
+        let final_priv_path = if !priv_path.ends_with(".enc") {
+            format!("{}.enc", priv_path)
         } else {
-            storage.save_file(&priv_path, &priv_key).map_err(|e| {
-                format!(
-                    "Failed to save private key to '{}': {}. Check that the key directory '{}' exists and is writable.",
-                    priv_path, e, key_dir
-                )
-            })?;
             priv_path.clone()
         };
+        storage.save_file(&final_priv_path, &enc).map_err(|e| {
+            format!(
+                "Failed to save encrypted private key to '{}': {}. Check that the key directory '{}' exists and is writable.",
+                final_priv_path, e, key_dir
+            )
+        })?;
         storage.save_file(&pub_path, &pub_key).map_err(|e| {
             format!(
                 "Failed to save public key to '{}': {}. Check that the key directory '{}' exists and is writable.",
@@ -181,11 +159,12 @@ impl KeyStore for FsEncryptedStore {
         let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let enc_path = format!("{}.enc", priv_path);
+        let _password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
 
         let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
             storage.get_file(&enc_path, None).map_err(|e2| {
                 format!(
-                    "Failed to load private key: file not found at '{}' or '{}'. \
+                    "Failed to load encrypted private key: file not found at '{}' or '{}'. \
                     Ensure the key file exists or run key generation first. \
                     Original errors: unencrypted: {}, encrypted: {}",
                     priv_path, enc_path, e1, e2
@@ -193,30 +172,20 @@ impl KeyStore for FsEncryptedStore {
             })
         })?;
 
-        if priv_path.ends_with(".enc") || bytes.len() > 16 + 12 {
-            // Use secure decryption - the ZeroizingVec will be zeroized when dropped
-            let decrypted = decrypt_private_key_secure(&bytes).map_err(|e| {
-                format!(
-                    "Failed to decrypt private key from '{}': {}",
-                    if priv_path.ends_with(".enc") {
-                        &priv_path
-                    } else {
-                        &enc_path
-                    },
-                    e
-                )
-            })?;
-            return Ok(decrypted.as_slice().to_vec());
-        }
-
-        warn!(
-            "SECURITY WARNING: Loaded unencrypted private key from '{}'. \
-            Private keys should be encrypted for production use. \
-            Set JACS_PRIVATE_KEY_PASSWORD to encrypt your private key.",
-            priv_path
-        );
-
-        Ok(bytes)
+        // Use secure decryption - the ZeroizingVec will be zeroized when dropped
+        let decrypted = decrypt_private_key_secure(&bytes).map_err(|e| {
+            format!(
+                "Failed to decrypt private key from '{}': {}. \
+                Private keys must be encrypted and JACS_PRIVATE_KEY_PASSWORD must be set.",
+                if priv_path.ends_with(".enc") {
+                    &priv_path
+                } else {
+                    &enc_path
+                },
+                e
+            )
+        })?;
+        Ok(decrypted.as_slice().to_vec())
     }
 
     fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -248,13 +217,6 @@ impl KeyStore for FsEncryptedStore {
         let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
-            "pq-dilithium" => {
-                warn!(
-                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated for signing. \
-                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
-                );
-                CryptoSigningAlgorithm::PqDilithium
-            }
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
                 return Err(
@@ -269,9 +231,6 @@ impl KeyStore for FsEncryptedStore {
             }
             CryptoSigningAlgorithm::RingEd25519 => {
                 crypt::ringwrapper::sign_string(private_key.to_vec(), &data)?
-            }
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                crypt::pq::sign_string(private_key.to_vec(), &data)?
             }
             CryptoSigningAlgorithm::Pq2025 => {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data)?
@@ -361,13 +320,6 @@ impl KeyStore for InMemoryKeyStore {
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
-            "pq-dilithium" => {
-                warn!(
-                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated. \
-                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
-                );
-                CryptoSigningAlgorithm::PqDilithium
-            }
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
                 return Err(JacsError::CryptoError(format!(
@@ -380,9 +332,6 @@ impl KeyStore for InMemoryKeyStore {
         let (priv_key, pub_key) = match algo {
             CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::generate_keys()?,
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                crypt::pq::generate_keys()?
-            }
             CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
         // Store copies in memory — no disk, no encryption
@@ -416,13 +365,6 @@ impl KeyStore for InMemoryKeyStore {
         let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
-            "pq-dilithium" => {
-                warn!(
-                    "DEPRECATED: 'pq-dilithium' algorithm is deprecated for signing. \
-                    Use 'pq2025' (ML-DSA-87, FIPS-204) instead."
-                );
-                CryptoSigningAlgorithm::PqDilithium
-            }
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
                 return Err(
@@ -437,9 +379,6 @@ impl KeyStore for InMemoryKeyStore {
             }
             CryptoSigningAlgorithm::RingEd25519 => {
                 crypt::ringwrapper::sign_string(private_key.to_vec(), &data)?
-            }
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                crypt::pq::sign_string(private_key.to_vec(), &data)?
             }
             CryptoSigningAlgorithm::Pq2025 => {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data)?

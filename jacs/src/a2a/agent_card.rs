@@ -170,7 +170,7 @@ fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, Bo
 fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, Box<dyn Error>> {
     let key_algorithm = agent.get_key_algorithm().ok_or("Key algorithm not set")?;
 
-    let is_pqc = key_algorithm.contains("dilithium") || key_algorithm.contains("pq2025");
+    let is_pqc = key_algorithm.contains("pq2025");
 
     let desc = if is_pqc {
         "JACS cryptographic document signing (sacred, irreversible commitment) and verification with post-quantum support. Signing creates permanent, non-repudiable proof."
@@ -321,7 +321,6 @@ mod tests {
             .collect();
         assert!(alg_strings.contains(&"ring-Ed25519"));
         assert!(alg_strings.contains(&"RSA-PSS"));
-        assert!(alg_strings.contains(&"pq-dilithium"));
         assert!(alg_strings.contains(&"pq2025"));
     }
 
@@ -333,11 +332,10 @@ mod tests {
             .expect("PQ algorithms should be an array");
         let pq_strings: Vec<&str> = pq_algs.iter().map(|v| v.as_str().unwrap()).collect();
 
-        assert!(pq_strings.contains(&"pq-dilithium"));
         assert!(pq_strings.contains(&"pq2025"));
         assert!(!pq_strings.contains(&"falcon"));
         assert!(!pq_strings.contains(&"sphincs+"));
-        assert_eq!(pq_strings.len(), 2);
+        assert_eq!(pq_strings.len(), 1);
     }
 
     #[test]

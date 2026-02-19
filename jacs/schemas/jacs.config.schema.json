@@ -31,7 +31,6 @@
       "enum": [
             "RSA-PSS",
             "ring-Ed25519",
-            "pq-dilithium",
             "pq2025"
           ]
     },
@@ -238,6 +237,5 @@
     "jacs_default_storage"
   ]
 }
-
 
 

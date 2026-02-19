@@ -18,3 +18,6 @@ homepage = "https://humanassisted.github.io/JACS"
 repository = "https://github.com/HumanAssisted/JACS"
 keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
 categories = ["cryptography", "text-processing", "data-structures"]
+
+[workspace.metadata.dev-requirements]
+cargo-audit = "0.22.1"

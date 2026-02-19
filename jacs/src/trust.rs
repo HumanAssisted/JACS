@@ -4,8 +4,8 @@
 //! enabling P2P key exchange and verification without a central authority.
 
 use crate::agent::{
-    AGENT_SIGNATURE_FIELDNAME, SignatureContentMode, allow_legacy_signature_fallback,
-    build_signature_content, extract_signature_fields,
+    AGENT_SIGNATURE_FIELDNAME, SignatureContentMode, build_signature_content,
+    extract_signature_fields,
 };
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::{CryptoSigningAlgorithm, detect_algorithm_from_public_key};
@@ -588,7 +588,7 @@ fn verify_agent_self_signature(
             JacsError::SignatureVerificationFailed {
                 reason: format!(
                     "Unknown signing algorithm '{}'. Supported algorithms are: \
-                'ring-Ed25519', 'RSA-PSS', 'pq-dilithium', 'pq-dilithium-alt', 'pq2025'. \
+                'ring-Ed25519', 'RSA-PSS', 'pq2025'. \
                 The agent document may have been signed with an unsupported algorithm version.",
                     a
                 ),
@@ -634,9 +634,6 @@ fn verify_agent_self_signature(
                 payload,
                 &signature_b64,
             ),
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                crate::crypt::pq::verify_string(public_key_bytes.to_vec(), payload, &signature_b64)
-            }
             CryptoSigningAlgorithm::Pq2025 => crate::crypt::pq2025::verify_string(
                 public_key_bytes.to_vec(),
                 payload,
@@ -645,38 +642,14 @@ fn verify_agent_self_signature(
         }
     };
 
-    let mut used_legacy_fallback = false;
-    let canonical_result = match build_signature_content(
+    let (canonical_payload, _) = build_signature_content(
         agent_value,
         signature_fields.clone(),
         AGENT_SIGNATURE_FIELDNAME,
         SignatureContentMode::CanonicalV2,
-    ) {
-        Ok((canonical_payload, _)) => verify_with_payload(&canonical_payload),
-        Err(e) => Err(e),
-    };
+    )?;
 
-    let verification_result = if canonical_result.is_ok() || !allow_legacy_signature_fallback() {
-        canonical_result
-    } else {
-        match build_signature_content(
-            agent_value,
-            signature_fields,
-            AGENT_SIGNATURE_FIELDNAME,
-            SignatureContentMode::LegacyV1,
-        ) {
-            Ok((legacy_payload, _)) => {
-                let legacy_result = verify_with_payload(&legacy_payload);
-                if legacy_result.is_ok() {
-                    used_legacy_fallback = true;
-                }
-                legacy_result
-            }
-            Err(_) => canonical_result,
-        }
-    };
-
-    verification_result.map_err(|e| JacsError::SignatureVerificationFailed {
+    verify_with_payload(&canonical_payload).map_err(|e| JacsError::SignatureVerificationFailed {
         reason: format!(
             "Cryptographic signature verification failed using {} algorithm: {}. \
             This typically means: (1) the agent document was modified after signing, \
@@ -685,12 +658,6 @@ fn verify_agent_self_signature(
             algo, e
         ),
     })?;
-
-    if used_legacy_fallback {
-        warn!(
-            "Agent self-signature verified using legacy fallback. Re-sign this agent to migrate to canonical payload signing."
-        );
-    }
 
     info!("Agent self-signature verified successfully");
     Ok(())
