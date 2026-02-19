@@ -23,7 +23,6 @@ export const JACS_EXTENSION_URI = 'urn:jacs:provenance-v1';
 export const JACS_ALGORITHMS: readonly string[] = [
   'ring-Ed25519',
   'RSA-PSS',
-  'pq-dilithium',
   'pq2025',
 ] as const;
 
@@ -475,7 +474,7 @@ export class JACSA2AIntegration {
         },
         postQuantumCrypto: {
           description: 'Support for quantum-resistant signatures',
-          algorithms: ['pq-dilithium', 'pq2025'],
+          algorithms: ['pq2025'],
         },
       },
       endpoints: {
@@ -649,7 +648,7 @@ export class JACSA2AIntegration {
   ): Record<string, Record<string, unknown>> {
     const documents: Record<string, Record<string, unknown>> = {};
     const keyAlgorithm = agentData.keyAlgorithm || 'RSA-PSS';
-    const postQuantum = /(pq|dilithium|falcon|sphincs|ml-dsa|pq2025)/i.test(keyAlgorithm);
+    const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);
 
     const cardObj = JSON.parse(JSON.stringify(agentCard));
     cardObj.signatures = [{ jws: jwsSignature }];

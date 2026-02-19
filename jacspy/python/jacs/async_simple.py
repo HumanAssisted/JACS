@@ -106,7 +106,7 @@ async def create(
         password: Password for encrypting the private key. If not provided,
             uses JACS_PRIVATE_KEY_PASSWORD env var.
         algorithm: Cryptographic algorithm: "pq2025" (default, post-quantum),
-            "ring-Ed25519", or "RSA-PSS". "pq-dilithium" is deprecated.
+            "ring-Ed25519", or "RSA-PSS".
         data_directory: Directory for agent data (default: "./jacs_data")
         key_directory: Directory for cryptographic keys (default: "./jacs_keys")
         config_path: Where to save the config (default: ./jacs.config.json)

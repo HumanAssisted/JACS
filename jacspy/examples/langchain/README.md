@@ -134,7 +134,7 @@ result = await executor.ainvoke({
 Returns:
 - `agent_id`: The agent's ID
 - `version`: Key version
-- `algorithm`: Cryptographic algorithm (e.g., "ed25519", "pq-dilithium")
+- `algorithm`: Cryptographic algorithm (e.g., "ed25519", "pq2025")
 - `public_key_hash`: SHA-256 hash of the public key
 - `public_key_base64`: The public key in base64 encoding
 

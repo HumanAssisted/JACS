@@ -120,9 +120,9 @@ err := jacs.ReencryptKey("old-password-123!", "new-Str0ng-P@ss!")
 
 Passwords must be at least 8 characters and include uppercase, lowercase, a digit, and a special character.
 
-### Algorithm Deprecation Notice
+### Post-Quantum Algorithm
 
-The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings.
+Use `pq2025` (ML-DSA-87, FIPS-204) for post-quantum signing.
 
 ## Examples
 

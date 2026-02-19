@@ -41,6 +41,15 @@ Last updated: 2026-02-19
 - Full maintained `jacs` test suite passes after fail-hard/password + PQ + fixture updates.
 - Cross-language fixture generation now sets required password explicitly (no policy bypass).
 
+7. Wrapper alignment to core security posture
+- Removed legacy `pq-dilithium` references from wrapper-facing algorithm lists and docs.
+- Node/Python A2A extension descriptors now advertise `pq2025` as the only post-quantum algorithm.
+- Wrapper tests updated to enforce this behavior across:
+  - `/Users/jonathan.hendler/personal/JACS/jacsnpm`
+  - `/Users/jonathan.hendler/personal/JACS/jacspy`
+  - `/Users/jonathan.hendler/personal/JACS/jacsgo`
+  - `/Users/jonathan.hendler/personal/JACS/jacs-mcp`
+
 ## P0 (Block Next Release)
 
 1. Zeroization and secret-memory handling

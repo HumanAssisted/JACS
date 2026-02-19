@@ -132,7 +132,7 @@ jacs init
 Or programmatically:
 
 ```bash
-export JACS_AGENT_PRIVATE_KEY_PASSWORD="Your-Str0ng-P@ss!"
+export JACS_PRIVATE_KEY_PASSWORD="Your-Str0ng-P@ss!"
 jacs agent create --create-keys true
 ```
 
@@ -268,8 +268,8 @@ Create a multi-party cryptographic agreement that other agents can co-sign.
 - `context` (optional): Additional context to help signers decide
 - `timeout` (optional): ISO 8601 deadline after which the agreement expires (e.g., "2025-12-31T23:59:59Z")
 - `quorum` (optional): Minimum signatures required (M-of-N). If omitted, all agents must sign.
-- `required_algorithms` (optional): Only allow these signing algorithms: `RSA-PSS`, `ring-Ed25519`, `pq-dilithium`, `pq2025`
-- `minimum_strength` (optional): `classical` (any algorithm) or `post-quantum` (pq-dilithium/pq2025 only)
+- `required_algorithms` (optional): Only allow these signing algorithms: `RSA-PSS`, `ring-Ed25519`, `pq2025`
+- `minimum_strength` (optional): `classical` (any algorithm) or `post-quantum` (`pq2025` only)
 
 ### jacs_sign_agreement
 

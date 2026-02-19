@@ -198,7 +198,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       // Verify capabilities use correct JACS_ALGORITHMS
       expect(descriptor.capabilities).to.have.all.keys('documentSigning', 'documentVerification', 'postQuantumCrypto');
       expect(descriptor.capabilities.documentSigning.algorithms).to.deep.equal(JACS_ALGORITHMS);
-      expect(descriptor.capabilities.postQuantumCrypto.algorithms).to.deep.equal(['pq-dilithium', 'pq2025']);
+      expect(descriptor.capabilities.postQuantumCrypto.algorithms).to.deep.equal(['pq2025']);
 
       // Verify endpoints
       expect(descriptor.endpoints).to.have.all.keys('sign', 'verify', 'publicKey');

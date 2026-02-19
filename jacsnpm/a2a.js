@@ -20,7 +20,6 @@ exports.JACS_EXTENSION_URI = 'urn:jacs:provenance-v1';
 exports.JACS_ALGORITHMS = [
     'ring-Ed25519',
     'RSA-PSS',
-    'pq-dilithium',
     'pq2025',
 ];
 exports.TRUST_POLICIES = {
@@ -259,7 +258,7 @@ class JACSA2AIntegration {
                 },
                 postQuantumCrypto: {
                     description: 'Support for quantum-resistant signatures',
-                    algorithms: ['pq-dilithium', 'pq2025'],
+                    algorithms: ['pq2025'],
                 },
             },
             endpoints: {
@@ -398,7 +397,7 @@ class JACSA2AIntegration {
     generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData) {
         const documents = {};
         const keyAlgorithm = agentData.keyAlgorithm || 'RSA-PSS';
-        const postQuantum = /(pq|dilithium|falcon|sphincs|ml-dsa|pq2025)/i.test(keyAlgorithm);
+        const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);
         const cardObj = JSON.parse(JSON.stringify(agentCard));
         cardObj.signatures = [{ jws: jwsSignature }];
         documents['/.well-known/agent-card.json'] = cardObj;

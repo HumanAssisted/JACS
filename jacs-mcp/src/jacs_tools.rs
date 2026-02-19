@@ -1094,13 +1094,13 @@ pub struct CreateAgreementParams {
     pub quorum: Option<u32>,
 
     /// Only allow agents using these algorithms to sign.
-    /// Values: "RSA-PSS", "ring-Ed25519", "pq-dilithium", "pq2025"
+    /// Values: "RSA-PSS", "ring-Ed25519", "pq2025"
     #[schemars(
-        description = "Only allow these signing algorithms. Values: 'RSA-PSS', 'ring-Ed25519', 'pq-dilithium', 'pq2025'"
+        description = "Only allow these signing algorithms. Values: 'RSA-PSS', 'ring-Ed25519', 'pq2025'"
     )]
     pub required_algorithms: Option<Vec<String>>,
 
-    /// Minimum cryptographic strength: "classical" (any algorithm) or "post-quantum" (pq-dilithium, pq2025 only).
+    /// Minimum cryptographic strength: "classical" (any algorithm) or "post-quantum" (pq2025 only).
     #[schemars(description = "Minimum crypto strength: 'classical' or 'post-quantum'")]
     pub minimum_strength: Option<String>,
 }

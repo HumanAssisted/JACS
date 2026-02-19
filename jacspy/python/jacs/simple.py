@@ -258,7 +258,6 @@ def create(
         password: Password for encrypting the private key.
                   If not provided, falls back to JACS_PRIVATE_KEY_PASSWORD env var.
         algorithm: Signing algorithm ("pq2025", "ring-Ed25519", "RSA-PSS").
-                   Note: "pq-dilithium" is deprecated, use "pq2025" instead.
         data_directory: Directory for data storage (default: "./jacs_data")
         key_directory: Directory for keys (default: "./jacs_keys")
         config_path: Where to save the config (default: "./jacs.config.json")

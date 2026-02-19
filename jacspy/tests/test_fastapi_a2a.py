@@ -171,7 +171,6 @@ class TestMiddlewareA2ARoutes:
         assert body["capabilities"]["documentSigning"]["algorithms"] == [
             "ring-Ed25519",
             "RSA-PSS",
-            "pq-dilithium",
             "pq2025",
         ]
 

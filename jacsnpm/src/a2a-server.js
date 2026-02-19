@@ -83,7 +83,7 @@ function buildWellKnownDocuments(client, options = {}) {
   const extensionJson = integration.createExtensionDescriptor();
 
   // 3. JACS Agent Descriptor
-  const postQuantum = /(pq|dilithium|falcon|sphincs|ml-dsa|pq2025)/i.test(
+  const postQuantum = /(pq2025|ml-dsa)/i.test(
     agentData.keyAlgorithm
   );
   const jacsAgentJson = {

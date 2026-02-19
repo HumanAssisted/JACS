@@ -253,7 +253,7 @@ class JACSA2AIntegration:
             "capabilities": {
                 "documentSigning": {
                     "description": "Sign documents with JACS signatures",
-                    "algorithms": ["dilithium", "falcon", "sphincs+", "rsa", "ecdsa"],
+                    "algorithms": ["ring-Ed25519", "RSA-PSS", "pq2025"],
                     "formats": ["jacs-v1", "jws-detached"]
                 },
                 "documentVerification": {
@@ -263,7 +263,7 @@ class JACSA2AIntegration:
                 },
                 "postQuantumCrypto": {
                     "description": "Support for quantum-resistant signatures",
-                    "algorithms": ["dilithium", "falcon", "sphincs+"]
+                    "algorithms": ["pq2025"]
                 }
             },
             "endpoints": {
@@ -403,7 +403,7 @@ class JACSA2AIntegration:
         key_algorithm = agent_data.get("keyAlgorithm", "RSA-PSS")
         post_quantum = any(
             marker in str(key_algorithm).lower()
-            for marker in ["pq", "dilithium", "falcon", "sphincs", "ml-dsa", "pq2025"]
+            for marker in ["pq2025", "ml-dsa"]
         )
 
         # 1. Agent Card with embedded signature (v0.4.0)

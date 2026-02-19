@@ -219,7 +219,7 @@ class TestSha256Replacement:
 class TestB6Algorithms:
     def test_supported_algorithms_class_attr(self):
         assert JACSA2AIntegration.SUPPORTED_ALGORITHMS == [
-            "ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"
+            "ring-Ed25519", "RSA-PSS", "pq2025"
         ]
 
     def test_extension_descriptor_uses_supported_algorithms(self):
@@ -230,9 +230,9 @@ class TestB6Algorithms:
         assert signing_algos == JACSA2AIntegration.SUPPORTED_ALGORITHMS
 
         pq_algos = descriptor["capabilities"]["postQuantumCrypto"]["algorithms"]
-        assert pq_algos == ["pq-dilithium", "pq2025"]
-        # No fake algorithms like "dilithium", "falcon", "sphincs+", "ecdsa"
-        for fake in ["dilithium", "falcon", "sphincs+", "ecdsa"]:
+        assert pq_algos == ["pq2025"]
+        # No fake algorithms like "falcon", "sphincs+", "ecdsa"
+        for fake in ["falcon", "sphincs+", "ecdsa"]:
             assert fake not in signing_algos
 
 

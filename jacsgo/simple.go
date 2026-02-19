@@ -18,10 +18,9 @@ var (
 
 // CreateAgentOptions contains options for programmatic agent creation.
 type CreateAgentOptions struct {
-	// Password for encrypting the private key. Required unless JACS_AGENT_PRIVATE_KEY_PASSWORD is set.
+	// Password for encrypting the private key. Required unless JACS_PRIVATE_KEY_PASSWORD is set.
 	Password string
 	// Algorithm is the signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS".
-	// "pq-dilithium" is deprecated.
 	Algorithm string
 	// DataDirectory is the directory for agent data (default: "./jacs_data").
 	DataDirectory string
@@ -42,7 +41,7 @@ type CreateAgentOptions struct {
 // Create creates a new JACS agent with cryptographic keys.
 //
 // This is a fully programmatic API. If opts is nil, default options are used.
-// The password must be provided in opts or via JACS_AGENT_PRIVATE_KEY_PASSWORD env var.
+// The password must be provided in opts or via JACS_PRIVATE_KEY_PASSWORD env var.
 //
 // Parameters:
 //   - name: Human-readable name for the agent
@@ -61,11 +60,11 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 
 	password := opts.Password
 	if password == "" {
-		password = os.Getenv("JACS_AGENT_PRIVATE_KEY_PASSWORD")
+		password = os.Getenv("JACS_PRIVATE_KEY_PASSWORD")
 	}
 	if password == "" {
 		return nil, NewSimpleError("create", errors.New(
-			"password is required: provide it in CreateAgentOptions.Password or set JACS_AGENT_PRIVATE_KEY_PASSWORD env var",
+			"password is required: provide it in CreateAgentOptions.Password or set JACS_PRIVATE_KEY_PASSWORD env var",
 		))
 	}
 

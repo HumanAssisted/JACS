@@ -122,7 +122,7 @@ class JACSA2AIntegration:
     JACS_EXTENSION_URI = "urn:jacs:provenance-v1"
 
     # Algorithms actually supported by the JACS cryptographic stack.
-    SUPPORTED_ALGORITHMS = ["ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"]
+    SUPPORTED_ALGORITHMS = ["ring-Ed25519", "RSA-PSS", "pq2025"]
 
     VALID_TRUST_POLICIES = ("open", "verified", "strict")
 
@@ -661,7 +661,7 @@ class JACSA2AIntegration:
         key_algorithm = agent_data.get("keyAlgorithm", "RSA-PSS")
         post_quantum = any(
             marker in str(key_algorithm).lower()
-            for marker in ["pq", "dilithium", "falcon", "sphincs", "ml-dsa", "pq2025"]
+            for marker in ["pq2025", "ml-dsa"]
         )
 
         # 1. Agent Card with embedded signature (v0.4.0)
