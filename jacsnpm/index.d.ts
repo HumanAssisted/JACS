@@ -175,4 +175,20 @@ export declare class JacsAgent {
   verifyDocumentById(documentId: string): Promise<boolean>
   /** Re-encrypt the agent's private key with a new password. */
   reencryptKey(oldPassword: string, newPassword: string): Promise<void>
+  /** Export this agent as an A2A Agent Card (sync, blocks event loop). */
+  exportAgentCardSync(): string
+  /** Wrap an A2A artifact with JACS provenance signature (sync). */
+  wrapA2aArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
+  /** Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync. */
+  signArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
+  /** Verify a JACS-wrapped A2A artifact (sync). */
+  verifyA2aArtifactSync(wrappedJson: string): string
+  /** Export this agent as an A2A Agent Card. */
+  exportAgentCard(): Promise<string>
+  /** Wrap an A2A artifact with JACS provenance signature. */
+  wrapA2aArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
+  /** Sign an A2A artifact. Alias for wrapA2aArtifact. */
+  signArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
+  /** Verify a JACS-wrapped A2A artifact. */
+  verifyA2aArtifact(wrappedJson: string): Promise<string>
 }
