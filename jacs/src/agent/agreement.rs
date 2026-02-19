@@ -5,8 +5,8 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::agent::loaders::FileLoader;
 use crate::agent::{
-    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGREEMENT_HASH_FIELDNAME,
-    DOCUMENT_AGENT_SIGNATURE_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME, SHA256_FIELDNAME,
+    AGENT_AGREEMENT_FIELDNAME, DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
+    DOCUMENT_AGREEMENT_HASH_FIELDNAME, JACS_PREVIOUS_VERSION_FIELDNAME, SHA256_FIELDNAME,
 };
 
 use crate::crypt::hash::hash_public_key;

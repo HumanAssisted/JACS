@@ -114,9 +114,8 @@ fn resolve_foreign_public_key(
                 {
                     let _ = signer_id;
                     let _ = signer_version;
-                    last_error =
-                        "Registry lookup is not available on wasm32 targets in this build"
-                            .to_string();
+                    last_error = "Registry lookup is not available on wasm32 targets in this build"
+                        .to_string();
                 }
             }
         }

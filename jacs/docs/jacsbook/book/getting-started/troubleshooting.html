@@ -192,7 +192,7 @@ cd jacspy &amp;&amp; maturin develop --release
 <pre><code class="language-bash">cp jacs.config.example.json jacs.config.json
 </code></pre>
 <h3 id="private-key-decryption-failed"><a class="header" href="#private-key-decryption-failed">Private key decryption failed</a></h3>
-<p>Wrong password. Check the <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. If you used <code>quickstart()</code>, the auto-generated password is saved to <code>./jacs_keys/.jacs_password</code>.</p>
+<p>Wrong or missing password. Check <code>JACS_PRIVATE_KEY_PASSWORD</code>. For CLI, you may also set <code>JACS_PASSWORD_FILE</code> to a file that contains only the password. Set exactly one explicit source; if both are set, CLI fails by design.</p>
 <h3 id="algorithm-detection-failed"><a class="header" href="#algorithm-detection-failed">Algorithm detection failed</a></h3>
 <p>Set the <code>signingAlgorithm</code> field in your config, or pass it explicitly to <code>quickstart()</code> / <code>create()</code>. Valid values: <code>pq2025</code>, <code>ring-Ed25519</code>, <code>ring-RSA</code>.</p>
 <h2 id="runtime-issues"><a class="header" href="#runtime-issues">Runtime Issues</a></h2>

@@ -185,7 +185,7 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.
 Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
 <p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-python">agent = jacs.load("./jacs.config.json")
@@ -202,7 +202,7 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 <hr />
 <h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
 <h3 id="quickstartalgorithmnone"><a class="header" href="#quickstartalgorithmnone">quickstart(algorithm=None)</a></h3>
-<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>. Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
+<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. <code>JACS_PRIVATE_KEY_PASSWORD</code> must be set before calling this. Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>

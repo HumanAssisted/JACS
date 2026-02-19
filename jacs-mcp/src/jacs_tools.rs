@@ -3825,7 +3825,6 @@ impl ServerHandler for JacsMcpServer {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4125,8 +4124,16 @@ mod tests {
             tags: None,
             embed: None,
         })));
-        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
-        assert!(response.contains("\"success\": false"), "Expected success: false in: {}", response);
+        assert!(
+            response.contains("PATH_TRAVERSAL_BLOCKED"),
+            "Expected PATH_TRAVERSAL_BLOCKED in: {}",
+            response
+        );
+        assert!(
+            response.contains("\"success\": false"),
+            "Expected success: false in: {}",
+            response
+        );
     }
 
     #[test]
@@ -4142,7 +4149,11 @@ mod tests {
             tags: None,
             embed: Some(true),
         })));
-        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+        assert!(
+            response.contains("PATH_TRAVERSAL_BLOCKED"),
+            "Expected PATH_TRAVERSAL_BLOCKED in: {}",
+            response
+        );
     }
 
     #[test]
@@ -4158,7 +4169,11 @@ mod tests {
             tags: None,
             embed: None,
         })));
-        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+        assert!(
+            response.contains("PATH_TRAVERSAL_BLOCKED"),
+            "Expected PATH_TRAVERSAL_BLOCKED in: {}",
+            response
+        );
     }
 
     #[test]
@@ -4172,8 +4187,16 @@ mod tests {
             source_url: None,
             description: None,
         })));
-        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
-        assert!(response.contains("\"success\": false"), "Expected success: false in: {}", response);
+        assert!(
+            response.contains("PATH_TRAVERSAL_BLOCKED"),
+            "Expected PATH_TRAVERSAL_BLOCKED in: {}",
+            response
+        );
+        assert!(
+            response.contains("\"success\": false"),
+            "Expected success: false in: {}",
+            response
+        );
     }
 
     #[test]
@@ -4187,7 +4210,11 @@ mod tests {
             source_url: Some("https://example.com".to_string()),
             description: None,
         })));
-        assert!(response.contains("PATH_TRAVERSAL_BLOCKED"), "Expected PATH_TRAVERSAL_BLOCKED in: {}", response);
+        assert!(
+            response.contains("PATH_TRAVERSAL_BLOCKED"),
+            "Expected PATH_TRAVERSAL_BLOCKED in: {}",
+            response
+        );
     }
 
     #[test]
@@ -4205,6 +4232,10 @@ mod tests {
             tags: None,
             embed: None,
         })));
-        assert!(!response.contains("PATH_TRAVERSAL_BLOCKED"), "Safe relative path should not be blocked: {}", response);
+        assert!(
+            !response.contains("PATH_TRAVERSAL_BLOCKED"),
+            "Safe relative path should not be blocked: {}",
+            response
+        );
     }
 }

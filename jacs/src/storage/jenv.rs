@@ -40,7 +40,7 @@ impl std::fmt::Display for EnvError {
             EnvError::NotFound(key) => {
                 let hint = match key.as_str() {
                     "JACS_PRIVATE_KEY_PASSWORD" => {
-                        " Set this to the password used to encrypt your private key."
+                        " Set this to the password used to encrypt your private key. For CLI quickstart, you can also set JACS_PASSWORD_FILE to a file path containing the password."
                     }
                     "JACS_KEY_DIRECTORY" => {
                         " Set this to the directory containing your key files (e.g., './keys')."

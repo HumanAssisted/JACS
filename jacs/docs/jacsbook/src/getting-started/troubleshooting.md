@@ -33,7 +33,7 @@ cp jacs.config.example.json jacs.config.json
 
 ### Private key decryption failed
 
-Wrong password. Check the `JACS_PRIVATE_KEY_PASSWORD` environment variable. If you used `quickstart()`, the auto-generated password is saved to `./jacs_keys/.jacs_password`.
+Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For CLI, you may also set `JACS_PASSWORD_FILE` to a file that contains only the password. Set exactly one explicit source; if both are set, CLI fails by design.
 
 ### Algorithm detection failed
 

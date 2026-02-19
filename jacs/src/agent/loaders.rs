@@ -851,10 +851,7 @@ fn build_remote_key_lookup_url(base_url: &str, agent_id: &str, version: &str) ->
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn fetch_remote_public_key(
-    agent_id: &str,
-    version: &str,
-) -> Result<PublicKeyInfo, JacsError> {
+pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKeyInfo, JacsError> {
     // Validate agent_id and version are valid UUIDs to prevent URL path traversal
     uuid::Uuid::parse_str(agent_id).map_err(|e| {
         JacsError::ValidationError(format!(
@@ -988,10 +985,7 @@ fn fetch_public_key_attempt(
                     url, e
                 ))
             } else {
-                JacsError::NetworkError(format!(
-                    "HTTP request to remote key service failed: {}",
-                    e
-                ))
+                JacsError::NetworkError(format!("HTTP request to remote key service failed: {}", e))
             }
         })?;
 
@@ -1207,8 +1201,10 @@ CDEF
     #[cfg(not(target_arch = "wasm32"))]
     mod http_tests {
         use super::*;
+        use serial_test::serial;
 
         #[test]
+        #[serial]
         fn test_resolve_keys_base_url_defaults_to_hai_root() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1221,6 +1217,7 @@ CDEF
         }
 
         #[test]
+        #[serial]
         fn test_resolve_keys_base_url_prefers_jacs_over_hai_alias() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1253,6 +1250,7 @@ CDEF
         }
 
         #[test]
+        #[serial]
         fn test_fetch_public_key_invalid_url() {
             // Set an invalid base URL to test error handling
             // Disable retries for faster test execution
@@ -1289,6 +1287,7 @@ CDEF
         }
 
         #[test]
+        #[serial]
         fn test_fetch_public_key_default_url() {
             // Verify default URL is used when env var is not set
             // Disable retries for faster test execution
@@ -1321,6 +1320,7 @@ CDEF
         }
 
         #[test]
+        #[serial]
         fn test_fetch_public_key_retries_env_var() {
             // Test that JACS_KEY_FETCH_RETRIES is respected
             // SAFETY: This test is run in isolation

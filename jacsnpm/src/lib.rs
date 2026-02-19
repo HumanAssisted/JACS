@@ -1323,5 +1323,3 @@ pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -
     result_obj.set_named_property("payload", js_payload)?;
     Ok(result_obj)
 }
-
-

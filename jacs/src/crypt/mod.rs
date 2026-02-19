@@ -10,8 +10,8 @@ pub mod ringwrapper;
 pub mod rsawrapper; // ML-DSA signatures // ML-KEM encryption
 
 use constants::{
-    ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE, RSA_MIN_KEY_LENGTH,
-    RSA_NON_ASCII_RATIO,
+    ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE,
+    RSA_MIN_KEY_LENGTH, RSA_NON_ASCII_RATIO,
 };
 
 use crate::agent::Agent;

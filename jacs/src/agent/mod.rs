@@ -829,22 +829,22 @@ impl Agent {
             "\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n",
             standard_signature, provided_signature, signature_base64
         );
-    let (document_values_string, _) = build_signature_content(
-        json_value,
-        resolved_fields.clone(),
-        signature_key_from,
-        SignatureContentMode::CanonicalV2,
-    )?;
-    debug!(
-        "signature_verification_procedure canonical payload:\n{}",
-        document_values_string
-    );
-    let result = self.verify_string(
-        &document_values_string,
-        &signature_base64,
-        public_key.clone(),
-        resolved_public_key_enc_type.clone(),
-    );
+        let (document_values_string, _) = build_signature_content(
+            json_value,
+            resolved_fields.clone(),
+            signature_key_from,
+            SignatureContentMode::CanonicalV2,
+        )?;
+        debug!(
+            "signature_verification_procedure canonical payload:\n{}",
+            document_values_string
+        );
+        let result = self.verify_string(
+            &document_values_string,
+            &signature_base64,
+            public_key.clone(),
+            resolved_public_key_enc_type.clone(),
+        );
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();

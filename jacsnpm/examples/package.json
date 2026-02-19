@@ -19,10 +19,10 @@
         "http:client": "node httpclient.js"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.11.4",
+        "@modelcontextprotocol/sdk": "^1.26.0",
         "express": "^5.0",
         "jacsnpm": "file:../jacsnpm",
-        "koa": "^3"
+        "koa": "^3.0.1"
     },
     "devDependencies": {
         "@types/node": "^22"

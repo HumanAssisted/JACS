@@ -649,14 +649,16 @@ fn verify_agent_self_signature(
         SignatureContentMode::CanonicalV2,
     )?;
 
-    verify_with_payload(&canonical_payload).map_err(|e| JacsError::SignatureVerificationFailed {
-        reason: format!(
-            "Cryptographic signature verification failed using {} algorithm: {}. \
+    verify_with_payload(&canonical_payload).map_err(|e| {
+        JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Cryptographic signature verification failed using {} algorithm: {}. \
             This typically means: (1) the agent document was modified after signing, \
             (2) the wrong public key is being used, or (3) the signature is corrupted. \
             Verify the agent document integrity and ensure the correct public key is provided.",
-            algo, e
-        ),
+                algo, e
+            ),
+        }
     })?;
 
     info!("Agent self-signature verified successfully");

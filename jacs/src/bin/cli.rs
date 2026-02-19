@@ -20,8 +20,120 @@ use reqwest;
 use rpassword::read_password;
 use std::env;
 use std::error::Error;
+use std::path::Path;
 // use std::os::unix::fs::DirBuilderExt; // unused
 use std::process;
+
+const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
+const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
+
+fn quickstart_password_bootstrap_help() -> &'static str {
+    "Password bootstrap options (set exactly one explicit source):
+  1) Direct env (recommended):
+     export JACS_PRIVATE_KEY_PASSWORD='your-strong-password'
+  2) Export from a secret file:
+     export JACS_PRIVATE_KEY_PASSWORD=\"$(cat /path/to/password)\"
+  3) CLI convenience (file path):
+     export JACS_PASSWORD_FILE=/path/to/password
+If both JACS_PRIVATE_KEY_PASSWORD and JACS_PASSWORD_FILE are set, CLI fails to avoid ambiguity.
+If neither is set, CLI will try legacy ./jacs_keys/.jacs_password when present."
+}
+
+fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
+    let password = raw.trim();
+    if password.is_empty() {
+        return Err(format!(
+            "{} '{}' is empty. {}",
+            source_name,
+            path.display(),
+            quickstart_password_bootstrap_help()
+        ));
+    }
+    Ok(password.to_string())
+}
+
+fn get_non_empty_env_var(key: &str) -> Result<Option<String>, String> {
+    match env::var(key) {
+        Ok(value) => {
+            if value.trim().is_empty() {
+                Err(format!(
+                    "{} is set but empty. {}",
+                    key,
+                    quickstart_password_bootstrap_help()
+                ))
+            } else {
+                Ok(Some(value))
+            }
+        }
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!(
+            "{} contains non-UTF-8 data. {}",
+            key,
+            quickstart_password_bootstrap_help()
+        )),
+    }
+}
+
+fn ensure_cli_private_key_password() -> Result<(), String> {
+    let env_password = get_non_empty_env_var("JACS_PRIVATE_KEY_PASSWORD")?;
+    let password_file = get_non_empty_env_var(CLI_PASSWORD_FILE_ENV)?;
+
+    if env_password.is_some() && password_file.is_some() {
+        return Err(format!(
+            "Multiple password sources configured: JACS_PRIVATE_KEY_PASSWORD and {}. \
+Configure exactly one source.\n\n{}",
+            CLI_PASSWORD_FILE_ENV,
+            quickstart_password_bootstrap_help()
+        ));
+    }
+
+    if let Some(password) = env_password {
+        // SAFETY: CLI process is single-threaded for command handling at this point.
+        unsafe {
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+        }
+        return Ok(());
+    }
+
+    if let Some(path) = password_file {
+        let password = read_password_from_file(Path::new(path.trim()), CLI_PASSWORD_FILE_ENV)?;
+        // SAFETY: CLI process is single-threaded for command handling at this point.
+        unsafe {
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+        }
+        return Ok(());
+    }
+
+    let legacy_path = Path::new(DEFAULT_LEGACY_PASSWORD_FILE);
+    if legacy_path.exists() {
+        let password = read_password_from_file(legacy_path, "legacy password file")?;
+        // SAFETY: CLI process is single-threaded for command handling at this point.
+        unsafe {
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+        }
+        eprintln!(
+            "Using legacy password source '{}'. Prefer JACS_PRIVATE_KEY_PASSWORD or {}.",
+            legacy_path.display(),
+            CLI_PASSWORD_FILE_ENV
+        );
+    }
+
+    Ok(())
+}
+
+fn wrap_quickstart_error_with_password_help(
+    context: &str,
+    err: impl std::fmt::Display,
+) -> Box<dyn Error> {
+    Box::new(std::io::Error::other(format!(
+        "{}: {}\n\n{}",
+        context,
+        err,
+        quickstart_password_bootstrap_help()
+    )))
+}
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Install signal handler for graceful shutdown (Ctrl+C, SIGTERM)
@@ -622,7 +734,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 )
                 .subcommand(
                     Command::new("quickstart")
-                        .about("Create an agent (if needed) and start serving A2A endpoints")
+                        .about("Create/load an agent and start serving A2A endpoints (password required)")
+                        .after_help(quickstart_password_bootstrap_help())
                         .arg(
                             Arg::new("port")
                                 .long("port")
@@ -647,7 +760,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         )
         .subcommand(
             Command::new("quickstart")
-                .about("Create or load a persistent agent for instant sign/verify (zero config)")
+                .about("Create or load a persistent agent for instant sign/verify (password required)")
+                .after_help(quickstart_password_bootstrap_help())
                 .arg(
                     Arg::new("algorithm")
                         .long("algorithm")
@@ -1406,26 +1520,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .unwrap_or("127.0.0.1");
 
                 // Load or quickstart the agent
-                let (agent, info) = {
-                    // Try loading password from quickstart file
-                    if env::var("JACS_PRIVATE_KEY_PASSWORD")
-                        .unwrap_or_default()
-                        .is_empty()
-                    {
-                        let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
-                        if pw_path.exists() {
-                            if let Ok(pw) = std::fs::read_to_string(pw_path) {
-                                unsafe { env::set_var("JACS_PRIVATE_KEY_PASSWORD", pw.trim()) };
-                            }
-                        }
-                    }
-                    SimpleAgent::quickstart(None, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to load agent: {}", e),
-                        ))
-                    })?
-                };
+                ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::other(format!(
+                        "Password bootstrap failed: {}\n\n{}",
+                        e,
+                        quickstart_password_bootstrap_help()
+                    )))
+                })?;
+                let (agent, info) = SimpleAgent::quickstart(None, None).map_err(|e| {
+                    wrap_quickstart_error_with_password_help("Failed to load agent", e)
+                })?;
 
                 // Export the Agent Card for display
                 let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
@@ -1507,24 +1611,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str());
 
                 // Create or load the agent via quickstart
-                if env::var("JACS_PRIVATE_KEY_PASSWORD")
-                    .unwrap_or_default()
-                    .is_empty()
-                {
-                    let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
-                    if pw_path.exists() {
-                        if let Ok(pw) = std::fs::read_to_string(pw_path) {
-                            unsafe { env::set_var("JACS_PRIVATE_KEY_PASSWORD", pw.trim()) };
-                        }
-                    }
-                }
-                let (agent, info) =
-                    SimpleAgent::quickstart(algorithm, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to quickstart agent: {}", e),
-                        ))
-                    })?;
+                ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::other(format!(
+                        "Password bootstrap failed: {}\n\n{}",
+                        e,
+                        quickstart_password_bootstrap_help()
+                    )))
+                })?;
+                let (agent, info) = SimpleAgent::quickstart(algorithm, None).map_err(|e| {
+                    wrap_quickstart_error_with_password_help("Failed to quickstart agent", e)
+                })?;
 
                 // Export the Agent Card
                 let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
@@ -1610,13 +1706,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
             let sign_file = qs_matches.get_one::<String>("file");
 
-            let (agent, info) =
-                SimpleAgent::quickstart(algorithm, None).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("{}", e),
-                    ))
-                })?;
+            ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
+                Box::new(std::io::Error::other(format!(
+                    "Password bootstrap failed: {}\n\n{}",
+                    e,
+                    quickstart_password_bootstrap_help()
+                )))
+            })?;
+            let (agent, info) = SimpleAgent::quickstart(algorithm, None)
+                .map_err(|e| wrap_quickstart_error_with_password_help("Quickstart failed", e))?;
 
             if do_sign {
                 // Sign mode: read JSON, sign it, print signed document
@@ -1694,22 +1792,24 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             // This gives access to the agent's own keys for verifying self-signed docs.
             // Fall back to an ephemeral agent if no config is available.
             let agent = if std::path::Path::new("./jacs.config.json").exists() {
-                // If password not set, try reading from quickstart's password file
-                if env::var("JACS_PRIVATE_KEY_PASSWORD")
-                    .unwrap_or_default()
-                    .is_empty()
-                {
-                    let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
-                    if pw_path.exists() {
-                        if let Ok(pw) = std::fs::read_to_string(pw_path) {
-                            // SAFETY: CLI is single-threaded at this point
-                            unsafe { env::set_var("JACS_PRIVATE_KEY_PASSWORD", pw.trim()) };
-                        }
-                    }
+                if let Err(e) = ensure_cli_private_key_password() {
+                    eprintln!("Warning: Password bootstrap failed: {}", e);
+                    eprintln!("{}", quickstart_password_bootstrap_help());
                 }
                 match SimpleAgent::load(None, None) {
                     Ok(a) => a,
-                    Err(_) => {
+                    Err(e) => {
+                        let lower = e.to_string().to_lowercase();
+                        if lower.contains("password")
+                            || lower.contains("decrypt")
+                            || lower.contains("private key")
+                        {
+                            eprintln!(
+                                "Warning: Could not load local agent from ./jacs.config.json: {}",
+                                e
+                            );
+                            eprintln!("{}", quickstart_password_bootstrap_help());
+                        }
                         let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
                             .map_err(|e| format!("Failed to create verifier: {}", e))?;
                         a

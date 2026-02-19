@@ -40,7 +40,7 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 
 ### quickstart(algorithm=None)
 
-Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Call this once before `sign_message()` or `verify()`.
+Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. `JACS_PRIVATE_KEY_PASSWORD` must be set before calling this. Call this once before `sign_message()` or `verify()`.
 
 **Parameters:**
 - `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.

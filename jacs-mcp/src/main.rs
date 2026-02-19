@@ -1,9 +1,9 @@
 mod jacs_tools;
 
 #[cfg(feature = "mcp")]
-use jacs_tools::JacsMcpServer;
-#[cfg(feature = "mcp")]
 use jacs_binding_core::AgentWrapper;
+#[cfg(feature = "mcp")]
+use jacs_tools::JacsMcpServer;
 #[cfg(feature = "mcp")]
 use rmcp::{ServiceExt, transport::stdio};
 

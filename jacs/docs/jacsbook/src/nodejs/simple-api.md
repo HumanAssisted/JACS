@@ -90,7 +90,7 @@ Pure sync functions (no NAPI call, no suffix needed):
 
 ### quickstart(options?)
 
-Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Call this once before `signMessage()` or `verify()`.
+Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. `JACS_PRIVATE_KEY_PASSWORD` must be set before calling this. Call this once before `signMessage()` or `verify()`.
 
 **Parameters:**
 - `options` (object, optional): `{ algorithm?: string }`. Default algorithm: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.

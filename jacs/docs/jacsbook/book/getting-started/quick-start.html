@@ -177,7 +177,16 @@
                         <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
 <p>Get signing and verifying in under a minute. No manual setup needed.</p>
 <h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is not set, a secure password is auto-generated and saved to <code>./jacs_keys/.jacs_password</code>.
+<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.</p>
+<h3 id="password-bootstrap-required"><a class="header" href="#password-bootstrap-required">Password bootstrap (required)</a></h3>
+<p>Before running quickstart, configure exactly one explicit password source:</p>
+<pre><code class="language-bash"># Recommended
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+# CLI convenience (file contains only the password)
+export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+</code></pre>
+<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity.
 One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">

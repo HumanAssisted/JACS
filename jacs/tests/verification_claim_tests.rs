@@ -27,7 +27,7 @@ fn fixture_agent_with_claim(claim: &str) -> serde_json::Value {
     let mut agent: serde_json::Value = serde_json::from_str(include_str!(
         "fixtures/raw/modified-agent-for-updating.json"
     ))
-        .expect("fixture should parse");
+    .expect("fixture should parse");
     agent["jacsVerificationClaim"] = json!(claim);
     agent
 }
@@ -359,8 +359,14 @@ fn test_allowed_claim_transitions() {
     assert!(is_allowed_transition("verified", "verified"));
     assert!(is_allowed_transition("verified", "verified-registry"));
     assert!(is_allowed_transition("verified", "verified-hai.ai"));
-    assert!(is_allowed_transition("verified-registry", "verified-registry"));
-    assert!(is_allowed_transition("verified-registry", "verified-hai.ai"));
+    assert!(is_allowed_transition(
+        "verified-registry",
+        "verified-registry"
+    ));
+    assert!(is_allowed_transition(
+        "verified-registry",
+        "verified-hai.ai"
+    ));
     assert!(is_allowed_transition("verified-hai.ai", "verified-hai.ai"));
 
     // Disallowed transitions (downgrades)

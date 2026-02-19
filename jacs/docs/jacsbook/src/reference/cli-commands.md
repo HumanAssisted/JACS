@@ -12,7 +12,7 @@ jacs version
 ```
 
 ### `jacs quickstart`
-Create a persistent agent with keys on disk and optionally sign data -- no manual setup needed. If `./jacs.config.json` already exists, loads it; otherwise creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. This is the fastest way to start using JACS.
+Create a persistent agent with keys on disk and optionally sign data -- no manual setup needed. If `./jacs.config.json` already exists, loads it; otherwise creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. Password is required: set `JACS_PRIVATE_KEY_PASSWORD` (recommended) or `JACS_PASSWORD_FILE` (CLI file bootstrap). Set exactly one explicit source; if both are set, CLI exits with an error. This is the fastest way to start using JACS.
 
 ```bash
 # Print agent info (ID, algorithm)

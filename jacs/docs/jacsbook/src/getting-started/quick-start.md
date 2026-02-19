@@ -5,6 +5,20 @@ Get signing and verifying in under a minute. No manual setup needed.
 ## Zero-Config Quick Start
 
 {{#include ../_snippets/quickstart-persistent-agent.md}}
+
+### Password bootstrap (required)
+
+Before running quickstart, configure exactly one explicit password source:
+
+```bash
+# Recommended
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+# CLI convenience (file contains only the password)
+export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+```
+
+If both `JACS_PRIVATE_KEY_PASSWORD` and `JACS_PASSWORD_FILE` are set, CLI fails fast to avoid ambiguity.
 One call and you're signing.
 
 <div class="tabs">

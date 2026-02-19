@@ -10,6 +10,21 @@ Cryptographic signatures for AI agent outputs so anyone can verify who said what
 
 Zero-config -- one call creates a persistent agent with keys on disk.
 
+### Password Setup (Required)
+
+Persistent agents require a private-key password before `quickstart()`.
+
+```bash
+# Option A (recommended): direct env var
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+# Option B (CLI convenience): path to a file containing only the password
+export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+```
+
+Set exactly one explicit source. If both are set, CLI fails fast to avoid ambiguity.
+For Python/Node library usage, set `JACS_PRIVATE_KEY_PASSWORD` in your process environment.
+
 ### Python
 
 ```python

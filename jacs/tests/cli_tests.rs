@@ -13,7 +13,8 @@ use std::{
     process::{Command, Stdio},
 }; // Run programs // To read CARGO_PKG_VERSION
 mod utils;
-use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD, fixtures_raw_dir};
+use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD};
+const PASSWORD_FILE_ENV_VAR: &str = "JACS_PASSWORD_FILE";
 // static INIT: Once = Once::new();
 
 // fn setup() {
@@ -676,6 +677,73 @@ fn test_verify_unsigned_json() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn test_quickstart_help_shows_password_bootstrap_options() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("quickstart").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Password bootstrap options (set exactly one explicit source)",
+        ))
+        .stdout(predicate::str::contains("JACS_PRIVATE_KEY_PASSWORD"))
+        .stdout(predicate::str::contains(PASSWORD_FILE_ENV_VAR));
+    Ok(())
+}
+
+#[test]
+fn test_quickstart_uses_password_file_bootstrap() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_quickstart_password_file");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let password_file = tmp_dir.join("password.txt");
+    fs::write(&password_file, format!("{}\n", TEST_PASSWORD))?;
+    let password_file_value = password_file.to_string_lossy().to_string();
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.current_dir(&tmp_dir)
+        .env_remove(PASSWORD_ENV_VAR)
+        .env(PASSWORD_FILE_ENV_VAR, &password_file_value)
+        .arg("quickstart")
+        .arg("--algorithm=ed25519");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("JACS agent ready"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_quickstart_fails_with_ambiguous_password_sources() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_quickstart_password_conflict");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let password_file = tmp_dir.join("password.txt");
+    fs::write(&password_file, format!("{}\n", TEST_PASSWORD))?;
+    let password_file_value = password_file.to_string_lossy().to_string();
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
+        .env(PASSWORD_FILE_ENV_VAR, &password_file_value)
+        .arg("quickstart")
+        .arg("--algorithm=ed25519");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Multiple password sources configured",
+        ))
+        .stderr(predicate::str::contains(PASSWORD_FILE_ENV_VAR));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
 fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Use quickstart --sign to create a signed document, then verify it
     let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_roundtrip");
@@ -1008,7 +1076,7 @@ fn test_a2a_quickstart_help() -> Result<(), Box<dyn Error>> {
         .stdout(predicate::str::contains("--port"))
         .stdout(predicate::str::contains("--host"))
         .stdout(predicate::str::contains("--algorithm"))
-        .stdout(predicate::str::contains("Create an agent"));
+        .stdout(predicate::str::contains("Create/load an agent"));
     Ok(())
 }
 
