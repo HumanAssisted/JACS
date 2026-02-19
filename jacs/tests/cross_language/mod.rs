@@ -16,6 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const PASSWORD_ENV_VAR: &str = "JACS_PRIVATE_KEY_PASSWORD";
 const CROSS_LANG_TEST_PASSWORD: &str = "CrossLangP@ssw0rd!2026";
+const IAT_SKEW_ENV_VAR: &str = "JACS_MAX_IAT_SKEW_SECONDS";
 
 struct EnvVarGuard {
     key: &'static str,
@@ -172,6 +173,10 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
 
 /// Verify a previously-generated fixture using verify_document_standalone.
 fn verify_fixture(prefix: &str) {
+    // Cross-language fixtures are committed snapshots and intentionally stable over time.
+    // Disable iat skew enforcement for this fixture-compatibility test.
+    let _iat_guard = EnvVarGuard::set(IAT_SKEW_ENV_VAR, "0");
+
     let out = fixtures_dir();
     let signed_path = out.join(format!("{}_signed.json", prefix));
     let meta_path = out.join(format!("{}_metadata.json", prefix));

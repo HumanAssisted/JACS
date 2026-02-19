@@ -33,6 +33,7 @@ use crate::time_utils;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use serde_json::{Value, json, to_value};
+use serde_json_canonicalizer::to_string as to_canonical_string;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
@@ -95,46 +96,68 @@ pub(crate) fn extract_signature_fields(
     Some(out)
 }
 
-fn write_canonical_json(value: &Value, out: &mut String) -> Result<(), Box<dyn Error>> {
-    match value {
-        Value::Null => out.push_str("null"),
-        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        Value::Number(n) => out.push_str(&n.to_string()),
-        Value::String(s) => out.push_str(&serde_json::to_string(s)?),
-        Value::Array(values) => {
-            out.push('[');
-            for (idx, item) in values.iter().enumerate() {
-                if idx > 0 {
-                    out.push(',');
-                }
-                write_canonical_json(item, out)?;
-            }
-            out.push(']');
-        }
-        Value::Object(map) => {
-            out.push('{');
-            let mut keys: Vec<&String> = map.keys().collect();
-            keys.sort();
-            for (idx, key) in keys.iter().enumerate() {
-                if idx > 0 {
-                    out.push(',');
-                }
-                out.push_str(&serde_json::to_string(key)?);
-                out.push(':');
-                if let Some(child) = map.get(*key) {
-                    write_canonical_json(child, out)?;
-                }
-            }
-            out.push('}');
-        }
-    }
-    Ok(())
+pub(crate) fn canonicalize_json(value: &Value) -> Result<String, Box<dyn Error>> {
+    let canonical = to_canonical_string(value)
+        .map_err(|e| std::io::Error::other(format!("Failed to canonicalize JSON: {}", e)))?;
+    Ok(canonical)
 }
 
-fn canonicalize_json(value: &Value) -> Result<String, Box<dyn Error>> {
-    let mut out = String::new();
-    write_canonical_json(value, &mut out)?;
-    Ok(out)
+fn validate_signature_temporal_claims(
+    json_value: &Value,
+    signature_key_from: &str,
+) -> Result<(), Box<dyn Error>> {
+    let signature = json_value.get(signature_key_from).ok_or_else(|| {
+        JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Missing '{}' signature object while validating temporal claims.",
+                signature_key_from
+            ),
+        }
+    })?;
+
+    let iat = signature
+        .get("iat")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Missing or invalid '{}.iat'. Signature metadata must include a Unix timestamp.",
+                signature_key_from
+            ),
+        })?;
+
+    if iat < 0 {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Invalid '{}.iat': timestamp must be non-negative.",
+                signature_key_from
+            ),
+        }
+        .into());
+    }
+
+    let jti = signature
+        .get("jti")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Missing or invalid '{}.jti'. Signature metadata must include a nonce.",
+                signature_key_from
+            ),
+        })?;
+
+    if jti.is_empty() {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Invalid '{}.jti': nonce cannot be empty.",
+                signature_key_from
+            ),
+        }
+        .into());
+    }
+
+    time_utils::validate_signature_iat(iat)?;
+    Ok(())
 }
 
 pub(crate) fn build_signature_content(
@@ -677,6 +700,7 @@ impl Agent {
             "signature_verification_procedure placement_key:\n{}",
             signature_key_from
         );
+        validate_signature_temporal_claims(json_value, signature_key_from)?;
 
         let public_key_hash: String = match original_public_key_hash {
             Some(orig) => orig,
@@ -952,6 +976,8 @@ impl Agent {
         let agent_id = self.id.as_ref().unwrap_or(&binding);
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = time_utils::now_rfc3339();
+        let iat = time_utils::now_timestamp();
+        let jti = Uuid::now_v7().to_string();
 
         let config = self.config.as_ref().ok_or_else(|| {
             let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
@@ -977,6 +1003,8 @@ impl Agent {
             "agentID": agent_id,
             "agentVersion": agent_version,
             "date": date,
+            "iat": iat,
+            "jti": jti,
             "signature":signature,
             "signingAlgorithm":signing_algorithm,
             "publicKeyHash": public_key_hash,

@@ -576,6 +576,23 @@ fn verify_agent_self_signature(
     // Extract and validate signature timestamp
     let signature_date = agent_value.get_path_str_required(&["jacsSignature", "date"])?;
     validate_signature_timestamp(&signature_date)?;
+    let iat = agent_value
+        .get_path(&["jacsSignature", "iat"])
+        .and_then(Value::as_i64)
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: "Missing or invalid jacsSignature.iat in agent signature.".to_string(),
+        })?;
+    let jti = agent_value
+        .get_path_str(&["jacsSignature", "jti"])
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: "Missing jacsSignature.jti in agent signature.".to_string(),
+        })?;
+    if jti.trim().is_empty() {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "Invalid jacsSignature.jti: nonce cannot be empty.".to_string(),
+        });
+    }
+    time_utils::validate_signature_iat(iat)?;
 
     // Extract signature components
     let signature_b64 = agent_value.get_path_str_required(&["jacsSignature", "signature"])?;

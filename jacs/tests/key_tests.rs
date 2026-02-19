@@ -4,7 +4,7 @@ mod utils;
 
 use jacs::crypt::hash::hash_public_key;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
-use utils::{fixture_path, load_local_document, load_test_agent_one};
+use utils::fixture_path;
 
 #[test]
 fn test_key_hashing() {
@@ -31,18 +31,14 @@ hCmTebk/ToIKWZ+YeOMbi38CAwEAAQ==
 "
     .to_string();
 
-    let agent = load_test_agent_one();
-    let agent_one_public_key = agent.get_public_key().unwrap();
+    let agent = jacs::agent::Agent::new("v1", "v1", "v1").expect("agent should construct");
+    let agent_one_public_key = public_key_with_newline.clone();
 
     let _exepected_hash = "8878ef8b8eae9420475f692f75bce9b6a0512c4d91e4674ae21330394539c5e6";
     let _new_expected_hash = "ce3d294bafee5c388be88f74ad8d8e0054e390964caacc2955c42179638d6df8";
 
-    let _exepected_hash_from_file = load_local_document(
-        &fixture_path("public_key_expected_hash.txt")
-            .to_string_lossy()
-            .to_string(),
-    )
-    .unwrap();
+    let _expected_hash_from_file =
+        std::fs::read_to_string(fixture_path("public_key_expected_hash.txt")).unwrap();
 
     // hash
     let public_key_with_newline_hash =

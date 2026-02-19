@@ -14,6 +14,7 @@ use jacs::error::JacsError;
 use jacs::schema::Schema;
 use jacs::schema::should_accept_invalid_certs_for_claim;
 use serde_json::json;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // =============================================================================
 // Helper functions
@@ -28,7 +29,13 @@ fn fixture_agent_with_claim(claim: &str) -> serde_json::Value {
         "fixtures/raw/modified-agent-for-updating.json"
     ))
     .expect("fixture should parse");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_secs() as i64;
     agent["jacsVerificationClaim"] = json!(claim);
+    agent["jacsSignature"]["iat"] = json!(now);
+    agent["jacsSignature"]["jti"] = json!(format!("verification-claim-test-{}", claim));
     agent
 }
 

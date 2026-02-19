@@ -1,9 +1,13 @@
 use crate::error::JacsError;
 use std::error::Error;
 use std::fmt;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::Mutex;
 use zeroize::Zeroize;
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -23,6 +27,31 @@ fn set_secure_permissions(path: &str, is_directory: bool) -> Result<(), Box<dyn 
     let permissions = fs::Permissions::from_mode(mode);
     fs::set_permissions(path, permissions)?;
 
+    Ok(())
+}
+
+/// Write a private key file with owner-only permissions.
+///
+/// Uses `create_new(true)` to avoid overwriting existing files or following
+/// symlink targets.
+fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let path_obj = std::path::Path::new(path);
+
+    if let Some(parent) = path_obj.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+
+    #[cfg(unix)]
+    {
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(path_obj)?;
+    file.write_all(key_bytes)?;
+    file.sync_all()?;
     Ok(())
 }
 
@@ -126,9 +155,9 @@ impl KeyStore for FsEncryptedStore {
         } else {
             priv_path.clone()
         };
-        storage.save_file(&final_priv_path, &enc).map_err(|e| {
+        write_private_key_securely(&final_priv_path, &enc).map_err(|e| {
             format!(
-                "Failed to save encrypted private key to '{}': {}. Check that the key directory '{}' exists and is writable.",
+                "Failed to save encrypted private key to '{}': {}. Check whether the file already exists or the directory '{}' is writable.",
                 final_priv_path, e, key_dir
             )
         })?;

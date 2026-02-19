@@ -4,6 +4,7 @@ use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::SHA256_FIELDNAME;
 use crate::agent::agreement::subtract_vecs;
 use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::canonicalize_json;
 use crate::agent::loaders::{FileLoader, fetch_remote_public_key};
 use crate::agent::security::SecurityTraits;
 use crate::config::{KeyResolutionSource, get_key_resolution_order};
@@ -528,7 +529,7 @@ impl DocumentTraits for Agent {
         doc_copy
             .as_object_mut()
             .map(|obj| obj.remove(SHA256_FIELDNAME));
-        let doc_string = serde_json::to_string(&doc_copy)?;
+        let doc_string = canonicalize_json(&doc_copy)?;
         Ok(hash_string(&doc_string))
     }
 

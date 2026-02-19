@@ -13,7 +13,10 @@ use crate::storage::jenv::get_env_var;
 use crate::time_utils;
 use crate::validation::require_relative_path_safe;
 use std::error::Error;
+use std::fs::OpenOptions;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::OnceLock;
 use tracing::{debug, error, info, warn};
@@ -23,6 +26,41 @@ static REMOTE_KEY_RATE_LIMITER: OnceLock<RateLimiter> = OnceLock::new();
 
 fn remote_key_rate_limiter() -> &'static RateLimiter {
     REMOTE_KEY_RATE_LIMITER.get_or_init(|| RateLimiter::new(2.0, 3))
+}
+
+fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let path_obj = Path::new(path);
+
+    if let Some(parent) = path_obj.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create key directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+
+    #[cfg(unix)]
+    {
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(path_obj).map_err(|e| {
+        format!(
+            "Refusing to write private key at '{}': {}. \
+            Private key files must be created once with owner-only permissions (0600).",
+            path_obj.display(),
+            e
+        )
+    })?;
+
+    file.write_all(key_bytes)?;
+    file.sync_all()?;
+    Ok(())
 }
 
 /// This environment variable determine if files are saved to the filesystem at all
@@ -590,10 +628,10 @@ impl FileLoader for Agent {
             } else {
                 full_filepath.to_string()
             };
-            self.storage.save_file(&final_path, &encrypted_key)?;
+            write_private_key_securely(&final_path, &encrypted_key)?;
             Ok(final_path)
         } else {
-            self.storage.save_file(full_filepath, private_key)?;
+            write_private_key_securely(full_filepath, private_key)?;
             Ok(full_filepath.to_string())
         }
     }

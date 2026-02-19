@@ -19,7 +19,11 @@ dev:
 test: dev
 	@echo "Running tests..."
 	uv run python -m pytest tests/ -v
-	uv run python -m pytest python/jacs/ -v
+	@if find python/jacs -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit | grep -q .; then \
+		uv run python -m pytest python/jacs/ -v; \
+	else \
+		echo "No tests found under python/jacs; skipping second pytest run."; \
+	fi
 
 # Run Python tests only (assumes already built)
 test-py:

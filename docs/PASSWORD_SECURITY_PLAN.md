@@ -26,6 +26,11 @@ These are already verified in current repo state:
 1. Fail-hard password requirement remains in place (`JACS_PRIVATE_KEY_PASSWORD` required when needed).
 2. No `pq-dilithium` compatibility in wrapper-facing security posture.
 3. Wrapper suites currently pass after alignment (`jacspy`, `jacsnpm`, `jacsgo`, `jacs-mcp`).
+4. Security-review remediation dependencies for password handling are covered:
+   - strict TLS defaults are fail-closed,
+   - private-key writes are owner-only by default,
+   - signature replay metadata (`iat`/`jti`) is required and validated,
+   - canonical signature content generation is deterministic.
 
 ## Password Security Options (Target Architecture)
 
@@ -240,4 +245,3 @@ Security check:
 1. Should `JACS_PASSWORD_FILE` be allowed to point at `-` (stdin) for pipe-based secrets?
 2. For insecure file permissions, should strict mode fail hard and non-strict warn, or should all modes fail hard?
 3. Do we want `O4` keychain in the same release train as `O2/O3`, or keep keychain in a follow-up release?
-

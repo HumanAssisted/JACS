@@ -50,6 +50,14 @@ Last updated: 2026-02-19
   - `/Users/jonathan.hendler/personal/JACS/jacsgo`
   - `/Users/jonathan.hendler/personal/JACS/jacs-mcp`
 
+8. Security review remediation coverage (latest 4 findings)
+- Strict TLS default is enforced (`JACS_STRICT_TLS` defaults to strict/true behavior).
+- Private-key file writes now use owner-only creation semantics (`create_new` + `0600` on Unix).
+- Replay-resistance metadata is now mandatory in signatures (`iat` + `jti`) and validated at verify time.
+- Signature payload generation/verification uses canonical JSON serialization for deterministic hashing/signing.
+- Wrapper and integration suites were re-run with this posture:
+  - `jacspy`, `jacsnpm`, `jacsgo`, `jacs-mcp`, plus external integrations (`haisdk`, `moltyjacs`).
+
 ## P0 (Block Next Release)
 
 1. Zeroization and secret-memory handling
@@ -114,4 +122,5 @@ Last updated: 2026-02-19
 4. Security docs/tests consistently enforce:
 - no legacy PQ compatibility,
 - password-required key operations,
-- canonical verification expectations.
+- canonical verification expectations,
+- strict TLS-by-default and replay-protected signature expectations.

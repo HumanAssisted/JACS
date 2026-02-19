@@ -75,11 +75,13 @@
       ]
     }
   ],
-  "jacsSha256": "2656f8dea6321200a81cdad316e1067f8ca02344e7ed89261f269846f8ae3b49",
+  "jacsSha256": "a49c3bee93341c72b65f3dcf479d29b9d293e06870e6a8216394339f4b310e1d",
   "jacsSignature": {
     "agentID": "0f6bb6e8-f27c-4cf7-bb2e-01b647860680",
     "agentVersion": "a55739af-a3c8-4b4a-9f24-200313ee4229",
     "date": "2024-07-31T15:52:35.118841+00:00",
+    "iat": 1722441155,
+    "jti": "3f71f99f-6ca3-4bda-bf39-c2f4dc84b06d",
     "fields": [
       "$schema",
       "capabilities",

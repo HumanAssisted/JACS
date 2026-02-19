@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Once;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The known agent ID that exists in jacs/tests/fixtures/agent/
@@ -8,6 +9,18 @@ const AGENT_ID: &str = "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-
 /// Password used to encrypt test fixture keys in jacs/tests/fixtures/keys/
 /// Note: intentional typo "secretpassord" matches TEST_PASSWORD_LEGACY in jacs/tests/utils.rs
 const TEST_PASSWORD: &str = "secretpassord";
+const IAT_SKEW_ENV_VAR: &str = "JACS_MAX_IAT_SKEW_SECONDS";
+
+static FIXTURE_IAT_INIT: Once = Once::new();
+
+fn configure_fixture_iat_policy() {
+    // These integration tests use committed fixture agents whose signature
+    // timestamps are intentionally stable snapshots. Disable skew checks to
+    // avoid false failures unrelated to MCP behavior under test.
+    FIXTURE_IAT_INIT.call_once(|| unsafe {
+        std::env::set_var(IAT_SKEW_ENV_VAR, "0");
+    });
+}
 
 fn jacs_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -20,6 +33,8 @@ fn jacs_root() -> PathBuf {
 /// Returns (config_path, base_dir). Config uses relative paths so the
 /// binary CWD must be set to base_dir.
 fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
+    configure_fixture_iat_policy();
+
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

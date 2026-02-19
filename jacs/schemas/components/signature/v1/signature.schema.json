@@ -23,6 +23,18 @@
       "format": "date-time",
       "type": "string"
     },
+    "iat": {
+      "description": "Issued-at timestamp as Unix epoch seconds.",
+      "hai": "meta",
+      "type": "integer",
+      "minimum": 0
+    },
+    "jti": {
+      "description": "Unique signature nonce for replay defense.",
+      "hai": "meta",
+      "type": "string",
+      "minLength": 1
+    },
     "signature": {
       "description": "The actual signature, made from the docid, ",
       "hai": "base",
@@ -73,6 +85,8 @@
     "agentVersion",
     "signature",
     "date",
+    "iat",
+    "jti",
     "publicKeyHash",
     "signingAlgorithm",
     "fields"

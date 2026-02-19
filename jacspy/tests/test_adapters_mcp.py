@@ -185,8 +185,9 @@ class TestAgentInfoTool:
 
 class TestAgreementTools:
     @pytest.fixture
-    def persistent_client(self, tmp_path):
+    def persistent_client(self, tmp_path, monkeypatch):
         """Agreements require a persistent (non-ephemeral) client."""
+        monkeypatch.chdir(tmp_path)
         return JacsClient.quickstart(config_path=str(tmp_path / "jacs.config.json"))
 
     def test_create_agreement(self, persistent_client):
@@ -231,7 +232,8 @@ class TestAgreementTools:
 
 
 class TestAuditTool:
-    def test_audit_returns_json(self, tmp_path):
+    def test_audit_returns_json(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
         cl = JacsClient.quickstart(config_path=str(tmp_path / "jacs.config.json"))
         mcp = FakeMCP()
         register_jacs_tools(mcp, client=cl)
@@ -320,7 +322,8 @@ class TestRegisterA2ATools:
         assert "name" in card
         assert "capabilities" in card
 
-    def test_sign_artifact_returns_signed(self, tmp_path):
+    def test_sign_artifact_returns_signed(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
         cl = JacsClient.quickstart(config_path=str(tmp_path / "jacs.config.json"))
         mcp = FakeMCP()
         register_a2a_tools(mcp, client=cl)

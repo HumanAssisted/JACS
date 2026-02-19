@@ -869,8 +869,13 @@ impl Agreement for Agent {
                     local_doc_value.clone(),
                     &agreement_fieldname_key,
                 )?;
+                // Verify against the individual agreement signature object so
+                // temporal metadata (iat/jti) is read from the signer entry,
+                // not from the parent agreement container.
+                let mut signature_context = document.value.clone();
+                signature_context[agreement_fieldname_key.clone()] = signature.clone();
                 self.signature_verification_procedure(
-                    &document.value,
+                    &signature_context,
                     Some(&fields),
                     &agreement_fieldname_key.to_string(),
                     agents_public_key,

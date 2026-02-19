@@ -4,6 +4,8 @@ use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::config::Config;
 use log::debug;
+use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -262,6 +264,8 @@ pub fn set_min_test_env_vars() {
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
         env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
+        // Fixture signatures are historical; disable iat skew enforcement in fixture-based tests.
+        env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");
         // Enable filesystem schema loading for tests that use custom schemas
         env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
     }
@@ -344,8 +348,41 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
     let json_data = fs::read_to_string(document_path);
     match json_data {
         Ok(data) => {
-            debug!("testing data {}", data);
-            Ok(data.to_string())
+            let mut value: serde_json::Value = serde_json::from_str(&data)?;
+            let mut touched_signature = false;
+
+            if let Some(signature) = value.get_mut("jacsSignature").and_then(|v| v.as_object_mut()) {
+                let now_iat = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs() as i64;
+
+                if !signature.contains_key("iat") {
+                    signature.insert("iat".to_string(), json!(now_iat));
+                    touched_signature = true;
+                }
+                if !signature.contains_key("jti") {
+                    signature.insert(
+                        "jti".to_string(),
+                        json!(format!("fixture-{}-{}", now_iat, std::process::id())),
+                    );
+                    touched_signature = true;
+                }
+            }
+
+            if touched_signature && value.get("jacsSha256").is_some() {
+                let mut to_hash = value.clone();
+                if let Some(obj) = to_hash.as_object_mut() {
+                    obj.remove("jacsSha256");
+                }
+                let canonical = serde_json_canonicalizer::to_string(&to_hash)?;
+                let mut hasher = Sha256::new();
+                hasher.update(canonical.as_bytes());
+                value["jacsSha256"] = json!(format!("{:x}", hasher.finalize()));
+            }
+
+            let serialized = serde_json::to_string(&value)?;
+            debug!("testing data {}", serialized);
+            Ok(serialized)
         }
         Err(e) => {
             panic!("Failed to find file: {} {}", filepath, e);
@@ -368,6 +405,8 @@ pub fn set_test_env_vars() {
             "JACS_AGENT_ID_AND_VERSION",
             "123e4567-e89b-12d3-a456-426614174000:123e4567-e89b-12d3-a456-426614174001",
         );
+        // Fixture-based test signatures may be older than replay window.
+        env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");
         // Enable filesystem schema loading for tests that use custom schemas
         env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
     }
@@ -390,6 +429,7 @@ pub fn clear_test_env_vars() {
         "JACS_DNS_VALIDATE",
         "JACS_DNS_STRICT",
         "JACS_DNS_REQUIRED",
+        "JACS_MAX_IAT_SKEW_SECONDS",
         "JACS_ALLOW_FILESYSTEM_SCHEMAS",
     ];
     for var in vars {
