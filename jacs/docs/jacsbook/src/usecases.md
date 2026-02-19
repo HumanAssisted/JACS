@@ -24,7 +24,7 @@ See [USECASES.md § 2](https://github.com/HumanAssisted/JACS/blob/main/USECASES.
 
 ## 3. Registering and testing your agent on HAI.ai
 
-**Summary.** You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the HAI registration flow: from Node `registerWithHai()` (@hai.ai/jacs), from Go `RegisterWithHai()` (jacsgo), from Python `register_with_hai` / `register_new_agent()` (jacspy), or `openclaw jacs register` (moltyjacs). Set `HAI_API_KEY`, then check attestation and run verification with `JACS_KEY_RESOLUTION=local,hai`.
+**Summary.** You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the **[haisdk](https://github.com/HumanAssisted/haisdk)**: from Python `HaiClient().register()`, from Node `client.register()`, from Go `client.Register()`. Authentication uses JACS cryptographic identity (no API keys). Check attestation with `client.status()` and run verification with `JACS_KEY_RESOLUTION=local,registry`.
 
 See [USECASES.md § 3](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#3-registering-and-testing-your-agent-on-haiai) for the full scenario.
 

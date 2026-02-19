@@ -1399,7 +1399,7 @@ jacs agent verify --require-strict-dns
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#2-protecting-your-agents-identity-on-the-internet">USECASES.md § 2</a> for the full scenario.</p>
 <hr />
 <h2 id="3-registering-and-testing-your-agent-on-haiai"><a class="header" href="#3-registering-and-testing-your-agent-on-haiai">3. Registering and testing your agent on HAI.ai</a></h2>
-<p><strong>Summary.</strong> You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the HAI registration flow: from Node <code>registerWithHai()</code> (@hai.ai/jacs), from Go <code>RegisterWithHai()</code> (jacsgo), from Python <code>register_with_hai</code> / <code>register_new_agent()</code> (jacspy), or <code>openclaw jacs register</code> (moltyjacs). Set <code>HAI_API_KEY</code>, then check attestation and run verification with <code>JACS_KEY_RESOLUTION=local,hai</code>.</p>
+<p><strong>Summary.</strong> You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the <strong><a href="https://github.com/HumanAssisted/haisdk">haisdk</a></strong>: from Python <code>HaiClient().register()</code>, from Node <code>client.register()</code>, from Go <code>client.Register()</code>. Authentication uses JACS cryptographic identity (no API keys). Check attestation with <code>client.status()</code> and run verification with <code>JACS_KEY_RESOLUTION=local,registry</code>.</p>
 <p>See <a href="https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#3-registering-and-testing-your-agent-on-haiai">USECASES.md § 3</a> for the full scenario.</p>
 <hr />
 <h2 id="4-a-go-node-or-python-agent-with-strong-data-provenance"><a class="header" href="#4-a-go-node-or-python-agent-with-strong-data-provenance">4. A Go, Node, or Python agent with strong data provenance</a></h2>
@@ -14290,45 +14290,41 @@ app.add_middleware(JacsMiddleware, client=client, a2a=True)
 <li>Trust policy rejections: check that <code>trust_policy</code> matches your requirements. Use <code>"open"</code> for development, <code>"strict"</code> for production.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="haiai-platform-integration"><a class="header" href="#haiai-platform-integration">HAI.ai Platform Integration</a></h1>
-<p>The <code>jacs.hai</code> module (<code>jacspy/python/jacs/hai.py</code>) provides a Python client for integrating JACS agents with the HAI.ai platform. This is the infrastructure that connects locally-created JACS agents to the global trust network.</p>
+<p>The HAI SDK (<code>haisdk</code>) provides Python, Node.js, and Go clients for integrating JACS agents with the HAI.ai platform. This is the infrastructure that connects locally-created JACS agents to the global trust network.</p>
+<blockquote>
+<p><strong>Note:</strong> The HAI integration modules previously lived inside the JACS language bindings (<code>jacspy/python/jacs/hai.py</code>, <code>jacsnpm/hai.ts</code>, <code>jacsgo/hai.go</code>). They have been migrated to the standalone <strong><a href="https://github.com/HumanAssisted/haisdk">haisdk</a></strong> repository.</p>
+</blockquote>
 <h2 id="what-haiai-provides"><a class="header" href="#what-haiai-provides">What HAI.ai Provides</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Capability</th><th>Description</th></tr></thead><tbody>
 <tr><td>Agent Registration</td><td>Register your JACS agent to get a HAI.ai counter-signature</td></tr>
 <tr><td>Trust Attestation</td><td>Three-level trust model (basic, domain, attested)</td></tr>
 <tr><td>Agent Verification</td><td>Verify any agent's trust level before accepting their data</td></tr>
 <tr><td>Benchmarking</td><td>Run standardized benchmark suites against your agent</td></tr>
-<tr><td>SSE Event Stream</td><td>Real-time events (jobs, messages, heartbeats) via Server-Sent Events</td></tr>
+<tr><td>Email</td><td>Send/receive signed email via your-agent@hai.ai address</td></tr>
 </tbody></table>
 </div>
 <h2 id="installation-7"><a class="header" href="#installation-7">Installation</a></h2>
-<pre><code class="language-bash"># Using uv (recommended)
-uv pip install jacs[hai]
+<pre><code class="language-bash"># Python (using uv)
+uv pip install haisdk
 
-# Or with pip
-pip install jacs[hai]
+# Node.js
+npm install @hai.ai/sdk
+
+# Go
+go get github.com/HumanAssisted/haisdk-go
 </code></pre>
-<p>The <code>[hai]</code> extra installs <code>httpx</code> and <code>httpx-sse</code> for HTTP and SSE support.</p>
-<h2 id="quick-start-create-and-register-in-one-step"><a class="header" href="#quick-start-create-and-register-in-one-step">Quick Start: Create and Register in One Step</a></h2>
-<p>The fastest way to get started. Creates a new JACS agent with cryptographic keys and registers it with HAI.ai:</p>
-<pre><code class="language-python">from jacs.hai import register_new_agent
+<h2 id="quick-start-register-and-verify"><a class="header" href="#quick-start-register-and-verify">Quick Start: Register and Verify</a></h2>
+<p>The SDK uses JACS cryptographic identity for authentication — no API keys needed.</p>
+<pre><code class="language-python">from jacs.hai.client import HaiClient
 
-result = register_new_agent(
-    name="My Trading Bot",
-    api_key="your-api-key",       # or set HAI_API_KEY env var
-    key_algorithm="ed25519",      # or "pq2025" for post-quantum
-    output_dir=".",               # saves jacs.config.json here
-)
+client = HaiClient()
+result = client.register("https://hai.ai")
 
 print(f"Agent ID: {result.agent_id}")
 print(f"HAI signature: {result.hai_signature}")
 print(f"Registration ID: {result.registration_id}")
 </code></pre>
-<p>This function does three things internally:</p>
-<ol>
-<li>Calls <code>jacs.simple.create()</code> to generate keys and agent document</li>
-<li>Calls <code>jacs.simple.load()</code> to load the new agent</li>
-<li>Calls <code>HaiClient.register()</code> to register with HAI.ai</li>
-</ol>
+<p>See the <a href="https://github.com/HumanAssisted/haisdk">haisdk examples</a> for full quickstarts including A2A protocol integration.</p>
 <h2 id="three-level-trust-model"><a class="header" href="#three-level-trust-model">Three-Level Trust Model</a></h2>
 <p>JACS agents have a trust level determined by independent verification checks:</p>
 <div class="table-wrapper"><table><thead><tr><th>Level</th><th>Name</th><th>What It Proves</th></tr></thead><tbody>
@@ -14339,9 +14335,8 @@ print(f"Registration ID: {result.registration_id}")
 </div>
 <h3 id="verify-another-agent-1"><a class="header" href="#verify-another-agent-1">Verify Another Agent</a></h3>
 <p>Before accepting messages, agreements, or transactions from another agent, verify their trust level:</p>
-<pre><code class="language-python">from jacs.hai import verify_agent
+<pre><code class="language-python">from jacs.hai.client import verify_agent
 
-# Verify that sender meets your trust requirements
 result = verify_agent(
     sender_agent_doc,    # JSON string or dict of the agent's JACS document
     min_level=2,         # require at least domain verification
@@ -14357,87 +14352,41 @@ if result.valid:
 else:
     print(f"Rejected: {result.errors}")
 </code></pre>
-<p><code>verify_agent()</code> checks all three levels and returns the highest achieved:</p>
-<ol>
-<li><strong>Level 1</strong>: Calls <code>jacs.simple.verify()</code> to check the JACS signature locally</li>
-<li><strong>Level 2</strong>: Calls <code>jacs.simple.verify_dns()</code> if a domain is available</li>
-<li><strong>Level 3</strong>: Queries <code>HaiClient.get_agent_attestation()</code> to check HAI.ai registration</li>
-</ol>
 <h2 id="haiclient-class"><a class="header" href="#haiclient-class">HaiClient Class</a></h2>
-<p>For advanced usage with an existing JACS agent:</p>
-<pre><code class="language-python">import jacs.simple as jacs
-from jacs.hai import HaiClient
+<pre><code class="language-python">from jacs.hai.client import HaiClient
 
-jacs.load("./jacs.config.json")
 hai = HaiClient(timeout=30.0, max_retries=3)
 </code></pre>
 <h3 id="test-connection"><a class="header" href="#test-connection">Test Connection</a></h3>
 <pre><code class="language-python">if hai.testconnection("https://hai.ai"):
     print("HAI.ai is reachable")
 </code></pre>
-<p>Tries multiple health endpoints (<code>/api/v1/health</code>, <code>/health</code>, <code>/api/health</code>, <code>/</code>) with a short timeout.</p>
-<h3 id="register-an-existing-agent"><a class="header" href="#register-an-existing-agent">Register an Existing Agent</a></h3>
+<h3 id="register"><a class="header" href="#register">Register</a></h3>
 <pre><code class="language-python"># Preview what would be sent (dry run)
-preview = hai.register("https://hai.ai", api_key="...", preview=True)
+preview = hai.register("https://hai.ai", preview=True)
 print(f"Endpoint: {preview.endpoint}")
-print(f"Payload: {preview.payload_json}")
 
 # Actually register
-result = hai.register("https://hai.ai", api_key="...")
+result = hai.register("https://hai.ai")
 print(f"Registered: {result.agent_id}")
-print(f"HAI signature: {result.hai_signature}")
 </code></pre>
 <h3 id="check-registration-status"><a class="header" href="#check-registration-status">Check Registration Status</a></h3>
-<pre><code class="language-python">status = hai.status("https://hai.ai", api_key="...")
+<pre><code class="language-python">status = hai.status("https://hai.ai")
 if status.registered:
     print(f"Registered since {status.registered_at}")
     print(f"HAI signatures: {status.hai_signatures}")
 </code></pre>
 <h3 id="run-benchmarks"><a class="header" href="#run-benchmarks">Run Benchmarks</a></h3>
-<pre><code class="language-python">result = hai.benchmark(
-    "https://hai.ai",
-    api_key="...",
-    suite="mediator",       # benchmark suite name
-    timeout=120.0,          # benchmark timeout (default: 120s)
-)
+<pre><code class="language-python">result = hai.benchmark("https://hai.ai")
 
 print(f"Score: {result.score}/100")
 print(f"Passed: {result.passed}/{result.total}")
-print(f"Duration: {result.duration_ms}ms")
 </code></pre>
-<p>Supports both synchronous and async (polling) benchmark execution. If the server returns a <code>job_id</code>, the client polls with exponential backoff until completion.</p>
 <h3 id="sse-event-stream"><a class="header" href="#sse-event-stream">SSE Event Stream</a></h3>
-<p>Connect to HAI.ai's real-time event stream for receiving jobs, messages, and heartbeats:</p>
-<pre><code class="language-python"># Generator-based usage
-for event in hai.connect("https://hai.ai", api_key="..."):
+<pre><code class="language-python">for event in hai.connect("https://hai.ai"):
     print(f"Event: {event.event_type}, Data: {event.data}")
     if event.event_type == "job":
         process_job(event.data)
-
-# Or with callback
-def handle_event(event):
-    print(f"Received: {event.event_type}")
-
-for event in hai.connect("https://hai.ai", "...", on_event=handle_event):
-    pass
-</code></pre>
-<p>The connection auto-reconnects with exponential backoff (1s to 60s) on network errors. Disconnect gracefully:</p>
-<pre><code class="language-python">import threading
-
-thread = threading.Thread(target=lambda: list(hai.connect(...)))
-thread.start()
-
-# Later
-hai.disconnect()
-thread.join()
-</code></pre>
-<h2 id="module-level-convenience-functions"><a class="header" href="#module-level-convenience-functions">Module-Level Convenience Functions</a></h2>
-<p>For quick scripts, use the module-level functions that manage a global <code>HaiClient</code> instance:</p>
-<pre><code class="language-python">from jacs.hai import testconnection, register, status, benchmark, connect, disconnect
-
-testconnection("https://hai.ai")
-result = register("https://hai.ai", api_key="...")
-status_result = status("https://hai.ai")
 </code></pre>
 <h2 id="error-handling-9"><a class="header" href="#error-handling-9">Error Handling</a></h2>
 <p>All errors inherit from <code>HaiError</code>:</p>
@@ -14445,28 +14394,24 @@ status_result = status("https://hai.ai")
 <tr><td><code>HaiError</code></td><td>Base class for all HAI errors</td></tr>
 <tr><td><code>RegistrationError</code></td><td>Registration fails, agent already registered, invalid document</td></tr>
 <tr><td><code>HaiConnectionError</code></td><td>Server unreachable, timeout, SSL/TLS errors</td></tr>
-<tr><td><code>AuthenticationError</code></td><td>Invalid or expired API key</td></tr>
+<tr><td><code>HaiAuthError</code></td><td>Invalid JACS signature or expired timestamp</td></tr>
 <tr><td><code>BenchmarkError</code></td><td>Benchmark suite not found, job fails, timeout</td></tr>
-<tr><td><code>SSEError</code></td><td>Stream disconnects, invalid event format</td></tr>
 </tbody></table>
 </div>
-<pre><code class="language-python">from jacs.hai import HaiClient, RegistrationError, AuthenticationError
+<pre><code class="language-python">from jacs.hai.errors import HaiAuthError, RegistrationError
 
 try:
-    result = hai.register("https://hai.ai", api_key="...")
-except AuthenticationError:
-    print("Invalid API key")
+    result = hai.register("https://hai.ai")
+except HaiAuthError:
+    print("JACS authentication failed")
 except RegistrationError as e:
     print(f"Registration failed: {e.message} (HTTP {e.status_code})")
 </code></pre>
 <h2 id="environment-variables-8"><a class="header" href="#environment-variables-8">Environment Variables</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>HAI_API_KEY</code></td><td>Default API key (used when <code>api_key</code> parameter is not passed)</td></tr>
 <tr><td><code>JACS_KEYS_BASE_URL</code></td><td>Preferred base URL for agent key lookups (defaults to <code>https://hai.ai</code>)</td></tr>
-<tr><td><code>HAI_KEYS_BASE_URL</code></td><td>Legacy alias for <code>JACS_KEYS_BASE_URL</code></td></tr>
 <tr><td><code>JACS_REGISTRY_URL</code></td><td>Preferred base URL for registry verification lookups</td></tr>
-<tr><td><code>HAI_API_URL</code></td><td>Legacy alias for <code>JACS_REGISTRY_URL</code></td></tr>
-<tr><td><code>JACS_KEY_RESOLUTION</code></td><td>Key resolution order: <code>local</code>, <code>dns</code>, <code>registry</code> (legacy alias: <code>hai</code>)</td></tr>
+<tr><td><code>JACS_KEY_RESOLUTION</code></td><td>Key resolution order: <code>local</code>, <code>dns</code>, <code>registry</code></td></tr>
 </tbody></table>
 </div>
 <h3 id="external-key-lookup-routes"><a class="header" href="#external-key-lookup-routes">External Key Lookup Routes</a></h3>
@@ -14478,7 +14423,6 @@ except RegistrationError as e:
 <h2 id="see-also-22"><a class="header" href="#see-also-22">See Also</a></h2>
 <ul>
 <li><a href="integrations/a2a.html">A2A Interoperability</a> -- agent discovery and artifact signing</li>
-<li><a href="integrations/mcp.html">MCP Integration</a> -- signed MCP transport</li>
 <li><a href="integrations/../advanced/security.html">Security Model</a> -- JACS cryptographic architecture</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="openclaw-integration"><a class="header" href="#openclaw-integration">OpenClaw Integration</a></h1>
