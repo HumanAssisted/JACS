@@ -98,6 +98,14 @@ fn require_relative_path_safe_rejects_windows_drive_prefixed_paths() {
 }
 
 #[test]
+fn require_relative_path_safe_rejects_windows_unc_and_device_paths() {
+    // UNC path -> starts with two separators, contains empty segments.
+    assert!(require_relative_path_safe("\\\\server\\share\\file.pem").is_err());
+    // Windows device path prefix should be rejected by empty segment + drive checks.
+    assert!(require_relative_path_safe("\\\\?\\C:\\Windows\\System32").is_err());
+}
+
+#[test]
 fn require_relative_path_safe_allows_uuid_colon_filename() {
     // JACS commonly uses UUID:UUID filenames for agent/document identifiers.
     assert!(

@@ -33,7 +33,7 @@ use crate::time_utils;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use serde_json::{Value, json, to_value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -69,6 +69,124 @@ pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     TASK_START_AGREEMENT_FIELDNAME,
     TASK_END_AGREEMENT_FIELDNAME,
 ];
+
+/// Controls how signature payload content is built from document fields.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum SignatureContentMode {
+    /// Canonicalized field values (includes non-string JSON types).
+    CanonicalV2,
+}
+
+/// Extract the signature `fields` array from a signature object.
+pub(crate) fn extract_signature_fields(
+    json_value: &Value,
+    signature_key_from: &str,
+) -> Option<Vec<String>> {
+    let arr = json_value
+        .get(signature_key_from)?
+        .get("fields")?
+        .as_array()?;
+    let mut out = Vec::with_capacity(arr.len());
+    for entry in arr {
+        if let Some(field) = entry.as_str() {
+            out.push(field.to_string());
+        }
+    }
+    Some(out)
+}
+
+fn write_canonical_json(value: &Value, out: &mut String) -> Result<(), Box<dyn Error>> {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Number(n) => out.push_str(&n.to_string()),
+        Value::String(s) => out.push_str(&serde_json::to_string(s)?),
+        Value::Array(values) => {
+            out.push('[');
+            for (idx, item) in values.iter().enumerate() {
+                if idx > 0 {
+                    out.push(',');
+                }
+                write_canonical_json(item, out)?;
+            }
+            out.push(']');
+        }
+        Value::Object(map) => {
+            out.push('{');
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            for (idx, key) in keys.iter().enumerate() {
+                if idx > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(key)?);
+                out.push(':');
+                if let Some(child) = map.get(*key) {
+                    write_canonical_json(child, out)?;
+                }
+            }
+            out.push('}');
+        }
+    }
+    Ok(())
+}
+
+fn canonicalize_json(value: &Value) -> Result<String, Box<dyn Error>> {
+    let mut out = String::new();
+    write_canonical_json(value, &mut out)?;
+    Ok(out)
+}
+
+pub(crate) fn build_signature_content(
+    json_value: &Value,
+    keys: Option<Vec<String>>,
+    placement_key: &str,
+    _mode: SignatureContentMode,
+) -> Result<(String, Vec<String>), Box<dyn Error>> {
+    debug!("build_signature_content keys:\n{:?}", keys);
+    let defaults = keys.is_none();
+    let mut accepted_fields = match keys {
+        Some(keys) => keys,
+        None => json_value
+            .as_object()
+            .unwrap_or(&serde_json::Map::new())
+            .keys()
+            .filter(|&key| key != placement_key && !JACS_IGNORE_FIELDS.contains(&key.as_str()))
+            .map(std::string::ToString::to_string)
+            .collect(),
+    };
+
+    // Canonical default behavior: stable ordering by field name.
+    if defaults {
+        accepted_fields.sort();
+    }
+
+    // Eliminate duplicates while preserving order.
+    let mut seen = HashSet::new();
+    accepted_fields.retain(|field| seen.insert(field.clone()));
+
+    let mut content_parts: Vec<String> = Vec::with_capacity(accepted_fields.len());
+    for key in &accepted_fields {
+        if key == placement_key || JACS_IGNORE_FIELDS.contains(&key.as_str()) {
+            let error_message = format!(
+                "Field names for signature must not include reserved key '{}' (reserved: {:?})",
+                key, JACS_IGNORE_FIELDS
+            );
+            error!("{}", error_message);
+            return Err(error_message.into());
+        }
+        if let Some(value) = json_value.get(key) {
+            content_parts.push(canonicalize_json(value)?);
+        }
+    }
+
+    let content = content_parts.join(" ");
+    debug!(
+        "build_signature_content result: {:?} fields {:?} mode {:?}",
+        content, accepted_fields, _mode
+    );
+    Ok((content, accepted_fields))
+}
 
 // Just use Vec<u8> directly since it already implements the needed traits
 pub type PrivateKey = Vec<u8>;
@@ -551,16 +669,9 @@ impl Agent {
         signature: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
-
-        let (document_values_string, _) = Agent::get_values_as_string(
-            json_value,
-            fields.map(|s| s.to_vec()),
-            signature_key_from,
-        )?;
-        debug!(
-            "signature_verification_procedure document_values_string:\n{}",
-            document_values_string
-        );
+        let resolved_fields = fields
+            .map(|s| s.to_vec())
+            .or_else(|| extract_signature_fields(json_value, signature_key_from));
 
         debug!(
             "signature_verification_procedure placement_key:\n{}",
@@ -675,8 +786,7 @@ impl Agent {
             verification_claim.as_deref(),
             Some("verified-registry") | Some("verified-hai.ai")
         ) {
-            let agent_id_for_registry =
-                maybe_agent_id.or(self.id.as_deref()).unwrap_or_default();
+            let agent_id_for_registry = maybe_agent_id.or(self.id.as_deref()).unwrap_or_default();
             let pk_hash = pubkey_digest_hex(&public_key);
 
             match verify_registry_registration_sync(&agent_id_for_registry, &pk_hash) {
@@ -719,13 +829,22 @@ impl Agent {
             "\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n",
             standard_signature, provided_signature, signature_base64
         );
-
-        let result = self.verify_string(
-            &document_values_string,
-            &signature_base64,
-            public_key,
-            resolved_public_key_enc_type.clone(),
-        );
+    let (document_values_string, _) = build_signature_content(
+        json_value,
+        resolved_fields.clone(),
+        signature_key_from,
+        SignatureContentMode::CanonicalV2,
+    )?;
+    debug!(
+        "signature_verification_procedure canonical payload:\n{}",
+        document_values_string
+    );
+    let result = self.verify_string(
+        &document_values_string,
+        &signature_base64,
+        public_key.clone(),
+        resolved_public_key_enc_type.clone(),
+    );
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
@@ -888,48 +1007,12 @@ impl Agent {
         keys: Option<Vec<String>>,
         placement_key: &str,
     ) -> Result<(String, Vec<String>), Box<dyn Error>> {
-        let mut result = String::new();
-        debug!("get_values_as_string keys:\n{:?}", keys);
-        let accepted_fields = match keys {
-            Some(keys) => keys,
-            None => {
-                // Choose default field names
-                let default_keys: Vec<String> = json_value
-                    .as_object()
-                    .unwrap_or(&serde_json::Map::new())
-                    .keys()
-                    .filter(|&key| {
-                        key != placement_key && !JACS_IGNORE_FIELDS.contains(&key.as_str())
-                    })
-                    .map(|key| key.to_string())
-                    .collect();
-                default_keys
-            }
-        };
-
-        for key in &accepted_fields {
-            if let Some(value) = json_value.get(key)
-                && let Some(str_value) = value.as_str()
-            {
-                if str_value == placement_key || JACS_IGNORE_FIELDS.contains(&str_value) {
-                    let error_message = format!(
-                        "Field names for signature must not include itself or hashing
-                              - these are reserved for this signature {}: see {:?}",
-                        placement_key, JACS_IGNORE_FIELDS
-                    );
-                    error!("{}", error_message);
-                    return Err(error_message.into());
-                }
-                result.push_str(str_value);
-                result.push(' ');
-            }
-        }
-        debug!(
-            "get_values_as_string result: {:?} fields {:?}",
-            result.trim().to_string(),
-            accepted_fields
-        );
-        Ok((result.trim().to_string(), accepted_fields))
+        build_signature_content(
+            json_value,
+            keys,
+            placement_key,
+            SignatureContentMode::CanonicalV2,
+        )
     }
 
     /// verify the hash of a complete document that has SHA256_FIELDNAME
@@ -1699,6 +1782,80 @@ mod builder_tests {
         for result in &results {
             assert!(result.is_err());
         }
+    }
+
+    #[test]
+    fn test_build_signature_content_canonical_includes_non_string_fields() {
+        let value = json!({
+            "content": {"z": 1, "a": 2},
+            "title": "hello"
+        });
+        let keys = Some(vec![
+            "content".to_string(),
+            "title".to_string(),
+            "enabled".to_string(),
+        ]);
+        let value = value
+            .as_object()
+            .cloned()
+            .map(serde_json::Value::Object)
+            .unwrap_or_default();
+        let mut value = value;
+        value["enabled"] = json!(true);
+
+        let (canonical_payload, _) = build_signature_content(
+            &value,
+            keys,
+            AGENT_SIGNATURE_FIELDNAME,
+            SignatureContentMode::CanonicalV2,
+        )
+        .expect("canonical payload should build");
+
+        assert!(
+            canonical_payload.contains("{\"a\":2,\"z\":1}"),
+            "canonical payload should include canonicalized object value"
+        );
+        assert!(
+            canonical_payload.contains("\"hello\""),
+            "canonical payload should include JSON-encoded strings"
+        );
+        assert!(
+            canonical_payload.contains("true"),
+            "canonical payload should include boolean values"
+        );
+    }
+
+    #[test]
+    fn test_build_signature_content_default_fields_sorted() {
+        let value = json!({
+            "z": "last",
+            "a": "first",
+            AGENT_SIGNATURE_FIELDNAME: {"fields": []},
+            SHA256_FIELDNAME: "ignored"
+        });
+
+        let (_, fields) = build_signature_content(
+            &value,
+            None,
+            AGENT_SIGNATURE_FIELDNAME,
+            SignatureContentMode::CanonicalV2,
+        )
+        .expect("canonical payload should build");
+
+        assert_eq!(fields, vec!["a".to_string(), "z".to_string()]);
+    }
+
+    #[test]
+    fn test_extract_signature_fields_reads_signature_metadata() {
+        let value = json!({
+            AGENT_SIGNATURE_FIELDNAME: {
+                "fields": ["b", "a", "content"]
+            }
+        });
+
+        let fields = extract_signature_fields(&value, AGENT_SIGNATURE_FIELDNAME)
+            .expect("fields should be extracted");
+        assert_eq!(fields, vec!["b", "a", "content"]);
     }
 }
 

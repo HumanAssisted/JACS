@@ -3,6 +3,10 @@
 //! This module provides functions for managing trusted agents,
 //! enabling P2P key exchange and verification without a central authority.
 
+use crate::agent::{
+    AGENT_SIGNATURE_FIELDNAME, SignatureContentMode, allow_legacy_signature_fallback,
+    build_signature_content, extract_signature_fields,
+};
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::{CryptoSigningAlgorithm, detect_algorithm_from_public_key};
 use crate::error::JacsError;
@@ -575,39 +579,8 @@ fn verify_agent_self_signature(
 
     // Extract signature components
     let signature_b64 = agent_value.get_path_str_required(&["jacsSignature", "signature"])?;
-    let fields = agent_value.get_path_array_required(&["jacsSignature", "fields"])?;
-
-    // Build the content that was signed, using deterministic field ordering
-    let mut field_names: Vec<&str> = Vec::new();
-    for field in fields {
-        if let Some(name) = field.as_str() {
-            field_names.push(name);
-        }
-    }
-    // Sort fields alphabetically for deterministic content reconstruction
-    field_names.sort();
-
-    let mut content_parts: Vec<String> = Vec::new();
-    for field_name in &field_names {
-        if let Some(value) = agent_value.get(*field_name) {
-            if let Some(str_val) = value.as_str() {
-                content_parts.push(str_val.to_string());
-            } else {
-                // For non-string fields, use canonical JSON serialization
-                content_parts.push(serde_json::to_string(value).unwrap_or_default());
-            }
-        }
-    }
-
-    if content_parts.is_empty() {
-        return Err(JacsError::SignatureVerificationFailed {
-            reason: "No signed fields could be extracted from the agent document. \
-                The 'fields' array in jacsSignature may reference non-existent fields."
-                .to_string(),
-        });
-    }
-
-    let signed_content = content_parts.join(" ");
+    let _fields = agent_value.get_path_array_required(&["jacsSignature", "fields"])?;
+    let signature_fields = extract_signature_fields(agent_value, AGENT_SIGNATURE_FIELDNAME);
 
     // Determine the algorithm
     let algo = match algorithm {
@@ -649,30 +622,58 @@ fn verify_agent_self_signature(
         }
     };
 
-    // Verify the signature based on algorithm
-    let verification_result = match algo {
-        CryptoSigningAlgorithm::RsaPss => crate::crypt::rsawrapper::verify_string(
-            public_key_bytes.to_vec(),
-            &signed_content,
-            &signature_b64,
-        ),
-        CryptoSigningAlgorithm::RingEd25519 => crate::crypt::ringwrapper::verify_string(
-            public_key_bytes.to_vec(),
-            &signed_content,
-            &signature_b64,
-        ),
-        CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-            crate::crypt::pq::verify_string(
+    let verify_with_payload = |payload: &str| -> Result<(), Box<dyn std::error::Error>> {
+        match algo {
+            CryptoSigningAlgorithm::RsaPss => crate::crypt::rsawrapper::verify_string(
                 public_key_bytes.to_vec(),
-                &signed_content,
+                payload,
                 &signature_b64,
-            )
+            ),
+            CryptoSigningAlgorithm::RingEd25519 => crate::crypt::ringwrapper::verify_string(
+                public_key_bytes.to_vec(),
+                payload,
+                &signature_b64,
+            ),
+            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
+                crate::crypt::pq::verify_string(public_key_bytes.to_vec(), payload, &signature_b64)
+            }
+            CryptoSigningAlgorithm::Pq2025 => crate::crypt::pq2025::verify_string(
+                public_key_bytes.to_vec(),
+                payload,
+                &signature_b64,
+            ),
         }
-        CryptoSigningAlgorithm::Pq2025 => crate::crypt::pq2025::verify_string(
-            public_key_bytes.to_vec(),
-            &signed_content,
-            &signature_b64,
-        ),
+    };
+
+    let mut used_legacy_fallback = false;
+    let canonical_result = match build_signature_content(
+        agent_value,
+        signature_fields.clone(),
+        AGENT_SIGNATURE_FIELDNAME,
+        SignatureContentMode::CanonicalV2,
+    ) {
+        Ok((canonical_payload, _)) => verify_with_payload(&canonical_payload),
+        Err(e) => Err(e),
+    };
+
+    let verification_result = if canonical_result.is_ok() || !allow_legacy_signature_fallback() {
+        canonical_result
+    } else {
+        match build_signature_content(
+            agent_value,
+            signature_fields,
+            AGENT_SIGNATURE_FIELDNAME,
+            SignatureContentMode::LegacyV1,
+        ) {
+            Ok((legacy_payload, _)) => {
+                let legacy_result = verify_with_payload(&legacy_payload);
+                if legacy_result.is_ok() {
+                    used_legacy_fallback = true;
+                }
+                legacy_result
+            }
+            Err(_) => canonical_result,
+        }
     };
 
     verification_result.map_err(|e| JacsError::SignatureVerificationFailed {
@@ -684,6 +685,12 @@ fn verify_agent_self_signature(
             algo, e
         ),
     })?;
+
+    if used_legacy_fallback {
+        warn!(
+            "Agent self-signature verified using legacy fallback. Re-sign this agent to migrate to canonical payload signing."
+        );
+    }
 
     info!("Agent self-signature verified successfully");
     Ok(())

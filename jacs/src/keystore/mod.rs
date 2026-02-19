@@ -583,4 +583,78 @@ mod tests {
         assert!(debug_str.contains("ring-Ed25519"));
         assert!(debug_str.contains("has_private_key"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_set_secure_permissions_file_mode_600() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "jacs_key_file_perm_{}_{}",
+            std::process::id(),
+            suffix
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        std::fs::write(&path, b"secret").expect("write test file");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .expect("set initial permissions");
+
+        set_secure_permissions(
+            path.to_str().expect("temporary path should be valid UTF-8"),
+            false,
+        )
+        .expect("set secure file permissions");
+
+        let mode = std::fs::metadata(&path)
+            .expect("read file metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_set_secure_permissions_directory_mode_700() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "jacs_key_dir_perm_{}_{}",
+            std::process::id(),
+            suffix
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+
+        std::fs::create_dir_all(&path).expect("create test directory");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("set initial permissions");
+
+        set_secure_permissions(
+            path.to_str().expect("temporary path should be valid UTF-8"),
+            true,
+        )
+        .expect("set secure directory permissions");
+
+        let mode = std::fs::metadata(&path)
+            .expect("read directory metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o700);
+
+        let _ = std::fs::remove_dir_all(path);
+    }
 }
