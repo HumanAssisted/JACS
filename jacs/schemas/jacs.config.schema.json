@@ -55,7 +55,7 @@
       "description": "default storage to use",
       "type": "string",
       "enum": [
-        "fs", "aws", "hai", "memory", "database", "sqlite"
+        "fs", "aws", "hai", "memory", "database", "sqlite", "limbo", "surrealdb", "duckdb", "redb"
       ]
     },
     "jacs_agent_domain": {

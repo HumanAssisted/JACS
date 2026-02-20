@@ -23,18 +23,58 @@ pub mod jenv;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
 pub mod database;
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "database", feature = "sqlite")))]
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(
+        feature = "database",
+        feature = "sqlite",
+        feature = "limbo-storage",
+        feature = "surrealdb-storage",
+        feature = "duckdb-storage",
+        feature = "redb-storage"
+    )
+))]
 pub mod database_traits;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
 pub use database::DatabaseStorage;
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "database", feature = "sqlite")))]
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(
+        feature = "database",
+        feature = "sqlite",
+        feature = "limbo-storage",
+        feature = "surrealdb-storage",
+        feature = "duckdb-storage",
+        feature = "redb-storage"
+    )
+))]
 pub use database_traits::DatabaseDocumentTraits;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub mod sqlite;
 #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub use sqlite::SqliteStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
+pub mod limbo_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
+pub use limbo_storage::LimboStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+pub mod surrealdb_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+pub use surrealdb_storage::SurrealDbStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+pub mod duckdb_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+pub use duckdb_storage::DuckDbStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+pub mod redb_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+pub use redb_storage::RedbStorage;
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -183,6 +223,18 @@ pub enum StorageType {
     #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
     #[strum(serialize = "sqlite")]
     Sqlite,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
+    #[strum(serialize = "limbo")]
+    Limbo,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+    #[strum(serialize = "surrealdb")]
+    SurrealDb,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+    #[strum(serialize = "duckdb")]
+    DuckDb,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+    #[strum(serialize = "redb")]
+    Redb,
 }
 
 impl MultiStorage {
@@ -446,6 +498,22 @@ impl MultiStorage {
             #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
             StorageType::Sqlite => {
                 panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
+            StorageType::Limbo => {
+                panic!("Limbo storage does not use ObjectStore. Use LimboStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+            StorageType::SurrealDb => {
+                panic!("SurrealDB storage does not use ObjectStore. Use SurrealDbStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+            StorageType::DuckDb => {
+                panic!("DuckDB storage does not use ObjectStore. Use DuckDbStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+            StorageType::Redb => {
+                panic!("Redb storage does not use ObjectStore. Use RedbStorage directly.")
             }
         }
     }

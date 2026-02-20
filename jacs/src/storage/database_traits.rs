@@ -63,3 +63,7 @@ pub trait DatabaseDocumentTraits: Send + Sync {
     /// Run database migrations to create/update the schema.
     fn run_migrations(&self) -> Result<(), Box<dyn Error>>;
 }
+
+/// Placeholder for future vector search capabilities.
+/// No methods yet — exists so downstream code can use `T: VectorSearchTraits` bounds.
+pub trait VectorSearchTraits: DatabaseDocumentTraits {}

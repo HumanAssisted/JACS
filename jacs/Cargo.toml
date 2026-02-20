@@ -143,6 +143,14 @@ fips203 = "0.4.3"
 fips204 = "0.4.3"
 # Database storage (optional, behind "database" feature)
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls"], optional = true }
+# Limbo (pure-Rust SQLite rewrite, optional)
+limbo_core = { version = "0.0.22", optional = true, features = ["index_experimental"] }
+# SurrealDB (multi-model embedded DB, optional)
+surrealdb = { version = "2.6", default-features = false, features = ["kv-mem"], optional = true }
+# DuckDB (analytics DB with JSON support, optional — links to C++ DuckDB)
+duckdb = { version = "1.4", features = ["bundled", "json"], optional = true }
+# Redb (pure-Rust embedded KV store, optional)
+redb = { version = "3.1", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
@@ -173,6 +181,22 @@ sqlite = ["dep:sqlx", "dep:tokio", "sqlx/sqlite"]
 sqlite-tests = ["sqlite"]
 # S3/MinIO integration tests (requires Docker or MinIO)
 s3-tests = []
+
+# Limbo storage backend (pure-Rust SQLite rewrite)
+limbo-storage = ["dep:limbo_core", "dep:tokio"]
+limbo-tests = ["limbo-storage"]
+
+# SurrealDB storage backend (multi-model embedded)
+surrealdb-storage = ["dep:surrealdb", "dep:tokio"]
+surrealdb-tests = ["surrealdb-storage"]
+
+# DuckDB storage backend (analytics DB with JSON)
+duckdb-storage = ["dep:duckdb"]
+duckdb-tests = ["duckdb-storage"]
+
+# Redb storage backend (pure-Rust KV store)
+redb-storage = ["dep:redb"]
+redb-tests = ["redb-storage"]
 
 # Observability backends are gated behind compile-time features.
 # Default is a minimal core: stderr/file logs only, no remote backends.
