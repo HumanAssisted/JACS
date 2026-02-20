@@ -1,6 +1,6 @@
 # PASSWORD_SECURITY_PLAN
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
 
 ## Purpose
 Define and implement secure password-supply options for JACS with one rule:
@@ -29,8 +29,12 @@ These are already verified in current repo state:
 4. Security-review remediation dependencies for password handling are covered:
    - strict TLS defaults are fail-closed,
    - private-key writes are owner-only by default,
-   - signature replay metadata (`iat`/`jti`) is required and validated,
+   - signature replay metadata (`iat`/`jti`) is required, validated, and nonce-cached for intra-window replay blocking,
    - canonical signature content generation is deterministic.
+
+5. Validation posture includes both source and install modes:
+   - source-mode test suites remain green for maintained wrappers/integrations,
+   - install-mode checks are exercised for production-like package consumption paths.
 
 ## Password Security Options (Target Architecture)
 

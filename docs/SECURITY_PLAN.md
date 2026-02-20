@@ -1,6 +1,6 @@
 # SECURITY_PLAN
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
 
 ## Locked Decisions (Do Not Revisit In This Phase)
 
@@ -54,9 +54,14 @@ Last updated: 2026-02-19
 - Strict TLS default is enforced (`JACS_STRICT_TLS` defaults to strict/true behavior).
 - Private-key file writes now use owner-only creation semantics (`create_new` + `0600` on Unix).
 - Replay-resistance metadata is now mandatory in signatures (`iat` + `jti`) and validated at verify time.
+- Replay cache enforcement is active for `jti` values within the skew window, closing intra-window replay reuse.
 - Signature payload generation/verification uses canonical JSON serialization for deterministic hashing/signing.
 - Wrapper and integration suites were re-run with this posture:
   - `jacspy`, `jacsnpm`, `jacsgo`, `jacs-mcp`, plus external integrations (`haisdk`, `moltyjacs`).
+
+9. Production install parity checks
+- Python production-style validation now includes wheel-install checks (`jacs` wheel + `haisdk` package install) in an isolated environment, not only source-tree test runs.
+- Node production-style validation includes package tarball generation and install-path verification in addition to in-repo test execution.
 
 ## P0 (Block Next Release)
 
