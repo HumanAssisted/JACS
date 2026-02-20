@@ -26,6 +26,7 @@ pub mod mime;
 pub mod observability;
 pub mod paths;
 pub mod rate_limit;
+pub mod replay;
 pub mod schema;
 pub mod shared;
 pub mod shutdown;

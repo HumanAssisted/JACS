@@ -42,7 +42,8 @@ If neither is set, CLI will try legacy ./jacs_keys/.jacs_password when present."
 fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, String> {
     let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
-    let password = raw.trim();
+    // Preserve intentional leading/trailing spaces in passphrases; strip only line endings.
+    let password = raw.trim_end_matches(|c| c == '\n' || c == '\r');
     if password.is_empty() {
         return Err(format!(
             "{} '{}' is empty. {}",

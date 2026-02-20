@@ -351,7 +351,10 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
             let mut value: serde_json::Value = serde_json::from_str(&data)?;
             let mut touched_signature = false;
 
-            if let Some(signature) = value.get_mut("jacsSignature").and_then(|v| v.as_object_mut()) {
+            if let Some(signature) = value
+                .get_mut("jacsSignature")
+                .and_then(|v| v.as_object_mut())
+            {
                 let now_iat = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)?
                     .as_secs() as i64;

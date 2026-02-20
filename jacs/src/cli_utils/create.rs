@@ -109,7 +109,8 @@ fn resolve_cli_password_for_config_create() -> Result<Option<String>, Box<dyn Er
                 e
             )
         })?;
-        let password = raw.trim().to_string();
+        // Preserve intentional leading/trailing spaces in passphrases; strip only line endings.
+        let password = raw.trim_end_matches(|c| c == '\n' || c == '\r').to_string();
         if password.is_empty() {
             return Err(format!(
                 "{} at '{}' is empty.",

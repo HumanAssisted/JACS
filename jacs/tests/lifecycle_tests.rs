@@ -13,6 +13,7 @@ use serde_json::json;
 use serial_test::serial;
 use std::env;
 use std::fs;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tempfile::TempDir;
 
 mod utils;
@@ -69,23 +70,26 @@ fn cleanup_test_env() {
     }
 }
 
+static LIFECYCLE_KEY_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 /// Sets up environment for lifecycle tests with unique key filenames.
 /// This prevents overwriting the shared fixture keys used by other tests.
 fn set_lifecycle_test_env_vars() {
     let fixtures_dir = utils::fixtures_dir_string();
-    let keys_dir = utils::fixtures_keys_dir_string();
+    let key_run_id = LIFECYCLE_KEY_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let keys_dir = std::env::temp_dir()
+        .join("jacs-lifecycle-tests")
+        .join(format!("{}-{}", std::process::id(), key_run_id));
+    fs::create_dir_all(&keys_dir).expect("Failed to create lifecycle test key directory");
+
+    let private_key_filename = format!("lifecycle-test-{}.private.pem", key_run_id);
+    let public_key_filename = format!("lifecycle-test-{}.public.pem", key_run_id);
+
     unsafe {
         env::set_var(utils::PASSWORD_ENV_VAR, utils::TEST_PASSWORD_LEGACY);
-        env::set_var("JACS_KEY_DIRECTORY", &keys_dir);
-        // Use unique key filenames for lifecycle tests to avoid overwriting shared fixtures
-        env::set_var(
-            "JACS_AGENT_PRIVATE_KEY_FILENAME",
-            "lifecycle-test.private.pem",
-        );
-        env::set_var(
-            "JACS_AGENT_PUBLIC_KEY_FILENAME",
-            "lifecycle-test.public.pem",
-        );
+        env::set_var("JACS_KEY_DIRECTORY", keys_dir.to_string_lossy().to_string());
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", private_key_filename);
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", public_key_filename);
         env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
     }
 }

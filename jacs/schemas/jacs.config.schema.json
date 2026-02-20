@@ -55,7 +55,7 @@
       "description": "default storage to use",
       "type": "string",
       "enum": [
-        "fs", "aws", "hai"
+        "fs", "aws", "hai", "memory", "database", "sqlite"
       ]
     },
     "jacs_agent_domain": {

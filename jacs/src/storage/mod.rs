@@ -23,13 +23,18 @@ pub mod jenv;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
 pub mod database;
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "database", feature = "sqlite")))]
 pub mod database_traits;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
 pub use database::DatabaseStorage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "database", feature = "sqlite")))]
 pub use database_traits::DatabaseDocumentTraits;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+pub mod sqlite;
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+pub use sqlite::SqliteStorage;
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -175,6 +180,9 @@ pub enum StorageType {
     #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
     #[strum(serialize = "database")]
     Database,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+    #[strum(serialize = "sqlite")]
+    Sqlite,
 }
 
 impl MultiStorage {
@@ -217,9 +225,12 @@ impl MultiStorage {
             let bucket_name = get_required_env_var("JACS_ENABLE_AWS_BUCKET_NAME", true).expect(
                 "JACS_ENABLE_AWS_BUCKET_NAME must be set when JACS_ENABLE_AWS_STORAGE is set",
             );
+            let allow_http = std::env::var("AWS_ALLOW_HTTP")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false);
             let s3 = AmazonS3Builder::from_env()
                 .with_bucket_name(bucket_name)
-                .with_allow_http(false)
+                .with_allow_http(allow_http)
                 .build()?;
             let tmps3 = Arc::new(s3);
             _s3 = Some(tmps3.clone());
@@ -431,6 +442,10 @@ impl MultiStorage {
             #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
             StorageType::Database => {
                 panic!("Database storage does not use ObjectStore. Use DatabaseStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+            StorageType::Sqlite => {
+                panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
             }
         }
     }

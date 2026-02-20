@@ -61,6 +61,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_json_canonicalizer = "0.3.2"
 signature = "2.2.0"
+moka = { version = "0.12", features = ["sync"] }
 url = "2.5.4"
 sha2 = "0.10.8"
 phf = { version = "0.11.3", features = ["macros"] }
@@ -124,8 +125,10 @@ predicates = "3.1"
 tempfile = "3.19.1"
 serial_test = "3.2.0"
 futures = "0.3"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
 testcontainers = "0.26"
-testcontainers-modules = { version = "0.14", features = ["postgres"] }
+testcontainers-modules = { version = "0.14", features = ["postgres", "minio"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -139,7 +142,7 @@ object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "ht
 fips203 = "0.4.3"
 fips204 = "0.4.3"
 # Database storage (optional, behind "database" feature)
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres"], optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
@@ -160,9 +163,16 @@ observability-convenience = []
 mcp-server = []
 
 # Database storage backend (PostgreSQL via sqlx)
-database = ["dep:sqlx", "dep:tokio"]
+database = ["dep:sqlx", "dep:tokio", "sqlx/postgres"]
 # Database integration tests (requires Docker or local PostgreSQL)
 database-tests = ["database"]
+
+# SQLite storage backend
+sqlite = ["dep:sqlx", "dep:tokio", "sqlx/sqlite"]
+# SQLite integration tests
+sqlite-tests = ["sqlite"]
+# S3/MinIO integration tests (requires Docker or MinIO)
+s3-tests = []
 
 # Observability backends are gated behind compile-time features.
 # Default is a minimal core: stderr/file logs only, no remote backends.
