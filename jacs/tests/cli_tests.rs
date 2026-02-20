@@ -1091,3 +1091,54 @@ fn test_a2a_quickstart_invalid_algorithm() -> Result<(), Box<dyn Error>> {
     cmd.assert().failure();
     Ok(())
 }
+
+#[test]
+fn test_mcp_help_shows_install_and_run() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("install"))
+        .stdout(predicate::str::contains("run"))
+        .stdout(predicate::str::contains("Install and run the JACS MCP server"));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_install_dry_run_shows_prebuilt_plan() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("install").arg("--dry-run");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run: MCP prebuilt install plan"))
+        .stdout(predicate::str::contains("jacs-mcp-"))
+        .stdout(predicate::str::contains("github.com/HumanAssisted/JACS/releases/download"));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_install_dry_run_custom_url() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp")
+        .arg("install")
+        .arg("--dry-run")
+        .arg("--url")
+        .arg("https://example.invalid/jacs-mcp.tar.gz");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.invalid/jacs-mcp.tar.gz"));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_run_missing_binary_shows_install_hint() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp")
+        .arg("run")
+        .arg("--bin")
+        .arg("/definitely/not/a/real/jacs-mcp");
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Install it with `jacs mcp install`"));
+    Ok(())
+}

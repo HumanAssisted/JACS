@@ -241,6 +241,20 @@ jacs quickstart --sign --file mydata.json
 <blockquote>
 <p><strong>That's it -- you're signing.</strong> For most use cases, the quick start above is all you need. Jump to <a href="../getting-started/decision-tree.html">Which integration should I use?</a> to find the right framework adapter, or read on for manual agent setup.</p>
 </blockquote>
+<h3 id="macos-homebrew-install-rust-cli"><a class="header" href="#macos-homebrew-install-rust-cli">macOS Homebrew install (Rust CLI)</a></h3>
+<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+</code></pre>
+<h3 id="mcp-quick-start-rust-cli"><a class="header" href="#mcp-quick-start-rust-cli">MCP quick start (Rust CLI)</a></h3>
+<pre><code class="language-bash"># Install platform-matched jacs-mcp binary
+jacs mcp install
+
+# Run stdio MCP server
+jacs mcp run
+
+# Optional fallback if you want cargo-based install
+jacs mcp install --from-cargo
+</code></pre>
 <h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
 <p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart()</code> already creates a persistent agent.</p>
 <div class="tabs">

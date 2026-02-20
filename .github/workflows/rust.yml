@@ -2,7 +2,7 @@ name: Rust (jacs crate)
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master"]
     tags: ["v*"]
     paths:
       - "jacs/**"
@@ -11,7 +11,7 @@ on:
       - "Cargo.lock"
       - ".github/workflows/rust.yml"
   pull_request:
-    branches: ["main"]
+    branches: ["master"]
     paths:
       - "jacs/**"
       - "binding-core/**"

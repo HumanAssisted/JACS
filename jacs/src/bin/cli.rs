@@ -20,12 +20,15 @@ use reqwest;
 use rpassword::read_password;
 use std::env;
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 // use std::os::unix::fs::DirBuilderExt; // unused
 use std::process;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
 const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
+const DEFAULT_MCP_RELEASE_BASE_URL: &str = "https://github.com/HumanAssisted/JACS/releases/download";
+const DEFAULT_MCP_RELEASE_TAG_PREFIX: &str = "cli/v";
 
 fn quickstart_password_bootstrap_help() -> &'static str {
     "Password bootstrap options (set exactly one explicit source):
@@ -134,6 +137,337 @@ fn wrap_quickstart_error_with_password_help(
         err,
         quickstart_password_bootstrap_help()
     )))
+}
+
+fn install_jacs_mcp_via_cargo(version: Option<&str>, force: bool) -> Result<(), Box<dyn Error>> {
+    let resolved_version = version
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(env!("CARGO_PKG_VERSION"));
+
+    let mut command = std::process::Command::new("cargo");
+    command
+        .arg("install")
+        .arg("jacs-mcp")
+        .arg("--locked")
+        .arg("--version")
+        .arg(resolved_version);
+
+    if force {
+        command.arg("--force");
+    }
+
+    let status = command.status().map_err(|e| -> Box<dyn Error> {
+        Box::new(std::io::Error::other(format!(
+            "Failed to execute cargo: {}. Install Rust/Cargo first, then run `jacs mcp install`.",
+            e
+        )))
+    })?;
+
+    if !status.success() {
+        return Err(Box::new(std::io::Error::other(format!(
+            "cargo install jacs-mcp failed with status {}",
+            status
+        ))));
+    }
+
+    println!("Installed jacs-mcp v{}.", resolved_version);
+    println!("Run it with: jacs mcp run");
+    Ok(())
+}
+
+fn default_user_bin_dir() -> Result<PathBuf, Box<dyn Error>> {
+    if let Ok(cargo_home) = env::var("CARGO_HOME") {
+        let trimmed = cargo_home.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed).join("bin"));
+        }
+    }
+
+    let home = dirs::home_dir().ok_or_else(|| -> Box<dyn Error> {
+        Box::new(std::io::Error::other(
+            "Could not determine home directory for MCP binary install.",
+        ))
+    })?;
+    Ok(home.join(".cargo").join("bin"))
+}
+
+fn resolve_mcp_install_dir(bin_dir: Option<&str>) -> Result<PathBuf, Box<dyn Error>> {
+    if let Some(path) = bin_dir {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
+    if let Ok(env_path) = env::var("JACS_BIN_DIR") {
+        let trimmed = env_path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
+    default_user_bin_dir()
+}
+
+fn mcp_binary_filename() -> &'static str {
+    if cfg!(windows) {
+        "jacs-mcp.exe"
+    } else {
+        "jacs-mcp"
+    }
+}
+
+fn mcp_asset_filename_for_current_platform(version: &str) -> Result<String, Box<dyn Error>> {
+    let suffix = match (env::consts::OS, env::consts::ARCH) {
+        ("macos", "aarch64") => "darwin-arm64",
+        ("macos", "x86_64") => "darwin-x64",
+        ("linux", "x86_64") => "linux-x64",
+        ("linux", "aarch64") => "linux-arm64",
+        ("windows", "x86_64") => "windows-x64",
+        _ => {
+            return Err(Box::new(std::io::Error::other(format!(
+                "Unsupported platform for prebuilt jacs-mcp: os='{}' arch='{}'. Use `jacs mcp install --from-cargo`.",
+                env::consts::OS,
+                env::consts::ARCH
+            ))));
+        }
+    };
+
+    let extension = if env::consts::OS == "windows" {
+        "zip"
+    } else {
+        "tar.gz"
+    };
+    Ok(format!("jacs-mcp-{}-{}.{}", version, suffix, extension))
+}
+
+fn mcp_release_download_url(version: &str, asset_name: &str, url_override: Option<&str>) -> String {
+    if let Some(override_url) = url_override {
+        let trimmed = override_url.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    if let Ok(override_url) = env::var("JACS_MCP_RELEASE_URL") {
+        let trimmed = override_url.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    let tag = format!("{}{}", DEFAULT_MCP_RELEASE_TAG_PREFIX, version);
+    format!("{}/{}/{}", DEFAULT_MCP_RELEASE_BASE_URL, tag, asset_name)
+}
+
+fn extract_archive_to_dir(archive_path: &Path, extract_dir: &Path) -> Result<(), Box<dyn Error>> {
+    if archive_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.ends_with(".tar.gz"))
+        .unwrap_or(false)
+    {
+        let status = std::process::Command::new("tar")
+            .arg("-xzf")
+            .arg(archive_path)
+            .arg("-C")
+            .arg(extract_dir)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(Box::new(std::io::Error::other(format!(
+            "Failed to extract '{}'. `tar` exited with status {}.",
+            archive_path.display(),
+            status
+        ))));
+    }
+
+    if archive_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.ends_with(".zip"))
+        .unwrap_or(false)
+    {
+        if cfg!(windows) {
+            let status = std::process::Command::new("powershell")
+                .arg("-NoProfile")
+                .arg("-Command")
+                .arg(format!(
+                    "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+                    archive_path.display(),
+                    extract_dir.display()
+                ))
+                .status()?;
+            if status.success() {
+                return Ok(());
+            }
+            return Err(Box::new(std::io::Error::other(format!(
+                "Failed to extract '{}'. PowerShell exited with status {}.",
+                archive_path.display(),
+                status
+            ))));
+        }
+
+        let status = std::process::Command::new("unzip")
+            .arg("-o")
+            .arg(archive_path)
+            .arg("-d")
+            .arg(extract_dir)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(Box::new(std::io::Error::other(format!(
+            "Failed to extract '{}'. Ensure `unzip` is installed. Exit status: {}.",
+            archive_path.display(),
+            status
+        ))));
+    }
+
+    Err(Box::new(std::io::Error::other(format!(
+        "Unsupported archive format for '{}'",
+        archive_path.display()
+    ))))
+}
+
+fn find_extracted_binary(extract_dir: &Path, binary_name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let direct = extract_dir.join(binary_name);
+    if direct.exists() {
+        return Ok(direct);
+    }
+
+    for entry in std::fs::read_dir(extract_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n == binary_name)
+                .unwrap_or(false)
+        {
+            return Ok(path);
+        }
+    }
+
+    Err(Box::new(std::io::Error::other(format!(
+        "Extracted archive did not contain '{}'.",
+        binary_name
+    ))))
+}
+
+fn install_jacs_mcp_prebuilt(
+    version: Option<&str>,
+    force: bool,
+    bin_dir: Option<&str>,
+    url_override: Option<&str>,
+    dry_run: bool,
+) -> Result<(), Box<dyn Error>> {
+    let resolved_version = version
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(env!("CARGO_PKG_VERSION"));
+
+    let asset_name = mcp_asset_filename_for_current_platform(resolved_version)?;
+    let download_url = mcp_release_download_url(resolved_version, &asset_name, url_override);
+    let install_dir = resolve_mcp_install_dir(bin_dir)?;
+    let binary_name = mcp_binary_filename();
+    let target_path = install_dir.join(binary_name);
+
+    if dry_run {
+        println!("Dry run: MCP prebuilt install plan");
+        println!("  Version: {}", resolved_version);
+        println!("  Asset:   {}", asset_name);
+        println!("  URL:     {}", download_url);
+        println!("  Target:  {}", target_path.display());
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&install_dir)?;
+    if target_path.exists() {
+        if force {
+            std::fs::remove_file(&target_path)?;
+        } else {
+            return Err(Box::new(std::io::Error::other(format!(
+                "{} already exists. Re-run with --force to overwrite.",
+                target_path.display()
+            ))));
+        }
+    }
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| -> Box<dyn Error> { Box::new(std::io::Error::other(e.to_string())) })?
+        .as_nanos();
+    let temp_root = env::temp_dir().join(format!("jacs-mcp-install-{}-{}", process::id(), nonce));
+    let extract_dir = temp_root.join("extract");
+    std::fs::create_dir_all(&extract_dir)?;
+    let archive_path = temp_root.join(&asset_name);
+
+    let result = (|| -> Result<(), Box<dyn Error>> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()?;
+        let response = client.get(&download_url).send()?;
+        if !response.status().is_success() {
+            return Err(Box::new(std::io::Error::other(format!(
+                "Download failed (HTTP {}) from {}",
+                response.status(),
+                download_url
+            ))));
+        }
+        let bytes = response.bytes()?;
+        std::fs::write(&archive_path, bytes.as_ref())?;
+
+        extract_archive_to_dir(&archive_path, &extract_dir)?;
+        let extracted_binary = find_extracted_binary(&extract_dir, binary_name)?;
+
+        std::fs::copy(&extracted_binary, &target_path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&target_path)?.permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&target_path, perms)?;
+        }
+
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_dir_all(&temp_root);
+    result?;
+
+    println!("Installed {} to {}", binary_name, target_path.display());
+    println!("Run it with: jacs mcp run");
+    Ok(())
+}
+
+fn run_jacs_mcp_binary(binary: &str, forwarded_args: &[String]) -> Result<(), Box<dyn Error>> {
+    let status = std::process::Command::new(binary)
+        .args(forwarded_args)
+        .status()
+        .map_err(|e| -> Box<dyn Error> {
+            Box::new(std::io::Error::other(format!(
+                "Failed to launch MCP server '{}': {}. Install it with `jacs mcp install` \
+or pass --bin <path> (or set JACS_MCP_BIN).",
+                binary, e
+            )))
+        })?;
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let status_text = status
+        .code()
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "terminated by signal".to_string());
+    Err(Box::new(std::io::Error::other(format!(
+        "jacs-mcp exited unsuccessfully ({})",
+        status_text
+    ))))
 }
 
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -657,6 +991,67 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     Command::new("reencrypt")
                         .about("Re-encrypt the private key with a new password")
                 )
+        )
+        .subcommand(
+            Command::new("mcp")
+                .about("Install and run the JACS MCP server")
+                .subcommand(
+                    Command::new("install")
+                        .about("Install jacs-mcp from prebuilt release assets (or cargo)")
+                        .arg(
+                            Arg::new("version")
+                                .long("version")
+                                .value_parser(value_parser!(String))
+                                .help("Version to install (default: current jacs CLI version)"),
+                        )
+                        .arg(
+                            Arg::new("force")
+                                .long("force")
+                                .help("Reinstall even if jacs-mcp is already present")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("from-cargo")
+                                .long("from-cargo")
+                                .help("Install via `cargo install jacs-mcp` instead of prebuilt binaries")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("bin-dir")
+                                .long("bin-dir")
+                                .value_parser(value_parser!(String))
+                                .help("Directory to install jacs-mcp into (default: JACS_BIN_DIR or ~/.cargo/bin)"),
+                        )
+                        .arg(
+                            Arg::new("url")
+                                .long("url")
+                                .value_parser(value_parser!(String))
+                                .help("Override download URL for the prebuilt archive"),
+                        )
+                        .arg(
+                            Arg::new("dry-run")
+                                .long("dry-run")
+                                .help("Print prebuilt install plan without downloading")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("run")
+                        .about("Run jacs-mcp (stdio transport)")
+                        .arg(
+                            Arg::new("bin")
+                                .long("bin")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs-mcp binary (default: JACS_MCP_BIN or PATH)"),
+                        )
+                        .arg(
+                            Arg::new("args")
+                                .help("Arguments forwarded to jacs-mcp")
+                                .num_args(0..)
+                                .trailing_var_arg(true)
+                                .allow_hyphen_values(true),
+                        ),
+                ),
         )
         .subcommand(
             Command::new("a2a")
@@ -1301,6 +1696,44 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("Private key re-encrypted successfully.");
             }
             _ => println!("please enter subcommand see jacs key --help"),
+        },
+        Some(("mcp", mcp_matches)) => match mcp_matches.subcommand() {
+            Some(("install", install_matches)) => {
+                let version = install_matches.get_one::<String>("version").map(|s| s.as_str());
+                let force = *install_matches.get_one::<bool>("force").unwrap_or(&false);
+                let from_cargo = *install_matches
+                    .get_one::<bool>("from-cargo")
+                    .unwrap_or(&false);
+                let bin_dir = install_matches.get_one::<String>("bin-dir").map(|s| s.as_str());
+                let url_override = install_matches.get_one::<String>("url").map(|s| s.as_str());
+                let dry_run = *install_matches.get_one::<bool>("dry-run").unwrap_or(&false);
+
+                if from_cargo {
+                    install_jacs_mcp_via_cargo(version, force)?;
+                } else {
+                    install_jacs_mcp_prebuilt(version, force, bin_dir, url_override, dry_run)?;
+                }
+            }
+            Some(("run", run_matches)) => {
+                let binary = run_matches
+                    .get_one::<String>("bin")
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        env::var("JACS_MCP_BIN")
+                            .ok()
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or_else(|| "jacs-mcp".to_string());
+
+                let forwarded_args: Vec<String> = run_matches
+                    .get_many::<String>("args")
+                    .map(|vals| vals.map(|v| v.to_string()).collect())
+                    .unwrap_or_default();
+
+                run_jacs_mcp_binary(&binary, &forwarded_args)?;
+            }
+            _ => println!("please enter subcommand see jacs mcp --help"),
         },
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
             Some(("assess", assess_matches)) => {

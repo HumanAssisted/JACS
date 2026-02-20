@@ -1,0 +1,26 @@
+class Haisdk < Formula
+  include Language::Python::Virtualenv
+
+  desc "HAI SDK CLI for JACS registration and attestation workflows"
+  homepage "https://github.com/HumanAssisted/haisdk"
+  url "__HAISDK_SDIST_URL__"
+  sha256 "__HAISDK_SHA256__"
+  license "MIT"
+
+  depends_on "python@3.12"
+  depends_on "httpx"
+  depends_on "cryptography"
+  depends_on "jacs"
+
+  def install
+    python = Formula["python@3.12"].opt_bin/"python3.12"
+    venv = virtualenv_create(libexec, python, system_site_packages: true)
+    venv.pip_install buildpath
+    bin.install_symlink libexec/"bin/haisdk"
+  end
+
+  test do
+    assert_match "HAI SDK CLI", shell_output("#{bin}/haisdk --help")
+    assert_match "jacs version:", shell_output("#{Formula["jacs"].opt_bin}/jacs version")
+  end
+end

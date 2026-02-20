@@ -1,0 +1,31 @@
+name: Homebrew Install Smoke Tests
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos-brew-install:
+    runs-on: macos-latest
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install JACS formula
+        run: brew install --formula ./Formula/jacs.rb
+
+      - name: Smoke test JACS CLI + MCP helpers
+        run: |
+          jacs version
+          jacs mcp --help
+
+      - name: Install HAISDK formula
+        run: brew install --formula --HEAD ./Formula/haisdk.rb
+
+      - name: Smoke test HAISDK CLI
+        run: |
+          haisdk --help
+          haisdk register --help

@@ -4,7 +4,7 @@
 
 Cryptographic signatures for AI agent outputs so anyone can verify who said what, whether it was changed, and hold agents accountable. No server. No account. Three lines of code.
 
-`pip install jacs` | `npm install jacs` | `cargo install jacs`
+`pip install jacs` | `npm install @hai.ai/jacs` | `cargo install jacs`
 
 ## Quick Start
 
@@ -39,7 +39,7 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ### Node.js
 
 ```javascript
-const jacs = require('jacs/simple');
+const jacs = require('@hai.ai/jacs/simple');
 
 async function main() {
   await jacs.quickstart();
@@ -62,6 +62,25 @@ cargo install jacs --features cli
 
 jacs quickstart
 jacs document create -f mydata.json
+
+# Install and run the Rust MCP server from the CLI
+jacs mcp install
+jacs mcp run
+
+# Optional fallback: install MCP via cargo instead of prebuilt assets
+jacs mcp install --from-cargo
+```
+
+### Homebrew (macOS)
+
+```bash
+brew tap HumanAssisted/homebrew-jacs
+
+# Install JACS CLI
+brew install jacs
+
+# Install HAI SDK CLI separately
+brew install haisdk
 ```
 
 **Signed your first document?** Next: [Verify it without an agent](#verify-a-signed-document) | [Pick your framework integration](#which-integration-should-i-use) | [Full quick start guide](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
@@ -94,11 +113,11 @@ Find the right path in under 2 minutes. [Full decision tree](https://humanassist
 | Python + LangChain/LangGraph | `from jacs.adapters.langchain import jacs_signing_middleware` | [LangChain Guide](https://humanassisted.github.io/JACS/python/adapters.html) |
 | Python + CrewAI | `from jacs.adapters.crewai import jacs_guardrail` | [CrewAI Guide](https://humanassisted.github.io/JACS/python/adapters.html) |
 | Python + FastAPI | `from jacs.adapters.fastapi import JacsMiddleware` | [FastAPI Guide](https://humanassisted.github.io/JACS/python/adapters.html) |
-| Node.js + Express | `require('jacs/express')` | [Express Guide](https://humanassisted.github.io/JACS/nodejs/express.html) |
-| Node.js + Vercel AI SDK | `require('jacs/vercel-ai')` | [Vercel AI Guide](https://humanassisted.github.io/JACS/nodejs/vercel-ai.html) |
-| Node.js + LangChain.js | `require('jacs/langchain')` | [LangChain.js Guide](https://humanassisted.github.io/JACS/nodejs/langchain.html) |
+| Node.js + Express | `require('@hai.ai/jacs/express')` | [Express Guide](https://humanassisted.github.io/JACS/nodejs/express.html) |
+| Node.js + Vercel AI SDK | `require('@hai.ai/jacs/vercel-ai')` | [Vercel AI Guide](https://humanassisted.github.io/JACS/nodejs/vercel-ai.html) |
+| Node.js + LangChain.js | `require('@hai.ai/jacs/langchain')` | [LangChain.js Guide](https://humanassisted.github.io/JACS/nodejs/langchain.html) |
 | MCP Server (Python) | `from jacs.mcp import create_jacs_mcp_server` | [Python MCP Guide](https://humanassisted.github.io/JACS/python/mcp.html) |
-| MCP Server (Node.js) | `require('jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
+| MCP Server (Node.js) | `require('@hai.ai/jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
 | A2A Protocol | `client.get_a2a()` / `client.getA2A()` | [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) |
 | Rust / CLI | `cargo install jacs --features cli` | [Rust Guide](https://humanassisted.github.io/JACS/rust/installation.html) |
 | Any language (standalone) | `import jacs.simple as jacs` | [Simple API](https://humanassisted.github.io/JACS/python/simple-api.html) |
@@ -154,7 +173,7 @@ signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 ```
 
 ```javascript
-const { JacsClient } = require('jacs/client');
+const { JacsClient } = require('@hai.ai/jacs/client');
 
 const client = await JacsClient.quickstart();
 const card = client.exportAgentCard();

@@ -2,14 +2,14 @@ name: Node.js (jacsnpm)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
       - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs

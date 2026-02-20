@@ -17,6 +17,10 @@ The HAI SDK (`haisdk`) provides Python, Node.js, and Go clients for integrating 
 ## Installation
 
 ```bash
+# macOS Homebrew (install separately from jacs)
+brew tap HumanAssisted/homebrew-jacs
+brew install haisdk
+
 # Python (using uv)
 uv pip install haisdk
 
@@ -25,6 +29,25 @@ npm install @hai.ai/sdk
 
 # Go
 go get github.com/HumanAssisted/haisdk-go
+```
+
+## CLI Wrapper Behavior
+
+The `haisdk` CLI includes HAI-specific commands and wraps the full `jacs` CLI for testing and operations.
+
+```bash
+# HAI command
+haisdk register --name "My Agent" --description "..." --dns example.com --owner-email you@example.com
+
+# JACS passthrough (explicit)
+haisdk jacs verify ./signed.json
+haisdk jacs mcp install
+haisdk jacs mcp run
+
+# JACS passthrough (shorthand)
+haisdk verify ./signed.json
+haisdk mcp install
+haisdk mcp run
 ```
 
 ## Quick Start: Register and Verify

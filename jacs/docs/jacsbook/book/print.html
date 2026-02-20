@@ -782,6 +782,20 @@ jacs quickstart --sign --file mydata.json
 <blockquote>
 <p><strong>That's it -- you're signing.</strong> For most use cases, the quick start above is all you need. Jump to <a href="getting-started/../getting-started/decision-tree.html">Which integration should I use?</a> to find the right framework adapter, or read on for manual agent setup.</p>
 </blockquote>
+<h3 id="macos-homebrew-install-rust-cli"><a class="header" href="#macos-homebrew-install-rust-cli">macOS Homebrew install (Rust CLI)</a></h3>
+<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+</code></pre>
+<h3 id="mcp-quick-start-rust-cli"><a class="header" href="#mcp-quick-start-rust-cli">MCP quick start (Rust CLI)</a></h3>
+<pre><code class="language-bash"># Install platform-matched jacs-mcp binary
+jacs mcp install
+
+# Run stdio MCP server
+jacs mcp run
+
+# Optional fallback if you want cargo-based install
+jacs mcp install --from-cargo
+</code></pre>
 <h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
 <p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart()</code> already creates a persistent agent.</p>
 <div class="tabs">
@@ -1531,6 +1545,10 @@ cd jacsnpm &amp;&amp; npm run build
 <h3 id="from-cratesio-recommended"><a class="header" href="#from-cratesio-recommended">From crates.io (Recommended)</a></h3>
 <pre><code class="language-bash">cargo install jacs --features cli
 </code></pre>
+<h3 id="from-homebrew-macos"><a class="header" href="#from-homebrew-macos">From Homebrew (macOS)</a></h3>
+<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+</code></pre>
 <h3 id="from-source"><a class="header" href="#from-source">From Source</a></h3>
 <pre><code class="language-bash">git clone https://github.com/HumanAssisted/JACS
 cd JACS/jacs
@@ -1538,6 +1556,13 @@ cargo install --path . --features cli
 </code></pre>
 <h3 id="verify-installation"><a class="header" href="#verify-installation">Verify Installation</a></h3>
 <pre><code class="language-bash">jacs --help
+</code></pre>
+<h3 id="installrun-mcp-server-via-cli"><a class="header" href="#installrun-mcp-server-via-cli">Install/Run MCP Server via CLI</a></h3>
+<pre><code class="language-bash"># Install jacs-mcp from platform prebuilt release assets (default)
+jacs mcp install
+
+# Run stdio MCP server
+jacs mcp run
 </code></pre>
 <h2 id="using-as-a-library"><a class="header" href="#using-as-a-library">Using as a Library</a></h2>
 <p>Add JACS to your <code>Cargo.toml</code>:</p>
@@ -1667,6 +1692,7 @@ jacs task --help
 <tr><td><code>jacs agent</code></td><td>Manage agents</td></tr>
 <tr><td><code>jacs document</code></td><td>Manage documents</td></tr>
 <tr><td><code>jacs task</code></td><td>Manage tasks</td></tr>
+<tr><td><code>jacs mcp</code></td><td>Install and run the Rust MCP server</td></tr>
 </tbody></table>
 </div>
 <h2 id="initialization"><a class="header" href="#initialization">Initialization</a></h2>
@@ -1680,6 +1706,18 @@ jacs init
 <li>Generates cryptographic keys</li>
 <li>Creates an initial agent document</li>
 </ol>
+<h2 id="mcp-commands"><a class="header" href="#mcp-commands">MCP Commands</a></h2>
+<h3 id="install-mcp-server"><a class="header" href="#install-mcp-server">Install MCP Server</a></h3>
+<pre><code class="language-bash"># Install jacs-mcp from prebuilt platform assets (defaults to matching CLI version)
+jacs mcp install
+</code></pre>
+<h3 id="run-mcp-server"><a class="header" href="#run-mcp-server">Run MCP Server</a></h3>
+<pre><code class="language-bash"># Start stdio MCP server
+jacs mcp run
+
+# Run a custom binary path
+jacs mcp run --bin /path/to/jacs-mcp
+</code></pre>
 <h2 id="configuration-commands"><a class="header" href="#configuration-commands">Configuration Commands</a></h2>
 <h3 id="create-configuration"><a class="header" href="#create-configuration">Create Configuration</a></h3>
 <pre><code class="language-bash">jacs config create
@@ -14313,7 +14351,11 @@ app.add_middleware(JacsMiddleware, client=client, a2a=True)
 </tbody></table>
 </div>
 <h2 id="installation-7"><a class="header" href="#installation-7">Installation</a></h2>
-<pre><code class="language-bash"># Python (using uv)
+<pre><code class="language-bash"># macOS Homebrew (install separately from jacs)
+brew tap HumanAssisted/homebrew-jacs
+brew install haisdk
+
+# Python (using uv)
 uv pip install haisdk
 
 # Node.js
@@ -14321,6 +14363,21 @@ npm install @hai.ai/sdk
 
 # Go
 go get github.com/HumanAssisted/haisdk-go
+</code></pre>
+<h2 id="cli-wrapper-behavior"><a class="header" href="#cli-wrapper-behavior">CLI Wrapper Behavior</a></h2>
+<p>The <code>haisdk</code> CLI includes HAI-specific commands and wraps the full <code>jacs</code> CLI for testing and operations.</p>
+<pre><code class="language-bash"># HAI command
+haisdk register --name "My Agent" --description "..." --dns example.com --owner-email you@example.com
+
+# JACS passthrough (explicit)
+haisdk jacs verify ./signed.json
+haisdk jacs mcp install
+haisdk jacs mcp run
+
+# JACS passthrough (shorthand)
+haisdk verify ./signed.json
+haisdk mcp install
+haisdk mcp run
 </code></pre>
 <h2 id="quick-start-register-and-verify"><a class="header" href="#quick-start-register-and-verify">Quick Start: Register and Verify</a></h2>
 <p>The SDK uses JACS cryptographic identity for authentication — no API keys needed.</p>

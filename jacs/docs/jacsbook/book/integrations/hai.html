@@ -189,7 +189,11 @@
 </tbody></table>
 </div>
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
-<pre><code class="language-bash"># Python (using uv)
+<pre><code class="language-bash"># macOS Homebrew (install separately from jacs)
+brew tap HumanAssisted/homebrew-jacs
+brew install haisdk
+
+# Python (using uv)
 uv pip install haisdk
 
 # Node.js
@@ -197,6 +201,21 @@ npm install @hai.ai/sdk
 
 # Go
 go get github.com/HumanAssisted/haisdk-go
+</code></pre>
+<h2 id="cli-wrapper-behavior"><a class="header" href="#cli-wrapper-behavior">CLI Wrapper Behavior</a></h2>
+<p>The <code>haisdk</code> CLI includes HAI-specific commands and wraps the full <code>jacs</code> CLI for testing and operations.</p>
+<pre><code class="language-bash"># HAI command
+haisdk register --name "My Agent" --description "..." --dns example.com --owner-email you@example.com
+
+# JACS passthrough (explicit)
+haisdk jacs verify ./signed.json
+haisdk jacs mcp install
+haisdk jacs mcp run
+
+# JACS passthrough (shorthand)
+haisdk verify ./signed.json
+haisdk mcp install
+haisdk mcp run
 </code></pre>
 <h2 id="quick-start-register-and-verify"><a class="header" href="#quick-start-register-and-verify">Quick Start: Register and Verify</a></h2>
 <p>The SDK uses JACS cryptographic identity for authentication — no API keys needed.</p>

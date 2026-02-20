@@ -22,13 +22,19 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/cli/v}"
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Check Cargo.toml version matches tag
+      - name: Check Cargo.toml versions match tag
         run: |
           TAG_VERSION="${{ steps.extract.outputs.version }}"
-          CARGO_VERSION=$(grep '^version = ' jacs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
-          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Version mismatch! jacs/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+          JACS_VERSION=$(grep '^version = ' jacs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          MCP_VERSION=$(grep '^version = ' jacs-mcp/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "jacs version: $JACS_VERSION, tag: $TAG_VERSION"
+          echo "jacs-mcp version: $MCP_VERSION, tag: $TAG_VERSION"
+          if [ "$JACS_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch! jacs/Cargo.toml has $JACS_VERSION but tag is $TAG_VERSION"
+            exit 1
+          fi
+          if [ "$MCP_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch! jacs-mcp/Cargo.toml has $MCP_VERSION but tag is $TAG_VERSION"
             exit 1
           fi
 
@@ -40,31 +46,30 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: jacs-cli
-            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-arm64
-            archive: tar.gz
+            asset_suffix: darwin-arm64
+            archive_ext: tar.gz
           - os: macos-14
             target: x86_64-apple-darwin
-            artifact_name: jacs-cli
-            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-x64
-            archive: tar.gz
+            asset_suffix: darwin-x64
+            archive_ext: tar.gz
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: jacs-cli
-            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-linux-x64
-            archive: tar.gz
+            asset_suffix: linux-x64
+            archive_ext: tar.gz
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            artifact_name: jacs-cli
-            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-linux-arm64
-            archive: tar.gz
+            asset_suffix: linux-arm64
+            archive_ext: tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: jacs-cli.exe
-            asset_name: jacs-cli-${{ needs.verify-version.outputs.version }}-windows-x64
-            archive: zip
+            asset_suffix: windows-x64
+            archive_ext: zip
 
     runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.verify-version.outputs.version }}
+      CLI_ASSET_NAME: jacs-cli-${{ needs.verify-version.outputs.version }}-${{ matrix.asset_suffix }}
+      MCP_ASSET_NAME: jacs-mcp-${{ needs.verify-version.outputs.version }}-${{ matrix.asset_suffix }}
     steps:
       - uses: actions/checkout@v4
 
@@ -73,37 +78,51 @@ jobs:
           toolchain: '1.93'
           targets: ${{ matrix.target }}
 
-      - name: Build CLI binary
-        run: cargo build --release -p jacs --features cli --target ${{ matrix.target }}
+      - name: Build binaries
+        run: |
+          cargo build --release -p jacs --features cli --target ${{ matrix.target }}
+          cargo build --release -p jacs-mcp --target ${{ matrix.target }}
 
       - name: Smoke test (Unix)
         if: runner.os != 'Windows'
-        run: ./target/${{ matrix.target }}/release/jacs --version
+        run: |
+          ./target/${{ matrix.target }}/release/jacs --version
+          ./target/${{ matrix.target }}/release/jacs-mcp --help > /dev/null
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
-        run: .\target\${{ matrix.target }}\release\jacs.exe --version
+        shell: pwsh
+        run: |
+          .\target\${{ matrix.target }}\release\jacs.exe version
+          .\target\${{ matrix.target }}\release\jacs-mcp.exe --help | Out-Null
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
           cp target/${{ matrix.target }}/release/jacs jacs-cli
-          tar czf ${{ matrix.asset_name }}.tar.gz jacs-cli
-          shasum -a 256 ${{ matrix.asset_name }}.tar.gz > ${{ matrix.asset_name }}.tar.gz.sha256
+          cp target/${{ matrix.target }}/release/jacs-mcp jacs-mcp
+          tar czf ${CLI_ASSET_NAME}.tar.gz jacs-cli
+          tar czf ${MCP_ASSET_NAME}.tar.gz jacs-mcp
+          shasum -a 256 ${CLI_ASSET_NAME}.tar.gz > ${CLI_ASSET_NAME}.tar.gz.sha256
+          shasum -a 256 ${MCP_ASSET_NAME}.tar.gz > ${MCP_ASSET_NAME}.tar.gz.sha256
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Copy-Item "target/${{ matrix.target }}/release/jacs.exe" "jacs-cli.exe"
-          Compress-Archive -Path "jacs-cli.exe" -DestinationPath "${{ matrix.asset_name }}.zip"
-          Get-FileHash "${{ matrix.asset_name }}.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  ${{ matrix.asset_name }}.zip" } | Out-File "${{ matrix.asset_name }}.zip.sha256" -Encoding ascii
+          Copy-Item "target/${{ matrix.target }}/release/jacs-mcp.exe" "jacs-mcp.exe"
+          Compress-Archive -Path "jacs-cli.exe" -DestinationPath "${env:CLI_ASSET_NAME}.zip"
+          Compress-Archive -Path "jacs-mcp.exe" -DestinationPath "${env:MCP_ASSET_NAME}.zip"
+          Get-FileHash "${env:CLI_ASSET_NAME}.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  ${env:CLI_ASSET_NAME}.zip" } | Out-File "${env:CLI_ASSET_NAME}.zip.sha256" -Encoding ascii
+          Get-FileHash "${env:MCP_ASSET_NAME}.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  ${env:MCP_ASSET_NAME}.zip" } | Out-File "${env:MCP_ASSET_NAME}.zip.sha256" -Encoding ascii
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
+          name: binaries-${{ matrix.asset_suffix }}
           path: |
-            ${{ matrix.asset_name }}.*
+            ${{ env.CLI_ASSET_NAME }}.*
+            ${{ env.MCP_ASSET_NAME }}.*
 
   release:
     needs: [verify-version, build]
@@ -128,7 +147,9 @@ jobs:
           body: |
             ## JACS CLI v${{ needs.verify-version.outputs.version }}
 
-            Prebuilt CLI binaries for verifying and signing JACS documents.
+            Prebuilt binaries for:
+            - `jacs` (CLI)
+            - `jacs-mcp` (MCP server)
 
             ### Install
 
@@ -146,7 +167,12 @@ jobs:
             sudo mv jacs-cli /usr/local/bin/
             ```
 
-            Or install via npm/pip (ships with `jacs`).
+            Install MCP directly from the CLI (uses these platform assets by default):
+
+            ```bash
+            jacs mcp install
+            jacs mcp run
+            ```
 
             ### Verify checksums
             ```bash

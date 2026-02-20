@@ -25,6 +25,12 @@ rustup update stable
 cargo install jacs --features cli
 ```
 
+### From Homebrew (macOS)
+```bash
+brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+```
+
 ### From Source
 ```bash
 git clone https://github.com/HumanAssisted/JACS
@@ -35,6 +41,15 @@ cargo install --path . --features cli
 ### Verify Installation
 ```bash
 jacs --help
+```
+
+### Install/Run MCP Server via CLI
+```bash
+# Install jacs-mcp from platform prebuilt release assets (default)
+jacs mcp install
+
+# Run stdio MCP server
+jacs mcp run
 ```
 
 ## Using as a Library

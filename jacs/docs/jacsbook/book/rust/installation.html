@@ -192,6 +192,10 @@
 <h3 id="from-cratesio-recommended"><a class="header" href="#from-cratesio-recommended">From crates.io (Recommended)</a></h3>
 <pre><code class="language-bash">cargo install jacs --features cli
 </code></pre>
+<h3 id="from-homebrew-macos"><a class="header" href="#from-homebrew-macos">From Homebrew (macOS)</a></h3>
+<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+</code></pre>
 <h3 id="from-source"><a class="header" href="#from-source">From Source</a></h3>
 <pre><code class="language-bash">git clone https://github.com/HumanAssisted/JACS
 cd JACS/jacs
@@ -199,6 +203,13 @@ cargo install --path . --features cli
 </code></pre>
 <h3 id="verify-installation"><a class="header" href="#verify-installation">Verify Installation</a></h3>
 <pre><code class="language-bash">jacs --help
+</code></pre>
+<h3 id="installrun-mcp-server-via-cli"><a class="header" href="#installrun-mcp-server-via-cli">Install/Run MCP Server via CLI</a></h3>
+<pre><code class="language-bash"># Install jacs-mcp from platform prebuilt release assets (default)
+jacs mcp install
+
+# Run stdio MCP server
+jacs mcp run
 </code></pre>
 <h2 id="using-as-a-library"><a class="header" href="#using-as-a-library">Using as a Library</a></h2>
 <p>Add JACS to your <code>Cargo.toml</code>:</p>

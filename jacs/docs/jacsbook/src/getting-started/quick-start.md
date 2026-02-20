@@ -92,6 +92,26 @@ Pass `algorithm="ring-Ed25519"` (or `{ algorithm: 'ring-Ed25519' }` in JS, `--al
 
 > **That's it -- you're signing.** For most use cases, the quick start above is all you need. Jump to [Which integration should I use?](../getting-started/decision-tree.md) to find the right framework adapter, or read on for manual agent setup.
 
+### macOS Homebrew install (Rust CLI)
+
+```bash
+brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+```
+
+### MCP quick start (Rust CLI)
+
+```bash
+# Install platform-matched jacs-mcp binary
+jacs mcp install
+
+# Run stdio MCP server
+jacs mcp run
+
+# Optional fallback if you want cargo-based install
+jacs mcp install --from-cargo
+```
+
 ## Advanced: Explicit Agent Setup
 
 For full control over agent creation, you can set up an agent manually with a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable. This is optional since `quickstart()` already creates a persistent agent.
