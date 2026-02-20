@@ -143,8 +143,9 @@ fips203 = "0.4.3"
 fips204 = "0.4.3"
 # Database storage (optional, behind "database" feature)
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls"], optional = true }
-# Limbo (pure-Rust SQLite rewrite, optional)
-limbo_core = { version = "0.0.22", optional = true, features = ["index_experimental"] }
+# rusqlite (sync SQLite bindings, optional — lightweight alternative to sqlx SQLite)
+# Pinned to 0.31 to share libsqlite3-sys ^0.28 with sqlx, avoiding links conflict.
+rusqlite = { version = "0.31", features = ["bundled"], optional = true }
 # SurrealDB (multi-model embedded DB, optional)
 surrealdb = { version = "2.6", default-features = false, features = ["kv-mem"], optional = true }
 # DuckDB (analytics DB with JSON support, optional — links to C++ DuckDB)
@@ -182,9 +183,9 @@ sqlite-tests = ["sqlite"]
 # S3/MinIO integration tests (requires Docker or MinIO)
 s3-tests = []
 
-# Limbo storage backend (pure-Rust SQLite rewrite)
-limbo-storage = ["dep:limbo_core", "dep:tokio"]
-limbo-tests = ["limbo-storage"]
+# rusqlite storage backend (sync SQLite, no tokio needed)
+rusqlite-storage = ["dep:rusqlite"]
+rusqlite-tests = ["rusqlite-storage"]
 
 # SurrealDB storage backend (multi-model embedded)
 surrealdb-storage = ["dep:surrealdb", "dep:tokio"]

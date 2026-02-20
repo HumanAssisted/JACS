@@ -28,7 +28,7 @@ pub mod database;
     any(
         feature = "database",
         feature = "sqlite",
-        feature = "limbo-storage",
+        feature = "rusqlite-storage",
         feature = "surrealdb-storage",
         feature = "duckdb-storage",
         feature = "redb-storage"
@@ -43,7 +43,7 @@ pub use database::DatabaseStorage;
     any(
         feature = "database",
         feature = "sqlite",
-        feature = "limbo-storage",
+        feature = "rusqlite-storage",
         feature = "surrealdb-storage",
         feature = "duckdb-storage",
         feature = "redb-storage"
@@ -56,10 +56,10 @@ pub mod sqlite;
 #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub use sqlite::SqliteStorage;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
-pub mod limbo_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
-pub use limbo_storage::LimboStorage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+pub mod rusqlite_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+pub use rusqlite_storage::RusqliteStorage;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
 pub mod surrealdb_storage;
@@ -223,9 +223,9 @@ pub enum StorageType {
     #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
     #[strum(serialize = "sqlite")]
     Sqlite,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
-    #[strum(serialize = "limbo")]
-    Limbo,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+    #[strum(serialize = "rusqlite")]
+    Rusqlite,
     #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
     #[strum(serialize = "surrealdb")]
     SurrealDb,
@@ -499,9 +499,9 @@ impl MultiStorage {
             StorageType::Sqlite => {
                 panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
             }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "limbo-storage"))]
-            StorageType::Limbo => {
-                panic!("Limbo storage does not use ObjectStore. Use LimboStorage directly.")
+            #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+            StorageType::Rusqlite => {
+                panic!("Rusqlite storage does not use ObjectStore. Use RusqliteStorage directly.")
             }
             #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
             StorageType::SurrealDb => {
