@@ -50,6 +50,7 @@ UPDATE_FIXTURES = os.environ.get("UPDATE_CROSS_LANG_FIXTURES", "").lower() in {
     "true",
     "yes",
 }
+IAT_SKEW_ENV_VAR = "JACS_MAX_IAT_SKEW_SECONDS"
 
 
 def _fixture_exists(prefix: str) -> bool:
@@ -95,6 +96,20 @@ def standalone_cache_dir():
         cache_dir = pathlib.Path(td)
         _build_standalone_key_cache(cache_dir, ALGORITHMS + PYTHON_FIXTURES)
         yield cache_dir
+
+
+@pytest.fixture(scope="module", autouse=True)
+def disable_iat_skew_for_committed_fixtures():
+    """Committed cross-language fixtures are snapshots; disable iat skew checks."""
+    previous = os.environ.get(IAT_SKEW_ENV_VAR)
+    os.environ[IAT_SKEW_ENV_VAR] = "0"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(IAT_SKEW_ENV_VAR, None)
+        else:
+            os.environ[IAT_SKEW_ENV_VAR] = previous
 
 
 # ---------------------------------------------------------------------------
