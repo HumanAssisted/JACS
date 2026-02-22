@@ -2,7 +2,7 @@
 
 A Model Context Protocol (MCP) server for **data provenance and cryptographic signing** of agent state, messaging, agreements, and A2A interoperability.
 
-JACS (JSON Agent Communication Standard) ensures that every file, memory, or configuration an AI agent touches can be signed, verified, and traced back to its origin -- no server required.
+JACS (JSON Agent Communication Specification) ensures that every file, memory, or configuration an AI agent touches can be signed, verified, and traced back to its origin -- no server required.
 
 ## What can it do?
 

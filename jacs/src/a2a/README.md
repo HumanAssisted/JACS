@@ -1,6 +1,6 @@
 # JACS A2A (Agent-to-Agent) Protocol Integration
 
-This module provides integration between JACS (JSON Agent Communication Standard) and the A2A (Agent-to-Agent) protocol, positioning JACS as a cryptographic provenance extension to A2A.
+This module provides integration between JACS (JSON Agent Communication Specification) and the A2A (Agent-to-Agent) protocol, positioning JACS as a cryptographic provenance extension to A2A.
 
 **Implements A2A protocol v0.4.0 (September 2025).**
 

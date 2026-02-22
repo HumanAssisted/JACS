@@ -1,4 +1,4 @@
-# JACS: JSON Agent Communication Standard
+# JACS: JSON Agent Communication Specification
 
 Cryptographic signing and verification for AI agents.
 

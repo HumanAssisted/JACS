@@ -1,6 +1,6 @@
-# JACS: JSON Agent Communication Standard
+# JACS: JSON Agent Communication Specification
 
-Welcome to the **JSON Agent Communication Standard (JACS)** documentation! JACS is a comprehensive framework for creating, signing, and verifying JSON documents with cryptographic integrity, designed specifically for AI agent communication and task management.
+Welcome to the **JSON Agent Communication Specification (JACS)** documentation! JACS is a comprehensive framework for creating, signing, and verifying JSON documents with cryptographic integrity, designed specifically for AI agent communication and task management.
 
 ## What is JACS?
 
