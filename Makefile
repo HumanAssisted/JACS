@@ -1,4 +1,4 @@
-.PHONY: build-jacs build-jacsbook test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy \
+.PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy \
         publish-jacs publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-all \
         retry-jacspy retry-jacsnpm \
@@ -37,6 +37,9 @@ build-jacsnpm:
 
 build-jacsbook:
 	cd jacs/docs/jacsbook && mdbook build
+
+build-jacsbook-pdf:
+	./jacs/docs/jacsbook/scripts/build-pdf.sh
 
 # ============================================================================
 # TEST
@@ -236,6 +239,7 @@ help:
 	@echo "  make build-jacspy    Build Python bindings (dev mode)"
 	@echo "  make build-jacsnpm   Build Node.js bindings"
 	@echo "  make build-jacsbook  Generate jacsbook (mdbook build)"
+	@echo "  make build-jacsbook-pdf  Generate single PDF book at docs/jacsbook.pdf"
 	@echo ""
 	@echo "TEST:"
 	@echo "  make test            Run all tests (alias for test-jacs)"
