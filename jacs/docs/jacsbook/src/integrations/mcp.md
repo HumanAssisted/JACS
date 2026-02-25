@@ -35,6 +35,20 @@ This makes JACS MCP suitable for:
 - Enterprise deployments
 - Any scenario where message authenticity matters
 
+## High-Value Deployment Patterns
+
+Teams commonly pair JACS MCP with:
+
+- **Framework orchestration**: LangChain/LangGraph/CrewAI flows where tool calls must be attributable
+- **Cross-boundary handoffs**: MCP internally, A2A externally, with JACS signatures in both layers
+- **Database-backed audits**: store signed MCP request/response envelopes for replay and compliance checks
+
+Related guides:
+
+- [Python Framework Adapters](../python/adapters.md)
+- [A2A Interoperability](a2a.md)
+- [Databases](databases.md)
+
 ## Architecture
 
 JACS uses a **transport proxy pattern** that wraps any MCP transport with cryptographic signing and verification:

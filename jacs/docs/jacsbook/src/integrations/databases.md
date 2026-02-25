@@ -4,6 +4,16 @@ JACS includes a **built-in PostgreSQL storage backend** (behind the `database` f
 
 For custom integrations with other databases, see the examples below.
 
+## What to Store
+
+When teams say "database integration," they usually need three things at once:
+
+1. **Integrity:** preserve the original signed envelope
+2. **Queryability:** index key fields for search and analytics
+3. **Identity:** track who signed what (`agentID`, `agentVersion`, optional DID alias)
+
+The safest baseline is to store the full signed JSON plus selected extracted columns.
+
 ## Built-in PostgreSQL Backend
 
 JACS ships with native PostgreSQL support via the `database` Cargo feature. This uses a TEXT + JSONB dual-column strategy to preserve cryptographic signatures while enabling efficient queries. See [Storage Backends](../advanced/storage.md) for full documentation.
@@ -38,6 +48,16 @@ The built-in PostgreSQL backend covers most query needs. Use a custom integratio
 - **Custom Schema**: Application-specific table structures
 - **Relations**: Link JACS documents to non-JACS data
 - **Existing Infrastructure**: Integrate with current systems
+
+## Identity and DID-Friendly Columns
+
+Even without blockchain, you can support DID-style interoperability in database schemas:
+
+- Keep canonical JACS identity fields (`jacsId`, `agentID`, `agentVersion`)
+- Optionally add a `did` column (for example, `did:web:agent.example.com`) as an alias
+- Treat the JACS signature as the verification source of truth
+
+This lets you interoperate with DID-aware systems while preserving a simple operational model.
 
 ## PostgreSQL Integration
 

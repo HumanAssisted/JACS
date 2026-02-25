@@ -27,7 +27,10 @@ This page helps you find the right integration path in under 2 minutes.
 | Node.js + LangChain.js | `require('@hai.ai/jacs/langchain')` | [LangChain.js Guide](../nodejs/langchain.md) |
 | MCP Server (Python) | `from jacs.mcp import JACSMCPServer` | [MCP Guide](../integrations/mcp.md) |
 | MCP Server (Node.js) | `require('@hai.ai/jacs/mcp')` | [MCP Guide](../nodejs/mcp.md) |
+| Go service / API | `import "github.com/HumanAssisted/JACS/jacsgo"` | [Go Quick Start](../go/installation.md) |
 | A2A Protocol | `from jacs.a2a import JACSA2AIntegration` | [A2A Guide](../integrations/a2a.md) |
+| DID-compatible identity (no blockchain required) | Keep JACS signing + add DID mapping | [DID Guide](../integrations/did.md) |
+| Database-backed provenance | Store signed envelopes + query extracted fields | [Database Guide](../integrations/databases.md) |
 | Rust / CLI | `cargo install jacs --features cli` | [Rust Guide](../rust/installation.md) |
 | Any language (standalone) | `import jacs.simple as jacs` | [Simple API](../python/simple-api.md) |
 

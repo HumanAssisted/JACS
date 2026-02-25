@@ -44,6 +44,9 @@
 <!-- - [FastMCP Integration](python/fastmcp.md) -->
 - [API Reference](python/api.md)
 
+## Go (jacsgo)
+- [Installation & Quick Start](go/installation.md)
+
 ## Schemas
 - [JSON Schemas](schemas/overview.md)
 - [Agent Schema](schemas/agent.md)
@@ -71,6 +74,7 @@
 ## Integrations
 - [MCP Overview](integrations/mcp.md)
 - [A2A Interoperability](integrations/a2a.md)
+- [DID Integration (No Blockchain Required)](integrations/did.md)
 - [HAI.ai Platform](integrations/hai.md)
 - [OpenClaw](integrations/openclaw.md)
 - [Web Servers](integrations/web-servers.md)

@@ -1,45 +1,98 @@
-# Use cases
+# Use Cases
 
-JACS supports a wide range of workflows: proving where data came from, protecting who runs an agent, registering with a platform, enforcing provenance in your app, and proving that a specific agent sent a message. This page summarizes five common use cases; each links to the full fictional scenario and technical flow in the repository.
+This chapter is organized around deployment outcomes, not APIs.
 
-For detailed narratives (scenario, technical flow, outcome), see **[USECASES.md](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md)** in the JACS repo.
+If you want end-to-end fictional scenarios, see [USECASES.md](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md). The sections below are practical playbooks for real systems.
 
----
+## 1. Secure an MCP Server Used by Multiple Agents
 
-## 1. Verifying that JSON came from a specific program
+**Problem:** your MCP server exposes high-impact tools and you cannot trust unsigned JSON-RPC calls.
 
-**Summary.** You have a pipeline or service that emits JSON (configs, reports, compliance data). Consumers need to trust that a given file or payload was produced by that program and not modified. With JACS, the program has one agent identity: it signs each artifact with `sign_message` or `sign_file` at emission; consumers verify with `verify()` or `verify_by_id()` (local storage), or use `verify_standalone()` for one-off verification without loading an agent. No central server is required.
+**JACS pattern:**
+- Sign outgoing MCP requests and responses at the transport layer
+- Verify every inbound signed payload before tool execution
+- Run fail-closed transport policy (default) or explicit strict settings so unsigned/failed verification traffic is rejected
 
-See [USECASES.md § 1](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#1-verifying-that-json-files-came-from-a-specific-program) for the full scenario.
+**Where to implement:**
+- [MCP Overview](integrations/mcp.md)
+- [Python MCP Integration](python/mcp.md)
+- [Node.js MCP Integration](nodejs/mcp.md)
 
----
+## 2. Add Provenance to Agent Framework Workflows
 
-## 2. Protecting your agent's identity on the internet
+**Problem:** orchestration frameworks generate valuable outputs, but downstream systems cannot prove origin.
 
-**Summary.** You run a public-facing agent and want its messages to be verifiable (signed) without exposing who operates it. JACS supports this by keeping signing internal-only and publishing only the public key (via DNS and optionally HAI). Recipients use `verify()` (core JACS) or `jacs_verify_auto` (OpenClaw/moltyjacs) to confirm origin and integrity; they never learn who runs the agent.
+**JACS pattern:**
+- Sign tool outputs and final answers in adapters/middleware
+- Verify before routing into critical steps (billing, approvals, external calls)
+- Keep framework ergonomics while adding cryptographic provenance
 
-See [USECASES.md § 2](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#2-protecting-your-agents-identity-on-the-internet) for the full scenario.
+**Where to implement:**
+- [Python Framework Adapters](python/adapters.md) (LangChain, LangGraph, CrewAI, FastAPI)
+- [Node.js Integrations](nodejs/langchain.md), [Express](nodejs/express.md), [Vercel AI](nodejs/vercel-ai.md)
 
----
+## 3. Exchange Artifacts Across Organizations with A2A
 
-## 3. Registering and testing your agent on HAI.ai
+**Problem:** agents in different trust domains need machine-verifiable exchange and discovery.
 
-**Summary.** You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the **[haisdk](https://github.com/HumanAssisted/haisdk)**: from Python `HaiClient().register()`, from Node `client.register()`, from Go `client.Register()`. Authentication uses JACS cryptographic identity (no API keys). Check attestation with `client.status()` and run verification with `JACS_KEY_RESOLUTION=local,registry`.
+**JACS pattern:**
+- Publish A2A well-known discovery documents
+- Wrap artifacts with signed provenance envelopes
+- Apply trust policies (`open`, `verified`, `strict`) before accepting external artifacts
 
-See [USECASES.md § 3](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#3-registering-and-testing-your-agent-on-haiai) for the full scenario.
+**Where to implement:**
+- [A2A Interoperability](integrations/a2a.md)
+- [A2A Quickstart](guides/a2a-quickstart.md)
 
----
+## 4. Store Signed Files and JSON with Chain-of-Custody
 
-## 4. A Go, Node, or Python agent with strong data provenance
+**Problem:** you must preserve integrity for files and structured payloads over time.
 
-**Summary.** Your agent (in Go, Node, or Python) must prove the origin and integrity of every important output for compliance. Use the simple API in jacspy, jacsnpm, or jacsgo: `load(config)`, `sign_message(payload)` for each output, and `verify(signed.raw)` (or `verify_standalone()` for one-off verification without agent setup) wherever you consume signed data. Keys stay local; use `JACS_KEY_RESOLUTION` for external signers or air-gapped use.
+**JACS pattern:**
+- Sign JSON and file artifacts at creation time
+- Store signed envelopes, not detached metadata only
+- Re-verify on read and before downstream processing
 
-See [USECASES.md § 4](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#4-a-go-node-or-python-agent-with-strong-data-provenance) for the full scenario.
+**Where to implement:**
+- [Working with Documents](rust/documents.md)
+- [Storage Backends](advanced/storage.md)
+- [Go Quick Start](go/installation.md)
 
----
+## 5. Verify Agent Identity Publicly with DNS
 
-## 5. OpenClaw (moltyjacs): proving your agent sent a message
+**Problem:** external systems need to verify your agent identity without sharing private infrastructure.
 
-**Summary.** You use OpenClaw with the moltyjacs plugin and need cryptographic proof that a specific message came from your agent. The agent signs outbound messages with `jacs_sign`; the recipient verifies with `jacs_verify_auto`. The signature travels with the message; no custom PKI is required.
+**JACS pattern:**
+- Publish public key fingerprints in DNS TXT
+- Use DNSSEC-aware verification for stronger trust requirements
+- Keep private keys local; publish only public material
 
-See [USECASES.md § 5](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#5-openclaw-moltyjacs-proving-your-agent-actually-sent-a-message) for the full scenario.
+**Where to implement:**
+- [DNS-Based Verification](rust/dns.md)
+- [DNS Trust Anchoring](advanced/dns-trust.md)
+
+## 6. Build Database-Native Provenance Queries
+
+**Problem:** you need signed data that is both verifiable and queryable at scale.
+
+**JACS pattern:**
+- Persist full signed envelopes
+- Add extracted/indexed columns for high-value query predicates
+- Re-verify signatures periodically and on retrieval paths
+
+**Where to implement:**
+- [Databases](integrations/databases.md)
+- [Configuration Reference](reference/configuration.md)
+
+## 7. Integrate with DID Workflows Without Blockchain Dependency
+
+**Problem:** you need DID interoperability but do not want to operate blockchain infrastructure.
+
+**JACS pattern:**
+- Use JACS as the cryptographic identity/provenance layer
+- Project JACS identity into DID forms (`did:web`, `did:key`, or app-specific DID) at the integration layer
+- Resolve trust through DNS/local/registry without requiring on-chain components
+
+**Where to implement:**
+- [DID Integration (No Blockchain Required)](integrations/did.md)
+- [A2A Interoperability](integrations/a2a.md)

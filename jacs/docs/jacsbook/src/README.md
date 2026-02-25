@@ -1,137 +1,112 @@
 # JACS: JSON Agent Communication Specification
 
-Welcome to the **JSON Agent Communication Specification (JACS)** documentation! JACS is a comprehensive framework for creating, signing, and verifying JSON documents with cryptographic integrity, designed specifically for AI agent communication and task management.
+JACS is a cryptographic provenance layer for agent systems. It helps you prove who produced a payload, whether it changed, and whether you trust the signer.
 
-## What is JACS?
+## Start With Real Use Cases
 
-JACS provides a standard way for AI agents to:
-- **Create and sign** JSON documents with cryptographic signatures
-- **Verify authenticity** and integrity of documents
-- **Manage tasks and agreements** between multiple agents
-- **Maintain audit trails** of modifications and versioning
-- **Ensure trust** in multi-agent systems
+Teams usually adopt JACS for one or more of these:
 
-As a developer, JACS gives you the tools to build trustworthy AI systems where agents can securely exchange tasks, agreements, and data with verifiable integrity.
+- **Secure MCP servers**: sign JSON-RPC requests/responses so tools are not blindly trusted
+- **Agent frameworks**: add signing/verification to LangChain, LangGraph, CrewAI, FastAPI, Express, and Vercel AI flows
+- **A2A interoperability**: exchange signed artifacts across organizations with trust policies
+- **File and artifact custody**: sign JSON, files, and attachments to preserve origin and integrity
+- **Database-backed provenance**: store signed records with queryable metadata and periodic re-verification
+- **Internet-scale identity**: publish public key fingerprints in DNS and verify with DNSSEC
+- **DID compatibility**: map JACS agent identity to DID workflows without requiring any blockchain
 
-## What Can You Do with JACS?
-
-Sign AI agent output and verify every LLM response with cryptographic proof. JACS enables agent-to-agent trust through non-repudiation -- every action is signed and independently verifiable. Add MCP authentication to your tool servers, integrate LangGraph signing into your workflows, and build multi-agent systems where no output goes unverified. Whether you need to prove who said what or establish a chain of custody for AI-generated content, JACS provides the cryptographic foundation.
+See [Use cases](usecases.md) for deployment-oriented narratives.
 
 ## Key Features
 
-- 🔐 **Cryptographic Security**: RSA, Ed25519, and post-quantum cryptographic algorithms
-- 📋 **JSON Schema Validation**: Enforced document structure and validation
-- 🤝 **Multi-Agent Agreements**: Built-in support for agent collaboration and task agreements
-- 🔍 **Full Audit Trail**: Complete versioning and modification history
-- 🌐 **Multiple Language Support**: Rust, Node.js, and Python implementations
-- 🔌 **MCP Integration**: Native Model Context Protocol support
-- 📊 **Observability**: Built-in logging and metrics for production systems
+- **Cryptographic signing and verification** for JSON payloads, files, and artifacts
+- **Encrypted private key handling** with password-based key protection
+- **Algorithm support** for `ring-Ed25519`, `RSA-PSS`, and `pq2025` (ML-DSA-87 / FIPS-204)
+- **Multi-agent agreements** including quorum and algorithm constraints
+- **Schema-aware documents** built on JSON Schema
+- **Auditability and versioning** through immutable signatures and document history
+- **Storage flexibility** across local storage and database-backed deployments
+- **MCP and A2A integration** for both intra-app and cross-boundary agent workflows
+- **Observability hooks** for production operations
+- **Cross-language implementations** in Rust, Node.js, Python, and Go
 
-## Available Implementations
+## Standards and Interop
 
-JACS is available in three languages, each with its own strengths:
+JACS is designed to work with existing standards instead of replacing them:
 
-### 🦀 Rust (Core Library + CLI)
-- **Performance**: Fastest implementation with native performance
-- **CLI Tool**: Complete command-line interface for agent and document management
-- **Library**: Full-featured Rust library for embedded applications
-- **Observability**: Advanced logging and metrics with OpenTelemetry support
+- **MCP** for model-to-tool transport inside app boundaries
+- **A2A** for agent discovery and exchange across org boundaries
+- **JSON / JSON Schema** for payload compatibility
+- **DNS / DNSSEC** for public key fingerprint anchoring
+- **DID ecosystems** via application-level identity mapping guidance (no blockchain dependency)
 
-### 🟢 Node.js (@hai.ai/jacs)
-- **Web Integration**: Perfect for web servers and Express.js applications
-- **MCP Support**: Native Model Context Protocol integration
-- **HTTP Server**: Built-in HTTP server capabilities
-- **NPM Package**: Easy installation and integration
+## Implementations
 
-### 🐍 Python (jacs)
-- **AI/ML Integration**: Ideal for AI and machine learning workflows
-- **MCP Support**: Authenticated MCP server patterns
-- **PyPI Package**: Simple `pip install` integration
-- **Data Science**: Perfect for Jupyter notebooks and data pipelines
+### Rust (core library + CLI)
+- Deepest feature surface and operational controls
+- CLI for agent/key/document operations
+- Strong production ergonomics (including observability options)
+
+### Node.js (`@hai.ai/jacs`)
+- Strong web and middleware integration
+- Native MCP transport proxy support
+- Good fit for Express/Koa/Vercel AI/LangChain.js
+
+### Python (`jacs`)
+- Strong framework adapters and AI workflow ergonomics
+- Native MCP/A2A helpers
+- Good fit for LangChain/LangGraph/CrewAI/FastAPI
+
+### Go (`jacsgo`)
+- Community-maintained bindings for signing and verification
+- Strong fit for Go services needing signed JSON and file provenance
+- See [Go quick start](go/installation.md)
 
 ## Quick Start
-
-Choose your implementation and get started in minutes:
 
 ### Rust CLI
 ```bash
 cargo install jacs --features cli
-# Upgrade to latest: cargo install jacs --features cli --force
-jacs init  # Create config, keys, and agent
-```
-
-Or step by step:
-```bash
-jacs config create
-jacs agent create --create-keys true
+jacs init
 ```
 
 ### Node.js
 ```bash
 npm install @hai.ai/jacs
 ```
-```javascript
-import { JacsAgent } from '@hai.ai/jacs';
-
-const agent = new JacsAgent();
-agent.load('./config.json');
-```
 
 ### Python
 ```bash
 pip install jacs
 ```
-```python
-import jacs
 
-agent = jacs.JacsAgent()
-agent.load("./config.json")
+### Go
+```bash
+go get github.com/HumanAssisted/JACS/jacsgo
 ```
 
-## When to Use JACS
+## Identity Model (Including DID)
 
-JACS is ideal for scenarios where you need:
+JACS identity is based on cryptographic keys and stable agent IDs. You can operate entirely without a registry, blockchain, or token authority:
 
-- **Multi-agent systems** where agents need to trust each other
-- **Task delegation** with verifiable completion and approval
-- **Audit trails** for AI decision-making processes  
-- **Secure data exchange** between AI systems
-- **Compliance** requirements for AI system interactions
-- **Version control** for AI-generated content and decisions
+- Use local trust stores for private environments
+- Use DNS TXT + DNSSEC for public verification
+- Use registry lookup when desired
+- Add DID representations as an interoperability layer in your app
 
-## Why JACS?
+JACS can participate in DID-centered architectures, but it does not require blockchain infrastructure to function.
 
-### 🎯 **Agent-Focused Design**
-Unlike general-purpose signing frameworks, JACS is specifically designed for AI agent communication patterns - tasks, agreements, and collaborative workflows.
+> DID note: JACS does not currently ship a first-class DID resolver/method implementation in core bindings. The DID chapter documents integration patterns.
 
-### 🚀 **Production Ready**
-With built-in observability, multiple storage backends, and comprehensive error handling, JACS is ready for production AI systems.
+## Where to Go Next
 
-### 🔒 **Future-Proof Security**
-Support for both current (RSA, Ed25519) and post-quantum cryptographic algorithms ensures your system remains secure.
+1. [Which Integration?](getting-started/decision-tree.md)
+2. [MCP Overview](integrations/mcp.md)
+3. [A2A Interoperability](integrations/a2a.md)
+4. [Databases](integrations/databases.md)
+5. [DNS-Based Verification](rust/dns.md)
+6. [DID Integration (No Blockchain Required)](integrations/did.md)
 
-### 🌐 **Universal Compatibility**
-JSON-based documents work everywhere - store them in any database, transmit over any protocol, integrate with any system.
+## Community
 
-### 🧩 **Flexible Integration**
-Whether you're building a simple CLI tool or a complex multi-agent system, JACS adapts to your architecture.
-
-## Getting Started
-
-1. **[Core Concepts](getting-started/concepts.md)** - Understand agents, documents, and agreements
-2. **[Quick Start Guide](getting-started/quick-start.md)** - Get up and running in minutes
-3. **Choose Your Implementation**:
-   - [Rust CLI & Library](rust/installation.md)
-   - [Node.js Package](nodejs/installation.md)
-   - [Python Package](python/installation.md)
-
-## Community and Support
-
-- **GitHub**: [HumanAssisted/JACS](https://github.com/HumanAssisted/JACS)
-- **Issues**: Report bugs and feature requests
-- **Examples**: Complete examples for all implementations
-- **Documentation**: This comprehensive guide
-
----
-
-*Ready to build trustworthy AI systems? Let's get started!*
+- [GitHub Repository](https://github.com/HumanAssisted/JACS)
+- [Issue Tracker](https://github.com/HumanAssisted/JACS/issues)
