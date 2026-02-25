@@ -93,6 +93,9 @@ except ImportError:
 # Make framework adapters available (optional, no hard deps)
 from . import adapters
 
+# Allow namespace package extensions (e.g., jacs.hai from haisdk)
+__path__ = __import__('pkgutil').extend_path(__path__, __name__)
+
 __all__ = [
     # Primary API Classes
     "JacsAgent",
