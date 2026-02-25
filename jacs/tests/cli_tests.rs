@@ -1100,7 +1100,9 @@ fn test_mcp_help_shows_install_and_run() -> Result<(), Box<dyn Error>> {
         .success()
         .stdout(predicate::str::contains("install"))
         .stdout(predicate::str::contains("run"))
-        .stdout(predicate::str::contains("Install and run the JACS MCP server"));
+        .stdout(predicate::str::contains(
+            "Install and run the JACS MCP server",
+        ));
     Ok(())
 }
 
@@ -1110,9 +1112,13 @@ fn test_mcp_install_dry_run_shows_prebuilt_plan() -> Result<(), Box<dyn Error>> 
     cmd.arg("mcp").arg("install").arg("--dry-run");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Dry run: MCP prebuilt install plan"))
+        .stdout(predicate::str::contains(
+            "Dry run: MCP prebuilt install plan",
+        ))
         .stdout(predicate::str::contains("jacs-mcp-"))
-        .stdout(predicate::str::contains("github.com/HumanAssisted/JACS/releases/download"));
+        .stdout(predicate::str::contains(
+            "github.com/HumanAssisted/JACS/releases/download",
+        ));
     Ok(())
 }
 
@@ -1124,9 +1130,9 @@ fn test_mcp_install_dry_run_custom_url() -> Result<(), Box<dyn Error>> {
         .arg("--dry-run")
         .arg("--url")
         .arg("https://example.invalid/jacs-mcp.tar.gz");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("https://example.invalid/jacs-mcp.tar.gz"));
+    cmd.assert().success().stdout(predicate::str::contains(
+        "https://example.invalid/jacs-mcp.tar.gz",
+    ));
     Ok(())
 }
 
@@ -1142,7 +1148,9 @@ fn test_mcp_install_from_cargo_dry_run_shows_cargo_plan() -> Result<(), Box<dyn 
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Dry run: MCP cargo install plan"))
-        .stdout(predicate::str::contains("cargo install jacs-mcp --locked --version 0.8.0"));
+        .stdout(predicate::str::contains(
+            "cargo install jacs-mcp --locked --version 0.8.0",
+        ));
     Ok(())
 }
 
@@ -1153,8 +1161,31 @@ fn test_mcp_run_missing_binary_shows_install_hint() -> Result<(), Box<dyn Error>
         .arg("run")
         .arg("--bin")
         .arg("/definitely/not/a/real/jacs-mcp");
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Install it with `jacs mcp install`",
+    ));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_run_help_mentions_stdio_and_no_forwarded_args() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("run").arg("--help");
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Install it with `jacs mcp install`"));
+        .success()
+        .stdout(predicate::str::contains("stdio transport"))
+        .stdout(predicate::str::contains("--bin <bin>"))
+        .stdout(predicate::str::contains("[args]").not())
+        .stdout(predicate::str::contains("Arguments forwarded").not());
+    Ok(())
+}
+
+#[test]
+fn test_mcp_run_rejects_forwarded_runtime_args() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("run").arg("--transport").arg("http");
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "unexpected argument '--transport'",
+    ));
     Ok(())
 }

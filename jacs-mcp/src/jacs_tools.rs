@@ -115,6 +115,15 @@ fn update_embedded_state_content(doc: &mut serde_json::Value, new_content: &str)
     new_hash
 }
 
+/// Extract verification validity from `verify_a2a_artifact` details JSON.
+/// Defaults to `false` on malformed/missing fields to avoid optimistic trust.
+fn extract_verify_a2a_valid(details_json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(details_json)
+        .ok()
+        .and_then(|v| v.get("valid").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
 // =============================================================================
 // Request/Response Types
 // =============================================================================
@@ -3326,11 +3335,7 @@ impl JacsMcpServer {
 
         match self.agent.verify_a2a_artifact(&params.wrapped_artifact) {
             Ok(details_json) => {
-                // Check if the result indicates valid
-                let valid = serde_json::from_str::<serde_json::Value>(&details_json)
-                    .ok()
-                    .and_then(|v| v.get("valid").and_then(|b| b.as_bool()))
-                    .unwrap_or(true); // Default to true if field missing but no error
+                let valid = extract_verify_a2a_valid(&details_json);
                 let result = VerifyA2aArtifactResult {
                     success: true,
                     valid,
@@ -4010,6 +4015,21 @@ mod tests {
         assert!(validate_agent_id("not-a-uuid").is_err());
         assert!(validate_agent_id("12345").is_err());
         assert!(validate_agent_id("550e8400-e29b-41d4-a716").is_err()); // Too short
+    }
+
+    #[test]
+    fn test_extract_verify_a2a_valid_true() {
+        assert!(extract_verify_a2a_valid(r#"{"valid":true}"#));
+    }
+
+    #[test]
+    fn test_extract_verify_a2a_valid_missing_defaults_false() {
+        assert!(!extract_verify_a2a_valid(r#"{"status":"ok"}"#));
+    }
+
+    #[test]
+    fn test_extract_verify_a2a_valid_invalid_json_defaults_false() {
+        assert!(!extract_verify_a2a_valid("not-json"));
     }
 
     #[test]

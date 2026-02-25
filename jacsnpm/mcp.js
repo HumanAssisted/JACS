@@ -15,6 +15,66 @@ const isStdioTransport = (transport) => {
         transport.constructor.name === 'StdioClientTransport';
 };
 const DEFAULT_KEYS_BASE_URL = 'https://hai.ai';
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+function parseBooleanEnv(value) {
+    if (!value)
+        return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === '1' || normalized === 'true' || normalized === 'yes')
+        return true;
+    if (normalized === '0' || normalized === 'false' || normalized === 'no')
+        return false;
+    return undefined;
+}
+function resolveLocalOnly(override) {
+    const envValue = parseBooleanEnv(process.env.JACS_MCP_LOCAL_ONLY);
+    if (override === false || envValue === false) {
+        throw new Error('JACS MCP local mode only: disabling local-only mode is not allowed.');
+    }
+    return true;
+}
+function resolveAllowUnsignedFallback(override) {
+    if (typeof override === 'boolean')
+        return override;
+    return parseBooleanEnv(process.env.JACS_MCP_ALLOW_UNSIGNED_FALLBACK) ?? false;
+}
+function isLoopbackHost(hostname) {
+    const normalized = hostname.trim().replace(/^\[|\]$/g, '').toLowerCase();
+    return LOOPBACK_HOSTS.has(normalized);
+}
+function isLocalHttpUrl(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+        return isLoopbackHost(parsed.hostname);
+    }
+    catch {
+        return false;
+    }
+}
+function extractTransportUrl(transport) {
+    const candidates = ['url', 'endpoint', 'uri', 'serverUrl'];
+    for (const key of candidates) {
+        const value = transport?.[key];
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+    return null;
+}
+function assertLocalTransport(transport) {
+    if (isStdioTransport(transport)) {
+        return;
+    }
+    const transportUrl = extractTransportUrl(transport);
+    if (transportUrl && isLocalHttpUrl(transportUrl)) {
+        return;
+    }
+    throw new Error('JACS MCP local mode only: transport must use stdio or a loopback URL ' +
+        '(localhost/127.0.0.1/::1).');
+}
 function debugLog(proxyId, enabled, ...args) {
     if (enabled)
         console.error(`[${proxyId}]`, ...args);
@@ -79,14 +139,27 @@ function extractNativeAgent(clientOrAgent) {
  * JACS Transport Proxy - Wraps any MCP transport with JACS signing/verification.
  *
  * Outgoing messages are signed with `signRequest()`.
- * Incoming messages are verified with `verifyResponse()`, falling back to
- * plain JSON if verification fails (the message was not JACS-signed).
+ * Incoming messages are verified with `verifyResponse()`.
+ *
+ * Security defaults:
+ * - local-only transport enforcement (`stdio` or loopback URL)
+ * - fail-closed on signing/verification errors
+ *
+ * Local-only mode is mandatory and cannot be disabled.
+ *
+ * Optional fallback behavior:
+ * - `allowUnsignedFallback: true` (or `JACS_MCP_ALLOW_UNSIGNED_FALLBACK=true`)
  */
 class JACSTransportProxy {
-    constructor(transport, clientOrAgent, role = "server") {
+    constructor(transport, clientOrAgent, role = "server", options = {}) {
         this.transport = transport;
         this.nativeAgent = extractNativeAgent(clientOrAgent);
         this.proxyId = `JACS_${role.toUpperCase()}_PROXY`;
+        const localOnly = resolveLocalOnly(options.localOnly);
+        this.allowUnsignedFallback = resolveAllowUnsignedFallback(options.allowUnsignedFallback);
+        if (localOnly) {
+            assertLocalTransport(transport);
+        }
         const suppressDebugForStdio = isStdioTransport(transport);
         this.debug = process.env.JACS_MCP_DEBUG === 'true' && !suppressDebugForStdio;
         // Intercept incoming messages from the wrapped transport
@@ -131,8 +204,13 @@ class JACSTransportProxy {
             await this.transport.send(signed);
         }
         catch (signError) {
-            console.error(`[${this.proxyId}] Signing failed, sending plain message:`, signError);
-            await this.transport.send(message);
+            if (this.allowUnsignedFallback) {
+                console.error(`[${this.proxyId}] Signing failed, sending plain message:`, signError);
+                await this.transport.send(message);
+                return;
+            }
+            const error = signError instanceof Error ? signError : new Error(String(signError));
+            throw new Error(`[${this.proxyId}] JACS signing failed and unsigned fallback is disabled: ${error.message}`);
         }
     }
     get sessionId() {
@@ -153,9 +231,13 @@ class JACSTransportProxy {
                         ? result.payload
                         : result;
                 }
-                catch {
-                    // Not a JACS artifact, parse as plain JSON
-                    debugLog(this.proxyId, this.debug, 'INCOMING: not a JACS artifact, parsing as plain JSON');
+                catch (verifyError) {
+                    if (!this.allowUnsignedFallback) {
+                        const error = verifyError instanceof Error ? verifyError : new Error(String(verifyError));
+                        throw new Error(`JACS verification failed and unsigned fallback is disabled: ${error.message}`);
+                    }
+                    // Not a JACS artifact (or verification failure), parse as plain JSON
+                    debugLog(this.proxyId, this.debug, 'INCOMING: verification failed, parsing as plain JSON');
                     messageForSDK = JSON.parse(incomingData);
                 }
             }
@@ -202,23 +284,24 @@ class JACSTransportProxy {
     }
 }
 exports.JACSTransportProxy = JACSTransportProxy;
-// ---------------------------------------------------------------------------
-// Factory functions
-// ---------------------------------------------------------------------------
+/**
+ * Local/security policy options for MCP transport proxy behavior.
+ */
+JACSTransportProxy.DEFAULT_LOCAL_ONLY = true;
 /**
  * Create a transport proxy from a pre-loaded JacsClient or JacsAgent.
  */
-function createJACSTransportProxy(transport, clientOrAgent, role = "server") {
-    return new JACSTransportProxy(transport, clientOrAgent, role);
+function createJACSTransportProxy(transport, clientOrAgent, role = "server", options = {}) {
+    return new JACSTransportProxy(transport, clientOrAgent, role, options);
 }
 /**
  * Create a transport proxy by loading a JACS agent from a config file.
  * Awaits agent loading before returning, so the proxy is immediately usable.
  */
-async function createJACSTransportProxyAsync(transport, configPath, role = "server") {
+async function createJACSTransportProxyAsync(transport, configPath, role = "server", options = {}) {
     const agent = new index_js_1.JacsAgent();
     await agent.load(configPath);
-    return new JACSTransportProxy(transport, agent, role);
+    return new JACSTransportProxy(transport, agent, role, options);
 }
 /**
  * Returns the full list of JACS MCP tool definitions.

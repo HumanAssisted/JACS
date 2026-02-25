@@ -71,6 +71,8 @@ jacs mcp run
 jacs mcp install --from-cargo
 ```
 
+`jacs mcp run` is local stdio-only transport. Runtime transport override args are intentionally not accepted.
+
 ### Homebrew (macOS)
 
 ```bash

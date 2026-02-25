@@ -1,8 +1,10 @@
 """Tests for the JACS MCP integration wrappers."""
 
+import asyncio
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import json
+from types import SimpleNamespace
 
 
 class TestJACSMCPServerWrapper:
@@ -23,7 +25,10 @@ class TestJACSMCPServerWrapper:
         mock_server.sse_app = Mock(return_value=Mock())
 
         # Wrap it
-        wrapped_server = JACSMCPServer(mock_server)
+        wrapped_server = JACSMCPServer(
+            mock_server,
+            allow_unsigned_fallback=True,
+        )
 
         # The wrapper should return the same object (modified in place)
         assert wrapped_server is mock_server
@@ -40,7 +45,10 @@ class TestJACSMCPServerWrapper:
         mock_server.some_attribute = "test_value"
         mock_server.some_method = Mock(return_value="method_result")
 
-        wrapped_server = JACSMCPServer(mock_server)
+        wrapped_server = JACSMCPServer(
+            mock_server,
+            allow_unsigned_fallback=True,
+        )
 
         # Other attributes should be preserved
         assert wrapped_server.some_attribute == "test_value"
@@ -84,6 +92,79 @@ class TestMCPModuleStructure:
         assert "import jacs" in source
 
 
+class TestMCPSecurityDefaults:
+    """Security defaults for MCP wrappers should be hardened."""
+
+    def test_local_only_default_enabled(self):
+        from jacs import mcp
+        assert mcp._resolve_local_only() is True
+
+    def test_disabling_local_only_is_rejected(self):
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._resolve_local_only(False)
+
+    def test_env_cannot_disable_local_only(self, monkeypatch):
+        monkeypatch.setenv("JACS_MCP_LOCAL_ONLY", "false")
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._resolve_local_only()
+
+    def test_unsigned_fallback_default_disabled(self):
+        from jacs import mcp
+        assert mcp._resolve_allow_unsigned_fallback() is False
+
+    def test_remote_url_rejected_in_local_mode(self):
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._enforce_local_url("https://remote.example.com/sse", "test", True)
+
+    def test_loopback_url_allowed_in_local_mode(self):
+        from jacs import mcp
+        assert mcp._enforce_local_url("http://127.0.0.1:9000/sse", "test", True) is None
+
+    def test_enforce_local_url_rejects_false_local_only(self):
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._enforce_local_url("http://localhost:9000/sse", "test", False)
+
+    def test_middleware_rejects_remote_client(self):
+        from jacs import mcp
+
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="203.0.113.9"),
+            url=SimpleNamespace(path="/messages/"),
+            body=AsyncMock(return_value=b"{}"),
+        )
+        call_next = AsyncMock()
+        middleware = mcp.jacs_middleware()
+
+        if mcp.JSONResponse is None:
+            with pytest.raises(mcp.simple.VerificationError):
+                asyncio.run(middleware(request, call_next))
+            call_next.assert_not_awaited()
+        else:
+            response = asyncio.run(middleware(request, call_next))
+            assert response.status_code == 403
+            call_next.assert_not_awaited()
+
+    def test_middleware_allows_loopback_client(self):
+        from jacs import mcp
+
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="127.0.0.1"),
+            url=SimpleNamespace(path="/messages/"),
+            body=AsyncMock(return_value=b"{}"),
+        )
+        expected_response = SimpleNamespace(headers={"content-type": "text/plain"})
+        call_next = AsyncMock(return_value=expected_response)
+        middleware = mcp.jacs_middleware()
+
+        response = asyncio.run(middleware(request, call_next))
+        assert response is expected_response
+        call_next.assert_awaited_once()
+
+
 class TestMCPMiddlewareBehavior:
     """Test the middleware behavior of the MCP wrappers."""
 
@@ -100,7 +181,10 @@ class TestMCPMiddlewareBehavior:
         mock_server.sse_app = original_sse_app
 
         # Wrap the server
-        wrapped = JACSMCPServer(mock_server)
+        wrapped = JACSMCPServer(
+            mock_server,
+            allow_unsigned_fallback=True,
+        )
 
         # Call the patched sse_app to trigger middleware creation
         result_app = wrapped.sse_app()

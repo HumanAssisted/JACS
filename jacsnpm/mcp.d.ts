@@ -6,18 +6,31 @@ import { JacsClient } from './client.js';
  * JACS Transport Proxy - Wraps any MCP transport with JACS signing/verification.
  *
  * Outgoing messages are signed with `signRequest()`.
- * Incoming messages are verified with `verifyResponse()`, falling back to
- * plain JSON if verification fails (the message was not JACS-signed).
+ * Incoming messages are verified with `verifyResponse()`.
+ *
+ * Security defaults:
+ * - local-only transport enforcement (`stdio` or loopback URL)
+ * - fail-closed on signing/verification errors
+ *
+ * Local-only mode is mandatory and cannot be disabled.
+ *
+ * Optional fallback behavior:
+ * - `allowUnsignedFallback: true` (or `JACS_MCP_ALLOW_UNSIGNED_FALLBACK=true`)
  */
 export declare class JACSTransportProxy implements Transport {
     private transport;
     private nativeAgent;
     private proxyId;
     private debug;
+    private allowUnsignedFallback;
     onclose?: () => void;
     onerror?: (error: Error) => void;
     onmessage?: (message: JSONRPCMessage) => void;
-    constructor(transport: Transport, clientOrAgent: JacsClient | JacsAgent, role?: "client" | "server");
+    /**
+     * Local/security policy options for MCP transport proxy behavior.
+     */
+    static readonly DEFAULT_LOCAL_ONLY = true;
+    constructor(transport: Transport, clientOrAgent: JacsClient | JacsAgent, role?: "client" | "server", options?: JACSTransportProxyOptions);
     start(): Promise<void>;
     close(): Promise<void>;
     send(message: JSONRPCMessage): Promise<void>;
@@ -34,15 +47,27 @@ export declare class JACSTransportProxy implements Transport {
      */
     removeNullValues(obj: any): any;
 }
+export interface JACSTransportProxyOptions {
+    /**
+     * Reserved for compatibility. Local-only mode is always enforced.
+     * Passing false throws an error.
+     */
+    localOnly?: boolean;
+    /**
+     * Allow fallback to unsigned/plain MCP messages when JACS signing or
+     * verification fails. Default: false (fail closed).
+     */
+    allowUnsignedFallback?: boolean;
+}
 /**
  * Create a transport proxy from a pre-loaded JacsClient or JacsAgent.
  */
-export declare function createJACSTransportProxy(transport: Transport, clientOrAgent: JacsClient | JacsAgent, role?: "client" | "server"): JACSTransportProxy;
+export declare function createJACSTransportProxy(transport: Transport, clientOrAgent: JacsClient | JacsAgent, role?: "client" | "server", options?: JACSTransportProxyOptions): JACSTransportProxy;
 /**
  * Create a transport proxy by loading a JACS agent from a config file.
  * Awaits agent loading before returning, so the proxy is immediately usable.
  */
-export declare function createJACSTransportProxyAsync(transport: Transport, configPath: string, role?: "client" | "server"): Promise<JACSTransportProxy>;
+export declare function createJACSTransportProxyAsync(transport: Transport, configPath: string, role?: "client" | "server", options?: JACSTransportProxyOptions): Promise<JACSTransportProxy>;
 /** MCP tool definition shape (matches @modelcontextprotocol/sdk Tool type). */
 export interface JacsMcpToolDef {
     name: string;

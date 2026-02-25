@@ -28,6 +28,7 @@ function createMockTransport() {
     onclose: null,
     onerror: null,
     sessionId: 'test-session-123',
+    url: 'http://localhost:9999/sse',
   };
 }
 
@@ -177,6 +178,45 @@ describe('JACSTransportProxy', function () {
 
       expect(proxy.sessionId).to.equal('test-session-123');
     });
+
+    (available ? it : it.skip)('should reject remote transports in local-only mode by default', () => {
+      const transport = createMockTransport();
+      transport.url = 'https://remote.example.com/sse';
+
+      expect(() => {
+        new mcpModule.JACSTransportProxy(transport, { agent: createMockAgent() });
+      }).to.throw(/local mode only/i);
+    });
+
+    (available ? it : it.skip)('should reject attempts to disable local-only mode', () => {
+      const transport = createMockTransport();
+
+      expect(() => {
+        new mcpModule.JACSTransportProxy(
+          transport,
+          { agent: createMockAgent() },
+          'server',
+          { localOnly: false },
+        );
+      }).to.throw(/disabling local-only mode is not allowed/i);
+    });
+
+    (available ? it : it.skip)('should reject env-based attempts to disable local-only mode', () => {
+      const transport = createMockTransport();
+      const original = process.env.JACS_MCP_LOCAL_ONLY;
+      process.env.JACS_MCP_LOCAL_ONLY = 'false';
+      try {
+        expect(() => {
+          new mcpModule.JACSTransportProxy(transport, { agent: createMockAgent() });
+        }).to.throw(/disabling local-only mode is not allowed/i);
+      } finally {
+        if (typeof original === 'undefined') {
+          delete process.env.JACS_MCP_LOCAL_ONLY;
+        } else {
+          process.env.JACS_MCP_LOCAL_ONLY = original;
+        }
+      }
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -227,12 +267,37 @@ describe('JACSTransportProxy', function () {
       expect(signedInput).to.not.have.property('params');
     });
 
-    (available ? it : it.skip)('should fall back to plain message if signing fails', async () => {
+    (available ? it : it.skip)('should fail closed if signing fails and fallback is disabled', async () => {
       const transport = createMockTransport();
       const agent = createMockAgent();
       agent.signRequest.throws(new Error('signing error'));
 
       const proxy = new mcpModule.JACSTransportProxy(transport, { agent }, 'server');
+
+      const message = { jsonrpc: '2.0', method: 'test', id: 1 };
+      let caught;
+      try {
+        await proxy.send(message);
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).to.be.an('error');
+      expect(String(caught.message || caught)).to.match(/unsigned fallback is disabled/i);
+      expect(transport.send.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should fall back to plain message if signing fails when explicitly enabled', async () => {
+      const transport = createMockTransport();
+      const agent = createMockAgent();
+      agent.signRequest.throws(new Error('signing error'));
+
+      const proxy = new mcpModule.JACSTransportProxy(
+        transport,
+        { agent },
+        'server',
+        { allowUnsignedFallback: true },
+      );
 
       const message = { jsonrpc: '2.0', method: 'test', id: 1 };
       await proxy.send(message);
@@ -283,12 +348,37 @@ describe('JACSTransportProxy', function () {
       expect(messageSpy.firstCall.args[0]).to.deep.equal(innerPayload);
     });
 
-    (available ? it : it.skip)('should fall through as plain JSON when verification fails', () => {
+    (available ? it : it.skip)('should fail closed on verification failure by default', () => {
       const transport = createMockTransport();
       const agent = createMockAgent();
       agent.verifyResponse.throws(new Error('not a JACS artifact'));
 
       const proxy = new mcpModule.JACSTransportProxy(transport, { agent }, 'server');
+
+      const messageSpy = sinon.spy();
+      const errorSpy = sinon.spy();
+      proxy.onmessage = messageSpy;
+      proxy.onerror = errorSpy;
+
+      const plainMessage = { jsonrpc: '2.0', method: 'ping', id: 42 };
+      transport.onmessage(JSON.stringify(plainMessage));
+
+      expect(messageSpy.called).to.be.false;
+      expect(errorSpy.calledOnce).to.be.true;
+      expect(errorSpy.firstCall.args[0].message).to.match(/unsigned fallback is disabled/i);
+    });
+
+    (available ? it : it.skip)('should fall through as plain JSON when verification fails and fallback is enabled', () => {
+      const transport = createMockTransport();
+      const agent = createMockAgent();
+      agent.verifyResponse.throws(new Error('not a JACS artifact'));
+
+      const proxy = new mcpModule.JACSTransportProxy(
+        transport,
+        { agent },
+        'server',
+        { allowUnsignedFallback: true },
+      );
 
       const messageSpy = sinon.spy();
       proxy.onmessage = messageSpy;

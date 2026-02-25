@@ -1,8 +1,8 @@
-use clap::{Arg, ArgAction, Command, crate_name, value_parser};
+use clap::{crate_name, value_parser, Arg, ArgAction, Command};
 
-use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
+use jacs::agent::Agent;
 use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
 use jacs::cli_utils::default_set_file_list;
@@ -13,7 +13,7 @@ use jacs::cli_utils::document::{
 use jacs::config::load_config_12factor_optional;
 // use jacs::create_task; // unused
 use jacs::dns::bootstrap as dns_bootstrap;
-use jacs::shutdown::{ShutdownGuard, install_signal_handler};
+use jacs::shutdown::{install_signal_handler, ShutdownGuard};
 use jacs::{load_agent, load_agent_with_dns_strict};
 
 use reqwest;
@@ -27,7 +27,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
 const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
-const DEFAULT_MCP_RELEASE_BASE_URL: &str = "https://github.com/HumanAssisted/JACS/releases/download";
+const DEFAULT_MCP_RELEASE_BASE_URL: &str =
+    "https://github.com/HumanAssisted/JACS/releases/download";
 const DEFAULT_MCP_RELEASE_TAG_PREFIX: &str = "cli/v";
 
 fn quickstart_password_bootstrap_help() -> &'static str {
@@ -458,9 +459,8 @@ fn install_jacs_mcp_prebuilt(
     Ok(())
 }
 
-fn run_jacs_mcp_binary(binary: &str, forwarded_args: &[String]) -> Result<(), Box<dyn Error>> {
+fn run_jacs_mcp_binary(binary: &str) -> Result<(), Box<dyn Error>> {
     let status = std::process::Command::new(binary)
-        .args(forwarded_args)
         .status()
         .map_err(|e| -> Box<dyn Error> {
             Box::new(std::io::Error::other(format!(
@@ -1057,13 +1057,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                 .long("bin")
                                 .value_parser(value_parser!(String))
                                 .help("Path to jacs-mcp binary (default: JACS_MCP_BIN or PATH)"),
-                        )
-                        .arg(
-                            Arg::new("args")
-                                .help("Arguments forwarded to jacs-mcp")
-                                .num_args(0..)
-                                .trailing_var_arg(true)
-                                .allow_hyphen_values(true),
                         ),
                 ),
         )
@@ -1713,12 +1706,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         },
         Some(("mcp", mcp_matches)) => match mcp_matches.subcommand() {
             Some(("install", install_matches)) => {
-                let version = install_matches.get_one::<String>("version").map(|s| s.as_str());
+                let version = install_matches
+                    .get_one::<String>("version")
+                    .map(|s| s.as_str());
                 let force = *install_matches.get_one::<bool>("force").unwrap_or(&false);
                 let from_cargo = *install_matches
                     .get_one::<bool>("from-cargo")
                     .unwrap_or(&false);
-                let bin_dir = install_matches.get_one::<String>("bin-dir").map(|s| s.as_str());
+                let bin_dir = install_matches
+                    .get_one::<String>("bin-dir")
+                    .map(|s| s.as_str());
                 let url_override = install_matches.get_one::<String>("url").map(|s| s.as_str());
                 let dry_run = *install_matches.get_one::<bool>("dry-run").unwrap_or(&false);
 
@@ -1740,19 +1737,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     })
                     .unwrap_or_else(|| "jacs-mcp".to_string());
 
-                let forwarded_args: Vec<String> = run_matches
-                    .get_many::<String>("args")
-                    .map(|vals| vals.map(|v| v.to_string()).collect())
-                    .unwrap_or_default();
-
-                run_jacs_mcp_binary(&binary, &forwarded_args)?;
+                run_jacs_mcp_binary(&binary)?;
             }
             _ => println!("please enter subcommand see jacs mcp --help"),
         },
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
             Some(("assess", assess_matches)) => {
+                use jacs::a2a::trust::{assess_a2a_agent, A2ATrustPolicy};
                 use jacs::a2a::AgentCard;
-                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
                 let source = assess_matches.get_one::<String>("source").unwrap();
                 let policy_str = assess_matches
@@ -1865,8 +1857,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("  Added to local trust store with key: {}", key);
             }
             Some(("discover", discover_matches)) => {
+                use jacs::a2a::trust::{assess_a2a_agent, A2ATrustPolicy};
                 use jacs::a2a::AgentCard;
-                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
                 let base_url = discover_matches.get_one::<String>("url").unwrap();
                 let json_output = *discover_matches.get_one::<bool>("json").unwrap_or(&false);

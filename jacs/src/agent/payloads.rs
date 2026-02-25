@@ -82,7 +82,15 @@ impl PayloadTraits for Agent {
         let date = self.get_document_signature_date(&document_key)?;
         let agent_id = self.get_document_signature_agent_id(&document_key)?;
 
-        let max_replay_seconds = max_replay_time_delta_seconds.unwrap_or(1);
+        // Default payload freshness window: 5 minutes.
+        // Can be overridden per call, or globally with JACS_PAYLOAD_MAX_REPLAY_SECONDS.
+        let max_replay_seconds = max_replay_time_delta_seconds
+            .or_else(|| {
+                std::env::var("JACS_PAYLOAD_MAX_REPLAY_SECONDS")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+            })
+            .unwrap_or(300);
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs();
