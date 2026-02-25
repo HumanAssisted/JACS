@@ -76,7 +76,7 @@
     }
   },
   "bin": {
-    "jacs-cli": "./bin/jacs-cli"
+    "jacs-cli": "./bin/jacs-cli.js"
   },
   "scripts": {
     "postinstall": "node scripts/install-cli.js || true",

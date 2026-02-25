@@ -1131,6 +1131,22 @@ fn test_mcp_install_dry_run_custom_url() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn test_mcp_install_from_cargo_dry_run_shows_cargo_plan() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp")
+        .arg("install")
+        .arg("--from-cargo")
+        .arg("--dry-run")
+        .arg("--version")
+        .arg("0.8.0");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run: MCP cargo install plan"))
+        .stdout(predicate::str::contains("cargo install jacs-mcp --locked --version 0.8.0"));
+    Ok(())
+}
+
+#[test]
 fn test_mcp_run_missing_binary_shows_install_hint() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.arg("mcp")

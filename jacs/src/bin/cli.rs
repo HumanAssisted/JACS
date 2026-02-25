@@ -139,11 +139,25 @@ fn wrap_quickstart_error_with_password_help(
     )))
 }
 
-fn install_jacs_mcp_via_cargo(version: Option<&str>, force: bool) -> Result<(), Box<dyn Error>> {
+fn install_jacs_mcp_via_cargo(
+    version: Option<&str>,
+    force: bool,
+    dry_run: bool,
+) -> Result<(), Box<dyn Error>> {
     let resolved_version = version
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .unwrap_or(env!("CARGO_PKG_VERSION"));
+
+    if dry_run {
+        let force_suffix = if force { " --force" } else { "" };
+        println!("Dry run: MCP cargo install plan");
+        println!(
+            "  Command: cargo install jacs-mcp --locked --version {}{}",
+            resolved_version, force_suffix
+        );
+        return Ok(());
+    }
 
     let mut command = std::process::Command::new("cargo");
     command
@@ -1031,7 +1045,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .arg(
                             Arg::new("dry-run")
                                 .long("dry-run")
-                                .help("Print prebuilt install plan without downloading")
+                                .help("Print install plan without downloading/installing")
                                 .action(ArgAction::SetTrue),
                         ),
                 )
@@ -1709,7 +1723,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let dry_run = *install_matches.get_one::<bool>("dry-run").unwrap_or(&false);
 
                 if from_cargo {
-                    install_jacs_mcp_via_cargo(version, force)?;
+                    install_jacs_mcp_via_cargo(version, force, dry_run)?;
                 } else {
                     install_jacs_mcp_prebuilt(version, force, bin_dir, url_override, dry_run)?;
                 }

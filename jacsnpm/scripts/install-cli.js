@@ -116,7 +116,7 @@ async function main() {
     console.log(`[jacs]   cargo install jacs --features cli`);
     console.log(`[jacs]   OR download from https://github.com/${REPO}/releases`);
     // Clean up partial install
-    try { fs.rmSync(binDir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(binPath, { force: true }); } catch (_) {}
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
   }
