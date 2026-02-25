@@ -98,3 +98,29 @@ fn verify_payload_explicit_argument_overrides_env_window() {
         .expect("explicit replay window should override strict env setting");
     assert_eq!(payload["test"], "explicit-override");
 }
+
+#[test]
+#[serial]
+fn verify_payload_replay_nonce_retention_tracks_payload_window() {
+    let _guard_payload = EnvVarGuard::set("JACS_PAYLOAD_MAX_REPLAY_SECONDS", "5");
+    let _guard_iat = EnvVarGuard::set("JACS_MAX_IAT_SKEW_SECONDS", "1");
+    let mut agent = load_test_agent_one();
+    let signed = agent
+        .sign_payload(json!({ "test": "replay-window-alignment" }))
+        .expect("payload signing should succeed");
+
+    agent
+        .verify_payload(signed.clone(), None)
+        .expect("first verification should succeed");
+
+    std::thread::sleep(Duration::from_secs(2));
+
+    let err = agent
+        .verify_payload(signed, None)
+        .expect_err("replay nonce should remain blocked for the full payload window");
+    assert!(
+        err.to_string().contains("Replay attack detected"),
+        "unexpected error: {}",
+        err
+    );
+}

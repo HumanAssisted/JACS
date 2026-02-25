@@ -1,6 +1,7 @@
 """Tests for the JACS MCP integration wrappers."""
 
 import asyncio
+import contextlib
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import json
@@ -219,3 +220,62 @@ class TestMCPIntegrationTypes:
             serialized = json.dumps(payload)
             deserialized = json.loads(serialized)
             assert deserialized == payload
+
+
+class TestJacsSSETransportBehavior:
+    """Behavior checks for JacsSSETransport interceptors."""
+
+    def test_send_does_not_fail_when_signing_errors(self, monkeypatch):
+        from jacs import mcp
+
+        sent_payloads = []
+
+        class FakeSSETransport:
+            def __init__(self, url, headers=None):
+                self.url = url
+                self.headers = headers
+
+        class FakeReadStream:
+            async def receive(self, **_kwargs):
+                return SimpleNamespace(root={"jsonrpc": "2.0", "id": 1})
+
+        class FakeWriteStream:
+            async def send(self, message, **_kwargs):
+                sent_payloads.append(message.root)
+
+        read_stream = FakeReadStream()
+        write_stream = FakeWriteStream()
+
+        @contextlib.asynccontextmanager
+        async def fake_sse_client(_url, headers=None):
+            yield (read_stream, write_stream)
+
+        class FakeClientSession:
+            def __init__(self, _read_stream, _write_stream, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, _exc_type, _exc, _tb):
+                return False
+
+            async def initialize(self):
+                return None
+
+        monkeypatch.setattr(mcp, "SSETransport", FakeSSETransport)
+        monkeypatch.setattr(mcp, "sse_client", fake_sse_client)
+        monkeypatch.setattr(mcp, "ClientSession", FakeClientSession)
+        monkeypatch.setattr(mcp.simple, "is_loaded", lambda: True)
+        monkeypatch.setattr(mcp, "sign_mcp_message", Mock(side_effect=RuntimeError("sign failure")))
+
+        transport = mcp.JacsSSETransport("http://127.0.0.1:9000/sse")
+        message = SimpleNamespace(root={"jsonrpc": "2.0", "id": 7, "method": "ping"})
+
+        async def run_send():
+            async with transport.connect_session():
+                await write_stream.send(message)
+
+        asyncio.run(run_send())
+
+        assert sent_payloads == [{"jsonrpc": "2.0", "id": 7, "method": "ping"}]

@@ -607,8 +607,14 @@ class JacsSSETransport:
             original_send = original_write_stream.send
             async def intercepted_send(message, **send_kwargs):
                 if agent_ready and isinstance(message.root, dict):
-                    signed = sign_mcp_message(message.root)
-                    message.root = json.loads(signed)
+                    try:
+                        signed = sign_mcp_message(message.root)
+                        message.root = json.loads(signed)
+                    except Exception as e:
+                        LOGGER.warning(
+                            "JACS signing on send failed; forwarding unsigned message: %s",
+                            e,
+                        )
                 return await original_send(message, **send_kwargs)
 
             original_write_stream.send = intercepted_send
